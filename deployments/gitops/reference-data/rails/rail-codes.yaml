@@ -1,0 +1,84 @@
+# Canonical rail-code vocabulary — Epic 2.3 / S2T3.
+#
+# THE SOURCE OF TRUTH for `rail_id -> rail_code`. Nothing else in the platform
+# may define this mapping. Loaded at startup by
+# `app/modules/rails/infrastructure/rail_code_loader.py`.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS FILE IS EMPTY
+# ---------------------------------------------------------------------------
+# No authoritative rail-code vocabulary has been ratified for this platform.
+# Two audits established this: `rail_code` appears nowhere in the repository
+# outside `app/platform/idempotency/`; the rail interface specification
+# (`docs/rails/interface_specification.md`) defines the adapter contract,
+# failure codes and metadata contract but never enumerates rail identifiers;
+# and `rails.rail_registration.rail_id` is unconstrained `String(64)` whose
+# only concrete values are illustrative code comments.
+#
+# Populating this file with guesses would put invented tokens into live payment
+# references, where they are submitted to real rails and cannot be changed
+# afterwards without breaking every in-flight reference. So it ships empty and
+# the lookup fails closed: a rail with no canonical code cannot be submitted at
+# all, which is the correct behaviour for an unratified vocabulary.
+#
+# ---------------------------------------------------------------------------
+# TWO DIFFERENT THINGS
+# ---------------------------------------------------------------------------
+#   rail_id     A concrete rail. Vendor-scoped, lowercase, <= 64 chars, owned by
+#               `rails.rail_registration` and immutable once registered.
+#               Shape: nium_usd_inr
+#
+#   rail_code   The canonical token carried inside a rail reference. Short,
+#               uppercase, shared across every rail on the same network.
+#               Shape: NIUM
+#
+# They are never interchangeable. A rail_id must never be used as a rail_code.
+#
+# ---------------------------------------------------------------------------
+# SCHEMA
+# ---------------------------------------------------------------------------
+# A list of entries. Required keys:
+#
+#   rail_id      string   lowercase; normalised on load; must be unique
+#   rail_code    string   ^[A-Z0-9_]+$; max 41 chars; must be unique
+#
+# Optional keys:
+#
+#   description  string   free text, for humans
+#   notes        string   free text, for humans
+#
+# Any other key is rejected, so a typo fails the build rather than being
+# silently ignored.
+#
+# The 41-character ceiling is derived, not chosen: a rail reference is
+# `ANER-{settlement_id_short}-{leg_sequence}-{rail_code}` capped at 64
+# characters, and 41 is what remains after the fixed prefix, the 8-character
+# settlement prefix, three hyphens and a leg-sequence allowance.
+#
+# ---------------------------------------------------------------------------
+# ADDING AN ENTRY
+# ---------------------------------------------------------------------------
+# 1. Get the rail_code ratified. It becomes permanent the moment the first
+#    payment carries it.
+# 2. Add the entry below.
+# 3. Add the same rail_code to KNOWN_RAIL_CODES in
+#    `app/platform/idempotency/utilities.py`. The build FAILS if you skip this
+#    — `test_rail_code_registry.py::test_every_production_rail_code_is_known_to_s1t2`
+#    asserts the two agree, so a rail cannot be configured without a code S1T2
+#    will accept.
+# 4. Confirm the rail's adapter maps `LegSubmissionRequest.idempotency_key` onto
+#    the rail's own idempotency mechanism (interface_specification.md section 1).
+#
+# ---------------------------------------------------------------------------
+# EXAMPLE (illustrative only — NOT ratified, do not uncomment)
+# ---------------------------------------------------------------------------
+#   - rail_id: nium_usd_inr
+#     rail_code: NIUM
+#     description: "Nium USD->INR payout corridor"
+#
+# The Epic 2.3 worked example is `ANER-550e8400-1-NIUM`, which is the only
+# place any concrete rail_code value appears in any specification. That is a
+# format illustration, not a ratified vocabulary entry, and the rail_id half
+# has no source at all.
+
+[]

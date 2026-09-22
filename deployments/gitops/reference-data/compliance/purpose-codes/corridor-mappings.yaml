@@ -1,0 +1,40 @@
+# Maps each canonical purpose code to the code a corridor's regulator requires.
+#
+# external_standard_version cites the published revision the external_code was
+# read from. When a regulator issues a new revision, close the existing row with
+# an effective_to and add a new row starting on that date — never edit a row in
+# place, or payments already filed under the old revision stop being explicable.
+#
+# Adding a corridor is a new row here and nothing else; no canonical code and no
+# application change.
+- corridor_id: US_IN
+  external_standard: RBI
+  external_standard_version: RBI Purpose Code Master Circular 2024
+  external_code: P0102
+  canonical_code: TRADE_GOODS_IMPORT
+  effective_from: 2024-01-01
+- corridor_id: US_IN
+  external_standard: RBI
+  external_standard_version: RBI Purpose Code Master Circular 2024
+  external_code: P0801
+  canonical_code: SOFTWARE_IT_SERVICES
+  effective_from: 2024-01-01
+- corridor_id: EUR_IN
+  external_standard: RBI
+  external_standard_version: RBI Purpose Code Master Circular 2024
+  external_code: P0102
+  canonical_code: TRADE_GOODS_IMPORT
+  effective_from: 2024-01-01
+- corridor_id: UK_IN
+  external_standard: RBI
+  external_standard_version: RBI Purpose Code Master Circular 2024
+  external_code: P1301
+  canonical_code: CHARITABLE_DONATION
+  effective_from: 2024-01-01
+- corridor_id: US_IN
+  external_standard: RBI
+  external_standard_version: RBI Purpose Code Master Circular 2024
+  external_code: P9999
+  canonical_code: OTHER
+  effective_from: 2024-01-01
+  effective_to: 2025-01-01

@@ -1,0 +1,36 @@
+# The compliance rules in force, one row per rule.
+#
+# A rule fires when every match condition it sets holds and the settlement date
+# falls inside its effective window. A condition left unset constrains nothing,
+# so a rule that sets none applies to every settlement — which is why each rule
+# below states only what it actually cares about.
+#
+# required_action is one of: edd_required, enhanced_monitoring,
+# enhanced_limits_check, manual_review.
+# sector_risk_tier_match is one of: standard, elevated, high, critical.
+#
+# amount_threshold is an inclusive lower bound in integer minor units of
+# amount_threshold_currency, and the two are set together or not at all. The
+# currency is not decoration: 5000000 minor units is fifty thousand dollars under
+# one asset and fifty thousand rupees under another.
+#
+# action_reason is read by whoever has to justify the obligation to a regulator,
+# so it is written for that reader rather than derived from the conditions.
+
+- rule_id: DNFBP_EDD_REQUIRED
+  description: "Enhanced due diligence for designated non-financial businesses and professions"
+  sector_risk_tier_match: high
+  sector_classification_label_match: DNFBP
+  required_action: edd_required
+  action_reason: "FATF DNFBP classification requires enhanced due diligence before settlement proceeds."
+  effective_from: 2024-01-01
+
+- rule_id: LARGE_VALUE_REVIEW
+  description: "Manual review for settlements at or above the large-value threshold"
+  # 5,000,000 minor units of USD is USD 50,000.00 at the currency registry's
+  # precision of 2.
+  amount_threshold: 5000000
+  amount_threshold_currency: USD
+  required_action: manual_review
+  action_reason: "Transaction value above large-value review threshold when converted to USD."
+  effective_from: 2024-01-01

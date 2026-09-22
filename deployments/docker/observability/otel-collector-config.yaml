@@ -1,0 +1,42 @@
+# OpenTelemetry Collector — the single ingest point for application traces.
+#
+# Pipeline:  app  --OTLP/HTTP(4318)-->  collector  --OTLP-->  Jaeger
+#
+# Metrics do NOT flow through the collector: Prometheus scrapes the app's
+# /metrics endpoint directly (simpler, one fewer failure point). The collector
+# still exposes its own internal metrics on :8888 for scrape/health.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    timeout: 5s
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+
+exporters:
+  # Forward traces to Jaeger's native OTLP ingest.
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  debug:
+    verbosity: normal
+
+service:
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger, debug]

@@ -1,0 +1,92 @@
+# Case Management SLA Configuration
+# Version-controlled configuration for Epic 4.3 compliance case SLA targets and
+# auto-escalation thresholds. Managed via GitOps. Compliance officer review
+# required for changes.
+#
+# sla_hours: hours from case creation (compliance_case.created_at) to the SLA
+#   deadline (compliance_case.sla_deadline) for this (case_type, severity) pair.
+# auto_escalate_at_pct: percentage of the SLA window elapsed at which the case
+#   is automatically escalated (calculate_auto_escalate_at in
+#   app/modules/cases/application/sla_service.py).
+#
+# Every case_type the S1T1 schema's case_type_enum defines must appear here
+# with all four severities — app/modules/cases/infrastructure/
+# sla_config_loader.py validates completeness at load time and refuses to seed
+# a partial table, since an unconfigured (case_type, severity) pair has no way
+# to compute an SLA deadline at case-creation time.
+#
+# Case-type and severity keys are written lower_snake_case here for GitOps
+# readability; the loader upper-cases them on load to match
+# compliance_case.case_type / .severity's stored values (case_sla_config.py's
+# case_type/severity columns are plain strings, not the compliance_case Postgres
+# enums, but are compared against those values by the SLA service).
+version: "1.0"
+
+# Walk-phase SLA targets. auto_escalate_at_pct is 75 for critical/high and 90
+# for medium/low across every case_type — critical and high severities get a
+# tighter escalation trigger because a case that misses 75% of a short SLA
+# window is far more likely to breach outright than one that misses 75% of a
+# long one.
+sla_targets:
+  screening_review:
+    critical: {sla_hours: 2, auto_escalate_at_pct: 75}
+    high: {sla_hours: 4, auto_escalate_at_pct: 75}
+    medium: {sla_hours: 24, auto_escalate_at_pct: 90}
+    low: {sla_hours: 48, auto_escalate_at_pct: 90}
+
+  transaction_flag:
+    critical: {sla_hours: 1, auto_escalate_at_pct: 75}
+    high: {sla_hours: 2, auto_escalate_at_pct: 75}
+    medium: {sla_hours: 8, auto_escalate_at_pct: 90}
+    low: {sla_hours: 24, auto_escalate_at_pct: 90}
+
+  reconciliation_break:
+    critical: {sla_hours: 4, auto_escalate_at_pct: 75}
+    high: {sla_hours: 8, auto_escalate_at_pct: 75}
+    medium: {sla_hours: 48, auto_escalate_at_pct: 90}
+    low: {sla_hours: 72, auto_escalate_at_pct: 90}
+
+  reconciliation_timeout:
+    critical: {sla_hours: 8, auto_escalate_at_pct: 75}
+    high: {sla_hours: 24, auto_escalate_at_pct: 75}
+    medium: {sla_hours: 48, auto_escalate_at_pct: 90}
+    low: {sla_hours: 72, auto_escalate_at_pct: 90}
+
+  onboarding_review:
+    critical: {sla_hours: 4, auto_escalate_at_pct: 75}
+    high: {sla_hours: 8, auto_escalate_at_pct: 75}
+    medium: {sla_hours: 48, auto_escalate_at_pct: 90}
+    low: {sla_hours: 96, auto_escalate_at_pct: 90}
+
+  travel_rule_review:
+    critical: {sla_hours: 2, auto_escalate_at_pct: 75}
+    high: {sla_hours: 4, auto_escalate_at_pct: 75}
+    medium: {sla_hours: 24, auto_escalate_at_pct: 90}
+    low: {sla_hours: 48, auto_escalate_at_pct: 90}
+
+  on_chain_escalation:
+    critical: {sla_hours: 1, auto_escalate_at_pct: 75}
+    high: {sla_hours: 4, auto_escalate_at_pct: 75}
+    medium: {sla_hours: 24, auto_escalate_at_pct: 90}
+    low: {sla_hours: 48, auto_escalate_at_pct: 90}
+
+  webhook_delivery_failure:
+    critical: {sla_hours: 48, auto_escalate_at_pct: 75}
+    high: {sla_hours: 72, auto_escalate_at_pct: 75}
+    medium: {sla_hours: 96, auto_escalate_at_pct: 90}
+    low: {sla_hours: 120, auto_escalate_at_pct: 90}
+
+  # manual is the only case_type S1T1 defines with no corresponding SLA
+  # target: a manually-raised case has no originating event to derive an
+  # urgency from, so it is deliberately left out of both this table and (until
+  # a story assigns it a policy) sla_config_loader's completeness check.
+  #
+  # onboarding_intake (ANER-4.3-S2) is likewise deliberately absent: it is a
+  # holding state for RXIL/counterparty document collection, not yet
+  # reviewable, with no originating event and nobody internal accountable for
+  # how long external document collection takes. A case in this state has no
+  # sla_deadline at all (compliance_case.sla_deadline stays NULL, enforced by
+  # ck_compliance_case_intake_has_no_sla_deadline) until it transitions to
+  # onboarding_review — the target above — via
+  # app/modules/cases/application/case_transition_service.py's
+  # transition_case_to_review, which is the moment the SLA clock starts.

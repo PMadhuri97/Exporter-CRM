@@ -1,0 +1,113 @@
+# Risk Rating Calculation Configuration (ANER-4.1-S5T2)
+# Version-controlled configuration for the onboarding composite risk rating.
+# Managed via GitOps. Compliance officer review required for changes.
+#
+# Every weight and threshold the calculation uses lives here. Adding, removing
+# or re-scoring a factor is a config change, not a code change — see
+# app/modules/onboarding/domain/policies/risk_rating_service.py, which reads
+# this structure and nothing else.
+#
+# NOTE ON country tiers below: these are illustrative Walk-phase reference data
+# for the Use Case 1 personas (Gemstone Imports LLC / Surat Diamond Works),
+# not a live FATF determination. In particular the acceptance criteria for
+# ANER-4.1-S5T2 explicitly frames "a US corporation ... with a medium country
+# risk score" as the worked example, so US sits in medium_risk_countries here
+# rather than low_risk_countries — a genuine compliance officer review of this
+# file would set country tiers from the actual FATF list, not from this file.
+
+version: "1.0"
+
+# ── entity_type ──────────────────────────────────────────────────────────────
+# Sole traders and partnerships score higher than corporations by default
+# (harder to pin down beneficial ownership than a registered corporation).
+entity_type_risk:
+  scores:
+    CORPORATION: 0
+    PARTNERSHIP: 10
+    SOLE_TRADER: 15
+    TRUST: 15
+    FUND: 5
+  # Used only if entity_type is somehow outside the closed enum (defensive).
+  default_score: 10
+
+# ── registration_country ─────────────────────────────────────────────────────
+# Resolution order: FATF black list > FATF grey list > named band list >
+# default_band. A country may appear in at most one of the plain band lists.
+country_risk:
+  low_risk_countries: [GB, CA, AU, DE, FR, JP, SG, NL, CH]
+  medium_risk_countries: [US, BR, MX, ID, TH]
+  high_risk_countries: [NG, PK, LB]
+  # FATF "increased monitoring" (grey list) jurisdictions — illustrative subset.
+  fatf_grey_list: [ZA, PH, VN, TR, UG]
+  # FATF "call for action" (black list) jurisdictions — illustrative subset.
+  fatf_black_list: [KP, IR, MM]
+  default_band: MEDIUM
+  band_scores:
+    LOW: 5
+    MEDIUM: 15
+    HIGH: 30
+  fatf_grey_list_score: 25
+  fatf_black_list_score: 45
+
+# ── sector_code ───────────────────────────────────────────────────────────────
+# DNFBP sectors (diamonds, real estate, legal services, ...) score high and
+# always trigger EDD. VASP/crypto sector codes score critical on their own —
+# critical_sector_score alone exceeds thresholds.high_max, so any of these
+# sector codes drives risk_rating to CRITICAL regardless of every other factor.
+sector_risk:
+  dnfbp_sector_codes: [DNFBP]
+  dnfbp_score: 30
+  critical_sector_codes: [VASP, CRYPTO_EXCHANGE]
+  critical_sector_score: 100
+  default_score: 0
+
+# ── declared_monthly_volume_usd ──────────────────────────────────────────────
+# Ascending bands; the first band whose max_usd is >= the declared volume
+# applies. The last band's max_usd must be null (unbounded, catch-all).
+volume_risk:
+  bands:
+    - {max_usd: 50000, score: 0}
+    - {max_usd: 250000, score: 10}
+    - {max_usd: 500000, score: 20}
+    - {max_usd: null, score: 35}
+
+# ── ubo_count ─────────────────────────────────────────────────────────────────
+# More UBOs means a more complex ownership structure to verify and monitor.
+ubo_risk:
+  bands:
+    - {max_count: 2, score: 0}
+    - {max_count: 5, score: 10}
+    - {max_count: 10, score: 20}
+    - {max_count: null, score: 30}
+
+# ── pep_status (any UBO) ──────────────────────────────────────────────────────
+pep_risk:
+  pep_score: 40
+  pep_associate_score: 20
+  none_score: 0
+
+# ── screening_result (Epic 3.2, decoupled here) ──────────────────────────────
+screening_risk:
+  scores:
+    CLEAR: 0
+    REVIEW_REQUIRED: 25
+    # hard_block onboardings are rejected by S5T1 before risk rating ever runs;
+    # this entry only guards against risk rating being invoked out of order.
+    HARD_BLOCK: 100
+  # Used when screening_result is not yet known.
+  default_score: 0
+
+# ── kyb_discrepancies ─────────────────────────────────────────────────────────
+kyb_discrepancy_risk:
+  score_per_discrepancy: 8
+  max_score: 40
+
+# ── composite score -> risk_rating ───────────────────────────────────────────
+# score <= low_max              -> LOW
+# low_max < score <= medium_max -> MEDIUM
+# medium_max < score <= high_max -> HIGH
+# score > high_max              -> CRITICAL
+thresholds:
+  low_max: 24
+  medium_max: 49
+  high_max: 79

@@ -1,0 +1,46 @@
+# How long an idempotency key stays claimed, one entry per key type.
+#
+# Every duration here is a plain whole number of SECONDS. The unit is carried by the key
+# name rather than the value, so `customer_key_seconds: 86400` cannot be misread — a bare
+# `customer_key: 86400` invites the next person to write `24` and mean hours. A value that
+# is not a positive integer is rejected at load rather than guessed at.
+#
+# A key's window opens at first_seen_at — the moment the key was first registered — so
+# expires_at is first_seen_at + the window below, never the time the calculation happened.
+# Once the window closes and the record's operation has finished, the S3T1 sweep marks the
+# record `expired` and the key becomes registrable again. The expired record itself is kept
+# for audit; reuse creates a new record beside it rather than overwriting it.
+#
+# A null window means the key type does NOT expire on a clock. That is not the same as
+# "expires never": internal derived keys and rail references end their lives when the parent
+# settlement reaches a terminal state, which S3T2 owns. Giving either a duration here would
+# put two mechanisms in charge of the same records, and the time-based one would win the
+# race — freeing a rail reference the payment network still considers live.
+#
+# Every key type the platform knows about must appear here. A missing entry is a
+# configuration defect and fails at load — it does not quietly fall back to a default,
+# because a key type silently defaulting to "no expiry" is invisible until an audit asks
+# why nothing ever expired.
+#
+# Changing a window is a change to this file and nothing else. It requires review and a
+# configuration deployment; it must never require an application code change or a hotfix.
+
+key_expiry:
+  # 86400 = 24 hours, the current business requirement for customer keys.
+  customer_key_seconds: 86400
+
+  # Lifecycle-expired by S3T2 on settlement terminal state, not by the clock.
+  internal_derived_key_seconds: null
+  rail_reference_seconds: null
+
+# How often the sweep looks for customer keys whose window has closed. 300 = 5 minutes.
+#
+# This is a resolution, not a deadline: a key becomes expirable the moment its window
+# closes, and the sweep is what notices. Shortening it makes expiry more prompt and costs
+# one indexed query per interval per replica; lengthening it means a key can stay claimed
+# for up to this long after it should have been released.
+#
+# It lives here rather than in application settings for the same reason the windows do:
+# changing how the platform expires keys should be a reviewed configuration commit, not a
+# deployment-manifest edit.
+sweep_interval_seconds: 300

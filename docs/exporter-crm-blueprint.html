@@ -1,0 +1,944 @@
+<title>Exporter CRM Blueprint</title>
+<style>
+  :root{
+    --bg:#F7F4EC;
+    --surface:#FFFFFF;
+    --surface-2:#F0ECE1;
+    --ink:#211D17;
+    --ink-soft:#5B5648;
+    --line:#DCD5C4;
+    --accent:#1E5F58;
+    --accent-soft:#E4EEEA;
+    --accent-ink:#0F3B36;
+    --amber:#9C6B21;
+    --amber-soft:#F3E7D1;
+    --red:#9A3324;
+    --red-soft:#F5E4DE;
+    --shadow: 0 1px 2px rgba(33,29,23,0.06), 0 8px 24px -12px rgba(33,29,23,0.18);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#161512;
+      --surface:#1E1C18;
+      --surface-2:#252220;
+      --ink:#EFE9DC;
+      --ink-soft:#B4AC9A;
+      --line:#37332B;
+      --accent:#5FBDAF;
+      --accent-soft:#1C2E2A;
+      --accent-ink:#BFEAE1;
+      --amber:#D8A85C;
+      --amber-soft:#332B1B;
+      --red:#E08A73;
+      --red-soft:#3A2420;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#161512;
+    --surface:#1E1C18;
+    --surface-2:#252220;
+    --ink:#EFE9DC;
+    --ink-soft:#B4AC9A;
+    --line:#37332B;
+    --accent:#5FBDAF;
+    --accent-soft:#1C2E2A;
+    --accent-ink:#BFEAE1;
+    --amber:#D8A85C;
+    --amber-soft:#332B1B;
+    --red:#E08A73;
+    --red-soft:#3A2420;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Public Sans","Segoe UI",system-ui,sans-serif;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4{
+    font-family:"Source Serif 4","Georgia",serif;
+    color:var(--ink);
+    text-wrap:balance;
+    font-weight:600;
+    margin:0;
+  }
+  code, .mono, .field, .kbd{
+    font-family:"IBM Plex Mono","SFMono-Regular",monospace;
+  }
+  a{color:var(--accent);}
+  ::selection{background:var(--accent-soft);}
+
+  .shell{
+    display:grid;
+    grid-template-columns: 272px minmax(0,1fr);
+    max-width:1280px;
+    margin:0 auto;
+  }
+
+  /* ---------- Sidebar ---------- */
+  nav.toc{
+    position:sticky; top:0; align-self:start;
+    height:100vh; overflow-y:auto;
+    padding:2rem 1.5rem 2rem 2rem;
+    border-right:1px solid var(--line);
+  }
+  .brand{
+    display:flex; align-items:baseline; gap:.5rem;
+    margin-bottom:.25rem;
+  }
+  .brand .mark{
+    font-family:"Source Serif 4",serif; font-weight:700; font-size:1.05rem;
+    color:var(--accent);
+  }
+  .brand .sub{font-size:.72rem; color:var(--ink-soft); letter-spacing:.03em;}
+  .toc-meta{font-size:.78rem; color:var(--ink-soft); margin:.4rem 0 1.6rem; padding-bottom:1.2rem; border-bottom:1px solid var(--line);}
+  .toc-group{margin-bottom:1.4rem;}
+  .toc-group > a{
+    display:block; font-size:.82rem; font-weight:600; color:var(--ink);
+    text-decoration:none; padding:.15rem 0; letter-spacing:.01em;
+  }
+  .toc-group ul{list-style:none; margin:.3rem 0 0; padding:0 0 0 .8rem; border-left:1px solid var(--line);}
+  .toc-group li{margin:0;}
+  .toc-group a.sub-link{
+    display:block; font-size:.76rem; color:var(--ink-soft); text-decoration:none;
+    padding:.2rem 0 .2rem .7rem; border-left:2px solid transparent; margin-left:-1px;
+  }
+  .toc-group a.sub-link:hover{color:var(--accent); border-left-color:var(--accent);}
+  .toc-group > a:hover{color:var(--accent);}
+
+  /* ---------- Main ---------- */
+  main{padding:3.2rem 3.5rem 6rem; min-width:0;}
+  header.hero{margin-bottom:3.5rem; max-width:62ch;}
+  header.hero .eyebrow{
+    font-size:.72rem; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--amber); font-weight:600; margin-bottom:.7rem; display:block;
+  }
+  header.hero h1{font-size:2.5rem; line-height:1.12; margin-bottom:.9rem;}
+  header.hero p.lede{font-size:1.08rem; color:var(--ink-soft); max-width:56ch;}
+  header.hero .facts{
+    display:flex; gap:1.8rem; margin-top:1.6rem; flex-wrap:wrap;
+    padding-top:1.4rem; border-top:1px solid var(--line);
+  }
+  header.hero .facts .fact-label{font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-soft);}
+  header.hero .facts .fact-value{font-size:.92rem; font-weight:600; margin-top:.15rem;}
+
+  section{margin-bottom:4.2rem; scroll-margin-top:1.5rem;}
+  section > .sec-head{margin-bottom:1.6rem; max-width:68ch;}
+  section > .sec-head .num{font-family:"IBM Plex Mono",monospace; color:var(--accent); font-size:.85rem; font-weight:600;}
+  section > .sec-head h2{font-size:1.7rem; margin-top:.3rem;}
+  section > .sec-head p{color:var(--ink-soft); margin-top:.6rem; font-size:.98rem;}
+
+  p{max-width:68ch;}
+  .prose p + p{margin-top:.9rem;}
+
+  /* ---------- Cards / generic panels ---------- */
+  .panel{
+    background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    padding:1.5rem 1.7rem; box-shadow:var(--shadow);
+  }
+
+  /* ---------- Architecture diagram ---------- */
+  .arch-wrap{overflow-x:auto; padding:.5rem; margin:0 -0.5rem;}
+  .arch-wrap svg{display:block; min-width:760px;}
+
+  .arch-legend{display:flex; gap:1.6rem; flex-wrap:wrap; margin-top:1rem; font-size:.8rem; color:var(--ink-soft);}
+  .arch-legend span{display:inline-flex; align-items:center; gap:.4rem;}
+  .arch-legend i{width:10px; height:10px; border-radius:2px; display:inline-block;}
+
+  /* ---------- Principle grid ---------- */
+  .grid-2{display:grid; grid-template-columns:repeat(2,1fr); gap:1.1rem;}
+  @media (max-width:900px){.grid-2{grid-template-columns:1fr;}}
+  .principle{padding:1.3rem 1.4rem;}
+  .principle .p-num{font-family:"IBM Plex Mono",monospace; font-size:.75rem; color:var(--amber); font-weight:700;}
+  .principle h3{font-size:1.02rem; margin:.4rem 0 .5rem;}
+  .principle p{font-size:.89rem; color:var(--ink-soft); margin:0;}
+
+  /* ---------- Data model ---------- */
+  .entity-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:1rem;}
+  .entity{padding:1.1rem 1.25rem;}
+  .entity .e-module{font-size:.68rem; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-soft); margin-bottom:.35rem;}
+  .entity h4{font-family:"IBM Plex Mono",monospace; font-size:.94rem; color:var(--accent-ink); background:var(--accent-soft); display:inline-block; padding:.15rem .5rem; border-radius:5px; margin-bottom:.6rem;}
+  .entity ul{list-style:none; margin:0; padding:0; font-size:.82rem; color:var(--ink-soft);}
+  .entity li{padding:.18rem 0; border-top:1px dashed var(--line);}
+  .entity li:first-child{border-top:none;}
+  .entity li .fname{color:var(--ink); font-family:"IBM Plex Mono",monospace; font-size:.78rem;}
+
+  /* ---------- Personas ---------- */
+  .persona-row{display:grid; grid-template-columns:repeat(4,1fr); gap:1rem;}
+  @media (max-width:1000px){.persona-row{grid-template-columns:repeat(2,1fr);}}
+  .persona{padding:1.2rem 1.3rem; position:relative;}
+  .persona .p-icon{
+    width:38px; height:38px; border-radius:9px; background:var(--accent-soft); color:var(--accent-ink);
+    display:flex; align-items:center; justify-content:center; font-family:"Source Serif 4",serif; font-weight:700; font-size:1.05rem;
+    margin-bottom:.8rem;
+  }
+  .persona h4{font-size:.98rem; margin-bottom:.4rem;}
+  .persona p{font-size:.82rem; color:var(--ink-soft); margin:0;}
+
+  /* ---------- Journey ---------- */
+  .journey{display:grid; grid-template-columns:1fr 1fr; gap:1.6rem; align-items:start;}
+  @media (max-width:900px){.journey{grid-template-columns:1fr;}}
+  .thread{padding:1.5rem 1.6rem;}
+  .thread .t-label{font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; font-weight:700; margin-bottom:1.1rem; display:inline-block; padding:.25rem .6rem; border-radius:5px;}
+  .thread.sales .t-label{color:var(--accent-ink); background:var(--accent-soft);}
+  .thread.rxil .t-label{color:var(--amber); background:var(--amber-soft);}
+  .step{display:flex; gap:.9rem; padding:.85rem 0; border-top:1px dashed var(--line);}
+  .step:first-of-type{border-top:none;}
+  .step .s-num{
+    font-family:"IBM Plex Mono",monospace; font-size:.72rem; font-weight:700; color:var(--ink-soft);
+    width:1.5rem; flex-shrink:0; padding-top:.15rem;
+  }
+  .step .s-body h5{font-size:.9rem; font-weight:600; margin-bottom:.25rem;}
+  .step .s-body p{font-size:.82rem; color:var(--ink-soft); margin:0;}
+  .step .s-body .ep{display:block; margin-top:.4rem; font-size:.72rem; color:var(--accent); background:var(--accent-soft); padding:.15rem .5rem; border-radius:4px; width:fit-content;}
+
+  .converge{
+    text-align:center; margin:1.8rem 0; position:relative; padding:1.4rem;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:10px;
+  }
+  .converge .c-label{font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-soft); margin-bottom:.4rem; display:block;}
+  .converge h3{font-size:1.15rem;}
+
+  .converge-steps{display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-top:1.8rem;}
+  @media (max-width:900px){.converge-steps{grid-template-columns:repeat(2,1fr);}}
+  .cstep{padding:1.1rem 1.2rem;}
+  .cstep .s-num{font-family:"IBM Plex Mono",monospace; font-size:.72rem; font-weight:700; color:var(--red);}
+  .cstep h5{font-size:.88rem; margin:.4rem 0 .35rem;}
+  .cstep p{font-size:.78rem; color:var(--ink-soft); margin:0;}
+  .cstep .ep{display:block; margin-top:.5rem; font-size:.7rem; color:var(--accent); font-family:"IBM Plex Mono",monospace;}
+
+  /* ---------- Screens ---------- */
+  .screen-nav{display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:2rem;}
+  .screen-nav a{
+    font-size:.76rem; padding:.35rem .7rem; border:1px solid var(--line); border-radius:20px;
+    text-decoration:none; color:var(--ink-soft); background:var(--surface);
+  }
+  .screen-nav a:hover{border-color:var(--accent); color:var(--accent);}
+
+  .screen{
+    display:grid; grid-template-columns:180px 1fr; gap:1.8rem;
+    padding:1.8rem 0; border-top:1px solid var(--line); scroll-margin-top:1.5rem;
+  }
+  .screen:first-of-type{border-top:none;}
+  @media (max-width:800px){.screen{grid-template-columns:1fr;}}
+  .screen .s-tag{
+    font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--ink-soft);
+  }
+  .screen .s-actor{
+    display:inline-block; margin-top:.6rem; font-size:.72rem; font-weight:600;
+    padding:.2rem .55rem; border-radius:5px; background:var(--accent-soft); color:var(--accent-ink);
+  }
+  .screen h3{font-size:1.25rem; margin-bottom:.6rem;}
+  .screen .s-purpose{font-size:.92rem; color:var(--ink-soft); margin-bottom:1rem; max-width:60ch;}
+  .screen .s-detail{display:grid; grid-template-columns:1fr 1fr; gap:1.2rem;}
+  @media (max-width:640px){.screen .s-detail{grid-template-columns:1fr;}}
+  .screen .s-block h6{
+    font-size:.68rem; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-soft);
+    margin-bottom:.5rem;
+  }
+  .screen .s-block ul{margin:0; padding-left:1.1rem; font-size:.85rem;}
+  .screen .s-block li{margin-bottom:.3rem;}
+  .screen .endpoints{display:flex; flex-direction:column; gap:.35rem;}
+  .screen .endpoints code{
+    font-size:.74rem; background:var(--surface-2); padding:.25rem .55rem; border-radius:5px;
+    display:inline-block; width:fit-content; border:1px solid var(--line);
+  }
+  .flag{
+    margin-top:.9rem; font-size:.8rem; padding:.6rem .8rem; border-radius:7px;
+    background:var(--amber-soft); color:var(--amber); border:1px solid var(--amber);
+    display:flex; gap:.5rem;
+  }
+  .flag.resolved{background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent);}
+  .flag b{font-weight:700;}
+
+  /* ---------- Scope table ---------- */
+  .scope-table{width:100%; border-collapse:collapse; font-size:.88rem;}
+  .scope-table th{
+    text-align:left; font-size:.72rem; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--ink-soft); padding:.5rem .8rem; border-bottom:2px solid var(--line);
+  }
+  .scope-table td{padding:.65rem .8rem; border-bottom:1px solid var(--line); vertical-align:top;}
+  .scope-table tr:last-child td{border-bottom:none;}
+  .pill{font-size:.72rem; font-weight:600; padding:.15rem .55rem; border-radius:20px; display:inline-block; white-space:nowrap;}
+  .pill.live{background:var(--accent-soft); color:var(--accent-ink);}
+  .pill.stub{background:var(--amber-soft); color:var(--amber);}
+  .pill.out{background:var(--red-soft); color:var(--red);}
+
+  footer{margin-top:5rem; padding-top:1.6rem; border-top:1px solid var(--line); font-size:.78rem; color:var(--ink-soft);}
+
+  @media (max-width:820px){
+    .shell{grid-template-columns:1fr;}
+    nav.toc{position:relative; height:auto; border-right:none; border-bottom:1px solid var(--line);}
+    main{padding:2.2rem 1.4rem 4rem;}
+  }
+</style>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<div class="shell">
+  <nav class="toc">
+    <div class="brand"><span class="mark">Exporter CRM</span></div>
+    <div class="toc-meta">Architecture &amp; user-journey reference<br>for wireframing · v1</div>
+
+    <div class="toc-group">
+      <a href="#overview">Overview</a>
+    </div>
+    <div class="toc-group">
+      <a href="#architecture">Architecture</a>
+    </div>
+    <div class="toc-group">
+      <a href="#principles">Design principles</a>
+    </div>
+    <div class="toc-group">
+      <a href="#data-model">Data model</a>
+    </div>
+    <div class="toc-group">
+      <a href="#personas">Personas</a>
+    </div>
+    <div class="toc-group">
+      <a href="#journey">User journey</a>
+    </div>
+    <div class="toc-group">
+      <a href="#screens">Screens</a>
+      <ul>
+        <li><a class="sub-link" href="#screen-1">1 · Exporters list</a></li>
+        <li><a class="sub-link" href="#screen-2">2 · Add exporter</a></li>
+        <li><a class="sub-link" href="#screen-3">3 · Exporter detail</a></li>
+        <li><a class="sub-link" href="#screen-4">4 · Pipeline</a></li>
+        <li><a class="sub-link" href="#screen-5">5 · Follow-ups</a></li>
+        <li><a class="sub-link" href="#screen-6">6 · Onboarding journey</a></li>
+        <li><a class="sub-link" href="#screen-7">7 · Trigger verification</a></li>
+        <li><a class="sub-link" href="#screen-8">8 · Verification results</a></li>
+        <li><a class="sub-link" href="#screen-9">9 · Case review queue</a></li>
+        <li><a class="sub-link" href="#screen-10">10 · Case detail</a></li>
+      </ul>
+    </div>
+    <div class="toc-group">
+      <a href="#scope">Scope boundary</a>
+    </div>
+  </nav>
+
+  <main>
+    <header class="hero" id="overview">
+      <span class="eyebrow">Reference for wireframing</span>
+      <h1>Exporter CRM Blueprint</h1>
+      <p class="lede">How the backend is actually built, who touches it, and the ten screens that would sit on top of it. Written to be handed to a designer — every screen names the real service call behind it, so nothing here is aspirational.</p>
+      <div class="facts">
+        <div><div class="fact-label">Extends</div><div class="fact-value">app/modules/onboarding</div></div>
+        <div><div class="fact-label">Reuses</div><div class="fact-value">kyb · cases</div></div>
+        <div><div class="fact-label">New module</div><div class="fact-value">none — deliberate</div></div>
+        <div><div class="fact-label">Repo</div><div class="fact-value">epic4-reference</div></div>
+      </div>
+    </header>
+
+    <!-- ================= ARCHITECTURE ================= -->
+    <section id="architecture">
+      <div class="sec-head">
+        <span class="num">01</span>
+        <h2>Architecture</h2>
+        <p>One rejected direction shaped everything here: a brand-new "exporters" module was proposed and turned down in favor of extending the module that already does most of this job. Three existing modules do the work; nothing new was created to hold it.</p>
+      </div>
+
+      <div class="panel arch-wrap">
+        <svg viewBox="0 0 780 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Module architecture diagram">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-soft)"></path>
+            </marker>
+          </defs>
+
+          <!-- onboarding module (big box) -->
+          <rect x="30" y="30" width="460" height="340" rx="12" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"></rect>
+          <text x="52" y="60" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" fill="var(--accent-ink)">app.modules.onboarding</text>
+
+          <!-- exporter crm sub-box -->
+          <rect x="52" y="80" width="195" height="110" rx="8" fill="var(--surface)" stroke="var(--line)"></rect>
+          <text x="68" y="103" font-family="Public Sans, sans-serif" font-size="12" font-weight="700" fill="var(--ink)">Exporter CRM</text>
+          <text x="68" y="123" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-soft)">ExporterProfile</text>
+          <text x="68" y="140" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-soft)">Contact · Activity</text>
+          <text x="68" y="157" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-soft)">lifecycle_status</text>
+          <text x="68" y="177" font-family="Public Sans, sans-serif" font-size="10" fill="var(--ink-soft)" font-style="italic">EXP-1</text>
+
+          <!-- verification sub-box -->
+          <rect x="267" y="80" width="200" height="110" rx="8" fill="var(--surface)" stroke="var(--line)"></rect>
+          <text x="283" y="103" font-family="Public Sans, sans-serif" font-size="12" font-weight="700" fill="var(--ink)">Verification</text>
+          <text x="283" y="123" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-soft)">VerificationAdapter</text>
+          <text x="283" y="140" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-soft)">VerificationResult</text>
+          <text x="283" y="157" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-soft)">one registry, any type</text>
+          <text x="283" y="177" font-family="Public Sans, sans-serif" font-size="10" fill="var(--ink-soft)" font-style="italic">EXP-2</text>
+
+          <!-- onboarding journey sub-box -->
+          <rect x="52" y="205" width="415" height="90" rx="8" fill="var(--surface)" stroke="var(--line)"></rect>
+          <text x="68" y="228" font-family="Public Sans, sans-serif" font-size="12" font-weight="700" fill="var(--ink)">Onboarding journey</text>
+          <text x="68" y="248" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-soft)">OnboardingRequest · UboRecord · OnboardingDocument</text>
+          <text x="68" y="265" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-soft)">18-state Temporal workflow</text>
+          <text x="68" y="282" font-family="Public Sans, sans-serif" font-size="10" fill="var(--ink-soft)" font-style="italic">S1 · S3 (merged, AL-672)</text>
+
+          <!-- registry -->
+          <rect x="52" y="308" width="415" height="46" rx="8" fill="var(--surface-2)" stroke="var(--line)" stroke-dasharray="3 3"></rect>
+          <text x="68" y="336" font-family="Public Sans, sans-serif" font-size="11.5" fill="var(--ink-soft)">register_adapter / get_adapter registry — generalized from kyb, not duplicated</text>
+
+          <!-- kyb module -->
+          <rect x="540" y="80" width="205" height="130" rx="12" fill="var(--amber-soft)" stroke="var(--amber)" stroke-width="1.5"></rect>
+          <text x="558" y="106" font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600" fill="var(--amber)">app.modules.kyb</text>
+          <text x="558" y="130" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-soft)">KYBAdapter (ABC)</text>
+          <text x="558" y="148" font-family="Public Sans, sans-serif" font-size="10.5" fill="var(--ink-soft)">Middesk · Trulioo</text>
+          <text x="558" y="166" font-family="Public Sans, sans-serif" font-size="10.5" fill="var(--ink-soft)">Decentro — placeholder</text>
+          <text x="558" y="188" font-family="Public Sans, sans-serif" font-size="10.5" fill="var(--ink-soft)" font-style="italic">stub RXIL batch adapter</text>
+
+          <!-- cases module -->
+          <rect x="540" y="235" width="205" height="135" rx="12" fill="var(--red-soft)" stroke="var(--red)" stroke-width="1.5"></rect>
+          <text x="558" y="261" font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600" fill="var(--red)">app.modules.cases</text>
+          <text x="558" y="285" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-soft)">ComplianceCase</text>
+          <text x="558" y="303" font-family="Public Sans, sans-serif" font-size="10.5" fill="var(--ink-soft)">evidence · timeline</text>
+          <text x="558" y="321" font-family="Public Sans, sans-serif" font-size="10.5" fill="var(--ink-soft)">assign · investigate</text>
+          <text x="558" y="339" font-family="Public Sans, sans-serif" font-size="10.5" fill="var(--ink-soft)">propose / decide resolution</text>
+          <text x="558" y="357" font-family="Public Sans, sans-serif" font-size="10" fill="var(--ink-soft)" font-style="italic">maker-checker stand-in</text>
+
+          <!-- arrows: onboarding module <-> kyb (facade only) -->
+          <line x1="490" y1="140" x2="538" y2="145" stroke="var(--ink-soft)" stroke-width="1.3" marker-end="url(#arrow)"></line>
+          <text x="486" y="130" font-family="Public Sans, sans-serif" font-size="9.5" fill="var(--ink-soft)" text-anchor="end">facade only</text>
+
+          <!-- no direct line onboarding <-> cases; note instead -->
+          <line x1="490" y1="300" x2="538" y2="300" stroke="var(--ink-soft)" stroke-width="1.3" stroke-dasharray="2 4"></line>
+          <text x="514" y="292" font-family="Public Sans, sans-serif" font-size="9.5" fill="var(--red)" text-anchor="middle">no bridge yet</text>
+        </svg>
+      </div>
+      <div class="arch-legend">
+        <span><i style="background:var(--accent);"></i>onboarding — where all new Exporter CRM code lives</span>
+        <span><i style="background:var(--amber);"></i>kyb — vendor adapters, generalized-not-replaced</span>
+        <span><i style="background:var(--red);"></i>cases — review &amp; decision engine, reused as-is</span>
+      </div>
+    </section>
+
+    <!-- ================= PRINCIPLES ================= -->
+    <section id="principles">
+      <div class="sec-head">
+        <span class="num">02</span>
+        <h2>Design principles</h2>
+        <p>Four rules a wireframe should never contradict — each one closes off a screen pattern that would misrepresent what the backend actually does.</p>
+      </div>
+      <div class="grid-2">
+        <div class="panel principle">
+          <span class="p-num">01</span>
+          <h3>One check-trigger form, any check type</h3>
+          <p>KYC on a director, KYB on the business, a bank-statement check — all go through the identical form and the identical call. A screen with a different flow per check type would misrepresent the backend; there is exactly one.</p>
+        </div>
+        <div class="panel principle">
+          <span class="p-num">02</span>
+          <h3>Provider is shown, never invented</h3>
+          <p>A result's <span class="mono">provider</span> field is whatever the adapter actually reported — "RXIL" stays "RXIL" everywhere it's displayed. No screen should imply the platform ran a check it only ingested.</p>
+        </div>
+        <div class="panel principle">
+          <span class="p-num">03</span>
+          <h3>A proposer can't be the approver</h3>
+          <p>Case resolution is a hard two-person rule at the API level. The "Decide" action should be visibly disabled for whoever proposed it — not just rejected after the click.</p>
+        </div>
+        <div class="panel principle">
+          <span class="p-num">04</span>
+          <h3>The CRM shell and the verification journey are separate</h3>
+          <p>An exporter can exist as a bare lead with just a name and country — no registration number, no address, no <span class="mono">OnboardingRequest</span> fully filled in yet. A screen shouldn't demand full KYB-grade detail to save a first contact.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= DATA MODEL ================= -->
+    <section id="data-model">
+      <div class="sec-head">
+        <span class="num">03</span>
+        <h2>Data model</h2>
+        <p>What a screen actually reads and writes. Fields named here exist on the real entity — nothing invented for the sake of a mockup.</p>
+      </div>
+      <div class="entity-grid">
+        <div class="panel entity">
+          <div class="e-module">onboarding</div>
+          <h4>ExporterProfile</h4>
+          <ul>
+            <li><span class="fname">customer_id</span> — the enduring identity</li>
+            <li><span class="fname">gstin / pan / iec</span></li>
+            <li><span class="fname">source</span> — immutable once set</li>
+            <li><span class="fname">relationship_manager</span></li>
+            <li><span class="fname">lifecycle_status</span></li>
+          </ul>
+        </div>
+        <div class="panel entity">
+          <div class="e-module">onboarding</div>
+          <h4>Contact · Activity</h4>
+          <ul>
+            <li><span class="fname">name / role / email / phone</span></li>
+            <li><span class="fname">is_primary_contact</span> — one per exporter</li>
+            <li><span class="fname">activity_type</span> — call / meeting / note / task / follow-up</li>
+            <li><span class="fname">due_at</span> — queried across all exporters</li>
+          </ul>
+        </div>
+        <div class="panel entity">
+          <div class="e-module">onboarding</div>
+          <h4>OnboardingRequest</h4>
+          <ul>
+            <li><span class="fname">legal_name · incorporation_country</span> — required</li>
+            <li><span class="fname">registration_number · registered_address</span> — optional at lead stage</li>
+            <li><span class="fname">status</span> — 18-state journey</li>
+            <li><span class="fname">risk_rating · screening_result</span></li>
+          </ul>
+        </div>
+        <div class="panel entity">
+          <div class="e-module">onboarding</div>
+          <h4>VerificationResult</h4>
+          <ul>
+            <li><span class="fname">verification_type</span> — KYC, KYB, bank, vessel…</li>
+            <li><span class="fname">entity_type / entity_reference</span> — what was checked</li>
+            <li><span class="fname">provider · status · risk_level</span></li>
+            <li><span class="fname">reviewed_by / review_status</span> — immutable once set</li>
+          </ul>
+        </div>
+        <div class="panel entity">
+          <div class="e-module">cases</div>
+          <h4>ComplianceCase</h4>
+          <ul>
+            <li><span class="fname">case_type</span> — onboarding_intake → onboarding_review</li>
+            <li><span class="fname">sla_deadline</span> — null until review stage</li>
+            <li><span class="fname">resolution_action / resolution_note</span></li>
+            <li><span class="fname">resolved_by / resolved_at</span> — immutable once set</li>
+          </ul>
+        </div>
+        <div class="panel entity">
+          <div class="e-module">cases</div>
+          <h4>CaseEvidenceItem · Timeline</h4>
+          <ul>
+            <li><span class="fname">evidence_type</span> — 17 types, incl. RXIL-specific</li>
+            <li><span class="fname">source_epic</span> — free text, e.g. "RXIL"</li>
+            <li><span class="fname">is_key_evidence</span></li>
+            <li><span class="fname">occurred_at</span> — append-only</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= PERSONAS ================= -->
+    <section id="personas">
+      <div class="sec-head">
+        <span class="num">04</span>
+        <h2>Personas</h2>
+        <p>Four roles, mapped to the actual <span class="mono">actor_type</span> values the backend records against every action.</p>
+      </div>
+      <div class="persona-row">
+        <div class="panel persona">
+          <div class="p-icon">RM</div>
+          <h4>Relationship Manager</h4>
+          <p>Adds exporters, logs contacts and activity, moves cards through the pipeline. Lives on the CRM shell — rarely touches verification directly.</p>
+        </div>
+        <div class="panel persona">
+          <div class="p-icon">Op</div>
+          <h4>Ops / Onboarding</h4>
+          <p>Starts the real verification journey, collects documents and UBO declarations, triggers whatever checks are needed.</p>
+        </div>
+        <div class="panel persona">
+          <div class="p-icon">Co</div>
+          <h4>Compliance</h4>
+          <p>Reviews verification results one by one, and works the case queue — assigning, investigating, adding notes.</p>
+        </div>
+        <div class="panel persona">
+          <div class="p-icon">De</div>
+          <h4>Decision-maker</h4>
+          <p>Decides a proposed resolution — approve or reject. Enforced by the backend: can never be the same person who proposed it.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= JOURNEY ================= -->
+    <section id="journey">
+      <div class="sec-head">
+        <span class="num">05</span>
+        <h2>User journey</h2>
+        <p>Two ways an exporter enters, one shared path to a decision. Every step names the real call behind it.</p>
+      </div>
+
+      <div class="journey">
+        <div class="panel thread sales">
+          <span class="t-label">Thread A — Sales-sourced</span>
+          <div class="step">
+            <div class="s-num">1</div>
+            <div class="s-body"><h5>RM adds an exporter</h5><p>Just a name and country — nothing more required.</p><span class="ep">create_lead</span></div>
+          </div>
+          <div class="step">
+            <div class="s-num">2</div>
+            <div class="s-body"><h5>RM logs the relationship</h5><p>A call, a note, a follow-up with a due date.</p><span class="ep">add_contact · log_activity</span></div>
+          </div>
+          <div class="step">
+            <div class="s-num">3</div>
+            <div class="s-body"><h5>Pipeline moves forward</h5><p>Lead → Contacted → Data Collection, as things progress.</p><span class="ep">transition_lifecycle_status</span></div>
+          </div>
+          <div class="step">
+            <div class="s-num">4</div>
+            <div class="s-body"><h5>Ops fills in the rest</h5><p>Registration number, address, entity detail — once known.</p><span class="ep">submit_entity_details</span></div>
+          </div>
+          <div class="step">
+            <div class="s-num">5</div>
+            <div class="s-body"><h5>Ops triggers checks</h5><p>KYB, director KYC, bank statement — same form, every time.</p><span class="ep">POST /verifications</span></div>
+          </div>
+        </div>
+
+        <div class="panel thread rxil">
+          <span class="t-label">Thread B — RXIL-sourced</span>
+          <div class="step">
+            <div class="s-num">1</div>
+            <div class="s-body"><h5>RXIL package arrives</h5><p>KYB, AML, invoice-duplication, vessel, buyer rating — already done upstream.</p><span class="ep">stub batch adapter</span></div>
+          </div>
+          <div class="step">
+            <div class="s-num">2</div>
+            <div class="s-body"><h5>A case opens automatically</h5><p>onboarding_intake — a holding state, no SLA pressure yet.</p><span class="ep">case_type = ONBOARDING_INTAKE</span></div>
+          </div>
+          <div class="step">
+            <div class="s-num">3</div>
+            <div class="s-body"><h5>Evidence accumulates</h5><p>Each result tagged with its real source — never relabeled.</p><span class="ep">add_evidence_item</span></div>
+          </div>
+          <div class="step">
+            <div class="s-num">4</div>
+            <div class="s-body"><h5>Case flips to review</h5><p>Only now does the SLA clock start.</p><span class="ep">transition_case_to_review</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="converge">
+        <span class="c-label">Both threads converge</span>
+        <h3>Review, decide, close</h3>
+      </div>
+
+      <div class="converge-steps">
+        <div class="panel cstep">
+          <div class="s-num">6</div>
+          <h5>Compliance reviews results</h5>
+          <p>Accepted, rejected, or escalated — per check.</p>
+          <span class="ep">POST /verifications/{id}/review</span>
+        </div>
+        <div class="panel cstep">
+          <div class="s-num">7</div>
+          <h5>Case gets worked</h5>
+          <p>Assigned, investigated, notes added.</p>
+          <span class="ep">assign_case · add_case_note</span>
+        </div>
+        <div class="panel cstep">
+          <div class="s-num">8</div>
+          <h5>Resolution proposed &amp; decided</h5>
+          <p>A different person must decide it.</p>
+          <span class="ep">propose_resolution / decide_resolution</span>
+        </div>
+        <div class="panel cstep">
+          <div class="s-num">9</div>
+          <h5>Exporter status reflects it</h5>
+          <p>Compliance Review → Onboarded, or closed.</p>
+          <span class="ep">transition_lifecycle_status</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SCREENS ================= -->
+    <section id="screens">
+      <div class="sec-head">
+        <span class="num">06</span>
+        <h2>Screens</h2>
+        <p>Ten screens, each with the data it shows, the actions it allows, and the endpoint that actually powers it.</p>
+      </div>
+
+      <div class="screen-nav">
+        <a href="#screen-1">1 Exporters list</a>
+        <a href="#screen-2">2 Add exporter</a>
+        <a href="#screen-3">3 Exporter detail</a>
+        <a href="#screen-4">4 Pipeline</a>
+        <a href="#screen-5">5 Follow-ups</a>
+        <a href="#screen-6">6 Onboarding journey</a>
+        <a href="#screen-7">7 Trigger verification</a>
+        <a href="#screen-8">8 Verification results</a>
+        <a href="#screen-9">9 Case review queue</a>
+        <a href="#screen-10">10 Case detail</a>
+      </div>
+
+      <!-- Screen 1 -->
+      <div class="screen" id="screen-1">
+        <div>
+          <div class="s-tag">SCREEN 01</div>
+          <span class="s-actor">RM · Ops · Compliance</span>
+        </div>
+        <div>
+          <h3>Exporters list</h3>
+          <p class="s-purpose">Find any exporter by name, GSTIN, PAN, or IEC. The front door to everything else.</p>
+          <div class="s-detail">
+            <div class="s-block">
+              <h6>Shows</h6>
+              <ul><li>Legal name (joined from onboarding record)</li><li>Source, lifecycle stage, relationship manager</li><li>Primary contact</li></ul>
+              <h6 style="margin-top:.9rem;">Actions</h6>
+              <ul><li>Search / filter</li><li>Open exporter detail</li><li>Add exporter</li></ul>
+            </div>
+            <div class="s-block">
+              <h6>Endpoints</h6>
+              <div class="endpoints"><code>GET /onboarding/exporters</code></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 2 -->
+      <div class="screen" id="screen-2">
+        <div>
+          <div class="s-tag">SCREEN 02</div>
+          <span class="s-actor">Relationship Manager</span>
+        </div>
+        <div>
+          <h3>Add exporter</h3>
+          <p class="s-purpose">A lead can be captured with almost nothing known yet.</p>
+          <div class="s-detail">
+            <div class="s-block">
+              <h6>Requires</h6>
+              <ul><li>Legal name, incorporation country, source</li></ul>
+              <h6 style="margin-top:.9rem;">Optional here</h6>
+              <ul><li>Registration number, registered address — filled in later</li></ul>
+            </div>
+            <div class="s-block">
+              <h6>Endpoints</h6>
+              <div class="endpoints"><code>POST /onboarding/exporters</code><code>create_lead</code></div>
+            </div>
+          </div>
+          <div class="flag resolved"><span>✓</span><span><b>Resolved gap</b> — previously there was nowhere to store a name before a full onboarding record existed. A lead now creates a minimal, searchable record in one step.</span></div>
+        </div>
+      </div>
+
+      <!-- Screen 3 -->
+      <div class="screen" id="screen-3">
+        <div>
+          <div class="s-tag">SCREEN 03</div>
+          <span class="s-actor">All roles</span>
+        </div>
+        <div>
+          <h3>Exporter detail</h3>
+          <p class="s-purpose">Everything about one exporter, in one place — the screen every other action returns to.</p>
+          <div class="s-detail">
+            <div class="s-block">
+              <h6>Shows</h6>
+              <ul><li>Profile — GSTIN/PAN/IEC, source, stage</li><li>Contacts and activity history</li><li>Every verification ever run</li><li>Linked cases and their status</li></ul>
+              <h6 style="margin-top:.9rem;">Actions</h6>
+              <ul><li>Log activity · add contact</li><li>Transition stage</li><li>Trigger a check</li><li>Start / continue onboarding</li></ul>
+            </div>
+            <div class="s-block">
+              <h6>Endpoints</h6>
+              <div class="endpoints">
+                <code>get_profile_detail</code>
+                <code>get_onboarding_detail</code>
+                <code>GET /verifications?entity_reference=</code>
+              </div>
+              <p style="font-size:.8rem; color:var(--ink-soft); margin-top:.7rem;">Widget-per-check-type layout (gauge for a match %, badge for pass/fail) reads well for the verification section here — see the reference screen shared for this build.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 4 -->
+      <div class="screen" id="screen-4">
+        <div>
+          <div class="s-tag">SCREEN 04</div>
+          <span class="s-actor">Relationship Manager</span>
+        </div>
+        <div>
+          <h3>Pipeline</h3>
+          <p class="s-purpose">Every exporter by stage, moved forward by dragging a card.</p>
+          <div class="s-detail">
+            <div class="s-block">
+              <h6>Shows</h6>
+              <ul><li>One column per lifecycle stage</li><li>Card: relationship manager, next follow-up, declared volume</li></ul>
+              <h6 style="margin-top:.9rem;">Rule</h6>
+              <ul><li>An invalid move (e.g. skipping a stage) is rejected with a clear reason — same table the backend enforces</li></ul>
+            </div>
+            <div class="s-block">
+              <h6>Endpoints</h6>
+              <div class="endpoints"><code>transition_lifecycle_status</code></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 5 -->
+      <div class="screen" id="screen-5">
+        <div>
+          <div class="s-tag">SCREEN 05</div>
+          <span class="s-actor">RM · Manager</span>
+        </div>
+        <div>
+          <h3>Follow-ups</h3>
+          <p class="s-purpose">Everything pending, across every exporter — overdue, today, upcoming.</p>
+          <div class="s-detail">
+            <div class="s-block">
+              <h6>Shows</h6>
+              <ul><li>Which exporter each item belongs to, inline — no click-through needed</li><li>Filter by person (or team-wide, for a manager)</li></ul>
+            </div>
+            <div class="s-block">
+              <h6>Endpoints</h6>
+              <div class="endpoints"><code>GET /onboarding/exporters/activities/pending</code></div>
+            </div>
+          </div>
+          <div class="flag resolved"><span>✓</span><span><b>Resolved gap</b> — activities were previously queryable only one exporter at a time. A joined, cross-exporter query now backs this screen directly.</span></div>
+        </div>
+      </div>
+
+      <!-- Screen 6 -->
+      <div class="screen" id="screen-6">
+        <div>
+          <div class="s-tag">SCREEN 06</div>
+          <span class="s-actor">Ops / Onboarding</span>
+        </div>
+        <div>
+          <h3>Onboarding journey</h3>
+          <p class="s-purpose">The formal verification record — separate from the CRM shell, filled in progressively.</p>
+          <div class="s-detail">
+            <div class="s-block">
+              <h6>Shows</h6>
+              <ul><li>18-state journey progress</li><li>Documents and UBO declarations submitted</li></ul>
+              <h6 style="margin-top:.9rem;">Actions</h6>
+              <ul><li>Complete entity details</li><li>Upload a document</li><li>Submit a UBO declaration</li></ul>
+            </div>
+            <div class="s-block">
+              <h6>Endpoints</h6>
+              <div class="endpoints">
+                <code>submit_entity_details</code>
+                <code>submit_document</code>
+                <code>submit_ubo_declaration</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 7 -->
+      <div class="screen" id="screen-7">
+        <div>
+          <div class="s-tag">SCREEN 07</div>
+          <span class="s-actor">Ops · Compliance</span>
+        </div>
+        <div>
+          <h3>Trigger verification</h3>
+          <p class="s-purpose">One generic form for any check — the direct proof there's no per-vendor special-casing.</p>
+          <div class="s-detail">
+            <div class="s-block">
+              <h6>Fields</h6>
+              <ul><li>Verification type — KYC, KYB, bank account, vessel…</li><li>What it's against — exporter, director, buyer, invoice…</li><li>Provider — manual, or a registered vendor</li></ul>
+            </div>
+            <div class="s-block">
+              <h6>Endpoints</h6>
+              <div class="endpoints"><code>POST /onboarding/verifications</code></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 8 -->
+      <div class="screen" id="screen-8">
+        <div>
+          <div class="s-tag">SCREEN 08</div>
+          <span class="s-actor">Compliance</span>
+        </div>
+        <div>
+          <h3>Verification results</h3>
+          <p class="s-purpose">Every check ever run, with a place to record what a human decided about it.</p>
+          <div class="s-detail">
+            <div class="s-block">
+              <h6>Shows</h6>
+              <ul><li>Status, risk level, provider, timestamp</li><li>Raw result — never shown; a known, documented gap (no KMS encryption yet)</li></ul>
+              <h6 style="margin-top:.9rem;">Actions</h6>
+              <ul><li>Accept / reject / escalate — once only, locked after</li></ul>
+            </div>
+            <div class="s-block">
+              <h6>Endpoints</h6>
+              <div class="endpoints">
+                <code>GET /onboarding/verifications</code>
+                <code>POST .../review</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 9 -->
+      <div class="screen" id="screen-9">
+        <div>
+          <div class="s-tag">SCREEN 09</div>
+          <span class="s-actor">Compliance</span>
+        </div>
+        <div>
+          <h3>Case review queue</h3>
+          <p class="s-purpose">What needs attention — sorted by how long it's been waiting.</p>
+          <div class="s-detail">
+            <div class="s-block">
+              <h6>Shows</h6>
+              <ul><li>Pending approvals</li><li>Cases needing SAR consideration</li><li>Filter by status, type, severity</li></ul>
+            </div>
+            <div class="s-block">
+              <h6>Endpoints</h6>
+              <div class="endpoints">
+                <code>list_pending_approvals</code>
+                <code>get_cases_requiring_sar_consideration</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 10 -->
+      <div class="screen" id="screen-10">
+        <div>
+          <div class="s-tag">SCREEN 10</div>
+          <span class="s-actor">Compliance · Decision-maker</span>
+        </div>
+        <div>
+          <h3>Case detail</h3>
+          <p class="s-purpose">Assign, investigate, and decide — with the full evidence trail alongside.</p>
+          <div class="s-detail">
+            <div class="s-block">
+              <h6>Shows</h6>
+              <ul><li>Evidence timeline, every source preserved</li><li>Full action history — append-only, nothing edited after the fact</li></ul>
+              <h6 style="margin-top:.9rem;">Actions</h6>
+              <ul><li>Assign · add note</li><li>Propose a resolution</li><li>Decide it — disabled for the proposer</li></ul>
+            </div>
+            <div class="s-block">
+              <h6>Endpoints</h6>
+              <div class="endpoints">
+                <code>assign_case · add_case_note</code>
+                <code>propose_resolution</code>
+                <code>decide_resolution</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SCOPE ================= -->
+    <section id="scope">
+      <div class="sec-head">
+        <span class="num">07</span>
+        <h2>Scope boundary</h2>
+        <p>What a wireframe should not include yet — each row is a deliberate decision, not an oversight.</p>
+      </div>
+      <div class="panel" style="overflow-x:auto;">
+        <table class="scope-table">
+          <thead><tr><th>Capability</th><th>Status</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>Exporter CRM (profile, contacts, activity, pipeline)</td><td><span class="pill live">Live</span></td><td>Built and tested — this document's core.</td></tr>
+            <tr><td>Generalized verification trigger</td><td><span class="pill live">Live</span></td><td>One mechanism, any check type — proven, not aspirational.</td></tr>
+            <tr><td>Case review &amp; maker-checker decision</td><td><span class="pill live">Live</span></td><td>Reused from the existing cases module as-is.</td></tr>
+            <tr><td>RXIL ingestion</td><td><span class="pill stub">Stub</span></td><td>Batch shape proven; real integration waits on RXIL's own confirmed spec.</td></tr>
+            <tr><td>Decentro / other real vendor adapters</td><td><span class="pill stub">Stub</span></td><td>Only a placeholder exists — Middesk and Trulioo are the only live vendor integrations today.</td></tr>
+            <tr><td>Financing opportunity, buyer, invoice, shipment as entities</td><td><span class="pill out">Not built</span></td><td>Explicitly deferred — no financing decisioning exists yet.</td></tr>
+            <tr><td>Credit approval workspace</td><td><span class="pill out">Not built</span></td><td>Sits downstream of financing opportunities, which don't exist yet.</td></tr>
+            <tr><td>Ledger accounts, payments</td><td><span class="pill out">Out of scope</span></td><td>Deliberately held off until underwriting exists.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      Exporter CRM Blueprint · built on <span class="mono">app.modules.onboarding</span> · epic4-reference
+    </footer>
+  </main>
+</div>

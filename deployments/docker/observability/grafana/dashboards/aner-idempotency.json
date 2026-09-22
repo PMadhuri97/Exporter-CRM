@@ -1,0 +1,234 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "title": "Idempotency Engine — Metrics Dashboard",
+  "uid": "aner-idempotency",
+  "tags": ["aner", "idempotency", "observability", "S4T1"],
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Key Registration",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Registration Rate (per second by key_type)",
+      "description": "Rate of new idempotency key registrations, broken down by key type.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } }
+        }
+      },
+      "targets": [
+        { "expr": "sum(rate(aner_idempotency_registrations_total[5m])) by (key_type)", "legendFormat": "{{key_type}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Registration Latency (p50 / p95 / p99)",
+      "description": "Key registration service response time percentiles.  Buckets are tuned for DB operations (1ms–1s).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "fillOpacity": 0 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "red", "value": 1.0 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(aner_idempotency_key_registration_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(aner_idempotency_key_registration_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(aner_idempotency_key_registration_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "⚠ Duplicate Detection (most important)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Duplicate Rate by Status (rate/s)",
+      "description": "Rate of duplicate key detections by the existing record's status.  An unexpected spike here is a signal that something is retrying more than expected.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "normal" } }
+        }
+      },
+      "targets": [
+        { "expr": "sum(rate(aner_idempotency_duplicates_total[5m])) by (duplicate_status)", "legendFormat": "{{duplicate_status}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Duplicate Rate by Key Type (rate/s)",
+      "description": "Duplicate detections broken down by key type and operation type.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      },
+      "targets": [
+        { "expr": "sum(rate(aner_idempotency_duplicates_total[5m])) by (key_type, operation_type)", "legendFormat": "{{key_type}} — {{operation_type}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Duplicates (total)",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "yellow" }
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(aner_idempotency_duplicates_total)", "legendFormat": "total duplicates", "refId": "A" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "🚨 Violations (Critical Alert Zone)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }
+    },
+    {
+      "type": "stat",
+      "title": "Violations Total (must be zero)",
+      "description": "Total idempotency violations.  Any non-zero value is a critical alert condition — a duplicate operation was executed despite a key being registered.",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(aner_idempotency_violations_total) or vector(0)", "legendFormat": "violations", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Violation Rate Trend",
+      "description": "Should be a flat line at 0.  Any non-zero data point here requires immediate investigation.",
+      "gridPos": { "h": 5, "w": 16, "x": 8, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": { "mode": "fixed", "fixedColor": "red" },
+          "custom": { "drawStyle": "line", "fillOpacity": 30 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.001 }
+            ]
+          },
+          "custom": { "drawStyle": "line", "fillOpacity": 30, "thresholdsStyle": { "mode": "line+area" } }
+        }
+      },
+      "targets": [
+        { "expr": "sum(rate(aner_idempotency_violations_total[5m])) or vector(0)", "legendFormat": "violation rate", "refId": "A" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Registry & Job Health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Registry Size by Status",
+      "description": "Current number of records in the hot idempotency_record table, broken down by status.  Monitored via periodic background query.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 29 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } }
+        }
+      },
+      "targets": [
+        { "expr": "aner_idempotency_registry_size", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Hot Table Total",
+      "description": "Sum of all records across all statuses in the hot idempotency_record table.",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 29 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(aner_idempotency_registry_size)", "legendFormat": "total records", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Archival Job Last Run",
+      "description": "Unix timestamp of the last successful archival job run.  Stale values indicate the nightly job has stopped running.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow"
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "aner_idempotency_archival_job_last_run_timestamp * 1000", "legendFormat": "last archival", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Expiry Job Last Run",
+      "description": "Unix timestamp of the last successful expiry job run.  Reads 0 (epoch) until the expiry reaper is deployed.",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeFromNow"
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "aner_idempotency_expiry_job_last_run_timestamp * 1000", "legendFormat": "last expiry", "refId": "A" }
+      ]
+    }
+  ]
+}

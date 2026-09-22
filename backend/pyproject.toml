@@ -1,0 +1,43 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+# ARCHITECTURE.md §10: unit and integration tests live inside the module they
+# cover; only cross-cutting suites live in root tests/.
+testpaths = ["tests", "app"]
+# timeout: no single test should take two minutes; the full suite runs in ~250s
+# in CI. `thread` is the only method that works on Windows as well as Linux --
+# it dumps every thread's stack before killing the run, which is what turns a
+# silent multi-hour hang into a named test with a traceback.
+addopts = "--cov=app --cov-report=term-missing --cov-report=html --timeout=120 --timeout-method=thread"
+markers = [
+    "gcp_integration: marks tests as requiring real GCP credentials",
+    "temporal_persistent: marks tests that start a persistent local Temporal dev server (start_local) and stop/restart it; separated from the ephemeral time-skipping Temporal tests so they can be selected or skipped independently",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "app/main.py",
+    "*/migrations/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true

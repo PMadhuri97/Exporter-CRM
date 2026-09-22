@@ -1,0 +1,74 @@
+# Document Requirements Configuration
+# Version-controlled configuration for onboarding KYB document requirements.
+# Managed via GitOps. Compliance officer review required for changes.
+
+version: "1.0"
+
+# Document validity rules. `max_age_days` is the single canonical representation
+# of a validity period; `null` means the document is accepted regardless of age.
+validity_periods:
+  certificate_of_incorporation:
+    max_age_days: null # Accepted regardless of age
+    description: "Accepted regardless of age"
+  memorandum_of_association:
+    max_age_days: null
+    description: "Accepted regardless of age"
+  ubo_declaration:
+    max_age_days: null
+    description: "Accepted regardless of age"
+  latest_audited_accounts:
+    max_age_days: 365
+    description: "Must be within 12 months"
+  proof_of_registered_address:
+    max_age_days: 90
+    description: "Must be within 3 months"
+  bank_statement:
+    max_age_days: 90
+    description: "Must be within 3 months"
+  source_of_funds_declaration:
+    max_age_days: 365
+    description: "Must be within 12 months"
+
+# Customer profiles and their standard required document lists
+profiles:
+  - profile_id: US_CORP_DNFBP_US_IN
+    entity_type: CORPORATION
+    registration_country: US
+    sector_code: DNFBP
+    corridor_intent: US-IN
+    required_documents:
+      - certificate_of_incorporation
+      - memorandum_of_association
+      - proof_of_registered_address
+      - latest_audited_accounts
+      - ubo_declaration
+
+  - profile_id: IN_CORP_DNFBP_US_IN
+    entity_type: CORPORATION
+    registration_country: IN
+    sector_code: DNFBP
+    corridor_intent: US-IN
+    required_documents:
+      - certificate_of_incorporation
+      - memorandum_of_association
+      - proof_of_registered_address
+      - latest_audited_accounts
+      - ubo_declaration
+
+# Conditional rules that trigger additional document requirements based on customer attributes
+conditional_rules:
+  - rule_id: HIGH_VOLUME_BANK_STATEMENT
+    description: "Requires last 3 months bank statement if monthly volume exceeds $500,000 USD"
+    field: declared_monthly_volume_usd
+    operator: gt
+    value: 500000
+    additional_documents:
+      - bank_statement
+
+  - rule_id: DNFBP_SOURCE_OF_FUNDS
+    description: "Requires source of funds declaration for DNFBP sector businesses"
+    field: sector_code
+    operator: eq
+    value: DNFBP
+    additional_documents:
+      - source_of_funds_declaration

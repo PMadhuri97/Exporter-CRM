@@ -1,0 +1,177 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "title": "Business — Platform Overview",
+  "uid": "aner-overview",
+  "tags": ["aner", "settlement", "observability"],
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Transaction Outcomes",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Payments Created",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(aner_payments_created_total)", "legendFormat": "created", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Settlements Completed",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(aner_settlements_completed_total)", "legendFormat": "settled", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Settlements Failed",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } } },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(aner_settlements_failed_total)", "legendFormat": "failed", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Compliance Approvals",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(aner_compliance_approvals_total)", "legendFormat": "approvals", "refId": "A" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Lifecycle Events",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Events Published (rate/s by type)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "expr": "sum(rate(aner_events_published_total[5m])) by (event_type)", "legendFormat": "{{event_type}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Events Published (total share)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "values": ["value"] } },
+      "targets": [
+        { "expr": "sum(aner_events_published_total) by (event_type)", "legendFormat": "{{event_type}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "HTTP / API",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request Rate (req/s by handler)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        { "expr": "sum(rate(aner_http_requests_total[1m])) by (handler)", "legendFormat": "{{handler}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 Latency (s by handler)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(aner_http_request_duration_seconds_bucket[5m])) by (le, handler))", "legendFormat": "{{handler}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx Error Rate (req/s)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "fixed", "fixedColor": "red" } } },
+      "targets": [
+        { "expr": "sum(rate(aner_http_requests_total{status=~\"5..\"}[5m]))", "legendFormat": "5xx", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "In-Progress Requests",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(aner_http_requests_inprogress)", "legendFormat": "in-progress", "refId": "A" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Idempotency Registry Health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 }
+    },
+    {
+      "type": "stat",
+      "title": "Records Archived (total)",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } } },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(aner_archival_records_archived_total)", "legendFormat": "archived", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Hot Table Remaining",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "aner_archival_hot_table_remaining", "legendFormat": "remaining", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Hot Table Growth Rate (records/day)",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "aner_archival_hot_table_growth_rate", "legendFormat": "growth", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Archival Runs (by status)",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(aner_archival_runs_total[1h])) by (status)", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    }
+  ]
+}

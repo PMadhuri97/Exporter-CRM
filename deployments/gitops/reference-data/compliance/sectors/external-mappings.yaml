@@ -1,0 +1,5 @@
+- sector_code: PRECIOUS_STONES_TRADE
+  external_standard: ISIC
+  external_standard_version: "ISIC Rev.4"
+  external_code: "4649"
+  effective_from: 2024-01-01

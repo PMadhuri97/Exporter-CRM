@@ -1,0 +1,48 @@
+# Prometheus alerting rules for the Aner Settlement Platform.
+#
+# Loaded by Prometheus via rule_files in prometheus.yml. Alerts fire when the
+# expression is true for the specified duration.
+
+groups:
+  - name: rail_health_monitor
+    rules:
+      # Self-monitoring: fires when the health monitor has not completed a
+      # cycle within 90 seconds (1.5× the configured 60s interval). Ensures
+      # monitor failures themselves are detected.
+      - alert: RailHealthMonitorStale
+        expr: time() - aner_rail_health_monitor_last_run_timestamp > 90
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Rail health monitor has not run in over 90 seconds"
+          description: >
+            The rail health monitor last ran {{ $value | humanizeDuration }} ago.
+            Expected interval is 60s; alert threshold is 90s. Investigate the
+            scheduler and application logs for errors.
+
+      # Fires when any rail's health check has been unhealthy for 3 minutes
+      # (3 consecutive 60s checks).
+      - alert: RailUnhealthy
+        expr: aner_rail_health_check_result == 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rail {{ $labels.rail_id }} is unhealthy"
+          description: >
+            Rail {{ $labels.rail_id }} has been reporting unhealthy for 3 minutes.
+            The circuit breaker may have tripped. Check the rail's health and
+            the circuit breaker state.
+
+      # Fires when settlement success rate drops below 80%.
+      - alert: RailSettlementSuccessRateLow
+        expr: aner_rail_settlement_success_rate < 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rail {{ $labels.rail_id }} settlement success rate below 80%"
+          description: >
+            Rail {{ $labels.rail_id }} has a settlement success rate of
+            {{ $value }}% over the last hour, which is below the 80% threshold.

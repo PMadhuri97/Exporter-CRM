@@ -1,0 +1,15 @@
+- sector_code: PRECIOUS_STONES_TRADE
+  jurisdiction_type: framework
+  jurisdiction_value: FATF
+  risk_tier: high
+  classification_label: DNFBP
+  notes: "Dealers in precious metals and precious stones are a designated non-financial business or profession under FATF Recommendation 22, which requires CDD on cash transactions above the applicable threshold."
+  effective_from: 2024-01-01
+
+- sector_code: PRECIOUS_STONES_TRADE
+  jurisdiction_type: country
+  jurisdiction_value: US_FINCEN
+  risk_tier: high
+  classification_label: DNFBP
+  notes: "FinCEN applies the Bank Secrecy Act's dealers-in-precious-metals-and-stones rule to this sector, requiring an anti-money-laundering programme."
+  effective_from: 2024-01-01

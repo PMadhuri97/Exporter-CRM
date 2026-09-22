@@ -1,0 +1,20 @@
+- canonical_code: TRADE_GOODS_IMPORT
+  description: "Import payment for physical goods"
+  category: trade
+  effective_from: 2024-01-01
+- canonical_code: TRADE_SERVICES_IMPORT
+  description: "Payments for import of services"
+  category: services
+  effective_from: 2024-01-01
+- canonical_code: SOFTWARE_IT_SERVICES
+  description: "Payments for software development and IT services"
+  category: services
+  effective_from: 2024-01-01
+- canonical_code: CHARITABLE_DONATION
+  description: "Donations to registered charities"
+  category: other
+  effective_from: 2024-01-01
+- canonical_code: OTHER
+  description: "Other purposes not explicitly classified"
+  category: other
+  effective_from: 2024-01-01

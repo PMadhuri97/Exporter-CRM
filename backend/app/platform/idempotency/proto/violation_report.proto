@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package aner.idempotency;
+
+// ViolationReport strictly types violation alert payloads routed to SRE on-call.
+message ViolationReport {
+  // The idempotency key value involved in the violation
+  string key_value = 1;
+
+  // The scope (e.g. customer_id, entity_id, rail_id, or scope_id)
+  string scope = 2;
+
+  // The operation type (e.g. ledger_posting, settlement_creation, rail_submission)
+  string operation_type = 3;
+
+  // The number of executions detected for this key/operation (>= 2)
+  int32 execution_count = 4;
+
+  // IDs of the involved objects (ledger transaction IDs, settlement IDs, or leg IDs)
+  repeated string involved_object_ids = 5;
+
+  // End-to-end trace correlation ID
+  string correlation_id = 6;
+}
