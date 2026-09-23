@@ -15,6 +15,8 @@ from collections.abc import Iterator
 import pytest
 from httpx import AsyncClient, Response
 
+from app.modules.onboarding.tests.fixtures.auth import token_with_role
+from app.platform.authentication.models import UserRole
 from app.platform.configuration.config import get_settings
 from app.platform.messaging.ports import InMemoryEventBus, set_event_bus
 from app.platform.messaging.schemas import EventType
@@ -53,15 +55,9 @@ def _verification_count(customer_id: str) -> int:
 # ── auth + signing helpers ────────────────────────────────────────────────────
 
 async def _api_token(client: AsyncClient) -> str:
-    email = f"onboard-{uuid.uuid4().hex[:8]}@aner-test.com"
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": "Password1", "role": "API_USER"},
-    )
-    login = await client.post(
-        "/api/v1/auth/login", json={"email": email, "password": "Password1"}
-    )
-    return login.json()["access_token"]
+    # COMPLIANCE clears every write gate on these routes; the refusals for the
+    # other roles are covered in test_route_authorization.py.
+    return await token_with_role(client, UserRole.COMPLIANCE)
 
 
 def _sign(raw: bytes) -> str:

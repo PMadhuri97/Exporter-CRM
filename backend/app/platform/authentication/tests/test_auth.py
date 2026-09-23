@@ -1,9 +1,10 @@
 """
 Auth integration tests.
-All test users are created via the /register endpoint (no direct DB access).
+All test users are created via the /register endpoint, which only ever creates
+API_USER accounts. Tests needing another role, or an inactive account, change
+the row with the sync psycopg2 driver (avoiding asyncpg pool contention with
+the test's own async engine) — the same out-of-band path an operator uses.
 Unique email addresses prevent cross-test interference; cleanup is omitted.
-One test uses the sync psycopg2 driver to set is_active=False, avoiding
-asyncpg pool contention with the test's own async engine.
 """
 import uuid
 
@@ -11,6 +12,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.platform.authentication.models import UserRole
+from app.platform.authentication.testing import grant_role_sync
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -23,7 +25,6 @@ async def register(
     *,
     email: str | None = None,
     password: str = "Password1",
-    role: str = "API_USER",
     full_name: str = "Test User",
 ) -> tuple[str, dict]:
     """Register a user and return (email, response_body)."""
@@ -31,7 +32,6 @@ async def register(
     resp = await client.post("/api/v1/auth/register", json={
         "email": addr,
         "password": password,
-        "role": role,
         "full_name": full_name,
     })
     assert resp.status_code == 201, f"Register failed: {resp.text}"
@@ -103,10 +103,40 @@ async def test_register_weak_password_no_digit(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_register_all_roles(client: AsyncClient):
+async def test_register_rejects_caller_supplied_role(client: AsyncClient):
+    """The route is unauthenticated: a caller-supplied role must never reach
+    the User row. Every role — including API_USER — is refused outright (422),
+    and no account is created as a side effect."""
     for role in UserRole:
-        email, body = await register(client, role=role.value)
-        assert body["role"] == role.value
+        email = unique_email()
+        resp = await client.post("/api/v1/auth/register", json={
+            "email": email,
+            "password": "Password1",
+            "role": role.value,
+        })
+        assert resp.status_code == 422, (role, resp.text)
+
+        login_resp = await client.post(
+            "/api/v1/auth/login", json={"email": email, "password": "Password1"}
+        )
+        assert login_resp.status_code == 401, role
+
+
+@pytest.mark.asyncio
+async def test_register_can_only_produce_api_user(client: AsyncClient):
+    """No accepted register body yields anything but API_USER — checked on
+    the response, on /me (read back from the DB row) and in the token."""
+    email, body = await register(client)
+    assert body["role"] == "API_USER"
+
+    tokens = await login(client, email)
+    me = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"}
+    )
+    assert me.json()["role"] == "API_USER"
+
+    from app.platform.authentication.services import decode_access_token
+    assert decode_access_token(tokens["access_token"])["role"] == "API_USER"
 
 
 # ── login ─────────────────────────────────────────────────────────────────────
@@ -163,7 +193,8 @@ async def test_login_inactive_account(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_me_returns_current_user(client: AsyncClient):
-    email, _ = await register(client, role="COMPLIANCE")
+    email, _ = await register(client)
+    grant_role_sync(email, UserRole.COMPLIANCE)
     tokens = await login(client, email)
 
     resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"})
@@ -260,7 +291,8 @@ async def test_logout_requires_authentication(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_token_contains_correct_role(client: AsyncClient):
     for role in UserRole:
-        email, _ = await register(client, role=role.value)
+        email, _ = await register(client)
+        grant_role_sync(email, role)
         tokens = await login(client, email)
 
         me = await client.get(
@@ -278,7 +310,7 @@ async def test_require_role_denies_wrong_role(client: AsyncClient):
     cannot obtain ADMIN-only privileges — the token payload reflects only
     the registered role, not an elevated one.
     """
-    email, _ = await register(client, role="API_USER")
+    email, _ = await register(client)
     tokens = await login(client, email)
 
     me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"})
