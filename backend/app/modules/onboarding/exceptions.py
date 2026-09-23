@@ -469,3 +469,32 @@ class InvalidExporterLifecycleTransitionError(AnerBaseException):
             status_code=409,
             extensions={"from_status": str(from_status), "to_status": str(to_status)},
         )
+
+
+class ExporterLifecycleComplianceRequiredError(AnerBaseException):
+    """A lifecycle move — or a creation at a lifecycle status — that only a
+    compliance decision may make, attempted by a caller not authorised to
+    make one. See ``exporter_profile_service.COMPLIANCE_GATED_FROM_STATUSES``
+    and ``COMPLIANCE_DECIDED_STATUSES``.
+    """
+
+    def __init__(
+        self, customer_id: object, to_status: object, from_status: object | None = None
+    ) -> None:
+        self.customer_id = customer_id
+        self.from_status = from_status
+        self.to_status = to_status
+        action = (
+            f"move from {from_status!r} to {to_status!r}"
+            if from_status is not None
+            else f"be created at {to_status!r}"
+        )
+        super().__init__(
+            detail=(
+                f"Exporter {customer_id} cannot {action} without a compliance "
+                f"decision: COMPLIANCE or ADMIN role required"
+            ),
+            error_code="FORBIDDEN",
+            status_code=403,
+            extensions={"from_status": str(from_status), "to_status": str(to_status)},
+        )

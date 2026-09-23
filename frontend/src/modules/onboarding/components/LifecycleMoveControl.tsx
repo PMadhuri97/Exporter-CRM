@@ -2,7 +2,13 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronDown, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { PERMITTED_LIFECYCLE_TRANSITIONS, STATUS_LABEL } from '../constants';
+import { useCurrentUser } from '@/platform/auth';
+
+import {
+  PERMITTED_LIFECYCLE_TRANSITIONS,
+  STATUS_LABEL,
+  canMoveLifecycleFrom,
+} from '../constants';
 import { useTransitionExporterLifecycle } from '../hooks';
 import type { ExporterLifecycleStatus } from '../types';
 
@@ -28,6 +34,7 @@ export function LifecycleMoveControl({
   customerId,
   currentStatus,
 }: LifecycleMoveControlProps) {
+  const user = useCurrentUser();
   const mutation = useTransitionExporterLifecycle(customerId);
   const nextStates = PERMITTED_LIFECYCLE_TRANSITIONS[currentStatus];
 
@@ -35,6 +42,19 @@ export function LifecycleMoveControl({
     return (
       <span className="inline-flex items-center rounded-lg border border-border bg-surface-subtle px-3 py-2 text-sm text-ink-faint">
         No further lifecycle moves
+      </span>
+    );
+  }
+
+  // The backend refuses these with 403; don't offer a menu that can only fail.
+  if (!canMoveLifecycleFrom(currentStatus, user.role)) {
+    // Roles that can never move an exporter (DEVELOPER, API_USER) get no control.
+    if (user.role !== 'OPERATIONS') return null;
+    return (
+      <span className="inline-flex items-center rounded-lg border border-border bg-surface-subtle px-3 py-2 text-sm text-ink-faint">
+        {currentStatus === 'COMPLIANCE_REVIEW'
+          ? 'Awaiting compliance decision'
+          : 'Lifecycle managed by Compliance'}
       </span>
     );
   }

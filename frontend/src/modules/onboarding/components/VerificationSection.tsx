@@ -96,6 +96,35 @@ function Chip({ value }: { value: string }) {
   return <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${chipClasses(value)}`}>{humanize(value)}</span>;
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Render `reviewed_by` for a human.
+ *
+ * This field is moving from a display string to the reviewer's user id. There
+ * is no endpoint that resolves a user id to a name — `/me` only ever returns
+ * the caller — so a foreign id cannot be turned into a name client-side. The
+ * current user's own id is resolvable without any backend change, which covers
+ * the common "did I already review this?" case; anything else is labelled as
+ * an unresolved id rather than dumped raw, so an officer is never shown a bare
+ * UUID where a name used to be.
+ *
+ * Remove the UUID branch once a user-lookup endpoint exists — see this
+ * ticket's report for the exact shape needed.
+ */
+function formatReviewer(
+  value: string | null | undefined,
+  currentUser: { id?: string; full_name?: string | null; email?: string },
+): string {
+  if (!value) return '—';
+  if (currentUser.id && value === currentUser.id) {
+    return `${currentUser.full_name?.trim() || currentUser.email || 'You'} (you)`;
+  }
+  if (UUID_PATTERN.test(value)) return `Unresolved user · ${value.slice(0, 8)}…`;
+  return value;
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
@@ -234,7 +263,12 @@ function ReviewActions({ result, customerId }: { result: VerificationResult; cus
     try {
       await mutation.mutateAsync({
         verificationResultId: result.id,
-        payload: { reviewed_by: user.full_name?.trim() || user.email, review_status: status },
+        // `reviewed_by` is deliberately not sent: the backend now derives the
+        // reviewer from the authenticated session (`current_user.id`), and
+        // `RecordReviewRequest` is `extra="forbid"` — sending it would be a
+        // 422. The server-assigned id is what comes back on the result and is
+        // rendered through `formatReviewer`.
+        payload: { review_status: status },
       });
       toast.success(`Screening ${humanize(status).toLowerCase()}`);
     } catch (error) {
@@ -255,6 +289,7 @@ function ReviewActions({ result, customerId }: { result: VerificationResult; cus
 }
 
 function ScreeningRow({ result, customerId }: { result: VerificationResult; customerId: string }) {
+  const user = useCurrentUser();
   const [expanded, setExpanded] = useState(false);
   const normalized = useMemo(() => JSON.stringify(result.normalized_result, null, 2), [result.normalized_result]);
   return (
@@ -279,7 +314,7 @@ function ScreeningRow({ result, customerId }: { result: VerificationResult; cust
           <div><span className="text-ink-faint">Provider reference</span><p className="mt-0.5 break-all text-ink">{result.provider_reference ?? '—'}</p></div>
           <div><span className="text-ink-faint">Valid until</span><p className="mt-0.5 text-ink">{formatDateTime(result.valid_until)}</p></div>
           <div><span className="text-ink-faint">Evidence reference</span><p className="mt-0.5 break-all text-ink">{result.evidence_reference ?? '—'}</p></div>
-          <div><span className="text-ink-faint">Reviewed by</span><p className="mt-0.5 text-ink">{result.reviewed_by ?? '—'}</p></div>
+          <div><span className="text-ink-faint">Reviewed by</span><p className="mt-0.5 break-all text-ink">{formatReviewer(result.reviewed_by, user)}</p></div>
           <div className="md:col-span-2"><span className="text-ink-faint">Provider result</span><pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-surface p-3 text-[11px] leading-5 text-ink">{normalized}</pre></div>
         </div>
       )}
@@ -354,6 +389,9 @@ function BankActivityPanel({ customerId }: { customerId: string }) {
 }
 
 export function VerificationSection({ customerId }: { customerId: string }) {
+  const user = useCurrentUser();
+  // Triggering a verification is compliance-only on the backend (403 otherwise).
+  const canTrigger = user.role === 'COMPLIANCE' || user.role === 'ADMIN';
   const query = useVerificationResults('EXPORTER', customerId);
   const triggerMutation = useTriggerVerification('EXPORTER', customerId);
   const [tab, setTab] = useState<WorkspaceTab>('COMPANY');
@@ -389,10 +427,12 @@ export function VerificationSection({ customerId }: { customerId: string }) {
       <div className="min-w-0 rounded-lg border border-border bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><div className="flex items-center gap-2"><ShieldCheck size={18} className="text-brand-600" /><h2 className="font-semibold text-ink">Screenings</h2></div><p className="mt-1 text-sm text-ink-muted">Provider results, bank-monitoring signals and compliance review for this exporter.</p></div>
-          <button type="button" disabled={triggerMutation.isPending} onClick={() => void runAvailableChecks()} className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
-            {triggerMutation.isPending ? <RefreshCw size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-            {triggerMutation.isPending ? 'Starting checks…' : 'Run available checks'}
-          </button>
+          {canTrigger && (
+            <button type="button" disabled={triggerMutation.isPending} onClick={() => void runAvailableChecks()} className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+              {triggerMutation.isPending ? <RefreshCw size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              {triggerMutation.isPending ? 'Starting checks…' : 'Run available checks'}
+            </button>
+          )}
         </div>
 
         <div className="mt-4 flex gap-6 border-b border-border">

@@ -416,6 +416,9 @@ export function ExporterDetailPage() {
   }
 
   const isOwner = profile.relationship_manager_user_id === currentUser.id;
+  // DEVELOPER reads the CRM (masked) but writes nothing and cannot load
+  // verification results — the backend refuses those with 403.
+  const isStaff = currentUser.role !== 'DEVELOPER';
   const name = displayName(profile);
   const contacts = contactQuery.data?.contacts ?? profile.contacts;
   const activities = activityQuery.data?.activities ?? [];
@@ -487,13 +490,15 @@ export function ExporterDetailPage() {
               <h2 className="font-semibold text-ink">Contacts</h2>
               <p className="mt-0.5 text-sm text-ink-muted">People connected to this exporter.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowContactForm(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
-            >
-              <Plus size={15} /> Add contact
-            </button>
+            {isStaff && (
+              <button
+                type="button"
+                onClick={() => setShowContactForm(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
+              >
+                <Plus size={15} /> Add contact
+              </button>
+            )}
           </div>
 
           {showContactForm && <FormPanel title="Add contact" onClose={() => setShowContactForm(false)}><AddContactForm customerId={customerId} onDone={() => setShowContactForm(false)} /></FormPanel>}
@@ -513,13 +518,15 @@ export function ExporterDetailPage() {
               <h2 className="font-semibold text-ink">Activity</h2>
               <p className="mt-0.5 text-sm text-ink-muted">Append-only relationship history and follow-ups.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowActivityForm(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              <MessageSquarePlus size={15} /> Log activity
-            </button>
+            {isStaff && (
+              <button
+                type="button"
+                onClick={() => setShowActivityForm(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                <MessageSquarePlus size={15} /> Log activity
+              </button>
+            )}
           </div>
 
           {showActivityForm && <FormPanel title="Log activity" onClose={() => setShowActivityForm(false)}><ActivityForm customerId={customerId} onDone={() => { setShowActivityForm(false); setActivityPage(0); }} /></FormPanel>}
@@ -586,7 +593,7 @@ export function ExporterDetailPage() {
         )}
       </section>
 
-      <VerificationSection customerId={customerId} />
+      {isStaff && <VerificationSection customerId={customerId} />}
     </div>
   );
 }

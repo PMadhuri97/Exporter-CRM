@@ -26,6 +26,9 @@ import pytest
 import structlog.contextvars
 from httpx import AsyncClient
 
+from app.platform.authentication.models import UserRole
+from app.platform.authentication.testing import user_with_role
+
 AUDIT_BASE = "/api/v1/audit"
 PAYMENTS_BASE = "/api/v1/payments"
 FX_BASE = "/api/v1/fx"
@@ -110,18 +113,8 @@ async def _record_event(
 # ── auth helper ───────────────────────────────────────────────────────────────
 
 async def _register_login(client: AsyncClient, role: str) -> str:
-    email = f"{role.lower()}-audit-{uuid.uuid4().hex[:8]}@audit-test.com"
-    reg = await client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": "Password1!", "role": role},
-    )
-    assert reg.status_code == 201, reg.text
-    tok = await client.post(
-        "/api/v1/auth/login",
-        json={"email": email, "password": "Password1!"},
-    )
-    assert tok.status_code == 200, tok.text
-    return tok.json()["access_token"]
+    _, token = await user_with_role(client, UserRole(role), email_prefix=f"{role.lower()}-audit")
+    return token
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────

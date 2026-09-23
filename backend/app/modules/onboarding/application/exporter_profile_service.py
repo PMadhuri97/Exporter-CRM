@@ -59,6 +59,7 @@ from app.modules.onboarding.domain.exporter_profile_views import (
 )
 from app.modules.onboarding.domain.onboarding_request_views import OnboardingHistoryEntry
 from app.modules.onboarding.exceptions import (
+    ExporterLifecycleComplianceRequiredError,
     ExporterProfileNotFoundError,
     ExporterSourceImmutableError,
     InvalidExporterLifecycleTransitionError,
@@ -119,6 +120,27 @@ PERMITTED_LIFECYCLE_TRANSITIONS: frozenset[
         (ExporterLifecycleStatus.ACTIVE, ExporterLifecycleStatus.OFFBOARDED),
         (ExporterLifecycleStatus.SUSPENDED, ExporterLifecycleStatus.OFFBOARDED),
     }
+)
+
+#: Statuses an exporter can only reach through a compliance decision. Creating
+#: a profile directly at one of these would skip that decision entirely, so
+#: `create_or_get_profile` refuses it unless the caller is compliance-authorised.
+COMPLIANCE_DECIDED_STATUSES: frozenset[ExporterLifecycleStatus] = frozenset(
+    {
+        ExporterLifecycleStatus.ONBOARDED,
+        ExporterLifecycleStatus.FINANCING_ELIGIBLE,
+        ExporterLifecycleStatus.ACTIVE,
+        ExporterLifecycleStatus.SUSPENDED,
+        ExporterLifecycleStatus.OFFBOARDED,
+    }
+)
+
+#: A move *out of* any of these is a compliance decision: approving or sending
+#: back from COMPLIANCE_REVIEW, and every change to an onboarded relationship.
+#: The sales stages before it (LEAD -> ... -> COMPLIANCE_REVIEW, i.e. submitting
+#: for review) stay open to Relationship Managers.
+COMPLIANCE_GATED_FROM_STATUSES: frozenset[ExporterLifecycleStatus] = (
+    COMPLIANCE_DECIDED_STATUSES | {ExporterLifecycleStatus.COMPLIANCE_REVIEW}
 )
 
 
@@ -330,6 +352,7 @@ class ExporterProfileService:
         idempotency_key: str | None = None,
         correlation_id: str | None = None,
         actor_id: str | None = None,
+        compliance_authorized: bool = False,
     ) -> tuple[ExporterProfile, bool]:
         """Create an exporter_profile, or return the one already on file.
 
@@ -338,7 +361,14 @@ class ExporterProfileService:
         See the module docstring for when the ``idempotency_key`` round trip
         runs versus when this relies on ``uq_exporter_profile_customer_id``
         alone.
+
+        Raises ``ExporterLifecycleComplianceRequiredError`` (403) for a
+        ``lifecycle_status`` in ``COMPLIANCE_DECIDED_STATUSES`` unless
+        ``compliance_authorized``.
         """
+        if lifecycle_status in COMPLIANCE_DECIDED_STATUSES and not compliance_authorized:
+            raise ExporterLifecycleComplianceRequiredError(customer_id, lifecycle_status)
+
         if idempotency_key is not None:
             reg_result = await register_key(
                 session=self._db,
@@ -531,6 +561,8 @@ class ExporterProfileService:
         customer_id: uuid.UUID,
         to_status: ExporterLifecycleStatus,
         actor_id: str,
+        *,
+        compliance_authorized: bool = False,
     ) -> ExporterProfile:
         """Move `lifecycle_status` to `to_status`, validated against
         `PERMITTED_LIFECYCLE_TRANSITIONS`. Raises
@@ -538,12 +570,20 @@ class ExporterProfileService:
         and attempted status) for any pair not in that table — including a
         same-status "transition", which has no edge in the table and so is
         rejected the same way, with no special-casing needed.
+
+        A permitted move out of `COMPLIANCE_GATED_FROM_STATUSES` additionally
+        raises `ExporterLifecycleComplianceRequiredError` (403) unless
+        `compliance_authorized`. The edge check runs first, so an illegal move
+        is a 409 for every caller.
         """
         profile = await self._require_profile(customer_id)
         from_status = profile.lifecycle_status
 
         if (from_status, to_status) not in PERMITTED_LIFECYCLE_TRANSITIONS:
             raise InvalidExporterLifecycleTransitionError(customer_id, from_status, to_status)
+
+        if from_status in COMPLIANCE_GATED_FROM_STATUSES and not compliance_authorized:
+            raise ExporterLifecycleComplianceRequiredError(customer_id, to_status, from_status)
 
         profile.lifecycle_status = to_status
         await self._db.commit()

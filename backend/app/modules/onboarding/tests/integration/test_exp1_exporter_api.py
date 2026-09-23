@@ -12,19 +12,16 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from app.modules.onboarding.tests.fixtures.auth import token_with_role
+from app.platform.authentication.models import UserRole
+
 pytestmark = pytest.mark.asyncio
 
 
 async def _api_token(client: AsyncClient) -> str:
-    email = f"exp1-{uuid.uuid4().hex[:8]}@aner-test.com"
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": "Password1", "role": "API_USER"},
-    )
-    login = await client.post(
-        "/api/v1/auth/login", json={"email": email, "password": "Password1"}
-    )
-    return login.json()["access_token"]
+    # COMPLIANCE clears every write gate on these routes; the refusals for the
+    # other roles are covered in test_route_authorization.py.
+    return await token_with_role(client, UserRole.COMPLIANCE)
 
 
 def _auth(token: str) -> dict:
@@ -90,7 +87,7 @@ async def test_full_exporter_profile_flow(client: AsyncClient):
         json={"customer_id": customer_id, "source": "MANUAL"},
         headers=_auth(token),
     )
-    assert replay_resp.status_code == 201  # service returns created=False; router doesn't remap status
+    assert replay_resp.status_code == 200  # created=False is remapped to 200 by the router
     assert replay_resp.json()["source"] == "SALES"
 
     # Add a primary contact.

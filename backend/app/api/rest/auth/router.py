@@ -16,7 +16,7 @@ from app.api.rest.auth.schemas import (
 )
 from app.platform.authentication.adapters.repository import RefreshTokenRepository, UserRepository
 from app.platform.authentication.dependencies import get_current_active_user
-from app.platform.authentication.models import User
+from app.platform.authentication.models import User, UserRole
 from app.platform.authentication.services import (
     create_access_token,
     generate_refresh_token,
@@ -57,7 +57,8 @@ async def register(
         email=body.email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
-        role=body.role,
+        # Unauthenticated route: never take the role from the caller.
+        role=UserRole.API_USER,
         is_active=True,
     )
     user = await user_repo.create(user)
