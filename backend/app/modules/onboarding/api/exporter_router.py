@@ -30,6 +30,7 @@ from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.cases import ActorType
 from app.modules.onboarding.api.schemas.exporter import (
     AddExporterContactRequest,
     CreateExporterProfileRequest,
@@ -294,10 +295,12 @@ async def update_exporter_profile(
     description=(
         "The only way lifecycle_status changes. Validates the move against the "
         "permitted-transition table; an illegal transition returns 409 and leaves "
-        "the profile untouched. While the exporter has an open compliance case, "
-        "COMPLIANCE_REVIEW -> ONBOARDED is refused with 409: approval is the case "
-        "decision (`POST /compliance-cases/{case_id}/decision`), and the lifecycle "
-        "follows it."
+        "the profile untouched. COMPLIANCE_REVIEW -> ONBOARDED is always refused "
+        "with 409: approval is the compliance case's decision "
+        "(`POST /compliance-cases/{case_id}/decision`), and the lifecycle follows "
+        "it. If the exporter has no open case, one is opened by this call and "
+        "named in the error. COMPLIANCE_REVIEW -> DATA_COLLECTION (send back) "
+        "closes the open case without action before the exporter moves."
     ),
     responses={
         200: {"model": ExporterProfileResponse},
@@ -311,8 +314,10 @@ async def update_exporter_profile(
         404: {"description": "Exporter profile not found"},
         409: {
             "description": (
-                "Illegal lifecycle_status transition, or -> ONBOARDED while a "
-                "compliance case is open"
+                "Illegal lifecycle_status transition; -> ONBOARDED from "
+                "COMPLIANCE_REVIEW (decided on the compliance case); a send-back "
+                "while a case resolution is pending approval; or a case decision "
+                "on this exporter already in progress"
             )
         },
     },
@@ -326,30 +331,41 @@ async def transition_exporter_lifecycle_status(
     from_status = await db.scalar(
         select(ExporterProfile.lifecycle_status).where(ExporterProfile.customer_id == customer_id)
     )
-    # Only a compliance caller could make this move at all; anyone else still
-    # gets the service's own 403/409 below.
-    if (
-        body.to_status is ExporterLifecycleStatus.ONBOARDED
-        and from_status is ExporterLifecycleStatus.COMPLIANCE_REVIEW
+    actor_id = str(current_user.id)
+    # Only a compliance caller could leave COMPLIANCE_REVIEW at all; anyone
+    # else still gets the service's own 403/409 below.
+    leaving_review = (
+        from_status is ExporterLifecycleStatus.COMPLIANCE_REVIEW
         and current_user.role in _COMPLIANCE_ROLES
-    ):
-        open_case = await CaseBridgeService(db).open_review_case_for(customer_id)
-        if open_case is not None:
-            raise CaseBridgeConflictError(
-                f"Exporter '{customer_id}' has open compliance case "
-                f"{open_case.case_reference}. Onboarding is decided on the case "
-                f"(POST /compliance-cases/{open_case.id}/decision); the lifecycle "
-                f"moves once the case is resolved.",
-                error_code="ONBOARDING_DECIDED_BY_CASE",
-            )
-
-    profile = await ExporterProfileService(db).transition_lifecycle_status(
-        customer_id,
-        body.to_status,
-        actor_id=str(current_user.id),
-        compliance_authorized=current_user.role in _COMPLIANCE_ROLES,
     )
-    await _publish_lifecycle(customer_id, from_status, profile.lifecycle_status, str(current_user.id))
+    if leaving_review and body.to_status is ExporterLifecycleStatus.ONBOARDED:
+        # Refused whether or not a case exists: a missing case (a dropped bus
+        # event, an exporter that entered review before the bridge) must not
+        # turn into a way round it. The case is opened here if it is missing.
+        case = await CaseBridgeService(db).ensure_review_case(customer_id)
+        where = (
+            f"on compliance case {case.case_reference} "
+            f"(POST /compliance-cases/{case.id}/decision)"
+            if case is not None
+            else "on its compliance case"
+        )
+        raise CaseBridgeConflictError(
+            f"Onboarding exporter '{customer_id}' is decided {where}; the lifecycle "
+            f"moves once the case is resolved.",
+            error_code="ONBOARDING_DECIDED_BY_CASE",
+        )
+    if leaving_review and body.to_status is ExporterLifecycleStatus.DATA_COLLECTION:
+        profile = await CaseBridgeService(db).send_back(
+            customer_id, actor_id=actor_id, actor_type=ActorType.COMPLIANCE_OFFICER
+        )
+    else:
+        profile = await ExporterProfileService(db).transition_lifecycle_status(
+            customer_id,
+            body.to_status,
+            actor_id=actor_id,
+            compliance_authorized=current_user.role in _COMPLIANCE_ROLES,
+        )
+    await _publish_lifecycle(customer_id, from_status, profile.lifecycle_status, actor_id)
     return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
 
 

@@ -37,8 +37,8 @@ class OnboardingEventPublisher:
 
     def __init__(self, bus: EventBus | None = None) -> None:
         self._bus = bus or get_event_bus()
-        # The one place the case bridge is attached — see case_bridge_consumer.py.
-        ensure_case_bridge_subscribed(self._bus)
+        # In-memory bus only; startup attaches it otherwise. See case_bridge_consumer.py.
+        ensure_case_bridge_subscribed(self._bus, lazy=True)
 
     async def _emit(
         self,

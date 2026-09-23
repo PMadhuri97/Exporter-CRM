@@ -204,6 +204,13 @@ class CaseDecisionResponse(BaseModel):
             "proposed and a different reviewer must still decide"
         )
     )
+    proposal_rejected: bool = Field(
+        default=False,
+        description=(
+            "True when this call rejected another reviewer's pending proposal for "
+            "the other outcome before recording its own"
+        ),
+    )
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
@@ -296,7 +303,9 @@ async def add_compliance_case_note(
         "mandatory rationale, then moves the exporter. The lifecycle transition "
         "follows the resolution: to `ONBOARDED` on approval, back to "
         "`DATA_COLLECTION` on rejection. The evidence list is snapshotted when the "
-        "resolution is proposed."
+        "resolution is proposed. If the case was resolved but the exporter never "
+        "moved (an interrupted earlier call), repeating the same decision completes "
+        "the move."
     ),
     responses={
         200: {"model": CaseDecisionResponse},
@@ -305,8 +314,10 @@ async def add_compliance_case_note(
         404: {"description": "Case not found"},
         409: {
             "description": (
-                "Case already resolved, not an onboarding review, or the exporter is "
-                "no longer in COMPLIANCE_REVIEW"
+                "Case already resolved, not an onboarding review, the exporter is "
+                "no longer in COMPLIANCE_REVIEW, your own pending proposal is for "
+                "the other outcome, or another decision on this exporter is in "
+                "progress"
             )
         },
         422: {"description": "Rationale missing or too short"},
@@ -329,6 +340,7 @@ async def decide_compliance_case(
         case=CaseSummaryResponse.model_validate(result.case),
         exporter_lifecycle_status=result.lifecycle_status,
         awaiting_second_reviewer=result.awaiting_second_reviewer,
+        proposal_rejected=result.proposal_rejected,
     )
 
 

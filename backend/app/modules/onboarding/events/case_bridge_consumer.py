@@ -5,18 +5,27 @@ the bridge subscribes to that instead. It has the same shape: a `BaseConsumer`
 group on `Topic.CUSTOMER`, idempotent per `event_id` via `processed_events`. Moving
 to Kafka is configuration.
 
-**Removable in one place.** `ensure_case_bridge_subscribed` is called from one
-line, in `OnboardingEventPublisher.__init__`. Delete that line and onboarding no
-longer opens cases. `app.modules.cases` does not know this consumer exists.
+**Two places subscribe it, one per bus kind.**
 
-**Why subscription happens at publish time, not at startup.** The consumer list
-lives in `app/bootstrap.py`, which this module does not own, and it is registered
-only when `EVENT_CONSUMERS_ENABLED` is set. Tests also install a new bus through
-`set_event_bus`. Subscribing lazily, once per bus instance, on whichever bus the
-publisher is about to use, keeps the bridge attached in every one of those cases.
-With Kafka, the proper home is `bootstrap.ALL_CONSUMERS`: consumer groups are
-started by `bus.start()`, and a group subscribed after that may never be polled.
-Add `CaseBridgeConsumer()` there when Kafka is switched on.
+- *At startup:* `bootstrap.register_consumers` calls `ensure_case_bridge_subscribed`
+  before `bus.start()`. This is the only path that works for Kafka, because
+  `KafkaEventBus.start()` creates a consumer only for groups already
+  subscribed. A group added afterwards is never polled.
+- *At publish time, in-memory bus only:* `OnboardingEventPublisher.__init__`
+  calls `ensure_case_bridge_subscribed(bus, lazy=True)`. The in-memory bus
+  dispatches synchronously to whatever is subscribed, whether or not
+  `EVENT_CONSUMERS_ENABLED` started the event tier, and tests install new buses
+  through `set_event_bus`. For any other bus the lazy call does nothing, since
+  subscribing there would look attached and never run.
+
+Both paths share `_subscribed_buses`, so a bus never gets the group twice.
+If the bridge is not attached at all (Kafka with the event tier off), no case
+opens on entry to COMPLIANCE_REVIEW. Onboarding still cannot skip one: the
+lifecycle route refuses a direct approval and opens the case on demand
+(`CaseBridgeService.ensure_review_case`).
+
+**Removable in two lines**, the two calls above. `app.modules.cases` does not
+know this consumer exists.
 """
 
 from __future__ import annotations
@@ -27,7 +36,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.platform.messaging.consumers import BaseConsumer
-from app.platform.messaging.ports import EventBus
+from app.platform.messaging.ports import EventBus, InMemoryEventBus
 from app.platform.messaging.schemas import EventEnvelope, Topic
 
 logger = structlog.get_logger(__name__)
@@ -51,11 +60,15 @@ class CaseBridgeConsumer(BaseConsumer):
         await CaseBridgeService(db).handle_event(envelope)
 
 
-def ensure_case_bridge_subscribed(bus: EventBus) -> None:
-    """Subscribe `CaseBridgeConsumer` to `bus` once. Never raises: a failure
-    here must not stop the publisher from being built."""
+def ensure_case_bridge_subscribed(bus: EventBus, *, lazy: bool = False) -> None:
+    """Subscribe `CaseBridgeConsumer` to `bus` once. `lazy=True` (the
+    publisher's call) only acts on an `InMemoryEventBus`; see the module
+    docstring. Never raises: a failure here must not stop the publisher from
+    being built."""
     try:
         if bus in _subscribed_buses:
+            return
+        if lazy and not isinstance(bus, InMemoryEventBus):
             return
         bus.subscribe(CASE_BRIDGE_GROUP, CaseBridgeConsumer.topics, CaseBridgeConsumer())
         _subscribed_buses.add(bus)

@@ -27,12 +27,22 @@ and the coupling is gone.
 4. *Decides, then moves the exporter* (`decide`). The case resolution comes
    first; the lifecycle transition to `ONBOARDED` (or back to
    `DATA_COLLECTION` on rejection) follows it and depends on it. The
-   transition is no longer the decision.
+   transition is no longer the decision. The cases services commit after
+   every step, so the case and the exporter cannot move in one transaction.
+   Instead the whole decision holds a per-exporter lock (`_decision_lock`),
+   and a case resolved without the exporter moving (a crash, a DB error)
+   is finished by calling `decide` again, not left stranded.
+5. *Closes the case on a send-back* (`send_back`). COMPLIANCE_REVIEW ->
+   DATA_COLLECTION through the lifecycle route closes the open case
+   (`CLOSED_WITHOUT_ACTION`) before the exporter moves, so no case is left
+   open against an exporter that has left review.
 
 **The two-person rule** is `cases.REQUIRE_TWO_PERSON_RESOLUTION`, which is off.
 With it off, one COMPLIANCE/ADMIN user proposes and approves in a single
 `decide` call. With it on, the same call stops at `PENDING_APPROVAL`, and a
-second, different user's `decide` completes the resolution.
+second, different user's `decide` completes the resolution. A second user
+who asks for the other outcome rejects the pending proposal and proposes
+their own, which then waits for a reviewer other than them.
 """
 
 from __future__ import annotations
@@ -40,6 +50,8 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
@@ -73,6 +85,10 @@ from app.modules.cases import (
 )
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterLifecycleStatus
+from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
+    ExporterLifecycleHistory,
+)
+from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
     VerificationType,
@@ -95,6 +111,9 @@ SYSTEM_ACTOR_ID = "system:onboarding-case-bridge"
 ORIGINATING_EPIC = "EXPORTER_CRM"
 #: `case_timeline_event.payload["kind"]` of an evidence snapshot.
 EVIDENCE_SNAPSHOT_KIND = "EVIDENCE_SNAPSHOT"
+#: `compliance_case.originating_event_type` of a case opened on demand, with
+#: no bus event behind it (see `ensure_review_case`).
+ON_DEMAND_ORIGIN = "onboarding.case_bridge.on_demand"
 
 #: No risk signal reaches the bridge yet, so every onboarding-review case opens
 #: at MEDIUM. SLA: 48h (sla-config.yaml, onboarding_review.medium).
@@ -171,13 +190,53 @@ class DecisionResult:
     #: True only with the two-person rule on, when this call proposed and a
     #: second reviewer must still approve.
     awaiting_second_reviewer: bool
+    #: True when this call rejected someone else's pending proposal (its
+    #: outcome differed) before proposing its own.
+    proposal_rejected: bool = False
 
 
 class CaseBridgeService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, *, require_two_person: bool | None = None) -> None:
+        """`require_two_person` defaults to `cases.REQUIRE_TWO_PERSON_RESOLUTION`
+        (read here, not at import), and is handed to `CaseLifecycleService`
+        so the bridge and the lifecycle service never disagree about it."""
         self._db = db
         self._profiles = ExporterProfileRepository(db)
         self._requests = OnboardingRequestRepository(db)
+        self._require_two_person = (
+            REQUIRE_TWO_PERSON_RESOLUTION if require_two_person is None else require_two_person
+        )
+
+    # ── Per-exporter decision lock ──────────────────────────────────────────
+
+    @asynccontextmanager
+    async def _decision_lock(self, customer_id: uuid.UUID) -> AsyncIterator[None]:
+        """Serialise every write that moves an exporter out of COMPLIANCE_REVIEW
+        (`decide`, `send_back`) per exporter.
+
+        A session-level advisory lock on a connection of its own. The cases
+        services commit after each step, which would end a transaction-scoped
+        lock on `self._db` after the first one. A second caller does not
+        queue behind the first: it gets a 409 and can retry.
+        """
+        key = f"onboarding-review-decision:{customer_id}"
+        async with self._db.bind.connect() as conn:
+            acquired = await conn.scalar(
+                text("SELECT pg_try_advisory_lock(hashtext(:key))"), {"key": key}
+            )
+            if not acquired:
+                raise CaseBridgeConflictError(
+                    f"A compliance decision on exporter '{customer_id}' is already in "
+                    f"progress; retry once it has finished",
+                    error_code="DECISION_IN_PROGRESS",
+                )
+            try:
+                yield
+            finally:
+                await conn.execute(
+                    text("SELECT pg_advisory_unlock(hashtext(:key))"), {"key": key}
+                )
+                await conn.commit()
 
     # ── Event subscriber ────────────────────────────────────────────────────
 
@@ -211,16 +270,17 @@ class CaseBridgeService:
         self,
         customer_id: uuid.UUID,
         *,
-        originating_event_id: uuid.UUID,
+        originating_event_id: uuid.UUID | None,
         originating_event_type: str,
     ) -> ComplianceCase | None:
         """Open the exporter's onboarding-review case, or do nothing if one is
-        already open or this event already opened one. Returns the new case,
-        or `None` when nothing was created.
+        already open, this event already opened one, or the exporter is no
+        longer in COMPLIANCE_REVIEW (a late or redelivered event). Returns the
+        new case, or `None` when nothing was created.
 
-        One per exporter: re-entering COMPLIANCE_REVIEW while a case is still
-        open joins that case. Serialised per customer with a transaction-scoped
-        advisory lock so two concurrent events cannot both pass the check.
+        One open case per exporter. Serialised per customer with a
+        transaction-scoped advisory lock so two concurrent callers cannot
+        both pass the check.
         """
         await self._db.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
@@ -235,11 +295,24 @@ class CaseBridgeService:
             )
             await self._db.commit()  # release the lock
             return None
-        if await self._db.scalar(
+        if originating_event_id is not None and await self._db.scalar(
             select(ComplianceCase.id).where(
                 ComplianceCase.originating_event_id == originating_event_id
             )
         ):
+            await self._db.commit()
+            return None
+        lifecycle_status = await self._db.scalar(
+            select(ExporterProfile.lifecycle_status).where(
+                ExporterProfile.customer_id == customer_id
+            )
+        )
+        if lifecycle_status != ExporterLifecycleStatus.COMPLIANCE_REVIEW:
+            logger.info(
+                "case_bridge.exporter_not_in_review",
+                customer_id=str(customer_id),
+                lifecycle_status=lifecycle_status.value if lifecycle_status else None,
+            )
             await self._db.commit()
             return None
 
@@ -281,7 +354,9 @@ class CaseBridgeService:
                 actor_id=SYSTEM_ACTOR_ID,
                 actor_type=ActorType.SYSTEM,
                 payload={
-                    "originating_event_id": str(originating_event_id),
+                    "originating_event_id": (
+                        str(originating_event_id) if originating_event_id else None
+                    ),
                     "originating_event_type": originating_event_type,
                     "initial_evidence_count": len(evidence),
                 },
@@ -310,6 +385,23 @@ class CaseBridgeService:
             initial_evidence_count=len(evidence),
         )
         return case
+
+    async def ensure_review_case(self, customer_id: uuid.UUID) -> ComplianceCase | None:
+        """The exporter's open review case, opened now if it has none.
+
+        The bus is best-effort (a failed handler is logged and dropped, and
+        there is no redelivery on the in-memory bus), and exporters already in
+        COMPLIANCE_REVIEW before the bridge existed never had an event. This
+        is the fallback for both: whoever next tries to decide gets a case.
+        `None` only if the exporter is not in COMPLIANCE_REVIEW.
+        """
+        existing = await self.open_review_case_for(customer_id)
+        if existing is not None:
+            return existing
+        opened = await self.open_review_case(
+            customer_id, originating_event_id=None, originating_event_type=ON_DEMAND_ORIGIN
+        )
+        return opened or await self.open_review_case_for(customer_id)
 
     async def open_review_case_for(self, customer_id: uuid.UUID) -> ComplianceCase | None:
         return await self._db.scalar(
@@ -364,6 +456,20 @@ class CaseBridgeService:
     ) -> None:
         case = await self.open_review_case_for(customer_id)
         if case is None:
+            return
+        # At-least-once delivery: `add_evidence_item` commits before the
+        # consumer marks the event processed, so a redelivery can land here
+        # twice. The same source row with the same data is not new evidence.
+        digest = _digest(evidence_data)
+        already_on_case = (
+            await self._db.scalars(
+                select(CaseEvidenceItem.evidence_data).where(
+                    CaseEvidenceItem.case_id == case.id,
+                    CaseEvidenceItem.source_reference_id == source_reference_id,
+                )
+            )
+        ).all()
+        if any(_digest(data) == digest for data in already_on_case):
             return
         aggregation = EvidenceAggregationService()
         await aggregation.add_evidence_item(
@@ -505,17 +611,25 @@ class CaseBridgeService:
     ) -> DecisionResult:
         """Resolve the case, then move the exporter. In that order.
 
-        1. Preconditions, before anything is written: a real rationale, an
-           open ONBOARDING_REVIEW case, an exporter still in COMPLIANCE_REVIEW.
-        2. The case walks its own permitted transitions via
+        1. Preconditions, before anything is written: a real rationale and an
+           ONBOARDING_REVIEW case.
+        2. Under the per-exporter `_decision_lock`: the case must be open and
+           the exporter still in COMPLIANCE_REVIEW. A pending proposal for the
+           other outcome, made by someone else, is rejected first.
+        3. The case walks its own permitted transitions via
            `CaseLifecycleService`: assign to the reviewer, begin
            investigation, snapshot the evidence, propose, then decide.
-        3. Only once the case is RESOLVED does the exporter's lifecycle move,
+        4. Only once the case is RESOLVED does the exporter's lifecycle move,
            to ONBOARDED on approval or back to DATA_COLLECTION on rejection.
            The lifecycle event is then published.
 
+        Step 3 commits before step 4 (the cases services commit per step). If
+        step 4 fails, the case is RESOLVED and the exporter has not moved.
+        Calling `decide` again with the same outcome finishes the move
+        (`_finish_resolved`) instead of answering 409.
+
         With the two-person rule on, and the caller being the proposer, this
-        stops after step 2's proposal and reports `awaiting_second_reviewer`.
+        stops after step 3's proposal and reports `awaiting_second_reviewer`.
         """
         resolution = _RESOLUTION_FOR[outcome]
         if not rationale or len(rationale.strip()) < MIN_SUBSTANTIVE_NOTE_LENGTH:
@@ -531,66 +645,146 @@ class CaseBridgeService:
                 f"Case '{case_id}' is not an exporter onboarding review",
                 error_code="CASE_NOT_ONBOARDING_REVIEW",
             )
-        if case.case_status in TERMINAL_CASE_STATUSES:
-            raise CaseBridgeConflictError(
-                f"Case '{case_id}' is already {case.case_status.value}",
-                error_code="CASE_IS_TERMINAL",
-            )
         customer_id = case.customer_id
-        profile = await self._profiles.get_by_customer_id(customer_id)
-        if profile is None or profile.lifecycle_status != ExporterLifecycleStatus.COMPLIANCE_REVIEW:
-            raise CaseBridgeConflictError(
-                f"Exporter '{customer_id}' is not in COMPLIANCE_REVIEW",
-                error_code="EXPORTER_NOT_IN_COMPLIANCE_REVIEW",
-            )
 
-        lifecycle = CaseLifecycleService()
-        if case.case_status == CaseStatus.OPEN:
-            case = await lifecycle.assign_case(
-                self._db, case_id, assigned_to=actor_id, actor_id=actor_id, actor_type=actor_type
-            )
-        if case.case_status in (
-            CaseStatus.ASSIGNED,
-            CaseStatus.PENDING_EXTERNAL,
-            CaseStatus.ESCALATED,
-        ):
-            case = await lifecycle.begin_investigation(
-                self._db, case_id, actor_id=actor_id, actor_type=actor_type
-            )
-        if case.case_status == CaseStatus.UNDER_INVESTIGATION:
-            await self._snapshot_evidence(case, actor_id=actor_id, actor_type=actor_type)
-            case = await lifecycle.propose_resolution(
+        async with self._decision_lock(customer_id):
+            # Re-read under the lock: a concurrent decision may just have ended.
+            await self._db.refresh(case)
+            if case.case_status in TERMINAL_CASE_STATUSES:
+                return await self._finish_resolved(case, resolution, actor_id=actor_id)
+            profile = await self._profiles.get_by_customer_id(customer_id)
+            if (
+                profile is None
+                or profile.lifecycle_status != ExporterLifecycleStatus.COMPLIANCE_REVIEW
+            ):
+                raise CaseBridgeConflictError(
+                    f"Exporter '{customer_id}' is not in COMPLIANCE_REVIEW",
+                    error_code="EXPORTER_NOT_IN_COMPLIANCE_REVIEW",
+                )
+
+            lifecycle = CaseLifecycleService(require_two_person=self._require_two_person)
+            proposal_rejected = False
+            if case.case_status == CaseStatus.PENDING_APPROVAL:
+                pending = await self._latest_proposal(case_id)
+                if (
+                    pending is not None
+                    and pending.payload["proposed_resolution_action"] != resolution.value
+                ):
+                    if self._require_two_person and pending.payload["proposed_by"] == actor_id:
+                        raise CaseBridgeConflictError(
+                            f"Case '{case_id}' has your own pending "
+                            f"{pending.payload['proposed_resolution_action']} proposal; a "
+                            f"different reviewer must decide it",
+                            error_code="PROPOSAL_MISMATCH",
+                        )
+                    # The reviewer disagrees with the pending proposal: reject
+                    # it (back to UNDER_INVESTIGATION), then propose theirs.
+                    case = await lifecycle.decide_resolution(
+                        self._db,
+                        case_id,
+                        decision="reject",
+                        checker_id=actor_id,
+                        actor_type=actor_type,
+                        checker_note=rationale,
+                    )
+                    proposal_rejected = True
+
+            if case.case_status == CaseStatus.OPEN:
+                case = await lifecycle.assign_case(
+                    self._db,
+                    case_id,
+                    assigned_to=actor_id,
+                    actor_id=actor_id,
+                    actor_type=actor_type,
+                )
+            if case.case_status in (
+                CaseStatus.ASSIGNED,
+                CaseStatus.PENDING_EXTERNAL,
+                CaseStatus.ESCALATED,
+            ):
+                case = await lifecycle.begin_investigation(
+                    self._db, case_id, actor_id=actor_id, actor_type=actor_type
+                )
+            if case.case_status == CaseStatus.UNDER_INVESTIGATION:
+                await self._snapshot_evidence(case, actor_id=actor_id, actor_type=actor_type)
+                case = await lifecycle.propose_resolution(
+                    self._db,
+                    case_id,
+                    resolution_action=resolution,
+                    resolution_note=rationale,
+                    proposed_by=actor_id,
+                    actor_type=actor_type,
+                )
+
+            # The pending proposal now matches `resolution`: it was just made,
+            # or it already did.
+            proposal = await self._latest_proposal(case_id)
+            if proposal is None:  # pragma: no cover — propose_resolution always writes one
+                raise CaseBridgeConflictError(f"Case '{case_id}' has no proposal to decide")
+            if self._require_two_person and proposal.payload["proposed_by"] == actor_id:
+                return DecisionResult(
+                    case,
+                    profile.lifecycle_status,
+                    awaiting_second_reviewer=True,
+                    proposal_rejected=proposal_rejected,
+                )
+
+            case = await lifecycle.decide_resolution(
                 self._db,
                 case_id,
-                resolution_action=resolution,
-                resolution_note=rationale,
-                proposed_by=actor_id,
+                decision="approve",
+                checker_id=actor_id,
                 actor_type=actor_type,
+                checker_note=rationale,
+            )
+            # The case is resolved; only now does the exporter move.
+            return await self._move_exporter(
+                case, resolution, actor_id=actor_id, proposal_rejected=proposal_rejected
             )
 
-        proposal = await self._latest_proposal(case_id)
-        if proposal is None:  # pragma: no cover — propose_resolution always writes one
-            raise CaseBridgeConflictError(f"Case '{case_id}' has no proposal to decide")
-        if proposal.payload["proposed_resolution_action"] != resolution.value:
-            raise CaseBridgeConflictError(
-                f"Case '{case_id}' has a pending "
-                f"{proposal.payload['proposed_resolution_action']} proposal; "
-                f"{resolution.value} does not match it",
-                error_code="PROPOSAL_MISMATCH",
-            )
-        if REQUIRE_TWO_PERSON_RESOLUTION and proposal.payload["proposed_by"] == actor_id:
-            return DecisionResult(case, profile.lifecycle_status, awaiting_second_reviewer=True)
-
-        case = await lifecycle.decide_resolution(
-            self._db,
-            case_id,
-            decision="approve",
-            checker_id=actor_id,
-            actor_type=actor_type,
-            checker_note=rationale,
+    async def _finish_resolved(
+        self, case: ComplianceCase, resolution: ResolutionAction, *, actor_id: str
+    ) -> DecisionResult:
+        """A terminal case. Normally that is a 409. The exception: the case was
+        RESOLVED with this same outcome, but the exporter move after it never
+        happened (a crash or DB error between the two). Then the exporter is
+        still in COMPLIANCE_REVIEW and has not moved since the resolution, and
+        this call completes the move the resolution already decided."""
+        terminal = CaseBridgeConflictError(
+            f"Case '{case.id}' is already {case.case_status.value}",
+            error_code="CASE_IS_TERMINAL",
         )
+        if case.case_status != CaseStatus.RESOLVED or case.resolution_action != resolution:
+            raise terminal
+        profile = await self._profiles.get_by_customer_id(case.customer_id)
+        if profile is None or profile.lifecycle_status != ExporterLifecycleStatus.COMPLIANCE_REVIEW:
+            raise terminal
+        last_move = await self._db.scalar(
+            select(func.max(ExporterLifecycleHistory.created_at)).where(
+                ExporterLifecycleHistory.customer_id == case.customer_id
+            )
+        )
+        if case.resolved_at is None or (last_move is not None and last_move > case.resolved_at):
+            # The exporter has moved since: this resolution is not the live one.
+            raise terminal
+        logger.warning(
+            "case_bridge.finishing_stranded_resolution",
+            case_id=str(case.id),
+            customer_id=str(case.customer_id),
+            resolution_action=resolution.value,
+            actor_id=actor_id,
+        )
+        return await self._move_exporter(case, resolution, actor_id=actor_id)
 
-        # The case is resolved; only now does the exporter move.
+    async def _move_exporter(
+        self,
+        case: ComplianceCase,
+        resolution: ResolutionAction,
+        *,
+        actor_id: str,
+        proposal_rejected: bool = False,
+    ) -> DecisionResult:
+        customer_id = case.customer_id
         to_status = _LIFECYCLE_AFTER[resolution]
         profile = await ExporterProfileService(self._db).transition_lifecycle_status(
             customer_id, to_status, actor_id=actor_id, compliance_authorized=True
@@ -603,13 +797,18 @@ class CaseBridgeService:
         )
         logger.info(
             "case_bridge.decided",
-            case_id=str(case_id),
+            case_id=str(case.id),
             customer_id=str(customer_id),
             resolution_action=resolution.value,
             lifecycle_status=to_status.value,
             actor_id=actor_id,
         )
-        return DecisionResult(case, profile.lifecycle_status, awaiting_second_reviewer=False)
+        return DecisionResult(
+            case,
+            profile.lifecycle_status,
+            awaiting_second_reviewer=False,
+            proposal_rejected=proposal_rejected,
+        )
 
     async def _latest_proposal(self, case_id: uuid.UUID) -> CaseTimelineEvent | None:
         return await self._db.scalar(
@@ -618,8 +817,84 @@ class CaseBridgeService:
                 CaseTimelineEvent.case_id == case_id,
                 CaseTimelineEvent.event_type == TimelineEventType.APPROVAL_REQUESTED,
             )
-            .order_by(CaseTimelineEvent.occurred_at.desc())
+            .order_by(CaseTimelineEvent.occurred_at.desc(), CaseTimelineEvent.id.desc())
             .limit(1)
+        )
+
+    # ── Send-back ───────────────────────────────────────────────────────────
+
+    async def send_back(
+        self, customer_id: uuid.UUID, *, actor_id: str, actor_type: ActorType
+    ) -> ExporterProfile:
+        """COMPLIANCE_REVIEW -> DATA_COLLECTION through the lifecycle route, for a
+        compliance caller. The open case is closed (`CLOSED_WITHOUT_ACTION`)
+        first, then the exporter moves, both under `_decision_lock`.
+
+        Closing first is deliberate. If the move then fails, the exporter is
+        still in review with no open case, and `ensure_review_case` opens a new
+        one on the next attempt. The other order could leave an open case
+        against an exporter that has left review, with no way to close it.
+        """
+        async with self._decision_lock(customer_id):
+            lifecycle_status = await self._db.scalar(
+                select(ExporterProfile.lifecycle_status).where(
+                    ExporterProfile.customer_id == customer_id
+                )
+            )
+            case = (
+                await self.open_review_case_for(customer_id)
+                if lifecycle_status == ExporterLifecycleStatus.COMPLIANCE_REVIEW
+                else None
+            )
+            if case is not None:
+                await self._close_for_send_back(case, actor_id=actor_id, actor_type=actor_type)
+            # Not in COMPLIANCE_REVIEW: the service raises its usual 404/409.
+            return await ExporterProfileService(self._db).transition_lifecycle_status(
+                customer_id,
+                ExporterLifecycleStatus.DATA_COLLECTION,
+                actor_id=actor_id,
+                compliance_authorized=True,
+            )
+
+    async def _close_for_send_back(
+        self, case: ComplianceCase, *, actor_id: str, actor_type: ActorType
+    ) -> None:
+        if case.case_status == CaseStatus.PENDING_APPROVAL:
+            raise CaseBridgeConflictError(
+                f"Exporter '{case.customer_id}' has a resolution pending approval on "
+                f"case {case.case_reference}; decide it on the case "
+                f"(POST /compliance-cases/{case.id}/decision)",
+                error_code="CASE_PENDING_APPROVAL",
+            )
+        lifecycle = CaseLifecycleService(require_two_person=self._require_two_person)
+        if case.case_status == CaseStatus.OPEN:
+            case = await lifecycle.assign_case(
+                self._db, case.id, assigned_to=actor_id, actor_id=actor_id, actor_type=actor_type
+            )
+        if case.case_status in (
+            CaseStatus.ASSIGNED,
+            CaseStatus.PENDING_EXTERNAL,
+            CaseStatus.ESCALATED,
+        ):
+            case = await lifecycle.begin_investigation(
+                self._db, case.id, actor_id=actor_id, actor_type=actor_type
+            )
+        await lifecycle.close_case_without_action(
+            self._db,
+            case.id,
+            actor_id=actor_id,
+            actor_type=actor_type,
+            reason=(
+                f"Closed without a case decision: the exporter was sent back from "
+                f"COMPLIANCE_REVIEW to DATA_COLLECTION through the lifecycle route by "
+                f"{actor_id}."
+            ),
+        )
+        logger.info(
+            "case_bridge.closed_for_send_back",
+            case_id=str(case.id),
+            customer_id=str(case.customer_id),
+            actor_id=actor_id,
         )
 
 

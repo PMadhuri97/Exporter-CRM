@@ -20,6 +20,10 @@ import psycopg2.extras
 import pytest
 from httpx import AsyncClient
 
+from app.modules.onboarding.application.case_bridge_service import CaseBridgeConflictError
+from app.modules.onboarding.application.exporter_profile_service import (
+    ExporterProfileService,
+)
 from app.modules.onboarding.tests.fixtures.auth import auth_header, user_with_role
 from app.platform.authentication.models import UserRole
 from app.platform.configuration.config import get_settings
@@ -51,6 +55,19 @@ def _rows(query: str, params: tuple) -> list[dict]:
             return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
+
+
+def _hold_decision_lock(customer_id: str):
+    """A connection holding the bridge's per-exporter decision lock, as a
+    concurrent decision would. Closing it releases the lock."""
+    url = get_settings().DATABASE_SYNC_URL.replace("postgresql+psycopg2://", "postgresql://")
+    conn = psycopg2.connect(url)
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT pg_advisory_lock(hashtext(%s))",
+            (f"onboarding-review-decision:{customer_id}",),
+        )
+    return conn
 
 
 def _cases_for(customer_id: str) -> list[dict]:
@@ -246,11 +263,16 @@ async def test_entering_compliance_review_creates_exactly_one_linked_case(
     await bus.publish(entry)
     assert len(_cases_for(customer_id)) == 1
 
-    # Sent back and resubmitted while the case is still open: it joins that case.
+    # Sent back: the open case is closed first, so none is left dangling
+    # against an exporter that has left review. Resubmitting opens a new one.
     assert (await _move(client, token, customer_id, "DATA_COLLECTION")).status_code == 200
+    [closed] = _cases_for(customer_id)
+    assert closed["case_status"] == "CLOSED_WITHOUT_ACTION"
     for to_status in ("VERIFICATION_IN_PROGRESS", "COMPLIANCE_REVIEW"):
         assert (await _move(client, ops_token, customer_id, to_status)).status_code == 200
-    assert len(_cases_for(customer_id)) == 1
+    first, second = _cases_for(customer_id)
+    assert first["id"] == closed["id"]
+    assert second["case_status"] == "OPEN"
 
 
 async def test_a_case_starts_with_the_evidence_already_on_file(
@@ -447,6 +469,170 @@ async def test_the_evidence_snapshot_does_not_change_when_a_later_item_arrives(
     assert decided.status_code == 200, decided.text
     assert decided.json()["exporter_lifecycle_status"] == "ONBOARDED"
     assert (await _detail(client, maker, case_id))["evidence_snapshot"] == snapshot
+
+
+# ── Hardening: no bypass, no stranding, no races ────────────────────────────
+
+
+async def test_direct_onboarding_is_refused_without_a_case_and_opens_one(
+    client: AsyncClient, bus: InMemoryEventBus, compliance: tuple[str, str], ops_token: str
+):
+    """The bus is best-effort. A lost event must not become a way to onboard
+    without a case: the move is refused anyway, and the case opened then."""
+    _, token = compliance
+    customer_id = await _create_exporter(client, ops_token)
+    for to_status in ("CONTACTED", "DATA_COLLECTION", "VERIFICATION_IN_PROGRESS"):
+        assert (await _move(client, ops_token, customer_id, to_status)).status_code == 200
+    set_event_bus(_ExplodingBus())
+    try:
+        entered = await _move(client, ops_token, customer_id, "COMPLIANCE_REVIEW")
+    finally:
+        set_event_bus(bus)
+    assert entered.status_code == 200, entered.text
+    assert _cases_for(customer_id) == []
+
+    resp = await _move(client, token, customer_id, "ONBOARDED")
+
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error_code"] == "ONBOARDING_DECIDED_BY_CASE"
+    assert _lifecycle_rows(customer_id)[-1]["to_status"] == "COMPLIANCE_REVIEW"
+    [case] = _cases_for(customer_id)
+    assert case["case_status"] == "OPEN"
+    assert case["originating_event_id"] is None
+    assert case["case_reference"] in resp.json()["detail"]
+
+    decided = await _decide(client, token, str(case["id"]))
+    assert decided.status_code == 200, decided.text
+    assert decided.json()["exporter_lifecycle_status"] == "ONBOARDED"
+
+
+async def test_a_decision_interrupted_after_resolving_is_finished_by_repeating_it(
+    client: AsyncClient,
+    bus: InMemoryEventBus,
+    compliance: tuple[str, str],
+    ops_token: str,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _, token = compliance
+    customer_id = await _create_exporter(client, ops_token)
+    await _walk_to_compliance_review(client, ops_token, customer_id)
+    case_id = str(_cases_for(customer_id)[0]["id"])
+
+    async def _fail(*args, **kwargs):
+        raise CaseBridgeConflictError("simulated failure after the case resolved")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ExporterProfileService, "transition_lifecycle_status", _fail)
+        failed = await _decide(client, token, case_id)
+    assert failed.status_code == 409, failed.text
+    [stranded] = _cases_for(customer_id)
+    assert stranded["case_status"] == "RESOLVED"
+    assert _lifecycle_rows(customer_id)[-1]["to_status"] == "COMPLIANCE_REVIEW"
+
+    # The other outcome cannot ride on this resolution.
+    other = await _decide(client, token, case_id, outcome="REJECT")
+    assert other.status_code == 409, other.text
+    assert other.json()["error_code"] == "CASE_IS_TERMINAL"
+
+    finished = await _decide(client, token, case_id)
+    assert finished.status_code == 200, finished.text
+    assert finished.json()["exporter_lifecycle_status"] == "ONBOARDED"
+    assert _lifecycle_rows(customer_id)[-1]["to_status"] == "ONBOARDED"
+    assert _cases_for(customer_id)[0]["resolved_at"] == stranded["resolved_at"]
+
+    # Once the exporter has moved, the resolution is spent.
+    again = await _decide(client, token, case_id)
+    assert again.status_code == 409, again.text
+
+
+async def test_a_decision_already_in_progress_is_refused(
+    client: AsyncClient, bus: InMemoryEventBus, compliance: tuple[str, str], ops_token: str
+):
+    _, token = compliance
+    customer_id = await _create_exporter(client, ops_token)
+    await _walk_to_compliance_review(client, ops_token, customer_id)
+    case_id = str(_cases_for(customer_id)[0]["id"])
+
+    conn = _hold_decision_lock(customer_id)
+    try:
+        decided = await _decide(client, token, case_id)
+        sent_back = await _move(client, token, customer_id, "DATA_COLLECTION")
+    finally:
+        conn.close()
+
+    for resp in (decided, sent_back):
+        assert resp.status_code == 409, resp.text
+        assert resp.json()["error_code"] == "DECISION_IN_PROGRESS"
+    assert _cases_for(customer_id)[0]["case_status"] == "OPEN"
+    assert _lifecycle_rows(customer_id)[-1]["to_status"] == "COMPLIANCE_REVIEW"
+
+    assert (await _decide(client, token, case_id)).status_code == 200
+
+
+async def test_a_second_reviewer_who_disagrees_rejects_the_proposal_and_proposes_theirs(
+    client: AsyncClient,
+    bus: InMemoryEventBus,
+    compliance: tuple[str, str],
+    ops_token: str,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    for flag in TWO_PERSON_FLAGS:
+        monkeypatch.setattr(flag, True)
+    maker_id, maker = compliance
+    _, checker = await user_with_role(client, UserRole.ADMIN)
+    customer_id = await _create_exporter(client, ops_token)
+    await _walk_to_compliance_review(client, ops_token, customer_id)
+    case_id = str(_cases_for(customer_id)[0]["id"])
+    assert (await _decide(client, maker, case_id)).json()["awaiting_second_reviewer"] is True
+
+    # A send-back cannot jump a pending decision.
+    blocked = await _move(client, maker, customer_id, "DATA_COLLECTION")
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["error_code"] == "CASE_PENDING_APPROVAL"
+    # Nor can the maker overturn their own proposal.
+    own = await _decide(client, maker, case_id, outcome="REJECT")
+    assert own.status_code == 409, own.text
+    assert own.json()["error_code"] == "PROPOSAL_MISMATCH"
+
+    countered = await _decide(client, checker, case_id, outcome="REJECT")
+
+    assert countered.status_code == 200, countered.text
+    body = countered.json()
+    assert body["proposal_rejected"] is True
+    assert body["awaiting_second_reviewer"] is True
+    assert body["case"]["case_status"] == "PENDING_APPROVAL"
+    assert body["exporter_lifecycle_status"] == "COMPLIANCE_REVIEW"
+    timeline = [e["event_type"] for e in (await _detail(client, maker, case_id))["timeline"]]
+    assert "APPROVAL_REJECTED" in timeline
+
+    # The counter-proposal needs someone other than the checker: the maker.
+    decided = await _decide(client, maker, case_id, outcome="REJECT")
+    assert decided.status_code == 200, decided.text
+    assert decided.json()["case"]["resolution_action"] == "REJECT_ONBOARDING"
+    assert decided.json()["case"]["resolved_by"] == maker_id
+    assert decided.json()["exporter_lifecycle_status"] == "DATA_COLLECTION"
+
+
+async def test_redelivered_evidence_is_not_added_twice(
+    client: AsyncClient, bus: InMemoryEventBus, compliance: tuple[str, str], ops_token: str
+):
+    _, token = compliance
+    customer_id = await _create_exporter(client, ops_token)
+    await _walk_to_compliance_review(client, ops_token, customer_id)
+    case_id = str(_cases_for(customer_id)[0]["id"])
+    await _screening_decision(client, token, customer_id, "website-reviewed")
+    [event] = [
+        e
+        for e in bus.events_of_type(EventType.EXPORTER_SCREENING_REVIEW_UPDATED)
+        if e.payload["customer_id"] == customer_id
+    ]
+    assert len((await _detail(client, token, case_id))["evidence_items"]) == 1
+
+    # A new event_id gets past processed_events, as a redelivery does when the
+    # consumer died between the evidence commit and marking the event done.
+    await bus.publish(event.model_copy(update={"event_id": str(uuid.uuid4())}))
+
+    assert len((await _detail(client, token, case_id))["evidence_items"]) == 1
 
 
 # ── B1: evidence package ────────────────────────────────────────────────────

@@ -42,6 +42,7 @@ from app.modules.onboarding.domain.entities import (  # noqa: F401
     PersonProfile,
     Verification,
 )
+from app.modules.onboarding.events.case_bridge_consumer import ensure_case_bridge_subscribed
 from app.modules.payments.domain.entities.payments import (  # noqa: F401
     IdempotencyKey,
     Transaction,
@@ -118,6 +119,11 @@ def register_consumers(bus: EventBus) -> None:
             consumer_group=consumer.group,
             topics=[t.value for t in consumer.topics],
         )
+    # The onboarding -> cases bridge. Not in ALL_CONSUMERS because the onboarding
+    # publisher also attaches it lazily to an in-memory bus; this shared helper
+    # keeps it to one subscription per bus. Here, before bus.start(), is the
+    # only place a Kafka bus picks it up.
+    ensure_case_bridge_subscribed(bus)
 
     # epic4-reference: the real bootstrap.py also registers the rails routing
     # engine's in-memory circuit-breaker consumer here

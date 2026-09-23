@@ -102,12 +102,38 @@ async def test_a_failing_bus_is_swallowed_for_every_exporter_event():
     assert bus.attempts == 3
 
 
-async def test_case_bridge_subscribes_once_per_bus():
-    bus = _ExplodingBus()
+async def test_case_bridge_subscribes_once_per_in_memory_bus():
+    bus = InMemoryEventBus()
 
     OnboardingEventPublisher(bus)
     OnboardingEventPublisher(bus)
     ensure_case_bridge_subscribed(bus)
+
+    [(group, _)] = bus._subscriptions[Topic.CUSTOMER]
+    assert group == CASE_BRIDGE_GROUP
+
+
+async def test_the_publisher_does_not_attach_the_bridge_to_a_broker_bus():
+    """Kafka starts one consumer per group subscribed before bus.start(). A
+    group added later by the publisher would look attached and never run, so
+    the lazy path leaves any bus other than the in-memory one alone."""
+    bus = _ExplodingBus()
+
+    OnboardingEventPublisher(bus)
+
+    assert bus.subscriptions == []
+
+
+async def test_startup_registration_attaches_the_bridge_once(monkeypatch):
+    """bootstrap.register_consumers is the Kafka path: before bus.start()."""
+    from app import bootstrap
+
+    monkeypatch.setattr(bootstrap, "ALL_CONSUMERS", ())
+    bus = _ExplodingBus()
+
+    bootstrap.register_consumers(bus)
+    bootstrap.register_consumers(bus)
+    OnboardingEventPublisher(bus)
 
     assert bus.subscriptions == [CASE_BRIDGE_GROUP]
 
@@ -115,6 +141,7 @@ async def test_case_bridge_subscribes_once_per_bus():
 async def test_a_bus_that_refuses_the_subscription_still_yields_a_publisher():
     bus = _UnsubscribableBus()
 
+    ensure_case_bridge_subscribed(bus)  # logged, not raised
     publisher = OnboardingEventPublisher(bus)
     await publisher.exporter_lifecycle_changed(
         customer_id=uuid.uuid4(), from_status=None, to_status="LEAD", actor_id=None
