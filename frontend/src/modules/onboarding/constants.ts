@@ -86,6 +86,19 @@ export const STAGE_GROUP_CHIP_CLASSES: Record<StageGroup, string> = {
  * one place so EXP-F6 and the future EXP-F10 kanban share the exact same
  * definition of a legal move. Drift risk: when the backend graph changes,
  * this constant must change with it until the API exposes the graph as data.
+ *
+ * SOURCE OF TRUTH: `backend/app/modules/onboarding/application/
+ * exporter_profile_service.py:99-122` — a `frozenset` of
+ * `(from_status, to_status)` pairs, checked in exactly one place
+ * (`transition_lifecycle_status`). Verified edge-for-edge identical to the 13
+ * edges below as of 2026-09-23.
+ *
+ * This duplication is deliberate but temporary. An endpoint exposing the graph
+ * as data is planned; when it lands, consume it and delete this constant
+ * rather than maintaining two copies. Until then, any change to the backing
+ * `frozenset` must be mirrored here in the same commit — nothing enforces
+ * that automatically, and a drifted copy shows officers moves the backend
+ * will reject.
  */
 export const PERMITTED_LIFECYCLE_TRANSITIONS: Record<
   ExporterLifecycleStatus,

@@ -39,11 +39,14 @@ from app.modules.onboarding.domain.workflow_dependencies import (
     VerificationOutcome,
     register_adapter,
 )
-from app.modules.onboarding.exceptions import VerificationResultAlreadyReviewedError
+from app.modules.onboarding.exceptions import (
+    VerificationResultAlreadyReviewedError,
+    VerificationResultNotReviewableError,
+)
 from app.platform.database import services as db_services
 from app.shared.contracts.kyb import VendorHealthStatus
 from app.shared.enums.kyb import KYBVendorProcessingMode, VendorHealthStatusEnum
-from app.shared.exceptions import NotFoundError
+from app.shared.exceptions import NotFoundError, ValidationError
 
 
 def _actor() -> str:
@@ -441,6 +444,30 @@ async def test_record_review_rejects_a_second_review_with_conflicting_outcome():
     assert refreshed.review_status is VerificationReviewStatus.ACCEPTED
 
 
+async def test_record_review_refuses_a_pending_result():
+    """A PENDING check has no finding yet, and a review is permanent — so the
+    service refuses it rather than locking in a decision about nothing. The
+    UI hides the controls; this is the rule an API client hits."""
+    async with db_services.AsyncSessionLocal() as db:
+        svc = VerificationService(db)
+        triggered = await svc.trigger_verification(
+            VerificationType.KYB, VerificationEntityType.EXPORTER, uuid.uuid4(),
+            payload={"status": "PENDING"}, actor_id=_actor(),
+        )
+        assert triggered.status is VerificationResultStatus.PENDING
+
+        with pytest.raises(VerificationResultNotReviewableError):
+            await svc.record_review(
+                triggered.id, reviewed_by="compliance_officer_1",
+                review_status=VerificationReviewStatus.ACCEPTED,
+            )
+
+    async with db_services.AsyncSessionLocal() as db:
+        refreshed = await db.get(type(triggered), triggered.id)
+    assert refreshed.reviewed_by is None
+    assert refreshed.review_status is None
+
+
 async def test_record_review_raises_not_found_for_unknown_id():
     async with db_services.AsyncSessionLocal() as db:
         svc = VerificationService(db)
@@ -448,4 +475,25 @@ async def test_record_review_raises_not_found_for_unknown_id():
             await svc.record_review(
                 uuid.uuid4(), reviewed_by="someone",
                 review_status=VerificationReviewStatus.ACCEPTED,
+            )
+
+
+# ── verification_type / entity_type cross-validation ─────────────────────────
+#
+# The pair table itself is unit-tested in
+# `tests/unit/test_verification_type_pairs.py`; this is the service wiring.
+
+
+async def test_trigger_verification_rejects_an_uninterpretable_pair():
+    """The service rejects before resolving or calling any adapter."""
+    async with db_services.AsyncSessionLocal() as db:
+        svc = VerificationService(db)
+        with pytest.raises(ValidationError):
+            await svc.trigger_verification(
+                VerificationType.VESSEL,
+                VerificationEntityType.DIRECTOR,
+                uuid.uuid4(),
+                provider="manual",
+                payload={"status": "PASSED"},
+                actor_id=uuid.uuid4(),
             )

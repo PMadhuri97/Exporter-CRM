@@ -364,6 +364,30 @@ class VerificationResultAlreadyReviewedError(AnerBaseException):
         self.verification_result_id = verification_result_id
 
 
+class VerificationResultNotReviewableError(AnerBaseException):
+    """The `VerificationResult` is still `PENDING`: no finding exists yet to
+    accept, reject or escalate.
+
+    A recorded review is permanent (see
+    :class:`VerificationResultAlreadyReviewedError`), so reviewing a check that
+    has not produced a result would lock in a decision about nothing — and
+    placeholder rows created without a provider stay `PENDING` forever. The UI
+    hides the review controls for these rows; this is the server-side rule, so
+    an API client cannot do it either.
+    """
+
+    def __init__(self, *, verification_result_id: object) -> None:
+        super().__init__(
+            detail=(
+                "VerificationResult is still PENDING and cannot be reviewed until it "
+                f"resolves (verification_result_id={verification_result_id})."
+            ),
+            error_code="VERIFICATION_RESULT_NOT_REVIEWABLE",
+            status_code=409,
+        )
+        self.verification_result_id = verification_result_id
+
+
 class OnboardingStatusConflictError(AnerBaseException):
     """The request is not in the status the transition expected, and the transition
     has not already been applied. Nothing is written."""

@@ -45,7 +45,9 @@ def _case_body() -> dict:
 
 def _trigger_body() -> dict:
     return {
-        "verification_type": "KYC",
+        # KYB, not KYC: KYC is a check on a person, and the service rejects a
+        # KYC/EXPORTER pair (422) before the route gate under test matters.
+        "verification_type": "KYB",
         "entity_type": "EXPORTER",
         "entity_reference": str(uuid.uuid4()),
         "provider": "manual",

@@ -644,13 +644,55 @@ def register_adapter(name: str, adapter_cls: type[VerificationAdapter]) -> None:
     VERIFICATION_ADAPTER_REGISTRY[name] = adapter_cls
 
 
+#: Packages a dotted-path adapter may be imported from.
+#:
+#: ``get_adapter``'s dotted fallback imports a caller-supplied module and hands
+#: back the attribute it names, which ``VerificationService`` then *calls*
+#: (``adapter_cls()``). ``provider`` reaches that call straight from the request
+#: body, so an unrestricted path is caller-chosen import-and-invoke. Adapters
+#: live in exactly two packages; nothing outside them is a legitimate target.
+#:
+#: Kept byte-identical to ``kyb.domain.ports.ADAPTER_MODULE_ALLOWLIST`` — EXP-2
+#: specifies this registry as a straight copy of kyb's, so the two must not
+#: drift in what they admit.
+ADAPTER_MODULE_ALLOWLIST: tuple[str, ...] = (
+    "app.modules.onboarding.infrastructure.adapters",
+    "app.modules.kyb.infrastructure.adapters",
+)
+
+
+def _module_is_allowlisted(module_name: str) -> bool:
+    """True if ``module_name`` is an allowlisted package or a submodule of one.
+
+    Compares against ``prefix + "."`` rather than a bare ``startswith`` so a
+    sibling named ``...adapters_injected`` cannot ride in on the prefix.
+    """
+    return any(
+        module_name == prefix or module_name.startswith(f"{prefix}.")
+        for prefix in ADAPTER_MODULE_ALLOWLIST
+    )
+
+
 def get_adapter(class_path: str) -> type[VerificationAdapter]:
     if class_path in VERIFICATION_ADAPTER_REGISTRY:
         return VERIFICATION_ADAPTER_REGISTRY[class_path]
     if "." in class_path:
         module_name, class_name = class_path.rsplit(".", 1)
+        if not _module_is_allowlisted(module_name):
+            raise ValueError(
+                f"Verification adapter class {class_path} is not in registry and "
+                f"module {module_name} is not an allowlisted adapter package"
+            )
         module = importlib.import_module(module_name)
-        return getattr(module, class_name)
+        resolved = getattr(module, class_name, None)
+        # An allowlisted module still exposes imports, constants and helpers.
+        # Only an adapter class may come back out of here, because the caller
+        # instantiates whatever this returns.
+        if not isinstance(resolved, type) or not issubclass(resolved, VerificationAdapter):
+            raise ValueError(
+                f"Verification adapter class {class_path} is not a VerificationAdapter"
+            )
+        return resolved
     raise ValueError(
         f"Verification adapter class {class_path} not found in registry and not fully qualified"
     )

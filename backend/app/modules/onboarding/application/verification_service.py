@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.modules.onboarding.infrastructure.adapters  # noqa: F401
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
+    VerificationResultStatus,
     VerificationReviewStatus,
     VerificationType,
 )
@@ -58,6 +59,7 @@ from app.modules.onboarding.domain.workflow_dependencies import (
 from app.modules.onboarding.exceptions import (
     ProviderCapabilityError,
     VerificationResultAlreadyReviewedError,
+    VerificationResultNotReviewableError,
 )
 from app.shared.exceptions import NotFoundError, ValidationError
 
@@ -66,6 +68,152 @@ logger = structlog.get_logger(__name__)
 
 def _as_uuid(value: uuid.UUID | str) -> uuid.UUID:
     return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+
+
+# ── verification_type / entity_type cross-validation ─────────────────────────
+#
+# `VerificationType` (what kind of check) and `VerificationEntityType` (what
+# kind of subject) are independent axes, and four names — BUYER, INVOICE,
+# VESSEL, SHIPMENT — appear on both with *different* meanings. Nothing used to
+# validate the pair, so `verification_type=VESSEL, entity_type=DIRECTOR` was
+# accepted and persisted as a row no reader could interpret.
+#
+# Deliberately permissive: a check billed against the exporter is legitimate
+# for every check type (that is how trade-object checks are commissioned —
+# the exporter is the customer of record), so EXPORTER appears nearly
+# everywhere. What this blocks is only the genuinely uninterpretable, such as
+# a VESSEL check on a DIRECTOR or a GST lookup on a SHIPMENT.
+#
+# Kept as a table rather than `if` branches on purpose: `trigger_verification`
+# must stay free of `verification_type` branching (EXP-2's central acceptance
+# criterion, proven structurally by
+# `tests/unit/test_verification_service_no_branching.py`). The service calls
+# `_validate_type_pair` and never inspects the type itself.
+_VALID_ENTITY_TYPES_FOR_CHECK: dict[
+    VerificationType, frozenset[VerificationEntityType]
+] = {
+    # Identity / entity checks.
+    VerificationType.KYC: frozenset(
+        {VerificationEntityType.DIRECTOR, VerificationEntityType.BUYER}
+    ),
+    VerificationType.KYB: frozenset(
+        {VerificationEntityType.EXPORTER, VerificationEntityType.BUYER}
+    ),
+    # Screening checks — run against any legal or natural person.
+    VerificationType.AML: frozenset(
+        {
+            VerificationEntityType.EXPORTER,
+            VerificationEntityType.BUYER,
+            VerificationEntityType.DIRECTOR,
+        }
+    ),
+    VerificationType.CFT: frozenset(
+        {
+            VerificationEntityType.EXPORTER,
+            VerificationEntityType.BUYER,
+            VerificationEntityType.DIRECTOR,
+        }
+    ),
+    VerificationType.SANCTIONS: frozenset(
+        {
+            VerificationEntityType.EXPORTER,
+            VerificationEntityType.BUYER,
+            VerificationEntityType.DIRECTOR,
+        }
+    ),
+    VerificationType.PEP: frozenset(
+        {
+            VerificationEntityType.EXPORTER,
+            VerificationEntityType.BUYER,
+            VerificationEntityType.DIRECTOR,
+        }
+    ),
+    VerificationType.ADVERSE_MEDIA: frozenset(
+        {
+            VerificationEntityType.EXPORTER,
+            VerificationEntityType.BUYER,
+            VerificationEntityType.DIRECTOR,
+        }
+    ),
+    # Registry / statutory lookups — about an organisation, never a person.
+    VerificationType.COMPANY_REGISTRY: frozenset(
+        {VerificationEntityType.EXPORTER, VerificationEntityType.BUYER}
+    ),
+    VerificationType.UBO: frozenset(
+        {VerificationEntityType.EXPORTER, VerificationEntityType.BUYER}
+    ),
+    VerificationType.GST: frozenset(
+        {VerificationEntityType.EXPORTER, VerificationEntityType.BUYER}
+    ),
+    VerificationType.IEC: frozenset(
+        {VerificationEntityType.EXPORTER, VerificationEntityType.BUYER}
+    ),
+    VerificationType.BANK_ACCOUNT: frozenset(
+        {VerificationEntityType.EXPORTER, VerificationEntityType.BUYER}
+    ),
+    # Counterparty check — the BUYER *check*, not the BUYER *subject*.
+    VerificationType.BUYER: frozenset(
+        {VerificationEntityType.BUYER, VerificationEntityType.EXPORTER}
+    ),
+    # Trade-object checks. The subject is the object itself, or the exporter
+    # the check was commissioned for.
+    VerificationType.INVOICE: frozenset(
+        {VerificationEntityType.INVOICE, VerificationEntityType.EXPORTER}
+    ),
+    VerificationType.INVOICE_DUPLICATION: frozenset(
+        {VerificationEntityType.INVOICE, VerificationEntityType.EXPORTER}
+    ),
+    VerificationType.SHIPMENT: frozenset(
+        {
+            VerificationEntityType.SHIPMENT,
+            VerificationEntityType.INVOICE,
+            VerificationEntityType.EXPORTER,
+        }
+    ),
+    VerificationType.VESSEL: frozenset(
+        {
+            VerificationEntityType.VESSEL,
+            VerificationEntityType.SHIPMENT,
+            VerificationEntityType.EXPORTER,
+        }
+    ),
+    VerificationType.INSURANCE: frozenset(
+        {
+            VerificationEntityType.INVOICE,
+            VerificationEntityType.SHIPMENT,
+            VerificationEntityType.EXPORTER,
+        }
+    ),
+}
+
+# `VerificationType` is documented as extended additively (new member + new
+# migration). A new member with no entry above would raise KeyError from
+# whichever request happened to use it first; this turns that into an
+# import-time failure with a name in it.
+_UNMAPPED_CHECK_TYPES = set(VerificationType) - set(_VALID_ENTITY_TYPES_FOR_CHECK)
+if _UNMAPPED_CHECK_TYPES:  # pragma: no cover — guards a source edit, not input
+    raise RuntimeError(
+        "_VALID_ENTITY_TYPES_FOR_CHECK is missing an entry for: "
+        + ", ".join(sorted(t.value for t in _UNMAPPED_CHECK_TYPES))
+    )
+
+
+def _validate_type_pair(
+    verification_type: VerificationType,
+    entity_type: VerificationEntityType,
+) -> None:
+    """Reject a check/subject pair that cannot be meaningfully interpreted.
+
+    Raises:
+        ValidationError: `entity_type` is not a valid subject for this check.
+    """
+    permitted = _VALID_ENTITY_TYPES_FOR_CHECK[verification_type]
+    if entity_type not in permitted:
+        raise ValidationError(
+            f"verification_type '{verification_type.value}' cannot be run "
+            f"against entity_type '{entity_type.value}' — valid subjects are: "
+            + ", ".join(sorted(e.value for e in permitted))
+        )
 
 
 def _result_from_outcome(
@@ -144,6 +292,10 @@ class VerificationService:
         Returns:
             The persisted, refreshed `VerificationResult`.
         """
+        # Before the adapter is resolved or called: a pair this service
+        # cannot interpret must not reach a provider or a row.
+        _validate_type_pair(verification_type, entity_type)
+
         adapter_cls = get_adapter(provider)
         adapter = adapter_cls()
 
@@ -217,6 +369,12 @@ class VerificationService:
         """
         if not requests:
             raise ValidationError("trigger_verification_batch requires at least one request")
+
+        # Validated up front, before the adapter is called, so an
+        # uninterpretable pair anywhere in the batch fails the whole batch
+        # rather than being rejected after a provider has already done work.
+        for candidate in requests:
+            _validate_type_pair(candidate.verification_type, candidate.entity_type)
 
         adapter_cls = get_adapter(provider)
         adapter = adapter_cls()
@@ -355,6 +513,8 @@ class VerificationService:
         Raises:
             NotFoundError: no such `VerificationResult`.
             VerificationResultAlreadyReviewedError: already reviewed.
+            VerificationResultNotReviewableError: still `PENDING` — there is
+                no finding yet, and a review cannot be undone.
         """
         result_id = _as_uuid(verification_result_id)
         stmt = (
@@ -369,6 +529,9 @@ class VerificationService:
 
         if result.reviewed_by is not None or result.review_status is not None:
             raise VerificationResultAlreadyReviewedError(verification_result_id=result_id)
+
+        if result.status == VerificationResultStatus.PENDING:
+            raise VerificationResultNotReviewableError(verification_result_id=result_id)
 
         result.reviewed_by = reviewed_by
         result.review_status = review_status

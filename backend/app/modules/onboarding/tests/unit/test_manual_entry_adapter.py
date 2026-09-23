@@ -100,7 +100,7 @@ def test_verify_rejects_invalid_status_value():
 def test_verify_rejects_invalid_risk_level_value():
     adapter = ManualEntryAdapter()
     with pytest.raises(InvalidProviderPayloadError, match="risk_level"):
-        adapter.verify(_request(status="PASSED", risk_level="CRITICAL"))  # not a member
+        adapter.verify(_request(status="PASSED", risk_level="NOT_A_REAL_RISK"))
 
 
 def test_verify_rejects_non_datetime_valid_until():

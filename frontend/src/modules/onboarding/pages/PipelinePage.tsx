@@ -54,7 +54,12 @@ export function legalDropTargetForGroup(
     (status) => STATUS_TO_STAGE_GROUP[status] === targetGroup,
   );
 
-  return matches.length === 1 ? matches[0] : null;
+  // Destructured rather than `matches[0]`: under `noUncheckedIndexedAccess`
+  // an index read stays `| undefined` no matter what `matches.length` was
+  // just checked to be, so this states the "exactly one" condition in a
+  // form the compiler can actually follow.
+  const [match, ...rest] = matches;
+  return match !== undefined && rest.length === 0 ? match : null;
 }
 
 export function legalDropGroups(

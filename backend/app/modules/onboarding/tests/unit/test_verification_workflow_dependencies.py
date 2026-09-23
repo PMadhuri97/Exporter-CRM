@@ -207,13 +207,54 @@ def test_get_adapter_raises_for_unknown_unqualified_name():
         get_adapter("no_such_verification_adapter")
 
 
-def test_get_adapter_resolves_fully_qualified_class_path_when_unregistered():
-    """The registry falls back to importing a dotted class path — the same
-    escape hatch `kyb.domain.ports.get_adapter` provides."""
-    assert "tests.unit.test_verification_workflow_dependencies._DummyAdapter" not in (
-        VERIFICATION_ADAPTER_REGISTRY
+def test_get_adapter_rejects_fully_qualified_path_outside_adapter_allowlist():
+    """The dotted-path escape hatch is confined to the adapter packages.
+
+    This test previously pinned the opposite: that *any* dotted path resolved,
+    including this very test module's `_DummyAdapter`. That fallback imported a
+    caller-supplied module and returned a caller-named attribute, which
+    `VerificationService` then instantiates (`adapter_cls()`) with `provider`
+    arriving straight from the request body. The path below is exactly the one
+    that used to resolve, kept here so the narrowing stays pinned.
+    """
+    path = (
+        "app.modules.onboarding.tests.unit."
+        "test_verification_workflow_dependencies._DummyAdapter"
     )
-    resolved = get_adapter(
-        "app.modules.onboarding.tests.unit.test_verification_workflow_dependencies._DummyAdapter"
+    assert path not in VERIFICATION_ADAPTER_REGISTRY
+    with pytest.raises(ValueError, match="not an allowlisted adapter package"):
+        get_adapter(path)
+
+
+def test_get_adapter_resolves_fully_qualified_path_inside_adapter_allowlist():
+    """The escape hatch still works for adapters that live where adapters live
+    — restricting the fallback is not the same as deleting it."""
+    from app.modules.onboarding.infrastructure.adapters.stub_rxil_adapter import (
+        StubRxilAdapter,
     )
-    assert resolved is _DummyAdapter
+
+    path = (
+        "app.modules.onboarding.infrastructure.adapters."
+        "stub_rxil_adapter.StubRxilAdapter"
+    )
+    assert path not in VERIFICATION_ADAPTER_REGISTRY
+    assert get_adapter(path) is StubRxilAdapter
+
+
+def test_get_adapter_rejects_non_adapter_attribute_in_allowlisted_module():
+    """An allowlisted module still exposes constants and helpers; only an
+    adapter class may come back out, since the caller instantiates it."""
+    with pytest.raises(ValueError, match="is not a VerificationAdapter"):
+        get_adapter(
+            "app.modules.onboarding.infrastructure.adapters."
+            "stub_rxil_adapter.PROVIDER_NAME"
+        )
+
+
+def test_get_adapter_rejects_allowlist_prefix_lookalike_module():
+    """`startswith` on a bare prefix would admit a sibling package whose name
+    merely begins with an allowlisted one."""
+    with pytest.raises(ValueError, match="not an allowlisted adapter package"):
+        get_adapter(
+            "app.modules.onboarding.infrastructure.adapters_injected.Evil"
+        )
