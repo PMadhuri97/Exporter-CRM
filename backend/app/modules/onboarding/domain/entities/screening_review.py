@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,10 +15,39 @@ SCHEMA = "onboarding"
 
 
 class ScreeningReviewItem(AnerModel):
+    """One compliance-checklist decision, as taken. Append-only.
+
+    There is deliberately no unique constraint on ``(customer_id, item_key)``.
+    Each decision on an item is its own row, and the current state of an item is
+    the most recent row for it — see
+    ``ScreeningReviewService.list_review_items``. A reviewer marking an item
+    ``PASSED`` after someone else marked it ``FAILED`` adds a row; it does not
+    overwrite who failed it, or when, or why (onboarding_0011_review_log).
+
+    ``trg_screening_review_item_append_only`` rejects every ``UPDATE`` and
+    ``DELETE`` on this table via the shared ``public.prevent_mutation()``, the
+    same guard ``onboarding_event`` and ``exporter_activity`` carry. Mutating a
+    loaded instance and flushing it raises at the database, not here — the rule
+    does not depend on callers coming through this module's service.
+
+    Stays on ``AnerModel`` rather than ``AppendOnlyModel`` despite being
+    append-only: ``AppendOnlyModel`` has no ``updated_at``, and
+    ``ScreeningReviewItemResponse`` requires that field. It is always equal to
+    ``created_at`` here.
+    """
+
     __tablename__ = "screening_review_item"
     __table_args__ = (
-        UniqueConstraint("customer_id", "item_key", name="uq_screening_review_customer_item"),
         Index("ix_screening_review_customer_id", "customer_id"),
+        # Serves the DISTINCT ON in list_review_items without a sort. Column
+        # order and direction mirror that query exactly.
+        Index(
+            "ix_screening_review_customer_item_recent",
+            "customer_id",
+            "item_key",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
         {"schema": SCHEMA},
     )
 

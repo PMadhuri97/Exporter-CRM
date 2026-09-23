@@ -590,7 +590,7 @@
           </div>
           <div class="step">
             <div class="s-num">2</div>
-            <div class="s-body"><h5>A case opens automatically</h5><p>onboarding_intake — a holding state, no SLA pressure yet.</p><span class="ep">case_type = ONBOARDING_INTAKE</span></div>
+            <div class="s-body"><h5>A case opens &mdash; <em>proposed, not built</em></h5><p><strong>Corrected 2026-09-23: this step previously read "A case opens automatically", which nothing in the codebase does.</strong> No event consumer, no scheduler and no service creates a <span class="mono">compliance_case</span>; the only code that creates one is <span class="mono">cases</span>' own test suite. This step is the intended design, not current behaviour.</p><span class="ep">case_type = ONBOARDING_INTAKE (proposed)</span></div>
           </div>
           <div class="step">
             <div class="s-num">3</div>
@@ -926,7 +926,7 @@
           <tbody>
             <tr><td>Exporter CRM (profile, contacts, activity, pipeline)</td><td><span class="pill live">Live</span></td><td>Built and tested — this document's core.</td></tr>
             <tr><td>Generalized verification trigger</td><td><span class="pill live">Live</span></td><td>One mechanism, any check type — proven, not aspirational.</td></tr>
-            <tr><td>Case review &amp; maker-checker decision</td><td><span class="pill live">Live</span></td><td>Reused from the existing cases module as-is.</td></tr>
+            <tr><td>Case review &amp; maker-checker decision</td><td><span class="pill stub">Not reachable</span></td><td><strong>Corrected 2026-09-23 — this row previously said "Live".</strong> The logic is real and tested: <span class="mono">app/modules/cases/application/</span> has nine modules, including maker-checker <span class="mono">propose_resolution</span>/<span class="mono">decide_resolution</span> with a checker≠maker guard. None of it is reachable. <span class="mono">app/modules/cases/</span> has no <span class="mono">api/</span> package, so no router is mounted for it, and nothing creates a <span class="mono">compliance_case</span> outside its own tests. Do not design against this as an existing capability. (Not to be confused with <span class="mono">onboarding.CaseService</span>, a different module with a different table, which does have a router — the two deliberately share class names.)</td></tr>
             <tr><td>RXIL ingestion</td><td><span class="pill stub">Stub</span></td><td>Batch shape proven; real integration waits on RXIL's own confirmed spec.</td></tr>
             <tr><td>Decentro / other real vendor adapters</td><td><span class="pill stub">Stub</span></td><td>Only a placeholder exists — Middesk and Trulioo are the only live vendor integrations today.</td></tr>
             <tr><td>Financing opportunity, buyer, invoice, shipment as entities</td><td><span class="pill out">Not built</span></td><td>Explicitly deferred — no financing decisioning exists yet.</td></tr>
