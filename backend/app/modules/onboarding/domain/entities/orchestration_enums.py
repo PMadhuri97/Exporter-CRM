@@ -174,11 +174,20 @@ class VerificationRiskLevel(str, enum.Enum):
     Named `VerificationRiskLevel` rather than the PRD's bare `RiskLevel`:
     `domain.dto.RiskLevel` already exists (LOW/MEDIUM/HIGH/CRITICAL, for
     provider-contract risk banding) with a different member set.
+
+    `CRITICAL` closes the gap against the two banding vocabularies this enum
+    sits between: `domain.dto.RiskLevel` and `OnboardingRiskRating` both carry
+    a CRITICAL band, so an adapter normalising a vendor's "critical" had
+    nowhere to put it and had to flatten it onto HIGH — losing exactly the
+    distinction the band exists to make. Backed by
+    `onboarding_0012_risk_critical` (`ALTER TYPE ... ADD VALUE`); the
+    member is inert until that migration has run.
     """
 
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
 
 
 class VerificationReviewStatus(str, enum.Enum):
