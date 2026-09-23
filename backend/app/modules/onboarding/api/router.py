@@ -5,6 +5,8 @@ import structlog
 from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.audit_router import router as audit_router
+from app.modules.onboarding.api.cases_router import router as cases_router
 from app.modules.onboarding.api.exporter_router import router as exporter_router
 from app.modules.onboarding.api.schemas.case import (
     CaseResponse,
@@ -36,6 +38,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
 )
 from app.modules.onboarding.domain.entities.verification_result import VerificationResult
+from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import VerificationResultNotFoundError
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
@@ -58,6 +61,11 @@ _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 # mount prefix, giving the ticket's documented paths
 # (/onboarding/exporters...) with no prefix duplicated in two places.
 router.include_router(exporter_router)
+# Compliance cases (app.modules.cases, surfaced here) and read-only audit
+# artifacts. Mounted the same way, under "/onboarding", so every piece of the
+# onboarding<->cases glue stays inside this module.
+router.include_router(cases_router)
+router.include_router(audit_router)
 
 
 # ── Case management and its state machine ───────────────
@@ -434,5 +442,15 @@ async def record_verification_review(
         # value — same identifier the screening review stores as `actor_id`.
         reviewed_by=str(current_user.id),
         review_status=body.review_status,
+    )
+    # After the commit, best-effort: a failed publish cannot undo the review.
+    await OnboardingEventPublisher().exporter_verification_reviewed(
+        verification_result_id=result.id,
+        entity_type=result.entity_type.value,
+        entity_reference=result.entity_reference,
+        verification_type=result.verification_type.value,
+        status=result.status.value,
+        review_status=result.review_status.value,
+        reviewed_by=result.reviewed_by,
     )
     return VerificationResultResponse.model_validate(result)

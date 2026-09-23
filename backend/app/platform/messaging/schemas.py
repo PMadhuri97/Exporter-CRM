@@ -55,6 +55,16 @@ class EventType(str, enum.Enum):
     CUSTOMER_REGISTERED = "customer.registered"
     CUSTOMER_VERIFICATION_UPDATED = "customer.verification.updated"
 
+    # ── Exporter CRM (onboarding module) ───────────────────────────────────────
+    # Notification channel only. The durable record of a lifecycle move is the
+    # append-only exporter_lifecycle_history row written in the same
+    # transaction; these are published after that commit, best-effort.
+    EXPORTER_LIFECYCLE_CHANGED = "exporter.lifecycle.changed"
+    EXPORTER_SCREENING_REVIEW_UPDATED = "exporter.screening_review.updated"
+    EXPORTER_VERIFICATION_REVIEWED = "exporter.verification.reviewed"
+    # Reserved: no producer yet. The document-scan phase publishes it.
+    EXPORTER_DOCUMENT_SCAN_COMPLETED = "exporter.document.scan_completed"
+
     # ── Account lifecycle events ───────────────────────────────────────────────
     ACCOUNT_SUSPENDED = "account.suspended"
     ACCOUNT_CLOSED = "account.closed"
@@ -127,6 +137,10 @@ TOPIC_FOR_EVENT: dict[EventType, Topic] = {
     EventType.COMPENSATION_COMPLETED: Topic.SETTLEMENT,
     EventType.CUSTOMER_REGISTERED: Topic.CUSTOMER,
     EventType.CUSTOMER_VERIFICATION_UPDATED: Topic.CUSTOMER,
+    EventType.EXPORTER_LIFECYCLE_CHANGED: Topic.CUSTOMER,
+    EventType.EXPORTER_SCREENING_REVIEW_UPDATED: Topic.CUSTOMER,
+    EventType.EXPORTER_VERIFICATION_REVIEWED: Topic.CUSTOMER,
+    EventType.EXPORTER_DOCUMENT_SCAN_COMPLETED: Topic.CUSTOMER,
     EventType.ACCOUNT_SUSPENDED: Topic.LEDGER,
     EventType.ACCOUNT_CLOSED: Topic.LEDGER,
     EventType.SETTLEMENT_TRANSITION: Topic.SETTLEMENT,

@@ -126,6 +126,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.cases.application.actor_validation import require_active_user
+from app.modules.cases.config import REQUIRE_TWO_PERSON_RESOLUTION
 from app.modules.cases.domain.entities.case_timeline_event import CaseTimelineEvent
 from app.modules.cases.domain.entities.compliance_case import ComplianceCase
 from app.modules.cases.domain.entities.enums import (
@@ -180,7 +181,14 @@ class CaseLifecycleService:
     15-row version.
     """
 
-    __slots__ = ()
+    __slots__ = ("_require_two_person",)
+
+    def __init__(self, *, require_two_person: bool | None = None) -> None:
+        """`require_two_person` defaults to `config.REQUIRE_TWO_PERSON_RESOLUTION`
+        (off). Pass it explicitly only to pin the rule regardless of config."""
+        self._require_two_person = (
+            REQUIRE_TWO_PERSON_RESOLUTION if require_two_person is None else require_two_person
+        )
 
     # ── S3T1: assignment ────────────────────────────────────────────────────
 
@@ -477,9 +485,10 @@ class CaseLifecycleService:
                 `PENDING_APPROVAL`.
             UserNotFoundOrInactiveError: `checker_id` is not a real, active
                 platform user.
-            SelfApprovalNotAllowedError: `checker_id` is the same user
-                recorded as `proposed_by` on the pending proposal — checked
-                for both `"approve"` and `"reject"`, not only `"approve"`.
+            SelfApprovalNotAllowedError: the two-person rule is on
+                (`config.REQUIRE_TWO_PERSON_RESOLUTION`) and `checker_id` is
+                the same user recorded as `proposed_by` on the pending
+                proposal — checked for both `"approve"` and `"reject"`.
         """
         if decision not in ("approve", "reject"):
             raise ValidationError(f"decision must be 'approve' or 'reject', got {decision!r}")
@@ -501,7 +510,7 @@ class CaseLifecycleService:
                 f"timeline event to decide against"
             )
         proposed_by = proposal_event.payload["proposed_by"]
-        if checker_id == proposed_by:
+        if self._require_two_person and checker_id == proposed_by:
             raise SelfApprovalNotAllowedError(case_id, checker_id)
 
         if decision == "approve":

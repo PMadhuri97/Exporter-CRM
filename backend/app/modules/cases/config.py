@@ -4,7 +4,17 @@ Path constants and helpers for the GitOps-managed SLA configuration, mirroring
 `app.modules.onboarding.config`'s document-requirements constants.
 """
 
+import os
 from pathlib import Path
+
+#: The two-person rule on case resolution: when on, `CaseLifecycleService.
+#: decide_resolution` refuses a checker who is also the proposer
+#: (`SelfApprovalNotAllowedError`). Off by decision — one COMPLIANCE or ADMIN
+#: reviewer records a rationale and decides. Kept as a flag, not removed, so
+#: turning it back on is configuration: `CASES_REQUIRE_TWO_PERSON_RESOLUTION=true`.
+REQUIRE_TWO_PERSON_RESOLUTION: bool = (
+    os.getenv("CASES_REQUIRE_TWO_PERSON_RESOLUTION", "false").strip().lower() == "true"
+)
 
 #: Root directory of the GitOps reference data for case management SLA config.
 SLA_CONFIG_DIR = (

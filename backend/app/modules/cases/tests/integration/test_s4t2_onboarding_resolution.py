@@ -34,7 +34,9 @@ assert len(LONG_NOTE) >= MIN_SUBSTANTIVE_NOTE_LENGTH
 
 @pytest.fixture
 def service() -> CaseLifecycleService:
-    return CaseLifecycleService()
+    # Pinned on: these tests cover the maker-checker rule itself, which is
+    # off by default (config.REQUIRE_TWO_PERSON_RESOLUTION).
+    return CaseLifecycleService(require_two_person=True)
 
 
 async def _propose(service: CaseLifecycleService, case_id: str, maker: str) -> None:
