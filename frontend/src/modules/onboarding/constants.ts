@@ -1,3 +1,5 @@
+import type { UserRole } from '@/lib/api/types';
+
 import type { ExporterLifecycleStatus } from './types';
 
 /**
@@ -100,3 +102,25 @@ export const PERMITTED_LIFECYCLE_TRANSITIONS: Record<
   SUSPENDED: ['ACTIVE', 'OFFBOARDED'],
   OFFBOARDED: [],
 };
+
+/**
+ * Statuses a move *out of* is a compliance decision. Mirrors
+ * `COMPLIANCE_GATED_FROM_STATUSES` in `backend/app/modules/onboarding/
+ * application/exporter_profile_service.py`, which is what actually enforces
+ * it (403). Relationship Managers (OPERATIONS) work the sales stages up to
+ * submitting for COMPLIANCE_REVIEW; everything from there on is compliance's.
+ */
+export const COMPLIANCE_GATED_FROM_STATUSES: ReadonlySet<ExporterLifecycleStatus> = new Set([
+  'COMPLIANCE_REVIEW',
+  'ONBOARDED',
+  'FINANCING_ELIGIBLE',
+  'ACTIVE',
+  'SUSPENDED',
+  'OFFBOARDED',
+]);
+
+/** Whether `role` may make any lifecycle move out of `status`. */
+export function canMoveLifecycleFrom(status: ExporterLifecycleStatus, role: UserRole): boolean {
+  if (role === 'COMPLIANCE' || role === 'ADMIN') return true;
+  return role === 'OPERATIONS' && !COMPLIANCE_GATED_FROM_STATUSES.has(status);
+}

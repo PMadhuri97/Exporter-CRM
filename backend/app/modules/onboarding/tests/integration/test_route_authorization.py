@@ -28,6 +28,8 @@ BASE = "/api/v1/onboarding"
 
 STAFF = {UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN}
 COMPLIANCE_OR_ADMIN = {UserRole.COMPLIANCE, UserRole.ADMIN}
+# Masked exporter-CRM reads: DEVELOPER may read, never unmasked.
+READERS = STAFF | {UserRole.DEVELOPER}
 
 
 def _case_body() -> dict:
@@ -81,7 +83,7 @@ GATED_ROUTES = [
         "POST",
         f"{BASE}/exporters/{_ID}/transition",
         {"to_status": "CONTACTED"},
-        COMPLIANCE_OR_ADMIN,
+        STAFF,
     ),
     ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
     (
@@ -104,13 +106,13 @@ GATED_ROUTES = [
     ("GET", f"{BASE}/{_ID}/status", None, STAFF),
     ("GET", f"{BASE}/verifications/{_ID}", None, STAFF),
     ("GET", f"{BASE}/verifications?entity_type=EXPORTER&entity_reference={_ID}", None, STAFF),
-    ("GET", f"{BASE}/exporters", None, STAFF),
-    ("GET", f"{BASE}/exporters/{_ID}", None, STAFF),
-    ("GET", f"{BASE}/exporters/{_ID}/contacts", None, STAFF),
-    ("GET", f"{BASE}/exporters/{_ID}/activities", None, STAFF),
-    ("GET", f"{BASE}/exporters/activities/pending", None, STAFF),
-    ("GET", f"{BASE}/exporters/{_ID}/screening-review", None, COMPLIANCE_OR_ADMIN),
-    ("GET", f"{BASE}/exporters/{_ID}/bank-activity", None, COMPLIANCE_OR_ADMIN),
+    ("GET", f"{BASE}/exporters", None, READERS),
+    ("GET", f"{BASE}/exporters/{_ID}", None, READERS),
+    ("GET", f"{BASE}/exporters/{_ID}/contacts", None, READERS),
+    ("GET", f"{BASE}/exporters/{_ID}/activities", None, READERS),
+    ("GET", f"{BASE}/exporters/activities/pending", None, READERS),
+    ("GET", f"{BASE}/exporters/{_ID}/screening-review", None, STAFF),
+    ("GET", f"{BASE}/exporters/{_ID}/bank-activity", None, STAFF),
 ]
 
 REFUSALS = [
@@ -334,14 +336,17 @@ async def test_identifiers_unmasked_for_compliance_and_admin(
         assert seen == {"pan": PAN, "gstin": GSTIN, "iec": IEC}
 
 
-async def test_identifiers_masked_for_non_owning_operations(
-    client: AsyncClient, tokens: dict[UserRole, str], exporter_with_identifiers: str
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.DEVELOPER])
+async def test_identifiers_masked_for_non_owning_operations_and_developer(
+    client: AsyncClient,
+    tokens: dict[UserRole, str],
+    exporter_with_identifiers: str,
+    role: UserRole,
 ):
-    """OPERATIONS reads every exporter, but only its own unmasked. (DEVELOPER
-    and API_USER can't read exporters at all — see the 403 cases above.)"""
-    for seen in await _identifiers_as(
-        client, tokens[UserRole.OPERATIONS], exporter_with_identifiers
-    ):
+    """OPERATIONS reads every exporter, but only its own unmasked; DEVELOPER
+    reads every exporter and never unmasked. (API_USER can't read exporters at
+    all — see the 403 cases above.)"""
+    for seen in await _identifiers_as(client, tokens[role], exporter_with_identifiers):
         assert seen == {"pan": _masked(PAN), "gstin": _masked(GSTIN), "iec": _masked(IEC)}
 
 
@@ -471,3 +476,145 @@ def test_mask_email_shapes(value: str | None, expected: str | None):
     from app.modules.onboarding.api.schemas.exporter import mask_email
 
     assert mask_email(value) == expected
+
+
+# ── Lifecycle moves: gated per edge, not per route ───────────────────────────
+
+
+async def _move(client: AsyncClient, token: str, customer_id: str, to_status: str):
+    return await client.post(
+        f"{BASE}/exporters/{customer_id}/transition",
+        json={"to_status": to_status},
+        headers=auth_header(token),
+    )
+
+
+async def _exporter_in_compliance_review(client: AsyncClient, token: str) -> str:
+    """Walk a new exporter through the sales stages — all open to OPERATIONS."""
+    customer_id = await _create_exporter(client, token)
+    for to_status in (
+        "CONTACTED",
+        "DATA_COLLECTION",
+        "VERIFICATION_IN_PROGRESS",
+        "COMPLIANCE_REVIEW",
+    ):
+        resp = await _move(client, token, customer_id, to_status)
+        assert resp.status_code == 200, (to_status, resp.text)
+    return customer_id
+
+
+async def test_operations_can_work_sales_stages_up_to_compliance_review(
+    client: AsyncClient, tokens: dict[UserRole, str]
+):
+    customer_id = await _exporter_in_compliance_review(client, tokens[UserRole.OPERATIONS])
+    detail = await client.get(
+        f"{BASE}/exporters/{customer_id}", headers=auth_header(tokens[UserRole.OPERATIONS])
+    )
+    assert detail.json()["lifecycle_status"] == "COMPLIANCE_REVIEW"
+
+
+@pytest.mark.parametrize("to_status", ["ONBOARDED", "DATA_COLLECTION"])
+async def test_operations_cannot_decide_out_of_compliance_review(
+    client: AsyncClient, tokens: dict[UserRole, str], to_status: str
+):
+    """Approving (-> ONBOARDED) and sending back (-> DATA_COLLECTION) are both
+    compliance decisions."""
+    customer_id = await _exporter_in_compliance_review(client, tokens[UserRole.OPERATIONS])
+
+    resp = await _move(client, tokens[UserRole.OPERATIONS], customer_id, to_status)
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["error_code"] == "FORBIDDEN"
+
+    resp = await _move(client, tokens[UserRole.COMPLIANCE], customer_id, to_status)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["lifecycle_status"] == to_status
+
+
+async def test_operations_cannot_move_an_onboarded_exporter(
+    client: AsyncClient, tokens: dict[UserRole, str]
+):
+    customer_id = await _exporter_in_compliance_review(client, tokens[UserRole.OPERATIONS])
+    onboarded = await _move(client, tokens[UserRole.COMPLIANCE], customer_id, "ONBOARDED")
+    assert onboarded.status_code == 200, onboarded.text
+
+    resp = await _move(client, tokens[UserRole.OPERATIONS], customer_id, "ACTIVE")
+    assert resp.status_code == 403, resp.text
+
+
+async def test_illegal_edge_is_409_even_from_a_gated_status(
+    client: AsyncClient, tokens: dict[UserRole, str]
+):
+    """The edge table is checked first, so an illegal move reads the same to
+    every caller rather than leaking which edges are merely role-gated."""
+    customer_id = await _exporter_in_compliance_review(client, tokens[UserRole.OPERATIONS])
+    resp = await _move(client, tokens[UserRole.OPERATIONS], customer_id, "ACTIVE")
+    assert resp.status_code == 409, resp.text
+
+
+# ── Creation cannot skip the compliance decision ─────────────────────────────
+
+
+@pytest.mark.parametrize("lifecycle_status", ["ONBOARDED", "ACTIVE", "OFFBOARDED"])
+async def test_operations_cannot_create_an_exporter_past_compliance(
+    client: AsyncClient, tokens: dict[UserRole, str], lifecycle_status: str
+):
+    resp = await client.post(
+        f"{BASE}/exporters",
+        json={"source": "SALES", "lifecycle_status": lifecycle_status},
+        headers=auth_header(tokens[UserRole.OPERATIONS]),
+    )
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["error_code"] == "FORBIDDEN"
+
+
+async def test_operations_can_create_at_a_sales_stage(
+    client: AsyncClient, tokens: dict[UserRole, str]
+):
+    await _create_exporter(client, tokens[UserRole.OPERATIONS], lifecycle_status="DATA_COLLECTION")
+
+
+async def test_compliance_can_create_an_onboarded_exporter(
+    client: AsyncClient, tokens: dict[UserRole, str]
+):
+    """Migrating an already-approved relationship in is a compliance call."""
+    resp = await client.post(
+        f"{BASE}/exporters",
+        json={"source": "SALES", "lifecycle_status": "ONBOARDED"},
+        headers=auth_header(tokens[UserRole.COMPLIANCE]),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["lifecycle_status"] == "ONBOARDED"
+
+
+# ── Masked values cannot be written back ─────────────────────────────────────
+
+
+async def test_masked_identifier_is_rejected_on_write(
+    client: AsyncClient, tokens: dict[UserRole, str], exporter_with_identifiers: str
+):
+    """What a masked reader sees must not round-trip into the real column."""
+    resp = await client.patch(
+        f"{BASE}/exporters/{exporter_with_identifiers}",
+        json={"pan": _masked(PAN)},
+        headers=auth_header(tokens[UserRole.OPERATIONS]),
+    )
+    assert resp.status_code == 422, resp.text
+
+    seen = await client.get(
+        f"{BASE}/exporters/{exporter_with_identifiers}",
+        headers=auth_header(tokens[UserRole.COMPLIANCE]),
+    )
+    assert seen.json()["pan"] == PAN
+
+
+async def test_masked_contact_email_is_rejected_on_write(
+    client: AsyncClient, tokens: dict[UserRole, str]
+):
+    token = tokens[UserRole.OPERATIONS]
+    customer_id = await _create_exporter(client, token)
+    resp = await client.post(
+        f"{BASE}/exporters/{customer_id}/contacts",
+        json={"name": "Jane", "email": MASKED_EMAIL},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 422, resp.text

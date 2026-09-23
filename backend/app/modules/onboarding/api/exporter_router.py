@@ -72,14 +72,22 @@ from app.shared.exceptions import ValidationError
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/exporters", tags=["Exporter CRM"])
 
-# Compliance decisions and findings (screening checklist, lifecycle moves,
-# bank-activity findings) are compliance-owned; a plain API_USER must never be
-# able to mark a sanctions check PASSED.
+# Compliance decisions (recording a screening-checklist decision) are
+# compliance-owned; a plain API_USER must never be able to mark a sanctions
+# check PASSED. Lifecycle moves are gated per edge in the service instead
+# (`COMPLIANCE_GATED_FROM_STATUSES`), so RMs can still work the sales stages.
 _COMPLIANCE_OR_ADMIN = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
 # Routine CRM reads and writes by internal staff (Relationship Managers are
 # OPERATIONS, and may read every exporter). PAN/GSTIN/IEC and contact
 # email/phone are masked per viewer in the response schemas.
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+# Masked CRM reads. DEVELOPER may read the CRM but never sees a raw
+# identifier (`can_reveal_identifiers` is always False for it), per the role
+# capability matrix in docs/exporter-crm-frontend-tickets.md.
+_READER = require_role(
+    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
+)
+_COMPLIANCE_ROLES = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
 
 
 async def _relationship_manager_user_id(
@@ -115,7 +123,12 @@ async def _relationship_manager_user_id(
             "description": "Idempotent replay or existing profile for this customer_id",
         },
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {
+            "description": (
+                "OPERATIONS, COMPLIANCE or ADMIN role required; creating at "
+                "ONBOARDED or any later status requires COMPLIANCE or ADMIN"
+            )
+        },
         422: {"description": "Invalid request body"},
     },
 )
@@ -183,6 +196,7 @@ async def create_exporter_profile(
         website=body.website,
         idempotency_key=idempotency_key,
         actor_id=str(current_user.id),
+        compliance_authorized=current_user.role in _COMPLIANCE_ROLES,
     )
     if not created:
         response.status_code = 200
@@ -200,13 +214,13 @@ async def create_exporter_profile(
     responses={
         200: {"model": ExporterProfileDetailResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
         404: {"description": "Exporter profile not found"},
     },
 )
 async def get_exporter_profile_detail(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_READER)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileDetailResponse:
     detail = await ExporterProfileService(db).get_profile_detail(customer_id)
@@ -254,7 +268,12 @@ async def update_exporter_profile(
     responses={
         200: {"model": ExporterProfileResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "COMPLIANCE or ADMIN role required"},
+        403: {
+            "description": (
+                "OPERATIONS, COMPLIANCE or ADMIN role required; a move out of "
+                "COMPLIANCE_REVIEW or any later status requires COMPLIANCE or ADMIN"
+            )
+        },
         404: {"description": "Exporter profile not found"},
         409: {"description": "Illegal lifecycle_status transition"},
     },
@@ -262,11 +281,14 @@ async def update_exporter_profile(
 async def transition_exporter_lifecycle_status(
     customer_id: uuid.UUID,
     body: TransitionLifecycleStatusRequest,
-    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileResponse:
     profile = await ExporterProfileService(db).transition_lifecycle_status(
-        customer_id, body.to_status, actor_id=str(current_user.id)
+        customer_id,
+        body.to_status,
+        actor_id=str(current_user.id),
+        compliance_authorized=current_user.role in _COMPLIANCE_ROLES,
     )
     return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
 
@@ -283,11 +305,11 @@ async def transition_exporter_lifecycle_status(
     responses={
         200: {"model": ExporterProfileSearchResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
     },
 )
 async def search_exporter_profiles(
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_READER)],
     db: AsyncSession = Depends(get_db),
     gstin: str | None = Query(default=None),
     pan: str | None = Query(default=None),
@@ -363,12 +385,12 @@ async def add_exporter_contact(
     responses={
         200: {"model": ExporterContactListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
     },
 )
 async def list_exporter_contacts(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_READER)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterContactListResponse:
     contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
@@ -423,12 +445,12 @@ async def log_exporter_activity(
     responses={
         200: {"model": ExporterActivityListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
     },
 )
 async def list_exporter_activities(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_READER)],
     db: AsyncSession = Depends(get_db),
     activity_type: ExporterActivityType | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -468,11 +490,11 @@ async def list_exporter_activities(
     responses={
         200: {"model": PendingActivityListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
     },
 )
 async def list_pending_exporter_activities(
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_READER)],
     db: AsyncSession = Depends(get_db),
     actor_id: str | None = Query(default=None),
     activity_type: ExporterActivityType | None = Query(default=None),
@@ -504,12 +526,12 @@ async def list_pending_exporter_activities(
     summary="List persisted screening-review checklist decisions",
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "COMPLIANCE or ADMIN role required"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
     },
 )
 async def list_screening_review(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> ScreeningReviewListResponse:
     items = await ScreeningReviewService(db).list_review_items(customer_id)
@@ -551,7 +573,7 @@ async def update_screening_review(
     summary="List bank-linked suspicious-activity findings",
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "COMPLIANCE or ADMIN role required"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
     },
     description=(
         "E9 establishes the stable CRM contract for Surepass/Finpass-style "
@@ -561,7 +583,7 @@ async def update_screening_review(
 )
 async def get_bank_activity(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> BankActivityResponse:
     findings = await ScreeningReviewService(db).list_bank_findings(customer_id)

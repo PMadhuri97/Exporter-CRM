@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Self
+from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterActivityType,
@@ -73,6 +73,19 @@ def can_reveal_identifiers(viewer: User, relationship_manager_user_id: uuid.UUID
     )
 
 
+def _reject_masked(value: str | None) -> str | None:
+    """Refuse a value carrying the mask character. A client that writes back
+    what it read (a masked PAN is still exactly 10 characters) would otherwise
+    overwrite the real identifier with bullets."""
+    if value is not None and _MASK_CHAR in value:
+        raise ValueError("looks like a masked value; send the full, unmasked value")
+    return value
+
+
+#: Write-side guard for any field a response may have masked.
+NotMasked = AfterValidator(_reject_masked)
+
+
 class _IdentifierMasking:
     """Mixin for the exporter responses carrying gstin/pan/iec and
     relationship_manager_user_id (and, on the detail response, contacts).
@@ -130,9 +143,9 @@ class CreateExporterProfileRequest(BaseModel):
     customer_id: uuid.UUID | None = None
     source: ExporterSource
     lifecycle_status: ExporterLifecycleStatus = ExporterLifecycleStatus.LEAD
-    gstin: str | None = Field(default=None, max_length=15)
-    pan: str | None = Field(default=None, max_length=10)
-    iec: str | None = Field(default=None, max_length=10)
+    gstin: Annotated[str | None, NotMasked] = Field(default=None, max_length=15)
+    pan: Annotated[str | None, NotMasked] = Field(default=None, max_length=10)
+    iec: Annotated[str | None, NotMasked] = Field(default=None, max_length=10)
     relationship_manager: str | None = Field(default=None, max_length=255)
     industry: str | None = Field(default=None, max_length=255)
     export_markets: list[str] | None = None
@@ -164,9 +177,9 @@ class UpdateExporterProfileRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    gstin: str | None = Field(default=None, max_length=15)
-    pan: str | None = Field(default=None, max_length=10)
-    iec: str | None = Field(default=None, max_length=10)
+    gstin: Annotated[str | None, NotMasked] = Field(default=None, max_length=15)
+    pan: Annotated[str | None, NotMasked] = Field(default=None, max_length=10)
+    iec: Annotated[str | None, NotMasked] = Field(default=None, max_length=10)
     relationship_manager: str | None = Field(default=None, max_length=255)
     industry: str | None = Field(default=None, max_length=255)
     export_markets: list[str] | None = None
@@ -212,8 +225,8 @@ class AddExporterContactRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=255)
     role: str | None = Field(default=None, max_length=255)
-    email: str | None = Field(default=None, max_length=255)
-    phone: str | None = Field(default=None, max_length=50)
+    email: Annotated[str | None, NotMasked] = Field(default=None, max_length=255)
+    phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
     department: str | None = Field(default=None, max_length=255)
     is_primary: bool = False
 
