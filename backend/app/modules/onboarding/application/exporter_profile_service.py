@@ -45,6 +45,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
+    LIFECYCLE_INITIAL_EVENT,
     LIFECYCLE_TRANSITION_EVENT,
     ExporterLifecycleHistory,
 )
@@ -325,6 +326,17 @@ class ExporterProfileService:
                 customer_id=str(customer_id),
             )
             profile = existing_profile
+        else:
+            # Only the writer that actually created the profile records its
+            # initial status; the lost-race winner already recorded its own.
+            await self._record_lifecycle(
+                customer_id,
+                from_status=None,
+                to_status=ExporterLifecycleStatus.LEAD,
+                actor_id=actor_id,
+                event_type=LIFECYCLE_INITIAL_EVENT,
+                source="exporter_profile_service.create_lead",
+            )
 
         await self._db.commit()
         await self._db.refresh(request)
@@ -444,6 +456,15 @@ class ExporterProfileService:
             )
             return winner, False
 
+        await self._record_lifecycle(
+            customer_id,
+            from_status=None,
+            to_status=lifecycle_status,
+            actor_id=actor_id,
+            event_type=LIFECYCLE_INITIAL_EVENT,
+            source="exporter_profile_service.create_or_get_profile",
+        )
+
         if idempotency_key is not None:
             await complete_key(
                 session=self._db,
@@ -562,6 +583,43 @@ class ExporterProfileService:
 
     # ── Lifecycle transition ─────────────────────────────────────────────
 
+    async def _record_lifecycle(
+        self,
+        customer_id: uuid.UUID,
+        *,
+        from_status: ExporterLifecycleStatus | None,
+        to_status: ExporterLifecycleStatus,
+        actor_id: str | None,
+        event_type: str,
+        source: str,
+    ) -> None:
+        """Append one `exporter_lifecycle_history` row, flushed but not
+        committed: the caller commits it together with the status write, so a
+        profile can never hold a status with no record of how it got there.
+
+        Enough for a downstream consumer to act on without re-reading the
+        profile: ANER-4.2-S1T2 wants a completion hook on
+        COMPLIANCE_REVIEW -> ONBOARDED, and Epic 4.1 has none. `terminal` is
+        the flag that edge is identified by, computed from the status rather
+        than hardcoded at a call site so adding a lifecycle status cannot
+        silently change what "onboarding completed" means. A profile *created*
+        at ONBOARDED is terminal too — it is onboarded, and the hook must see
+        it. `source` distinguishes the write paths.
+        """
+        await self._lifecycle_history.create(
+            ExporterLifecycleHistory(
+                customer_id=customer_id,
+                event_type=event_type,
+                from_status=from_status.value if from_status is not None else None,
+                to_status=to_status.value,
+                actor_id=actor_id,
+                event_metadata={
+                    "source": source,
+                    "terminal": to_status is ExporterLifecycleStatus.ONBOARDED,
+                },
+            )
+        )
+
     async def transition_lifecycle_status(
         self,
         customer_id: uuid.UUID,
@@ -611,27 +669,13 @@ class ExporterProfileService:
 
         profile.lifecycle_status = to_status
 
-        # Enough for a downstream consumer to act on without re-reading the
-        # profile: ANER-4.2-S1T2 wants a completion hook on
-        # COMPLIANCE_REVIEW -> ONBOARDED, and Epic 4.1 has none. `terminal` is
-        # the flag that edge is identified by, computed from the table rather
-        # than hardcoded here so adding a lifecycle status cannot silently
-        # change what "onboarding completed" means. `source` distinguishes a
-        # person clicking a button from a future automated sweep writing the
-        # same shape of row.
-        await self._lifecycle_history.create(
-            ExporterLifecycleHistory(
-                customer_id=customer_id,
-                event_type=LIFECYCLE_TRANSITION_EVENT,
-                from_status=from_status.value,
-                to_status=to_status.value,
-                actor_id=actor_id,
-                event_metadata={
-                    "source": "exporter_profile_service.transition_lifecycle_status",
-                    "terminal": to_status is ExporterLifecycleStatus.ONBOARDED,
-                    "occurred_at": datetime.now(UTC).isoformat(),
-                },
-            )
+        await self._record_lifecycle(
+            customer_id,
+            from_status=from_status,
+            to_status=to_status,
+            actor_id=actor_id,
+            event_type=LIFECYCLE_TRANSITION_EVENT,
+            source="exporter_profile_service.transition_lifecycle_status",
         )
 
         await self._db.commit()

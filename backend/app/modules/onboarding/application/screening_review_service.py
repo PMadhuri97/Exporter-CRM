@@ -62,10 +62,14 @@ class ScreeningReviewService:
         """The current state of each checklist item — one row per `item_key`.
 
         `DISTINCT ON (item_key)` with a matching `ORDER BY` takes the first row
-        of each `item_key` group, and the ordering makes that the newest. The
-        `id` tie-break matters: `created_at` defaults to `now()`, which is
-        transaction time, so two decisions written in one transaction share a
-        timestamp and would otherwise come back in an arbitrary order.
+        of each `item_key` group, and `created_at DESC` makes that the newest.
+        `created_at` defaults to `now()` — transaction start time — so two
+        decisions written in one transaction would share a timestamp. The `id`
+        tie-break only makes that case deterministic, not chronological: `id`
+        is a random `uuid4`. It does not arise today, because
+        `upsert_review_item` commits each decision in its own transaction; a
+        future caller that writes several decisions in one transaction must
+        not rely on this order to pick the "latest" of them.
 
         `ix_screening_review_customer_item_recent` is built in this exact shape,
         so the sort is satisfied by the index rather than performed.

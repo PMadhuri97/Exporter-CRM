@@ -38,6 +38,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
+    LIFECYCLE_INITIAL_EVENT,
     LIFECYCLE_TRANSITION_EVENT,
     ExporterLifecycleHistory,
 )
@@ -300,7 +301,9 @@ async def _profile_at(customer_id: uuid.UUID, target: ExporterLifecycleStatus) -
         service = ExporterProfileService(db)
         await service.create_or_get_profile(customer_id, source=ExporterSource.SALES)
         for status in path:
-            await service.transition_lifecycle_status(customer_id, status, actor_id="walker")
+            await service.transition_lifecycle_status(
+                customer_id, status, actor_id="walker", compliance_authorized=True
+            )
             if status is target:
                 return
 
@@ -319,7 +322,8 @@ async def test_a_lifecycle_transition_writes_an_event():
         rows = (
             await db.execute(
                 select(ExporterLifecycleHistory).where(
-                    ExporterLifecycleHistory.customer_id == customer_id
+                    ExporterLifecycleHistory.customer_id == customer_id,
+                    ExporterLifecycleHistory.event_type == LIFECYCLE_TRANSITION_EVENT,
                 )
             )
         ).scalars().all()
@@ -356,7 +360,8 @@ async def test_a_rejected_transition_writes_no_event():
             )
         ).scalars().all()
 
-    assert rows == []
+    # Only the creation row: nothing suggests the illegal move happened.
+    assert [r.event_type for r in rows] == [LIFECYCLE_INITIAL_EVENT]
 
 
 async def test_the_onboarded_edge_is_marked_for_the_completion_hook():
@@ -386,7 +391,8 @@ async def test_the_onboarded_edge_is_marked_for_the_completion_hook():
 
 
 async def test_the_full_walk_is_recorded_in_order():
-    """Five transitions, five rows — the history a re-KYC reviewer reads back."""
+    """Creation plus five transitions, six rows — the history a re-KYC reviewer
+    reads back, starting from the status the profile was born at."""
     customer_id = uuid.uuid4()
     await _profile_at(customer_id, ExporterLifecycleStatus.ONBOARDED)
 
@@ -394,6 +400,7 @@ async def test_the_full_walk_is_recorded_in_order():
         rows = await ExporterProfileService(db)._lifecycle_history.list_by_customer(customer_id)
 
     assert [r.to_status for r in reversed(rows)] == [
+        ExporterLifecycleStatus.LEAD.value,
         ExporterLifecycleStatus.CONTACTED.value,
         ExporterLifecycleStatus.DATA_COLLECTION.value,
         ExporterLifecycleStatus.VERIFICATION_IN_PROGRESS.value,
@@ -417,7 +424,8 @@ async def test_the_database_refuses_to_update_a_lifecycle_event():
         row = (
             await db.execute(
                 select(ExporterLifecycleHistory).where(
-                    ExporterLifecycleHistory.customer_id == customer_id
+                    ExporterLifecycleHistory.customer_id == customer_id,
+                    ExporterLifecycleHistory.event_type == LIFECYCLE_TRANSITION_EVENT,
                 )
             )
         ).scalars().one()
@@ -425,3 +433,84 @@ async def test_the_database_refuses_to_update_a_lifecycle_event():
         with pytest.raises(DBAPIError, match="immutable"):
             await db.commit()
         await db.rollback()
+
+
+# ── Creation records the initial status ──────────────────────────────────────
+
+
+async def _history(customer_id: uuid.UUID) -> list[ExporterLifecycleHistory]:
+    async with db_services.AsyncSessionLocal() as db:
+        return list(
+            (
+                await db.execute(
+                    select(ExporterLifecycleHistory).where(
+                        ExporterLifecycleHistory.customer_id == customer_id
+                    )
+                )
+            ).scalars().all()
+        )
+
+
+async def test_creating_a_profile_records_its_initial_status():
+    customer_id = uuid.uuid4()
+    async with db_services.AsyncSessionLocal() as db:
+        await ExporterProfileService(db).create_or_get_profile(
+            customer_id, source=ExporterSource.SALES, actor_id="rm-jordan"
+        )
+
+    [row] = await _history(customer_id)
+    assert row.event_type == LIFECYCLE_INITIAL_EVENT
+    assert row.from_status is None
+    assert row.to_status == ExporterLifecycleStatus.LEAD.value
+    assert row.actor_id == "rm-jordan"
+    assert row.event_metadata["terminal"] is False
+
+
+async def test_a_profile_created_onboarded_is_visible_to_the_completion_hook():
+    """POST /exporters accepts a lifecycle_status. A profile born ONBOARDED
+    used to leave no row at all — no actor, and nothing for ANER-4.2-S1T2."""
+    customer_id = uuid.uuid4()
+    async with db_services.AsyncSessionLocal() as db:
+        await ExporterProfileService(db).create_or_get_profile(
+            customer_id,
+            source=ExporterSource.SALES,
+            lifecycle_status=ExporterLifecycleStatus.ONBOARDED,
+            actor_id="importer",
+            compliance_authorized=True,
+        )
+
+    [row] = await _history(customer_id)
+    assert row.to_status == ExporterLifecycleStatus.ONBOARDED.value
+    assert row.actor_id == "importer"
+    assert row.event_metadata["terminal"] is True
+
+
+async def test_getting_an_existing_profile_writes_no_second_row():
+    customer_id = uuid.uuid4()
+    for _ in range(2):
+        async with db_services.AsyncSessionLocal() as db:
+            await ExporterProfileService(db).create_or_get_profile(
+                customer_id, source=ExporterSource.SALES, actor_id="rm-jordan"
+            )
+
+    assert len(await _history(customer_id)) == 1
+
+
+async def test_creating_a_lead_records_its_initial_status():
+    async with db_services.AsyncSessionLocal() as db:
+        _request, profile, created = await ExporterProfileService(db).create_lead(
+            tenant_id=uuid.uuid4(),
+            legal_name=f"Lead {uuid.uuid4().hex[:8]}",
+            incorporation_country="IN",
+            initial_user_email=f"{uuid.uuid4().hex[:8]}@example.com",
+            idempotency_key=str(uuid.uuid4()),
+            source=ExporterSource.SALES,
+            actor_id="rm-jordan",
+        )
+    assert created
+
+    [row] = await _history(profile.customer_id)
+    assert row.event_type == LIFECYCLE_INITIAL_EVENT
+    assert row.from_status is None
+    assert row.to_status == ExporterLifecycleStatus.LEAD.value
+    assert row.actor_id == "rm-jordan"

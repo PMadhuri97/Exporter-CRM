@@ -35,10 +35,12 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
     ) -> Sequence[ExporterLifecycleHistory]:
         """One exporter's lifecycle history, newest first.
 
-        The ``id`` tie-break is not decoration: ``created_at`` defaults to
-        ``now()``, which is transaction time, so two transitions committed in one
-        transaction share a timestamp and would otherwise come back in an
-        arbitrary order — the one case where ordering matters most.
+        ``created_at`` defaults to ``now()`` — transaction start time — so two
+        rows written in one transaction share a timestamp. The ``id`` tie-break
+        makes that case deterministic, not chronological (``id`` is a random
+        ``uuid4``). Every write path today commits one row per transaction, so
+        it does not arise; a caller writing several rows in one transaction
+        must not rely on this order between them.
         """
         result = await self.session.execute(
             select(ExporterLifecycleHistory)

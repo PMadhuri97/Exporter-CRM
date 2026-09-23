@@ -95,7 +95,7 @@ GATED_ROUTES = [
     # screening review
     (
         "PUT",
-        f"{BASE}/exporters/{_ID}/screening-review/sanctions_check",
+        f"{BASE}/exporters/{_ID}/screening-review/suspicious-bank-indicators",
         {"status": "PASSED"},
         COMPLIANCE_OR_ADMIN,
     ),
@@ -164,7 +164,7 @@ async def test_api_user_cannot_pass_sanctions_check(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
     customer_id = await _create_exporter(client, tokens[UserRole.COMPLIANCE])
-    url = f"{BASE}/exporters/{customer_id}/screening-review/sanctions_check"
+    url = f"{BASE}/exporters/{customer_id}/screening-review/suspicious-bank-indicators"
 
     for role in (UserRole.API_USER, UserRole.DEVELOPER, UserRole.OPERATIONS):
         resp = await client.put(url, json={"status": "PASSED"}, headers=auth_header(tokens[role]))
@@ -185,7 +185,7 @@ async def test_compliance_can_record_screening_decision_attributed_to_itself(
     customer_id = await _create_exporter(client, token)
 
     resp = await client.put(
-        f"{BASE}/exporters/{customer_id}/screening-review/sanctions_check",
+        f"{BASE}/exporters/{customer_id}/screening-review/suspicious-bank-indicators",
         json={"status": "PASSED"},
         headers=auth_header(token),
     )

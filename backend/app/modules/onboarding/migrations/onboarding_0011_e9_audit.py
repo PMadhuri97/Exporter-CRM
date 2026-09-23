@@ -29,7 +29,9 @@ checklist read degrades to a sequential scan. Its column order and direction
 mirror the query exactly so Postgres satisfies the ordering from the index
 instead of sorting. `id DESC` is the tie-break: `created_at` defaults to
 `now()`, which is transaction time, so two decisions written in one transaction
-share a timestamp and would otherwise order non-deterministically.
+share a timestamp. The tie-break makes that order deterministic, not
+chronological — `id` is a random `uuid4` — and the service commits one decision
+per transaction, so the case does not arise in practice.
 
 The entity stays on `AnerModel`, not `AppendOnlyModel`, even though the rows are
 now append-only: `AppendOnlyModel` uses `CreatedOnlyMixin`, which has no
@@ -64,6 +66,11 @@ So: a dedicated table, shaped after `exporter_activity` (same schema, same
 shared trigger) rather than a new pattern.
 
 It carries `from_status`, `to_status`, `actor_id` and a JSONB `event_metadata`.
+Creating a profile writes a row too (`event_type = lifecycle_initial`,
+`from_status` NULL), because `POST /onboarding/exporters` accepts a
+`lifecycle_status` and a profile born at `ONBOARDED` would otherwise have no
+record at all. `from_status` and `actor_id` are nullable for that, matching
+`onboarding_event`.
 That last one is deliberate: ANER-4.2-S1T2 needs a completion hook on the
 `COMPLIANCE_REVIEW -> ONBOARDED` edge, and Epic 4.1 does not have one. A
 consumer polling `to_status = ONBOARDED` on this table is that hook, which is
@@ -122,9 +129,9 @@ def upgrade() -> None:
         HISTORY_TABLE,
         sa.Column("customer_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("event_type", sa.String(length=100), nullable=False),
-        sa.Column("from_status", sa.String(length=64), nullable=False),
+        sa.Column("from_status", sa.String(length=64), nullable=True),
         sa.Column("to_status", sa.String(length=64), nullable=False),
-        sa.Column("actor_id", sa.String(length=255), nullable=False),
+        sa.Column("actor_id", sa.String(length=255), nullable=True),
         sa.Column("event_metadata", postgresql.JSONB(), nullable=True),
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column(

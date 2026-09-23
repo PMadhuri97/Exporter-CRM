@@ -27,6 +27,16 @@ record a status that has just been added to the enum without needing its own
 migration first, and it must be able to keep recording one that was later
 removed. ``ExporterProfileService.transition_lifecycle_status`` validates the
 edge before writing, so the values are enum members at the time they are stored.
+
+**Every way a profile gets a status is recorded, not only transitions.**
+``create_or_get_profile`` accepts a ``lifecycle_status`` from the caller, so a
+profile can be born at any status — including ``ONBOARDED``. Recording only
+``transition_lifecycle_status`` would leave exactly that case with no row: no
+record of who put the exporter there, and nothing for the ANER-4.2-S1T2 hook to
+see. Creation therefore writes a ``lifecycle_initial`` row with
+``from_status = NULL``. ``from_status`` and ``actor_id`` are nullable for that
+reason, matching ``onboarding_event``: ``NULL`` from means "entered at
+creation", ``NULL`` actor means an internal caller that supplied none.
 """
 
 from __future__ import annotations
@@ -45,6 +55,10 @@ SCHEMA = "onboarding"
 #: rather than an implied constant so a later writer (a bulk migration, an
 #: automated re-KYC sweep) can be told apart from a person clicking a button.
 LIFECYCLE_TRANSITION_EVENT = "lifecycle_transition"
+
+#: ``event_type`` for the row written when a profile is created at a status
+#: (``from_status`` is ``NULL``).
+LIFECYCLE_INITIAL_EVENT = "lifecycle_initial"
 
 
 class ExporterLifecycleHistory(AppendOnlyModel):
@@ -69,10 +83,10 @@ class ExporterLifecycleHistory(AppendOnlyModel):
 
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    from_status: Mapped[str] = mapped_column(String(64), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
     to_status: Mapped[str] = mapped_column(String(64), nullable=False)
-    actor_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     event_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
-__all__ = ["ExporterLifecycleHistory", "LIFECYCLE_TRANSITION_EVENT"]
+__all__ = ["ExporterLifecycleHistory", "LIFECYCLE_INITIAL_EVENT", "LIFECYCLE_TRANSITION_EVENT"]
