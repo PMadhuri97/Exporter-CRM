@@ -19,7 +19,7 @@ migration's own transaction. Nothing here uses the new value yet — no default
 is assigned, no existing row is touched, no column is altered.
 
 Revision ID: onboarding_0012_risk_critical
-Revises: onboarding_0010_screen_review
+Revises: onboarding_0011_e9_audit
 Create Date: 2026-09-23
 """
 from collections.abc import Sequence
@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "onboarding_0012_risk_critical"
-down_revision: str | None = "onboarding_0010_screen_review"
+down_revision: str | None = "onboarding_0011_e9_audit"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

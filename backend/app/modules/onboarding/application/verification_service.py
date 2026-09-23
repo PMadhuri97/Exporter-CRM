@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.modules.onboarding.infrastructure.adapters  # noqa: F401
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
+    VerificationResultStatus,
     VerificationReviewStatus,
     VerificationType,
 )
@@ -58,6 +59,7 @@ from app.modules.onboarding.domain.workflow_dependencies import (
 from app.modules.onboarding.exceptions import (
     ProviderCapabilityError,
     VerificationResultAlreadyReviewedError,
+    VerificationResultNotReviewableError,
 )
 from app.shared.exceptions import NotFoundError, ValidationError
 
@@ -511,6 +513,8 @@ class VerificationService:
         Raises:
             NotFoundError: no such `VerificationResult`.
             VerificationResultAlreadyReviewedError: already reviewed.
+            VerificationResultNotReviewableError: still `PENDING` — there is
+                no finding yet, and a review cannot be undone.
         """
         result_id = _as_uuid(verification_result_id)
         stmt = (
@@ -525,6 +529,9 @@ class VerificationService:
 
         if result.reviewed_by is not None or result.review_status is not None:
             raise VerificationResultAlreadyReviewedError(verification_result_id=result_id)
+
+        if result.status == VerificationResultStatus.PENDING:
+            raise VerificationResultNotReviewableError(verification_result_id=result_id)
 
         result.reviewed_by = reviewed_by
         result.review_status = review_status
