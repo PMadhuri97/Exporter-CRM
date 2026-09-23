@@ -17,6 +17,9 @@ from app.modules.onboarding.infrastructure.repositories.exporter_activity_reposi
 from app.modules.onboarding.infrastructure.repositories.exporter_contact_repository import (
     ExporterContactRepository,
 )
+from app.modules.onboarding.infrastructure.repositories.exporter_lifecycle_history_repository import (
+    ExporterLifecycleHistoryRepository,
+)
 from app.modules.onboarding.infrastructure.repositories.exporter_profile_repository import (
     ExporterProfileRepository,
 )
@@ -53,6 +56,7 @@ __all__ = [
     "DirectStateMutationError",
     "ExporterActivityRepository",
     "ExporterContactRepository",
+    "ExporterLifecycleHistoryRepository",
     "ExporterProfileRepository",
     "KybVendorResultRepository",
     "KycCaseRepository",

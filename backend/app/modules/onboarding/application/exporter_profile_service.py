@@ -44,6 +44,10 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
+    LIFECYCLE_TRANSITION_EVENT,
+    ExporterLifecycleHistory,
+)
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.onboarding_event import OnboardingEvent
 from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
@@ -66,6 +70,7 @@ from app.modules.onboarding.exceptions import (
 from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
     ExporterContactRepository,
+    ExporterLifecycleHistoryRepository,
     ExporterProfileRepository,
     OnboardingEventRepository,
     OnboardingRequestRepository,
@@ -132,6 +137,7 @@ class ExporterProfileService:
         self._activities = ExporterActivityRepository(db)
         self._requests = OnboardingRequestRepository(db)
         self._events = OnboardingEventRepository(db)
+        self._lifecycle_history = ExporterLifecycleHistoryRepository(db)
 
     # ── Create a bare Lead (Piece 1: "Add Exporter") ────────────────────────
 
@@ -538,6 +544,24 @@ class ExporterProfileService:
         and attempted status) for any pair not in that table — including a
         same-status "transition", which has no edge in the table and so is
         rejected the same way, with no special-casing needed.
+
+        Every accepted move writes an append-only `exporter_lifecycle_history`
+        row carrying `from_status`, `to_status` and `actor_id`, in the same
+        transaction as the column write. Before this, `actor_id` was a parameter
+        that reached a log line and nothing else: the fact that a named person
+        moved an exporter to `ONBOARDED` survived only as long as log retention.
+
+        The row and the column commit together on purpose. Two commits would
+        allow a profile to be `ONBOARDED` with no record of who did it, which is
+        the exact failure being fixed; the trigger on the history table means the
+        row cannot later be quietly adjusted to match a column someone edited by
+        hand.
+
+        Why this is not an `onboarding_event` row — `self._events` is right
+        there, and it was the first choice — is in
+        `ExporterLifecycleHistory`'s module docstring: that table's
+        `onboarding_request_id` is NOT NULL, and most exporter profiles have no
+        onboarding request.
         """
         profile = await self._require_profile(customer_id)
         from_status = profile.lifecycle_status
@@ -546,6 +570,30 @@ class ExporterProfileService:
             raise InvalidExporterLifecycleTransitionError(customer_id, from_status, to_status)
 
         profile.lifecycle_status = to_status
+
+        # Enough for a downstream consumer to act on without re-reading the
+        # profile: ANER-4.2-S1T2 wants a completion hook on
+        # COMPLIANCE_REVIEW -> ONBOARDED, and Epic 4.1 has none. `terminal` is
+        # the flag that edge is identified by, computed from the table rather
+        # than hardcoded here so adding a lifecycle status cannot silently
+        # change what "onboarding completed" means. `source` distinguishes a
+        # person clicking a button from a future automated sweep writing the
+        # same shape of row.
+        await self._lifecycle_history.create(
+            ExporterLifecycleHistory(
+                customer_id=customer_id,
+                event_type=LIFECYCLE_TRANSITION_EVENT,
+                from_status=from_status.value,
+                to_status=to_status.value,
+                actor_id=actor_id,
+                event_metadata={
+                    "source": "exporter_profile_service.transition_lifecycle_status",
+                    "terminal": to_status is ExporterLifecycleStatus.ONBOARDED,
+                    "occurred_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        )
+
         await self._db.commit()
         await self._db.refresh(profile)
 

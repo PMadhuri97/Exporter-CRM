@@ -101,12 +101,19 @@ Ranked by what actually blocks an end-to-end flow, not by story number.
    `SCREENING_COMPLETE` as if it were clear. Needs a decision from whoever owns Epic 4.1's S3,
    not a silent patch.
 
-6. **No HTTP/API layer exists for either `onboarding` or `cases`.** Everything built is
-   application-layer Python — real, tested, callable from other Python code and from tests — but
-   nothing is reachable over a network yet. `gateway` (4.4) is not the answer here; that's the
-   *external*, customer-facing surface, deliberately paused. What's actually needed is a much
-   thinner *internal* router (assign a case, propose/decide a resolution, query onboarding
-   status) for whatever internal tool — a future frontend, an ops script — needs to call this.
+6. **No HTTP/API layer exists for `cases`.** Its nine `application/` modules — lifecycle,
+   transitions, notes, queries, SLA monitoring, evidence aggregation — are real, tested Python,
+   callable from other Python code and from tests, and reachable over a network from nowhere.
+   `app/api/rest/router.py` includes no cases router because `app/modules/cases/` has no `api/`
+   package to include. `gateway` (4.4) is not the answer here; that's the *external*,
+   customer-facing surface, deliberately paused. What's needed is a much thinner *internal*
+   router (assign a case, propose/decide a resolution) for whatever internal tool — a frontend,
+   an ops script — needs to call it.
+
+   **`onboarding` is no longer in this gap.** It has two mounted routers —
+   `app/modules/onboarding/api/router.py` (417 lines) and `api/exporter_router.py` (527 lines) —
+   both included under `/api/v1/onboarding` by `app/api/rest/router.py`. A frontend has shipped
+   against them.
 
 7. **S6 (ledger account creation) is deliberately skipped**, not missing by accident — a
    product decision to hold off on anything that creates a live financial account until
@@ -122,7 +129,14 @@ Ranked by what actually blocks an end-to-end flow, not by story number.
 
 ## Recommended next step
 
-Before frontend work starts: build the thin internal API layer (item 6 above) for both
-`cases` and `onboarding`. Framing/wireframing a UI doesn't need it, but any real
-frontend-to-backend integration will just get rebuilt once a router exists — better to have
-something real to point at from the start.
+*(The previous version of this section said to build the internal API layer for `cases` and
+`onboarding` "before frontend work starts". That has been overtaken: `onboarding`'s routers
+exist and a frontend has shipped against them — nine of the ten EXP-F tickets are built. Kept
+here only so the change of direction is visible.)*
+
+Build the thin internal API layer for `cases` (item 6 above). It is now the only module in this
+checkout with a full application layer and no way to reach it, and the asymmetry is the point:
+`onboarding` got its router and immediately grew a real frontend consumer, while `cases`'
+lifecycle, SLA and evidence services have no caller outside their own tests. Anything that wants
+to act on a case — the compliance console the blueprint describes, an ops script, the
+onboarding↔cases bridge in item 3 — is blocked on it.

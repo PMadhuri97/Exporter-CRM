@@ -2,6 +2,16 @@
 
 ## Context
 
+> **Status note (2026-09-23).** The paragraph below described the repository as
+> it was when these tickets were written, and is kept for that reason — but it is
+> no longer true, and reading it as current will mislead you badly. **Nine of the
+> ten tickets are built.** `frontend/` has a real `package.json`, Vite, React, TS,
+> Tailwind, Radix, TanStack Query, RHF/Zod, a generated OpenAPI client and a
+> passing test suite. `routes.tsx` mounts three live routes and `AppRouter.tsx`
+> mounts the pipeline. See the corrected ticket list below for what is and is not
+> done.
+
+*(Historical, as of the date these tickets were written:)*
 `frontend/` exists only as an empty module-facade skeleton (`frontend/src/modules/onboarding/{api,components,hooks,model,pages,services,types}/index.ts`,
 each `export {}` or `// TODO: implement.`, plus a `routes.tsx` returning `null`) — **no
 `package.json`, no build tool, no styling system, no component library is chosen yet.** This is
@@ -154,18 +164,22 @@ ticket exists in this sequence — dropped, not deferred silently (see the backe
 Documents (the wireframe's Documents tab) also isn't in this list — treated as **out of this
 sequence** until explicitly requested; flag before folding it into EXP-F4 as an extra tab.
 
-1. **EXP-F1 — Auth Shell** — ✅ built 2026-09-21
-2. **EXP-F2 — Exporters List** — ✅ built 2026-09-21
-3. **EXP-F3 — Add Exporter** — ✅ built 2026-09-21
-2. **EXP-F2 — Exporters List**
-3. **EXP-F3 — Add Exporter**
-4. **EXP-F4 — Exporter Detail**
-5. **EXP-F5 — Contacts + Activity**
-6. **EXP-F6 — Lifecycle "Move to…" Action**
-7. **EXP-F7 — Follow-ups**
-8. **EXP-F8 — Verification Results (read-only)**
-9. **EXP-F9 — Verification Actions (trigger + review)**
-10. **EXP-F10 — Pipeline (kanban)**
+Build status verified against the working tree on 2026-09-23. **F7 is the only
+one not built.** (The list previously repeated F1–F3 and left F4–F10 unmarked,
+which read as "nothing past F3 exists".)
+
+1. **EXP-F1 — Auth Shell** — ✅ built
+2. **EXP-F2 — Exporters List** — ✅ built (`pages/ExportersListPage.tsx`)
+3. **EXP-F3 — Add Exporter** — ✅ built (`pages/AddExporterPage.tsx`)
+4. **EXP-F4 — Exporter Detail** — ✅ built (`pages/ExporterDetailPage.tsx`)
+5. **EXP-F5 — Contacts + Activity** — ✅ built (on the detail page)
+6. **EXP-F6 — Lifecycle "Move to…" Action** — ✅ built (`components/LifecycleMoveControl.tsx`)
+7. **EXP-F7 — Follow-ups** — ❌ **not built.** No page, and no route: `AppRouter.tsx`
+   mounts `/login`, `/`, `/exporters/*` and `/pipeline` only. `layout/Sidebar.tsx:21-22`
+   already links to `/follow-ups`, so the nav item is live and lands on nothing.
+8. **EXP-F8 — Verification Results (read-only)** — ✅ built (`components/VerificationSection.tsx`)
+9. **EXP-F9 — Verification Actions (trigger + review)** — ✅ built (same component)
+10. **EXP-F10 — Pipeline (kanban)** — ✅ built (`pages/PipelinePage.tsx`, routed at `/pipeline`)
 
 ---
 

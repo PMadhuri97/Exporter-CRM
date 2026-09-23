@@ -16,6 +16,9 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
+    ExporterLifecycleHistory,
+)
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.kyb_vendor_registration import KybVendorRegistration
 from app.modules.onboarding.domain.entities.kyb_vendor_result import KybVendorResult
@@ -91,6 +94,7 @@ __all__ = [
     "ExporterProfile",
     "ExporterContact",
     "ExporterActivity",
+    "ExporterLifecycleHistory",
     "ExporterSource",
     "ExporterLifecycleStatus",
     "ExporterActivityType",
