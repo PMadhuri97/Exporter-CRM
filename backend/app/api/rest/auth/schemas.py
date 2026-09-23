@@ -1,15 +1,22 @@
 import uuid
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.platform.authentication.models import UserRole
 
 
 class RegisterRequest(BaseModel):
+    """Self-service sign-up. Deliberately carries no `role`: the route is
+    unauthenticated, so any caller-supplied role is a privilege escalation.
+    Every registered account is `API_USER`; elevated roles are granted out of
+    band. `extra="forbid"` makes a client still sending `role` fail loudly
+    (422) instead of silently receiving a lower role than it asked for."""
+
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     full_name: str | None = Field(default=None, max_length=255)
-    role: UserRole = UserRole.API_USER
 
     @field_validator("password")
     @classmethod

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -16,6 +17,79 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     OnboardingRejectionCategory,
     OnboardingRequestStatus,
 )
+from app.platform.authentication.models import User, UserRole
+
+# ── Identifier masking ───────────────────────────────────────────────────────
+# Server-side twin of the frontend's `maskIdentifier`/`canReveal`
+# (frontend/src/platform/mask/maskIdentifier.ts), implementing the role
+# capability matrix in docs/exporter-crm-frontend-tickets.md. The API must not
+# hand a raw PAN/GSTIN/IEC to a caller the matrix says may not see it: browser
+# masking protects nothing from a caller reading the JSON directly.
+#
+# Same mask shape as the frontend, so an already-masked value passes through
+# the frontend's own masking unchanged.
+
+_MASK_CHAR = "•"
+_VISIBLE_SUFFIX_LENGTH = 4
+_ALWAYS_REVEAL_ROLES = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
+
+
+def mask_identifier(value: str | None) -> str | None:
+    """Mask all but the trailing four characters (all of a short value)."""
+    if value is None:
+        return None
+    if len(value) <= _VISIBLE_SUFFIX_LENGTH:
+        return _MASK_CHAR * len(value)
+    return _MASK_CHAR * (len(value) - _VISIBLE_SUFFIX_LENGTH) + value[-_VISIBLE_SUFFIX_LENGTH:]
+
+
+def mask_email(value: str | None) -> str | None:
+    """Keep the first character of the local part and the whole domain
+    (`j•••@acme.com`): the domain is the exporter's company, which the viewer
+    can already see, and a fixed-width mask hides the local part's length.
+    A value with no `@` falls back to `mask_identifier`."""
+    if value is None:
+        return None
+    local, at, domain = value.partition("@")
+    if not at or not local:
+        return mask_identifier(value)
+    return f"{local[0]}{_MASK_CHAR * 3}@{domain}"
+
+
+def mask_phone(value: str | None) -> str | None:
+    """Same shape as the identifiers: only the last four characters visible."""
+    return mask_identifier(value)
+
+
+def can_reveal_identifiers(viewer: User, relationship_manager_user_id: uuid.UUID | None) -> bool:
+    """COMPLIANCE/ADMIN always; OPERATIONS only on exporters it is the
+    assigned relationship manager for; DEVELOPER/API_USER never."""
+    if viewer.role in _ALWAYS_REVEAL_ROLES:
+        return True
+    return (
+        viewer.role == UserRole.OPERATIONS
+        and relationship_manager_user_id is not None
+        and relationship_manager_user_id == viewer.id
+    )
+
+
+class _IdentifierMasking:
+    """Mixin for the exporter responses carrying gstin/pan/iec and
+    relationship_manager_user_id (and, on the detail response, contacts).
+    Every route returning one of them must pass it through
+    `masked_for(current_user)` before returning it."""
+
+    def masked_for(self, viewer: User) -> Self:
+        if can_reveal_identifiers(viewer, self.relationship_manager_user_id):
+            return self
+        update = {
+            "gstin": mask_identifier(self.gstin),
+            "pan": mask_identifier(self.pan),
+            "iec": mask_identifier(self.iec),
+        }
+        if "contacts" in type(self).model_fields:
+            update["contacts"] = [contact.masked() for contact in self.contacts]
+        return self.model_copy(update=update)
 
 
 class CreateExporterProfileRequest(BaseModel):
@@ -107,7 +181,7 @@ class TransitionLifecycleStatusRequest(BaseModel):
     to_status: ExporterLifecycleStatus
 
 
-class ExporterProfileResponse(BaseModel):
+class ExporterProfileResponse(_IdentifierMasking, BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     customer_id: uuid.UUID
@@ -155,6 +229,21 @@ class ExporterContactResponse(BaseModel):
     phone: str | None
     department: str | None
     is_primary_contact: bool
+
+    def masked(self) -> ExporterContactResponse:
+        return self.model_copy(
+            update={"email": mask_email(self.email), "phone": mask_phone(self.phone)}
+        )
+
+    def masked_for(
+        self, viewer: User, relationship_manager_user_id: uuid.UUID | None
+    ) -> ExporterContactResponse:
+        """Same reveal rule as the exporter's identifiers; the contact row has
+        no owner of its own, so the caller supplies the exporter's
+        `relationship_manager_user_id`."""
+        if can_reveal_identifiers(viewer, relationship_manager_user_id):
+            return self
+        return self.masked()
 
 
 class ExporterContactListResponse(BaseModel):
@@ -226,7 +315,7 @@ class OnboardingHistoryEntryResponse(BaseModel):
     rejection_category: OnboardingRejectionCategory | None
 
 
-class ExporterProfileDetailResponse(BaseModel):
+class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
     customer_id: uuid.UUID
     gstin: str | None
     pan: str | None
@@ -284,7 +373,7 @@ class ExporterProfileDetailResponse(BaseModel):
         )
 
 
-class ExporterProfileListItemResponse(BaseModel):
+class ExporterProfileListItemResponse(_IdentifierMasking, BaseModel):
     """One row of `GET /onboarding/exporters` — `ExporterProfileResponse`
     plus `legal_name`, resolved server-side via a join against the
     exporter's most recent `OnboardingRequest` (see

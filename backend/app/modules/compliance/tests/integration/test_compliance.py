@@ -15,6 +15,9 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from app.platform.authentication.models import UserRole
+from app.platform.authentication.testing import user_with_role
+
 # ── sync helpers ──────────────────────────────────────────────────────────────
 
 
@@ -58,20 +61,7 @@ def _create_customer_sync(
 
 async def _register_login(client: AsyncClient, role: str = "COMPLIANCE") -> tuple[str, str]:
     """Return (user_id, access_token)."""
-    email = f"compliance-{uuid.uuid4().hex[:8]}@aner-test.com"
-    reg = await client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": email,
-            "password": "Password1",
-            "role": role,
-        },
-    )
-    assert reg.status_code == 201
-    user_id = reg.json()["id"]
-    tok = await client.post("/api/v1/auth/login", json={"email": email, "password": "Password1"})
-    assert tok.status_code == 200
-    return user_id, tok.json()["access_token"]
+    return await user_with_role(client, UserRole(role), email_prefix="compliance")
 
 
 def _payment_payload(sender_id: str, beneficiary_id: str) -> dict:

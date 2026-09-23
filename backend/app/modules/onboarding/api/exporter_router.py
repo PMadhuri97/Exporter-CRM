@@ -27,6 +27,7 @@ from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, Header, Query, Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.schemas.exporter import (
@@ -61,14 +62,35 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
     ExporterSource,
 )
-from app.platform.authentication.dependencies import get_current_active_user
-from app.platform.authentication.models import User
+from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.platform.authentication.models import User, UserRole
+from app.platform.authorization.services import require_role
 from app.platform.configuration.config import settings
 from app.platform.database.services import get_db
 from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/exporters", tags=["Exporter CRM"])
+
+# Compliance decisions and findings (screening checklist, lifecycle moves,
+# bank-activity findings) are compliance-owned; a plain API_USER must never be
+# able to mark a sanctions check PASSED.
+_COMPLIANCE_OR_ADMIN = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
+# Routine CRM reads and writes by internal staff (Relationship Managers are
+# OPERATIONS, and may read every exporter). PAN/GSTIN/IEC and contact
+# email/phone are masked per viewer in the response schemas.
+_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+
+
+async def _relationship_manager_user_id(
+    db: AsyncSession, customer_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The exporter's owning RM, for masking routes that don't load the profile."""
+    return await db.scalar(
+        select(ExporterProfile.relationship_manager_user_id).where(
+            ExporterProfile.customer_id == customer_id
+        )
+    )
 
 
 # ── Profile ───────────────────────────────────────────────────────────────
@@ -93,12 +115,13 @@ router = APIRouter(prefix="/exporters", tags=["Exporter CRM"])
             "description": "Idempotent replay or existing profile for this customer_id",
         },
         401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
         422: {"description": "Invalid request body"},
     },
 )
 async def create_exporter_profile(
     body: CreateExporterProfileRequest,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
     response: Response,
     db: AsyncSession = Depends(get_db),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
@@ -142,7 +165,7 @@ async def create_exporter_profile(
         # it just always claimed "201 Created" while doing it.
         if not created:
             response.status_code = 200
-        return ExporterProfileResponse.model_validate(profile)
+        return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
 
     customer_id = body.customer_id or uuid.uuid4()
     profile, created = await ExporterProfileService(db).create_or_get_profile(
@@ -163,7 +186,7 @@ async def create_exporter_profile(
     )
     if not created:
         response.status_code = 200
-    return ExporterProfileResponse.model_validate(profile)
+    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
 
 
 @router.get(
@@ -177,16 +200,17 @@ async def create_exporter_profile(
     responses={
         200: {"model": ExporterProfileDetailResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
         404: {"description": "Exporter profile not found"},
     },
 )
 async def get_exporter_profile_detail(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileDetailResponse:
     detail = await ExporterProfileService(db).get_profile_detail(customer_id)
-    return ExporterProfileDetailResponse.from_detail(detail)
+    return ExporterProfileDetailResponse.from_detail(detail).masked_for(current_user)
 
 
 @router.patch(
@@ -201,6 +225,7 @@ async def get_exporter_profile_detail(
     responses={
         200: {"model": ExporterProfileResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
         404: {"description": "Exporter profile not found"},
         422: {"description": "Invalid request body"},
     },
@@ -208,13 +233,13 @@ async def get_exporter_profile_detail(
 async def update_exporter_profile(
     customer_id: uuid.UUID,
     body: UpdateExporterProfileRequest,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileResponse:
     profile = await ExporterProfileService(db).update_profile(
         customer_id, **body.model_dump(exclude_unset=True)
     )
-    return ExporterProfileResponse.model_validate(profile)
+    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
 
 
 @router.post(
@@ -229,6 +254,7 @@ async def update_exporter_profile(
     responses={
         200: {"model": ExporterProfileResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "COMPLIANCE or ADMIN role required"},
         404: {"description": "Exporter profile not found"},
         409: {"description": "Illegal lifecycle_status transition"},
     },
@@ -236,13 +262,13 @@ async def update_exporter_profile(
 async def transition_exporter_lifecycle_status(
     customer_id: uuid.UUID,
     body: TransitionLifecycleStatusRequest,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileResponse:
     profile = await ExporterProfileService(db).transition_lifecycle_status(
         customer_id, body.to_status, actor_id=str(current_user.id)
     )
-    return ExporterProfileResponse.model_validate(profile)
+    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
 
 
 @router.get(
@@ -257,10 +283,11 @@ async def transition_exporter_lifecycle_status(
     responses={
         200: {"model": ExporterProfileSearchResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
     },
 )
 async def search_exporter_profiles(
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
     gstin: str | None = Query(default=None),
     pan: str | None = Query(default=None),
@@ -282,7 +309,10 @@ async def search_exporter_profiles(
         offset=offset,
     )
     return ExporterProfileSearchResponse(
-        profiles=[ExporterProfileListItemResponse.model_validate(item) for item in items],
+        profiles=[
+            ExporterProfileListItemResponse.model_validate(item).masked_for(current_user)
+            for item in items
+        ],
         limit=limit,
         offset=offset,
     )
@@ -303,13 +333,14 @@ async def search_exporter_profiles(
     responses={
         201: {"model": ExporterContactResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
         422: {"description": "Invalid request body"},
     },
 )
 async def add_exporter_contact(
     customer_id: uuid.UUID,
     body: AddExporterContactRequest,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterContactResponse:
     contact = await ExporterContactActivityService(db).add_contact(
@@ -321,7 +352,8 @@ async def add_exporter_contact(
         department=body.department,
         is_primary=body.is_primary,
     )
-    return ExporterContactResponse.model_validate(contact)
+    owner = await _relationship_manager_user_id(db, customer_id)
+    return ExporterContactResponse.model_validate(contact).masked_for(current_user, owner)
 
 
 @router.get(
@@ -331,17 +363,22 @@ async def add_exporter_contact(
     responses={
         200: {"model": ExporterContactListResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
     },
 )
 async def list_exporter_contacts(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterContactListResponse:
     contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
+    owner = await _relationship_manager_user_id(db, customer_id)
     return ExporterContactListResponse(
         customer_id=customer_id,
-        contacts=[ExporterContactResponse.model_validate(c) for c in contacts],
+        contacts=[
+            ExporterContactResponse.model_validate(c).masked_for(current_user, owner)
+            for c in contacts
+        ],
     )
 
 
@@ -357,13 +394,14 @@ async def list_exporter_contacts(
     responses={
         201: {"model": ExporterActivityResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
         422: {"description": "Invalid request body"},
     },
 )
 async def log_exporter_activity(
     customer_id: uuid.UUID,
     body: LogExporterActivityRequest,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterActivityResponse:
     activity = await ExporterContactActivityService(db).log_activity(
@@ -385,11 +423,12 @@ async def log_exporter_activity(
     responses={
         200: {"model": ExporterActivityListResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
     },
 )
 async def list_exporter_activities(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
     activity_type: ExporterActivityType | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -429,10 +468,11 @@ async def list_exporter_activities(
     responses={
         200: {"model": PendingActivityListResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
     },
 )
 async def list_pending_exporter_activities(
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
     actor_id: str | None = Query(default=None),
     activity_type: ExporterActivityType | None = Query(default=None),
@@ -462,10 +502,14 @@ async def list_pending_exporter_activities(
     "/{customer_id}/screening-review",
     response_model=ScreeningReviewListResponse,
     summary="List persisted screening-review checklist decisions",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "COMPLIANCE or ADMIN role required"},
+    },
 )
 async def list_screening_review(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
 ) -> ScreeningReviewListResponse:
     items = await ScreeningReviewService(db).list_review_items(customer_id)
@@ -479,12 +523,16 @@ async def list_screening_review(
     "/{customer_id}/screening-review/{item_key}",
     response_model=ScreeningReviewItemResponse,
     summary="Record or update one screening-review checklist decision",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "COMPLIANCE or ADMIN role required"},
+    },
 )
 async def update_screening_review(
     customer_id: uuid.UUID,
     item_key: str,
     body: UpdateScreeningReviewItemRequest,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
 ) -> ScreeningReviewItemResponse:
     item = await ScreeningReviewService(db).upsert_review_item(
@@ -501,6 +549,10 @@ async def update_screening_review(
     "/{customer_id}/bank-activity",
     response_model=BankActivityResponse,
     summary="List bank-linked suspicious-activity findings",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "COMPLIANCE or ADMIN role required"},
+    },
     description=(
         "E9 establishes the stable CRM contract for Surepass/Finpass-style "
         "bank monitoring. Until a provider feed is connected, this returns an "
@@ -509,7 +561,7 @@ async def update_screening_review(
 )
 async def get_bank_activity(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
 ) -> BankActivityResponse:
     findings = await ScreeningReviewService(db).list_bank_findings(customer_id)
