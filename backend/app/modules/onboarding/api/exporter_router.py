@@ -56,6 +56,10 @@ from app.modules.onboarding.application import (
     ExporterContactActivityService,
     ExporterProfileService,
 )
+from app.modules.onboarding.application.case_bridge_service import (
+    CaseBridgeConflictError,
+    CaseBridgeService,
+)
 from app.modules.onboarding.application.screening_review_service import ScreeningReviewService
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterActivityType,
@@ -63,6 +67,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
 from app.platform.configuration.config import settings
@@ -98,6 +103,23 @@ async def _relationship_manager_user_id(
         select(ExporterProfile.relationship_manager_user_id).where(
             ExporterProfile.customer_id == customer_id
         )
+    )
+
+
+async def _publish_lifecycle(
+    customer_id: uuid.UUID,
+    from_status: ExporterLifecycleStatus | None,
+    to_status: ExporterLifecycleStatus,
+    actor_id: str,
+) -> None:
+    """Called after the service has committed. The lifecycle-history row is the
+    durable record; this is the notification, and it is best-effort.
+    Entering COMPLIANCE_REVIEW is what opens a compliance case."""
+    await OnboardingEventPublisher().exporter_lifecycle_changed(
+        customer_id=customer_id,
+        from_status=from_status.value if from_status is not None else None,
+        to_status=to_status.value,
+        actor_id=actor_id,
     )
 
 
@@ -178,6 +200,10 @@ async def create_exporter_profile(
         # it just always claimed "201 Created" while doing it.
         if not created:
             response.status_code = 200
+        else:
+            await _publish_lifecycle(
+                profile.customer_id, None, profile.lifecycle_status, str(current_user.id)
+            )
         return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
 
     customer_id = body.customer_id or uuid.uuid4()
@@ -200,6 +226,11 @@ async def create_exporter_profile(
     )
     if not created:
         response.status_code = 200
+    else:
+        # A profile born at COMPLIANCE_REVIEW must get its case like any other.
+        await _publish_lifecycle(
+            profile.customer_id, None, profile.lifecycle_status, str(current_user.id)
+        )
     return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
 
 
@@ -263,7 +294,10 @@ async def update_exporter_profile(
     description=(
         "The only way lifecycle_status changes. Validates the move against the "
         "permitted-transition table; an illegal transition returns 409 and leaves "
-        "the profile untouched."
+        "the profile untouched. While the exporter has an open compliance case, "
+        "COMPLIANCE_REVIEW -> ONBOARDED is refused with 409: approval is the case "
+        "decision (`POST /compliance-cases/{case_id}/decision`), and the lifecycle "
+        "follows it."
     ),
     responses={
         200: {"model": ExporterProfileResponse},
@@ -275,7 +309,12 @@ async def update_exporter_profile(
             )
         },
         404: {"description": "Exporter profile not found"},
-        409: {"description": "Illegal lifecycle_status transition"},
+        409: {
+            "description": (
+                "Illegal lifecycle_status transition, or -> ONBOARDED while a "
+                "compliance case is open"
+            )
+        },
     },
 )
 async def transition_exporter_lifecycle_status(
@@ -284,12 +323,33 @@ async def transition_exporter_lifecycle_status(
     current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileResponse:
+    from_status = await db.scalar(
+        select(ExporterProfile.lifecycle_status).where(ExporterProfile.customer_id == customer_id)
+    )
+    # Only a compliance caller could make this move at all; anyone else still
+    # gets the service's own 403/409 below.
+    if (
+        body.to_status is ExporterLifecycleStatus.ONBOARDED
+        and from_status is ExporterLifecycleStatus.COMPLIANCE_REVIEW
+        and current_user.role in _COMPLIANCE_ROLES
+    ):
+        open_case = await CaseBridgeService(db).open_review_case_for(customer_id)
+        if open_case is not None:
+            raise CaseBridgeConflictError(
+                f"Exporter '{customer_id}' has open compliance case "
+                f"{open_case.case_reference}. Onboarding is decided on the case "
+                f"(POST /compliance-cases/{open_case.id}/decision); the lifecycle "
+                f"moves once the case is resolved.",
+                error_code="ONBOARDING_DECIDED_BY_CASE",
+            )
+
     profile = await ExporterProfileService(db).transition_lifecycle_status(
         customer_id,
         body.to_status,
         actor_id=str(current_user.id),
         compliance_authorized=current_user.role in _COMPLIANCE_ROLES,
     )
+    await _publish_lifecycle(customer_id, from_status, profile.lifecycle_status, str(current_user.id))
     return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
 
 
@@ -563,6 +623,13 @@ async def update_screening_review(
         status=body.status,
         comment=body.comment,
         actor_id=str(current_user.id),
+    )
+    await OnboardingEventPublisher().exporter_screening_review_updated(
+        customer_id=customer_id,
+        item_id=item.id,
+        item_key=item.item_key,
+        status=item.status,
+        reviewed_by=item.reviewed_by,
     )
     return ScreeningReviewItemResponse.model_validate(item)
 

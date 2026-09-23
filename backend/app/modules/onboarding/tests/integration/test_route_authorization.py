@@ -115,6 +115,22 @@ GATED_ROUTES = [
     ("GET", f"{BASE}/exporters/activities/pending", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/screening-review", None, STAFF),
     ("GET", f"{BASE}/exporters/{_ID}/bank-activity", None, STAFF),
+    # compliance cases and audit: compliance-only, reads included
+    ("GET", f"{BASE}/compliance-cases", None, COMPLIANCE_OR_ADMIN),
+    ("GET", f"{BASE}/compliance-cases/{_ID}", None, COMPLIANCE_OR_ADMIN),
+    ("POST", f"{BASE}/compliance-cases/{_ID}/notes", {"note": "x"}, COMPLIANCE_OR_ADMIN),
+    (
+        "POST",
+        f"{BASE}/compliance-cases/{_ID}/decision",
+        {"outcome": "APPROVE", "rationale": "x" * 60},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    (
+        "GET",
+        f"{BASE}/audit/onboarding-requests/{_ID}/evidence-package",
+        None,
+        COMPLIANCE_OR_ADMIN,
+    ),
 ]
 
 REFUSALS = [
@@ -491,6 +507,35 @@ async def _move(client: AsyncClient, token: str, customer_id: str, to_status: st
     )
 
 
+def _open_case_id(customer_id: str) -> str:
+    """The compliance case opened when the exporter entered COMPLIANCE_REVIEW."""
+    url = get_settings().DATABASE_SYNC_URL.replace("postgresql+psycopg2://", "postgresql://")
+    conn = psycopg2.connect(url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM cases.compliance_case WHERE customer_id = %s "
+                "AND case_status NOT IN ('RESOLVED', 'CLOSED_WITHOUT_ACTION')",
+                (customer_id,),
+            )
+            (case_id,) = cur.fetchone()
+    finally:
+        conn.close()
+    return str(case_id)
+
+
+async def _approve_via_case(client: AsyncClient, token: str, customer_id: str):
+    """Approval is the case decision; the lifecycle moves to ONBOARDED after it."""
+    return await client.post(
+        f"{BASE}/compliance-cases/{_open_case_id(customer_id)}/decision",
+        json={
+            "outcome": "APPROVE",
+            "rationale": "Evidence reviewed in full; nothing adverse and the profile is consistent.",
+        },
+        headers=auth_header(token),
+    )
+
+
 async def _exporter_in_compliance_review(client: AsyncClient, token: str) -> str:
     """Walk a new exporter through the sales stages — all open to OPERATIONS."""
     customer_id = await _create_exporter(client, token)
@@ -520,12 +565,23 @@ async def test_operations_cannot_decide_out_of_compliance_review(
     client: AsyncClient, tokens: dict[UserRole, str], to_status: str
 ):
     """Approving (-> ONBOARDED) and sending back (-> DATA_COLLECTION) are both
-    compliance decisions."""
+    compliance decisions. Entering COMPLIANCE_REVIEW opened a compliance case,
+    so approval is that case's decision; a direct move to ONBOARDED is refused."""
     customer_id = await _exporter_in_compliance_review(client, tokens[UserRole.OPERATIONS])
 
     resp = await _move(client, tokens[UserRole.OPERATIONS], customer_id, to_status)
     assert resp.status_code == 403, resp.text
     assert resp.json()["error_code"] == "FORBIDDEN"
+
+    if to_status == "ONBOARDED":
+        direct = await _move(client, tokens[UserRole.COMPLIANCE], customer_id, to_status)
+        assert direct.status_code == 409, direct.text
+        assert direct.json()["error_code"] == "ONBOARDING_DECIDED_BY_CASE"
+
+        resp = await _approve_via_case(client, tokens[UserRole.COMPLIANCE], customer_id)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["exporter_lifecycle_status"] == to_status
+        return
 
     resp = await _move(client, tokens[UserRole.COMPLIANCE], customer_id, to_status)
     assert resp.status_code == 200, resp.text
@@ -536,7 +592,7 @@ async def test_operations_cannot_move_an_onboarded_exporter(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
     customer_id = await _exporter_in_compliance_review(client, tokens[UserRole.OPERATIONS])
-    onboarded = await _move(client, tokens[UserRole.COMPLIANCE], customer_id, "ONBOARDED")
+    onboarded = await _approve_via_case(client, tokens[UserRole.COMPLIANCE], customer_id)
     assert onboarded.status_code == 200, onboarded.text
 
     resp = await _move(client, tokens[UserRole.OPERATIONS], customer_id, "ACTIVE")
