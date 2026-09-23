@@ -6,10 +6,30 @@ Owns the `cases` PostgreSQL schema: the Case Management Console (Epic 4.3) — a
 single case model for every compliance-relevant event across the platform,
 regardless of which epic raised it.
 
-**Scope of this revision.** Only ANER-4.3-S1T1 (schema) and S1T2 (SLA
-configuration and deadline calculation) are implemented. There is no `api/`
-package, no event consumer, no assignment or resolution workflow, and no SLA
-monitoring job — those belong to S2 and later stories.
+**Scope of this revision.** Substantially more than S1T1/S1T2. `application/`
+holds nine modules:
+
+| Module | Covers |
+|---|---|
+| `case_lifecycle_service.py` | creation, assignment, propose/decide resolution (maker-checker) |
+| `case_transition_service.py` | governed status changes |
+| `case_note_service.py` | notes on a case |
+| `case_query_service.py` | read/search |
+| `case_sla_monitoring_service.py` | breach detection against `sla_deadline` |
+| `evidence_aggregation_service.py` | pulling evidence onto a case |
+| `sla_service.py` | SLA configuration and deadline calculation (S1T2) |
+| `actor_validation.py` | the "checker ≠ maker" guard |
+| `__init__.py` | the module's public facade |
+
+**Built is not the same as reachable.** None of it is callable over HTTP. There
+is still no `api/` package, so `app/api/rest/router.py` includes nothing for this
+module and nothing outside `app/modules/cases/` and its own tests calls any of
+these services. There is also still no event consumer: nothing creates a case
+from a real originating event, in this checkout or in a running system — cases
+are created in tests and nowhere else.
+
+So read the table as "the domain logic exists and is tested", not as "the Case
+Management Console works". Wiring it up is S2 and later.
 
 ## Boundary with `compliance.compliance_cases`
 

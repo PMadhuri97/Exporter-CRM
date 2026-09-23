@@ -13,6 +13,7 @@ import {
   STAGE_GROUP_LABEL,
   STATUS_LABEL,
   STATUS_TO_STAGE_GROUP,
+  canMoveLifecycleFrom,
   type StageGroup,
 } from '../constants';
 import { useExporterProfiles, useTransitionExporterLifecycle } from '../hooks';
@@ -106,8 +107,10 @@ function PipelineCard({
   onDragStart,
   onDragEnd,
 }: PipelineCardProps) {
+  const { role } = useCurrentUser();
+  const canMove = canMoveLifecycleFrom(profile.lifecycle_status, role);
   const crossColumnMoves = legalDropGroups(profile.lifecycle_status);
-  const draggable = crossColumnMoves.length > 0;
+  const draggable = canMove && crossColumnMoves.length > 0;
   const isOwner = isOwnedByCurrentUser(profile, currentUserId);
 
   return (
@@ -175,7 +178,8 @@ function PipelineCard({
         />
       </div>
 
-      {!draggable &&
+      {canMove &&
+        !draggable &&
         PERMITTED_LIFECYCLE_TRANSITIONS[profile.lifecycle_status].length > 0 && (
           <p className="mt-2 text-[11px] leading-4 text-ink-faint">
             Next lifecycle move stays in this column. Use Move to…

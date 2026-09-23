@@ -544,6 +544,9 @@ function BankActivityPanel({ customerId }: { customerId: string }) {
 }
 
 export function VerificationSection({ customerId }: { customerId: string }) {
+  const user = useCurrentUser();
+  // Triggering a verification is compliance-only on the backend (403 otherwise).
+  const canTrigger = user.role === 'COMPLIANCE' || user.role === 'ADMIN';
   const query = useVerificationResults('EXPORTER', customerId);
   const triggerMutation = useTriggerVerification('EXPORTER', customerId);
   const [tab, setTab] = useState<WorkspaceTab>('COMPANY');
@@ -582,8 +585,9 @@ export function VerificationSection({ customerId }: { customerId: string }) {
           {/* TASK: this control creates rows that are terminal at PENDING
               forever — no provider runs, and they can never resolve. It is
               therefore dev-only and labelled as a placeholder generator, so it
-              cannot be mistaken for working screening in a demo. */}
-          {import.meta.env.DEV && (
+              cannot be mistaken for working screening in a demo. Triggering is
+              also COMPLIANCE/ADMIN-only on the backend (403 otherwise). */}
+          {import.meta.env.DEV && canTrigger && (
             <button
               type="button"
               disabled={triggerMutation.isPending}
