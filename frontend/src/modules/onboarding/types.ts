@@ -92,3 +92,72 @@ export interface BankActivityResponse {
   open_findings: number;
   findings: BankActivityFinding[];
 }
+
+// ── Document requirements (B2) ───────────────────────────────────────────────
+//
+// Hand-written rather than aliased onto `components['schemas'][...]`, matching
+// the precedent `ScreeningReviewItem`/`BankActivityFinding` set above: two
+// other routers land in this phase, and `schema.ts` is regenerated once all
+// three have merged. Point these at the generated schema in that pass.
+
+export interface DocumentRequirement {
+  document_type: string;
+  /** `null` means the document is accepted regardless of age. */
+  max_age_days: number | null;
+  validity_description: string | null;
+}
+
+export interface DocumentRequirementsResponse {
+  entity_type: string;
+  registration_country: string;
+  sector_code: string | null;
+  corridor_intent: string | null;
+  declared_monthly_volume_usd: number | null;
+  policy_version: string;
+  required_documents: DocumentRequirement[];
+  total: number;
+}
+
+/**
+ * The profile the policy is evaluated against. `entity_type` and
+ * `registration_country` are required by the endpoint; the rest are genuinely
+ * optional signals that only some conditional rules test.
+ */
+export interface DocumentRequirementsParams {
+  entityType: string;
+  registrationCountry: string;
+  sectorCode?: string;
+  corridorIntent?: string;
+  declaredMonthlyVolumeUsd?: number;
+}
+
+// ── Risk rating check (B3) ───────────────────────────────────────────────────
+
+/**
+ * The payload `RiskRatingAdapter` reads, under the same key names the backend's
+ * `RiskRatingService.calculate` uses. The adapter rejects an unknown key, so
+ * this type is the contract, not a hint.
+ */
+export interface RiskRatingPayload {
+  entity_type: string;
+  registration_country: string;
+  sector_code?: string | null;
+  declared_monthly_volume_usd?: number | null;
+  ubo_count?: number | null;
+  ubo_pep_statuses?: string[] | null;
+  screening_result?: string | null;
+  kyb_discrepancies?: string[] | null;
+}
+
+/**
+ * `normalized_result` on a RISK_RATING result — the same JSON
+ * `onboarding_request.risk_rating_factors` stores, so the two read alike.
+ */
+export interface RiskRatingFactors {
+  score: number;
+  risk_rating: string;
+  factors: { factor: string; value: unknown; score: number; detail: string }[];
+  edd_required: boolean;
+  edd_reason: string | null;
+  config_version: string;
+}

@@ -266,17 +266,37 @@ async def test_trigger_rejects_unknown_provider_at_schema(
     assert "provider" in resp.text
 
 
-def test_schema_accepts_exactly_the_real_providers():
+def test_schema_accepts_exactly_the_published_providers():
+    """The boundary admits every *published* registry name, and nothing else.
+
+    Widened from the two adapters that existed when this test was written
+    (`manual`, `rxil`) to the three names `workflow_dependencies.
+    DECLARED_ADAPTER_PATHS` publishes. `kyb` was this test's negative example
+    and is now a published name — the adapter behind it is still being built,
+    so a request naming it is refused by `get_adapter` ("declared at ... but
+    that module does not exist yet") rather than here. That is the intended
+    split: the schema pins the vocabulary, the registry pins what is reachable.
+
+    Derived from `DECLARED_ADAPTER_PATHS` rather than re-listed, so publishing a
+    fourth name without widening the boundary fails here instead of surfacing as
+    a 422 that reads like "no such provider".
+    """
     from pydantic import ValidationError
 
     from app.modules.onboarding.api.schemas.verification import TriggerVerificationRequest
+    from app.modules.onboarding.domain.workflow_dependencies import DECLARED_ADAPTER_PATHS
 
     base = {k: v for k, v in _trigger_body().items() if k != "provider"}
     assert TriggerVerificationRequest(**base).provider == "manual"
-    for provider in ("manual", "rxil"):
+
+    for provider in ("manual", "rxil", *DECLARED_ADAPTER_PATHS):
         assert TriggerVerificationRequest(**base, provider=provider).provider == provider
-    with pytest.raises(ValidationError):
-        TriggerVerificationRequest(**base, provider="kyb")
+
+    # A real vendor name that is not a published registry key. The registry
+    # routes on the key, never on the vendor behind it.
+    for unpublished in ("middesk", "trulioo", "KYB"):
+        with pytest.raises(ValidationError):
+            TriggerVerificationRequest(**base, provider=unpublished)
 
 
 # ── Server-side PAN/GSTIN/IEC masking (FIX 5) ────────────────────────────────

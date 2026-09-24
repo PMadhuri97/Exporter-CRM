@@ -5,6 +5,9 @@ import structlog
 from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.document_requirements_router import (
+    router as document_requirements_router,
+)
 from app.modules.onboarding.api.exporter_router import router as exporter_router
 from app.modules.onboarding.api.schemas.case import (
     CaseResponse,
@@ -58,6 +61,12 @@ _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 # mount prefix, giving the ticket's documented paths
 # (/onboarding/exporters...) with no prefix duplicated in two places.
 router.include_router(exporter_router)
+
+# Document requirements (B2) — read-only policy lookup. Mounted here for
+# the same reason exporter_router is: it inherits this router's
+# "/onboarding" prefix and declares only its own "/document-requirements"
+# one, so the path is not spelled out in two places.
+router.include_router(document_requirements_router)
 
 
 # ── Case management and its state machine ───────────────
