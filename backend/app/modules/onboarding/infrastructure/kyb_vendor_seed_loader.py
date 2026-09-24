@@ -13,9 +13,26 @@ declaration produces a new key and the registry's ``ON CONFLICT DO UPDATE``
 refreshes the row — without a per-boot key that would grow
 ``ledger.idempotency_record`` on every restart.
 
-``KNOWN_KYB_ADAPTERS`` is empty on this branch: the Middesk and Trulioo adapters
-are Epic 4.1 deliverables. Until then this loader is a no-op at startup, and the
-S1T4 tests register fakes directly.
+``KNOWN_KYB_ADAPTERS`` is populated (B4). It was an empty tuple, which made this
+loader a documented no-op: ``load_kyb_vendor_registry`` ran at every boot
+(``main.py`` -> ``bootstrap.load_kyb_vendor_registry_seed_data``) and registered
+nothing, so ``onboarding.kyb_vendor_registration`` stayed empty and
+``KybVendorRegistryService.get_vendor_for_country`` answered *manual review* for
+every country including US and IN. The routing mechanism was complete; it simply
+had no vendors in it.
+
+The declarations come from the vendors themselves, via
+``kyb_verification_adapter.known_vendor_declarations()`` — Middesk declares
+``US``, Trulioo declares India and the rest. Country coverage is therefore stated
+in exactly one place (each vendor's own ``declare_capabilities()``) and this
+loader, the registry, and the adapter's in-process routing fallback all read that
+same statement. Nothing here restates a country→vendor mapping.
+
+Deliberately declaration-only: this seeds *which vendor covers what*, never
+whether it is credentialled. A vendor with no API key is still the right vendor
+for its country, and registering it is what lets
+``KybVerificationAdapter._require_credentials`` fail with "middesk is not
+enabled" instead of the much less useful "no vendor covers US".
 """
 
 from __future__ import annotations
@@ -59,8 +76,31 @@ class _KybAdapterLike(Protocol):
     def declare_capabilities(self) -> KYBVendorCapabilityDeclaration: ...
 
 
-#: KYB vendor adapter classes registered at startup. Empty until Epic 4.1 ships
-#: the Middesk and Trulioo adapters.
+def _known_kyb_adapters() -> tuple[type[_KybAdapterLike], ...]:
+    """The KYB vendor adapter classes to register, resolved lazily.
+
+    A function rather than a module-level tuple because resolving Middesk and
+    Trulioo imports them, and this module is imported at application start —
+    evaluating it eagerly would pull both vendor clients into every process
+    that touches the loader, including ones that never register anything.
+
+    The classes come from ``kyb_verification_adapter``'s loaders, which reach
+    Middesk through the kyb public facade and Trulioo by dotted path through
+    kyb's own resolver, so this module inherits that file's compliance with
+    ``importlinter``'s ``kyb-internals-are-private`` contract and likewise
+    imports nothing under ``app/modules/kyb/`` directly.
+    """
+    from app.modules.onboarding.infrastructure.adapters.kyb_verification_adapter import (
+        _VENDOR_LOADERS,
+    )
+
+    return tuple(loader() for loader in _VENDOR_LOADERS.values())
+
+
+#: Kept as a name because it is this module's published interface (``__all__``)
+#: and the S1T4 tests import it. ``()`` means "resolve from
+#: :func:`_known_kyb_adapters` at call time"; a caller passing its own sequence
+#: to :func:`load_kyb_vendor_registry` still overrides both.
 KNOWN_KYB_ADAPTERS: tuple[type[_KybAdapterLike], ...] = ()
 
 
@@ -86,13 +126,28 @@ async def load_kyb_vendor_registry(
 ) -> list[KybVendorRegistration]:
     """Register every known KYB vendor. Safe to call on every boot.
 
-    ``adapters`` overrides :data:`KNOWN_KYB_ADAPTERS` — the S1T4 tests pass their
-    fakes here. Returns the registrations in declaration order.
+    ``adapters`` overrides the default set — the S1T4 tests pass their fakes
+    here. With no override, the real Middesk and Trulioo adapters are resolved
+    from :func:`_known_kyb_adapters`. Returns the registrations in declaration
+    order.
+
+    Registration is capability metadata only: no vendor is contacted, no
+    credential is read, and a vendor with neither is still registered so that a
+    later verification attempt fails as "vendor not enabled" rather than "no
+    vendor covers this country".
     """
     service = KybVendorRegistryService(session)
     registered: list[KybVendorRegistration] = []
 
-    for adapter_cls in adapters if adapters is not None else KNOWN_KYB_ADAPTERS:
+    resolved_adapters: Sequence[type[_KybAdapterLike]]
+    if adapters is not None:
+        resolved_adapters = adapters
+    elif KNOWN_KYB_ADAPTERS:
+        resolved_adapters = KNOWN_KYB_ADAPTERS
+    else:
+        resolved_adapters = _known_kyb_adapters()
+
+    for adapter_cls in resolved_adapters:
         declaration = adapter_cls().declare_capabilities()
         registration = await service.register_vendor(
             declaration,

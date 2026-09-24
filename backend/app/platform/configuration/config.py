@@ -216,6 +216,27 @@ class Settings(BaseSettings):
     MIDDESK_ENABLED: bool = False
     MIDDESK_BASE_URL: str = "https://api.middesk.com/v1"
     MIDDESK_WEBHOOK_SECRET: str = "change-me-middesk-webhook-secret"
+    # Middesk's key is provisioned from Vault in deployed environments —
+    # `VaultClient.get_middesk_credentials()` reads `secret/data/middesk`. This
+    # is the documented local/dev fallback that same client already falls back
+    # to; it was previously read straight from `os.environ` and so appeared in
+    # no settings object, which made "is Middesk actually configured?"
+    # unanswerable without reading the Vault client's source.
+    #
+    # Declared here so `KybVerificationAdapter._require_credentials` can refuse
+    # before calling out. Empty is not a usable key: the Vault fallback returns
+    # `""` rather than raising, and an empty Bearer token fails at Middesk as a
+    # 401 that reads like a vendor outage instead of our own misconfiguration.
+    MIDDESK_API_KEY: str = ""
+
+    # ── Vault ─────────────────────────────────────────────────────────────────
+    # `VaultClient` treats itself as enabled only when both are non-empty, and
+    # otherwise falls back to environment secrets. Mirrored into settings for
+    # the same reason as MIDDESK_API_KEY above: so a credential precheck can
+    # tell "Vault will answer" from "Vault is not configured here" without
+    # reaching into `os.environ` itself.
+    VAULT_ADDR: str = ""
+    VAULT_TOKEN: str = ""
 
     # ── KYB / Trulioo (Epic 4.1 S2T2) ────────────────────────────────────────
     # Mirrors the SUMSUB_ENABLED pattern: off by default so CI and the test
