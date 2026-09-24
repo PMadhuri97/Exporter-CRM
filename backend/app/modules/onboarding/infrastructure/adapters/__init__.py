@@ -20,6 +20,9 @@ from app.modules.onboarding.infrastructure.adapters.mock_provider import (
     MockIdentityProviderAdapter,
     MockScreeningProviderAdapter,
 )
+from app.modules.onboarding.infrastructure.adapters.risk_rating_adapter import (
+    RiskRatingAdapter,
+)
 from app.modules.onboarding.infrastructure.adapters.stub_rxil_adapter import (
     StubRxilAdapter,
 )
@@ -28,5 +31,6 @@ __all__ = [
     "ManualEntryAdapter",
     "MockIdentityProviderAdapter",
     "MockScreeningProviderAdapter",
+    "RiskRatingAdapter",
     "StubRxilAdapter",
 ]

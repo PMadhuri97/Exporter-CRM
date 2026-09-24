@@ -200,3 +200,26 @@ export function getBankActivity(
     `/onboarding/exporters/${customerId}/bank-activity`,
   );
 }
+
+/**
+ * Read-only: the document types this profile will be asked for, from the
+ * GitOps-managed policy. Nothing stores a document yet, so there is no status
+ * per document and no upload counterpart to this call — see the backend's
+ * `document_requirements_router.py` module docstring.
+ */
+export function getDocumentRequirements(
+  params: import('../types').DocumentRequirementsParams,
+): Promise<import('../types').DocumentRequirementsResponse> {
+  const query = new URLSearchParams({
+    entity_type: params.entityType,
+    registration_country: params.registrationCountry,
+  });
+  if (params.sectorCode) query.set('sector_code', params.sectorCode);
+  if (params.corridorIntent) query.set('corridor_intent', params.corridorIntent);
+  if (params.declaredMonthlyVolumeUsd !== undefined) {
+    query.set('declared_monthly_volume_usd', String(params.declaredMonthlyVolumeUsd));
+  }
+  return apiRequest<import('../types').DocumentRequirementsResponse>(
+    `/onboarding/document-requirements?${query.toString()}`,
+  );
+}

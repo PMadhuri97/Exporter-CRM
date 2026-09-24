@@ -7,6 +7,7 @@ import {
   ChevronUp,
   CircleDashed,
   Info,
+  Gauge,
   Landmark,
   RefreshCw,
   ShieldCheck,
@@ -26,6 +27,8 @@ import {
   useVerificationResults,
 } from '../hooks';
 import type {
+  RiskRatingFactors,
+  RiskRatingPayload,
   ScreeningChecklistStatus,
   VerificationResult,
   VerificationReviewStatus,
@@ -45,7 +48,37 @@ const COMPANY_CHECK_TYPES: VerificationType[] = [
   'ADVERSE_MEDIA',
 ];
 
+/**
+ * Check types the dev placeholder generator still creates PENDING rows for,
+ * because no adapter can produce a real one yet.
+ *
+ * The rule for this list: a type leaves it the moment a real adapter can
+ * actually run it, and not one commit earlier. Offering a placeholder for a
+ * check that works would hide the real one; removing a type whose adapter is
+ * not yet reachable would leave the tab silently empty where a check was
+ * expected.
+ *
+ * This phase's status:
+ *  - `KYB` — an adapter is being built and its registry name is published
+ *    (`kyb`), but it has no credentials and its module does not resolve yet, so
+ *    it stays. Remove it here once `provider: 'kyb'` actually returns a result.
+ *  - `AML` / `SANCTIONS` — no screening adapter exists at all. Epic 3.2 is not
+ *    built, and RXIL supplies its own screening rather than this platform
+ *    running it, so there is nothing to wire. They stay.
+ *  - `RISK_RATING` is deliberately absent: it was never a stub. It is a real,
+ *    runnable check — see `RiskRatingPanel` below.
+ */
 const STUB_RUN_TYPES: VerificationType[] = ['KYB', 'AML', 'SANCTIONS'];
+
+/**
+ * The registry key of the risk-rating adapter, and the `provider` string it
+ * reports back. They differ on purpose (a registry key is a routing string, the
+ * provider is the producer's own identity) — see the backend adapter's module
+ * docstring. `RISK_RATING_PROVIDER` is asserted against, not just displayed:
+ * it is the provenance guarantee that a real result names its producer.
+ */
+const RISK_RATING_REGISTRY_KEY = 'risk_rating';
+const RISK_RATING_PROVIDER = 'aner-risk-rating';
 
 type WorkspaceTab = 'COMPANY' | 'BANK';
 
@@ -437,6 +470,263 @@ function ScreeningRow({ result, customerId }: { result: VerificationResult; cust
   );
 }
 
+// -- Risk rating (B3) --------------------------------------------------------
+
+const RISK_RATING_ENTITY_TYPES = [
+  'CORPORATION',
+  'PARTNERSHIP',
+  'SOLE_TRADER',
+  'TRUST',
+  'FUND',
+];
+const RISK_RATING_COUNTRIES = ['IN', 'US', 'GB', 'SG', 'AE'];
+
+/**
+ * Read `normalized_result` as the risk-rating factor payload, or `null`.
+ *
+ * A RISK_RATING row's `normalized_result` is the same JSON shape
+ * `onboarding_request.risk_rating_factors` stores. It is still server data
+ * arriving through an untyped record, so it is checked rather than cast — an
+ * older row, or one written by something else, renders as "no breakdown"
+ * instead of throwing inside the table.
+ */
+function readRiskFactors(result: VerificationResult): RiskRatingFactors | null {
+  const value = result.normalized_result as Partial<RiskRatingFactors> | null | undefined;
+  if (!value || typeof value.score !== 'number' || !Array.isArray(value.factors)) {
+    return null;
+  }
+  return value as RiskRatingFactors;
+}
+
+/**
+ * The exporter's composite risk rating.
+ *
+ * The first check in this workspace with a real adapter behind it and no vendor
+ * to wait on: the scoring is a pure function of the signals below and a
+ * version-controlled policy file, so it runs and returns a band immediately.
+ * That is what makes it worth showing on its own rather than as one more row in
+ * the company list — and it is also why it is not in `STUB_RUN_TYPES`.
+ *
+ * The signals come from the operator because they are not on the CRM record:
+ * entity type, registration country and declared volume live on
+ * `onboarding_request`, which this page does not load. They are inputs to a
+ * calculation, not claims about a finding — the calculation itself, and the
+ * band it produces, are the adapter's.
+ */
+function RiskRatingPanel({
+  results,
+  customerId,
+}: {
+  results: VerificationResult[];
+  customerId: string;
+}) {
+  const user = useCurrentUser();
+  const canTrigger = user.role === 'COMPLIANCE' || user.role === 'ADMIN';
+  const mutation = useTriggerVerification('EXPORTER', customerId);
+  const [open, setOpen] = useState(false);
+  const [entityType, setEntityType] = useState('CORPORATION');
+  const [country, setCountry] = useState('IN');
+  const [sectorCode, setSectorCode] = useState('');
+  const [volume, setVolume] = useState('');
+
+  // Most recent rating wins: a rating is a point-in-time judgement, and
+  // re-running it after new signals arrive is the expected way to get a current
+  // one. Earlier rows stay on the record rather than being replaced.
+  const latest = useMemo(() => {
+    const ratings = results.filter((result) => result.verification_type === 'RISK_RATING');
+    if (ratings.length === 0) return null;
+    return [...ratings].sort(
+      (a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime(),
+    )[0];
+  }, [results]);
+
+  const factors = latest ? readRiskFactors(latest) : null;
+
+  async function run() {
+    const payload: RiskRatingPayload = {
+      entity_type: entityType,
+      registration_country: country,
+    };
+    if (sectorCode.trim()) payload.sector_code = sectorCode.trim();
+    const parsedVolume = Number(volume);
+    if (volume.trim() && Number.isFinite(parsedVolume) && parsedVolume >= 0) {
+      payload.declared_monthly_volume_usd = parsedVolume;
+    }
+    try {
+      await mutation.mutateAsync({
+        verification_type: 'RISK_RATING',
+        provider: RISK_RATING_REGISTRY_KEY,
+        payload: payload as unknown as Record<string, unknown>,
+      });
+      setOpen(false);
+      toast.success('Risk rating recorded');
+    } catch (error) {
+      toast.error(errorMessage(error, 'Could not run risk rating'));
+    }
+  }
+
+  return (
+    <div
+      data-extension="risk-rating"
+      className="mb-4 rounded-lg border border-border bg-surface-subtle p-4"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="rounded-lg bg-surface p-2 text-brand-600 shadow-sm">
+            <Gauge size={18} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-ink">Risk rating</h3>
+              {latest?.risk_level && <Chip value={latest.risk_level} />}
+              {latest?.review_status && <Chip value={latest.review_status} />}
+            </div>
+            {latest ? (
+              <p className="mt-1 text-xs text-ink-faint">
+                Source: {latest.provider}
+                {latest.provider !== RISK_RATING_PROVIDER && (
+                  // The provenance guarantee EXP-2 was built around: the
+                  // service persists the adapter's self-reported provider
+                  // verbatim and never substitutes one. So a rating not
+                  // reporting the rater is a hand-entered row (provider
+                  // "manual") wearing a computed check's type, and the
+                  // distinction is exactly what provenance exists to preserve.
+                  <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                    Not computed
+                  </span>
+                )}{' '}
+                &middot; {formatDateTime(latest.performed_at)}
+                {factors ? ` \u00b7 score ${factors.score} \u00b7 policy v${factors.config_version}` : ''}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm leading-6 text-ink-muted">
+                Not rated yet. The composite rating is computed here from a
+                version-controlled policy — no provider integration is needed.
+              </p>
+            )}
+          </div>
+        </div>
+        {canTrigger && (
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken"
+          >
+            <Gauge size={15} />
+            {latest ? 'Re-run rating' : 'Run risk rating'}
+          </button>
+        )}
+      </div>
+
+      {latest && factors?.edd_required && (
+        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+          <strong className="font-semibold">Enhanced due diligence required.</strong>{' '}
+          {factors.edd_reason ?? 'The policy flagged this profile for EDD.'}
+        </p>
+      )}
+
+      {open && canTrigger && (
+        <div className="mt-4 rounded-lg border border-border bg-surface p-3">
+          <p className="text-xs leading-5 text-ink-muted">
+            These signals are not on the CRM record — they live on the onboarding
+            request. Enter what applies; anything left blank is banded as
+            not-yet-declared rather than guessed.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-xs font-medium text-ink-faint">
+              Entity type
+              <select
+                aria-label="Risk rating entity type"
+                className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
+                value={entityType}
+                onChange={(event) => setEntityType(event.target.value)}
+              >
+                {RISK_RATING_ENTITY_TYPES.map((value) => (
+                  <option key={value} value={value}>
+                    {humanize(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-ink-faint">
+              Registration country
+              <select
+                aria-label="Risk rating registration country"
+                className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
+                value={country}
+                onChange={(event) => setCountry(event.target.value)}
+              >
+                {RISK_RATING_COUNTRIES.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-medium text-ink-faint">
+              Sector code
+              <input
+                aria-label="Risk rating sector code"
+                className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
+                value={sectorCode}
+                placeholder="e.g. DNFBP"
+                onChange={(event) => setSectorCode(event.target.value)}
+              />
+            </label>
+            <label className="text-xs font-medium text-ink-faint">
+              Monthly volume (USD)
+              <input
+                aria-label="Risk rating declared monthly volume"
+                inputMode="numeric"
+                className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
+                value={volume}
+                placeholder="e.g. 750000"
+                onChange={(event) => setVolume(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              disabled={mutation.isPending}
+              onClick={() => void run()}
+              className="inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+            >
+              {mutation.isPending && <RefreshCw size={13} className="animate-spin" />}
+              {mutation.isPending ? 'Running…' : 'Run rating'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {latest && factors && (
+        <div className="mt-3 overflow-x-auto rounded-lg border border-border bg-surface">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-border uppercase tracking-wide text-ink-faint">
+                <th className="px-3 py-2 font-medium">Factor</th>
+                <th className="px-3 py-2 font-medium">Score</th>
+                <th className="px-3 py-2 font-medium">Detail</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {factors.factors.map((factor) => (
+                <tr key={`${factor.factor}-${factor.detail}`}>
+                  <td className="px-3 py-2 font-medium text-ink">{humanize(factor.factor)}</td>
+                  <td className="px-3 py-2 tabular-nums text-ink-muted">{factor.score}</td>
+                  <td className="px-3 py-2 text-ink-faint">{factor.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {latest && <ReviewActions result={latest} customerId={customerId} />}
+    </div>
+  );
+}
+
 /**
  * The company check types the tab advertises but nothing in the product can
  * currently produce.
@@ -482,8 +772,8 @@ function EmptyScreenings() {
   return (
     <div className="rounded-lg border border-dashed border-border-strong bg-surface-subtle px-4 py-8 text-center">
       <ShieldCheck className="mx-auto text-ink-faint" size={24} />
-      <p className="mt-2 text-sm font-medium text-ink">No screening results yet</p>
-      <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-ink-muted">No provider integration is connected, so no company screening has run for this exporter yet. Results will appear here once a provider is configured.</p>
+      <p className="mt-2 text-sm font-medium text-ink">No company screening results yet</p>
+      <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-ink-muted">No KYB or screening provider is connected, so none of the company checks below have run. The risk rating above does not need one and can be run now.</p>
     </div>
   );
 }
@@ -615,6 +905,10 @@ export function VerificationSection({ customerId }: { customerId: string }) {
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><div className="flex items-start gap-2"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><div>Could not load screening results. <button type="button" onClick={() => void query.refetch()} className="font-medium underline">Retry</button></div></div></div>
           ) : (
             <>
+              {/* Above the company list, not inside it: this is the one check
+                  here that actually runs today, and burying a working result
+                  among placeholder rows is how it stops being noticed. */}
+              <RiskRatingPanel results={results} customerId={customerId} />
               {companyResults.length === 0 ? (
                 <EmptyScreenings />
               ) : (

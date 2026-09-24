@@ -5,6 +5,7 @@ import {
   createExporterLead,
   getExporterProfileDetail,
   getBankActivity,
+  getDocumentRequirements,
   getScreeningReview,
   listExporterActivities,
   listExporterContacts,
@@ -205,5 +206,19 @@ export function useBankActivity(customerId: string | undefined) {
     queryKey: ['bankActivity', customerId],
     queryFn: () => getBankActivity(customerId!),
     enabled: Boolean(customerId),
+  });
+}
+
+export function useDocumentRequirements(
+  params: import('../types').DocumentRequirementsParams | undefined,
+) {
+  return useQuery({
+    queryKey: ['documentRequirements', params],
+    queryFn: () => getDocumentRequirements(params!),
+    enabled: Boolean(params),
+    // The policy is a GitOps file that changes by deploy, and the endpoint is
+    // a pure function of the query it was called with — there is nothing for a
+    // refetch to discover within a session.
+    staleTime: Infinity,
   });
 }

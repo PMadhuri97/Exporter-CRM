@@ -16,9 +16,16 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
 )
 
 #: Registry keys of the real verification adapters: `ManualEntryAdapter`
-#: (`"manual"`) and `StubRxilAdapter`'s `REGISTRY_KEY` (`"rxil"`). Widen this
-#: when a new adapter is registered.
-VerificationProvider = Literal["manual", "rxil"]
+#: (`"manual"`), `StubRxilAdapter`'s `REGISTRY_KEY` (`"rxil"`), and the three
+#: names published by `workflow_dependencies.DECLARED_ADAPTER_PATHS`. Widen
+#: this when a new adapter is registered.
+#:
+#: `"kyb"` and `"sumsub"` are declared but their adapter modules are still
+#: being built. A request naming one is accepted by *this* schema and refused
+#: by `get_adapter` with "declared at ... but that module does not exist yet"
+#: — deliberately: the alternative is a 422 that reads as "no such provider"
+#: for a provider whose name is already agreed and published.
+VerificationProvider = Literal["manual", "rxil", "risk_rating", "kyb", "sumsub"]
 
 
 class TriggerVerificationRequest(BaseModel):

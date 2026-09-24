@@ -20,7 +20,12 @@ import { toast } from 'sonner';
 import { useCurrentUser } from '@/platform/auth';
 import { MaskedValue } from '@/platform/mask';
 
-import { LifecycleMoveControl, StageChip, VerificationSection } from '../components';
+import {
+  DocumentRequirementsSection,
+  LifecycleMoveControl,
+  StageChip,
+  VerificationSection,
+} from '../components';
 import {
   useAddExporterContact,
   useExporterActivities,
@@ -592,6 +597,13 @@ export function ExporterDetailPage() {
           </div>
         )}
       </section>
+
+      {/* Not behind `isStaff`, unlike the screening workspace below. This one
+          reads GitOps-managed policy, not customer data — there is no PII in a
+          list of document type names — and the endpoint admits DEVELOPER for
+          exactly that reason. Hiding it here would be a stricter rule than the
+          backend's, enforced in the one place a user can't see it. */}
+      <DocumentRequirementsSection industry={profile.industry} />
 
       {isStaff && <VerificationSection customerId={customerId} />}
     </div>

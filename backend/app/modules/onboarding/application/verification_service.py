@@ -184,6 +184,12 @@ _VALID_ENTITY_TYPES_FOR_CHECK: dict[
             VerificationEntityType.EXPORTER,
         }
     ),
+    # Composite risk banding — about a counterparty, never a trade object. The
+    # rating is computed from entity type, country, sector, declared volume and
+    # UBO/screening signals, none of which an invoice, vessel or shipment has.
+    VerificationType.RISK_RATING: frozenset(
+        {VerificationEntityType.EXPORTER, VerificationEntityType.BUYER}
+    ),
 }
 
 # `VerificationType` is documented as extended additively (new member + new

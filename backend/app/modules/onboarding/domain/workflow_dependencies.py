@@ -661,6 +661,56 @@ ADAPTER_MODULE_ALLOWLIST: tuple[str, ...] = (
 )
 
 
+#: The registry names this phase publishes, and the exact module path each
+#: adapter class is expected to be built at.
+#:
+#: Why this exists at all. ``VERIFICATION_ADAPTER_REGISTRY`` is populated by
+#: module-level ``register_adapter(...)`` calls, so a name only exists once its
+#: module has been imported — which means a name cannot be *reserved* ahead of
+#: the file that claims it. Three adapters land in this phase, built by
+#: different people at different times, and the registry name is the string a
+#: caller sends over HTTP: it has to be agreed and fixed *before* the adapters
+#: exist, not discovered afterwards from whatever each file happened to pass to
+#: ``register_adapter``. This mapping is that agreement, in one place. Each
+#: adapter is expected to pin its own half of it at import, the way
+#: ``risk_rating_adapter`` does (it raises if the class it registers is not the
+#: one declared here), with
+#: ``tests/integration/test_b3_risk_rating_adapter.py``'s
+#: ``test_declared_path_and_registry_key_resolve_to_the_same_class`` as the
+#: pattern to copy.
+#:
+#: Naming convention: the key is lower-case, matching the keys already at the
+#: schema boundary (``api/schemas/verification.py``'s ``VerificationProvider``
+#: literal — ``"manual"``, ``"rxil"``). A registry key is a caller-facing
+#: routing string, deliberately distinct from the provider's own self-reported
+#: ``VerificationOutcome.provider`` (see ``StubRxilAdapter``: key ``"rxil"``,
+#: provider ``"RXIL"``).
+#:
+#: Every path below resolves through the same ``ADAPTER_MODULE_ALLOWLIST`` and
+#: the same ``issubclass(..., VerificationAdapter)`` check as a caller-supplied
+#: dotted path — declaring a name here grants no privilege the dotted fallback
+#: does not already grant, it only fixes which string means which module.
+DECLARED_ADAPTER_PATHS: dict[str, str] = {
+    # B3 — risk rating. No external dependency: it reuses the same GitOps-backed
+    # calculator `ConfigDrivenRiskRater` does, synchronously (see that adapter's
+    # module docstring for why the two are separate).
+    "risk_rating": (
+        "app.modules.onboarding.infrastructure.adapters."
+        "risk_rating_adapter.RiskRatingAdapter"
+    ),
+    # D2 — KYB, wrapping the vendor-agnostic `kyb` facade (Middesk / Trulioo).
+    "kyb": (
+        "app.modules.onboarding.infrastructure.adapters."
+        "kyb_adapter.KybVerificationAdapter"
+    ),
+    # D2 — Sumsub identity, over `app.integrations.identity_providers.sumsub`.
+    "sumsub": (
+        "app.modules.onboarding.infrastructure.adapters."
+        "sumsub_adapter.SumsubIdentityAdapter"
+    ),
+}
+
+
 def _module_is_allowlisted(module_name: str) -> bool:
     """True if ``module_name`` is an allowlisted package or a submodule of one.
 
@@ -673,9 +723,56 @@ def _module_is_allowlisted(module_name: str) -> bool:
     )
 
 
+# A declared path outside the allowlist would be a silent hole in the narrowing
+# `get_adapter` exists to enforce, so it fails at import rather than at the
+# first request that happens to use it.
+_UNALLOWLISTED_DECLARATIONS = {
+    name: path
+    for name, path in DECLARED_ADAPTER_PATHS.items()
+    if not _module_is_allowlisted(path.rsplit(".", 1)[0])
+}
+if _UNALLOWLISTED_DECLARATIONS:  # pragma: no cover — guards a source edit
+    raise RuntimeError(
+        "DECLARED_ADAPTER_PATHS names a module outside ADAPTER_MODULE_ALLOWLIST: "
+        + ", ".join(f"{n} -> {p}" for n, p in sorted(_UNALLOWLISTED_DECLARATIONS.items()))
+    )
+
+
 def get_adapter(class_path: str) -> type[VerificationAdapter]:
     if class_path in VERIFICATION_ADAPTER_REGISTRY:
         return VERIFICATION_ADAPTER_REGISTRY[class_path]
+    # A declared name resolves to its published module path. An adapter that
+    # also calls `register_adapter` at import is found by the branch above and
+    # never reaches here; this is what makes a name work before anything has
+    # imported the module that claims it.
+    declared = DECLARED_ADAPTER_PATHS.get(class_path)
+    if declared is not None:
+        try:
+            return get_adapter(declared)
+        except ModuleNotFoundError as exc:
+            # The name is agreed, the file is not there yet.
+            #
+            # `ProviderNotRegisteredError` (422), not the bare `ValueError` the
+            # rest of this function raises: a published name reaches here
+            # straight from a request body — the schema boundary admits it
+            # precisely because it is published — so an unhandled exception
+            # would be a 500 with no usable body for what is really a "not yet"
+            # answer. The other branches below cannot be reached that way; the
+            # schema's `VerificationProvider` literal rejects an arbitrary
+            # string long before them.
+            #
+            # Imported here rather than at module scope to keep this domain
+            # module's import list as it was. `domain/policies/` already
+            # imports from `exceptions` (no cycle — it depends only on
+            # `app.shared.exceptions`), so this is a local-import habit, not a
+            # layering workaround.
+            from app.modules.onboarding.exceptions import ProviderResolutionError
+
+            raise ProviderResolutionError(
+                f"Provider '{class_path}' is a published adapter name, declared "
+                f"at '{declared}', but that adapter has not been built yet",
+                error_code="PROVIDER_NOT_YET_BUILT",
+            ) from exc
     if "." in class_path:
         module_name, class_name = class_path.rsplit(".", 1)
         if not _module_is_allowlisted(module_name):

@@ -134,6 +134,22 @@ class VerificationType(str, enum.Enum):
     SHIPMENT = "SHIPMENT"
     VESSEL = "VESSEL"
     INSURANCE = "INSURANCE"
+    #: The composite risk banding this platform computes itself, recorded as a
+    #: check like any other so it lands on the same `VerificationResult` row,
+    #: the same provenance (`provider`), and the same compliance review path.
+    #:
+    #: Three nearby names are different concepts and none of them fit:
+    #: `VerificationRiskLevel` is the *banding on a result row* (the output of
+    #: this check, not the check itself); `OnboardingRiskRating` is the rating
+    #: persisted on the onboarding request; `OnboardingRequestStatus.
+    #: RISK_RATING_IN_PROGRESS` is a workflow state. What was missing is the
+    #: *kind of check* — without it a risk rating had nowhere to be recorded
+    #: as evidence, which is why `ConfigDrivenRiskRater` had no result row to
+    #: write to.
+    #:
+    #: Backed by `onboarding_0013_risk_check` (`ALTER TYPE ... ADD
+    #: VALUE`); the member is inert until that migration has run.
+    RISK_RATING = "RISK_RATING"
 
 
 class VerificationEntityType(str, enum.Enum):
