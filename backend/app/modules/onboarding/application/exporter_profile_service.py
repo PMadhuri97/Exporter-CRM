@@ -38,6 +38,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
@@ -48,7 +49,6 @@ from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     HISTORY_DIMENSION_JOURNEY,
     LIFECYCLE_INITIAL_EVENT,
     LIFECYCLE_TRANSITION_EVENT,
-    ExporterLifecycleHistory,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.onboarding_event import OnboardingEvent
@@ -73,7 +73,6 @@ from app.modules.onboarding.exceptions import (
 from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
     ExporterContactRepository,
-    ExporterLifecycleHistoryRepository,
     ExporterProfileRepository,
     OnboardingEventRepository,
     OnboardingRequestRepository,
@@ -161,7 +160,9 @@ class ExporterProfileService:
         self._activities = ExporterActivityRepository(db)
         self._requests = OnboardingRequestRepository(db)
         self._events = OnboardingEventRepository(db)
-        self._lifecycle_history = ExporterLifecycleHistoryRepository(db)
+        # The shared history writer, not a repository: every history row this
+        # service writes goes through the one writer all four developers use.
+        self._history = HistoryService(db)
 
     # ── Create a bare Lead (Piece 1: "Add Exporter") ────────────────────────
 
@@ -595,15 +596,24 @@ class ExporterProfileService:
         source: str,
         reason: str | None = None,
     ) -> None:
-        """Append one `exporter_lifecycle_history` row, flushed but not
-        committed: the caller commits it together with the status write, so a
-        profile can never hold a status with no record of how it got there.
+        """Append one journey history row through the shared writer.
 
-        `dimension` is always `journey` here. The table is shared across the
-        journey, the three gauges and deals as of migration 0013, and the
-        column has no database default, so every writer names its own dimension
-        — a writer that forgot one would otherwise have silently recorded a
-        journey move. See `docs/contracts/history-row.md`.
+        A thin adapter over `HistoryService.record`, not a second
+        implementation: it turns this service's `ExporterLifecycleStatus`
+        members into the strings the history log stores, supplies
+        `dimension="journey"`, and computes the `terminal` flag below. There is
+        one writer of `exporter_lifecycle_history` and it is `HistoryService`.
+
+        Still flushed and not committed — the rule has moved into the shared
+        writer rather than away. `transition_lifecycle_status` commits the
+        status column and this row together, so a profile can never hold a
+        status with no record of how it got there.
+
+        `event_type` is passed explicitly rather than letting `record` derive
+        it. The derived names would be `journey_initial`/`journey_transition`;
+        these rows have always been `lifecycle_initial`/`lifecycle_transition`,
+        a downstream consumer (ANER-4.2-S1T2) polls for them, and 1,659 existing
+        rows carry them. Renaming is not this change's to make.
 
         Enough for a downstream consumer to act on without re-reading the
         profile: ANER-4.2-S1T2 wants a completion hook on
@@ -614,21 +624,16 @@ class ExporterProfileService:
         at ONBOARDED is terminal too — it is onboarded, and the hook must see
         it. `source` distinguishes the write paths.
         """
-        await self._lifecycle_history.create(
-            ExporterLifecycleHistory(
-                customer_id=customer_id,
-                dimension=HISTORY_DIMENSION_JOURNEY,
-                deal_id=None,
-                reason=reason,
-                event_type=event_type,
-                from_status=from_status.value if from_status is not None else None,
-                to_status=to_status.value,
-                actor_id=actor_id,
-                event_metadata={
-                    "source": source,
-                    "terminal": to_status is ExporterLifecycleStatus.ONBOARDED,
-                },
-            )
+        await self._history.record(
+            customer_id,
+            dimension=HISTORY_DIMENSION_JOURNEY,
+            from_value=from_status.value if from_status is not None else None,
+            to_value=to_status.value,
+            actor_id=actor_id,
+            reason=reason,
+            source=source,
+            event_type=event_type,
+            details={"terminal": to_status is ExporterLifecycleStatus.ONBOARDED},
         )
 
     async def transition_lifecycle_status(

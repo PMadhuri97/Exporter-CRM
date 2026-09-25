@@ -17,7 +17,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
@@ -31,7 +31,12 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         super().__init__(ExporterLifecycleHistory, session)
 
     async def list_by_customer(
-        self, customer_id: uuid.UUID, *, dimension: str | None = None
+        self,
+        customer_id: uuid.UUID,
+        *,
+        dimension: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> Sequence[ExporterLifecycleHistory]:
         """One exporter's history, newest first, optionally one dimension only.
 
@@ -55,13 +60,60 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         )
         if dimension is not None:
             stmt = stmt.where(ExporterLifecycleHistory.dimension == dimension)
-        result = await self.session.execute(
-            stmt.order_by(
+        stmt = stmt.order_by(
+            ExporterLifecycleHistory.created_at.desc(),
+            ExporterLifecycleHistory.id.desc(),
+        )
+        if limit is not None:
+            stmt = stmt.limit(limit).offset(offset)
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
+    async def count_by_customer(
+        self, customer_id: uuid.UUID, *, dimension: str | None = None
+    ) -> int:
+        """How many rows the matching `list_by_customer` call would return in
+        total, so a paged response can say how much more there is."""
+        stmt = select(func.count()).select_from(ExporterLifecycleHistory).where(
+            ExporterLifecycleHistory.customer_id == customer_id
+        )
+        if dimension is not None:
+            stmt = stmt.where(ExporterLifecycleHistory.dimension == dimension)
+        return int(await self.session.scalar(stmt) or 0)
+
+    async def list_by_deal(
+        self, deal_id: uuid.UUID, *, limit: int | None = None, offset: int = 0
+    ) -> Sequence[ExporterLifecycleHistory]:
+        """One deal's history, newest first.
+
+        Served by `ix_exporter_lifecycle_history_deal_recent`, which is partial
+        on `deal_id IS NOT NULL` — this query never asks for NULL, so the
+        partial index covers it exactly.
+
+        Empty until deals exist (migration 0018). Nothing here checks that the
+        deal is real: there is no deal table to check against, and this
+        repository is not the place to guess.
+        """
+        stmt = (
+            select(ExporterLifecycleHistory)
+            .where(ExporterLifecycleHistory.deal_id == deal_id)
+            .order_by(
                 ExporterLifecycleHistory.created_at.desc(),
                 ExporterLifecycleHistory.id.desc(),
             )
         )
+        if limit is not None:
+            stmt = stmt.limit(limit).offset(offset)
+        result = await self.session.execute(stmt)
         return result.scalars().all()
+
+    async def count_by_deal(self, deal_id: uuid.UUID) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(ExporterLifecycleHistory)
+            .where(ExporterLifecycleHistory.deal_id == deal_id)
+        )
+        return int(await self.session.scalar(stmt) or 0)
 
     async def find_transition(
         self,

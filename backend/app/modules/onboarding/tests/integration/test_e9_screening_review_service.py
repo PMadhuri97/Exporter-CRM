@@ -29,6 +29,7 @@ from sqlalchemy.exc import DBAPIError
 from app.modules.onboarding.application.exporter_profile_service import (
     ExporterProfileService,
 )
+from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.application.screening_review_service import (
     VALID_ITEM_KEYS,
     ScreeningReviewService,
@@ -396,8 +397,12 @@ async def test_the_full_walk_is_recorded_in_order():
     customer_id = uuid.uuid4()
     await _profile_at(customer_id, ExporterLifecycleStatus.ONBOARDED)
 
+    # Read through the shared history service rather than a private handle on
+    # `ExporterProfileService`: since Phase 4 that service writes through
+    # `HistoryService`, and this is the same read the history route serves.
     async with db_services.AsyncSessionLocal() as db:
-        rows = await ExporterProfileService(db)._lifecycle_history.list_by_customer(customer_id)
+        rows, total = await HistoryService(db).list_for_company(customer_id, limit=100)
+    assert total == len(rows)
 
     assert [r.to_status for r in reversed(rows)] == [
         ExporterLifecycleStatus.LEAD.value,

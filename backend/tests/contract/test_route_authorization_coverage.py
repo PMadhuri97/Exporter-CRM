@@ -131,6 +131,12 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("POST", f"{CRM}/exporters/{{customer_id}}/activities"): STAFF,
     ("GET", f"{CRM}/exporters/{{customer_id}}/activities"): READERS,
     ("GET", f"{CRM}/exporters/activities/pending"): READERS,
+    # ── Shared CRM history log (L1-11) ───────────────────────────────────────
+    # "See companies, contacts, deals, history" in the role matrix (§3.7):
+    # staff yes, DEVELOPER read-only, API_USER no. Read-only routes; there is
+    # no write surface for history and there should never be one.
+    ("GET", f"{CRM}/exporters/{{customer_id}}/history"): READERS,
+    ("GET", f"{CRM}/deals/{{deal_id}}/history"): READERS,
     # ── Exporter CRM: compliance workspace ───────────────────────────────────
     ("GET", f"{CRM}/exporters/{{customer_id}}/screening-review"): STAFF,
     (

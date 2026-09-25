@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.exporter_router import router as exporter_router
+from app.modules.onboarding.api.history_router import router as history_router
 from app.modules.onboarding.api.schemas.case import (
     CaseResponse,
     CaseTransitionListResponse,
@@ -58,6 +59,13 @@ _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 # mount prefix, giving the ticket's documented paths
 # (/onboarding/exporters...) with no prefix duplicated in two places.
 router.include_router(exporter_router)
+
+# Shared CRM history log (L1-11) — Developer 1's, in its own file for the same
+# reason the Exporter CRM routes are in theirs, and included here so it
+# inherits the "/onboarding" mount prefix. It carries its own full paths
+# (/exporters/{id}/history, /deals/{id}/history) rather than a router prefix,
+# because the deal route is not under /exporters.
+router.include_router(history_router)
 
 
 # ── Case management and its state machine ───────────────

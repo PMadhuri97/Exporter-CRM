@@ -55,6 +55,20 @@ class EventType(str, enum.Enum):
     CUSTOMER_REGISTERED = "customer.registered"
     CUSTOMER_VERIFICATION_UPDATED = "customer.verification.updated"
 
+    # ── Exporter CRM handovers (docs/contracts/event-envelope.md) ─────────────
+    # The two things the CRM announces to other teams. The CRM records
+    # outcomes; the teams that receive these own the decisions that follow.
+    #
+    # `company.became_customer` fires when a company is a Prospect and its
+    # background check is CLEAR, whichever happens second (assumption A1). The
+    # customers team builds the receiver later (decision 10), so nothing
+    # consumes it yet — which is expected, and why the CRM only announces.
+    #
+    # `deal.handed_over` fires when a deal passes to the lending team, which is
+    # permitted only for a CUSTOMER whose check is CLEAR (assumption A5).
+    COMPANY_BECAME_CUSTOMER = "company.became_customer"
+    DEAL_HANDED_OVER = "deal.handed_over"
+
     # ── Account lifecycle events ───────────────────────────────────────────────
     ACCOUNT_SUSPENDED = "account.suspended"
     ACCOUNT_CLOSED = "account.closed"
@@ -127,6 +141,16 @@ TOPIC_FOR_EVENT: dict[EventType, Topic] = {
     EventType.COMPENSATION_COMPLETED: Topic.SETTLEMENT,
     EventType.CUSTOMER_REGISTERED: Topic.CUSTOMER,
     EventType.CUSTOMER_VERIFICATION_UPDATED: Topic.CUSTOMER,
+    # Both CRM handovers go on the existing customer topic rather than a new
+    # one. It is already partitioned by customer id, which is exactly the
+    # partition key a CRM event uses, so one company's events stay ordered
+    # together — including a deal handover, which is an event about that
+    # company's deal. A new Topic member would also be picked up by everything
+    # subscribing to ALL_TOPICS (the idempotency stream processor and the
+    # platform consumer registry), which would mean provisioning a Kafka topic
+    # to carry two event types nothing consumes yet.
+    EventType.COMPANY_BECAME_CUSTOMER: Topic.CUSTOMER,
+    EventType.DEAL_HANDED_OVER: Topic.CUSTOMER,
     EventType.ACCOUNT_SUSPENDED: Topic.LEDGER,
     EventType.ACCOUNT_CLOSED: Topic.LEDGER,
     EventType.SETTLEMENT_TRANSITION: Topic.SETTLEMENT,
