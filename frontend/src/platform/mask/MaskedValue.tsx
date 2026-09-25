@@ -7,7 +7,6 @@ import { canReveal, maskIdentifier } from './maskIdentifier';
 
 interface MaskedValueProps {
   value: string | null | undefined;
-  isOwner?: boolean;
   className?: string;
 }
 
@@ -19,11 +18,7 @@ interface MaskedValueProps {
  * ("a disabled eye icon would still leak 'this data exists, you're just not
  * allowed'").
  */
-export function MaskedValue({
-  value,
-  isOwner = false,
-  className,
-}: MaskedValueProps) {
+export function MaskedValue({ value, className }: MaskedValueProps) {
   const { role } = useCurrentUser();
   const [revealed, setRevealed] = useState(false);
 
@@ -31,9 +26,8 @@ export function MaskedValue({
     return <span className={className}>—</span>;
   }
 
-  const mayReveal = canReveal(role, isOwner);
-  const display =
-    mayReveal && revealed ? value : maskIdentifier(value, { role, isOwner });
+  const mayReveal = canReveal(role);
+  const display = mayReveal && revealed ? value : maskIdentifier(value, { role });
 
   return (
     <span

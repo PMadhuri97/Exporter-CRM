@@ -27,7 +27,6 @@ from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, Header, Query, Response
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.schemas.exporter import (
@@ -51,6 +50,7 @@ from app.modules.onboarding.api.schemas.exporter import (
     ScreeningReviewListResponse,
     BankActivityFindingResponse,
     BankActivityResponse,
+    can_reveal_identifiers,
 )
 from app.modules.onboarding.application import (
     ExporterContactActivityService,
@@ -62,7 +62,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
     ExporterSource,
 )
-from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.exceptions import IdentifierSearchNotPermittedError
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
 from app.platform.configuration.config import settings
@@ -90,15 +90,28 @@ _READER = require_role(
 _COMPLIANCE_ROLES = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
 
 
-async def _relationship_manager_user_id(
-    db: AsyncSession, customer_id: uuid.UUID
-) -> uuid.UUID | None:
-    """The exporter's owning RM, for masking routes that don't load the profile."""
-    return await db.scalar(
-        select(ExporterProfile.relationship_manager_user_id).where(
-            ExporterProfile.customer_id == customer_id
-        )
-    )
+def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
+    """Refuse an exact tax-identifier search filter from a role that may not
+    see a raw identifier.
+
+    Masking the response body is not enough on its own. `?pan=<full PAN>`
+    matches exactly, so whether a row comes back answers "does a company with
+    this PAN exist, and which one" however the bodies are rendered. DEVELOPER
+    is read-only and never permitted to reveal an identifier, so it must not be
+    able to ask the question either.
+
+    The refusal is explicit and names every filter used, rather than silently
+    returning nothing: an empty result is still an answer ("no such company"),
+    and it would send anyone debugging a search looking for missing data.
+
+    Callers pass the filters as keywords, so the parameter names in the error
+    are the query-string names the caller actually sent.
+    """
+    if can_reveal_identifiers(viewer):
+        return
+    used = sorted(name for name, value in filters.items() if value is not None)
+    if used:
+        raise IdentifierSearchNotPermittedError(role=viewer.role.value, parameters=used)
 
 
 # ── Profile ───────────────────────────────────────────────────────────────
@@ -300,12 +313,19 @@ async def transition_exporter_lifecycle_status(
     description=(
         "Filters by gstin, pan, iec, source, lifecycle status (exact match) and "
         "legal_name (case-insensitive partial match against the linked "
-        "OnboardingRequest.legal_name)."
+        "OnboardingRequest.legal_name). The gstin/pan/iec filters are "
+        "COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals "
+        "which company holds it even when the response body is masked."
     ),
     responses={
         200: {"model": ExporterProfileSearchResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {
+            "description": (
+                "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required; or the "
+                "caller used a gstin/pan/iec filter and may not see raw identifiers"
+            )
+        },
     },
 )
 async def search_exporter_profiles(
@@ -320,6 +340,8 @@ async def search_exporter_profiles(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ExporterProfileSearchResponse:
+    _reject_identifier_search(current_user, gstin=gstin, pan=pan, iec=iec)
+
     items = await ExporterProfileService(db).search_profiles(
         gstin=gstin,
         pan=pan,
@@ -374,8 +396,7 @@ async def add_exporter_contact(
         department=body.department,
         is_primary=body.is_primary,
     )
-    owner = await _relationship_manager_user_id(db, customer_id)
-    return ExporterContactResponse.model_validate(contact).masked_for(current_user, owner)
+    return ExporterContactResponse.model_validate(contact).masked_for(current_user)
 
 
 @router.get(
@@ -394,11 +415,10 @@ async def list_exporter_contacts(
     db: AsyncSession = Depends(get_db),
 ) -> ExporterContactListResponse:
     contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
-    owner = await _relationship_manager_user_id(db, customer_id)
     return ExporterContactListResponse(
         customer_id=customer_id,
         contacts=[
-            ExporterContactResponse.model_validate(c).masked_for(current_user, owner)
+            ExporterContactResponse.model_validate(c).masked_for(current_user)
             for c in contacts
         ],
     )

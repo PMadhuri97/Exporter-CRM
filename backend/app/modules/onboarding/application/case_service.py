@@ -19,6 +19,9 @@ is assigned, so the case is not mutated.
 **Not here yet.** No route resolution, no provider call of any kind,
 and no provider-driven transition: a webhook still cannot move a case,
 because nothing in this module calls `transition()` on a provider's behalf yet.
+When something does, it passes `allow_machine_source=True` and `actor_id=None`;
+that keyword is the only way `SYSTEM` or `PROVIDER_CALLBACK` reaches a
+transition row, and no HTTP route supplies it.
 """
 from __future__ import annotations
 
@@ -30,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.audit import ActorType, AuditService
 from app.modules.onboarding.api.schemas.case import (
+    HUMAN_TRANSITION_SOURCES,
     CaseResponse,
     CaseTransitionListResponse,
     CaseTransitionRequest,
@@ -47,6 +51,7 @@ from app.modules.onboarding.domain.policies.state_machine import (
     permit_state_write,
     resolve_correlation_id,
 )
+from app.modules.onboarding.exceptions import MachineTransitionSourceNotPermittedError
 from app.modules.onboarding.infrastructure.repositories import (
     CaseRepository,
     CaseStateTransitionRepository,
@@ -206,6 +211,7 @@ class CaseService:
         request: CaseTransitionRequest,
         *,
         actor_id: uuid.UUID | None,
+        allow_machine_source: bool = False,
     ) -> CaseResponse:
         """
         Move a case to `request.next_state`, or raise `IllegalTransitionError` (409).
@@ -218,15 +224,39 @@ class CaseService:
         All three writes share the request's transaction (`get_db` commits on
         success), so a case never advances without its transition row and its audit
         event.
+
+        **Who is recorded.** `actor_id` comes from the authenticated session, never
+        from the request body, and it reaches the transition row and the audit event
+        exactly as given. It was previously discarded whenever
+        `_actor_type_for(request.source)` returned `ActorType.SYSTEM`, so a caller
+        that sent `source="SYSTEM"` erased its own identity from its own decision.
+        `actor_id` is now the sole answer to "who acted": a caller with a person
+        behind it passes one, an internal machine caller passes `None`, and nothing
+        in the payload can change that.
+
+        **Machine attributions are internal-only.** `SYSTEM` and
+        `PROVIDER_CALLBACK` are refused unless `allow_machine_source=True`, a
+        keyword no HTTP route passes. `CaseTransitionRequest` already refuses both
+        at the boundary (422); this is the second, independent defence, so a future
+        route built on a different schema still cannot forge one.
+
+        The source check runs before `assert_legal`, so a forged attribution is
+        refused whether or not the move it asked for was legal — a 422 never leaks
+        which transitions the machine would have allowed.
         """
         case = await self._require_case(case_id)
         previous_state = case.state
 
+        if request.source not in HUMAN_TRANSITION_SOURCES and not allow_machine_source:
+            raise MachineTransitionSourceNotPermittedError(request.source)
+
         assert_legal(previous_state, request.next_state)
 
         actor_type = self._actor_type_for(request.source)
-        # A system or provider-driven move has no human behind it (§4.11).
-        recorded_actor_id = None if actor_type is ActorType.SYSTEM else actor_id
+        # Whoever the caller says caused the move, the caller itself is what gets
+        # recorded. `None` here means an internal machine caller with no person
+        # behind it — never "the payload said so".
+        recorded_actor_id = actor_id
         correlation_id = resolve_correlation_id()
 
         # The one window in which `Case.state` may be assigned. Outside it the
@@ -298,6 +328,11 @@ class CaseService:
         callback is the platform acting on a provider's evidence, never the provider
         acting on the platform: it is a `SYSTEM` actor, and the fact that a provider
         prompted it is carried by `source`, not by the actor.
+
+        This mapping labels the transition; it no longer decides whether `actor_id`
+        survives. Erasing the actor on a `SYSTEM` mapping is what let an HTTP caller
+        approve a case anonymously, so `transition` records `actor_id` whatever this
+        returns.
         """
         return {
             TransitionSource.USER_ACTION: ActorType.API_CLIENT,

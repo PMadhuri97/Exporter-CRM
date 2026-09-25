@@ -12,13 +12,20 @@ from app.modules.compliance.api.schemas import (
     SubmitApprovalRequest,
 )
 from app.modules.compliance.application.services import ComplianceService
-from app.platform.authentication.dependencies import get_current_active_user
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
 from app.platform.database.services import get_db
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
+
+# Screening results and approval state are compliance records about a named
+# transaction. The two read routes below checked only that the caller was
+# logged in, so any account — including a fresh self-service API_USER —
+# could read them. Adding this gate is the single documented exception to
+# the rule that no file in the compliance module is edited: see
+# docs/module-rule-exceptions.md (architecture decision 11).
+_COMPLIANCE_OR_ADMIN = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
 
 
 @router.post(
@@ -83,12 +90,13 @@ async def submit_approval(
     responses={
         200: {"model": ApprovalsStateResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "COMPLIANCE or ADMIN role required"},
         404: {"description": "Transaction not found"},
     },
 )
 async def get_approvals(
     transaction_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
 ) -> ApprovalsStateResponse:
     svc = ComplianceService(db)
@@ -102,12 +110,13 @@ async def get_approvals(
     responses={
         200: {"model": ScreeningRunResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "COMPLIANCE or ADMIN role required"},
         404: {"description": "Transaction not found"},
     },
 )
 async def get_screenings(
     transaction_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
 ) -> ScreeningRunResponse:
     svc = ComplianceService(db)

@@ -28,9 +28,13 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from app.modules.onboarding.tests.fixtures.auth import token_with_role
+from app.modules.onboarding.api.schemas.case import CaseTransitionRequest
+from app.modules.onboarding.application import CaseService
+from app.modules.onboarding.domain.entities.enums import CaseState, TransitionSource
+from app.modules.onboarding.tests.fixtures.auth import token_with_role, user_with_role
 from app.platform.authentication.models import UserRole
 from app.platform.configuration.config import get_settings
+from app.platform.database import services as db_services
 
 # ── sync DB helpers (per project test conventions) ────────────────────────────
 
@@ -122,6 +126,32 @@ async def _transition(
     )
 
 
+async def _machine_transition(
+    case_id: str, next_state: str, *, source: TransitionSource
+) -> None:
+    """Move a case the way an internal machine caller does.
+
+    Not over HTTP: `SYSTEM` and `PROVIDER_CALLBACK` are refused at the schema
+    boundary, and `allow_machine_source` is a keyword no route passes. This is
+    the in-process path a provider webhook would use once one exists, and it is
+    the only way those two sources reach `case_state_transition`.
+    """
+    async with db_services.AsyncSessionLocal() as db:
+        await CaseService(db).transition(
+            uuid.UUID(case_id),
+            # `model_construct` skips validation on purpose: the validator
+            # exists to stop an HTTP body claiming a machine source, and this
+            # caller is not one. The values are built as real enum members so
+            # the service sees exactly what a validated request would carry.
+            CaseTransitionRequest.model_construct(
+                next_state=CaseState(next_state), source=source, reason="internal"
+            ),
+            actor_id=None,
+            allow_machine_source=True,
+        )
+        await db.commit()
+
+
 async def _drive(client: AsyncClient, token: str, case_id: str, *states: str) -> None:
     """Walk a case along a legal path, asserting each hop succeeds."""
     for state in states:
@@ -156,17 +186,24 @@ async def test_full_lifecycle_to_approved(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_provider_failure_can_be_retried_but_never_decides(client: AsyncClient):
+    """The rule under test is the transition table, not the attribution.
+
+    This used to drive the two hops with ``source="PROVIDER_CALLBACK"`` and
+    ``source="SYSTEM"``, which an HTTP caller may no longer claim (L1-05). The
+    legal/illegal pair is unchanged: a failed provider run cannot approve the
+    case, but it can be sent back for another attempt.
+    """
     token = await _api_token(client)
     case_id = await _create_case(client, token)
     await _drive(client, token, case_id, "SUBMITTED", "PROVIDER_PENDING", "PROVIDER_FAILED")
 
     # A failure cannot approve the case…
-    illegal = await _transition(client, token, case_id, "APPROVED", source="PROVIDER_CALLBACK")
+    illegal = await _transition(client, token, case_id, "APPROVED")
     assert illegal.status_code == 409
     assert _db_state(case_id) == "PROVIDER_FAILED"
 
     # …but the run can be retried.
-    retry = await _transition(client, token, case_id, "PROVIDER_PENDING", source="SYSTEM")
+    retry = await _transition(client, token, case_id, "PROVIDER_PENDING")
     assert retry.status_code == 200
     assert _db_state(case_id) == "PROVIDER_PENDING"
 
@@ -186,13 +223,24 @@ async def test_reopen_by_exception_from_a_closed_case(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_every_transition_source_is_accepted(client: AsyncClient):
+    """All four sources still reach the database — by two different doors.
+
+    The original definition of done ("all 12 states, all 4 sources") is intact;
+    what changed in L1-05 is *who* may declare each one. The two human sources
+    come over HTTP. ``SYSTEM`` and ``PROVIDER_CALLBACK`` are machine
+    attributions, so they now arrive only through
+    ``CaseService.transition(..., allow_machine_source=True)`` — the internal
+    path a future provider webhook will use, and the one an HTTP caller cannot
+    reach.
+    """
     token = await _api_token(client)
     case_id = await _create_case(client, token)
 
-    # One legal hop per source, so all four reach the database.
     await _transition(client, token, case_id, "SUBMITTED", source="USER_ACTION")
-    await _transition(client, token, case_id, "PROVIDER_PENDING", source="SYSTEM")
-    await _transition(client, token, case_id, "PROVIDER_COMPLETED", source="PROVIDER_CALLBACK")
+    await _machine_transition(case_id, "PROVIDER_PENDING", source=TransitionSource.SYSTEM)
+    await _machine_transition(
+        case_id, "PROVIDER_COMPLETED", source=TransitionSource.PROVIDER_CALLBACK
+    )
     resp = await _transition(client, token, case_id, "APPROVED", source="ADMIN_OVERRIDE")
     assert resp.status_code == 200
 
@@ -349,17 +397,65 @@ async def test_audit_event_carries_the_transition_detail(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_system_and_provider_transitions_record_no_human_actor(client: AsyncClient):
-    """§4.11: a null `actor_id` means the platform itself acted."""
+async def test_an_http_caller_cannot_claim_a_machine_transition_source(client: AsyncClient):
+    """§4.11 still holds — a null ``actor_id`` means the platform itself acted
+    — but only the platform may say so.
+
+    This test previously asserted the opposite: that an authenticated caller
+    sending ``source="SYSTEM"`` had its own identity erased from the transition
+    row, leaving a human approval recorded as a machine's with nobody's name on
+    it. That was the forged-approver hole (L1-05). Both machine sources are now
+    refused at the schema boundary, so the case is never touched.
+    """
     token = await _api_token(client)
     case_id = await _create_case(client, token)
 
-    await _transition(client, token, case_id, "SUBMITTED", source="SYSTEM")
-    await _transition(client, token, case_id, "PROVIDER_PENDING", source="PROVIDER_CALLBACK")
+    for source in ("SYSTEM", "PROVIDER_CALLBACK"):
+        resp = await _transition(client, token, case_id, "SUBMITTED", source=source)
+        assert resp.status_code == 422, f"{source}: {resp.text}"
 
-    for _, _, _, actor_id, actor_type, _, _, _ in _transition_rows(case_id):
-        assert actor_id is None
-        assert actor_type == "SYSTEM"
+    assert _db_state(case_id) == "DRAFT"
+    assert _transition_rows(case_id) == []
+
+
+@pytest.mark.asyncio
+async def test_a_machine_transition_records_no_human_actor(client: AsyncClient):
+    """§4.11 on the path that may still produce one: the internal caller.
+
+    The rule the old test was reaching for is real — a transition the platform
+    made on its own behalf carries no actor. It is now reachable only from
+    inside the process, where ``actor_id=None`` is a fact about the caller
+    rather than a claim in a payload.
+    """
+    token = await _api_token(client)
+    case_id = await _create_case(client, token)
+
+    await _transition(client, token, case_id, "SUBMITTED")
+    await _machine_transition(case_id, "PROVIDER_PENDING", source=TransitionSource.SYSTEM)
+
+    _, _, source, actor_id, actor_type, _, _, _ = _transition_rows(case_id)[-1]
+    assert source == "SYSTEM"
+    assert actor_id is None
+    assert actor_type == "SYSTEM"
+
+
+@pytest.mark.asyncio
+async def test_a_compliance_approval_records_that_user(client: AsyncClient):
+    """The positive half of L1-05: a human decision carries the human's id.
+
+    ``actor_id`` is read from the authenticated session, never from the body,
+    so the id in ``case_state_transition`` must be the id the token belongs to.
+    """
+    user_id, token = await user_with_role(client, UserRole.COMPLIANCE)
+    case_id = await _create_case(client, token)
+
+    await _drive(client, token, case_id, "SUBMITTED", "MANUAL_REVIEW_REQUIRED")
+    resp = await _transition(client, token, case_id, "APPROVED")
+    assert resp.status_code == 200, resp.text
+
+    _, next_state, _, actor_id, _, _, _, _ = _transition_rows(case_id)[-1]
+    assert next_state == "APPROVED"
+    assert str(actor_id) == user_id
 
 
 @pytest.mark.asyncio

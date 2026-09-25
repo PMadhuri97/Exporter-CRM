@@ -12,7 +12,12 @@ import pytest
 from httpx import AsyncClient
 
 from app.platform.authentication.models import UserRole
-from app.platform.authentication.testing import grant_role_sync
+from app.platform.authentication.testing import (
+    create_user_direct,
+    grant_role_sync,
+    user_with_role,
+)
+from app.platform.configuration.config import get_settings, settings
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -315,3 +320,116 @@ async def test_require_role_denies_wrong_role(client: AsyncClient):
 
     me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"})
     assert me.json()["role"] == "API_USER"
+
+
+# ── direct-grant test fixture (L1-04) ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_user_with_role_issues_a_usable_privileged_token(client: AsyncClient):
+    """`user_with_role` must produce a working COMPLIANCE session without
+    touching `POST /auth/register`.
+
+    The whole point of the direct-creation path is that it survives sign-up
+    being switched off (assumption A10), so this asserts the end state — a
+    token the API accepts and reports as COMPLIANCE — rather than the
+    mechanism. The `auth.users` row it writes must be indistinguishable from a
+    registered one to `/auth/login` and `/auth/me`, which is what makes the
+    substitution safe for the ~2,800 tests that depend on this fixture.
+    """
+    user_id, token = await user_with_role(client, UserRole.COMPLIANCE)
+
+    me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200, me.text
+    assert me.json()["role"] == UserRole.COMPLIANCE.value
+    assert me.json()["id"] == user_id
+
+
+@pytest.mark.asyncio
+async def test_create_user_direct_is_reachable_without_the_signup_route(client: AsyncClient):
+    """A row created directly can log in — no `/auth/register` call anywhere.
+
+    Separate from the test above because that one goes through `user_with_role`;
+    this one exercises `create_user_direct` itself, which is the function L1-13
+    will rely on once sign-up can be turned off.
+    """
+    email = unique_email()
+    user_id = create_user_direct(email, UserRole.ADMIN)
+
+    tokens = await login(client, email)
+    me = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"}
+    )
+    assert me.status_code == 200, me.text
+    assert me.json()["id"] == user_id
+    assert me.json()["role"] == UserRole.ADMIN.value
+    assert me.json()["is_active"] is True
+
+
+# ── self-service sign-up switch (L1-13) ───────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_signup_is_enabled_by_default(client: AsyncClient):
+    """The default is unchanged behaviour: the route works and grants API_USER.
+
+    Asserted explicitly rather than inferred from the other tests in this file,
+    because the whole point of the switch is that turning it on is not a new
+    behaviour — it is the existing one.
+    """
+    assert get_settings().SELF_SERVICE_SIGNUP_ENABLED is True
+
+    email, body = await register(client)
+    assert body["role"] == UserRole.API_USER.value
+
+
+@pytest.mark.asyncio
+async def test_signup_disabled_returns_404(client: AsyncClient, monkeypatch):
+    """404, not 403.
+
+    A 403 on an unauthenticated route would confirm the route exists and is
+    merely closed to this caller — which, with no caller identity involved,
+    tells every scanner the same thing. A deployment that has turned sign-up
+    off is saying the route is not there.
+    """
+    monkeypatch.setattr(settings, "SELF_SERVICE_SIGNUP_ENABLED", False)
+
+    resp = await client.post(
+        "/api/v1/auth/register",
+        json={"email": unique_email(), "password": "Password1"},
+    )
+    assert resp.status_code == 404, resp.text
+    assert resp.json()["error_code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_signup_disabled_creates_no_user(client: AsyncClient, monkeypatch):
+    """The refusal happens before any write, so a rejected sign-up leaves no row."""
+    monkeypatch.setattr(settings, "SELF_SERVICE_SIGNUP_ENABLED", False)
+    email = unique_email()
+
+    await client.post(
+        "/api/v1/auth/register", json={"email": email, "password": "Password1"}
+    )
+
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": email, "password": "Password1"}
+    )
+    assert login.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_still_works_when_signup_is_disabled(client: AsyncClient, monkeypatch):
+    """Turning sign-up off must not lock out accounts that already exist —
+    including the ones the first-admin command creates, which is the whole
+    point of having both."""
+    email = unique_email()
+    user_id = create_user_direct(email, UserRole.COMPLIANCE)
+
+    monkeypatch.setattr(settings, "SELF_SERVICE_SIGNUP_ENABLED", False)
+
+    tokens = await login(client, email)
+    me = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"}
+    )
+    assert me.status_code == 200
+    assert me.json()["id"] == user_id
+    assert me.json()["role"] == UserRole.COMPLIANCE.value

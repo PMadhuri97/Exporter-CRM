@@ -129,7 +129,7 @@ describe('ExporterDetailPage — E9', () => {
     expect(await screen.findByText('No screening results yet')).toBeInTheDocument();
   });
 
-  it('masks identifiers and exposes no reveal control to non-owner OPERATIONS', async () => {
+  it('masks identifiers and exposes no reveal control to OPERATIONS', async () => {
     mockUser('OPERATIONS', 'someone-else');
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
@@ -137,8 +137,20 @@ describe('ExporterDetailPage — E9', () => {
     expect(screen.queryByRole('button', { name: /reveal value/i })).not.toBeInTheDocument();
   });
 
-  it('allows the assigned OPERATIONS user to reveal identifiers', async () => {
+  // Previously 'allows the assigned OPERATIONS user to reveal identifiers'.
+  // Decision 12 removed the ownership exception, so the assigned relationship
+  // manager gets the same treatment as anyone else in sales — masked, and no
+  // reveal control at all rather than a disabled one.
+  it('gives the assigned OPERATIONS user no reveal control either', async () => {
     mockUser('OPERATIONS', DETAIL.relationship_manager_user_id!);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    expect(screen.getByText('••••••234F')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reveal value/i })).not.toBeInTheDocument();
+  });
+
+  it('gives COMPLIANCE a reveal control on every identifier', async () => {
+    mockUser('COMPLIANCE', 'someone-else');
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
     expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(3);

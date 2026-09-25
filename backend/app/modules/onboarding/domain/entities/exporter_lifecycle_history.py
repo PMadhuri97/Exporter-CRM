@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Index, String, text
+from sqlalchemy import Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -59,6 +59,15 @@ LIFECYCLE_TRANSITION_EVENT = "lifecycle_transition"
 #: ``event_type`` for the row written when a profile is created at a status
 #: (``from_status`` is ``NULL``).
 LIFECYCLE_INITIAL_EVENT = "lifecycle_initial"
+
+#: ``dimension`` for the company's main journey (LEAD -> PROSPECT -> CUSTOMER,
+#: and the ten-status lifecycle it replaces). The only dimension written today.
+#:
+#: The full list is owned by ``docs/contracts/history-row.md``, not by this
+#: module: the gauges belong to Developers 2, 3 and 4, and each adds its own
+#: constant next to the service that writes it. A dimension is a plain string
+#: in the database precisely so adding one needs no migration here.
+HISTORY_DIMENSION_JOURNEY = "journey"
 
 
 class ExporterLifecycleHistory(AppendOnlyModel):
@@ -78,15 +87,56 @@ class ExporterLifecycleHistory(AppendOnlyModel):
             "to_status",
             text("created_at DESC"),
         ),
+        # One company's history filtered to one gauge — what a gauge panel asks.
+        Index(
+            "ix_exporter_lifecycle_history_dimension_recent",
+            "customer_id",
+            "dimension",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        # One deal's history. Partial: `deal_id` is NULL on every
+        # company-level row, and indexing those NULLs would double the index
+        # for entries no query can use.
+        Index(
+            "ix_exporter_lifecycle_history_deal_recent",
+            "deal_id",
+            text("created_at DESC"),
+            postgresql_where=text("deal_id IS NOT NULL"),
+        ),
         {"schema": SCHEMA},
     )
 
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    #: Which row of the model changed — see ``HISTORY_DIMENSION_JOURNEY`` and
+    #: ``docs/contracts/history-row.md``. No server default: the column had one
+    #: for the length of migration 0013's backfill and then lost it, so that a
+    #: writer which forgets the dimension fails loudly instead of silently
+    #: recording a journey move.
+    dimension: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    #: The deal this row is about, when it is about one. ``NULL`` for every
+    #: company-level change. Bare uuid with no FK, like ``customer_id``.
+    deal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
     from_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
     to_status: Mapped[str] = mapped_column(String(64), nullable=False)
     actor_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    #: Why, in the actor's words. Required by the service for the moves section
+    #: 3 of the architecture marks as needing one (setting a marker, withdrawing
+    #: a deal, flagging or reopening a background check); nullable in the
+    #: database because most moves do not need one.
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     event_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
-__all__ = ["ExporterLifecycleHistory", "LIFECYCLE_INITIAL_EVENT", "LIFECYCLE_TRANSITION_EVENT"]
+__all__ = [
+    "HISTORY_DIMENSION_JOURNEY",
+    "LIFECYCLE_INITIAL_EVENT",
+    "LIFECYCLE_TRANSITION_EVENT",
+    "ExporterLifecycleHistory",
+]

@@ -125,11 +125,6 @@ async def compliance_token(client: AsyncClient) -> str:
 
 
 @pytest.fixture(scope="module")
-async def api_token(client: AsyncClient) -> str:
-    return await _register_login(client, "API_USER")
-
-
-@pytest.fixture(scope="module")
 def customer_ids() -> tuple[str, str]:
     return (
         _create_customer_sync("Audit Gemstone Imports LLC"),
@@ -171,9 +166,9 @@ def _auth(token: str) -> dict:
 # ── per-transaction trail ─────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_transaction_audit_trail(client: AsyncClient, api_token: str, seeded):
+async def test_transaction_audit_trail(client: AsyncClient, compliance_token: str, seeded):
     tx_id, correlation_id = seeded
-    resp = await client.get(f"{AUDIT_BASE}/transactions/{tx_id}", headers=_auth(api_token))
+    resp = await client.get(f"{AUDIT_BASE}/transactions/{tx_id}", headers=_auth(compliance_token))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["total"] == 3
@@ -186,18 +181,18 @@ async def test_transaction_audit_trail(client: AsyncClient, api_token: str, seed
 
 
 @pytest.mark.asyncio
-async def test_actor_types_recorded(client: AsyncClient, api_token: str, seeded):
+async def test_actor_types_recorded(client: AsyncClient, compliance_token: str, seeded):
     tx_id, _ = seeded
-    resp = await client.get(f"{AUDIT_BASE}/transactions/{tx_id}", headers=_auth(api_token))
+    resp = await client.get(f"{AUDIT_BASE}/transactions/{tx_id}", headers=_auth(compliance_token))
     actor_types = {e["actor_type"] for e in resp.json()["events"]}
     assert actor_types == {"API_CLIENT", "COMPLIANCE_OFFICER", "SYSTEM"}
 
 
 @pytest.mark.asyncio
-async def test_payments_audit_alias(client: AsyncClient, api_token: str, seeded):
+async def test_payments_audit_alias(client: AsyncClient, compliance_token: str, seeded):
     """The documented GET /payments/{id}/audit returns the same trail."""
     tx_id, _ = seeded
-    resp = await client.get(f"{PAYMENTS_BASE}/{tx_id}/audit", headers=_auth(api_token))
+    resp = await client.get(f"{PAYMENTS_BASE}/{tx_id}/audit", headers=_auth(compliance_token))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["total"] == 3
@@ -212,19 +207,19 @@ async def test_transaction_trail_missing_auth(client: AsyncClient, seeded):
 
 
 @pytest.mark.asyncio
-async def test_transaction_trail_not_found(client: AsyncClient, api_token: str):
+async def test_transaction_trail_not_found(client: AsyncClient, compliance_token: str):
     resp = await client.get(
-        f"{AUDIT_BASE}/transactions/{uuid.uuid4()}", headers=_auth(api_token)
+        f"{AUDIT_BASE}/transactions/{uuid.uuid4()}", headers=_auth(compliance_token)
     )
     assert resp.status_code == 404
     assert resp.json()["error_code"] == "NOT_FOUND"
 
 
 @pytest.mark.asyncio
-async def test_transaction_trail_pagination(client: AsyncClient, api_token: str, seeded):
+async def test_transaction_trail_pagination(client: AsyncClient, compliance_token: str, seeded):
     tx_id, _ = seeded
     resp = await client.get(
-        f"{AUDIT_BASE}/transactions/{tx_id}?limit=1&offset=0", headers=_auth(api_token)
+        f"{AUDIT_BASE}/transactions/{tx_id}?limit=1&offset=0", headers=_auth(compliance_token)
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -237,10 +232,10 @@ async def test_transaction_trail_pagination(client: AsyncClient, api_token: str,
 # ── correlation trace ─────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_correlation_trace(client: AsyncClient, api_token: str, seeded):
+async def test_correlation_trace(client: AsyncClient, compliance_token: str, seeded):
     tx_id, correlation_id = seeded
     resp = await client.get(
-        f"{AUDIT_BASE}/correlations/{correlation_id}", headers=_auth(api_token)
+        f"{AUDIT_BASE}/correlations/{correlation_id}", headers=_auth(compliance_token)
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -249,7 +244,7 @@ async def test_correlation_trace(client: AsyncClient, api_token: str, seeded):
 
 
 @pytest.mark.asyncio
-async def test_correlation_captured_from_request_header(client: AsyncClient, api_token: str):
+async def test_correlation_captured_from_request_header(client: AsyncClient, compliance_token: str):
     """End-to-end: a real FX-quote request carries X-Correlation-Id → the
     fx.quote.created audit event is written with that correlation ID (proving the
     middleware → contextvars → AuditService chain), and is retrievable by it."""
@@ -257,13 +252,13 @@ async def test_correlation_captured_from_request_header(client: AsyncClient, api
     quote = await client.post(
         f"{FX_BASE}/quotes",
         json={"from_currency": "USD", "to_currency": "INR", "amount": "10000.00"},
-        headers={**_auth(api_token), "X-Correlation-Id": correlation_id},
+        headers={**_auth(compliance_token), "X-Correlation-Id": correlation_id},
     )
     assert quote.status_code == 200, quote.text
     assert quote.headers["X-Correlation-Id"] == correlation_id
 
     resp = await client.get(
-        f"{AUDIT_BASE}/correlations/{correlation_id}", headers=_auth(api_token)
+        f"{AUDIT_BASE}/correlations/{correlation_id}", headers=_auth(compliance_token)
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -276,12 +271,12 @@ async def test_correlation_captured_from_request_header(client: AsyncClient, api
 # ── single event ──────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_get_single_event(client: AsyncClient, api_token: str, seeded):
+async def test_get_single_event(client: AsyncClient, compliance_token: str, seeded):
     tx_id, correlation_id = seeded
-    trail = await client.get(f"{AUDIT_BASE}/transactions/{tx_id}", headers=_auth(api_token))
+    trail = await client.get(f"{AUDIT_BASE}/transactions/{tx_id}", headers=_auth(compliance_token))
     first = trail.json()["events"][0]
 
-    resp = await client.get(f"{AUDIT_BASE}/events/{first['event_id']}", headers=_auth(api_token))
+    resp = await client.get(f"{AUDIT_BASE}/events/{first['event_id']}", headers=_auth(compliance_token))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["event_id"] == first["event_id"]
@@ -290,16 +285,25 @@ async def test_get_single_event(client: AsyncClient, api_token: str, seeded):
 
 
 @pytest.mark.asyncio
-async def test_get_single_event_not_found(client: AsyncClient, api_token: str):
-    resp = await client.get(f"{AUDIT_BASE}/events/{uuid.uuid4()}", headers=_auth(api_token))
+async def test_get_single_event_not_found(client: AsyncClient, compliance_token: str):
+    resp = await client.get(f"{AUDIT_BASE}/events/{uuid.uuid4()}", headers=_auth(compliance_token))
     assert resp.status_code == 404
 
 
 # ── global feed (privileged) ──────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_feed_requires_privileged_role(client: AsyncClient, api_token: str, seeded):
+async def test_feed_requires_privileged_role(client: AsyncClient, seeded):
+    """The negative case, so it mints its own unprivileged token.
+
+    Every other test in this file now uses `compliance_token` because the read
+    routes are COMPLIANCE/ADMIN-only (L1-07). This one is asserting the
+    refusal, so it needs the opposite — an API_USER token, created here rather
+    than as a shared fixture so nothing can accidentally reuse it for a
+    positive assertion again.
+    """
     tx_id, _ = seeded
+    api_token = await _register_login(client, "API_USER")
     resp = await client.get(
         f"{AUDIT_BASE}/events?transaction_id={tx_id}", headers=_auth(api_token)
     )

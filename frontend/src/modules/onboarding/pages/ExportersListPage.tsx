@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { useCurrentUser } from '@/platform/auth';
 import { MaskedValue } from '@/platform/mask';
 
 import { StageChip } from '../components';
@@ -12,17 +11,9 @@ import {
   type StageGroup,
 } from '../constants';
 import { useExporterProfiles } from '../hooks';
-import type { ExporterProfileListItem } from '../types';
 
 type TabValue = 'ALL' | StageGroup;
 const TABS: TabValue[] = ['ALL', ...STAGE_GROUPS];
-
-function isOwnedByCurrentUser(
-  profile: ExporterProfileListItem,
-  currentUserId: string,
-): boolean {
-  return profile.relationship_manager_user_id === currentUserId;
-}
 
 function TableSkeletonRow() {
   return (
@@ -37,7 +28,6 @@ function TableSkeletonRow() {
 }
 
 export function ExportersListPage() {
-  const currentUser = useCurrentUser();
   const [searchInput, setSearchInput] = useState('');
   const [legalName, setLegalName] = useState('');
   const [activeTab, setActiveTab] = useState<TabValue>('ALL');
@@ -172,7 +162,6 @@ export function ExportersListPage() {
             {!isLoading &&
               !isError &&
               visibleProfiles.map((profile) => {
-                const owner = isOwnedByCurrentUser(profile, currentUser.id);
                 return (
                   <tr
                     key={profile.customer_id}
@@ -191,10 +180,10 @@ export function ExportersListPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <MaskedValue value={profile.pan} isOwner={owner} />
+                      <MaskedValue value={profile.pan} />
                     </td>
                     <td className="px-4 py-3">
-                      <MaskedValue value={profile.gstin} isOwner={owner} />
+                      <MaskedValue value={profile.gstin} />
                     </td>
                     <td className="px-4 py-3">
                       <StageChip status={profile.lifecycle_status} />

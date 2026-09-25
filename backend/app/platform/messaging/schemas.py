@@ -55,6 +55,20 @@ class EventType(str, enum.Enum):
     CUSTOMER_REGISTERED = "customer.registered"
     CUSTOMER_VERIFICATION_UPDATED = "customer.verification.updated"
 
+    # ── Exporter CRM handovers (docs/contracts/event-envelope.md) ─────────────
+    # The two things the CRM announces to other teams. The CRM records
+    # outcomes; the teams that receive these own the decisions that follow.
+    #
+    # `company.became_customer` fires when a company is a Prospect and its
+    # background check is CLEAR, whichever happens second (assumption A1). The
+    # customers team builds the receiver later (decision 10), so nothing
+    # consumes it yet — which is expected, and why the CRM only announces.
+    #
+    # `deal.handed_over` fires when a deal passes to the lending team, which is
+    # permitted only for a CUSTOMER whose check is CLEAR (assumption A5).
+    COMPANY_BECAME_CUSTOMER = "company.became_customer"
+    DEAL_HANDED_OVER = "deal.handed_over"
+
     # ── Account lifecycle events ───────────────────────────────────────────────
     ACCOUNT_SUSPENDED = "account.suspended"
     ACCOUNT_CLOSED = "account.closed"
@@ -127,6 +141,16 @@ TOPIC_FOR_EVENT: dict[EventType, Topic] = {
     EventType.COMPENSATION_COMPLETED: Topic.SETTLEMENT,
     EventType.CUSTOMER_REGISTERED: Topic.CUSTOMER,
     EventType.CUSTOMER_VERIFICATION_UPDATED: Topic.CUSTOMER,
+    # Both CRM handovers go on the existing customer topic rather than a new
+    # one. It is already partitioned by customer id, which is exactly the
+    # partition key a CRM event uses, so one company's events stay ordered
+    # together — including a deal handover, which is an event about that
+    # company's deal. A new Topic member would also be picked up by everything
+    # subscribing to ALL_TOPICS (the idempotency stream processor and the
+    # platform consumer registry), which would mean provisioning a Kafka topic
+    # to carry two event types nothing consumes yet.
+    EventType.COMPANY_BECAME_CUSTOMER: Topic.CUSTOMER,
+    EventType.DEAL_HANDED_OVER: Topic.CUSTOMER,
     EventType.ACCOUNT_SUSPENDED: Topic.LEDGER,
     EventType.ACCOUNT_CLOSED: Topic.LEDGER,
     EventType.SETTLEMENT_TRANSITION: Topic.SETTLEMENT,
@@ -149,6 +173,13 @@ class EventEnvelope(BaseModel):
 
     `event_id` is the deduplication key — every consumer checks it against the
     processed_events store before acting (Kafka delivers at-least-once).
+
+    `actor_id` and `deal_id` exist for the Exporter CRM's handover events
+    (`company.became_customer`, `deal.handed_over`), whose contract puts the
+    company, the deal and the actor on the envelope rather than burying them in
+    `payload` where nothing would keep producers consistent. Both are optional
+    and default to `None`; nothing populates them yet — the CRM event helper
+    (L1-12) is the first writer. See `docs/contracts/event-envelope.md`.
     """
 
     event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -157,6 +188,27 @@ class EventEnvelope(BaseModel):
     partition_key: str
     transaction_id: str | None = None
     correlation_id: str | None = None
+
+    #: Who caused the change this event announces, when a person did.
+    #:
+    #: `correlation_id` traces a request; this answers "who". `None` means the
+    #: platform acted on its own behalf — the same meaning `actor_id` carries on
+    #: `case_state_transition` and `exporter_lifecycle_history`, so the answer
+    #: does not change shape between the history row and the announcement of it.
+    #:
+    #: Optional with a `None` default so this is additive: every existing
+    #: producer keeps working unchanged, an old message still parses, and a
+    #: consumer that does not read it is unaffected.
+    actor_id: str | None = None
+
+    #: The deal a CRM event is about, when it is about one.
+    #:
+    #: The company is `partition_key` — customer events are already keyed by
+    #: customer id so that one company's events stay ordered on one partition.
+    #: A deal has no such ordering requirement of its own, so it is a field
+    #: rather than the key.
+    deal_id: str | None = None
+
     occurred_at: str = Field(
         default_factory=lambda: datetime.now(UTC).isoformat()
     )
@@ -177,14 +229,22 @@ def build_envelope(
     partition_key: str,
     transaction_id: str | None = None,
     correlation_id: str | None = None,
+    actor_id: str | None = None,
+    deal_id: str | None = None,
     payload: dict | None = None,
 ) -> EventEnvelope:
-    """Construct an envelope with the topic resolved from the event type."""
+    """Construct an envelope with the topic resolved from the event type.
+
+    `actor_id` and `deal_id` are keyword-only with `None` defaults, so every
+    existing call site is unchanged.
+    """
     return EventEnvelope(
         event_type=event_type,
         topic=TOPIC_FOR_EVENT[event_type],
         partition_key=partition_key,
         transaction_id=transaction_id,
         correlation_id=correlation_id,
+        actor_id=actor_id,
+        deal_id=deal_id,
         payload=payload or {},
     )
