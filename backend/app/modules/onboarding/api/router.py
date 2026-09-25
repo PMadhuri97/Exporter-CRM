@@ -169,7 +169,12 @@ async def update_case(
         403: {"description": "COMPLIANCE or ADMIN role required"},
         404: {"description": "Case not found"},
         409: {"description": "Illegal state transition — the case is not mutated"},
-        422: {"description": "Unknown state or transition source"},
+        422: {
+            "description": (
+                "Unknown state, or a transition source only the platform may claim "
+                "(SYSTEM / PROVIDER_CALLBACK)"
+            )
+        },
     },
 )
 async def transition_case(

@@ -522,3 +522,35 @@ class ExporterLifecycleComplianceRequiredError(AnerBaseException):
             status_code=403,
             extensions={"from_status": str(from_status), "to_status": str(to_status)},
         )
+
+
+class MachineTransitionSourceNotPermittedError(AnerBaseException):
+    """A machine attribution (``SYSTEM`` / ``PROVIDER_CALLBACK``) on a case
+    transition that did not come through the internal path.
+
+    ``TransitionSource`` answers "what caused this move"; ``ActorType`` and
+    ``actor_id`` answer "who acted". A caller that may choose the first can
+    make its own decision look like the platform's, which is why
+    ``CaseTransitionRequest`` refuses these two values outright (422 at the
+    boundary) and why ``CaseService.transition`` refuses them again unless the
+    caller explicitly passed ``allow_machine_source=True`` — a keyword no HTTP
+    route supplies.
+
+    Two independent defences on purpose, matching this module's existing
+    pattern (see ``get_adapter``'s registry check *and* its module allowlist):
+    the schema stops it at the edge, and the service stops it even if a future
+    route forgets to use that schema.
+    """
+
+    def __init__(self, source: object) -> None:
+        self.source = source
+        super().__init__(
+            detail=(
+                f"Transition source {source!r} attributes the move to the platform "
+                f"itself and cannot be chosen by a caller; use USER_ACTION or "
+                f"ADMIN_OVERRIDE"
+            ),
+            error_code="MACHINE_TRANSITION_SOURCE_NOT_PERMITTED",
+            status_code=422,
+            extensions={"source": str(source)},
+        )

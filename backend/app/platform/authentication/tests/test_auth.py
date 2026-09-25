@@ -12,7 +12,11 @@ import pytest
 from httpx import AsyncClient
 
 from app.platform.authentication.models import UserRole
-from app.platform.authentication.testing import grant_role_sync
+from app.platform.authentication.testing import (
+    create_user_direct,
+    grant_role_sync,
+    user_with_role,
+)
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -315,3 +319,46 @@ async def test_require_role_denies_wrong_role(client: AsyncClient):
 
     me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"})
     assert me.json()["role"] == "API_USER"
+
+
+# ── direct-grant test fixture (L1-04) ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_user_with_role_issues_a_usable_privileged_token(client: AsyncClient):
+    """`user_with_role` must produce a working COMPLIANCE session without
+    touching `POST /auth/register`.
+
+    The whole point of the direct-creation path is that it survives sign-up
+    being switched off (assumption A10), so this asserts the end state — a
+    token the API accepts and reports as COMPLIANCE — rather than the
+    mechanism. The `auth.users` row it writes must be indistinguishable from a
+    registered one to `/auth/login` and `/auth/me`, which is what makes the
+    substitution safe for the ~2,800 tests that depend on this fixture.
+    """
+    user_id, token = await user_with_role(client, UserRole.COMPLIANCE)
+
+    me = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200, me.text
+    assert me.json()["role"] == UserRole.COMPLIANCE.value
+    assert me.json()["id"] == user_id
+
+
+@pytest.mark.asyncio
+async def test_create_user_direct_is_reachable_without_the_signup_route(client: AsyncClient):
+    """A row created directly can log in — no `/auth/register` call anywhere.
+
+    Separate from the test above because that one goes through `user_with_role`;
+    this one exercises `create_user_direct` itself, which is the function L1-13
+    will rely on once sign-up can be turned off.
+    """
+    email = unique_email()
+    user_id = create_user_direct(email, UserRole.ADMIN)
+
+    tokens = await login(client, email)
+    me = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"}
+    )
+    assert me.status_code == 200, me.text
+    assert me.json()["id"] == user_id
+    assert me.json()["role"] == UserRole.ADMIN.value
+    assert me.json()["is_active"] is True
