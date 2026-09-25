@@ -61,16 +61,23 @@ def mask_phone(value: str | None) -> str | None:
     return mask_identifier(value)
 
 
-def can_reveal_identifiers(viewer: User, relationship_manager_user_id: uuid.UUID | None) -> bool:
-    """COMPLIANCE/ADMIN always; OPERATIONS only on exporters it is the
-    assigned relationship manager for; DEVELOPER/API_USER never."""
-    if viewer.role in _ALWAYS_REVEAL_ROLES:
-        return True
-    return (
-        viewer.role == UserRole.OPERATIONS
-        and relationship_manager_user_id is not None
-        and relationship_manager_user_id == viewer.id
-    )
+def can_reveal_identifiers(viewer: User) -> bool:
+    """COMPLIANCE and ADMIN see full tax IDs; every other role sees them masked.
+
+    This used to carry an ownership exception: OPERATIONS could see the raw
+    identifiers on exporters it was the assigned relationship manager for.
+    Architecture decision 12 settles the prototype the other way — sales staff
+    see masked values, and relationship-manager ownership waits until after the
+    prototype — so that branch is gone.
+
+    The exception was inert in practice (nothing writes
+    `exporter_profile.relationship_manager_user_id`), which is exactly why it
+    was worth removing rather than leaving: the first code that populated that
+    column would have silently switched PII visibility on for a whole role,
+    with no change to this function to review. The column and the response
+    field stay for the post-prototype work that will use them.
+    """
+    return viewer.role in _ALWAYS_REVEAL_ROLES
 
 
 def _reject_masked(value: str | None) -> str | None:
@@ -87,13 +94,12 @@ NotMasked = AfterValidator(_reject_masked)
 
 
 class _IdentifierMasking:
-    """Mixin for the exporter responses carrying gstin/pan/iec and
-    relationship_manager_user_id (and, on the detail response, contacts).
-    Every route returning one of them must pass it through
-    `masked_for(current_user)` before returning it."""
+    """Mixin for the exporter responses carrying gstin/pan/iec (and, on the
+    detail response, contacts). Every route returning one of them must pass it
+    through `masked_for(current_user)` before returning it."""
 
     def masked_for(self, viewer: User) -> Self:
-        if can_reveal_identifiers(viewer, self.relationship_manager_user_id):
+        if can_reveal_identifiers(viewer):
             return self
         update = {
             "gstin": mask_identifier(self.gstin),
@@ -248,13 +254,11 @@ class ExporterContactResponse(BaseModel):
             update={"email": mask_email(self.email), "phone": mask_phone(self.phone)}
         )
 
-    def masked_for(
-        self, viewer: User, relationship_manager_user_id: uuid.UUID | None
-    ) -> ExporterContactResponse:
-        """Same reveal rule as the exporter's identifiers; the contact row has
-        no owner of its own, so the caller supplies the exporter's
-        `relationship_manager_user_id`."""
-        if can_reveal_identifiers(viewer, relationship_manager_user_id):
+    def masked_for(self, viewer: User) -> ExporterContactResponse:
+        """Same reveal rule as the exporter's identifiers: COMPLIANCE and ADMIN
+        see the contact's real email and phone, everyone else sees them
+        masked."""
+        if can_reveal_identifiers(viewer):
             return self
         return self.masked()
 

@@ -4,6 +4,13 @@ PAN/GSTIN/IEC and contact email/phone.
 
 Every gated route gets a negative test per refused role asserting 403 — the
 gate runs as a dependency, so a 403 also proves the handler never ran.
+
+Reveal rule as of L1-10: COMPLIANCE and ADMIN see raw PAN/GSTIN/IEC and raw
+contact email/phone; every other role sees them masked, including the assigned
+relationship manager (architecture decision 12 defers ownership-scoped reveal
+until after the prototype). The same two roles are the only ones that may use
+an exact identifier search filter, because an exact match is an existence
+oracle whatever the response body says.
 """
 
 from __future__ import annotations
@@ -309,13 +316,32 @@ def _masked(value: str) -> str:
 
 
 async def _identifiers_as(client: AsyncClient, token: str, customer_id: str) -> list[dict]:
-    """The identifiers as seen on the detail route and the search route."""
+    """The identifiers as seen on the detail route and in a search listing.
+
+    The search leg deliberately does **not** filter by PAN. An exact identifier
+    filter is COMPLIANCE/ADMIN-only (L1-10), so using one here would make this
+    helper 403 for exactly the roles whose masking it exists to check. It pages
+    through an unfiltered listing instead, which every reader may call.
+    """
     detail = await client.get(f"{BASE}/exporters/{customer_id}", headers=auth_header(token))
     assert detail.status_code == 200, detail.text
-    search = await client.get(f"{BASE}/exporters", params={"pan": PAN}, headers=auth_header(token))
-    assert search.status_code == 200, search.text
-    rows = [p for p in search.json()["profiles"] if p["customer_id"] == customer_id]
-    assert len(rows) == 1
+
+    rows: list[dict] = []
+    offset = 0
+    while not rows:
+        search = await client.get(
+            f"{BASE}/exporters",
+            params={"limit": 200, "offset": offset},
+            headers=auth_header(token),
+        )
+        assert search.status_code == 200, search.text
+        page = search.json()["profiles"]
+        if not page:
+            break
+        rows = [p for p in page if p["customer_id"] == customer_id]
+        offset += len(page)
+    assert len(rows) == 1, f"{customer_id} not found in the listing"
+
     return [
         {k: body[k] for k in ("pan", "gstin", "iec")} for body in (detail.json(), rows[0])
     ]
@@ -345,16 +371,29 @@ async def test_identifiers_masked_for_non_owning_operations_and_developer(
     exporter_with_identifiers: str,
     role: UserRole,
 ):
-    """OPERATIONS reads every exporter, but only its own unmasked; DEVELOPER
-    reads every exporter and never unmasked. (API_USER can't read exporters at
+    """Neither role ever sees a raw identifier.
+
+    OPERATIONS used to see its own exporters unmasked; architecture decision 12
+    removed that ownership exception for the prototype, so sales staff and
+    DEVELOPER are now treated the same here. (API_USER cannot read exporters at
     all — see the 403 cases above.)"""
     for seen in await _identifiers_as(client, tokens[role], exporter_with_identifiers):
         assert seen == {"pan": _masked(PAN), "gstin": _masked(GSTIN), "iec": _masked(IEC)}
 
 
-async def test_identifiers_unmasked_for_owning_relationship_manager(
+async def test_identifiers_masked_even_for_the_owning_relationship_manager(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
+    """Previously `test_identifiers_unmasked_for_owning_relationship_manager`.
+
+    Architecture decision 12 settles the prototype as COMPLIANCE/ADMIN only,
+    with relationship-manager ownership deferred until afterwards. The test is
+    inverted rather than deleted because the setup is the thing worth keeping:
+    it is the only place that actually populates
+    `exporter_profile.relationship_manager_user_id`, so it proves the reveal
+    stays off even when that column is set — which is the case the old
+    behaviour would have re-enabled silently.
+    """
     rm_id, rm_token = await user_with_role(client, UserRole.OPERATIONS)
     customer_id = await _create_exporter(
         client, tokens[UserRole.COMPLIANCE], pan=PAN, gstin=GSTIN, iec=IEC
@@ -362,11 +401,82 @@ async def test_identifiers_unmasked_for_owning_relationship_manager(
 
     _set_relationship_manager_sync(customer_id, rm_id)
     for seen in await _identifiers_as(client, rm_token, customer_id):
-        assert seen == {"pan": PAN, "gstin": GSTIN, "iec": IEC}
+        assert seen == {"pan": _masked(PAN), "gstin": _masked(GSTIN), "iec": _masked(IEC)}
 
-    # Another OPERATIONS user still sees this exporter masked.
+    # And an OPERATIONS user who is not the RM sees exactly the same thing.
     for seen in await _identifiers_as(client, tokens[UserRole.OPERATIONS], customer_id):
         assert seen["pan"] == _masked(PAN)
+
+
+# ── Identifier search is an existence oracle (L1-10) ─────────────────────────
+
+
+@pytest.mark.parametrize("param", ["pan", "gstin", "iec"])
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.DEVELOPER])
+async def test_identifier_search_refused_for_roles_that_cannot_reveal(
+    client: AsyncClient, tokens: dict[UserRole, str], role: UserRole, param: str
+):
+    """403, not an empty list.
+
+    Masking the response body is not enough by itself: an exact match answers
+    "which company holds this PAN" through whether a row comes back at all. An
+    empty result would still answer it — with "none" — so the refusal is
+    explicit and names the parameter.
+    """
+    value = {"pan": PAN, "gstin": GSTIN, "iec": IEC}[param]
+    resp = await client.get(
+        f"{BASE}/exporters", params={param: value}, headers=auth_header(tokens[role])
+    )
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["error_code"] == "FORBIDDEN"
+    assert param in resp.json()["detail"]
+
+
+@pytest.mark.parametrize("role", [UserRole.COMPLIANCE, UserRole.ADMIN])
+async def test_identifier_search_allowed_for_compliance_and_admin(
+    client: AsyncClient,
+    tokens: dict[UserRole, str],
+    exporter_with_identifiers: str,
+    role: UserRole,
+):
+    """The roles that may see a raw identifier may also search by one —
+    otherwise the refusal above would have broken the feature for everyone."""
+    resp = await client.get(
+        f"{BASE}/exporters", params={"pan": PAN}, headers=auth_header(tokens[role])
+    )
+    assert resp.status_code == 200, resp.text
+    found = [p for p in resp.json()["profiles"] if p["customer_id"] == exporter_with_identifiers]
+    assert len(found) == 1
+    assert found[0]["pan"] == PAN
+
+
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.DEVELOPER])
+async def test_non_identifier_search_still_works_for_every_reader(
+    client: AsyncClient, tokens: dict[UserRole, str], role: UserRole
+):
+    """The refusal is scoped to the three identifier filters. A reader that
+    never touches them keeps full access to the listing."""
+    resp = await client.get(
+        f"{BASE}/exporters",
+        params={"source": "SALES", "limit": 1},
+        headers=auth_header(tokens[role]),
+    )
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.DEVELOPER])
+async def test_every_identifier_filter_is_named_when_several_are_used(
+    client: AsyncClient, tokens: dict[UserRole, str], role: UserRole
+):
+    """A caller that sends two filters is told about both, so fixing the call
+    does not take two round trips."""
+    resp = await client.get(
+        f"{BASE}/exporters",
+        params={"pan": PAN, "iec": IEC},
+        headers=auth_header(tokens[role]),
+    )
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["error_context"]["parameters"] == ["iec", "pan"]
 
 
 async def test_write_responses_are_masked_too(client: AsyncClient, tokens: dict[UserRole, str]):
@@ -440,19 +550,26 @@ async def test_contacts_masked_for_non_owning_operations(
         assert seen == {"email": MASKED_EMAIL, "phone": _masked(PHONE)}
 
 
-async def test_contacts_unmasked_for_owning_relationship_manager(
+async def test_contacts_masked_even_for_the_owning_relationship_manager(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
+    """Previously `test_contacts_unmasked_for_owning_relationship_manager`.
+
+    Contact email and phone follow the same reveal rule as the exporter's tax
+    identifiers, so removing the ownership exception (decision 12) removes it
+    here too. Kept with its RM setup for the same reason as the identifier
+    twin above: it proves the reveal stays off with the column populated.
+    """
     rm_id, rm_token = await user_with_role(client, UserRole.OPERATIONS)
     customer_id = await _create_exporter(client, tokens[UserRole.COMPLIANCE])
     _set_relationship_manager_sync(customer_id, rm_id)
 
     # The add-contact response follows the same rule as the reads.
     added = await _add_contact(client, rm_token, customer_id)
-    assert (added["email"], added["phone"]) == (EMAIL, PHONE)
+    assert (added["email"], added["phone"]) == (MASKED_EMAIL, _masked(PHONE))
 
     for seen in await _contacts_as(client, rm_token, customer_id):
-        assert seen == {"email": EMAIL, "phone": PHONE}
+        assert seen == {"email": MASKED_EMAIL, "phone": _masked(PHONE)}
 
 
 async def test_add_contact_response_masked_for_non_owner(

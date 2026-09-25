@@ -70,13 +70,6 @@ export function legalDropGroups(
   );
 }
 
-function isOwnedByCurrentUser(
-  profile: ExporterProfileListItem,
-  currentUserId: string,
-): boolean {
-  return profile.relationship_manager_user_id === currentUserId;
-}
-
 function PipelineSkeleton() {
   return (
     <div className="grid min-w-[1100px] grid-cols-5 gap-4">
@@ -96,14 +89,12 @@ function PipelineSkeleton() {
 
 interface PipelineCardProps {
   profile: ExporterProfileListItem;
-  currentUserId: string;
   onDragStart: (profile: ExporterProfileListItem) => void;
   onDragEnd: () => void;
 }
 
 function PipelineCard({
   profile,
-  currentUserId,
   onDragStart,
   onDragEnd,
 }: PipelineCardProps) {
@@ -111,7 +102,6 @@ function PipelineCard({
   const canMove = canMoveLifecycleFrom(profile.lifecycle_status, role);
   const crossColumnMoves = legalDropGroups(profile.lifecycle_status);
   const draggable = canMove && crossColumnMoves.length > 0;
-  const isOwner = isOwnedByCurrentUser(profile, currentUserId);
 
   return (
     <article
@@ -154,13 +144,13 @@ function PipelineCard({
         <div className="flex items-center justify-between gap-3">
           <dt className="text-ink-faint">PAN</dt>
           <dd className="min-w-0 text-right text-ink-muted">
-            <MaskedValue value={profile.pan} isOwner={isOwner} />
+            <MaskedValue value={profile.pan} />
           </dd>
         </div>
         <div className="flex items-center justify-between gap-3">
           <dt className="text-ink-faint">GSTIN</dt>
           <dd className="min-w-0 text-right text-ink-muted">
-            <MaskedValue value={profile.gstin} isOwner={isOwner} />
+            <MaskedValue value={profile.gstin} />
           </dd>
         </div>
         <div className="flex items-center justify-between gap-3">
@@ -192,7 +182,6 @@ function PipelineCard({
 interface PipelineColumnProps {
   group: PipelineStageGroup;
   profiles: ExporterProfileListItem[];
-  currentUserId: string;
   draggingProfile: ExporterProfileListItem | null;
   isMoving: boolean;
   onDrop: (group: PipelineStageGroup) => void;
@@ -203,7 +192,6 @@ interface PipelineColumnProps {
 function PipelineColumn({
   group,
   profiles,
-  currentUserId,
   draggingProfile,
   isMoving,
   onDrop,
@@ -264,7 +252,6 @@ function PipelineColumn({
           <PipelineCard
             key={profile.customer_id}
             profile={profile}
-            currentUserId={currentUserId}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
           />
@@ -280,7 +267,6 @@ function PipelineColumn({
 }
 
 export function PipelinePage() {
-  const currentUser = useCurrentUser();
   const [viewMode, setViewMode] = useState<ViewMode>('PIPELINE');
   const [searchInput, setSearchInput] = useState('');
   const [legalName, setLegalName] = useState('');
@@ -420,7 +406,6 @@ export function PipelinePage() {
                   key={group}
                   group={group}
                   profiles={groupedProfiles[group]}
-                  currentUserId={currentUser.id}
                   draggingProfile={draggingProfile}
                   isMoving={movingCustomerId !== null}
                   onDrop={(targetGroup) => void handleDrop(targetGroup)}

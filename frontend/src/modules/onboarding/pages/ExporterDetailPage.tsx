@@ -415,7 +415,6 @@ export function ExporterDetailPage() {
     );
   }
 
-  const isOwner = profile.relationship_manager_user_id === currentUser.id;
   // DEVELOPER reads the CRM (masked) but writes nothing and cannot load
   // verification results — the backend refuses those with 403.
   const isStaff = currentUser.role !== 'DEVELOPER';
@@ -456,9 +455,9 @@ export function ExporterDetailPage() {
         <section className="rounded-lg border border-border bg-surface p-5 shadow-card">
           <h2 className="font-semibold text-ink">Exporter profile</h2>
           <dl className="mt-2">
-            <DetailRow label="PAN"><MaskedValue value={profile.pan} isOwner={isOwner} /></DetailRow>
-            <DetailRow label="GSTIN"><MaskedValue value={profile.gstin} isOwner={isOwner} /></DetailRow>
-            <DetailRow label="IEC"><MaskedValue value={profile.iec} isOwner={isOwner} /></DetailRow>
+            <DetailRow label="PAN"><MaskedValue value={profile.pan} /></DetailRow>
+            <DetailRow label="GSTIN"><MaskedValue value={profile.gstin} /></DetailRow>
+            <DetailRow label="IEC"><MaskedValue value={profile.iec} /></DetailRow>
             <DetailRow label="Source">{humanize(profile.source)}</DetailRow>
             <DetailRow label="Industry">{profile.industry ?? '—'}</DetailRow>
             <DetailRow label="Established">{profile.year_established ?? '—'}</DetailRow>

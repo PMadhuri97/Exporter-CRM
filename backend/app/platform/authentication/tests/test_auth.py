@@ -17,6 +17,7 @@ from app.platform.authentication.testing import (
     grant_role_sync,
     user_with_role,
 )
+from app.platform.configuration.config import get_settings, settings
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -362,3 +363,73 @@ async def test_create_user_direct_is_reachable_without_the_signup_route(client: 
     assert me.json()["id"] == user_id
     assert me.json()["role"] == UserRole.ADMIN.value
     assert me.json()["is_active"] is True
+
+
+# ── self-service sign-up switch (L1-13) ───────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_signup_is_enabled_by_default(client: AsyncClient):
+    """The default is unchanged behaviour: the route works and grants API_USER.
+
+    Asserted explicitly rather than inferred from the other tests in this file,
+    because the whole point of the switch is that turning it on is not a new
+    behaviour — it is the existing one.
+    """
+    assert get_settings().SELF_SERVICE_SIGNUP_ENABLED is True
+
+    email, body = await register(client)
+    assert body["role"] == UserRole.API_USER.value
+
+
+@pytest.mark.asyncio
+async def test_signup_disabled_returns_404(client: AsyncClient, monkeypatch):
+    """404, not 403.
+
+    A 403 on an unauthenticated route would confirm the route exists and is
+    merely closed to this caller — which, with no caller identity involved,
+    tells every scanner the same thing. A deployment that has turned sign-up
+    off is saying the route is not there.
+    """
+    monkeypatch.setattr(settings, "SELF_SERVICE_SIGNUP_ENABLED", False)
+
+    resp = await client.post(
+        "/api/v1/auth/register",
+        json={"email": unique_email(), "password": "Password1"},
+    )
+    assert resp.status_code == 404, resp.text
+    assert resp.json()["error_code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_signup_disabled_creates_no_user(client: AsyncClient, monkeypatch):
+    """The refusal happens before any write, so a rejected sign-up leaves no row."""
+    monkeypatch.setattr(settings, "SELF_SERVICE_SIGNUP_ENABLED", False)
+    email = unique_email()
+
+    await client.post(
+        "/api/v1/auth/register", json={"email": email, "password": "Password1"}
+    )
+
+    login = await client.post(
+        "/api/v1/auth/login", json={"email": email, "password": "Password1"}
+    )
+    assert login.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_still_works_when_signup_is_disabled(client: AsyncClient, monkeypatch):
+    """Turning sign-up off must not lock out accounts that already exist —
+    including the ones the first-admin command creates, which is the whole
+    point of having both."""
+    email = unique_email()
+    user_id = create_user_direct(email, UserRole.COMPLIANCE)
+
+    monkeypatch.setattr(settings, "SELF_SERVICE_SIGNUP_ENABLED", False)
+
+    tokens = await login(client, email)
+    me = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"}
+    )
+    assert me.status_code == 200
+    assert me.json()["id"] == user_id
+    assert me.json()["role"] == UserRole.COMPLIANCE.value

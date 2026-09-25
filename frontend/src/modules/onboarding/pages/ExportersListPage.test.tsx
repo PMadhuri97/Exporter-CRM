@@ -66,6 +66,10 @@ describe('ExportersListPage — PAN/GSTIN masking (EXP-F2 acceptance criterion)'
     });
   });
 
+  // Decision 12: OPERATIONS sees masked tax IDs whether or not it is the
+  // assigned relationship manager. The second case below used to assert the
+  // opposite for an owner; both ownership states now have the same answer, so
+  // the owner case asserts that rather than being dropped.
   it('masks PAN for OPERATIONS on an exporter they do not own', async () => {
     mockUser('OPERATIONS', 'someone-else');
     renderPage();
@@ -74,14 +78,15 @@ describe('ExportersListPage — PAN/GSTIN masking (EXP-F2 acceptance criterion)'
     expect(screen.queryByText('ABCDE1234F')).not.toBeInTheDocument();
   });
 
-  it('does not mask PAN for OPERATIONS on an exporter they do own', async () => {
+  it('still masks PAN for OPERATIONS on an exporter they do own', async () => {
     mockUser('OPERATIONS', 'user-owner');
     renderPage();
     expect(await screen.findByText('Acme Exports')).toBeInTheDocument();
-    expect(screen.getByText('ABCDE1234F')).toBeInTheDocument();
+    expect(screen.getByText('••••••234F')).toBeInTheDocument();
+    expect(screen.queryByText('ABCDE1234F')).not.toBeInTheDocument();
   });
 
-  it('never masks PAN for COMPLIANCE, regardless of ownership', async () => {
+  it('never masks PAN for COMPLIANCE', async () => {
     mockUser('COMPLIANCE', 'someone-else');
     renderPage();
     expect(await screen.findByText('Acme Exports')).toBeInTheDocument();

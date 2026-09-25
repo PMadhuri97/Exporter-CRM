@@ -554,3 +554,36 @@ class MachineTransitionSourceNotPermittedError(AnerBaseException):
             status_code=422,
             extensions={"source": str(source)},
         )
+
+
+class IdentifierSearchNotPermittedError(AnerBaseException):
+    """An exact tax-identifier search filter used by a role that may not see
+    raw identifiers.
+
+    Masking the response body is not enough on its own. ``GET /exporters?pan=``
+    matches exactly, so whether a row comes back answers "does a company with
+    this PAN exist, and which one" no matter how the body is rendered — an
+    existence oracle over the most sensitive column in the CRM. DEVELOPER is
+    read-only and never permitted to reveal an identifier
+    (``can_reveal_identifiers``), so it must not be able to ask the question
+    either.
+
+    403 naming the parameter, rather than a silently empty result: an empty
+    result is still an answer ("no such company"), and it would send anyone
+    debugging a search looking for missing data.
+    """
+
+    def __init__(self, *, role: str, parameters: list[str]) -> None:
+        self.role = role
+        self.parameters = parameters
+        named = ", ".join(parameters)
+        super().__init__(
+            detail=(
+                f"Role {role} may not search by exact tax identifier "
+                f"({named}): an exact match reveals which company holds it. "
+                f"Search by legal_name instead."
+            ),
+            error_code="FORBIDDEN",
+            status_code=403,
+            extensions={"role": role, "parameters": parameters},
+        )

@@ -27,7 +27,7 @@ from app.platform.authentication.services import (
 )
 from app.platform.configuration.config import settings
 from app.platform.database.services import get_db
-from app.shared.exceptions import AnerBaseException, UnauthorizedError
+from app.shared.exceptions import AnerBaseException, NotFoundError, UnauthorizedError
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -38,12 +38,31 @@ router = APIRouter()
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new user account",
+    description=(
+        "Self-service sign-up. Always grants the lowest role (`API_USER`), which "
+        "reaches nothing in the CRM. Returns `404` when "
+        "`SELF_SERVICE_SIGNUP_ENABLED` is false."
+    ),
+    responses={
+        201: {"model": UserResponse},
+        404: {"description": "Self-service sign-up is disabled on this deployment"},
+        409: {"description": "Email address is already registered"},
+    },
     tags=["Auth"],
 )
 async def register(
     body: RegisterRequest,
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
+    # 404, not 403: a deployment that has turned sign-up off is saying the
+    # route is not there, and 403 would confirm it exists and is merely closed
+    # to this caller — on an unauthenticated route, to every caller equally.
+    # Read from `settings` at request time rather than skipping the decorator
+    # at import, so the switch can be flipped without rebuilding the app and
+    # so the OpenAPI document stays the same shape in both states.
+    if not settings.SELF_SERVICE_SIGNUP_ENABLED:
+        raise NotFoundError("Not Found")
+
     user_repo = UserRepository(db)
 
     if await user_repo.email_exists(body.email):
