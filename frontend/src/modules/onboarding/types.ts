@@ -48,47 +48,26 @@ export type TriggerVerificationRequest = Omit<
 export type RecordVerificationReviewRequest =
   components['schemas']['RecordReviewRequest'];
 
-export type ScreeningChecklistStatus =
-  | 'NEEDS_REVIEW'
-  | 'PASSED'
-  | 'FAILED'
-  | 'EXEMPT';
+// The five types below were hand-written copies of shapes the backend already
+// describes. Every one of them has a generated counterpart — they predate the
+// screening/bank-activity responses landing in the OpenAPI document — and a
+// hand-maintained copy of a generated type drifts silently: the backend
+// renames a field, the interface here does not, and nothing fails until a
+// value is undefined at runtime. They are aliases now, like everything above.
+export type ScreeningReviewItem =
+  components['schemas']['ScreeningReviewItemResponse'];
+export type ScreeningReviewList =
+  components['schemas']['ScreeningReviewListResponse'];
+export type BankActivityFinding =
+  components['schemas']['BankActivityFindingResponse'];
+export type BankActivityResponse =
+  components['schemas']['BankActivityResponse'];
 
-export interface ScreeningReviewItem {
-  id: string;
-  customer_id: string;
-  item_key: string;
-  status: ScreeningChecklistStatus;
-  comment: string | null;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ScreeningReviewList {
-  customer_id: string;
-  items: ScreeningReviewItem[];
-}
-
-export interface BankActivityFinding {
-  id: string;
-  customer_id: string;
-  provider: string;
-  finding_type: string;
-  title: string;
-  description: string | null;
-  risk_level: string;
-  status: string;
-  provider_reference: string | null;
-  detected_at: string;
-  created_at: string;
-}
-
-export interface BankActivityResponse {
-  customer_id: string;
-  connected_accounts: number;
-  last_synced_at: string | null;
-  open_findings: number;
-  findings: BankActivityFinding[];
-}
+/** The four checklist states, taken from the response rather than restated.
+ *
+ * Derived by indexing into the generated item type so adding a fifth state on
+ * the server cannot leave this union behind. The backend declares them on
+ * `ScreeningReviewItemResponse.status` and on
+ * `UpdateScreeningReviewItemRequest.status`; this is the read side, which is
+ * the one every caller here uses. */
+export type ScreeningChecklistStatus = ScreeningReviewItem['status'];
