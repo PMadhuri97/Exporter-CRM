@@ -12,8 +12,8 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
-from app.modules.onboarding.domain.entities.exporter_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
 from app.platform.database.adapters.repository import AppendOnlyRepository
 

@@ -5,6 +5,7 @@ import structlog
 from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.engagement_router import router as engagement_router
 from app.modules.onboarding.api.exporter_router import router as exporter_router
 from app.modules.onboarding.api.history_router import router as history_router
 from app.modules.onboarding.api.schemas.case import (
@@ -27,6 +28,7 @@ from app.modules.onboarding.api.schemas.verification import (
     VerificationResultListResponse,
     VerificationResultResponse,
 )
+from app.modules.onboarding.api.screening_router import router as screening_router
 from app.modules.onboarding.application import (
     CaseService,
     OnboardingService,
@@ -59,6 +61,12 @@ _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 # mount prefix, giving the ticket's documented paths
 # (/onboarding/exporters...) with no prefix duplicated in two places.
 router.include_router(exporter_router)
+# The same `/exporters` routes, split by owner in L2-01: contacts and activities
+# (Developer 3) and the screening checklist and bank activity (Developer 4).
+# Included straight after the company routes, in the order they were declared
+# when all three lived in exporter_router.py, so route matching is unchanged.
+router.include_router(engagement_router)
+router.include_router(screening_router)
 
 # Shared CRM history log (L1-11) — Developer 1's, in its own file for the same
 # reason the Exporter CRM routes are in theirs, and included here so it

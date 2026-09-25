@@ -2,6 +2,7 @@ from app.modules.onboarding.domain.entities.applicant_mapping import ApplicantMa
 from app.modules.onboarding.domain.entities.case import Case
 from app.modules.onboarding.domain.entities.case_state_transition import CaseStateTransition
 from app.modules.onboarding.domain.entities.customer import Customer
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.enums import (
     CaseState,
     CaseType,
@@ -12,7 +13,6 @@ from app.modules.onboarding.domain.entities.enums import (
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterActivityType,
     ExporterLifecycleStatus,
     ExporterSource,
 )

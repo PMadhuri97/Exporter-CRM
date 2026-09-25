@@ -1,4 +1,16 @@
-"""Request/response schemas for the Exporter CRM API (EXP-1)."""
+"""Request/response schemas for the company record — **owner: Developer 2**
+(architecture §8.1, §9.2).
+
+This file used to carry every Exporter CRM shape. L2-01 split it by owner:
+
+  exporter.py    the company record and journey      Developer 2
+  engagement.py  contacts and the activity log       Developer 3
+  screening.py   screening checklist, bank activity  Developer 4
+  masking.py     tax-ID and contact masking (L1-10)  Developer 1
+
+The detail response still embeds the contact and activity shapes, because the
+company detail page shows them; it imports them rather than restating them.
+"""
 
 from __future__ import annotations
 
@@ -6,10 +18,18 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.onboarding.api.schemas.engagement import (
+    ExporterActivityResponse,
+    ExporterContactResponse,
+)
+from app.modules.onboarding.api.schemas.masking import (
+    NotMasked,
+    can_reveal_identifiers,
+    mask_identifier,
+)
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterActivityType,
     ExporterLifecycleStatus,
     ExporterSource,
 )
@@ -17,80 +37,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     OnboardingRejectionCategory,
     OnboardingRequestStatus,
 )
-from app.platform.authentication.models import User, UserRole
-
-# ── Identifier masking ───────────────────────────────────────────────────────
-# Server-side twin of the frontend's `maskIdentifier`/`canReveal`
-# (frontend/src/platform/mask/maskIdentifier.ts), implementing the role
-# capability matrix in docs/exporter-crm-frontend-tickets.md. The API must not
-# hand a raw PAN/GSTIN/IEC to a caller the matrix says may not see it: browser
-# masking protects nothing from a caller reading the JSON directly.
-#
-# Same mask shape as the frontend, so an already-masked value passes through
-# the frontend's own masking unchanged.
-
-_MASK_CHAR = "•"
-_VISIBLE_SUFFIX_LENGTH = 4
-_ALWAYS_REVEAL_ROLES = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
-
-
-def mask_identifier(value: str | None) -> str | None:
-    """Mask all but the trailing four characters (all of a short value)."""
-    if value is None:
-        return None
-    if len(value) <= _VISIBLE_SUFFIX_LENGTH:
-        return _MASK_CHAR * len(value)
-    return _MASK_CHAR * (len(value) - _VISIBLE_SUFFIX_LENGTH) + value[-_VISIBLE_SUFFIX_LENGTH:]
-
-
-def mask_email(value: str | None) -> str | None:
-    """Keep the first character of the local part and the whole domain
-    (`j•••@acme.com`): the domain is the exporter's company, which the viewer
-    can already see, and a fixed-width mask hides the local part's length.
-    A value with no `@` falls back to `mask_identifier`."""
-    if value is None:
-        return None
-    local, at, domain = value.partition("@")
-    if not at or not local:
-        return mask_identifier(value)
-    return f"{local[0]}{_MASK_CHAR * 3}@{domain}"
-
-
-def mask_phone(value: str | None) -> str | None:
-    """Same shape as the identifiers: only the last four characters visible."""
-    return mask_identifier(value)
-
-
-def can_reveal_identifiers(viewer: User) -> bool:
-    """COMPLIANCE and ADMIN see full tax IDs; every other role sees them masked.
-
-    This used to carry an ownership exception: OPERATIONS could see the raw
-    identifiers on exporters it was the assigned relationship manager for.
-    Architecture decision 12 settles the prototype the other way — sales staff
-    see masked values, and relationship-manager ownership waits until after the
-    prototype — so that branch is gone.
-
-    The exception was inert in practice (nothing writes
-    `exporter_profile.relationship_manager_user_id`), which is exactly why it
-    was worth removing rather than leaving: the first code that populated that
-    column would have silently switched PII visibility on for a whole role,
-    with no change to this function to review. The column and the response
-    field stay for the post-prototype work that will use them.
-    """
-    return viewer.role in _ALWAYS_REVEAL_ROLES
-
-
-def _reject_masked(value: str | None) -> str | None:
-    """Refuse a value carrying the mask character. A client that writes back
-    what it read (a masked PAN is still exactly 10 characters) would otherwise
-    overwrite the real identifier with bullets."""
-    if value is not None and _MASK_CHAR in value:
-        raise ValueError("looks like a masked value; send the full, unmasked value")
-    return value
-
-
-#: Write-side guard for any field a response may have masked.
-NotMasked = AfterValidator(_reject_masked)
+from app.platform.authentication.models import User
 
 
 class _IdentifierMasking:
@@ -226,103 +173,6 @@ class ExporterProfileResponse(_IdentifierMasking, BaseModel):
     updated_at: datetime
 
 
-class AddExporterContactRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=255)
-    role: str | None = Field(default=None, max_length=255)
-    email: Annotated[str | None, NotMasked] = Field(default=None, max_length=255)
-    phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
-    department: str | None = Field(default=None, max_length=255)
-    is_primary: bool = False
-
-
-class ExporterContactResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    customer_id: uuid.UUID
-    name: str
-    role: str | None
-    email: str | None
-    phone: str | None
-    department: str | None
-    is_primary_contact: bool
-
-    def masked(self) -> ExporterContactResponse:
-        return self.model_copy(
-            update={"email": mask_email(self.email), "phone": mask_phone(self.phone)}
-        )
-
-    def masked_for(self, viewer: User) -> ExporterContactResponse:
-        """Same reveal rule as the exporter's identifiers: COMPLIANCE and ADMIN
-        see the contact's real email and phone, everyone else sees them
-        masked."""
-        if can_reveal_identifiers(viewer):
-            return self
-        return self.masked()
-
-
-class ExporterContactListResponse(BaseModel):
-    customer_id: uuid.UUID
-    contacts: list[ExporterContactResponse]
-
-
-class LogExporterActivityRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    activity_type: ExporterActivityType
-    subject: str = Field(min_length=1, max_length=500)
-    notes: str | None = None
-    due_at: datetime | None = None
-
-
-class ExporterActivityResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    customer_id: uuid.UUID
-    activity_type: ExporterActivityType
-    subject: str
-    notes: str | None
-    actor_id: str
-    occurred_at: datetime
-    due_at: datetime | None
-    created_at: datetime
-
-
-class ExporterActivityListResponse(BaseModel):
-    customer_id: uuid.UUID
-    activities: list[ExporterActivityResponse]
-
-
-class PendingActivityResponse(BaseModel):
-    """One row of the cross-exporter pending/follow-up list (Piece 2). Unlike
-    `ExporterActivityResponse`, this always carries `exporter_display_name`
-    and `is_overdue` — there is no per-exporter context to fall back on, since
-    this response spans every exporter."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    customer_id: uuid.UUID
-    exporter_display_name: str | None
-    activity_type: ExporterActivityType
-    subject: str
-    notes: str | None
-    actor_id: str
-    occurred_at: datetime
-    due_at: datetime
-    is_overdue: bool
-    created_at: datetime
-
-
-class PendingActivityListResponse(BaseModel):
-    activities: list[PendingActivityResponse]
-    limit: int
-    offset: int
-
-
 class OnboardingHistoryEntryResponse(BaseModel):
     onboarding_id: uuid.UUID
     status: OnboardingRequestStatus
@@ -419,58 +269,3 @@ class ExporterProfileSearchResponse(BaseModel):
     profiles: list[ExporterProfileListItemResponse]
     limit: int
     offset: int
-
-# ── E9 screening review workspace ──────────────────────────────────────────
-from typing import Literal
-
-ScreeningChecklistStatus = Literal["NEEDS_REVIEW", "PASSED", "FAILED", "EXEMPT"]
-
-
-class UpdateScreeningReviewItemRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: ScreeningChecklistStatus
-    comment: str | None = Field(default=None, max_length=4000)
-
-
-class ScreeningReviewItemResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    customer_id: uuid.UUID
-    item_key: str
-    status: ScreeningChecklistStatus
-    comment: str | None
-    reviewed_by: str | None
-    reviewed_at: datetime | None
-    created_at: datetime
-    updated_at: datetime
-
-
-class ScreeningReviewListResponse(BaseModel):
-    customer_id: uuid.UUID
-    items: list[ScreeningReviewItemResponse]
-
-
-class BankActivityFindingResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    customer_id: uuid.UUID
-    provider: str
-    finding_type: str
-    title: str
-    description: str | None
-    risk_level: str
-    status: str
-    provider_reference: str | None
-    detected_at: datetime
-    created_at: datetime
-
-
-class BankActivityResponse(BaseModel):
-    customer_id: uuid.UUID
-    connected_accounts: int = 0
-    last_synced_at: datetime | None = None
-    open_findings: int
-    findings: list[BankActivityFindingResponse]

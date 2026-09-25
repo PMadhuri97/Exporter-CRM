@@ -13,10 +13,8 @@ from app.modules.onboarding.application.exporter_contact_activity_service import
     ExporterContactActivityService,
 )
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
-from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterActivityType,
-    ExporterSource,
-)
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
+from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.platform.database import services as db_services
 
 pytestmark = pytest.mark.asyncio

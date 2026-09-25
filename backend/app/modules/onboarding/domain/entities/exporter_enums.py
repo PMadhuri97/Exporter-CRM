@@ -1,5 +1,8 @@
-"""Enums for the Exporter CRM (EXP-1): ``ExporterProfile``, ``ExporterContact``,
-``ExporterActivity``.
+"""Enums for the company record (EXP-1): ``ExporterProfile`` — **owner:
+Developer 2** (architecture §8.1, §9.2).
+
+The activity-log enum (``ExporterActivityType``) used to live here too; L2-01
+moved it to ``engagement_enums.py``, which Developer 3 owns.
 
 Kept in their own file rather than added to ``orchestration_enums.py`` or the
 legacy ``enums.py``: none of these concepts belong to a single verification
@@ -51,12 +54,3 @@ class ExporterLifecycleStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     SUSPENDED = "SUSPENDED"
     OFFBOARDED = "OFFBOARDED"
-
-
-class ExporterActivityType(str, enum.Enum):
-    CALL = "CALL"
-    MEETING = "MEETING"
-    EMAIL = "EMAIL"
-    NOTE = "NOTE"
-    TASK = "TASK"
-    FOLLOW_UP = "FOLLOW_UP"

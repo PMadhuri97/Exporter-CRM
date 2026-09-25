@@ -592,7 +592,7 @@ async def test_add_contact_response_masked_for_non_owner(
     ],
 )
 def test_mask_email_shapes(value: str | None, expected: str | None):
-    from app.modules.onboarding.api.schemas.exporter import mask_email
+    from app.modules.onboarding.api.schemas.masking import mask_email
 
     assert mask_email(value) == expected
 
