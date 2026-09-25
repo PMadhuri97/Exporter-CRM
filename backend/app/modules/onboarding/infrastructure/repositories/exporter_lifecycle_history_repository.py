@@ -31,9 +31,17 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         super().__init__(ExporterLifecycleHistory, session)
 
     async def list_by_customer(
-        self, customer_id: uuid.UUID
+        self, customer_id: uuid.UUID, *, dimension: str | None = None
     ) -> Sequence[ExporterLifecycleHistory]:
-        """One exporter's lifecycle history, newest first.
+        """One exporter's history, newest first, optionally one dimension only.
+
+        The table became the shared CRM history log in migration 0013, so an
+        unfiltered read now returns the journey, every gauge and every deal
+        mixed together — which is what a company timeline wants and what a
+        single gauge panel does not. `dimension` narrows it, served by
+        `ix_exporter_lifecycle_history_dimension_recent`, whose column order and
+        direction mirror this query so the ordering comes from the index rather
+        than a sort.
 
         ``created_at`` defaults to ``now()`` — transaction start time — so two
         rows written in one transaction share a timestamp. The ``id`` tie-break
@@ -42,10 +50,13 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         it does not arise; a caller writing several rows in one transaction
         must not rely on this order between them.
         """
+        stmt = select(ExporterLifecycleHistory).where(
+            ExporterLifecycleHistory.customer_id == customer_id
+        )
+        if dimension is not None:
+            stmt = stmt.where(ExporterLifecycleHistory.dimension == dimension)
         result = await self.session.execute(
-            select(ExporterLifecycleHistory)
-            .where(ExporterLifecycleHistory.customer_id == customer_id)
-            .order_by(
+            stmt.order_by(
                 ExporterLifecycleHistory.created_at.desc(),
                 ExporterLifecycleHistory.id.desc(),
             )

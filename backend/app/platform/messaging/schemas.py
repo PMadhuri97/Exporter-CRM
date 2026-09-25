@@ -149,6 +149,13 @@ class EventEnvelope(BaseModel):
 
     `event_id` is the deduplication key — every consumer checks it against the
     processed_events store before acting (Kafka delivers at-least-once).
+
+    `actor_id` and `deal_id` exist for the Exporter CRM's handover events
+    (`company.became_customer`, `deal.handed_over`), whose contract puts the
+    company, the deal and the actor on the envelope rather than burying them in
+    `payload` where nothing would keep producers consistent. Both are optional
+    and default to `None`; nothing populates them yet — the CRM event helper
+    (L1-12) is the first writer. See `docs/contracts/event-envelope.md`.
     """
 
     event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -157,6 +164,27 @@ class EventEnvelope(BaseModel):
     partition_key: str
     transaction_id: str | None = None
     correlation_id: str | None = None
+
+    #: Who caused the change this event announces, when a person did.
+    #:
+    #: `correlation_id` traces a request; this answers "who". `None` means the
+    #: platform acted on its own behalf — the same meaning `actor_id` carries on
+    #: `case_state_transition` and `exporter_lifecycle_history`, so the answer
+    #: does not change shape between the history row and the announcement of it.
+    #:
+    #: Optional with a `None` default so this is additive: every existing
+    #: producer keeps working unchanged, an old message still parses, and a
+    #: consumer that does not read it is unaffected.
+    actor_id: str | None = None
+
+    #: The deal a CRM event is about, when it is about one.
+    #:
+    #: The company is `partition_key` — customer events are already keyed by
+    #: customer id so that one company's events stay ordered on one partition.
+    #: A deal has no such ordering requirement of its own, so it is a field
+    #: rather than the key.
+    deal_id: str | None = None
+
     occurred_at: str = Field(
         default_factory=lambda: datetime.now(UTC).isoformat()
     )
@@ -177,14 +205,22 @@ def build_envelope(
     partition_key: str,
     transaction_id: str | None = None,
     correlation_id: str | None = None,
+    actor_id: str | None = None,
+    deal_id: str | None = None,
     payload: dict | None = None,
 ) -> EventEnvelope:
-    """Construct an envelope with the topic resolved from the event type."""
+    """Construct an envelope with the topic resolved from the event type.
+
+    `actor_id` and `deal_id` are keyword-only with `None` defaults, so every
+    existing call site is unchanged.
+    """
     return EventEnvelope(
         event_type=event_type,
         topic=TOPIC_FOR_EVENT[event_type],
         partition_key=partition_key,
         transaction_id=transaction_id,
         correlation_id=correlation_id,
+        actor_id=actor_id,
+        deal_id=deal_id,
         payload=payload or {},
     )

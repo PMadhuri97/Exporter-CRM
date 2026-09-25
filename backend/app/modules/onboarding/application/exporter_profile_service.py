@@ -45,6 +45,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
+    HISTORY_DIMENSION_JOURNEY,
     LIFECYCLE_INITIAL_EVENT,
     LIFECYCLE_TRANSITION_EVENT,
     ExporterLifecycleHistory,
@@ -592,10 +593,17 @@ class ExporterProfileService:
         actor_id: str | None,
         event_type: str,
         source: str,
+        reason: str | None = None,
     ) -> None:
         """Append one `exporter_lifecycle_history` row, flushed but not
         committed: the caller commits it together with the status write, so a
         profile can never hold a status with no record of how it got there.
+
+        `dimension` is always `journey` here. The table is shared across the
+        journey, the three gauges and deals as of migration 0013, and the
+        column has no database default, so every writer names its own dimension
+        — a writer that forgot one would otherwise have silently recorded a
+        journey move. See `docs/contracts/history-row.md`.
 
         Enough for a downstream consumer to act on without re-reading the
         profile: ANER-4.2-S1T2 wants a completion hook on
@@ -609,6 +617,9 @@ class ExporterProfileService:
         await self._lifecycle_history.create(
             ExporterLifecycleHistory(
                 customer_id=customer_id,
+                dimension=HISTORY_DIMENSION_JOURNEY,
+                deal_id=None,
+                reason=reason,
                 event_type=event_type,
                 from_status=from_status.value if from_status is not None else None,
                 to_status=to_status.value,
