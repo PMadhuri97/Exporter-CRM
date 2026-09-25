@@ -335,3 +335,32 @@ async def test_an_allowed_role_still_reaches_a_gated_route(
         resp = await client.get(f"{V1}/notifications/", headers=auth_header(tokens[role]))
         assert resp.status_code == 200, (role, resp.text)
         assert isinstance(resp.json(), list)
+
+
+def test_api_user_reaches_nothing_in_the_crm():
+    """Planning assumption A10, asserted as an invariant rather than as a
+    coincidence.
+
+    Public sign-up stays open and grants `API_USER`, on the understanding that
+    the role reaches nothing in the Exporter CRM. Every CRM route already
+    excludes it, so the cross-product above generates 27 refusal tests — but
+    those only check the routes as classified today. Nothing stopped someone
+    adding a CRM route to `GATED_ROUTES` *with* `API_USER` in its allowed set
+    and quietly reopening the hole.
+
+    This is the rule itself: no route under the CRM prefix may admit
+    `API_USER`, whatever the table says.
+
+    The Sumsub webhook shares the prefix and is deliberately not covered — it
+    holds no bearer role at all and refuses every caller without a valid
+    signature, which `test_the_signed_webhook_ignores_bearer_role` asserts.
+    """
+    reachable = sorted(
+        (method, path)
+        for (method, path), allowed in GATED_ROUTES.items()
+        if path.startswith(CRM) and UserRole.API_USER in allowed
+    )
+    assert not reachable, (
+        "These CRM routes admit API_USER, which assumption A10 says must reach "
+        "nothing in the CRM:\n  " + "\n  ".join(f"{m} {p}" for m, p in reachable)
+    )
