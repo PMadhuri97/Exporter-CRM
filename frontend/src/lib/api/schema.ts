@@ -384,7 +384,7 @@ export interface paths {
         };
         /**
          * Search exporter profiles
-         * @description Filters by gstin, pan, iec, source, lifecycle status (exact match) and legal_name (case-insensitive partial match against the linked OnboardingRequest.legal_name). The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
+         * @description Filters by gstin, pan, iec, source, lifecycle status (exact match) and name (case-insensitive partial match on the company's name). The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -408,7 +408,7 @@ export interface paths {
         };
         /**
          * Read an exporter profile's full detail
-         * @description The profile plus its contacts, recent activities, and linked OnboardingRequest history.
+         * @description The company record with its name and country, plus its contacts and recent activities.
          */
         get: operations["get_exporter_profile_detail_api_v1_onboarding_exporters__customer_id__get"];
         put?: never;
@@ -418,7 +418,7 @@ export interface paths {
         head?: never;
         /**
          * Update an exporter profile's mutable CRM fields
-         * @description Updates CRM fields. `source` and `lifecycle_status` are not accepted here (422 if present) — source is immutable, and lifecycle_status is owned by the transition endpoint.
+         * @description Updates CRM fields. A field left out of the body is unchanged; a field sent as null (or an empty string or list) is cleared. Each change is recorded in the company's history with the signed-in user as the actor. `source` and `lifecycle_status` are not accepted here (422 if present) — source is immutable, and lifecycle_status is owned by the transition endpoint.
          */
         patch: operations["update_exporter_profile_api_v1_onboarding_exporters__customer_id__patch"];
         trace?: never;
@@ -1181,36 +1181,26 @@ export interface components {
         };
         /**
          * CreateExporterProfileRequest
-         * @description Create a profile. `source` and `lifecycle_status` are the only
+         * @description Create a company. `source` and `lifecycle_status` are the only
          *     lifecycle-relevant fields the caller may set at creation — `source`
          *     becomes immutable the moment this succeeds (see
          *     `ExporterSourceImmutableError`); `lifecycle_status` after creation can
          *     only move through `POST .../transition`.
          *
-         *     `customer_id` is optional: when omitted, the API mints a fresh one — the
-         *     common case for a brand-new Lead, which has no prior `OnboardingRequest`
-         *     or other identity to anchor to. A caller onboarding an *existing*
-         *     `OnboardingRequest.customer_id` (backfilling a profile for a customer who
-         *     already has verification history) supplies it explicitly.
+         *     `name` and `country` are the company's identity
+         *     (`docs/contracts/company-record.md` §2.1). Supplying them — always
+         *     together — creates a named company through
+         *     `ExporterProfileService.create_lead`, and requires the `Idempotency-Key`
+         *     header so a retried submit returns the first company rather than a
+         *     second. The creator's contact details are never asked for: the service
+         *     takes them from the signed-in user.
          *
-         *     `legal_name`/`incorporation_country`/`initial_user_email` (EXP-3, "Add
-         *     Exporter"): supplying all three routes this request through
-         *     `ExporterProfileService.create_lead` instead of `create_or_get_profile`,
-         *     creating a minimal `OnboardingRequest` alongside the profile so the new
-         *     Lead actually has a name — see `create_lead`'s own docstring for why
-         *     `create_or_get_profile` alone can never give a Lead a `legal_name`. All
-         *     three are required together (enforced below) or none at all; omitting
-         *     all three keeps this request on the `create_or_get_profile` path exactly
-         *     as before. `initial_user_email` is a reachable contact for the Lead (the
-         *     Sales rep's own address, a lead-intake mailbox, whatever channel sourced
-         *     it) — not necessarily the exporter's own future platform login; see
-         *     `OnboardingRequestService.initiate_onboarding`'s docstring for the full
-         *     reasoning (`create_lead` reuses the same field for the same reason).
-         *     Creating a Lead this way also requires the `Idempotency-Key` header
-         *     (unlike the `create_or_get_profile` path, where it's optional) — a fresh
-         *     `OnboardingRequest` row has a `NOT NULL` idempotency key with no other
-         *     natural uniqueness to fall back on the way `exporter_profile.customer_id`
-         *     provides for the other path.
+         *     Omitting both keeps the older unnamed path (`create_or_get_profile`),
+         *     which some callers still use to open a company by `customer_id` alone.
+         *     Migration 0014 makes the name a required column on the company record,
+         *     at which point this path either takes a name too or goes.
+         *
+         *     `customer_id` is optional: when omitted, the API mints a fresh one.
          */
         CreateExporterProfileRequest: {
             /** Customer Id */
@@ -1236,12 +1226,10 @@ export interface components {
             year_established?: number | null;
             /** Website */
             website?: string | null;
-            /** Legal Name */
-            legal_name?: string | null;
-            /** Incorporation Country */
-            incorporation_country?: string | null;
-            /** Initial User Email */
-            initial_user_email?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Country */
+            country?: string | null;
         };
         /** DependencyHealth */
         DependencyHealth: {
@@ -1361,6 +1349,10 @@ export interface components {
              * Format: uuid
              */
             customer_id: string;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
             /** Gstin */
             gstin: string | null;
             /** Pan */
@@ -1402,16 +1394,13 @@ export interface components {
             contacts: components["schemas"]["ExporterContactResponse"][];
             /** Recent Activities */
             recent_activities: components["schemas"]["ExporterActivityResponse"][];
-            /** Onboarding History */
-            onboarding_history: components["schemas"]["OnboardingHistoryEntryResponse"][];
         };
         /**
          * ExporterProfileListItemResponse
          * @description One row of `GET /onboarding/exporters` — `ExporterProfileResponse`
-         *     plus `legal_name`, resolved server-side via a join against the
-         *     exporter's most recent `OnboardingRequest` (see
-         *     `ExporterProfileRepository.search`) so a list screen never needs a
-         *     second, per-row lookup just to show a company name.
+         *     plus the company's `name` and `country`, fetched for the whole page at
+         *     once (see `ExporterProfileService.search_profiles`), so a list screen never
+         *     needs a second, per-row lookup just to show a company name.
          */
         ExporterProfileListItemResponse: {
             /**
@@ -1419,8 +1408,10 @@ export interface components {
              * Format: uuid
              */
             customer_id: string;
-            /** Legal Name */
-            legal_name: string | null;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
             /** Gstin */
             gstin: string | null;
             /** Pan */
@@ -1713,32 +1704,6 @@ export interface components {
          * @enum {string}
          */
         NotificationStatus: "PENDING" | "DELIVERED" | "FAILED" | "EXHAUSTED";
-        /** OnboardingHistoryEntryResponse */
-        OnboardingHistoryEntryResponse: {
-            /**
-             * Onboarding Id
-             * Format: uuid
-             */
-            onboarding_id: string;
-            status: components["schemas"]["OnboardingRequestStatus"];
-            /** Legal Name */
-            legal_name: string;
-            /** Initiated At */
-            initiated_at: string | null;
-            /** Completed At */
-            completed_at: string | null;
-            rejection_category: components["schemas"]["OnboardingRejectionCategory"] | null;
-        };
-        /**
-         * OnboardingRejectionCategory
-         * @enum {string}
-         */
-        OnboardingRejectionCategory: "KYB_FAILURE" | "SCREENING_BLOCK" | "COMPLIANCE_REJECTION" | "DOCUMENT_FRAUD" | "TIMEOUT";
-        /**
-         * OnboardingRequestStatus
-         * @enum {string}
-         */
-        OnboardingRequestStatus: "DRAFT" | "ENTITY_VERIFICATION_IN_PROGRESS" | "ENTITY_VERIFIED" | "UBO_MAPPING_IN_PROGRESS" | "UBO_MAPPING_COMPLETE" | "DOCUMENT_COLLECTION_IN_PROGRESS" | "DOCUMENT_COLLECTION_COMPLETE" | "SCREENING_IN_PROGRESS" | "SCREENING_COMPLETE" | "RISK_RATING_IN_PROGRESS" | "RISK_RATED" | "PENDING_COMPLIANCE_APPROVAL" | "APPROVED" | "ACCOUNT_CREATION_IN_PROGRESS" | "ACTIVE" | "REJECTED" | "ABANDONED" | "UNDER_REVIEW";
         /**
          * OnboardingStatus
          * @description Verification lifecycle status of an onboarding customer.
@@ -2125,10 +2090,16 @@ export interface components {
         };
         /**
          * UpdateExporterProfileRequest
-         * @description Update mutable CRM fields. `source` and `lifecycle_status` are
-         *     deliberately not fields on this model at all — with `extra="forbid"`,
-         *     sending either is rejected at the API boundary (422) before the request
-         *     ever reaches `ExporterProfileService.update_profile`'s own guard.
+         * @description Update mutable CRM fields. A field left out is unchanged; a field sent
+         *     as `null` (or an empty string or list) is cleared — the router keeps the
+         *     two apart with `exclude_unset=True`. Every change is recorded in the
+         *     company's history, with the signed-in user as the actor; there is no actor
+         *     field here, and `extra="forbid"` refuses one.
+         *
+         *     `source` and `lifecycle_status` are deliberately not fields on this model
+         *     at all — with `extra="forbid"`, sending either is rejected at the API
+         *     boundary (422) before the request ever reaches
+         *     `ExporterProfileService.update_profile`'s own guard.
          */
         UpdateExporterProfileRequest: {
             /** Gstin */
@@ -3243,7 +3214,7 @@ export interface operations {
                 gstin?: string | null;
                 pan?: string | null;
                 iec?: string | null;
-                legal_name?: string | null;
+                name?: string | null;
                 source?: components["schemas"]["ExporterSource"] | null;
                 status?: components["schemas"]["ExporterLifecycleStatus"] | null;
                 limit?: number;

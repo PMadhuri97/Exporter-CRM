@@ -8,6 +8,11 @@ assembles these from ORM rows; nothing here reaches for a database.
 The contact, activity and pending-activity views moved to
 ``engagement_views.py`` (Developer 3) in L2-01. The detail view below still
 embeds the first two, because the company page shows them.
+
+``name`` and ``country`` are the company's identity
+(``docs/contracts/company-record.md`` §2.1). They are ``None`` for a company
+created without them, which the API still allows until migration 0014 makes
+the name a required column on the company record.
 """
 
 from __future__ import annotations
@@ -24,19 +29,31 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
     ExporterSource,
 )
-from app.modules.onboarding.domain.onboarding_request_views import OnboardingHistoryEntry
+
+
+@dataclass(frozen=True)
+class CompanyIdentity:
+    """What a company is called and where it is incorporated."""
+
+    name: str
+    country: str
 
 
 @dataclass(frozen=True)
 class ExporterProfileDetail:
-    """Result of ``ExporterProfileService.get_profile_detail``: the profile
-    plus its contacts, recent activities, and linked ``OnboardingRequest``
-    history — all queried by ``customer_id`` alone, no join table, per the
-    confirmed plan that ``OnboardingRequest.customer_id`` already supports
-    multiple historical rows.
+    """Result of ``ExporterProfileService.get_profile_detail``: the company
+    record, its identity, and the contacts and recent activities the company
+    page shows.
+
+    There is no onboarding-request history here any more. The company page
+    used to derive the company's display name from it; the name is now part
+    of the company's own identity (L2-03), and the legacy onboarding path's
+    records stay where they are, served by that path's own routes.
     """
 
     customer_id: uuid.UUID
+    name: str | None
+    country: str | None
     gstin: str | None
     pan: str | None
     iec: str | None
@@ -54,26 +71,21 @@ class ExporterProfileDetail:
     updated_at: datetime
     contacts: tuple[ExporterContactView, ...]
     recent_activities: tuple[ExporterActivityView, ...]
-    onboarding_history: tuple[OnboardingHistoryEntry, ...]
 
 
 @dataclass(frozen=True)
 class ExporterProfileListItem:
     """One row of ``ExporterProfileService.search_profiles``.
 
-    Everything ``ExporterProfileDetail`` has except the per-exporter
-    sub-collections (contacts/activities/history — too expensive to carry
-    for every row of a list), plus ``legal_name``: resolved via the exact
-    same "most recent ``OnboardingRequest`` per ``customer_id``" window-
-    function join ``ExporterActivityRepository.list_pending`` already uses
-    for ``PendingActivityView.exporter_display_name`` — see
-    ``ExporterProfileRepository.search``. ``None`` for a bare Lead with no
-    ``OnboardingRequest`` yet, same "nothing to match" case documented
-    throughout this module.
+    Everything ``ExporterProfileDetail`` has except the per-company
+    sub-collections (contacts and activities — too expensive to carry for
+    every row of a list). The page's identities are fetched in one query for
+    the whole page, never one per row.
     """
 
     customer_id: uuid.UUID
-    legal_name: str | None
+    name: str | None
+    country: str | None
     gstin: str | None
     pan: str | None
     iec: str | None
@@ -89,6 +101,7 @@ class ExporterProfileListItem:
 
 
 __all__ = [
+    "CompanyIdentity",
     "ExporterProfileDetail",
     "ExporterProfileListItem",
 ]

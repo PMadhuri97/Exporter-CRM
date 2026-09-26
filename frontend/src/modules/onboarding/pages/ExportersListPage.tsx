@@ -29,11 +29,11 @@ function TableSkeletonRow() {
 
 export function ExportersListPage() {
   const [searchInput, setSearchInput] = useState('');
-  const [legalName, setLegalName] = useState('');
+  const [nameFilter, setNameFilter] = useState('');
   const [activeTab, setActiveTab] = useState<TabValue>('ALL');
 
   const { data, isLoading, isError } = useExporterProfiles({
-    legalName: legalName || undefined,
+    name: nameFilter || undefined,
   });
 
   const profiles = useMemo(() => data?.profiles ?? [], [data]);
@@ -73,7 +73,7 @@ export function ExportersListPage() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          setLegalName(searchInput.trim());
+          setNameFilter(searchInput.trim());
         }}
         className="mb-4"
       >
@@ -172,7 +172,7 @@ export function ExportersListPage() {
                         to={`/exporters/${profile.customer_id}`}
                         className="hover:text-brand-600 hover:underline"
                       >
-                        {profile.legal_name ?? (
+                        {profile.name ?? (
                           <span className="italic text-ink-faint">
                             Unnamed lead
                           </span>

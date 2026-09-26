@@ -132,7 +132,7 @@ function PipelineCard({
             to={`/exporters/${profile.customer_id}`}
             className="block truncate text-sm font-semibold text-ink hover:text-brand-600"
           >
-            {profile.legal_name ?? 'Unnamed lead'}
+            {profile.name ?? 'Unnamed lead'}
           </Link>
           <div className="mt-1">
             <StageChip status={profile.lifecycle_status} showDetail />
@@ -269,13 +269,13 @@ function PipelineColumn({
 export function PipelinePage() {
   const [viewMode, setViewMode] = useState<ViewMode>('PIPELINE');
   const [searchInput, setSearchInput] = useState('');
-  const [legalName, setLegalName] = useState('');
+  const [nameFilter, setNameFilter] = useState('');
   const [draggingProfile, setDraggingProfile] =
     useState<ExporterProfileListItem | null>(null);
   const [movingCustomerId, setMovingCustomerId] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useExporterProfiles({
-    legalName: legalName || undefined,
+    name: nameFilter || undefined,
     limit: 100,
   });
 
@@ -316,7 +316,7 @@ export function PipelinePage() {
     try {
       await dragMutation.mutateAsync(targetStatus);
       toast.success(
-        `${profile.legal_name ?? 'Exporter'} moved to ${STATUS_LABEL[targetStatus]}`,
+        `${profile.name ?? 'Exporter'} moved to ${STATUS_LABEL[targetStatus]}`,
       );
     } catch {
       toast.error('Could not move exporter. Refresh and try again.');
@@ -364,7 +364,7 @@ export function PipelinePage() {
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          setLegalName(searchInput.trim());
+          setNameFilter(searchInput.trim());
         }}
         className="mb-5 flex max-w-md items-center gap-2"
       >
@@ -437,7 +437,7 @@ export function PipelinePage() {
                     to={`/exporters/${profile.customer_id}`}
                     className="truncate text-sm font-semibold text-ink hover:text-brand-600"
                   >
-                    {profile.legal_name ?? 'Unnamed lead'}
+                    {profile.name ?? 'Unnamed lead'}
                   </Link>
                   <p className="mt-0.5 text-xs text-ink-faint">
                     {profile.relationship_manager ?? 'Unassigned'}

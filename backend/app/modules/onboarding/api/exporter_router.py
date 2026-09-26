@@ -53,7 +53,6 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 from app.modules.onboarding.exceptions import IdentifierSearchNotPermittedError
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
-from app.platform.configuration.config import settings
 from app.platform.database.services import get_db
 from app.shared.exceptions import ValidationError
 
@@ -139,25 +138,23 @@ async def create_exporter_profile(
     db: AsyncSession = Depends(get_db),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> ExporterProfileResponse:
-    # EXP-3 "Add Exporter": all three lead fields present (the schema's own
-    # validator guarantees "all or nothing") routes through `create_lead`,
-    # which is the only path that gives the new Lead a `legal_name` at all —
-    # see `CreateExporterProfileRequest`'s docstring.
-    if body.legal_name is not None:
-        assert body.incorporation_country is not None
-        assert body.initial_user_email is not None
+    # "Add Exporter": a name and country (the schema guarantees both or
+    # neither) create a named company through `create_lead`. The contact the
+    # legacy identity store needs is the signed-in user's own address, never a
+    # field the caller supplies.
+    if body.name is not None:
+        assert body.country is not None
         if idempotency_key is None:
             raise ValidationError(
-                "Creating a new exporter Lead (legal_name supplied) requires an "
+                "Creating a named company (name supplied) requires an "
                 "Idempotency-Key header"
             )
-        _request, profile, created = await ExporterProfileService(db).create_lead(
-            tenant_id=uuid.UUID(settings.ANER_TENANT_ID),
-            legal_name=body.legal_name,
-            incorporation_country=body.incorporation_country,
-            initial_user_email=body.initial_user_email,
+        profile, _identity, created = await ExporterProfileService(db).create_lead(
+            name=body.name,
+            country=body.country,
             idempotency_key=idempotency_key,
             source=body.source,
+            created_by_email=current_user.email,
             customer_id=body.customer_id,
             gstin=body.gstin,
             pan=body.pan,
@@ -208,8 +205,8 @@ async def create_exporter_profile(
     response_model=ExporterProfileDetailResponse,
     summary="Read an exporter profile's full detail",
     description=(
-        "The profile plus its contacts, recent activities, and linked "
-        "OnboardingRequest history."
+        "The company record with its name and country, plus its contacts and "
+        "recent activities."
     ),
     responses={
         200: {"model": ExporterProfileDetailResponse},
@@ -232,7 +229,10 @@ async def get_exporter_profile_detail(
     response_model=ExporterProfileResponse,
     summary="Update an exporter profile's mutable CRM fields",
     description=(
-        "Updates CRM fields. `source` and `lifecycle_status` are not accepted here "
+        "Updates CRM fields. A field left out of the body is unchanged; a field "
+        "sent as null (or an empty string or list) is cleared. Each change is "
+        "recorded in the company's history with the signed-in user as the actor. "
+        "`source` and `lifecycle_status` are not accepted here "
         "(422 if present) — source is immutable, and lifecycle_status is owned by "
         "the transition endpoint."
     ),
@@ -250,8 +250,12 @@ async def update_exporter_profile(
     current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileResponse:
+    # `exclude_unset` is what separates "left out" (no change) from "sent as
+    # null" (clear). The actor is the session's, never the body's.
     profile = await ExporterProfileService(db).update_profile(
-        customer_id, **body.model_dump(exclude_unset=True)
+        customer_id,
+        body.model_dump(exclude_unset=True),
+        actor_id=str(current_user.id),
     )
     return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
 
@@ -299,8 +303,8 @@ async def transition_exporter_lifecycle_status(
     summary="Search exporter profiles",
     description=(
         "Filters by gstin, pan, iec, source, lifecycle status (exact match) and "
-        "legal_name (case-insensitive partial match against the linked "
-        "OnboardingRequest.legal_name). The gstin/pan/iec filters are "
+        "name (case-insensitive partial match on the company's name). The "
+        "gstin/pan/iec filters are "
         "COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals "
         "which company holds it even when the response body is masked."
     ),
@@ -321,7 +325,7 @@ async def search_exporter_profiles(
     gstin: str | None = Query(default=None),
     pan: str | None = Query(default=None),
     iec: str | None = Query(default=None),
-    legal_name: str | None = Query(default=None),
+    name: str | None = Query(default=None),
     source: ExporterSource | None = Query(default=None),
     status: ExporterLifecycleStatus | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -333,7 +337,7 @@ async def search_exporter_profiles(
         gstin=gstin,
         pan=pan,
         iec=iec,
-        legal_name_contains=legal_name,
+        name_contains=name,
         source=source,
         lifecycle_status=status,
         limit=limit,

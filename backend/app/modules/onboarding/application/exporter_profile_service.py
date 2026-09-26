@@ -31,13 +31,13 @@ RXIL lands.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from collections.abc import Mapping
 
 import structlog
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.schemas.masking import mask_identifier
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.engagement_views import (
     ExporterActivityView,
@@ -55,29 +55,24 @@ from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     LIFECYCLE_TRANSITION_EVENT,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
-from app.modules.onboarding.domain.entities.onboarding_event import OnboardingEvent
-from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
-from app.modules.onboarding.domain.entities.orchestration_enums import (
-    OnboardingEntityType,
-    OnboardingRequestStatus,
-)
 from app.modules.onboarding.domain.exporter_profile_views import (
+    CompanyIdentity,
     ExporterProfileDetail,
     ExporterProfileListItem,
 )
-from app.modules.onboarding.domain.onboarding_request_views import OnboardingHistoryEntry
 from app.modules.onboarding.exceptions import (
     ExporterLifecycleComplianceRequiredError,
     ExporterProfileNotFoundError,
     ExporterSourceImmutableError,
     InvalidExporterLifecycleTransitionError,
 )
+from app.modules.onboarding.infrastructure.legacy_company_identity import (
+    LegacyCompanyIdentityStore,
+)
 from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
     ExporterContactRepository,
     ExporterProfileRepository,
-    OnboardingEventRepository,
-    OnboardingRequestRepository,
 )
 from app.platform.idempotency.models import IdempotencyKeyType, RegistrationResultType
 from app.platform.idempotency.services import complete_key, register_key
@@ -99,6 +94,36 @@ _OP_CREATE = "create_or_get_profile"
 _UPDATE_FORBIDDEN_FIELDS = frozenset(
     {"source", "customer_id", "id", "date_added", "lifecycle_status", "created_at", "updated_at"}
 )
+
+#: The company fields staff may edit through `update_profile`, each of which
+#: may also be cleared (L2-07). The identity — name and country — is not here:
+#: until migration 0014 it lives in `LegacyCompanyIdentityStore`, and editing it
+#: there would mean rewriting a legacy onboarding row.
+_EDITABLE_FIELDS = frozenset(
+    {
+        "gstin",
+        "pan",
+        "iec",
+        "relationship_manager",
+        "industry",
+        "export_markets",
+        "products",
+        "year_established",
+        "website",
+    }
+)
+
+#: Tax identifiers are written to the history log masked. The history read
+#: route shows a row's details to every CRM reader, including roles that only
+#: ever see these identifiers masked on the company itself, so a full value in
+#: the log would undo the company route's masking (company-record contract,
+#: open item O5).
+_MASKED_IN_HISTORY = frozenset({"gstin", "pan", "iec"})
+
+#: History dimension and event type for an edit of a company field
+#: (`docs/contracts/company-record.md` §6).
+HISTORY_DIMENSION_PROFILE = "profile"
+PROFILE_EDIT_EVENT = "profile_transition"
 
 #: The permitted `(from, to)` lifecycle_status edges — follows `cases`'
 #: `PERMITTED_TRANSITIONS` pattern: a module-level frozenset, not a
@@ -160,25 +185,25 @@ class ExporterProfileService:
         self._profiles = ExporterProfileRepository(db)
         self._contacts = ExporterContactRepository(db)
         self._activities = ExporterActivityRepository(db)
-        self._requests = OnboardingRequestRepository(db)
-        self._events = OnboardingEventRepository(db)
+        # A company's name and country, until the company record has columns
+        # for them (migration 0014). The only way this service reaches the
+        # legacy onboarding_request table, and only through this store.
+        self._identities = LegacyCompanyIdentityStore(db)
         # The shared history writer, not a repository: every history row this
         # service writes goes through the one writer all four developers use.
         self._history = HistoryService(db)
 
-    # ── Create a bare Lead (Piece 1: "Add Exporter") ────────────────────────
+    # ── Create a named company ("Add Exporter") ─────────────────────────────
 
     async def create_lead(
         self,
         *,
-        tenant_id: uuid.UUID,
-        legal_name: str,
-        incorporation_country: str,
-        initial_user_email: str,
+        name: str,
+        country: str,
         idempotency_key: str,
         source: ExporterSource,
+        created_by_email: str,
         customer_id: uuid.UUID | None = None,
-        entity_type: OnboardingEntityType = OnboardingEntityType.CORPORATION,
         gstin: str | None = None,
         pan: str | None = None,
         iec: str | None = None,
@@ -190,94 +215,41 @@ class ExporterProfileService:
         website: str | None = None,
         correlation_id: str | None = None,
         actor_id: str | None = None,
-    ) -> tuple[OnboardingRequest, ExporterProfile, bool]:
-        """Create an `ExporterProfile` *and* its minimal `OnboardingRequest`
-        together, in one transaction — the actual fix for "Add Exporter has
-        nowhere to put a name" (Piece 1). Before this method existed,
-        `create_or_get_profile` created only the CRM-shell `ExporterProfile`,
-        with no `OnboardingRequest` at all, so a Sales-added Lead had no
-        `legal_name` anywhere for `search_profiles`'s `legal_name_contains`
-        join (`OnboardingProfile` <- `OnboardingRequest.legal_name`) to find.
+    ) -> tuple[ExporterProfile, CompanyIdentity, bool]:
+        """Create a company with its identity — name and country — in one
+        transaction, as a `LEAD`.
 
-        Only `legal_name` and `incorporation_country` are required beyond the
-        usual `OnboardingRequest` plumbing (`tenant_id`, `idempotency_key`) —
-        `registration_number`/`registered_address` are left `None`, exactly
-        what `onboarding_0007_reg_optional` made possible, to be filled in
-        later via `OnboardingRequestService.submit_entity_details`. See
-        `OnboardingRequestService.initiate_onboarding`'s docstring for why
-        `initial_user_email` is still required rather than also loosened.
+        The identity goes to `LegacyCompanyIdentityStore`, the one place the
+        CRM still keeps it until migration 0014 gives the company record its
+        own columns (see that module's docstring). Nothing here knows how the
+        store keeps it.
 
-        Deliberately does *not* call `initiate_onboarding` (which does its
-        own idempotency-key registration and commits on its own): that would
-        make this method's two writes two separate transactions rather than
-        one. Instead this builds both entities directly against the same
-        session and flushes each in turn, committing only once at the end —
-        the same "flush now, commit together at the end" shape
-        `submit_entity_details` already uses to compose its own field update
-        with `OnboardingTransitionService`'s write in one transaction.
+        `idempotency_key` makes a retried create safe: a replay returns the
+        company the first call created, with `created=False`, and creates
+        nothing. `created_by_email` is the signed-in staff member's address,
+        which the store needs; it is never asked of the caller as a field.
 
-        Idempotency relies on `onboarding_request`'s own
-        `uq_onboarding_request_tenant_idem_key` constraint alone (no
-        idempotency-key registry round trip) — the same lean
-        `create_or_get_profile` documents for its no-key case: this is a
-        trusted, internal "Add Exporter" UI action, not an untrusted,
-        retrying caller like the future RXIL ingestion path.
-
-        Returns `(onboarding_request, exporter_profile, created)`. `created` is
-        `False` only when the *outer* `idempotency_key` constraint on
-        `onboarding_request` catches an exact replay (mirrors
-        `create_or_get_profile`'s own `created` flag, and the router's own
-        already-documented 200-vs-201 response contract, which this method's
-        missing return value previously left unenforceable — found via manual
-        end-to-end testing: a resubmitted `Idempotency-Key` correctly returned
-        the same `customer_id` both times, but always as `201`, never `200`).
-        A *profile-level* race (the inner `except IntegrityError` below,
-        `customer_id` colliding with a concurrent, unrelated write) still
-        counts as `created=True`: this call's own `OnboardingRequest` really
-        was newly created either way, which is what "created" means from the
-        caller's perspective.
+        Returns `(profile, identity, created)`. A *profile-level* race (the
+        `except IntegrityError` below: this `customer_id` collided with a
+        concurrent, unrelated write) still counts as `created=True`: this
+        call's identity really was newly stored.
         """
         customer_id = customer_id or uuid.uuid4()
-        now = datetime.now(UTC)
+        identity = CompanyIdentity(name=name, country=country)
 
-        request = OnboardingRequest(
-            tenant_id=tenant_id,
+        replayed_id = await self._identities.record(
+            customer_id,
+            identity,
             idempotency_key=idempotency_key,
-            customer_id=customer_id,
-            status=OnboardingRequestStatus.DRAFT,
-            entity_type=entity_type,
-            legal_name=legal_name,
-            registration_number=None,
-            incorporation_country=incorporation_country,
-            registered_address=None,
-            initial_user_id=initial_user_email,
-            initiated_at=now,
-            last_activity_at=now,
+            created_by_email=created_by_email,
+            actor_id=actor_id,
             correlation_id=correlation_id,
         )
-
-        try:
-            async with self._db.begin_nested():
-                self._db.add(request)
-                await self._db.flush()
-        except IntegrityError:
-            # A retried "Add Exporter" submission with the same
-            # idempotency_key: resolve the winner via the table's own unique
-            # constraint (mirrors OnboardingRequestService.initiate_onboarding's
-            # lost-race branch) and make sure it has a profile too, so a retry
-            # is idempotent end-to-end, not just for the OnboardingRequest half.
-            existing_request = await self._requests.get_by_tenant_and_idempotency_key(
-                tenant_id, idempotency_key
-            )
-            if existing_request is None:
-                raise
-            logger.info(
-                "exporter_profile.create_lead.lost_race",
-                onboarding_id=str(existing_request.id),
-                idempotency_key=idempotency_key,
-            )
+        if replayed_id is not None:
+            # A retried "Add Exporter" submission: make sure the original
+            # company has a profile too, so a retry is idempotent end-to-end.
             profile, _created = await self.create_or_get_profile(
-                existing_request.customer_id,
+                replayed_id,
                 source=source,
                 gstin=gstin,
                 pan=pan,
@@ -290,18 +262,8 @@ class ExporterProfileService:
                 website=website,
                 actor_id=actor_id,
             )
-            return existing_request, profile, False
-
-        await self._events.create(
-            OnboardingEvent(
-                onboarding_request_id=request.id,
-                event_type="state_transition",
-                from_status=None,
-                to_status=OnboardingRequestStatus.DRAFT.value,
-                actor_id=actor_id,
-                event_metadata={"trigger": "lead_created_via_exporter_profile"},
-            )
-        )
+            original = await self._identities.get(replayed_id)
+            return profile, original or identity, False
 
         profile = ExporterProfile(
             customer_id=customer_id,
@@ -343,16 +305,14 @@ class ExporterProfileService:
             )
 
         await self._db.commit()
-        await self._db.refresh(request)
         await self._db.refresh(profile)
 
         logger.info(
             "exporter_profile.create_lead.ok",
             customer_id=str(customer_id),
-            onboarding_id=str(request.id),
             source=source.value,
         )
-        return request, profile, True
+        return profile, identity, True
 
     # ── Create ────────────────────────────────────────────────────────────
 
@@ -489,34 +449,91 @@ class ExporterProfileService:
 
     # ── Update ────────────────────────────────────────────────────────────
 
-    async def update_profile(self, customer_id: uuid.UUID, **fields: object) -> ExporterProfile:
-        """Update mutable CRM fields. Never touches `source` (immutable — see
-        `ExporterSourceImmutableError`) or `lifecycle_status` (owned by
-        `transition_lifecycle_status`) — both rejected here at the service
-        layer, in addition to the DB trigger guarding `source`, so the caller
-        always gets a clean domain exception rather than a raw driver error.
+    async def update_profile(
+        self,
+        customer_id: uuid.UUID,
+        changes: Mapping[str, object],
+        *,
+        actor_id: str | None,
+    ) -> ExporterProfile:
+        """Edit company fields, recording every change in the history log.
+
+        `changes` holds only the fields the caller supplied. **A field that is
+        absent is left alone; a field present with `None` — or an empty string
+        or empty list — is cleared.** The router builds `changes` from the
+        request with `exclude_unset=True`, which is what keeps the two apart.
+
+        Each field whose value actually changes writes one `profile` history
+        row through the shared `HistoryService`: `to_value` names the field,
+        and `details` carries `field`, `from`, `to`, and an `edit_id` shared by
+        every row of the same edit. A supplied value equal to the current one
+        writes nothing. The values live in `details` rather than in
+        `from_value`/`to_value` because those columns hold 64 characters and
+        refuse an empty value, and a website, a list of markets, or a cleared
+        field fits neither (company-record contract, open item O7).
+
+        The column writes and the history rows are committed together, once,
+        at the end — the writer flushes and never commits — so a company can
+        never show an edit with no record of it. Everything is validated before
+        the first assignment, so a refused edit leaves nothing behind.
+
+        `actor_id` is the signed-in user, from the session. It is a separate
+        keyword, never one of `changes`.
+
+        Never touches `source` (immutable — see `ExporterSourceImmutableError`)
+        or `lifecycle_status` (owned by `transition_lifecycle_status`), both
+        rejected here as well as by the request schema and, for `source`, the
+        database trigger.
         """
-        if "source" in fields:
+        if "source" in changes:
             raise ExporterSourceImmutableError(customer_id)
-        forbidden = _UPDATE_FORBIDDEN_FIELDS.intersection(fields)
+        forbidden = _UPDATE_FORBIDDEN_FIELDS.intersection(changes)
         if forbidden:
             raise ValidationError(
                 f"update_profile cannot set {sorted(forbidden)}: use the dedicated "
                 f"write path for each (transition_lifecycle_status for lifecycle_status; "
                 f"none for identity/immutable columns)"
             )
+        unknown = set(changes) - _EDITABLE_FIELDS
+        if unknown:
+            raise ValidationError(
+                f"update_profile cannot set {sorted(unknown)}: not an editable company field"
+            )
 
         profile = await self._require_profile(customer_id)
-        changes = {key: value for key, value in fields.items() if value is not None}
-        for key, value in changes.items():
-            setattr(profile, key, value)
+        edits: dict[str, tuple[object, object]] = {}
+        for field in sorted(changes):
+            new_value = _cleared_to_none(changes[field])
+            old_value = getattr(profile, field)
+            if new_value != old_value:
+                edits[field] = (old_value, new_value)
+
+        edit_id = str(uuid.uuid4())
+        for field, (old_value, new_value) in edits.items():
+            setattr(profile, field, new_value)
+            await self._history.record(
+                customer_id,
+                dimension=HISTORY_DIMENSION_PROFILE,
+                to_value=field,
+                actor_id=actor_id,
+                source="exporter_profile_service.update_profile",
+                event_type=PROFILE_EDIT_EVENT,
+                details={
+                    "field": field,
+                    "from": _history_value(field, old_value),
+                    "to": _history_value(field, new_value),
+                    "edit_id": edit_id,
+                },
+            )
+
         await self._db.commit()
         await self._db.refresh(profile)
 
         logger.info(
             "exporter_profile.update.ok",
             customer_id=str(customer_id),
-            changed=sorted(changes),
+            changed=sorted(edits),
+            actor_id=actor_id,
         )
         return profile
 
@@ -528,62 +545,61 @@ class ExporterProfileService:
         gstin: str | None = None,
         pan: str | None = None,
         iec: str | None = None,
-        legal_name_contains: str | None = None,
+        name_contains: str | None = None,
         source: ExporterSource | None = None,
         lifecycle_status: ExporterLifecycleStatus | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfileListItem]:
-        """Filtered profile search.
+        """Filtered company search.
 
-        `legal_name_contains` does a case-insensitive partial match against
-        `OnboardingRequest.legal_name` — `ExporterProfile` deliberately has no
-        `legal_name` column of its own (see `exporter_profile.py`'s module
-        docstring), so this method resolves the matching `customer_id`s via a
-        join first, then filters `exporter_profile` by that set. A profile
-        with no `OnboardingRequest` yet (a bare Lead) is correctly excluded
-        from a `legal_name_contains` search: there is nothing yet to match.
+        `name_contains` is a case-insensitive partial match on the company's
+        name. The matching company ids come from the identity store, then the
+        profile query filters by that set; the page's names and countries are
+        then fetched in one more query for the whole page — never one per row.
+        A company with no name on file never matches a name search and lists
+        with `name = None`.
         """
-        legal_name_customer_ids: list[uuid.UUID] | None = None
-        if legal_name_contains is not None:
-            result = await self._db.execute(
-                select(OnboardingRequest.customer_id)
-                .where(OnboardingRequest.legal_name.ilike(f"%{legal_name_contains}%"))
-                .distinct()
-            )
-            legal_name_customer_ids = list(result.scalars().all())
-            if not legal_name_customer_ids:
+        name_matches: list[uuid.UUID] | None = None
+        if name_contains is not None:
+            name_matches = await self._identities.find_company_ids_by_name(name_contains)
+            if not name_matches:
                 return []
 
-        rows = await self._profiles.search(
+        profiles = await self._profiles.search(
             gstin=gstin,
             pan=pan,
             iec=iec,
-            legal_name_customer_ids=legal_name_customer_ids,
+            customer_ids=name_matches,
             source=source,
             lifecycle_status=lifecycle_status,
             limit=limit,
             offset=offset,
         )
-        return [
-            ExporterProfileListItem(
-                customer_id=profile.customer_id,
-                legal_name=legal_name,
-                gstin=profile.gstin,
-                pan=profile.pan,
-                iec=profile.iec,
-                source=profile.source,
-                relationship_manager=profile.relationship_manager,
-                relationship_manager_user_id=profile.relationship_manager_user_id,
-                lifecycle_status=profile.lifecycle_status,
-                industry=profile.industry,
-                year_established=profile.year_established,
-                date_added=profile.date_added,
-                created_at=profile.created_at,
-                updated_at=profile.updated_at,
+        identities = await self._identities.get_many(p.customer_id for p in profiles)
+        items: list[ExporterProfileListItem] = []
+        for profile in profiles:
+            identity = identities.get(profile.customer_id)
+            items.append(
+                ExporterProfileListItem(
+                    customer_id=profile.customer_id,
+                    name=identity.name if identity else None,
+                    country=identity.country if identity else None,
+                    gstin=profile.gstin,
+                    pan=profile.pan,
+                    iec=profile.iec,
+                    source=profile.source,
+                    relationship_manager=profile.relationship_manager,
+                    relationship_manager_user_id=profile.relationship_manager_user_id,
+                    lifecycle_status=profile.lifecycle_status,
+                    industry=profile.industry,
+                    year_established=profile.year_established,
+                    date_added=profile.date_added,
+                    created_at=profile.created_at,
+                    updated_at=profile.updated_at,
+                )
             )
-            for profile, legal_name in rows
-        ]
+        return items
 
     # ── Lifecycle transition ─────────────────────────────────────────────
 
@@ -713,18 +729,19 @@ class ExporterProfileService:
     async def get_profile_detail(
         self, customer_id: uuid.UUID, *, recent_activities_limit: int = 20
     ) -> ExporterProfileDetail:
-        """The profile plus its contacts, recent activities, and linked
-        `OnboardingRequest` history — all queried by `customer_id` alone (no
-        join table needed, per the confirmed plan)."""
+        """The company record, its identity, and its contacts and recent
+        activities — all queried by `customer_id` alone."""
         profile = await self._require_profile(customer_id)
+        identity = await self._identities.get(customer_id)
         contacts = await self._contacts.list_by_customer(customer_id)
         activities = await self._activities.list_by_customer(
             customer_id, limit=recent_activities_limit
         )
-        requests = await self._requests.list_by_customer(customer_id)
 
         return ExporterProfileDetail(
             customer_id=profile.customer_id,
+            name=identity.name if identity else None,
+            country=identity.country if identity else None,
             gstin=profile.gstin,
             pan=profile.pan,
             iec=profile.iec,
@@ -742,17 +759,6 @@ class ExporterProfileService:
             updated_at=profile.updated_at,
             contacts=tuple(_contact_view(c) for c in contacts),
             recent_activities=tuple(_activity_view(a) for a in activities),
-            onboarding_history=tuple(
-                OnboardingHistoryEntry(
-                    onboarding_id=r.id,
-                    status=r.status,
-                    legal_name=r.legal_name,
-                    initiated_at=r.initiated_at,
-                    completed_at=r.completed_at,
-                    rejection_category=r.rejection_category,
-                )
-                for r in requests
-            ),
         )
 
     # ── Internals ─────────────────────────────────────────────────────────
@@ -762,6 +768,24 @@ class ExporterProfileService:
         if profile is None:
             raise ExporterProfileNotFoundError(customer_id)
         return profile
+
+
+def _cleared_to_none(value: object) -> object:
+    """An empty or whitespace-only string, or an empty list, clears the field."""
+    if isinstance(value, str) and not value.strip():
+        return None
+    if isinstance(value, list) and not value:
+        return None
+    return value
+
+
+def _history_value(field: str, value: object) -> object:
+    """A field's value as the history log stores it: tax identifiers masked."""
+    if value is None:
+        return None
+    if field in _MASKED_IN_HISTORY:
+        return mask_identifier(str(value))
+    return value
 
 
 def _contact_view(contact: ExporterContact) -> ExporterContactView:

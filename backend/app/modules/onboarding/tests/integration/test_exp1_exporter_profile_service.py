@@ -25,7 +25,6 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 )
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     OnboardingEntityType,
-    OnboardingRequestStatus,
 )
 from app.modules.onboarding.domain.policies.document_requirements_service import (
     DocumentRequirementsService,
@@ -129,85 +128,51 @@ async def test_create_or_get_profile_idempotent_replay_with_key():
     assert second.id == first.id
 
 
-# ── create_lead (Piece 1: "Add Exporter" bare-Lead creation) ──────────────────
+# ── create_lead ("Add Exporter": a named company) ─────────────────────────────
 
 
-async def test_create_lead_creates_minimal_onboarding_request_and_profile():
-    """A Lead can be created with just legal_name + incorporation_country
-    (beyond the usual onboarding_request plumbing) — no registration_number,
-    no registered_address."""
-    legal_name = f"Cold Lead Exports {uuid.uuid4().hex[:8]}"
+async def test_create_lead_stores_name_and_country_as_the_company_identity():
+    """A named company is created with just a name and a country — no
+    contact email is asked for — and reads back with that identity."""
+    name = f"Cold Lead Exports {uuid.uuid4().hex[:8]}"
     async with db_services.AsyncSessionLocal() as db:
-        request, profile, _created = await ExporterProfileService(db).create_lead(
-            tenant_id=uuid.uuid4(),
-            legal_name=legal_name,
-            incorporation_country="US",
-            initial_user_email=f"{uuid.uuid4().hex[:8]}@example.com",
+        profile, identity, created = await ExporterProfileService(db).create_lead(
+            name=name,
+            country="US",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
+            created_by_email="rep@example.com",
         )
 
-    assert request.legal_name == legal_name
-    assert request.registration_number is None
-    assert request.registered_address is None
-    assert request.incorporation_country == "US"
-    assert request.status == OnboardingRequestStatus.DRAFT
-    assert profile.customer_id == request.customer_id
+    assert created is True
+    assert identity.name == name
+    assert identity.country == "US"
     assert profile.source == ExporterSource.SALES
     assert profile.lifecycle_status == ExporterLifecycleStatus.LEAD
 
-
-async def test_create_lead_then_submit_entity_details_fills_in_registration():
-    """`submit_entity_details` — already built for exactly this purpose — can
-    later fill in what a bare Lead didn't know at creation. `submit_entity_details`
-    itself doesn't accept registration_number/registered_address (those aren't
-    part of its own contract), but the record it completes is the very one
-    `create_lead` created with them NULL, proving the two paths connect."""
     async with db_services.AsyncSessionLocal() as db:
-        request, _profile, _created = await ExporterProfileService(db).create_lead(
-            tenant_id=uuid.uuid4(),
-            legal_name=f"Later Details Co {uuid.uuid4().hex[:8]}",
-            incorporation_country="IN",
-            initial_user_email=f"{uuid.uuid4().hex[:8]}@example.com",
+        detail = await ExporterProfileService(db).get_profile_detail(profile.customer_id)
+    assert (detail.name, detail.country) == (name, "US")
+
+
+async def test_search_profiles_finds_named_company_by_name():
+    """A company created with a name is findable by it immediately."""
+    name = f"Findable Bare Lead {uuid.uuid4().hex[:8]}"
+    async with db_services.AsyncSessionLocal() as db:
+        profile, _identity, _created = await ExporterProfileService(db).create_lead(
+            name=name,
+            country="US",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
-        )
-    assert request.status == OnboardingRequestStatus.DRAFT
-
-    async with db_services.AsyncSessionLocal() as db:
-        updated = await OnboardingRequestService(
-            db, document_requirements=_empty_document_requirements()
-        ).submit_entity_details(request.id, trading_name="Later Details Trading Co")
-
-    assert updated.status == OnboardingRequestStatus.ENTITY_VERIFICATION_IN_PROGRESS
-    assert updated.trading_name == "Later Details Trading Co"
-    # registration_number/registered_address remain NULL: submit_entity_details
-    # doesn't set them, and nothing about this path required them.
-    assert updated.registration_number is None
-    assert updated.registered_address is None
-
-
-async def test_search_profiles_finds_bare_lead_by_legal_name():
-    """`search_profiles`'s `legal_name_contains` join now has something to
-    match for every profile, not just ones that went through full onboarding
-    — a bare Lead created via `create_lead` is findable by name immediately."""
-    legal_name = f"Findable Bare Lead {uuid.uuid4().hex[:8]}"
-    async with db_services.AsyncSessionLocal() as db:
-        request, profile, _created = await ExporterProfileService(db).create_lead(
-            tenant_id=uuid.uuid4(),
-            legal_name=legal_name,
-            incorporation_country="US",
-            initial_user_email=f"{uuid.uuid4().hex[:8]}@example.com",
-            idempotency_key=str(uuid.uuid4()),
-            source=ExporterSource.SALES,
+            created_by_email="rep@example.com",
         )
 
     async with db_services.AsyncSessionLocal() as db:
-        results = await ExporterProfileService(db).search_profiles(
-            legal_name_contains=legal_name[5:15]
-        )
+        results = await ExporterProfileService(db).search_profiles(name_contains=name[5:15])
 
-    assert any(p.customer_id == profile.customer_id == request.customer_id for p in results)
+    match = [p for p in results if p.customer_id == profile.customer_id]
+    assert len(match) == 1
+    assert (match[0].name, match[0].country) == (name, "US")
 
 
 # ── update_profile ────────────────────────────────────────────────────────────
@@ -223,7 +188,7 @@ async def test_update_profile_rejects_source_change():
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ExporterSourceImmutableError):
             await ExporterProfileService(db).update_profile(
-                customer_id, source=ExporterSource.MANUAL
+                customer_id, {"source": ExporterSource.MANUAL}, actor_id="agent_1"
             )
 
 
@@ -237,7 +202,9 @@ async def test_update_profile_rejects_lifecycle_status_field():
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ValidationError):
             await ExporterProfileService(db).update_profile(
-                customer_id, lifecycle_status=ExporterLifecycleStatus.ACTIVE
+                customer_id,
+                {"lifecycle_status": ExporterLifecycleStatus.ACTIVE},
+                actor_id="agent_1",
             )
 
 
@@ -250,7 +217,9 @@ async def test_update_profile_updates_mutable_fields():
 
     async with db_services.AsyncSessionLocal() as db:
         updated = await ExporterProfileService(db).update_profile(
-            customer_id, industry="Textiles", gstin="27AAAPL1234C1ZV"
+            customer_id,
+            {"industry": "Textiles", "gstin": "27AAAPL1234C1ZV"},
+            actor_id="agent_1",
         )
 
     assert updated.industry == "Textiles"
@@ -261,7 +230,9 @@ async def test_update_profile_updates_mutable_fields():
 async def test_update_profile_not_found_raises():
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ExporterProfileNotFoundError):
-            await ExporterProfileService(db).update_profile(uuid.uuid4(), industry="X")
+            await ExporterProfileService(db).update_profile(
+                uuid.uuid4(), {"industry": "X"}, actor_id="agent_1"
+            )
 
 
 # ── search_profiles ────────────────────────────────────────────────────────────
@@ -282,7 +253,10 @@ async def test_search_profiles_by_gstin():
     assert results[0].customer_id == customer_id
 
 
-async def test_search_profiles_by_legal_name_contains_case_insensitive():
+async def test_search_profiles_by_name_contains_case_insensitive():
+    """A company whose name was recorded by the legacy onboarding path (the
+    profile opened later by `customer_id` alone) still resolves through the
+    identity store, case-insensitively."""
     legal_name = f"Acme Exports {uuid.uuid4().hex[:8]} Pvt Ltd"
     customer_id = await _create_onboarding_request_for("_", legal_name)
 
@@ -294,16 +268,16 @@ async def test_search_profiles_by_legal_name_contains_case_insensitive():
     search_fragment = legal_name[5:15].upper()  # deliberately wrong case
     async with db_services.AsyncSessionLocal() as db:
         results = await ExporterProfileService(db).search_profiles(
-            legal_name_contains=search_fragment
+            name_contains=search_fragment
         )
 
     assert any(p.customer_id == customer_id for p in results)
 
 
-async def test_search_profiles_by_legal_name_contains_no_match_returns_empty():
+async def test_search_profiles_by_name_contains_no_match_returns_empty():
     async with db_services.AsyncSessionLocal() as db:
         results = await ExporterProfileService(db).search_profiles(
-            legal_name_contains=f"NoSuchExporter{uuid.uuid4().hex}"
+            name_contains=f"NoSuchExporter{uuid.uuid4().hex}"
         )
 
     assert results == []
@@ -375,7 +349,9 @@ async def test_transition_lifecycle_status_not_found_raises():
 # ── get_profile_detail ────────────────────────────────────────────────────────
 
 
-async def test_get_profile_detail_includes_onboarding_history():
+async def test_get_profile_detail_carries_the_company_identity():
+    """The detail's name and country come from the company identity. There
+    is no onboarding-request history on it any more."""
     legal_name = f"Detail Test Exporter {uuid.uuid4().hex[:8]}"
     customer_id = await _create_onboarding_request_for("_", legal_name)
 
@@ -388,8 +364,9 @@ async def test_get_profile_detail_includes_onboarding_history():
         detail = await ExporterProfileService(db).get_profile_detail(customer_id)
 
     assert detail.customer_id == customer_id
-    assert len(detail.onboarding_history) == 1
-    assert detail.onboarding_history[0].legal_name == legal_name
+    assert detail.name == legal_name
+    assert detail.country == "US"
+    assert not hasattr(detail, "onboarding_history")
     assert detail.contacts == ()
     assert detail.recent_activities == ()
 

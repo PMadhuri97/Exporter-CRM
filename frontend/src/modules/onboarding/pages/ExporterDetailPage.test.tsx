@@ -37,6 +37,8 @@ vi.mock('../api', () => ({
 
 const DETAIL: ExporterProfileDetail = {
   customer_id: '11111111-1111-4111-8111-111111111111',
+  name: 'Acme Exports Pvt Ltd',
+  country: 'IN',
   gstin: '27ABCDE1234F1Z5',
   pan: 'ABCDE1234F',
   iec: '1234567890',
@@ -54,16 +56,6 @@ const DETAIL: ExporterProfileDetail = {
   updated_at: '2026-09-21T00:00:00Z',
   contacts: [],
   recent_activities: [],
-  onboarding_history: [
-    {
-      onboarding_id: '33333333-3333-4333-8333-333333333333',
-      status: 'DRAFT',
-      legal_name: 'Acme Exports Pvt Ltd',
-      initiated_at: null,
-      completed_at: null,
-      rejection_category: null,
-    },
-  ],
 };
 
 function mockUser(role: string, id: string) {

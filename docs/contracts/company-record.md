@@ -54,7 +54,7 @@ writer of that field; everyone else reads it.
 | Field | Meaning | Required at creation | Rule |
 |---|---|---|---|
 | `company_id` | §1 | minted by the server | Never supplied by a caller creating a company |
-| `name` | The company's legal name | **yes** | Non-empty after trimming. Held on the company record itself (L2-03), never read from `onboarding_request` |
+| `name` | The company's legal name | **yes** | Non-empty after trimming, at most 255 characters. Belongs on the company record (0014); until then kept by the one transitional identity store (§10) |
 | `country` | Country of incorporation | **yes** | ISO 3166-1 alpha-2, upper case (`IN`) |
 | `pan` | Indian income-tax account number | no | One per company. Unique across companies — §4 |
 | `gstins` | GST registrations | no (empty list) | Several per company, one per state. A duplicate across companies warns, never blocks — §4 |
@@ -264,14 +264,32 @@ dimensions:
 dimension uses the contract's derived names (`marker_transition`,
 `profile_transition`, ...).
 
-`profile` rows name the field in `event_metadata.field`; `from`/`to` carry the
-old and new values as strings. Two constraints of the shared writer apply here:
-it requires a non-empty `to`, and it derives `profile_initial` whenever `from`
-is `NULL`. So L2-07 passes `event_type = "profile_transition"` explicitly, and
-how a field that was empty, or is being cleared, is written is open item O7. **A tax identifier's old and new values are
-masked in the history row itself**, not just in the response, so the history
-read route cannot reveal what the company read route masks. (Open item O5
-records the one alternative.)
+**How a `profile` row is written** (L2-07, built). One row per field whose
+value actually changes; an edit that changes nothing writes nothing.
+
+| Column | Value |
+|---|---|
+| `dimension` | `profile` |
+| `event_type` | `profile_transition`, passed explicitly |
+| `from_status` | `NULL` |
+| `to_status` | the field's name (`website`) |
+| `actor_id` | the signed-in user |
+| `event_metadata` | `field`, `from`, `to` (the old and new values, `null` when empty), `edit_id` (shared by every row of one edit), `source` |
+
+The values sit in `event_metadata`, not in `from_status`/`to_status`, because
+those columns hold 64 characters and refuse an empty value: a website, a list
+of export markets and a cleared field fit neither. `event_type` is passed
+explicitly because the shared writer would otherwise derive `profile_initial`
+from the `NULL` `from_status`. This settles open item O7.
+
+**A tax identifier's old and new values are masked in the row itself** (PAN,
+GSTIN, IEC — last four characters visible), not just in the response. The
+history read route returns `details` to every CRM reader, including
+OPERATIONS and DEVELOPER, who only ever see these identifiers masked on the
+company. The company keeps the full value; the history records that it
+changed, when, by whom, and its last four characters. This settles open item
+O5 for the prototype; storing full values would need the history read route to
+mask by role, which is Developer 1's route.
 
 ---
 
@@ -313,9 +331,9 @@ Recorded, not decided here. Each names who decides.
 | O2 | The ANER-4.2-S1T2 consumer watches `lifecycle_transition` rows for `ONBOARDED` (the `terminal` flag). That status disappears in L2-04. Which journey value, if any, replaces it — `CUSTOMER`? | Programme lead, with whoever owns that consumer |
 | O3 | Decision U4: do Developer 4's `CLEAR` and Developer 2's `CUSTOMER` move commit in one transaction? | Programme lead, Dev 2, Dev 4 |
 | O4 | Is CIN masked like PAN/GSTIN/IEC? Recommendation: **yes** until decided — widening later is safe, narrowing later is not | Programme lead (decision 12's scope) |
-| O5 | Profile-history rows for tax identifiers: masked in the row (this contract) or stored in full and masked on read? Stored in full means the history read route needs the same role-based masking as the company route | Dev 2 with Dev 1 (history read route) |
+| O5 | ~~Profile-history rows for tax identifiers: masked in the row, or stored in full and masked on read?~~ **Settled for the prototype: masked in the row** (§6). Revisit only if the history read route gains role-based masking | Dev 2 with Dev 1 — Dev 1 to acknowledge |
 | O6 | Decision U1: who owns the allowed-moves endpoint | Programme lead |
-| O7 | How a `profile` history row records an empty value — before a field is first set, or when it is cleared. The shared writer refuses an empty `to` (history contract §1 makes `to_status` not-null). Options: a fixed marker string, or the values moved into `event_metadata` with `to` carrying the field name. Decide before L2-07 writes the first row | Dev 2 with Dev 1 |
+| O7 | ~~How a `profile` history row records an empty value.~~ **Settled: values in `event_metadata`, `to_status` names the field** (§6) | Dev 2 with Dev 1 — Dev 1 to acknowledge |
 
 ---
 
@@ -329,10 +347,12 @@ Stated separately so nobody reads this contract as a description of the code.
 | PAN, one GSTIN, IEC columns | **implemented**, with no format check and no uniqueness |
 | Server-side masking and identifier-search refusal | **implemented** (Dev 1, L1-10) |
 | `journey` history rows (`lifecycle_*`) | **implemented** — for the old ten statuses |
-| `name` / `country` on the company record | **not built** — L2-03 (read from `onboarding_request` today) |
+| `name` / `country` in the API, the views, search, list, detail and the frontend | **implemented** (L2-03) |
+| `name` / `country` as columns on the company record | **not built** — 0014. Until then `infrastructure/legacy_company_identity.py` keeps them in a legacy `onboarding_request` row: the only CRM code that touches that table, and deleted by 0014 |
+| `onboarding_history` on the company detail | **removed** (L2-03) |
 | `journey` with three values | **not built** — L2-04 (ten statuses today) |
 | `gstins` (several), `cin`, PAN uniqueness, GSTIN/PAN cross-check | **not built** — L2-05, L2-06 |
 | `marker` | **not built** — L2-08 |
 | `qualification`, `conversation`, `background_check` fields | **not built** — L2-05 adds the fields; each owner builds its gauge |
-| `profile` history on edits; clearing a field | **not built** — L2-07 |
+| `profile` history on edits; clearing a field | **implemented** (L2-07) |
 | Foreign keys from child records | **not built** — 0014 |

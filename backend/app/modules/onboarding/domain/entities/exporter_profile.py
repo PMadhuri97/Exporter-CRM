@@ -19,12 +19,12 @@ of GSTIN (tax registration), PAN (income-tax id) and IEC (import-export
 code). None of the three duplicate anything ``OnboardingRequest`` already
 stores, so they live here rather than being derived.
 
-``legal_name`` is deliberately **not** a column here — ``search_profiles``'s
-``legal_name_contains`` criterion joins to ``OnboardingRequest.legal_name``
-instead (see ``application/exporter_profile_service.py``), per the ticket's
-explicit instruction not to duplicate a field ``OnboardingRequest`` already
-has. A profile with no ``OnboardingRequest`` yet (a bare Lead) simply has no
-``legal_name`` to search by until one exists.
+The company's **name and country are not columns here yet.** They are the
+company's identity (``docs/contracts/company-record.md`` §2.1) and belong on
+this record; migration 0014 (L2-05) adds them. Until then they are kept by
+``infrastructure/legacy_company_identity.py``, the one place the CRM still
+reaches the legacy ``onboarding_request`` table, and nothing else in the CRM
+knows where they come from.
 """
 
 from __future__ import annotations

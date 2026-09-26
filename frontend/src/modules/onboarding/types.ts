@@ -23,7 +23,7 @@ export type LogExporterActivityRequest =
   components['schemas']['LogExporterActivityRequest'];
 
 export interface ExporterSearchParams {
-  legalName?: string;
+  name?: string;
   gstin?: string;
   pan?: string;
   iec?: string;

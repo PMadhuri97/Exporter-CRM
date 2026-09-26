@@ -47,7 +47,7 @@ import {
 } from '../hooks';
 import type { ExporterActivityType, ExporterProfileDetail } from '../types';
 import { BackgroundCheckPanel } from './panels/BackgroundCheckPanel';
-import { CompanyPanel, OnboardingHistorySection } from './panels/CompanyPanel';
+import { CompanyPanel } from './panels/CompanyPanel';
 import { ConversationPanel } from './panels/ConversationPanel';
 import { DealsPanel } from './panels/DealsPanel';
 
@@ -56,7 +56,7 @@ import { DealsPanel } from './panels/DealsPanel';
 const ACTIVITY_PAGE_SIZE = 8;
 
 function displayName(profile: ExporterProfileDetail): string {
-  return profile.onboarding_history[0]?.legal_name ?? 'Unnamed exporter';
+  return profile.name ?? 'Unnamed exporter';
 }
 
 export function ExporterDetailPage() {
@@ -160,7 +160,6 @@ export function ExporterDetailPage() {
 
       <DealsPanel customerId={customerId} isStaff={isStaff} />
 
-      <OnboardingHistorySection profile={profile} />
 
       <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
     </div>

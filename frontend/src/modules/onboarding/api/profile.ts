@@ -28,7 +28,7 @@ interface SearchExportersResult {
 
 function buildQuery(params: ExporterSearchParams): string {
   const query = new URLSearchParams();
-  if (params.legalName) query.set('legal_name', params.legalName);
+  if (params.name) query.set('name', params.name);
   if (params.gstin) query.set('gstin', params.gstin);
   if (params.pan) query.set('pan', params.pan);
   if (params.iec) query.set('iec', params.iec);
@@ -59,21 +59,19 @@ export function searchExporterProfiles(
 }
 
 /**
- * `legal_name`/`incorporation_country`/`initial_user_email` must all be
- * present (the backend's `CreateExporterProfileRequest` validator rejects a
- * partial set) — this function's own parameter type requires all three for
- * the same reason, rather than leaving that rule undiscoverable until a 422.
+ * Creates a named company. `name` and `country` are required together — the
+ * backend refuses one without the other — so this function's parameter type
+ * requires both rather than leaving that rule undiscoverable until a 422. The
+ * creator's own contact is never sent: the backend takes it from the session.
  *
  * An `Idempotency-Key` is generated here, not left optional: the backend
- * requires the header for this path (a fresh `OnboardingRequest` row has no
- * other natural uniqueness to dedupe a retried submit against — see the
- * schema's own docstring).
+ * requires the header for a named company, so a retried submit returns the
+ * first company instead of creating a second.
  */
 export function createExporterLead(
   payload: CreateExporterLeadRequest & {
-    legal_name: string;
-    incorporation_country: string;
-    initial_user_email: string;
+    name: string;
+    country: string;
   },
 ): Promise<ExporterProfile> {
   return apiRequest<ExporterProfile>('/onboarding/exporters', {

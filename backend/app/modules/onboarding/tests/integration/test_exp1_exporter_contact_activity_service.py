@@ -223,11 +223,10 @@ async def test_list_pending_activities_carries_exporter_display_name():
     actor_id = f"agent-{uuid.uuid4().hex[:8]}"
 
     async with db_services.AsyncSessionLocal() as db:
-        request, _profile, _created = await ExporterProfileService(db).create_lead(
-            tenant_id=uuid.uuid4(),
-            legal_name=legal_name,
-            incorporation_country="US",
-            initial_user_email=f"{uuid.uuid4().hex[:8]}@example.com",
+        request, _identity, _created = await ExporterProfileService(db).create_lead(
+            name=legal_name,
+            country="US",
+            created_by_email="rep@example.com",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
         )

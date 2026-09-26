@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.onboarding.api.schemas.engagement import (
     ExporterActivityResponse,
@@ -32,10 +32,6 @@ from app.modules.onboarding.api.schemas.masking import (
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
     ExporterSource,
-)
-from app.modules.onboarding.domain.entities.orchestration_enums import (
-    OnboardingRejectionCategory,
-    OnboardingRequestStatus,
 )
 from app.platform.authentication.models import User
 
@@ -59,36 +55,26 @@ class _IdentifierMasking:
 
 
 class CreateExporterProfileRequest(BaseModel):
-    """Create a profile. `source` and `lifecycle_status` are the only
+    """Create a company. `source` and `lifecycle_status` are the only
     lifecycle-relevant fields the caller may set at creation — `source`
     becomes immutable the moment this succeeds (see
     `ExporterSourceImmutableError`); `lifecycle_status` after creation can
     only move through `POST .../transition`.
 
-    `customer_id` is optional: when omitted, the API mints a fresh one — the
-    common case for a brand-new Lead, which has no prior `OnboardingRequest`
-    or other identity to anchor to. A caller onboarding an *existing*
-    `OnboardingRequest.customer_id` (backfilling a profile for a customer who
-    already has verification history) supplies it explicitly.
+    `name` and `country` are the company's identity
+    (`docs/contracts/company-record.md` §2.1). Supplying them — always
+    together — creates a named company through
+    `ExporterProfileService.create_lead`, and requires the `Idempotency-Key`
+    header so a retried submit returns the first company rather than a
+    second. The creator's contact details are never asked for: the service
+    takes them from the signed-in user.
 
-    `legal_name`/`incorporation_country`/`initial_user_email` (EXP-3, "Add
-    Exporter"): supplying all three routes this request through
-    `ExporterProfileService.create_lead` instead of `create_or_get_profile`,
-    creating a minimal `OnboardingRequest` alongside the profile so the new
-    Lead actually has a name — see `create_lead`'s own docstring for why
-    `create_or_get_profile` alone can never give a Lead a `legal_name`. All
-    three are required together (enforced below) or none at all; omitting
-    all three keeps this request on the `create_or_get_profile` path exactly
-    as before. `initial_user_email` is a reachable contact for the Lead (the
-    Sales rep's own address, a lead-intake mailbox, whatever channel sourced
-    it) — not necessarily the exporter's own future platform login; see
-    `OnboardingRequestService.initiate_onboarding`'s docstring for the full
-    reasoning (`create_lead` reuses the same field for the same reason).
-    Creating a Lead this way also requires the `Idempotency-Key` header
-    (unlike the `create_or_get_profile` path, where it's optional) — a fresh
-    `OnboardingRequest` row has a `NOT NULL` idempotency key with no other
-    natural uniqueness to fall back on the way `exporter_profile.customer_id`
-    provides for the other path.
+    Omitting both keeps the older unnamed path (`create_or_get_profile`),
+    which some callers still use to open a company by `customer_id` alone.
+    Migration 0014 makes the name a required column on the company record,
+    at which point this path either takes a name too or goes.
+
+    `customer_id` is optional: when omitted, the API mints a fresh one.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -106,26 +92,53 @@ class CreateExporterProfileRequest(BaseModel):
     year_established: int | None = None
     website: str | None = Field(default=None, max_length=2048)
 
-    legal_name: str | None = Field(default=None, min_length=1, max_length=500)
-    incorporation_country: str | None = Field(default=None, min_length=2, max_length=2)
-    initial_user_email: str | None = Field(default=None, max_length=255)
+    #: The company's legal name. 255 characters: the most the store behind it
+    #: holds today (the old 500 here was more than it could keep).
+    name: str | None = Field(default=None, max_length=255)
+    #: Country of incorporation, ISO 3166-1 alpha-2 (`IN`).
+    country: str | None = Field(default=None, max_length=2)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("name must not be blank")
+        return cleaned
+
+    @field_validator("country")
+    @classmethod
+    def _country_is_alpha2(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().upper()
+        if len(cleaned) != 2 or not cleaned.isascii() or not cleaned.isalpha():
+            raise ValueError("country must be a two-letter ISO 3166-1 code, e.g. IN")
+        return cleaned
 
     @model_validator(mode="after")
-    def _lead_fields_all_or_nothing(self) -> CreateExporterProfileRequest:
-        lead_fields = (self.legal_name, self.incorporation_country, self.initial_user_email)
-        if any(lead_fields) and not all(lead_fields):
+    def _identity_both_or_neither(self) -> CreateExporterProfileRequest:
+        if (self.name is None) != (self.country is None):
             raise ValueError(
-                "legal_name, incorporation_country and initial_user_email must be "
-                "supplied together (to create a new Lead) or not at all"
+                "name and country must be supplied together (to create a named "
+                "company) or not at all"
             )
         return self
 
 
 class UpdateExporterProfileRequest(BaseModel):
-    """Update mutable CRM fields. `source` and `lifecycle_status` are
-    deliberately not fields on this model at all — with `extra="forbid"`,
-    sending either is rejected at the API boundary (422) before the request
-    ever reaches `ExporterProfileService.update_profile`'s own guard.
+    """Update mutable CRM fields. A field left out is unchanged; a field sent
+    as `null` (or an empty string or list) is cleared — the router keeps the
+    two apart with `exclude_unset=True`. Every change is recorded in the
+    company's history, with the signed-in user as the actor; there is no actor
+    field here, and `extra="forbid"` refuses one.
+
+    `source` and `lifecycle_status` are deliberately not fields on this model
+    at all — with `extra="forbid"`, sending either is rejected at the API
+    boundary (422) before the request ever reaches
+    `ExporterProfileService.update_profile`'s own guard.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -173,17 +186,10 @@ class ExporterProfileResponse(_IdentifierMasking, BaseModel):
     updated_at: datetime
 
 
-class OnboardingHistoryEntryResponse(BaseModel):
-    onboarding_id: uuid.UUID
-    status: OnboardingRequestStatus
-    legal_name: str
-    initiated_at: datetime | None
-    completed_at: datetime | None
-    rejection_category: OnboardingRejectionCategory | None
-
-
 class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
     customer_id: uuid.UUID
+    name: str | None
+    country: str | None
     gstin: str | None
     pan: str | None
     iec: str | None
@@ -201,12 +207,13 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
     updated_at: datetime
     contacts: list[ExporterContactResponse]
     recent_activities: list[ExporterActivityResponse]
-    onboarding_history: list[OnboardingHistoryEntryResponse]
 
     @classmethod
     def from_detail(cls, detail) -> ExporterProfileDetailResponse:
         return cls(
             customer_id=detail.customer_id,
+            name=detail.name,
+            country=detail.country,
             gstin=detail.gstin,
             pan=detail.pan,
             iec=detail.iec,
@@ -226,31 +233,20 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
             recent_activities=[
                 ExporterActivityResponse.model_validate(a) for a in detail.recent_activities
             ],
-            onboarding_history=[
-                OnboardingHistoryEntryResponse(
-                    onboarding_id=h.onboarding_id,
-                    status=h.status,
-                    legal_name=h.legal_name,
-                    initiated_at=h.initiated_at,
-                    completed_at=h.completed_at,
-                    rejection_category=h.rejection_category,
-                )
-                for h in detail.onboarding_history
-            ],
         )
 
 
 class ExporterProfileListItemResponse(_IdentifierMasking, BaseModel):
     """One row of `GET /onboarding/exporters` — `ExporterProfileResponse`
-    plus `legal_name`, resolved server-side via a join against the
-    exporter's most recent `OnboardingRequest` (see
-    `ExporterProfileRepository.search`) so a list screen never needs a
-    second, per-row lookup just to show a company name."""
+    plus the company's `name` and `country`, fetched for the whole page at
+    once (see `ExporterProfileService.search_profiles`), so a list screen never
+    needs a second, per-row lookup just to show a company name."""
 
     model_config = ConfigDict(from_attributes=True)
 
     customer_id: uuid.UUID
-    legal_name: str | None
+    name: str | None
+    country: str | None
     gstin: str | None
     pan: str | None
     iec: str | None

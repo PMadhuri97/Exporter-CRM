@@ -503,11 +503,10 @@ async def test_getting_an_existing_profile_writes_no_second_row():
 
 async def test_creating_a_lead_records_its_initial_status():
     async with db_services.AsyncSessionLocal() as db:
-        _request, profile, created = await ExporterProfileService(db).create_lead(
-            tenant_id=uuid.uuid4(),
-            legal_name=f"Lead {uuid.uuid4().hex[:8]}",
-            incorporation_country="IN",
-            initial_user_email=f"{uuid.uuid4().hex[:8]}@example.com",
+        profile, _identity, created = await ExporterProfileService(db).create_lead(
+            name=f"Lead {uuid.uuid4().hex[:8]}",
+            country="IN",
+            created_by_email="rep@example.com",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
             actor_id="rm-jordan",

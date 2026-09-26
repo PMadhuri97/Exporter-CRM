@@ -18,7 +18,8 @@ vi.mock('../api', () => ({ searchExporterProfiles: vi.fn() }));
 
 const PROFILE: ExporterProfileListItem = {
   customer_id: 'c1',
-  legal_name: 'Acme Exports',
+  name: 'Acme Exports',
+  country: 'IN',
   gstin: '27ABCDE1234F1Z5',
   pan: 'ABCDE1234F',
   iec: null,
