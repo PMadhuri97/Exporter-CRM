@@ -17,6 +17,7 @@ from app.modules.onboarding.domain.entities.qualification import (
 from app.modules.onboarding.domain.entities.qualification_enums import (
     CriterionKind,
     CriterionResultValue,
+    DecidedByKind,
     QualificationOutcomeValue,
     QualificationState,
     ThresholdComparison,
@@ -58,6 +59,10 @@ class ResultEntry:
     evidence_refs: tuple[EvidenceRef, ...] = ()
     reason: str | None = None
     confidence: Decimal | None = None
+    #: Whether a person or a computer decided this one result, when the
+    #: submitter says so per result (a partner package does); `None` takes
+    #: the value the whole recording is made with.
+    decided_by_kind: DecidedByKind | None = None
 
 
 @dataclass(frozen=True)

@@ -212,7 +212,22 @@ L1-02, before L2-10 writes the first row.
   never recompute its work. RXIL's background-check results are
   Developer 4's (L4-10), not criterion results.
 - **Bulk import** (L2-13): a row may carry values for criteria; each becomes a
-  result with `source = IMPORT`. Import never records an outcome.
+  result with `source = IMPORT`. Import never records an outcome. *As built,
+  the template carries no criterion columns yet — rows are identity only.*
+- **As built for RXIL** (L2-12): `QualificationService.record_partner_decision`
+  records the partner's results and outcome in one transaction, in the same
+  tables and history as a local review. Nothing is recomputed: each result
+  keeps RXIL's result, value, evidence, reason, confidence and per-result
+  method (`decided_by_kind`), with `source = RXIL`; the outcome's
+  `suggested_outcome` is RXIL's own decision and its `result_ids` are RXIL's
+  results only. `decided_by` is `NULL` (RXIL decided); `recorded_by` on the
+  results and the actor on the history rows is the signed-in user who
+  submitted the package. A `PASS`/`FAIL` that RXIL sent without any evidence
+  gets the note "As supplied by RXIL …; RXIL gave no further evidence", because
+  an unevidenced `PASS`/`FAIL` is refused. RXIL's evidence ids may use the
+  reference type `partner_reference`, which only partner intake can write. The
+  package's `package_id`, when present, is kept on the outcome's history row as
+  `partner_reference`, and a repeated `package_id` changes nothing.
 - **Automation** (later): results with `source = AUTOMATED`,
   `decided_by_kind = AUTOMATED` and a `confidence`. The outcome stays a
   person's decision in the prototype.

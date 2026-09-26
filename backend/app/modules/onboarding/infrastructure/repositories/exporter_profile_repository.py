@@ -37,6 +37,44 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         )
         return result.scalar_one_or_none()
 
+    async def get_many(self, customer_ids: Sequence[uuid.UUID]) -> list[ExporterProfile]:
+        if not customer_ids:
+            return []
+        result = await self.session.execute(
+            select(ExporterProfile).where(ExporterProfile.customer_id.in_(customer_ids))
+        )
+        return list(result.scalars().all())
+
+    async def holders_of_identifiers(
+        self,
+        *,
+        gstins: Sequence[str] = (),
+        iec: str | None = None,
+        cin: str | None = None,
+    ) -> dict[uuid.UUID, set[str]]:
+        """Every company holding any of these identifiers, with which ones it
+        holds (`"gstin"`, `"iec"`, `"cin"`). PAN is looked up on its own: it
+        is unique, and says which company a row *is*, not which it resembles."""
+        holders: dict[uuid.UUID, set[str]] = {}
+        if gstins:
+            result = await self.session.execute(
+                select(ExporterGstin.customer_id).where(ExporterGstin.gstin.in_(gstins)).distinct()
+            )
+            for customer_id in result.scalars():
+                holders.setdefault(customer_id, set()).add("gstin")
+        for column, value, label in (
+            (ExporterProfile.iec, iec, "iec"),
+            (ExporterProfile.cin, cin, "cin"),
+        ):
+            if value is None:
+                continue
+            result = await self.session.execute(
+                select(ExporterProfile.customer_id).where(column == value)
+            )
+            for customer_id in result.scalars():
+                holders.setdefault(customer_id, set()).add(label)
+        return holders
+
     async def other_holders_of_gstins(
         self, gstins: Sequence[str], customer_id: uuid.UUID
     ) -> dict[str, list[uuid.UUID]]:

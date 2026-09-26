@@ -126,7 +126,7 @@ filtering is Developer 4's call in the background-check contract.
 | Move | Caused by | Written by |
 |---|---|---|
 | created at `LEAD` | Manual entry, bulk import | Developer 2's create path |
-| created at `PROSPECT` | RXIL intake (decision 7) | Developer 2's RXIL intake (L2-12) |
+| arrives as `PROSPECT` | RXIL intake (decision 7) | Developer 2's RXIL intake (L2-12). As built: created as a `LEAD` and moved to `PROSPECT` by RXIL's own `QUALIFIED` outcome, so every commit satisfies invariant 1; a delivery interrupted in between is finished by the next one |
 | `LEAD` → `PROSPECT` | A qualification outcome of `QUALIFIED` is recorded | Developer 2, in the same transaction as the outcome |
 | `PROSPECT` → `CUSTOMER` | The company is `PROSPECT` **and** its background check is `CLEAR` — whichever becomes true second (assumption A1) | Developer 2 (L2-11) |
 
@@ -234,6 +234,25 @@ every other identifier. Only the database's per-company uniqueness
 existing company on PAN, then GSTIN via its embedded PAN, then IEC, then CIN,
 and reports every row as accepted, rejected, or possible duplicate. It never
 merges two companies on its own.
+
+**As built** (L2-12, L2-13) — one algorithm, `CompanyMatcher`, for bulk import
+and RXIL intake alike, over identities checked by the same normalisers as
+manual creation (`check_identity`):
+
+| The incoming company… | Result |
+|---|---|
+| has a PAN (its own, or the one every GSTIN carries) that an existing company holds, and nothing disagrees | **matched** to that company; nothing on it is changed |
+| …but that company has a different IEC or CIN, or another company holds its IEC or CIN | **conflict** — rejected, every company involved named |
+| brings its own new PAN, and shares only GSTINs with companies that have no PAN | **new**, with a `GSTIN_HELD_BY_OTHER_COMPANY` warning (decision 4) |
+| shares an IEC or CIN with a company that has a different PAN | **conflict** |
+| otherwise shares a GSTIN, IEC or CIN with one company, and no PAN settles it | **possible duplicate** — nothing created, for a person to decide |
+| …with several companies | **possible duplicate**, also `AMBIGUOUS_MATCH` |
+| shares nothing | **new** |
+
+IEC is now checked too (10 letters or digits), by the same normaliser for
+manual creation, editing and import. A CSV row is `accepted` (`created` as a
+`LEAD` or `matched`), `rejected` or `possible_duplicate`; RXIL refuses a
+conflict or possible duplicate with 409. Neither ever makes a `CUSTOMER`.
 
 ---
 

@@ -21,6 +21,7 @@ from app.shared.exceptions import ValidationError
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
+IEC_RE = re.compile(r"^[A-Z0-9]{10}$")
 CIN_RE = re.compile(r"^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$")
 
 
@@ -57,6 +58,14 @@ def normalise_pan(value: str | None) -> str | None:
     if pan is not None and not PAN_RE.match(pan):
         raise ValidationError("pan must be 10 characters: 5 letters, 4 digits, 1 letter")
     return pan
+
+
+def normalise_iec(value: str | None) -> str | None:
+    """An importer-exporter code, normalised and checked: 10 letters or digits."""
+    iec = _normalise(value)
+    if iec is not None and not IEC_RE.match(iec):
+        raise ValidationError("iec must be 10 letters or digits")
+    return iec
 
 
 def normalise_cin(value: str | None) -> str | None:
@@ -117,12 +126,14 @@ __all__ = [
     "CIN_RE",
     "COUNTRY_RE",
     "GSTIN_RE",
+    "IEC_RE",
     "PAN_RE",
     "check_gstins_match_pan",
     "embedded_pan",
     "normalise_cin",
     "normalise_country",
     "normalise_gstins",
+    "normalise_iec",
     "normalise_name",
     "normalise_pan",
 ]

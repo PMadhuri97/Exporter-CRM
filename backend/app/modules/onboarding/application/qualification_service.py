@@ -39,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.domain.company_intake import PartnerQualification
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification import (
@@ -81,7 +82,9 @@ HISTORY_DIMENSION_JOURNEY = "journey"
 QUALIFICATION_RESULT_EVENT = "qualification_result"
 JOURNEY_TRANSITION_EVENT = "journey_transition"
 
-_EVIDENCE_TYPES = frozenset({"document", "verification_result", "url"})
+#: `partner_reference` is a partner's own reference for its evidence; only the
+#: platform's partner intake uses it — the API accepts the other three.
+_EVIDENCE_TYPES = frozenset({"document", "verification_result", "url", "partner_reference"})
 
 
 class QualificationService:
@@ -168,63 +171,14 @@ class QualificationService:
         profile = await self._lock_profile(customer_id)
         if profile.qualification is QualificationState.QUALIFIED:
             raise QualificationClosedError(customer_id)
-        if not entries:
-            raise ValidationError("record at least one result")
-        keys = [entry.criterion_key for entry in entries]
-        if len(set(keys)) != len(keys):
-            raise ValidationError("each criterion may appear once per recording")
-
-        current = {c.key: c for c in await self._repo.current_criteria()}
-        unknown = sorted(set(keys) - set(current))
-        if unknown:
-            raise ValidationError(f"unknown qualification criteria: {unknown}")
-        inactive = sorted(key for key in keys if not current[key].active)
-        if inactive:
-            raise ValidationError(f"inactive qualification criteria: {inactive}")
-        for entry in entries:
-            _check_entry(entry, decided_by_kind)
-
-        rows: list[QualificationResult] = []
-        for entry in entries:
-            criterion = current[entry.criterion_key]
-            row = QualificationResult(
-                customer_id=customer_id,
-                criterion_id=criterion.id,
-                result=entry.result,
-                observed_value=_clean(entry.observed_value),
-                source=source,
-                decided_by_kind=decided_by_kind,
-                evidence_note=_clean(entry.evidence_note),
-                evidence_refs=[{"type": ref.type, "ref": ref.ref} for ref in entry.evidence_refs],
-                reason=_clean(entry.reason),
-                confidence=entry.confidence,
-                recorded_by=actor_id,
-            )
-            row.criterion = criterion
-            await self._repo.add(row)
-            await self._history.record(
-                customer_id,
-                dimension=HISTORY_DIMENSION_QUALIFICATION,
-                to_value=entry.result.value,
-                actor_id=actor_id,
-                reason=row.reason,
-                source="qualification_service.record_results",
-                event_type=QUALIFICATION_RESULT_EVENT,
-                details={
-                    "result_id": str(row.id),
-                    "criterion_key": criterion.key,
-                    "criterion_version": criterion.version,
-                    "source": source.value,
-                    "decided_by_kind": decided_by_kind.value,
-                },
-            )
-            rows.append(row)
-
+        rows = await self._write_results(
+            customer_id, entries, actor_id=actor_id, source=source, decided_by_kind=decided_by_kind
+        )
         await self._db.commit()
         logger.info(
             "qualification.results.recorded",
             customer_id=str(customer_id),
-            keys=keys,
+            keys=[entry.criterion_key for entry in entries],
             actor_id=actor_id,
         )
         return rows
@@ -264,28 +218,187 @@ class QualificationService:
         moves, a `journey` history row. Never makes a company a `CUSTOMER`.
         """
         profile = await self._lock_profile(customer_id)
-        from_state = profile.qualification
-        if from_state is QualificationState.QUALIFIED:
+        if profile.qualification is QualificationState.QUALIFIED:
             raise QualificationClosedError(customer_id)
-
         codes = list(dict.fromkeys(code.strip() for code in reason_codes if code.strip()))
         cleaned_note = _clean(note)
         await self._check_reason_codes(outcome, codes, cleaned_note)
-
         suggested, result_ids = await self._suggestion(customer_id)
-        previous = await self._repo.latest_outcome(customer_id)
 
+        row = await self._write_outcome(
+            profile,
+            outcome,
+            reason_codes=codes,
+            note=cleaned_note,
+            suggested=suggested,
+            result_ids=result_ids,
+            source=source,
+            decided_by_kind=decided_by_kind,
+            decided_by=actor_id,
+            actor_id=actor_id,
+        )
+        await self._db.commit()
+        await self._db.refresh(row)
+        return row
+
+    # ── A partner's decision (RXIL intake) ──────────────────────────────────
+
+    async def record_partner_decision(
+        self,
+        customer_id: uuid.UUID,
+        qualification: PartnerQualification,
+        *,
+        source: QualificationSource,
+        actor_id: str | None,
+        partner_reference: str | None = None,
+    ) -> QualificationOutcome:
+        """Record a partner's qualification exactly as it was handed over:
+        its criterion results and its outcome, in one transaction.
+
+        **Nothing is recomputed.** The partner's results are stored as given —
+        each with `source` set to the partner and the partner's own
+        `decided_by_kind`, evidence, reason and confidence — and the outcome
+        is the partner's outcome. The CRM's criteria are not evaluated: the
+        outcome's `suggested_outcome` is the partner's own decision and its
+        `result_ids` are the partner's results, not a local suggestion. The
+        same tables, rules and history rows as a local review are used; this
+        is not a second qualification model.
+
+        `decided_by` is empty (the partner decided, not a user); `actor_id`,
+        the signed-in user who submitted the delivery, is recorded as
+        `recorded_by` on the results and as the actor on the history rows.
+
+        Only a `QUALIFIED` outcome is accepted: a partner hands over exporters
+        it has already filtered in (architecture decision 7). Refused, like any
+        outcome, on a company already `QUALIFIED`.
+        """
+        if qualification.outcome is not QualificationOutcomeValue.QUALIFIED:
+            raise ValidationError(
+                f"a {source.value} delivery must carry a QUALIFIED outcome; "
+                f"got {qualification.outcome.value}"
+            )
+        profile = await self._lock_profile(customer_id)
+        if profile.qualification is QualificationState.QUALIFIED:
+            raise QualificationClosedError(customer_id)
+
+        rows = await self._write_results(
+            customer_id,
+            qualification.results,
+            actor_id=actor_id,
+            source=source,
+            decided_by_kind=qualification.decided_by_kind,
+        ) if qualification.results else []
+        row = await self._write_outcome(
+            profile,
+            qualification.outcome,
+            reason_codes=[],
+            note=_clean(qualification.note),
+            suggested=qualification.outcome,
+            result_ids=[r.id for r in rows],
+            source=source,
+            decided_by_kind=qualification.decided_by_kind,
+            decided_by=None,
+            actor_id=actor_id,
+            extra_details={"partner_reference": partner_reference},
+        )
+        await self._db.commit()
+        await self._db.refresh(row)
+        return row
+
+    # ── Writers (flush only; the public methods commit) ─────────────────────
+
+    async def _write_results(
+        self,
+        customer_id: uuid.UUID,
+        entries: Sequence[ResultEntry],
+        *,
+        actor_id: str | None,
+        source: QualificationSource,
+        decided_by_kind: DecidedByKind,
+    ) -> list[QualificationResult]:
+        if not entries:
+            raise ValidationError("record at least one result")
+        keys = [entry.criterion_key for entry in entries]
+        if len(set(keys)) != len(keys):
+            raise ValidationError("each criterion may appear once per recording")
+
+        current = {c.key: c for c in await self._repo.current_criteria()}
+        unknown = sorted(set(keys) - set(current))
+        if unknown:
+            raise ValidationError(f"unknown qualification criteria: {unknown}")
+        inactive = sorted(key for key in keys if not current[key].active)
+        if inactive:
+            raise ValidationError(f"inactive qualification criteria: {inactive}")
+        for entry in entries:
+            _check_entry(entry, entry.decided_by_kind or decided_by_kind)
+
+        rows: list[QualificationResult] = []
+        for entry in entries:
+            criterion = current[entry.criterion_key]
+            kind = entry.decided_by_kind or decided_by_kind
+            row = QualificationResult(
+                customer_id=customer_id,
+                criterion_id=criterion.id,
+                result=entry.result,
+                observed_value=_clean(entry.observed_value),
+                source=source,
+                decided_by_kind=kind,
+                evidence_note=_clean(entry.evidence_note),
+                evidence_refs=[{"type": ref.type, "ref": ref.ref} for ref in entry.evidence_refs],
+                reason=_clean(entry.reason),
+                confidence=entry.confidence,
+                recorded_by=actor_id,
+            )
+            row.criterion = criterion
+            await self._repo.add(row)
+            await self._history.record(
+                customer_id,
+                dimension=HISTORY_DIMENSION_QUALIFICATION,
+                to_value=entry.result.value,
+                actor_id=actor_id,
+                reason=row.reason,
+                source="qualification_service.record_results",
+                event_type=QUALIFICATION_RESULT_EVENT,
+                details={
+                    "result_id": str(row.id),
+                    "criterion_key": criterion.key,
+                    "criterion_version": criterion.version,
+                    "source": source.value,
+                    "decided_by_kind": kind.value,
+                },
+            )
+            rows.append(row)
+        return rows
+
+    async def _write_outcome(
+        self,
+        profile: ExporterProfile,
+        outcome: QualificationOutcomeValue,
+        *,
+        reason_codes: list[str],
+        note: str | None,
+        suggested: QualificationOutcomeValue,
+        result_ids: Sequence[uuid.UUID],
+        source: QualificationSource,
+        decided_by_kind: DecidedByKind,
+        decided_by: str | None,
+        actor_id: str | None,
+        extra_details: dict | None = None,
+    ) -> QualificationOutcome:
+        customer_id = profile.customer_id
+        from_state = profile.qualification
+        previous = await self._repo.latest_outcome(customer_id)
         row = QualificationOutcome(
             customer_id=customer_id,
             outcome=outcome,
-            reason_codes=codes,
-            note=cleaned_note,
+            reason_codes=reason_codes,
+            note=note,
             suggested_outcome=suggested,
             result_ids=[str(result_id) for result_id in result_ids],
             source=source,
             decided_by_kind=decided_by_kind,
             supersedes_outcome_id=previous.id if previous is not None else None,
-            decided_by=actor_id,
+            decided_by=decided_by,
         )
         await self._repo.add(row)
 
@@ -297,16 +410,17 @@ class QualificationService:
             from_value=from_state.value,
             to_value=to_state.value,
             actor_id=actor_id,
-            reason=cleaned_note,
+            reason=note,
             source="qualification_service.record_outcome",
             details={
                 "outcome_id": str(row.id),
-                "reason_codes": codes,
+                "reason_codes": reason_codes,
                 "suggested_outcome": suggested.value,
                 "re_review": previous is not None,
                 "supersedes_outcome_id": str(previous.id) if previous is not None else None,
                 "source": source.value,
                 "decided_by_kind": decided_by_kind.value,
+                **(extra_details or {}),
             },
         )
 
@@ -323,13 +437,12 @@ class QualificationService:
                 details={"cause": "qualification_outcome", "outcome_id": str(row.id)},
             )
 
-        await self._db.commit()
-        await self._db.refresh(row)
         logger.info(
             "qualification.outcome.recorded",
             customer_id=str(customer_id),
             outcome=outcome.value,
             suggested=suggested.value,
+            source=source.value,
             re_review=previous is not None,
             actor_id=actor_id,
         )

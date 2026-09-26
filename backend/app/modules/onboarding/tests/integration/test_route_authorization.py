@@ -127,6 +127,9 @@ GATED_ROUTES = [
         {"outcome": "QUALIFIED"},
         STAFF,
     ),
+    # company intake and bulk import
+    ("POST", f"{BASE}/rxil/company-intake", {"exporter": {}}, STAFF),
+    ("POST", f"{BASE}/imports/companies", None, STAFF),
     (
         "POST",
         f"{BASE}/exporters/{_ID}/activities",
@@ -158,6 +161,7 @@ GATED_ROUTES = [
     ("GET", f"{BASE}/qualification/criteria/revenue/versions", None, READERS),
     ("GET", f"{BASE}/qualification/reason-codes", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/qualification", None, READERS),
+    ("GET", f"{BASE}/imports/companies/template", None, STAFF),
 ]
 
 REFUSALS = [

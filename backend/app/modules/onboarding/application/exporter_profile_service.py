@@ -69,6 +69,7 @@ from app.modules.onboarding.domain.tax_identifiers import (
     normalise_cin,
     normalise_country,
     normalise_gstins,
+    normalise_iec,
     normalise_name,
     normalise_pan,
 )
@@ -333,6 +334,7 @@ class ExporterProfileService:
         country = normalise_country(country)
         pan = normalise_pan(pan)
         cin = normalise_cin(cin)
+        iec = normalise_iec(iec)
         gstin_values = normalise_gstins(gstins)
         check_gstins_match_pan(pan, gstin_values)
 
@@ -509,6 +511,8 @@ class ExporterProfileService:
             wanted["pan"] = normalise_pan(wanted["pan"])  # type: ignore[arg-type]
         if "cin" in wanted:
             wanted["cin"] = normalise_cin(wanted["cin"])  # type: ignore[arg-type]
+        if "iec" in wanted:
+            wanted["iec"] = normalise_iec(wanted["iec"])  # type: ignore[arg-type]
         if "gstins" in wanted:
             wanted["gstins"] = normalise_gstins(wanted["gstins"]) or None  # type: ignore[arg-type]
         check_gstins_match_pan(

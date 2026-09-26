@@ -14,6 +14,9 @@ from collections.abc import Sequence
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
+    ExporterLifecycleHistory,
+)
 from app.modules.onboarding.domain.entities.qualification import (
     QualificationCriterion,
     QualificationOutcome,
@@ -112,6 +115,23 @@ class QualificationRepository:
                 QualificationOutcome.customer_id == customer_id,
                 QualificationOutcome.id.not_in(superseded),
             )
+        )
+        return result.scalar_one_or_none()
+
+    async def company_for_partner_reference(
+        self, source: str, reference: str
+    ) -> uuid.UUID | None:
+        """The company a partner delivery with this reference was recorded
+        for, read from the outcome's history row (where the reference is kept).
+        Read-only use of the shared history log."""
+        result = await self.session.execute(
+            select(ExporterLifecycleHistory.customer_id)
+            .where(
+                ExporterLifecycleHistory.dimension == "qualification",
+                ExporterLifecycleHistory.event_metadata["source"].astext == source,
+                ExporterLifecycleHistory.event_metadata["partner_reference"].astext == reference,
+            )
+            .limit(1)
         )
         return result.scalar_one_or_none()
 

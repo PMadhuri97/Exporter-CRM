@@ -668,3 +668,34 @@ class QualificationClosedError(AnerBaseException):
             error_code="QUALIFICATION_CLOSED",
             status_code=409,
         )
+
+
+class PartnerPackageInvalidError(AnerBaseException):
+    """A partner delivery (RXIL today) could not be read into the CRM's terms:
+    a required field is missing, a value is malformed, or an identifier breaks
+    the company rules. Lists every problem found, each with a code."""
+
+    def __init__(self, partner: str, reasons: list[dict[str, str]]) -> None:
+        super().__init__(
+            detail=f"The {partner} delivery cannot be accepted: "
+            + "; ".join(r["message"] for r in reasons),
+            error_code="PARTNER_PACKAGE_INVALID",
+            status_code=422,
+            extensions={"reasons": reasons},
+        )
+
+
+class IntakeNeedsReviewError(AnerBaseException):
+    """A delivered company resembles, or conflicts with, companies the CRM
+    already has, and no PAN settles which one it is. It is neither merged into
+    one of them nor created as another: a person decides."""
+
+    def __init__(self, reasons: list[dict[str, str]], candidates: list[str]) -> None:
+        super().__init__(
+            detail="This company matches existing companies ambiguously and needs a "
+            "person to decide: "
+            + "; ".join(r["message"] for r in reasons),
+            error_code="INTAKE_NEEDS_REVIEW",
+            status_code=409,
+            extensions={"reasons": reasons, "candidates": candidates},
+        )

@@ -5,6 +5,7 @@ import structlog
 from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.company_intake_router import router as company_intake_router
 from app.modules.onboarding.api.engagement_router import router as engagement_router
 from app.modules.onboarding.api.exporter_router import router as exporter_router
 from app.modules.onboarding.api.history_router import router as history_router
@@ -72,6 +73,8 @@ router.include_router(screening_router)
 # absolute (/qualification/..., /exporters/{id}/qualification...), because the
 # criteria are not under /exporters.
 router.include_router(qualification_router)
+# RXIL company intake and bulk CSV import (L2-12, L2-13) — Developer 2's.
+router.include_router(company_intake_router)
 
 # Shared CRM history log (L1-11) — Developer 1's, in its own file for the same
 # reason the Exporter CRM routes are in theirs, and included here so it

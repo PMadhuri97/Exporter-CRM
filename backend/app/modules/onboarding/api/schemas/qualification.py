@@ -138,6 +138,15 @@ class EvidenceRefModel(BaseModel):
     ref: str = Field(min_length=1, max_length=2048)
 
 
+class EvidenceRefOut(BaseModel):
+    """An evidence reference as stored. Besides the three a request may send,
+    a partner intake may store `partner_reference` — the partner's own id for
+    its evidence."""
+
+    type: str
+    ref: str
+
+
 class ResultRequest(BaseModel):
     """One criterion checked by the signed-in user. The server pins the
     criterion's current version."""
@@ -177,7 +186,7 @@ class ResultResponse(BaseModel):
     source: QualificationSource
     decided_by_kind: DecidedByKind
     evidence_note: str | None
-    evidence_refs: list[EvidenceRefModel]
+    evidence_refs: list[EvidenceRefOut]
     reason: str | None
     confidence: float | None
     recorded_by: str | None
@@ -194,7 +203,7 @@ class ResultResponse(BaseModel):
             source=row.source,
             decided_by_kind=row.decided_by_kind,
             evidence_note=row.evidence_note,
-            evidence_refs=[EvidenceRefModel(**ref) for ref in row.evidence_refs],
+            evidence_refs=[EvidenceRefOut(**ref) for ref in row.evidence_refs],
             reason=row.reason,
             confidence=float(row.confidence) if row.confidence is not None else None,
             recorded_by=row.recorded_by,

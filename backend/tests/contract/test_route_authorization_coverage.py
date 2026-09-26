@@ -138,6 +138,10 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/exporters/{{customer_id}}/qualification"): READERS,
     ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/results"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/outcome"): STAFF,
+    # RXIL company intake and bulk import (L2-12, L2-13): both create companies.
+    ("POST", f"{CRM}/rxil/company-intake"): STAFF,
+    ("GET", f"{CRM}/imports/companies/template"): STAFF,
+    ("POST", f"{CRM}/imports/companies"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/contacts"): STAFF,
     ("GET", f"{CRM}/exporters/{{customer_id}}/contacts"): READERS,
     ("POST", f"{CRM}/exporters/{{customer_id}}/activities"): STAFF,
