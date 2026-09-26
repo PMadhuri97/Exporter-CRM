@@ -23,7 +23,9 @@ Knows nothing about any partner's format. The RXIL adapter
 3. **Create or reuse the company.** A new company is created through
    ``ExporterProfileService.create_or_get_profile`` — the same rules as manual
    creation — as a ``LEAD`` with source ``RXIL``. A lost race on the PAN
-   re-matches instead of failing.
+   re-matches instead of failing. The partner's decision is checked by
+   ``QualificationService.check_partner_decision`` *before* the company is
+   created, so a delivery the next step would refuse creates nothing.
 4. **Record the partner's qualification** with
    ``QualificationService.record_partner_decision``: its results and its
    outcome, exactly as supplied, in one transaction, which moves the ``LEAD``
@@ -171,6 +173,12 @@ class PartnerIntakeService:
                     [{"code": r.code, "message": r.message} for r in match.reasons],
                     [str(c) for c in match.candidates],
                 )
+            # The company is committed on its own, before the decision is
+            # recorded. Check the decision first, so a delivery that would be
+            # refused leaves no company behind.
+            await QualificationService(self._db).check_partner_decision(
+                intake.qualification, source=intake.source
+            )
             identity = intake.identity
             try:
                 profile, _created = await ExporterProfileService(self._db).create_or_get_profile(

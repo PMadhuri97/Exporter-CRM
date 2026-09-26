@@ -277,11 +277,7 @@ class QualificationService:
         it has already filtered in (architecture decision 7). Refused, like any
         outcome, on a company already `QUALIFIED`.
         """
-        if qualification.outcome is not QualificationOutcomeValue.QUALIFIED:
-            raise ValidationError(
-                f"a {source.value} delivery must carry a QUALIFIED outcome; "
-                f"got {qualification.outcome.value}"
-            )
+        _check_partner_outcome(qualification, source)
         profile = await self._lock_profile(customer_id)
         if profile.qualification is QualificationState.QUALIFIED:
             raise QualificationClosedError(customer_id)
@@ -310,17 +306,29 @@ class QualificationService:
         await self._db.refresh(row)
         return row
 
+    async def check_partner_decision(
+        self, qualification: PartnerQualification, *, source: QualificationSource
+    ) -> None:
+        """Refuse a partner's decision exactly as `record_partner_decision`
+        would, without writing anything.
+
+        Partner intake creates a new company in its own commit before it
+        records the decision; checking first means a decision that would be
+        refused never leaves that company behind as a bare `LEAD`. The one
+        thing this cannot check is the company itself (already `QUALIFIED`),
+        because the company may not exist yet.
+        """
+        _check_partner_outcome(qualification, source)
+        if qualification.results:
+            await self._check_results(qualification.results, qualification.decided_by_kind)
+
     # ── Writers (flush only; the public methods commit) ─────────────────────
 
-    async def _write_results(
-        self,
-        customer_id: uuid.UUID,
-        entries: Sequence[ResultEntry],
-        *,
-        actor_id: str | None,
-        source: QualificationSource,
-        decided_by_kind: DecidedByKind,
-    ) -> list[QualificationResult]:
+    async def _check_results(
+        self, entries: Sequence[ResultEntry], decided_by_kind: DecidedByKind
+    ) -> dict[str, QualificationCriterion]:
+        """Every rule a set of results must meet, checked before anything is
+        written. Returns the current version of every criterion by key."""
         if not entries:
             raise ValidationError("record at least one result")
         keys = [entry.criterion_key for entry in entries]
@@ -336,6 +344,18 @@ class QualificationService:
             raise ValidationError(f"inactive qualification criteria: {inactive}")
         for entry in entries:
             _check_entry(entry, entry.decided_by_kind or decided_by_kind)
+        return current
+
+    async def _write_results(
+        self,
+        customer_id: uuid.UUID,
+        entries: Sequence[ResultEntry],
+        *,
+        actor_id: str | None,
+        source: QualificationSource,
+        decided_by_kind: DecidedByKind,
+    ) -> list[QualificationResult]:
+        current = await self._check_results(entries, decided_by_kind)
 
         rows: list[QualificationResult] = []
         for entry in entries:
@@ -624,6 +644,17 @@ def _criterion_row(
         active=definition.active,
         created_by=actor_id,
     )
+
+
+def _check_partner_outcome(
+    qualification: PartnerQualification, source: QualificationSource
+) -> None:
+    """A partner hands over exporters it has already filtered in (decision 7)."""
+    if qualification.outcome is not QualificationOutcomeValue.QUALIFIED:
+        raise ValidationError(
+            f"a {source.value} delivery must carry a QUALIFIED outcome; "
+            f"got {qualification.outcome.value}"
+        )
 
 
 def _check_entry(entry: ResultEntry, decided_by_kind: DecidedByKind) -> None:

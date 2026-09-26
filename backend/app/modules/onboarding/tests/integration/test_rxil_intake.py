@@ -399,13 +399,54 @@ async def test_a_package_without_a_tax_identifier_is_refused():
         await _ingest(payload)
 
 
-async def test_rxil_only_hands_over_qualified_exporters():
-    payload = _package()
+def _not_qualified(payload: dict) -> None:
     payload["qualification"]["decision"] = "NOT_QUALIFIED"
+
+
+def _confidence_on_a_manual_result(payload: dict) -> None:
+    payload["qualification"]["criteria"][0]["method"] = "MANUAL"
+
+
+def _confidence_above_one(payload: dict) -> None:
+    payload["qualification"]["criteria"][0]["confidence"] = 1.5
+
+
+@pytest.mark.parametrize(
+    "change",
+    [_not_qualified, _confidence_on_a_manual_result, _confidence_above_one],
+)
+async def test_a_refused_decision_creates_no_company(change):
+    """The package reads, but its decision breaks the qualification rules.
+    The company is created in its own commit before the decision is recorded,
+    so the decision is checked first: nothing is left behind — in particular
+    no RXIL company stranded as a LEAD with no qualification."""
+    from app.shared.exceptions import ValidationError
+
+    payload = _package()
+    change(payload)
+    with pytest.raises(ValidationError):
+        await _ingest(payload)
+    assert await _companies_with_pan(payload["exporter"]["pan"]) == 0
+
+
+async def test_a_refused_decision_leaves_a_matched_company_as_it_was():
+    pan = _pan()
+    async with db_services.AsyncSessionLocal() as db:
+        existing, _ = await ExporterProfileService(db).create_or_get_profile(
+            uuid.uuid4(), source=ExporterSource.SALES, name="Already here", country="IN", pan=pan
+        )
+    before = await _counts(existing.customer_id)
+    payload = _package(pan)
+    _not_qualified(payload)
     from app.shared.exceptions import ValidationError
 
     with pytest.raises(ValidationError):
         await _ingest(payload)
+    company = await _company(existing.customer_id)
+    assert (company.journey, company.qualification) == (
+        ExporterJourney.LEAD, QualificationState.NOT_YET_REVIEWED,
+    )
+    assert await _counts(existing.customer_id) == before
 
 
 # ── Isolation and dependencies ────────────────────────────────────────────────

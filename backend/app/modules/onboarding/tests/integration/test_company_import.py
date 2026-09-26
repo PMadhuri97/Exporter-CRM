@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.modules.onboarding.application.company_import_service import (
     TEMPLATE_COLUMNS,
@@ -35,6 +36,7 @@ from app.modules.onboarding.domain.entities.exporter_profile import ExporterProf
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.modules.onboarding.tests.fixtures.auth import auth_header, user_with_role
 from app.platform.authentication.models import UserRole
+from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
 
@@ -333,6 +335,37 @@ async def test_a_failing_row_cannot_damage_the_rows_around_it(monkeypatch):
     assert stray == 0
 
 
+async def _import_on_the_apps_kind_of_engine(*rows: str):
+    """Import on a pooled engine configured like the app's, created and
+    disposed inside the test.
+
+    The suite swaps the app's pooled engine for NullPool (`backend/conftest.py`),
+    which opens a fresh connection for the first statement after every
+    commit. Import commits once per row (decision U4 is open), so under
+    NullPool a 1,000-row file spends most of its time connecting — measured at
+    one connection and ~150 ms per row on a developer machine, against one
+    connection in all at 46 ms per row pooled. A time budget measured on
+    NullPool would be measuring the test harness, not the import. The pool is
+    disposed before the test ends, so no idle pooled connection outlives it
+    (the Windows problem conftest's NullPool avoids).
+    """
+    settings = get_settings()
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+    )
+    try:
+        factory = async_sessionmaker(
+            bind=engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+        )
+        async with factory() as db:
+            return await CompanyImportService(db).import_csv(_csv(*rows), actor_id="importer-1")
+    finally:
+        await engine.dispose()
+
+
 # Its own budget below is 180s; the suite-wide 120s pytest-timeout would
 # otherwise kill the whole run (thread method) on a slow machine first.
 @pytest.mark.timeout(300)
@@ -352,7 +385,7 @@ async def test_a_representative_thousand_row_file():
     assert len(rows) == 1000
 
     started = time.perf_counter()
-    report = await _import(*rows)
+    report = await _import_on_the_apps_kind_of_engine(*rows)
     elapsed = time.perf_counter() - started
 
     assert report.total_rows == 1000
@@ -434,3 +467,69 @@ async def test_a_file_that_is_not_utf8_is_a_422(client: AsyncClient):
         headers=auth_header(token),
     )
     assert resp.status_code == 422
+
+
+# ── A file refused as a whole leaves nothing behind ───────────────────────────
+#
+# Rows are committed one by one, so a whole-file refusal that surfaced part-way
+# through would leave the rows before it saved behind an error that reports
+# none of them. The file is read and checked in full before any row is saved.
+
+
+def _bytes_with_a_bad_byte_after(first_row: str) -> bytes:
+    # Blank lines are skipped, not rows; they push the bad byte past the
+    # decoder's first chunk, so it is only met after the first row was read.
+    return (HEADER + "\n" + first_row + "\n" + "\n" * 20_000).encode() + b"Bad \xff Co,IN\n"
+
+
+async def test_a_bad_byte_late_in_the_file_saves_nothing():
+    pan = _pan()
+    content = _bytes_with_a_bad_byte_after(_row(pan=pan))
+    async with db_services.AsyncSessionLocal() as db:
+        lines = io.TextIOWrapper(io.BytesIO(content), encoding="utf-8-sig", newline="")
+        with pytest.raises(ValidationError, match="UTF-8"):
+            await CompanyImportService(db).import_csv(lines, actor_id="importer-1")
+    assert await _count_with_pan(pan) == 0
+
+
+async def test_a_bad_byte_late_in_an_upload_is_a_422_that_saves_nothing(client: AsyncClient):
+    _, token = await user_with_role(client, UserRole.ADMIN)
+    pan = _pan()
+    resp = await client.post(
+        f"{BASE}/imports/companies",
+        files={"file": ("companies.csv", _bytes_with_a_bad_byte_after(_row(pan=pan)), "text/csv")},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 422
+    assert await _count_with_pan(pan) == 0
+
+
+async def test_a_file_over_the_row_limit_saves_nothing(monkeypatch):
+    from app.modules.onboarding.application import company_import_service
+
+    monkeypatch.setattr(company_import_service, "MAX_ROWS", 2)
+    pans = [_pan() for _ in range(3)]
+    with pytest.raises(ValidationError, match="at most 2 rows"):
+        await _import(*(_row(pan=p) for p in pans))
+    assert [await _count_with_pan(p) for p in pans] == [0, 0, 0]
+
+
+async def test_a_file_at_the_row_limit_is_imported(monkeypatch):
+    from app.modules.onboarding.application import company_import_service
+
+    monkeypatch.setattr(company_import_service, "MAX_ROWS", 2)
+    report = await _import(_row(pan=_pan()), "", _row(pan=_pan()))  # the blank line is not a row
+    assert report.created == 2
+
+
+async def test_a_line_that_is_not_valid_csv_saves_nothing():
+    import csv
+
+    pan = _pan()
+    previous = csv.field_size_limit(64)
+    try:
+        with pytest.raises(ValidationError, match="not valid CSV near line 3"):
+            await _import(_row(pan=pan), _row(website="https://example.com/" + "x" * 100))
+    finally:
+        csv.field_size_limit(previous)
+    assert await _count_with_pan(pan) == 0

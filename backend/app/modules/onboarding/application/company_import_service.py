@@ -2,8 +2,9 @@
 A14). **Owner: Developer 2.**
 
 **The template** is fixed: ``TEMPLATE_COLUMNS``, one header row, UTF-8. A
-file whose header is not exactly those columns is refused as a whole before
-any row is read. ``gstins`` holds several GSTINs separated by ``;``. There is
+file that is not UTF-8, is not valid CSV, has a header other than exactly
+those columns, or holds more than ``MAX_ROWS`` rows is refused as a whole,
+and all of that is checked before any row is saved. ``gstins`` holds several GSTINs separated by ``;``. There is
 deliberately no column for who owns or entered a company: the signed-in user
 is the actor, and ownership is not imported.
 
@@ -118,25 +119,22 @@ class CompanyImportService:
         self._db = db
 
     async def import_csv(self, lines: Iterable[str], *, actor_id: str | None) -> ImportReport:
-        """Import a CSV file given as an iterable of text lines (a stream is
-        read row by row, never whole). Raises ``ValidationError`` for a file
-        that cannot be imported at all; otherwise every row is in the report."""
-        reader = csv.DictReader(lines)
-        header = [h.strip() for h in (reader.fieldnames or [])]
-        if tuple(sorted(header)) != tuple(sorted(TEMPLATE_COLUMNS)) or len(header) != len(set(header)):
-            raise ValidationError(
-                "the file's header must be exactly the template's columns: "
-                + ", ".join(TEMPLATE_COLUMNS)
-            )
-        reader.fieldnames = header
+        """Import a CSV file given as an iterable of text lines. Raises
+        ``ValidationError`` for a file that cannot be imported at all;
+        otherwise every row is in the report.
+
+        The whole file is read and checked first — its encoding, its CSV
+        shape, its header and the row limit — and only then is any row saved.
+        Rows are committed one by one, so a file refused as a whole part-way
+        through would leave the rows before that point saved behind an error
+        that reports none of them; checking first means a refused file leaves
+        nothing behind.
+        """
+        rows = _read_rows(lines)
 
         report = ImportReport()
-        for raw in reader:
-            if len(report.rows) >= MAX_ROWS:
-                raise ValidationError(f"a file may hold at most {MAX_ROWS} rows")
-            if not any((value or "").strip() for value in raw.values() if isinstance(value, str)):
-                continue  # a blank line
-            report.rows.append(await self._import_row(reader.line_num, raw, actor_id))
+        for line, raw in rows:
+            report.rows.append(await self._import_row(line, raw, actor_id))
 
         logger.info(
             "company_import.done",
@@ -240,6 +238,37 @@ class CompanyImportService:
         return RowResult(line, "rejected", reasons=[
             Reason("CONCURRENT_CHANGE", "the company changed while this row was being matched")
         ])
+
+
+def _read_rows(lines: Iterable[str]) -> list[tuple[int, dict]]:
+    """Every non-blank data row with its line number, or ``ValidationError``
+    for a file that cannot be imported at all. Reads the whole file, so an
+    encoding or CSV error anywhere in it surfaces before any row is saved."""
+    reader = csv.DictReader(lines)
+    try:
+        header = [h.strip() for h in (reader.fieldnames or [])]
+        if tuple(sorted(header)) != tuple(sorted(TEMPLATE_COLUMNS)) or len(header) != len(set(header)):
+            raise ValidationError(
+                "the file's header must be exactly the template's columns: "
+                + ", ".join(TEMPLATE_COLUMNS)
+            )
+        reader.fieldnames = header
+
+        rows: list[tuple[int, dict]] = []
+        for raw in reader:
+            if not any((value or "").strip() for value in raw.values() if isinstance(value, str)):
+                continue  # a blank line
+            if len(rows) >= MAX_ROWS:
+                raise ValidationError(f"a file may hold at most {MAX_ROWS} rows")
+            rows.append((reader.line_num, raw))
+    except UnicodeDecodeError as exc:
+        raise ValidationError("the file must be UTF-8 text") from exc
+    except csv.Error as exc:
+        # `line_num` does not yet count the line being parsed when it fails.
+        raise ValidationError(
+            f"the file is not valid CSV near line {reader.line_num + 1}: {exc}"
+        ) from exc
+    return rows
 
 
 __all__ = ["MAX_ROWS", "TEMPLATE_COLUMNS", "TEMPLATE_CSV", "CompanyImportService", "ImportReport"]

@@ -120,11 +120,10 @@ async def import_companies(
 ) -> ImportReportResponse:
     if file.size is not None and file.size > MAX_IMPORT_BYTES:
         raise ValidationError(f"the file is larger than {MAX_IMPORT_BYTES // (1024 * 1024)} MB")
-    try:
-        lines = io.TextIOWrapper(file.file, encoding="utf-8-sig", newline="")
-        report = await CompanyImportService(db).import_csv(lines, actor_id=str(current_user.id))
-    except UnicodeDecodeError as exc:
-        raise ValidationError("the file must be UTF-8 text") from exc
+    # The service reads and checks the whole file — encoding included — before
+    # it saves any row, and refuses a bad file with a 422.
+    lines = io.TextIOWrapper(file.file, encoding="utf-8-sig", newline="")
+    report = await CompanyImportService(db).import_csv(lines, actor_id=str(current_user.id))
     return ImportReportResponse.of(report)
 
 

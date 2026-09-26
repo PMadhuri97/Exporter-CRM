@@ -227,7 +227,11 @@ L1-02, before L2-10 writes the first row.
   an unevidenced `PASS`/`FAIL` is refused. RXIL's evidence ids may use the
   reference type `partner_reference`, which only partner intake can write. The
   package's `package_id`, when present, is kept on the outcome's history row as
-  `partner_reference`, and a repeated `package_id` changes nothing.
+  `partner_reference`, and a repeated `package_id` changes nothing. A new
+  company is committed on its own before the decision is recorded, so the
+  decision is checked first (`QualificationService.check_partner_decision`,
+  the same rules as `record_partner_decision`): a delivery whose decision
+  would be refused creates no company.
 - **Automation** (later): results with `source = AUTOMATED`,
   `decided_by_kind = AUTOMATED` and a `confidence`. The outcome stays a
   person's decision in the prototype.
