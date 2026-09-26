@@ -624,3 +624,47 @@ class InvalidMarkerTransitionError(AnerBaseException):
             status_code=409,
             extensions={"from_marker": str(from_marker), "to_marker": str(to_marker)},
         )
+
+
+class QualificationCriterionNotFoundError(AnerBaseException):
+    """No criterion has this key."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__(
+            detail=f"No qualification criterion has the key {key!r}",
+            error_code="QUALIFICATION_CRITERION_NOT_FOUND",
+            status_code=404,
+            extensions={"key": key},
+        )
+
+
+class QualificationCriterionExistsError(AnerBaseException):
+    """A criterion with this key already exists — change it by adding a
+    version, not by creating it again."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__(
+            detail=(
+                f"A qualification criterion with the key {key!r} already exists; "
+                "add a version to change it"
+            ),
+            error_code="QUALIFICATION_CRITERION_EXISTS",
+            status_code=409,
+            extensions={"key": key},
+        )
+
+
+class QualificationClosedError(AnerBaseException):
+    """The company is already QUALIFIED. In the prototype that is final
+    (assumption A2): no further results or outcomes are recorded; re-review is
+    for NOT_QUALIFIED companies."""
+
+    def __init__(self, customer_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {customer_id} is already QUALIFIED; qualification is final "
+                "once QUALIFIED (re-review applies to NOT_QUALIFIED companies)"
+            ),
+            error_code="QUALIFICATION_CLOSED",
+            status_code=409,
+        )

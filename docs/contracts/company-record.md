@@ -368,10 +368,11 @@ Stated separately so nobody reads this contract as a description of the code.
 | `journey` history rows (`lifecycle_*`) | **implemented** — for the old ten statuses |
 | `name` / `country` / `cin` as columns on the company record | **implemented** (0014). The transitional identity store is deleted; no CRM code reads a company's identity from `onboarding_request` |
 | `onboarding_history` on the company detail | **removed** (L2-03) |
-| `journey` with three values | **not built** — L2-04 (ten statuses today) |
+| Retiring the ten old statuses; the move to `CUSTOMER` | **not built** — L2-04, L2-11 |
 | `gstins` (several, `exporter_gstin`), PAN format and uniqueness, GSTIN format and PAN cross-check, duplicate-GSTIN warnings | **implemented** (0014, L2-06) |
 | `marker` and `marker_reason`, the marker route, ENDED off the default list | **implemented** (0014, L2-08) |
-| `qualification`, `conversation`, `background_check` fields | **not built** — each owner's migration (see §2.4) |
+| `journey` (`LEAD`/`PROSPECT`/`CUSTOMER`) and `qualification` columns | **implemented** (0017). `journey` sits beside the old `lifecycle_status` until L2-04 retires it; qualification moves it `LEAD` -> `PROSPECT` |
+| `conversation`, `background_check` fields | **not built** — Dev 3's and Dev 4's migrations (see §2.4) |
 | `profile` history on edits; clearing a field | **implemented** (L2-07) |
 | Real links from contacts, activities, screening items, GSTINs and history | **implemented** (0014, `ON DELETE RESTRICT`); `verification_result.entity_reference` deliberately has none |
 | `name` required by the database | **not built** — waits for the unnamed create path to go |

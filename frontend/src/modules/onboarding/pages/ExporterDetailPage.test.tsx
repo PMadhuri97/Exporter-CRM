@@ -41,6 +41,8 @@ const DETAIL: ExporterProfileDetail = {
   country: 'IN',
   gstins: ['27ABCDE1234F1Z5'],
   cin: null,
+  journey: 'LEAD',
+  qualification: 'NOT_YET_REVIEWED',
   marker: 'NONE',
   marker_reason: null,
   gstin_warnings: [],

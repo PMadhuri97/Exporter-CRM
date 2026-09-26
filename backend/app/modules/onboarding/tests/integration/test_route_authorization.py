@@ -35,6 +35,7 @@ BASE = "/api/v1/onboarding"
 
 STAFF = {UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN}
 COMPLIANCE_OR_ADMIN = {UserRole.COMPLIANCE, UserRole.ADMIN}
+ADMIN_ONLY = {UserRole.ADMIN}
 # Masked exporter-CRM reads: DEVELOPER may read, never unmasked.
 READERS = STAFF | {UserRole.DEVELOPER}
 
@@ -101,6 +102,31 @@ GATED_ROUTES = [
         STAFF,
     ),
     ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
+    # qualification
+    (
+        "POST",
+        f"{BASE}/qualification/criteria",
+        {"key": "x", "label": "X", "kind": "YES_NO", "required": False},
+        ADMIN_ONLY,
+    ),
+    (
+        "POST",
+        f"{BASE}/qualification/criteria/revenue/versions",
+        {"label": "X", "kind": "YES_NO", "required": False},
+        ADMIN_ONLY,
+    ),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/qualification/results",
+        {"results": [{"criterion_key": "revenue", "result": "UNKNOWN"}]},
+        STAFF,
+    ),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/qualification/outcome",
+        {"outcome": "QUALIFIED"},
+        STAFF,
+    ),
     (
         "POST",
         f"{BASE}/exporters/{_ID}/activities",
@@ -128,6 +154,10 @@ GATED_ROUTES = [
     ("GET", f"{BASE}/exporters/activities/pending", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/screening-review", None, STAFF),
     ("GET", f"{BASE}/exporters/{_ID}/bank-activity", None, STAFF),
+    ("GET", f"{BASE}/qualification/criteria", None, READERS),
+    ("GET", f"{BASE}/qualification/criteria/revenue/versions", None, READERS),
+    ("GET", f"{BASE}/qualification/reason-codes", None, READERS),
+    ("GET", f"{BASE}/exporters/{_ID}/qualification", None, READERS),
 ]
 
 REFUSALS = [

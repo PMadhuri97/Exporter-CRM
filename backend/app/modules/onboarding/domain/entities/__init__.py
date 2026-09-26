@@ -18,6 +18,12 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
+from app.modules.onboarding.domain.entities.qualification import (
+    QualificationCriterion,
+    QualificationOutcome,
+    QualificationReasonCode,
+    QualificationResult,
+)
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
 )
@@ -96,6 +102,10 @@ __all__ = [
     "ExporterProfile",
     "ExporterGstin",
     "ExporterMarker",
+    "QualificationCriterion",
+    "QualificationOutcome",
+    "QualificationReasonCode",
+    "QualificationResult",
     "ExporterContact",
     "ExporterActivity",
     "ExporterLifecycleHistory",

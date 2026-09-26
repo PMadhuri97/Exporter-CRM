@@ -35,10 +35,12 @@ from app.modules.onboarding.api.schemas.masking import (
     mask_identifier,
 )
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    ExporterJourney,
     ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.platform.authentication.models import User
 
 #: Room for surrounding spaces the service strips before checking the format.
@@ -241,6 +243,8 @@ class ExporterProfileResponse(_IdentifierMasking, BaseModel):
     #: not the display string, to decide whether the current user may reveal
     #: this exporter's masked PAN/GSTIN/IEC.
     relationship_manager_user_id: uuid.UUID | None
+    journey: ExporterJourney
+    qualification: QualificationState
     lifecycle_status: ExporterLifecycleStatus
     marker: ExporterMarker
     marker_reason: str | None
@@ -268,6 +272,8 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
     source: ExporterSource
     relationship_manager: str | None
     relationship_manager_user_id: uuid.UUID | None
+    journey: ExporterJourney
+    qualification: QualificationState
     lifecycle_status: ExporterLifecycleStatus
     marker: ExporterMarker
     marker_reason: str | None
@@ -296,6 +302,8 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
             source=detail.source,
             relationship_manager=detail.relationship_manager,
             relationship_manager_user_id=detail.relationship_manager_user_id,
+            journey=detail.journey,
+            qualification=detail.qualification,
             lifecycle_status=detail.lifecycle_status,
             marker=detail.marker,
             marker_reason=detail.marker_reason,
@@ -337,6 +345,8 @@ class ExporterProfileListItemResponse(_IdentifierMasking, BaseModel):
     source: ExporterSource
     relationship_manager: str | None
     relationship_manager_user_id: uuid.UUID | None
+    journey: ExporterJourney
+    qualification: QualificationState
     lifecycle_status: ExporterLifecycleStatus
     marker: ExporterMarker
     marker_reason: str | None

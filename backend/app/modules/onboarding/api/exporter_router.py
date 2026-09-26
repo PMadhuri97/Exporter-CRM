@@ -49,11 +49,13 @@ from app.modules.onboarding.api.schemas.exporter import (
 from app.modules.onboarding.api.schemas.masking import can_reveal_identifiers
 from app.modules.onboarding.application import ExporterProfileService
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    ExporterJourney,
     ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.modules.onboarding.exceptions import IdentifierSearchNotPermittedError
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
@@ -339,6 +341,8 @@ async def search_exporter_profiles(
     name: str | None = Query(default=None),
     source: ExporterSource | None = Query(default=None),
     status: ExporterLifecycleStatus | None = Query(default=None),
+    journey: ExporterJourney | None = Query(default=None),
+    qualification: QualificationState | None = Query(default=None),
     marker: ExporterMarker | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -352,6 +356,8 @@ async def search_exporter_profiles(
         name_contains=name,
         source=source,
         lifecycle_status=status,
+        journey=journey,
+        qualification=qualification,
         marker=marker,
         limit=limit,
         offset=offset,

@@ -40,6 +40,7 @@ pytestmark = pytest.mark.asyncio
 ALL_ROLES = frozenset(UserRole)
 STAFF = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
 COMPLIANCE_OR_ADMIN = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
+ADMIN_ONLY = frozenset({UserRole.ADMIN})
 #: Staff plus DEVELOPER, which may read the CRM but never unmasked.
 READERS = STAFF | {UserRole.DEVELOPER}
 
@@ -127,6 +128,16 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("PATCH", f"{CRM}/exporters/{{customer_id}}"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/transition"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/marker"): STAFF,
+    # qualification (L2-09, L2-10): ADMIN manages criteria, staff record results
+    # and outcomes, every CRM reader reads.
+    ("GET", f"{CRM}/qualification/criteria"): READERS,
+    ("POST", f"{CRM}/qualification/criteria"): ADMIN_ONLY,
+    ("GET", f"{CRM}/qualification/criteria/{{key}}/versions"): READERS,
+    ("POST", f"{CRM}/qualification/criteria/{{key}}/versions"): ADMIN_ONLY,
+    ("GET", f"{CRM}/qualification/reason-codes"): READERS,
+    ("GET", f"{CRM}/exporters/{{customer_id}}/qualification"): READERS,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/results"): STAFF,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/outcome"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/contacts"): STAFF,
     ("GET", f"{CRM}/exporters/{{customer_id}}/contacts"): READERS,
     ("POST", f"{CRM}/exporters/{{customer_id}}/activities"): STAFF,

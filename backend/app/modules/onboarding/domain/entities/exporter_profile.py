@@ -38,11 +38,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    ExporterJourney,
     ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.platform.database.models import AnerModel
 
 if TYPE_CHECKING:
@@ -126,6 +128,25 @@ class ExporterProfile(AnerModel):
     #: (`ck_exporter_profile_marker_reason`). Every change, with its reason,
     #: is also in the history log.
     marker_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── Journey and qualification gauge (migration 0017) ────────────────────
+    #: LEAD -> PROSPECT -> CUSTOMER, forward only, never set by hand
+    #: (company-record contract §3.1). Sits beside the old `lifecycle_status`
+    #: until L2-04 retires it.
+    journey: Mapped[ExporterJourney] = mapped_column(
+        Enum(ExporterJourney, name="exporter_journey_enum", schema=SCHEMA),
+        nullable=False,
+        server_default=ExporterJourney.LEAD.value,
+        default=ExporterJourney.LEAD,
+    )
+    #: The qualification gauge's current value; only `QualificationService`
+    #: writes it, from a recorded outcome (criterion-result contract §4).
+    qualification: Mapped[QualificationState] = mapped_column(
+        Enum(QualificationState, name="qualification_state_enum", schema=SCHEMA),
+        nullable=False,
+        server_default=QualificationState.NOT_YET_REVIEWED.value,
+        default=QualificationState.NOT_YET_REVIEWED,
+    )
 
     lifecycle_status: Mapped[ExporterLifecycleStatus] = mapped_column(
         Enum(ExporterLifecycleStatus, name="exporter_lifecycle_status_enum", schema=SCHEMA),

@@ -46,6 +46,7 @@ from app.modules.onboarding.domain.engagement_views import (
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    ExporterJourney,
     ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
@@ -57,6 +58,7 @@ from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     LIFECYCLE_TRANSITION_EVENT,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.modules.onboarding.domain.exporter_profile_views import (
     DuplicateGstinWarning,
     ExporterProfileDetail,
@@ -107,6 +109,8 @@ _UPDATE_FORBIDDEN_FIELDS = frozenset(
         "id",
         "date_added",
         "lifecycle_status",
+        "journey",
+        "qualification",
         "marker",
         "marker_reason",
         "created_at",
@@ -474,7 +478,8 @@ class ExporterProfileService:
 
         Never touches `source` (immutable — see `ExporterSourceImmutableError`),
         `lifecycle_status` (owned by `transition_lifecycle_status`) or the
-        marker (owned by `set_marker`).
+        marker (owned by `set_marker`), nor the journey or the qualification
+        gauge (owned by `QualificationService`).
         """
         if "source" in changes:
             raise ExporterSourceImmutableError(customer_id)
@@ -651,6 +656,8 @@ class ExporterProfileService:
         name_contains: str | None = None,
         source: ExporterSource | None = None,
         lifecycle_status: ExporterLifecycleStatus | None = None,
+        journey: ExporterJourney | None = None,
+        qualification: QualificationState | None = None,
         marker: ExporterMarker | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -681,6 +688,8 @@ class ExporterProfileService:
             name_contains=name_contains,
             source=source,
             lifecycle_status=lifecycle_status,
+            journey=journey,
+            qualification=qualification,
             marker=marker,
             exclude_ended=marker is None and not searching,
             limit=limit,
@@ -698,6 +707,8 @@ class ExporterProfileService:
                 source=profile.source,
                 relationship_manager=profile.relationship_manager,
                 relationship_manager_user_id=profile.relationship_manager_user_id,
+                journey=profile.journey,
+                qualification=profile.qualification,
                 lifecycle_status=profile.lifecycle_status,
                 marker=profile.marker,
                 marker_reason=profile.marker_reason,
@@ -859,6 +870,8 @@ class ExporterProfileService:
             source=profile.source,
             relationship_manager=profile.relationship_manager,
             relationship_manager_user_id=profile.relationship_manager_user_id,
+            journey=profile.journey,
+            qualification=profile.qualification,
             lifecycle_status=profile.lifecycle_status,
             marker=profile.marker,
             marker_reason=profile.marker_reason,

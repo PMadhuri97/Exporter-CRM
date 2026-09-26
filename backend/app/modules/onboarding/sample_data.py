@@ -28,9 +28,11 @@ own, per the history contract. Activities need a named actor, so they carry
 **What it covers, and what it cannot yet.** Architecture §3.9 describes three
 companies by journey, qualification, conversation, background check and
 deals. The company record, identifiers, markers, contacts, activities and the
-current ten-status journey exist today; the three-stage journey (L2-04),
-qualification (L2-09/10), conversation (Dev 3), background check (Dev 4) and
-deals (Dev 3) do not. Companies A, B and C are therefore seeded with what
+current ten-status journey exist today, and so do qualification and the
+three-stage journey it moves (L2-09/10): A, B and C are qualified and so
+PROSPECTs, and D is NOT_QUALIFIED. Conversation (Dev 3), background check
+(Dev 4), deals (Dev 3) and the move to CUSTOMER (L2-11) do not exist yet, so
+B is a PROSPECT here although §3.9 makes it a CUSTOMER. Companies A, B and C are therefore seeded with what
 exists, each carrying its §3.9 target in ``SampleCompany.target`` so the
 owners of those pieces extend this file as they land.
 """
@@ -53,12 +55,19 @@ from app.modules.onboarding.application.exporter_contact_activity_service import
 from app.modules.onboarding.application.exporter_profile_service import (
     ExporterProfileService,
 )
+from app.modules.onboarding.application.qualification_service import QualificationService
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.qualification_enums import (
+    CriterionResultValue,
+    QualificationOutcomeValue,
+    QualificationState,
+)
+from app.modules.onboarding.domain.qualification_views import ResultEntry
 from app.platform.database import services as db_services
 
 #: Namespace for the companies' ``uuid5`` ids. Never change it: every
@@ -116,6 +125,11 @@ class SampleCompany:
     marker_reason: str | None = None
     contacts: tuple[SampleContact, ...] = ()
     activities: tuple[SampleActivity, ...] = ()
+    #: The qualification outcome to record, with the results it rests on:
+    #: `PASS` on every required criterion for `QUALIFIED`, a `FAIL` on
+    #: revenue for `NOT_QUALIFIED`. `None` leaves it `NOT_YET_REVIEWED`.
+    qualification: QualificationOutcomeValue | None = None
+    reason_codes: tuple[str, ...] = ()
     #: Architecture §3.9's target state for this company, for the pieces that
     #: do not exist yet. Documentation, not data: nothing reads it.
     target: dict[str, str] = field(default_factory=dict)
@@ -136,6 +150,7 @@ COMPANIES: tuple[SampleCompany, ...] = (
     # §3.9 Company A: a prospect who said "not now".
     SampleCompany(
         slug="company-a",
+        qualification=QualificationOutcomeValue.QUALIFIED,
         name="Aarav Textiles Pvt Ltd",
         country="IN",
         source=ExporterSource.SALES,
@@ -163,6 +178,7 @@ COMPANIES: tuple[SampleCompany, ...] = (
     # §3.9 Company B: a customer with two GSTINs (one per state).
     SampleCompany(
         slug="company-b",
+        qualification=QualificationOutcomeValue.QUALIFIED,
         name="Bharat Precision Metals Ltd",
         country="IN",
         source=ExporterSource.REFERRAL,
@@ -189,6 +205,7 @@ COMPANIES: tuple[SampleCompany, ...] = (
     # §3.9 Company C: a prospect whose background check is flagged.
     SampleCompany(
         slug="company-c",
+        qualification=QualificationOutcomeValue.QUALIFIED,
         name="Coastal Seafood Exports Pvt Ltd",
         country="IN",
         source=ExporterSource.PARTNER,
@@ -221,6 +238,8 @@ COMPANIES: tuple[SampleCompany, ...] = (
         gstins=("36AAAFD4444D1Z9",),
         marker=ExporterMarker.PAUSED,
         marker_reason="Factory closed for renovation until January",
+        qualification=QualificationOutcomeValue.NOT_QUALIFIED,
+        reason_codes=("revenue_below_threshold",),
     ),
     # A relationship that is over (marker ENDED): off the default list,
     # still found by search.
@@ -354,6 +373,52 @@ async def _ensure_activities(company: SampleCompany) -> int:
     return added
 
 
+#: The criteria every sample review records a result for.
+_REQUIRED_KEYS = ("revenue", "years_in_business", "export_history", "export_licence")
+
+
+async def _ensure_qualification(company: SampleCompany) -> bool:
+    """Record the company's results and outcome unless its gauge already
+    shows it. Results are only recorded on the way to an outcome, so a repeat
+    run — which finds the outcome already there — adds nothing."""
+    if company.qualification is None:
+        return False
+    target = QualificationState(company.qualification.value)
+    async with db_services.AsyncSessionLocal() as db:
+        service = QualificationService(db)
+        if (await service.get_qualification(company.customer_id)).state is target:
+            return False
+    if company.qualification is QualificationOutcomeValue.QUALIFIED:
+        entries = [
+            ResultEntry(
+                criterion_key=key,
+                result=CriterionResultValue.PASS,
+                evidence_note=f"Sample data: {key} checked against the {company.name} file",
+            )
+            for key in _REQUIRED_KEYS
+        ]
+    else:
+        entries = [
+            ResultEntry(
+                criterion_key="revenue",
+                result=CriterionResultValue.FAIL,
+                observed_value="40000000 USD",
+                evidence_note="Sample data: FY25 accounts show revenue below the threshold",
+            )
+        ]
+    async with db_services.AsyncSessionLocal() as db:
+        await QualificationService(db).record_results(company.customer_id, entries, actor_id=None)
+    async with db_services.AsyncSessionLocal() as db:
+        await QualificationService(db).record_outcome(
+            company.customer_id,
+            company.qualification,
+            reason_codes=company.reason_codes,
+            note="Sample data",
+            actor_id=None,
+        )
+    return True
+
+
 async def load_sample_data() -> dict[str, dict[str, int | bool]]:
     """Bring every sample company to its intended state. Returns what each
     step changed, per company — all zeros and ``False`` on a repeat run."""
@@ -365,6 +430,7 @@ async def load_sample_data() -> dict[str, dict[str, int | bool]]:
             "marker_set": await _ensure_marker(company),
             "contacts_added": await _ensure_contacts(company),
             "activities_added": await _ensure_activities(company),
+            "qualification_recorded": await _ensure_qualification(company),
         }
     return report
 

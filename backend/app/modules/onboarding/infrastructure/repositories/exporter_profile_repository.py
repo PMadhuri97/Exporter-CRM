@@ -9,12 +9,14 @@ from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    ExporterJourney,
     ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.platform.database.adapters.repository import BaseRepository
 
 
@@ -64,6 +66,8 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         name_contains: str | None = None,
         source: ExporterSource | None = None,
         lifecycle_status: ExporterLifecycleStatus | None = None,
+        journey: ExporterJourney | None = None,
+        qualification: QualificationState | None = None,
         marker: ExporterMarker | None = None,
         exclude_ended: bool = False,
         limit: int = 50,
@@ -94,6 +98,10 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
             stmt = stmt.where(ExporterProfile.source == source)
         if lifecycle_status is not None:
             stmt = stmt.where(ExporterProfile.lifecycle_status == lifecycle_status)
+        if journey is not None:
+            stmt = stmt.where(ExporterProfile.journey == journey)
+        if qualification is not None:
+            stmt = stmt.where(ExporterProfile.qualification == qualification)
         if marker is not None:
             stmt = stmt.where(ExporterProfile.marker == marker)
         elif exclude_ended:

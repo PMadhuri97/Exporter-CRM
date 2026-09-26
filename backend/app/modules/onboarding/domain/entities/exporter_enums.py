@@ -65,3 +65,16 @@ class ExporterMarker(str, enum.Enum):
     NONE = "NONE"
     PAUSED = "PAUSED"
     ENDED = "ENDED"
+
+
+class ExporterJourney(str, enum.Enum):
+    """The company's main journey (architecture §3.2): forward only, and never
+    moved by hand — each move follows from a qualification outcome or a
+    background-check decision (``docs/contracts/company-record.md`` §3.1).
+
+    Added in migration 0017 beside the ten old ``ExporterLifecycleStatus``
+    values, which L2-04 retires."""
+
+    LEAD = "LEAD"
+    PROSPECT = "PROSPECT"
+    CUSTOMER = "CUSTOMER"

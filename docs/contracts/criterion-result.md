@@ -43,8 +43,8 @@ Thresholds live here, never in code: the CEO's "revenue of at least $100M" and
 | Field | Meaning | Rule |
 |---|---|---|
 | `key` | Stable identifier, lower snake case (`revenue`) | Unique. **Never changes** once created; it is what results point at |
-| `version` | Integer, starting at 1 | Increases by one on **every** change to the fields below except `label`. A result names the version it was judged against |
-| `label` | What a person reads (`Annual revenue`) | Editable without a new version |
+| `version` | Integer, starting at 1 | Increases by one on **every** change, `label` and `active` included. A result names the version it was judged against |
+| `label` | What a person reads (`Annual revenue`) | Changed by adding a version, like every other field (as built: a version row is never edited, so even a relabel keeps the old label readable) |
 | `kind` | `NUMBER_THRESHOLD`, `YES_NO`, `ALLOWED_VALUES` | Fixed for the life of the key; a different kind is a different criterion |
 | `threshold` | For `NUMBER_THRESHOLD`: a comparison (`AT_LEAST` or `AT_MOST`), a number, and a unit (`USD`, `YEARS`, ...) | Required for that kind, absent otherwise |
 | `allowed_values` | For `ALLOWED_VALUES`: the list of acceptable values | Required and non-empty for that kind, absent otherwise |
@@ -74,7 +74,7 @@ One criterion, checked against one company, once. Results are
 |---|---|---|
 | `id` | The result's own id | server-set |
 | `company_id` | The company (`company-record.md` §1) | yes |
-| `criterion_key`, `criterion_version` | Which criterion, at which version | yes. The version must exist; the criterion must be `active` when the result is recorded |
+| `criterion_key`, `criterion_version` | Which criterion, at which version | yes. **The server pins the criterion's current version**, which must be `active`; the caller names only the key |
 | `result` | `PASS`, `FAIL` or `UNKNOWN` | yes. `UNKNOWN` means "could not establish", not "not yet looked at" |
 | `observed_value` | What was found (`87000000 USD`, `true`, `"textiles"`) | no. Recorded as given; the service does not re-derive `result` from it |
 | `source` | Where the result came from: `MANUAL`, `IMPORT`, `RXIL`, `AUTOMATED` | yes |
@@ -242,14 +242,61 @@ Any of these being false is a bug:
 | Q2 | Is `NOT_YET_REVIEWED` written as a `qualification_initial` history row at company creation? Recommendation: **yes**, so every dimension's timeline starts at creation, the way the journey's does | Dev 2 with Dev 1 |
 | Q3 | Developer 1's acknowledgement of `event_type = "qualification_result"` (§6.1) | Dev 1 |
 | Q4 | RXIL package shape (architecture §11) — how its qualification part is expressed | RXIL; parser shared with Dev 4 |
+| Q5 | Do reason codes need an ADMIN route, or do they stay seeded settings changed by migration? | Programme lead |
 
 ---
+
+## 9a. As built (L2-09, L2-10)
+
+**Storage** (migration 0017): `qualification_criterion` (one immutable row per
+version), `qualification_reason_code`, `qualification_result` and
+`qualification_outcome`, plus `exporter_profile.qualification` and
+`exporter_profile.journey`. The criterion, result and outcome tables are
+append-only through `public.prevent_mutation()`. The database also enforces:
+the kind-dependent shape of a criterion; evidence on every `PASS`/`FAIL`
+result; a confidence only on an automated result, between 0 and 1; at least one
+reason code on a `NOT_QUALIFIED` outcome; one outcome chain per company (a
+single first outcome, and no outcome superseded twice).
+
+A result's evidence is `evidence_note` plus `evidence_refs`, a list of
+`{type, ref}` with `type` one of `document`, `verification_result`, `url`.
+
+**Routes** (all under `/api/v1/onboarding`):
+
+| Route | Who |
+|---|---|
+| `GET /qualification/criteria`, `GET /qualification/criteria/{key}/versions`, `GET /qualification/reason-codes` | every CRM reader |
+| `POST /qualification/criteria`, `POST /qualification/criteria/{key}/versions` | ADMIN only |
+| `GET /exporters/{id}/qualification` — gauge, journey, current suggestion, each criterion's standing, every result and outcome | every CRM reader |
+| `POST /exporters/{id}/qualification/results`, `POST /exporters/{id}/qualification/outcome` | OPERATIONS, COMPLIANCE, ADMIN |
+
+**What a request cannot say.** Who recorded or decided (always the signed-in
+user), and `source`, `decided_by_kind` or `confidence`: a result or outcome
+entered through the API is `MANUAL`, by a person. The other sources are for
+the platform's own callers of `QualificationService` (import, RXIL,
+automation), never a claim a request body can make.
+
+**Once `QUALIFIED`** — final in the prototype (A2) — the service refuses
+further results as well as further outcomes (409).
+
+**History event types.** Results: `qualification_result`. Outcomes: the
+derived `qualification_transition`, with `outcome_id`, `reason_codes`,
+`suggested_outcome` and `re_review` in the details and the note as the reason.
+The journey move a `QUALIFIED` outcome causes: dimension `journey`, event type
+`journey_transition` — distinct from the old ten-status rows' `lifecycle_*`
+event types until L2-04 retires them.
+
+**Reason codes** are seeded by 0017 and checked by the server; there is no
+route to manage them yet (open item Q5).
 
 ## 10. What is implemented today
 
 | Item | State |
 |---|---|
-| Criteria, results, outcomes, reason codes | **not built** — L2-09, L2-10, migration 0017 |
-| The `qualification` field on the company | **not built** — L2-05 |
-| `qualification` history rows | **not built** — the history writer accepts the dimension today; nothing writes it |
+| Criteria (versioned, ADMIN-managed, seven seeded), results, outcomes, re-review, suggestion | **implemented** (L2-09, L2-10, migration 0017) |
+| The `qualification` gauge on the company, and the `LEAD` -> `PROSPECT` move it drives | **implemented** (0017) |
+| `qualification` history rows (results and outcomes) | **implemented** |
+| A `qualification_initial` row at company creation (Q2) | **not built** — the column default stands for it |
+| Managing reason codes through the API | **not built** — Q5 |
+| RXIL and import callers | **not built** — L2-12, L2-13 |
 | Anything reused from the screening checklist | **none, by design** (§1) |

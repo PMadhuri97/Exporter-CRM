@@ -84,21 +84,27 @@ async def _create(client: AsyncClient, token: str, **fields):
 # ── The migration ─────────────────────────────────────────────────────────────
 
 
-async def test_0014_follows_0013_and_the_chain_has_one_head():
+def _script() -> ScriptDirectory:
     cfg = Config(str(BACKEND / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND / "migrations"))
-    script = ScriptDirectory.from_config(cfg)
-    assert script.get_heads() == [REVISION]
+    return ScriptDirectory.from_config(cfg)
+
+
+async def test_0014_follows_0013_and_the_chain_has_one_head():
+    script = _script()
+    [head] = script.get_heads()
     assert script.get_revision(REVISION).down_revision == "onboarding_0013_shared_history"
+    assert REVISION in {rev.revision for rev in script.walk_revisions("base", head)}
     assert len(REVISION) <= 32
 
 
-async def test_the_database_is_at_0014():
+async def test_the_database_is_at_the_head():
+    [head] = _script().get_heads()
     conn = _connect()
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT version_num FROM alembic_version")
-            assert REVISION in {row[0] for row in cur.fetchall()}
+            assert head in {row[0] for row in cur.fetchall()}
     finally:
         conn.close()
 
@@ -627,6 +633,7 @@ async def test_sample_data_is_deterministic_and_safe_to_run_again():
             "marker_set": False,
             "contacts_added": 0,
             "activities_added": 0,
+            "qualification_recorded": False,
         }
         for changes in second.values()
     ), second
