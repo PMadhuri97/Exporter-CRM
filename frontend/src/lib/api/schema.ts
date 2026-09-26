@@ -384,7 +384,7 @@ export interface paths {
         };
         /**
          * Search exporter profiles
-         * @description Filters by gstin, pan, iec, source, lifecycle status (exact match) and name (case-insensitive partial match on the company's name). The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
+         * @description Filters by gstin, pan, iec, source, lifecycle status, marker (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -437,6 +437,26 @@ export interface paths {
          * @description The only way lifecycle_status changes. Validates the move against the permitted-transition table; an illegal transition returns 409 and leaves the profile untouched.
          */
         post: operations["transition_exporter_lifecycle_status_api_v1_onboarding_exporters__customer_id__transition_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/marker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set or clear a company's PAUSED / ENDED marker
+         * @description A commercial pause or ending, recorded beside the journey and never instead of it: the journey does not move. PAUSED and ENDED need a reason; clearing to NONE does not. ENDED -> PAUSED is not a move (clear first), and a move to the current value is refused. Every change is recorded in the company's history with the signed-in user.
+         */
+        post: operations["set_exporter_marker_api_v1_onboarding_exporters__customer_id__marker_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1192,13 +1212,15 @@ export interface components {
          *     together — creates a named company through
          *     `ExporterProfileService.create_lead`, and requires the `Idempotency-Key`
          *     header so a retried submit returns the first company rather than a
-         *     second. The creator's contact details are never asked for: the service
-         *     takes them from the signed-in user.
+         *     second. The creator's contact details are never asked for.
          *
          *     Omitting both keeps the older unnamed path (`create_or_get_profile`),
          *     which some callers still use to open a company by `customer_id` alone.
-         *     Migration 0014 makes the name a required column on the company record,
-         *     at which point this path either takes a name too or goes.
+         *
+         *     `pan` must not already belong to another company (409). `gstins` may
+         *     hold several registrations; each must carry the PAN when one is given, and
+         *     one already held by another company is reported in `gstin_warnings`, not
+         *     refused. A company starts with no marker.
          *
          *     `customer_id` is optional: when omitted, the API mints a fresh one.
          */
@@ -1208,12 +1230,14 @@ export interface components {
             source: components["schemas"]["ExporterSource"];
             /** @default LEAD */
             lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
-            /** Gstin */
-            gstin?: string | null;
             /** Pan */
             pan?: string | null;
+            /** Gstins */
+            gstins?: string[] | null;
             /** Iec */
             iec?: string | null;
+            /** Cin */
+            cin?: string | null;
             /** Relationship Manager */
             relationship_manager?: string | null;
             /** Industry */
@@ -1248,6 +1272,18 @@ export interface components {
              * @description Present only when healthy
              */
             latency_ms?: string | null;
+        };
+        /**
+         * DuplicateGstinWarningResponse
+         * @description One of this company's GSTINs is also held by other companies — a
+         *     warning, never a refusal (architecture decision 4). The other companies
+         *     are named so staff can check they are not entering a duplicate.
+         */
+        DuplicateGstinWarningResponse: {
+            /** Gstin */
+            gstin: string;
+            /** Other Customer Ids */
+            other_customer_ids: string[];
         };
         /** ExporterActivityListResponse */
         ExporterActivityListResponse: {
@@ -1342,6 +1378,15 @@ export interface components {
          * @enum {string}
          */
         ExporterLifecycleStatus: "LEAD" | "CONTACTED" | "DATA_COLLECTION" | "VERIFICATION_IN_PROGRESS" | "COMPLIANCE_REVIEW" | "ONBOARDED" | "FINANCING_ELIGIBLE" | "ACTIVE" | "SUSPENDED" | "OFFBOARDED";
+        /**
+         * ExporterMarker
+         * @description A commercial pause or ending, kept apart from the journey (decision 3,
+         *     ``docs/contracts/company-record.md`` §3.3). Not a lifecycle stage, and not
+         *     a compliance hold: a compliance concern belongs on the background check.
+         *     ``PAUSED`` and ``ENDED`` always carry a reason.
+         * @enum {string}
+         */
+        ExporterMarker: "NONE" | "PAUSED" | "ENDED";
         /** ExporterProfileDetailResponse */
         ExporterProfileDetailResponse: {
             /**
@@ -1353,8 +1398,10 @@ export interface components {
             name: string | null;
             /** Country */
             country: string | null;
-            /** Gstin */
-            gstin: string | null;
+            /** Cin */
+            cin: string | null;
+            /** Gstins */
+            gstins: string[];
             /** Pan */
             pan: string | null;
             /** Iec */
@@ -1365,6 +1412,9 @@ export interface components {
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
             lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
+            marker: components["schemas"]["ExporterMarker"];
+            /** Marker Reason */
+            marker_reason: string | null;
             /** Industry */
             industry: string | null;
             /** Export Markets */
@@ -1394,13 +1444,14 @@ export interface components {
             contacts: components["schemas"]["ExporterContactResponse"][];
             /** Recent Activities */
             recent_activities: components["schemas"]["ExporterActivityResponse"][];
+            /** Gstin Warnings */
+            gstin_warnings: components["schemas"]["DuplicateGstinWarningResponse"][];
         };
         /**
          * ExporterProfileListItemResponse
          * @description One row of `GET /onboarding/exporters` — `ExporterProfileResponse`
-         *     plus the company's `name` and `country`, fetched for the whole page at
-         *     once (see `ExporterProfileService.search_profiles`), so a list screen never
-         *     needs a second, per-row lookup just to show a company name.
+         *     without the per-company collections, so a list screen never needs a
+         *     second, per-row lookup just to show a company.
          */
         ExporterProfileListItemResponse: {
             /**
@@ -1412,8 +1463,10 @@ export interface components {
             name: string | null;
             /** Country */
             country: string | null;
-            /** Gstin */
-            gstin: string | null;
+            /** Cin */
+            cin: string | null;
+            /** Gstins */
+            gstins: string[];
             /** Pan */
             pan: string | null;
             /** Iec */
@@ -1424,6 +1477,9 @@ export interface components {
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
             lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
+            marker: components["schemas"]["ExporterMarker"];
+            /** Marker Reason */
+            marker_reason: string | null;
             /** Industry */
             industry: string | null;
             /** Year Established */
@@ -1451,8 +1507,14 @@ export interface components {
              * Format: uuid
              */
             customer_id: string;
-            /** Gstin */
-            gstin: string | null;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            /** Cin */
+            cin: string | null;
+            /** Gstins */
+            gstins: string[];
             /** Pan */
             pan: string | null;
             /** Iec */
@@ -1463,6 +1525,9 @@ export interface components {
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
             lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
+            marker: components["schemas"]["ExporterMarker"];
+            /** Marker Reason */
+            marker_reason: string | null;
             /** Industry */
             industry: string | null;
             /** Export Markets */
@@ -1488,6 +1553,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Gstin Warnings */
+            gstin_warnings?: components["schemas"]["DuplicateGstinWarningResponse"][];
         };
         /** ExporterProfileSearchResponse */
         ExporterProfileSearchResponse: {
@@ -1992,6 +2059,17 @@ export interface components {
             level_name: string;
         };
         /**
+         * SetMarkerRequest
+         * @description Set or clear the company's commercial marker (company-record contract
+         *     §3.3). `reason` is required for `PAUSED` and `ENDED`, optional when
+         *     clearing to `NONE`. The marker never moves the journey.
+         */
+        SetMarkerRequest: {
+            marker: components["schemas"]["ExporterMarker"];
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * SubjectType
          * @description What kind of entity a case is about. Discriminates KYC from KYB.
          * @enum {string}
@@ -2092,22 +2170,28 @@ export interface components {
          * UpdateExporterProfileRequest
          * @description Update mutable CRM fields. A field left out is unchanged; a field sent
          *     as `null` (or an empty string or list) is cleared — the router keeps the
-         *     two apart with `exclude_unset=True`. Every change is recorded in the
-         *     company's history, with the signed-in user as the actor; there is no actor
-         *     field here, and `extra="forbid"` refuses one.
+         *     two apart with `exclude_unset=True`. `name` and `country` can be
+         *     corrected but not cleared. `gstins` replaces the whole list. Every change
+         *     is recorded in the company's history, with the signed-in user as the
+         *     actor; there is no actor field here, and `extra="forbid"` refuses one.
          *
-         *     `source` and `lifecycle_status` are deliberately not fields on this model
-         *     at all — with `extra="forbid"`, sending either is rejected at the API
-         *     boundary (422) before the request ever reaches
-         *     `ExporterProfileService.update_profile`'s own guard.
+         *     `source`, `lifecycle_status` and the marker are deliberately not fields
+         *     on this model at all — with `extra="forbid"`, sending any of them is
+         *     rejected at the API boundary (422). The marker has its own route.
          */
         UpdateExporterProfileRequest: {
-            /** Gstin */
-            gstin?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Country */
+            country?: string | null;
             /** Pan */
             pan?: string | null;
+            /** Gstins */
+            gstins?: string[] | null;
             /** Iec */
             iec?: string | null;
+            /** Cin */
+            cin?: string | null;
             /** Relationship Manager */
             relationship_manager?: string | null;
             /** Industry */
@@ -3217,6 +3301,7 @@ export interface operations {
                 name?: string | null;
                 source?: components["schemas"]["ExporterSource"] | null;
                 status?: components["schemas"]["ExporterLifecycleStatus"] | null;
+                marker?: components["schemas"]["ExporterMarker"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -3482,6 +3567,67 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    set_exporter_marker_api_v1_onboarding_exporters__customer_id__marker_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMarkerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExporterProfileResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Marker move not allowed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request body, or a PAUSED/ENDED marker without a reason */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

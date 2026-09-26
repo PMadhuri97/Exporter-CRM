@@ -587,3 +587,40 @@ class IdentifierSearchNotPermittedError(AnerBaseException):
             status_code=403,
             extensions={"role": role, "parameters": parameters},
         )
+
+
+class DuplicatePanError(AnerBaseException):
+    """A PAN already held by another company (architecture decision 4: a
+    duplicate PAN is refused, never merged). Names the company that holds it,
+    so the person entering the duplicate can open that one instead. The PAN
+    itself is not repeated: the caller sent it, and the response may be read
+    by roles that see it masked."""
+
+    def __init__(self, existing_customer_id: object) -> None:
+        self.existing_customer_id = existing_customer_id
+        super().__init__(
+            detail=(
+                f"This PAN is already held by company {existing_customer_id}; "
+                "a PAN belongs to one company only"
+            ),
+            error_code="DUPLICATE_PAN",
+            status_code=409,
+            extensions={"existing_customer_id": str(existing_customer_id)},
+        )
+
+
+class InvalidMarkerTransitionError(AnerBaseException):
+    """A marker move the company-record contract (§3.3) does not allow:
+    ``ENDED`` -> ``PAUSED`` (clear first), or a move to the value the marker
+    already has."""
+
+    def __init__(self, customer_id: object, from_marker: object, to_marker: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {customer_id}'s marker cannot move from {from_marker!r} "
+                f"to {to_marker!r}"
+            ),
+            error_code="INVALID_MARKER_TRANSITION",
+            status_code=409,
+            extensions={"from_marker": str(from_marker), "to_marker": str(to_marker)},
+        )

@@ -183,7 +183,7 @@ export function ExportersListPage() {
                       <MaskedValue value={profile.pan} />
                     </td>
                     <td className="px-4 py-3">
-                      <MaskedValue value={profile.gstin} />
+                      <MaskedValue value={profile.gstins[0] ?? null} />
                     </td>
                     <td className="px-4 py-3">
                       <StageChip status={profile.lifecycle_status} />

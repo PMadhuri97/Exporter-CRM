@@ -44,6 +44,7 @@ from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
 )
 from app.modules.onboarding.domain.entities.screening_review import ScreeningReviewItem
+from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
 
@@ -61,7 +62,7 @@ async def test_a_repeat_decision_does_not_overwrite_the_first_one():
     write mutated the first row, and the fact that the item had ever failed —
     and who failed it — was gone.
     """
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         service = ScreeningReviewService(db)
@@ -104,7 +105,7 @@ async def test_the_checklist_still_reads_as_current_state_only():
     taken — that would change what the endpoint returns without changing its
     schema, which is the failure mode worth guarding.
     """
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         service = ScreeningReviewService(db)
@@ -134,7 +135,7 @@ async def test_the_checklist_still_reads_as_current_state_only():
 
 async def test_every_decision_is_still_on_the_table_underneath():
     """`list_review_items` hides the superseded rows; it does not delete them."""
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         service = ScreeningReviewService(db)
@@ -169,7 +170,7 @@ async def test_the_database_refuses_to_update_a_recorded_decision():
     the mapped `IntegrityError`/`ProgrammingError` subclasses, since it is a
     user-raised condition rather than a constraint violation.
     """
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         item = await ScreeningReviewService(db).upsert_review_item(
@@ -203,7 +204,7 @@ async def test_an_unknown_item_key_is_rejected():
     `app/main.py` already registers for every `AnerBaseException` — so the
     router needs no change to return the right status.
     """
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ValidationError) as excinfo:
@@ -221,7 +222,7 @@ async def test_an_unknown_item_key_is_rejected():
 
 async def test_a_rejected_item_key_writes_nothing():
     """The validation has to happen before the insert, not alongside it."""
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ValidationError):
@@ -252,7 +253,7 @@ async def test_every_key_the_frontend_renders_is_accepted(item_key: str):
     Parametrized so that adding a key to `VALID_ITEM_KEYS` without it actually
     being writable fails here, rather than in a reviewer's browser.
     """
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         item = await ScreeningReviewService(db).upsert_review_item(
@@ -503,10 +504,9 @@ async def test_getting_an_existing_profile_writes_no_second_row():
 
 async def test_creating_a_lead_records_its_initial_status():
     async with db_services.AsyncSessionLocal() as db:
-        profile, _identity, created = await ExporterProfileService(db).create_lead(
+        profile, created = await ExporterProfileService(db).create_lead(
             name=f"Lead {uuid.uuid4().hex[:8]}",
             country="IN",
-            created_by_email="rep@example.com",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
             actor_id="rm-jordan",

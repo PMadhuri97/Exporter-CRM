@@ -54,3 +54,14 @@ class ExporterLifecycleStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     SUSPENDED = "SUSPENDED"
     OFFBOARDED = "OFFBOARDED"
+
+
+class ExporterMarker(str, enum.Enum):
+    """A commercial pause or ending, kept apart from the journey (decision 3,
+    ``docs/contracts/company-record.md`` §3.3). Not a lifecycle stage, and not
+    a compliance hold: a compliance concern belongs on the background check.
+    ``PAUSED`` and ``ENDED`` always carry a reason."""
+
+    NONE = "NONE"
+    PAUSED = "PAUSED"
+    ENDED = "ENDED"

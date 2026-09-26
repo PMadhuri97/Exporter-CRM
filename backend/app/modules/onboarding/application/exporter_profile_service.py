@@ -31,7 +31,7 @@ RXIL lands.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 import structlog
 from sqlalchemy.exc import IntegrityError
@@ -47,8 +47,10 @@ from app.modules.onboarding.domain.entities.exporter_activity import ExporterAct
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
+    ExporterMarker,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     HISTORY_DIMENSION_JOURNEY,
     LIFECYCLE_INITIAL_EVENT,
@@ -56,18 +58,25 @@ from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.exporter_profile_views import (
-    CompanyIdentity,
+    DuplicateGstinWarning,
     ExporterProfileDetail,
     ExporterProfileListItem,
 )
+from app.modules.onboarding.domain.tax_identifiers import (
+    check_gstins_match_pan,
+    normalise_cin,
+    normalise_country,
+    normalise_gstins,
+    normalise_name,
+    normalise_pan,
+)
 from app.modules.onboarding.exceptions import (
+    DuplicatePanError,
     ExporterLifecycleComplianceRequiredError,
     ExporterProfileNotFoundError,
     ExporterSourceImmutableError,
     InvalidExporterLifecycleTransitionError,
-)
-from app.modules.onboarding.infrastructure.legacy_company_identity import (
-    LegacyCompanyIdentityStore,
+    InvalidMarkerTransitionError,
 )
 from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
@@ -92,17 +101,29 @@ _OP_CREATE = "create_or_get_profile"
 #: ``PERMITTED_LIFECYCLE_TRANSITIONS``) and must never be set as a bare field
 #: update that bypasses that table.
 _UPDATE_FORBIDDEN_FIELDS = frozenset(
-    {"source", "customer_id", "id", "date_added", "lifecycle_status", "created_at", "updated_at"}
+    {
+        "source",
+        "customer_id",
+        "id",
+        "date_added",
+        "lifecycle_status",
+        "marker",
+        "marker_reason",
+        "created_at",
+        "updated_at",
+    }
 )
 
-#: The company fields staff may edit through `update_profile`, each of which
-#: may also be cleared (L2-07). The identity — name and country — is not here:
-#: until migration 0014 it lives in `LegacyCompanyIdentityStore`, and editing it
-#: there would mean rewriting a legacy onboarding row.
+#: The company fields staff may edit through `update_profile` (L2-07), with
+#: every change recorded in the history log. Each may be cleared except those
+#: in `_NOT_CLEARABLE`.
 _EDITABLE_FIELDS = frozenset(
     {
-        "gstin",
+        "name",
+        "country",
+        "cin",
         "pan",
+        "gstins",
         "iec",
         "relationship_manager",
         "industry",
@@ -113,17 +134,32 @@ _EDITABLE_FIELDS = frozenset(
     }
 )
 
-#: Tax identifiers are written to the history log masked. The history read
-#: route shows a row's details to every CRM reader, including roles that only
-#: ever see these identifiers masked on the company itself, so a full value in
-#: the log would undo the company route's masking (company-record contract,
-#: open item O5).
-_MASKED_IN_HISTORY = frozenset({"gstin", "pan", "iec"})
+#: A named company keeps its name and country: they can be corrected, never
+#: emptied (company-record contract §2.1).
+_NOT_CLEARABLE = frozenset({"name", "country"})
 
-#: History dimension and event type for an edit of a company field
+#: Identifiers written to the history log masked. The history read route
+#: shows a row's details to every CRM reader, including roles that only ever
+#: see these masked on the company itself, so a full value in the log would
+#: undo the company route's masking (company-record contract §6, O5).
+_MASKED_IN_HISTORY = frozenset({"gstins", "pan", "iec", "cin"})
+
+#: History dimensions and event types this service writes
 #: (`docs/contracts/company-record.md` §6).
 HISTORY_DIMENSION_PROFILE = "profile"
 PROFILE_EDIT_EVENT = "profile_transition"
+HISTORY_DIMENSION_MARKER = "marker"
+
+#: The marker moves the company-record contract allows (§3.3). `True` means a
+#: reason is required. Anything absent — `ENDED` -> `PAUSED`, or a move to the
+#: current value — is refused.
+_MARKER_MOVES: dict[tuple[ExporterMarker, ExporterMarker], bool] = {
+    (ExporterMarker.NONE, ExporterMarker.PAUSED): True,
+    (ExporterMarker.NONE, ExporterMarker.ENDED): True,
+    (ExporterMarker.PAUSED, ExporterMarker.ENDED): True,
+    (ExporterMarker.PAUSED, ExporterMarker.NONE): False,
+    (ExporterMarker.ENDED, ExporterMarker.NONE): False,
+}
 
 #: The permitted `(from, to)` lifecycle_status edges — follows `cases`'
 #: `PERMITTED_TRANSITIONS` pattern: a module-level frozenset, not a
@@ -185,10 +221,6 @@ class ExporterProfileService:
         self._profiles = ExporterProfileRepository(db)
         self._contacts = ExporterContactRepository(db)
         self._activities = ExporterActivityRepository(db)
-        # A company's name and country, until the company record has columns
-        # for them (migration 0014). The only way this service reaches the
-        # legacy onboarding_request table, and only through this store.
-        self._identities = LegacyCompanyIdentityStore(db)
         # The shared history writer, not a repository: every history row this
         # service writes goes through the one writer all four developers use.
         self._history = HistoryService(db)
@@ -202,10 +234,10 @@ class ExporterProfileService:
         country: str,
         idempotency_key: str,
         source: ExporterSource,
-        created_by_email: str,
         customer_id: uuid.UUID | None = None,
-        gstin: str | None = None,
+        cin: str | None = None,
         pan: str | None = None,
+        gstins: list[str] | None = None,
         iec: str | None = None,
         relationship_manager: str | None = None,
         industry: str | None = None,
@@ -215,62 +247,23 @@ class ExporterProfileService:
         website: str | None = None,
         correlation_id: str | None = None,
         actor_id: str | None = None,
-    ) -> tuple[ExporterProfile, CompanyIdentity, bool]:
-        """Create a company with its identity — name and country — in one
-        transaction, as a `LEAD`.
+    ) -> tuple[ExporterProfile, bool]:
+        """Create a named company as a `LEAD`: its identity — name and
+        country — is written on the company record itself (migration 0014).
 
-        The identity goes to `LegacyCompanyIdentityStore`, the one place the
-        CRM still keeps it until migration 0014 gives the company record its
-        own columns (see that module's docstring). Nothing here knows how the
-        store keeps it.
+        `idempotency_key` is required here: a replay returns the company the
+        first call created, with `created=False`, and creates nothing.
 
-        `idempotency_key` makes a retried create safe: a replay returns the
-        company the first call created, with `created=False`, and creates
-        nothing. `created_by_email` is the signed-in staff member's address,
-        which the store needs; it is never asked of the caller as a field.
-
-        Returns `(profile, identity, created)`. A *profile-level* race (the
-        `except IntegrityError` below: this `customer_id` collided with a
-        concurrent, unrelated write) still counts as `created=True`: this
-        call's identity really was newly stored.
+        Returns `(profile, created)`.
         """
-        customer_id = customer_id or uuid.uuid4()
-        identity = CompanyIdentity(name=name, country=country)
-
-        replayed_id = await self._identities.record(
-            customer_id,
-            identity,
-            idempotency_key=idempotency_key,
-            created_by_email=created_by_email,
-            actor_id=actor_id,
-            correlation_id=correlation_id,
-        )
-        if replayed_id is not None:
-            # A retried "Add Exporter" submission: make sure the original
-            # company has a profile too, so a retry is idempotent end-to-end.
-            profile, _created = await self.create_or_get_profile(
-                replayed_id,
-                source=source,
-                gstin=gstin,
-                pan=pan,
-                iec=iec,
-                relationship_manager=relationship_manager,
-                industry=industry,
-                export_markets=export_markets,
-                products=products,
-                year_established=year_established,
-                website=website,
-                actor_id=actor_id,
-            )
-            original = await self._identities.get(replayed_id)
-            return profile, original or identity, False
-
-        profile = ExporterProfile(
-            customer_id=customer_id,
+        return await self.create_or_get_profile(
+            customer_id or uuid.uuid4(),
             source=source,
-            lifecycle_status=ExporterLifecycleStatus.LEAD,
-            gstin=gstin,
+            name=name,
+            country=country,
+            cin=cin,
             pan=pan,
+            gstins=gstins,
             iec=iec,
             relationship_manager=relationship_manager,
             industry=industry,
@@ -278,41 +271,11 @@ class ExporterProfileService:
             products=products,
             year_established=year_established,
             website=website,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            actor_id=actor_id,
+            history_source="exporter_profile_service.create_lead",
         )
-        try:
-            async with self._db.begin_nested():
-                self._db.add(profile)
-                await self._db.flush()
-        except IntegrityError:
-            existing_profile = await self._profiles.get_by_customer_id(customer_id)
-            if existing_profile is None:
-                raise
-            logger.info(
-                "exporter_profile.create_lead.profile_lost_race",
-                customer_id=str(customer_id),
-            )
-            profile = existing_profile
-        else:
-            # Only the writer that actually created the profile records its
-            # initial status; the lost-race winner already recorded its own.
-            await self._record_lifecycle(
-                customer_id,
-                from_status=None,
-                to_status=ExporterLifecycleStatus.LEAD,
-                actor_id=actor_id,
-                event_type=LIFECYCLE_INITIAL_EVENT,
-                source="exporter_profile_service.create_lead",
-            )
-
-        await self._db.commit()
-        await self._db.refresh(profile)
-
-        logger.info(
-            "exporter_profile.create_lead.ok",
-            customer_id=str(customer_id),
-            source=source.value,
-        )
-        return profile, identity, True
 
     # ── Create ────────────────────────────────────────────────────────────
 
@@ -322,8 +285,11 @@ class ExporterProfileService:
         *,
         source: ExporterSource,
         lifecycle_status: ExporterLifecycleStatus = ExporterLifecycleStatus.LEAD,
-        gstin: str | None = None,
+        name: str | None = None,
+        country: str | None = None,
+        cin: str | None = None,
         pan: str | None = None,
+        gstins: list[str] | None = None,
         iec: str | None = None,
         relationship_manager: str | None = None,
         industry: str | None = None,
@@ -335,6 +301,7 @@ class ExporterProfileService:
         correlation_id: str | None = None,
         actor_id: str | None = None,
         compliance_authorized: bool = False,
+        history_source: str = "exporter_profile_service.create_or_get_profile",
     ) -> tuple[ExporterProfile, bool]:
         """Create an exporter_profile, or return the one already on file.
 
@@ -344,12 +311,26 @@ class ExporterProfileService:
         runs versus when this relies on ``uq_exporter_profile_customer_id``
         alone.
 
+        Tax identifiers are normalised and checked before anything is written
+        (`domain/tax_identifiers.py`): a malformed PAN, GSTIN or CIN, or a
+        GSTIN that does not carry the PAN, is a 422. A PAN another company
+        already holds is refused with `DuplicatePanError` (409) — never
+        merged. A GSTIN another company holds is allowed and reported by
+        `duplicate_gstin_warnings`.
+
         Raises ``ExporterLifecycleComplianceRequiredError`` (403) for a
         ``lifecycle_status`` in ``COMPLIANCE_DECIDED_STATUSES`` unless
         ``compliance_authorized``.
         """
         if lifecycle_status in COMPLIANCE_DECIDED_STATUSES and not compliance_authorized:
             raise ExporterLifecycleComplianceRequiredError(customer_id, lifecycle_status)
+
+        name = normalise_name(name)
+        country = normalise_country(country)
+        pan = normalise_pan(pan)
+        cin = normalise_cin(cin)
+        gstin_values = normalise_gstins(gstins)
+        check_gstins_match_pan(pan, gstin_values)
 
         if idempotency_key is not None:
             reg_result = await register_key(
@@ -387,11 +368,15 @@ class ExporterProfileService:
         if existing is not None:
             return existing, False
 
+        await self._refuse_duplicate_pan(pan, customer_id)
+
         profile = ExporterProfile(
             customer_id=customer_id,
             source=source,
             lifecycle_status=lifecycle_status,
-            gstin=gstin,
+            name=name,
+            country=country,
+            cin=cin,
             pan=pan,
             iec=iec,
             relationship_manager=relationship_manager,
@@ -400,6 +385,7 @@ class ExporterProfileService:
             products=products,
             year_established=year_established,
             website=website,
+            gstin_rows=[ExporterGstin(customer_id=customer_id, gstin=g) for g in gstin_values],
         )
 
         try:
@@ -411,9 +397,11 @@ class ExporterProfileService:
             # branch exactly: the losing writer's idempotency record (if any)
             # is left uncompleted rather than force-completed with someone
             # else's result — the same accepted edge case that pattern
-            # already carries.
+            # already carries. A concurrent writer may instead have taken the
+            # PAN (`uq_exporter_profile_pan`); that is a refusal, not a race.
             winner = await self._profiles.get_by_customer_id(customer_id)
             if winner is None:
+                await self._refuse_duplicate_pan(pan, customer_id)
                 raise
             logger.info(
                 "exporter_profile.create.lost_race", customer_id=str(customer_id)
@@ -426,7 +414,7 @@ class ExporterProfileService:
             to_status=lifecycle_status,
             actor_id=actor_id,
             event_type=LIFECYCLE_INITIAL_EVENT,
-            source="exporter_profile_service.create_or_get_profile",
+            source=history_source,
         )
 
         if idempotency_key is not None:
@@ -460,8 +448,13 @@ class ExporterProfileService:
 
         `changes` holds only the fields the caller supplied. **A field that is
         absent is left alone; a field present with `None` — or an empty string
-        or empty list — is cleared.** The router builds `changes` from the
+        or empty list — is cleared** (except `name` and `country`, which can be
+        corrected but not emptied). The router builds `changes` from the
         request with `exclude_unset=True`, which is what keeps the two apart.
+
+        Identifiers are checked on the company's state *after* the edit: a new
+        PAN must fit the GSTINs being kept, and new GSTINs must carry the PAN.
+        `gstins` replaces the company's whole list.
 
         Each field whose value actually changes writes one `profile` history
         row through the shared `HistoryService`: `to_value` names the field,
@@ -469,8 +462,7 @@ class ExporterProfileService:
         every row of the same edit. A supplied value equal to the current one
         writes nothing. The values live in `details` rather than in
         `from_value`/`to_value` because those columns hold 64 characters and
-        refuse an empty value, and a website, a list of markets, or a cleared
-        field fits neither (company-record contract, open item O7).
+        refuse an empty value (company-record contract §6, O7).
 
         The column writes and the history rows are committed together, once,
         at the end — the writer flushes and never commits — so a company can
@@ -480,10 +472,9 @@ class ExporterProfileService:
         `actor_id` is the signed-in user, from the session. It is a separate
         keyword, never one of `changes`.
 
-        Never touches `source` (immutable — see `ExporterSourceImmutableError`)
-        or `lifecycle_status` (owned by `transition_lifecycle_status`), both
-        rejected here as well as by the request schema and, for `source`, the
-        database trigger.
+        Never touches `source` (immutable — see `ExporterSourceImmutableError`),
+        `lifecycle_status` (owned by `transition_lifecycle_status`) or the
+        marker (owned by `set_marker`).
         """
         if "source" in changes:
             raise ExporterSourceImmutableError(customer_id)
@@ -492,7 +483,7 @@ class ExporterProfileService:
             raise ValidationError(
                 f"update_profile cannot set {sorted(forbidden)}: use the dedicated "
                 f"write path for each (transition_lifecycle_status for lifecycle_status; "
-                f"none for identity/immutable columns)"
+                f"set_marker for the marker; none for identity/immutable columns)"
             )
         unknown = set(changes) - _EDITABLE_FIELDS
         if unknown:
@@ -501,16 +492,53 @@ class ExporterProfileService:
             )
 
         profile = await self._require_profile(customer_id)
+        wanted = {field: _cleared_to_none(value) for field, value in changes.items()}
+        for field in _NOT_CLEARABLE.intersection(wanted):
+            if wanted[field] is None:
+                raise ValidationError(f"{field} cannot be cleared, only corrected")
+        if wanted.get("name") is not None:
+            wanted["name"] = normalise_name(wanted["name"])  # type: ignore[arg-type]
+        if wanted.get("country") is not None:
+            wanted["country"] = normalise_country(wanted["country"])  # type: ignore[arg-type]
+        if "pan" in wanted:
+            wanted["pan"] = normalise_pan(wanted["pan"])  # type: ignore[arg-type]
+        if "cin" in wanted:
+            wanted["cin"] = normalise_cin(wanted["cin"])  # type: ignore[arg-type]
+        if "gstins" in wanted:
+            wanted["gstins"] = normalise_gstins(wanted["gstins"]) or None  # type: ignore[arg-type]
+        check_gstins_match_pan(
+            wanted.get("pan", profile.pan),  # type: ignore[arg-type]
+            wanted.get("gstins", profile.gstins) or [],  # type: ignore[arg-type]
+        )
+        if wanted.get("pan") is not None and wanted["pan"] != profile.pan:
+            await self._refuse_duplicate_pan(wanted["pan"], customer_id)  # type: ignore[arg-type]
+
         edits: dict[str, tuple[object, object]] = {}
-        for field in sorted(changes):
-            new_value = _cleared_to_none(changes[field])
-            old_value = getattr(profile, field)
-            if new_value != old_value:
-                edits[field] = (old_value, new_value)
+        for field in sorted(wanted):
+            if field == "gstins":
+                old_value: object = profile.gstins or None
+                # A list in a different order is the same set of registrations.
+                if set(wanted[field] or []) == set(profile.gstins):  # type: ignore[arg-type]
+                    continue
+            else:
+                old_value = getattr(profile, field)
+                if wanted[field] == old_value:
+                    continue
+            edits[field] = (old_value, wanted[field])
 
         edit_id = str(uuid.uuid4())
         for field, (old_value, new_value) in edits.items():
-            setattr(profile, field, new_value)
+            if field == "gstins":
+                # Keep the row of every GSTIN that stays: the unit of work
+                # inserts before it deletes, so re-creating a kept GSTIN would
+                # collide with its own old row on uq_exporter_gstin_customer_gstin.
+                kept = {row.gstin: row for row in profile.gstin_rows}
+                profile.gstin_rows = [
+                    kept.get(g) or ExporterGstin(customer_id=customer_id, gstin=g)
+                    for g in (new_value or [])  # type: ignore[union-attr]
+                ]
+            else:
+                setattr(profile, field, new_value)
             await self._history.record(
                 customer_id,
                 dimension=HISTORY_DIMENSION_PROFILE,
@@ -526,7 +554,14 @@ class ExporterProfileService:
                 },
             )
 
-        await self._db.commit()
+        try:
+            await self._db.commit()
+        except IntegrityError:
+            # A concurrent writer took the PAN between the check and the commit.
+            await self._db.rollback()
+            if "pan" in edits:
+                await self._refuse_duplicate_pan(wanted["pan"], customer_id)  # type: ignore[arg-type]
+            raise
         await self._db.refresh(profile)
 
         logger.info(
@@ -536,6 +571,74 @@ class ExporterProfileService:
             actor_id=actor_id,
         )
         return profile
+
+    # ── Marker (L2-08) ──────────────────────────────────────────────────────
+
+    async def set_marker(
+        self,
+        customer_id: uuid.UUID,
+        marker: ExporterMarker,
+        *,
+        reason: str | None,
+        actor_id: str | None,
+    ) -> ExporterProfile:
+        """Set or clear the company's `PAUSED`/`ENDED` marker.
+
+        The marker is a commercial state beside the journey, never a journey
+        stage: this changes the marker and nothing else — not
+        `lifecycle_status`, not any gauge (decision 3). Allowed moves and
+        which of them need a reason are `_MARKER_MOVES` (company-record
+        contract §3.3); anything else is `InvalidMarkerTransitionError` (409).
+        Setting `PAUSED` or `ENDED` without a reason is a 422, and the
+        database refuses it too (`ck_exporter_profile_marker_reason`).
+
+        The marker, its current reason and one `marker` history row — from,
+        to, reason, the signed-in user — commit together.
+        """
+        profile = await self._require_profile(customer_id)
+        from_marker = profile.marker
+        needs_reason = _MARKER_MOVES.get((from_marker, marker))
+        if needs_reason is None:
+            raise InvalidMarkerTransitionError(customer_id, from_marker.value, marker.value)
+        cleaned_reason = (reason or "").strip() or None
+        if needs_reason and cleaned_reason is None:
+            raise ValidationError(f"a reason is required to set the marker to {marker.value}")
+
+        profile.marker = marker
+        profile.marker_reason = cleaned_reason if marker is not ExporterMarker.NONE else None
+        await self._history.record(
+            customer_id,
+            dimension=HISTORY_DIMENSION_MARKER,
+            from_value=from_marker.value,
+            to_value=marker.value,
+            actor_id=actor_id,
+            reason=cleaned_reason,
+            source="exporter_profile_service.set_marker",
+        )
+        await self._db.commit()
+        await self._db.refresh(profile)
+
+        logger.info(
+            "exporter_profile.set_marker.ok",
+            customer_id=str(customer_id),
+            from_marker=from_marker.value,
+            to_marker=marker.value,
+            actor_id=actor_id,
+        )
+        return profile
+
+    # ── Duplicate GSTINs (warning, never refusal) ───────────────────────────
+
+    async def duplicate_gstin_warnings(
+        self, customer_id: uuid.UUID, gstins: Iterable[str]
+    ) -> list[DuplicateGstinWarning]:
+        """One warning per GSTIN of this company that another company also
+        holds (decision 4: warn, never block). Empty when there are none."""
+        holders = await self._profiles.other_holders_of_gstins(list(gstins), customer_id)
+        return [
+            DuplicateGstinWarning(gstin=gstin, other_customer_ids=tuple(ids))
+            for gstin, ids in holders.items()
+        ]
 
     # ── Search ────────────────────────────────────────────────────────────
 
@@ -548,58 +651,64 @@ class ExporterProfileService:
         name_contains: str | None = None,
         source: ExporterSource | None = None,
         lifecycle_status: ExporterLifecycleStatus | None = None,
+        marker: ExporterMarker | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfileListItem]:
         """Filtered company search.
 
         `name_contains` is a case-insensitive partial match on the company's
-        name. The matching company ids come from the identity store, then the
-        profile query filters by that set; the page's names and countries are
-        then fetched in one more query for the whole page — never one per row.
-        A company with no name on file never matches a name search and lists
-        with `name = None`.
+        name. `gstin` matches any of a company's GSTINs; `pan`, `gstin` and
+        `iec` are normalised first, so case and surrounding spaces do not
+        matter.
+
+        **`ENDED` companies are left out of the default working list and stay
+        searchable** (assumption A11): with no `marker` filter and no search
+        term (`name_contains`, `pan`, `gstin`, `iec`), `ENDED` companies are
+        excluded; any search term includes them; `marker=ENDED` lists only
+        them. `source` and `lifecycle_status` are list filters, not search
+        terms, and do not bring `ENDED` companies back.
         """
-        name_matches: list[uuid.UUID] | None = None
-        if name_contains is not None:
-            name_matches = await self._identities.find_company_ids_by_name(name_contains)
-            if not name_matches:
-                return []
+        pan = _normalise_term(pan)
+        gstin = _normalise_term(gstin)
+        iec = _normalise_term(iec)
+        searching = any(term is not None for term in (name_contains, pan, gstin, iec))
 
         profiles = await self._profiles.search(
             gstin=gstin,
             pan=pan,
             iec=iec,
-            customer_ids=name_matches,
+            name_contains=name_contains,
             source=source,
             lifecycle_status=lifecycle_status,
+            marker=marker,
+            exclude_ended=marker is None and not searching,
             limit=limit,
             offset=offset,
         )
-        identities = await self._identities.get_many(p.customer_id for p in profiles)
-        items: list[ExporterProfileListItem] = []
-        for profile in profiles:
-            identity = identities.get(profile.customer_id)
-            items.append(
-                ExporterProfileListItem(
-                    customer_id=profile.customer_id,
-                    name=identity.name if identity else None,
-                    country=identity.country if identity else None,
-                    gstin=profile.gstin,
-                    pan=profile.pan,
-                    iec=profile.iec,
-                    source=profile.source,
-                    relationship_manager=profile.relationship_manager,
-                    relationship_manager_user_id=profile.relationship_manager_user_id,
-                    lifecycle_status=profile.lifecycle_status,
-                    industry=profile.industry,
-                    year_established=profile.year_established,
-                    date_added=profile.date_added,
-                    created_at=profile.created_at,
-                    updated_at=profile.updated_at,
-                )
+        return [
+            ExporterProfileListItem(
+                customer_id=profile.customer_id,
+                name=profile.name,
+                country=profile.country,
+                cin=profile.cin,
+                gstins=tuple(profile.gstins),
+                pan=profile.pan,
+                iec=profile.iec,
+                source=profile.source,
+                relationship_manager=profile.relationship_manager,
+                relationship_manager_user_id=profile.relationship_manager_user_id,
+                lifecycle_status=profile.lifecycle_status,
+                marker=profile.marker,
+                marker_reason=profile.marker_reason,
+                industry=profile.industry,
+                year_established=profile.year_established,
+                date_added=profile.date_added,
+                created_at=profile.created_at,
+                updated_at=profile.updated_at,
             )
-        return items
+            for profile in profiles
+        ]
 
     # ── Lifecycle transition ─────────────────────────────────────────────
 
@@ -729,26 +838,30 @@ class ExporterProfileService:
     async def get_profile_detail(
         self, customer_id: uuid.UUID, *, recent_activities_limit: int = 20
     ) -> ExporterProfileDetail:
-        """The company record, its identity, and its contacts and recent
-        activities — all queried by `customer_id` alone."""
+        """The company record, its contacts and recent activities, and a
+        warning for each of its GSTINs another company also holds — all
+        queried by `customer_id` alone."""
         profile = await self._require_profile(customer_id)
-        identity = await self._identities.get(customer_id)
         contacts = await self._contacts.list_by_customer(customer_id)
         activities = await self._activities.list_by_customer(
             customer_id, limit=recent_activities_limit
         )
+        warnings = await self.duplicate_gstin_warnings(customer_id, profile.gstins)
 
         return ExporterProfileDetail(
             customer_id=profile.customer_id,
-            name=identity.name if identity else None,
-            country=identity.country if identity else None,
-            gstin=profile.gstin,
+            name=profile.name,
+            country=profile.country,
+            cin=profile.cin,
+            gstins=tuple(profile.gstins),
             pan=profile.pan,
             iec=profile.iec,
             source=profile.source,
             relationship_manager=profile.relationship_manager,
             relationship_manager_user_id=profile.relationship_manager_user_id,
             lifecycle_status=profile.lifecycle_status,
+            marker=profile.marker,
+            marker_reason=profile.marker_reason,
             industry=profile.industry,
             export_markets=profile.export_markets,
             products=profile.products,
@@ -759,6 +872,7 @@ class ExporterProfileService:
             updated_at=profile.updated_at,
             contacts=tuple(_contact_view(c) for c in contacts),
             recent_activities=tuple(_activity_view(a) for a in activities),
+            gstin_warnings=tuple(warnings),
         )
 
     # ── Internals ─────────────────────────────────────────────────────────
@@ -768,6 +882,22 @@ class ExporterProfileService:
         if profile is None:
             raise ExporterProfileNotFoundError(customer_id)
         return profile
+
+    async def _refuse_duplicate_pan(self, pan: str | None, customer_id: uuid.UUID) -> None:
+        """Raise `DuplicatePanError` if another company already holds `pan`."""
+        if pan is None:
+            return
+        holder = await self._profiles.get_by_pan(pan)
+        if holder is not None and holder.customer_id != customer_id:
+            raise DuplicatePanError(holder.customer_id)
+
+
+def _normalise_term(value: str | None) -> str | None:
+    """An exact-match search term, normalised like the stored value."""
+    if value is None:
+        return None
+    cleaned = value.strip().upper()
+    return cleaned or None
 
 
 def _cleared_to_none(value: object) -> object:
@@ -780,10 +910,12 @@ def _cleared_to_none(value: object) -> object:
 
 
 def _history_value(field: str, value: object) -> object:
-    """A field's value as the history log stores it: tax identifiers masked."""
+    """A field's value as the history log stores it: identifiers masked."""
     if value is None:
         return None
     if field in _MASKED_IN_HISTORY:
+        if isinstance(value, list):
+            return [mask_identifier(str(item)) for item in value]
         return mask_identifier(str(value))
     return value
 

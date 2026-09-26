@@ -30,6 +30,7 @@ from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
 
@@ -55,7 +56,7 @@ async def _rows_for(company_id: uuid.UUID) -> list[ExporterLifecycleHistory]:
 
 
 async def test_record_writes_one_row_with_every_contracted_field():
-    company_id = uuid.uuid4()
+    company_id = await make_company()
     deal_id = uuid.uuid4()
 
     async with db_services.AsyncSessionLocal() as db:
@@ -86,7 +87,7 @@ async def test_record_writes_one_row_with_every_contracted_field():
 async def test_record_returns_the_flushed_row():
     """The caller gets the row back with its id, so a decision that needs to
     reference what it just recorded does not have to re-query for it."""
-    company_id = uuid.uuid4()
+    company_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         row = await HistoryService(db).record(
@@ -106,7 +107,7 @@ async def test_event_type_is_derived_from_the_dimension_and_direction():
     """`<dimension>_initial` when a value is set at creation,
     `<dimension>_transition` when it moves — so a new gauge gets consistent
     naming without every writer inventing its own."""
-    company_id = uuid.uuid4()
+    company_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         service = HistoryService(db)
@@ -129,7 +130,7 @@ async def test_event_type_is_derived_from_the_dimension_and_direction():
 async def test_an_explicit_event_type_overrides_the_derived_one():
     """The journey needs this: its rows have always been `lifecycle_transition`,
     a downstream consumer polls for that name, and thousands of rows carry it."""
-    company_id = uuid.uuid4()
+    company_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         await HistoryService(db).record(
@@ -164,7 +165,7 @@ async def test_a_bad_field_is_refused_before_it_reaches_postgres(kwargs: dict, m
 async def test_a_dimension_nobody_has_built_yet_is_accepted():
     """No migration, no enum, no change to this service: a gauge that does not
     exist yet can be recorded the day its writer lands."""
-    company_id = uuid.uuid4()
+    company_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         await HistoryService(db).record(
@@ -185,7 +186,7 @@ async def test_record_flushes_without_committing():
     This is the narrow proof that `record` flushed rather than committed: a
     committed row would already be readable from another session at this point.
     """
-    company_id = uuid.uuid4()
+    company_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         await HistoryService(db).record(
@@ -361,7 +362,7 @@ async def _seed_mixed(company_id: uuid.UUID, deal_id: uuid.UUID) -> None:
 
 
 async def test_an_unfiltered_read_returns_every_dimension():
-    company_id, deal_id = uuid.uuid4(), uuid.uuid4()
+    company_id, deal_id = await make_company(), uuid.uuid4()
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
@@ -372,7 +373,7 @@ async def test_an_unfiltered_read_returns_every_dimension():
 
 
 async def test_a_dimension_filter_narrows_the_read_and_the_total():
-    company_id, deal_id = uuid.uuid4(), uuid.uuid4()
+    company_id, deal_id = await make_company(), uuid.uuid4()
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
@@ -385,7 +386,7 @@ async def test_a_dimension_filter_narrows_the_read_and_the_total():
 
 
 async def test_a_deal_read_returns_only_that_deals_rows():
-    company_id, deal_id = uuid.uuid4(), uuid.uuid4()
+    company_id, deal_id = await make_company(), uuid.uuid4()
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
@@ -406,7 +407,7 @@ async def test_an_unknown_deal_reads_empty_rather_than_raising():
 
 
 async def test_paging_is_newest_first_and_does_not_repeat_a_row():
-    company_id, deal_id = uuid.uuid4(), uuid.uuid4()
+    company_id, deal_id = await make_company(), uuid.uuid4()
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:

@@ -174,7 +174,7 @@ async def test_full_exporter_profile_flow(client: AsyncClient):
     # Search by gstin after setting one via update.
     await client.patch(
         f"/api/v1/onboarding/exporters/{customer_id}",
-        json={"gstin": "27AAAPL9999C1ZV"},
+        json={"gstins": ["27AAAPL9999C1ZV"]},
         headers=_auth(token),
     )
     search_resp = await client.get(

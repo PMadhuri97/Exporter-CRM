@@ -14,8 +14,10 @@ from app.modules.onboarding.domain.entities.exporter_activity import ExporterAct
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
+    ExporterMarker,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
 )
@@ -92,6 +94,8 @@ __all__ = [
     "OnboardingValidationStatus",
     "KybNormalisedResult",
     "ExporterProfile",
+    "ExporterGstin",
+    "ExporterMarker",
     "ExporterContact",
     "ExporterActivity",
     "ExporterLifecycleHistory",

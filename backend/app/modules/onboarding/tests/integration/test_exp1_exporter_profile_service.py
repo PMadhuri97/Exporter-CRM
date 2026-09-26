@@ -16,18 +16,9 @@ from app.modules.onboarding.application.exporter_profile_service import (
     PERMITTED_LIFECYCLE_TRANSITIONS,
     ExporterProfileService,
 )
-from app.modules.onboarding.application.onboarding_request_service import (
-    OnboardingRequestService,
-)
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
     ExporterSource,
-)
-from app.modules.onboarding.domain.entities.orchestration_enums import (
-    OnboardingEntityType,
-)
-from app.modules.onboarding.domain.policies.document_requirements_service import (
-    DocumentRequirementsService,
 )
 from app.modules.onboarding.exceptions import (
     ExporterProfileNotFoundError,
@@ -38,39 +29,6 @@ from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
 
 pytestmark = pytest.mark.asyncio
-
-
-def _empty_document_requirements() -> DocumentRequirementsService:
-    return DocumentRequirementsService(
-        {"version": "1.0", "profiles": [], "conditional_rules": [], "validity_periods": {}}
-    )
-
-
-def _address() -> dict:
-    return {"street": "1 Test St", "city": "Testville", "state": "CA", "postal_code": "00000", "country": "US"}
-
-
-async def _create_onboarding_request_for(customer_id_placeholder: str, legal_name: str) -> uuid.UUID:
-    """Create an OnboardingRequest and return its `customer_id`.
-
-    `ExporterProfileService.search_profiles`'s `legal_name_contains` filter
-    joins against `OnboardingRequest.legal_name`, which is only ever set by
-    initiating a real onboarding request — there is no shortcut that writes
-    just the column this test needs.
-    """
-    async with db_services.AsyncSessionLocal() as db:
-        svc = OnboardingRequestService(db, document_requirements=_empty_document_requirements())
-        request, _ = await svc.initiate_onboarding(
-            tenant_id=uuid.uuid4(),
-            entity_type=OnboardingEntityType.CORPORATION,
-            legal_name=legal_name,
-            registration_number=f"REG-{uuid.uuid4().hex[:8]}",
-            incorporation_country="US",
-            registered_address=_address(),
-            initial_user_email=f"{uuid.uuid4().hex[:8]}@example.com",
-            idempotency_key=str(uuid.uuid4()),
-        )
-    return request.customer_id
 
 
 # ── create_or_get_profile ─────────────────────────────────────────────────────
@@ -136,17 +94,16 @@ async def test_create_lead_stores_name_and_country_as_the_company_identity():
     contact email is asked for — and reads back with that identity."""
     name = f"Cold Lead Exports {uuid.uuid4().hex[:8]}"
     async with db_services.AsyncSessionLocal() as db:
-        profile, identity, created = await ExporterProfileService(db).create_lead(
+        profile, created = await ExporterProfileService(db).create_lead(
             name=name,
             country="US",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
-            created_by_email="rep@example.com",
         )
 
     assert created is True
-    assert identity.name == name
-    assert identity.country == "US"
+    assert profile.name == name
+    assert profile.country == "US"
     assert profile.source == ExporterSource.SALES
     assert profile.lifecycle_status == ExporterLifecycleStatus.LEAD
 
@@ -159,12 +116,11 @@ async def test_search_profiles_finds_named_company_by_name():
     """A company created with a name is findable by it immediately."""
     name = f"Findable Bare Lead {uuid.uuid4().hex[:8]}"
     async with db_services.AsyncSessionLocal() as db:
-        profile, _identity, _created = await ExporterProfileService(db).create_lead(
+        profile, _created = await ExporterProfileService(db).create_lead(
             name=name,
             country="US",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
-            created_by_email="rep@example.com",
         )
 
     async with db_services.AsyncSessionLocal() as db:
@@ -218,12 +174,12 @@ async def test_update_profile_updates_mutable_fields():
     async with db_services.AsyncSessionLocal() as db:
         updated = await ExporterProfileService(db).update_profile(
             customer_id,
-            {"industry": "Textiles", "gstin": "27AAAPL1234C1ZV"},
+            {"industry": "Textiles", "gstins": ["27AAAPL1234C1ZV"]},
             actor_id="agent_1",
         )
 
     assert updated.industry == "Textiles"
-    assert updated.gstin == "27AAAPL1234C1ZV"
+    assert updated.gstins == ["27AAAPL1234C1ZV"]
     assert updated.source == ExporterSource.SALES  # untouched
 
 
@@ -240,10 +196,12 @@ async def test_update_profile_not_found_raises():
 
 async def test_search_profiles_by_gstin():
     customer_id = uuid.uuid4()
-    gstin = f"27AAAPL{uuid.uuid4().hex[:4].upper()}C1ZV"
+    # A well-formed GSTIN, unique per run so the exact-match search finds one.
+    letters = "".join(chr(65 + b % 26) for b in uuid.uuid4().bytes[:6])
+    gstin = f"27{letters[:5]}{uuid.uuid4().int % 10**4:04d}{letters[5]}1ZV"
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).create_or_get_profile(
-            customer_id, source=ExporterSource.SALES, gstin=gstin
+            customer_id, source=ExporterSource.SALES, gstins=[gstin]
         )
 
     async with db_services.AsyncSessionLocal() as db:
@@ -254,15 +212,12 @@ async def test_search_profiles_by_gstin():
 
 
 async def test_search_profiles_by_name_contains_case_insensitive():
-    """A company whose name was recorded by the legacy onboarding path (the
-    profile opened later by `customer_id` alone) still resolves through the
-    identity store, case-insensitively."""
+    """The name search matches the company's own name, ignoring case."""
     legal_name = f"Acme Exports {uuid.uuid4().hex[:8]} Pvt Ltd"
-    customer_id = await _create_onboarding_request_for("_", legal_name)
-
+    customer_id = uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).create_or_get_profile(
-            customer_id, source=ExporterSource.SALES
+            customer_id, source=ExporterSource.SALES, name=legal_name, country="US"
         )
 
     search_fragment = legal_name[5:15].upper()  # deliberately wrong case
@@ -353,11 +308,10 @@ async def test_get_profile_detail_carries_the_company_identity():
     """The detail's name and country come from the company identity. There
     is no onboarding-request history on it any more."""
     legal_name = f"Detail Test Exporter {uuid.uuid4().hex[:8]}"
-    customer_id = await _create_onboarding_request_for("_", legal_name)
-
+    customer_id = uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).create_or_get_profile(
-            customer_id, source=ExporterSource.SALES
+            customer_id, source=ExporterSource.SALES, name=legal_name, country="us"
         )
 
     async with db_services.AsyncSessionLocal() as db:

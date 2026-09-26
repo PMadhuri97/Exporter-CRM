@@ -158,19 +158,26 @@ async def test_an_edit_that_changes_nothing_records_nothing():
     assert await _profile_rows(customer_id) == []
 
 
+def _new_pan() -> str:
+    """A well-formed PAN no other company holds (PAN is unique since 0014)."""
+    letters = "".join(chr(65 + b % 26) for b in uuid.uuid4().bytes[:6])
+    return f"{letters[:5]}{uuid.uuid4().int % 10**4:04d}{letters[5]}"
+
+
 async def test_tax_identifiers_are_masked_in_the_row():
-    customer_id = await _company(pan="AAAPL1234C")
+    old_pan, new_pan = _new_pan(), _new_pan()
+    customer_id = await _company(pan=old_pan)
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).update_profile(
-            customer_id, {"pan": "BBBPL5678D"}, actor_id="rm-1"
+            customer_id, {"pan": new_pan}, actor_id="rm-1"
         )
 
-    assert (await _current(customer_id)).pan == "BBBPL5678D"  # stored in full
+    assert (await _current(customer_id)).pan == new_pan  # stored in full
     [row] = await _profile_rows(customer_id)
-    assert row.event_metadata["from"] == "••••••234C"
-    assert row.event_metadata["to"] == "••••••678D"
-    assert "AAAPL1234C" not in str(row.event_metadata)
-    assert "BBBPL5678D" not in str(row.event_metadata)
+    assert row.event_metadata["from"] == "••••••" + old_pan[-4:]
+    assert row.event_metadata["to"] == "••••••" + new_pan[-4:]
+    assert old_pan not in str(row.event_metadata)
+    assert new_pan not in str(row.event_metadata)
 
 
 # ── Refusals leave nothing behind ─────────────────────────────────────────────
@@ -180,7 +187,7 @@ async def test_tax_identifiers_are_masked_in_the_row():
     "changes",
     [
         {"industry": "Leather", "lifecycle_status": "ACTIVE"},
-        {"industry": "Leather", "name": "Renamed Co"},
+        {"industry": "Leather", "marker": "PAUSED"},
         {"industry": "Leather", "not_a_field": 1},
     ],
 )

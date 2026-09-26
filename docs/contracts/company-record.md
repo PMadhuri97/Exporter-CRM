@@ -54,12 +54,12 @@ writer of that field; everyone else reads it.
 | Field | Meaning | Required at creation | Rule |
 |---|---|---|---|
 | `company_id` | §1 | minted by the server | Never supplied by a caller creating a company |
-| `name` | The company's legal name | **yes** | Non-empty after trimming, at most 255 characters. Belongs on the company record (0014); until then kept by the one transitional identity store (§10) |
+| `name` | The company's legal name | **yes** | Non-empty after trimming, at most 255 characters. A column on the company record (0014); can be corrected, never cleared. Nullable in the database only while the API's unnamed create path exists (§10) |
 | `country` | Country of incorporation | **yes** | ISO 3166-1 alpha-2, upper case (`IN`) |
 | `pan` | Indian income-tax account number | no | One per company. Unique across companies — §4 |
 | `gstins` | GST registrations | no (empty list) | Several per company, one per state. A duplicate across companies warns, never blocks — §4 |
 | `iec` | Importer-exporter code | no | §4 |
-| `cin` | Company registration number | no | §4. New: the record has no CIN today |
+| `cin` | Company registration number | no | §4 |
 | `source` | How the company reached us | **yes** | The existing `ExporterSource` values. **Immutable once set**, enforced by the service and by `trg_exporter_profile_source_immutability`. `RXIL` for RXIL intake |
 | `date_added` | When the record was created | server-set | Immutable |
 
@@ -102,6 +102,11 @@ only fixes the field name, the owner, and the default.
 | `qualification` | Developer 2 | `NOT_YET_REVIEWED` | `criterion-result.md` §4 |
 | `conversation` | Developer 3 | Developer 3's engagement contract (architecture: `NOT_CONTACTED`, tracked from `PROSPECT`) | engagement contract (L3-01) |
 | `background_check` | Developer 4 | `NOT_STARTED` | background-check contract (L4-01) |
+
+**None of these three columns exists yet.** Migration 0014 did not add them:
+the conversation and background-check values are defined by contracts not yet
+published (L3-01, L4-01), and qualification's lands with its tables (0017).
+Each owner adds its own column in its own migration, with the default above.
 
 **Only the owner writes its field**, through its own service, and writes the
 history row in the same transaction (history contract §5). No other service
@@ -186,6 +191,15 @@ already has is refused, not silently accepted.
 findable by search and by an explicit marker filter (assumption A11). `PAUSED`
 companies stay in default lists, visibly marked.
 
+As built (L2-08), on `GET /onboarding/exporters`: with no `marker` filter and no
+search term — `name`, `pan`, `gstin`, `iec` — `ENDED` companies are excluded;
+any search term includes them; `marker=ENDED` lists only them. `source` and
+`status` are list filters, not search terms, and do not bring them back. The
+marker is set and cleared through `POST /onboarding/exporters/{customer_id}/marker`
+only; the edit route refuses it. The current reason is on the record
+(`marker_reason`, `NULL` exactly when the marker is `NONE`, enforced by the
+database) and every change is a `marker` history row.
+
 The marker changes nothing else: not the journey, not any gauge, not any deal.
 
 ---
@@ -210,7 +224,11 @@ never written into `pan` silently.
 
 **Warnings are part of the response, not an error.** A save that raises a
 GSTIN warning succeeds, and the response says which GSTIN is also held by which
-other company (subject to §5's masking). The exact response shape is L2-06's.
+other company (subject to §5's masking). As built (L2-06): create, edit and
+detail responses carry `gstin_warnings: [{gstin, other_customer_ids}]`, empty
+when there is nothing to warn about; the GSTIN in a warning is masked like
+every other identifier. Only the database's per-company uniqueness
+(`uq_exporter_gstin_customer_gstin`) exists — never a global one.
 
 **Bulk import matching** (L2-13, assumption A14) matches an incoming row to an
 existing company on PAN, then GSTIN via its embedded PAN, then IEC, then CIN,
@@ -232,8 +250,9 @@ Unchanged from what Developer 1 built (L1-10, architecture §3.7, decision 12):
 - **Exact search by PAN, GSTIN or IEC**: only roles that may see them unmasked;
   anyone else gets 403 naming the parameter, because an exact match is itself
   an answer (`_reject_identifier_search`).
-- **CIN** is a new identifier. It follows the same masking and search rule as
-  the other three unless open item O4 decides otherwise.
+- **CIN** is masked like the other three (the recommended default for open
+  item O4, applied in L2-05 until the programme lead decides otherwise). There
+  is no CIN search filter yet.
 - **Name search** (case-insensitive, partial) is open to every reader.
 
 **The actor is always the logged-in user**, taken from the session by the route
@@ -344,15 +363,15 @@ Stated separately so nobody reads this contract as a description of the code.
 | Item | State |
 |---|---|
 | Company id (as `customer_id`), `source` immutability, descriptive fields | **implemented** |
-| PAN, one GSTIN, IEC columns | **implemented**, with no format check and no uniqueness |
+| IEC column | **implemented**, format not yet checked |
 | Server-side masking and identifier-search refusal | **implemented** (Dev 1, L1-10) |
 | `journey` history rows (`lifecycle_*`) | **implemented** — for the old ten statuses |
-| `name` / `country` in the API, the views, search, list, detail and the frontend | **implemented** (L2-03) |
-| `name` / `country` as columns on the company record | **not built** — 0014. Until then `infrastructure/legacy_company_identity.py` keeps them in a legacy `onboarding_request` row: the only CRM code that touches that table, and deleted by 0014 |
+| `name` / `country` / `cin` as columns on the company record | **implemented** (0014). The transitional identity store is deleted; no CRM code reads a company's identity from `onboarding_request` |
 | `onboarding_history` on the company detail | **removed** (L2-03) |
 | `journey` with three values | **not built** — L2-04 (ten statuses today) |
-| `gstins` (several), `cin`, PAN uniqueness, GSTIN/PAN cross-check | **not built** — L2-05, L2-06 |
-| `marker` | **not built** — L2-08 |
-| `qualification`, `conversation`, `background_check` fields | **not built** — L2-05 adds the fields; each owner builds its gauge |
+| `gstins` (several, `exporter_gstin`), PAN format and uniqueness, GSTIN format and PAN cross-check, duplicate-GSTIN warnings | **implemented** (0014, L2-06) |
+| `marker` and `marker_reason`, the marker route, ENDED off the default list | **implemented** (0014, L2-08) |
+| `qualification`, `conversation`, `background_check` fields | **not built** — each owner's migration (see §2.4) |
 | `profile` history on edits; clearing a field | **implemented** (L2-07) |
-| Foreign keys from child records | **not built** — 0014 |
+| Real links from contacts, activities, screening items, GSTINs and history | **implemented** (0014, `ON DELETE RESTRICT`); `verification_result.entity_reference` deliberately has none |
+| `name` required by the database | **not built** — waits for the unnamed create path to go |

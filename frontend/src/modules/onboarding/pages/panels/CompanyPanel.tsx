@@ -26,7 +26,13 @@ export function CompanyPanel({ profile }: { profile: ExporterProfileDetail }) {
         <dl className="mt-2">
           <DetailRow label="Country">{profile.country ?? '—'}</DetailRow>
           <DetailRow label="PAN"><MaskedValue value={profile.pan} /></DetailRow>
-          <DetailRow label="GSTIN"><MaskedValue value={profile.gstin} /></DetailRow>
+          <DetailRow label={profile.gstins.length > 1 ? 'GSTINs' : 'GSTIN'}>
+            {profile.gstins.length === 0 ? '—' : (
+              <span className="flex flex-col items-end">
+                {profile.gstins.map((gstin) => <MaskedValue key={gstin} value={gstin} />)}
+              </span>
+            )}
+          </DetailRow>
           <DetailRow label="IEC"><MaskedValue value={profile.iec} /></DetailRow>
           <DetailRow label="Source">{humanize(profile.source)}</DetailRow>
           <DetailRow label="Industry">{profile.industry ?? '—'}</DetailRow>

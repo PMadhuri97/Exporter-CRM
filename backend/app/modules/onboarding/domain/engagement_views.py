@@ -49,13 +49,10 @@ class PendingActivityView:
 
     Carries the exporter's display name alongside the activity itself so a
     Follow-ups screen never needs a second, per-row query to answer "pending,
-    for which exporter" — `exporter_display_name` is resolved via one join in
-    `ExporterActivityRepository.list_pending` (the same
-    `OnboardingRequest.legal_name` this module's `search_profiles` already
-    joins to), not a Python-side loop calling back into the database.
-    `None` for a bare Lead whose `OnboardingRequest` (if any) has no name yet
-    — same "nothing to match" case `search_profiles`'s `legal_name_contains`
-    already documents.
+    for which exporter" — `exporter_display_name` is the company's own name,
+    resolved via one join in `ExporterActivityRepository.list_pending`, not a
+    Python-side loop calling back into the database. `None` for a company
+    created without a name.
 
     `is_overdue` is computed once, at view-construction time, against the
     same `now` the query itself was run with — never recomputed from a stale

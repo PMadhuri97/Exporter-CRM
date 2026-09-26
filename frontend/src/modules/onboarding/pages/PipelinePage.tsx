@@ -150,7 +150,7 @@ function PipelineCard({
         <div className="flex items-center justify-between gap-3">
           <dt className="text-ink-faint">GSTIN</dt>
           <dd className="min-w-0 text-right text-ink-muted">
-            <MaskedValue value={profile.gstin} />
+            <MaskedValue value={profile.gstins[0] ?? null} />
           </dd>
         </div>
         <div className="flex items-center justify-between gap-3">

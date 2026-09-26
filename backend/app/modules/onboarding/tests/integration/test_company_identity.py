@@ -7,8 +7,7 @@ What these prove:
 * Search, list and detail read the company's identity from the company side,
   and no longer expose onboarding-request history as the company's identity.
 * The CRM's company code does not reach the legacy ``onboarding_request``
-  table except through the one transitional store, which is checked
-  statically so a new import cannot creep back in unnoticed.
+  table at all, checked statically so an import cannot creep back unnoticed.
 
 Real Postgres, each test minting its own ids, like the rest of this package.
 """
@@ -17,22 +16,23 @@ from __future__ import annotations
 
 import ast
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.modules.onboarding.application.exporter_profile_service import (
+    ExporterProfileService,
+)
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
 from app.modules.onboarding.domain.entities.orchestration_enums import (
+    OnboardingEntityType,
     OnboardingRequestStatus,
 )
-from app.modules.onboarding.tests.fixtures.auth import (
-    auth_header,
-    token_with_role,
-    user_with_role,
-)
+from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -119,13 +119,12 @@ async def test_a_replayed_create_returns_the_first_company(client: AsyncClient, 
     assert second.json()["customer_id"] == first.json()["customer_id"]
 
 
-async def test_the_creators_contact_comes_from_the_session(client: AsyncClient):
-    """The legacy row behind the transitional store still needs a contact.
-    It is the signed-in user's own address — never a request field."""
-    prefix = f"creator{uuid.uuid4().hex[:8]}"
-    _user_id, token = await user_with_role(client, UserRole.OPERATIONS, email_prefix=prefix)
-    name = f"Session Contact Co {uuid.uuid4().hex[:8]}"
-    resp = await _create_named(client, token, name=name)
+async def test_creating_a_company_writes_nothing_to_the_legacy_tables(
+    client: AsyncClient, ops_token: str
+):
+    """The name and country live on the company record (migration 0014):
+    creating a company inserts no legacy onboarding request to hold them."""
+    resp = await _create_named(client, ops_token, name=f"No Legacy Co {uuid.uuid4().hex[:8]}")
     assert resp.status_code == 201
     company_id = uuid.UUID(resp.json()["customer_id"])
 
@@ -135,11 +134,7 @@ async def test_the_creators_contact_comes_from_the_session(client: AsyncClient):
                 select(OnboardingRequest).where(OnboardingRequest.customer_id == company_id)
             )
         ).scalars().all()
-    [row] = rows
-    assert row.initial_user_id.startswith(prefix)
-    assert row.legal_name == name
-    # The transitional store inserts an inert draft; nothing moves it.
-    assert row.status == OnboardingRequestStatus.DRAFT
+    assert rows == []
 
 
 # ── Search, list and detail ───────────────────────────────────────────────────
@@ -187,42 +182,52 @@ async def test_detail_carries_no_onboarding_history(client: AsyncClient, ops_tok
     assert "onboarding_history" not in detail.json()
 
 
-async def test_a_page_of_identities_is_fetched_in_one_query():
-    """`get_many` answers for a whole page, and leaves out companies with no
-    identity rather than inventing one."""
-    from app.modules.onboarding.application.exporter_profile_service import (
-        ExporterProfileService,
-    )
-    from app.modules.onboarding.infrastructure.legacy_company_identity import (
-        LegacyCompanyIdentityStore,
-    )
-
+async def test_a_legacy_onboarding_name_is_not_the_companys_name():
+    """A legacy onboarding request that happens to share a company's id stays
+    legacy history: it neither names the company nor makes it findable."""
+    legacy_name = f"Legacy Only {uuid.uuid4().hex[:8]}"
+    customer_id = uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
-        named, _identity, _created = await ExporterProfileService(db).create_lead(
-            name=f"Paged Co {uuid.uuid4().hex[:8]}",
-            country="IN",
-            idempotency_key=str(uuid.uuid4()),
-            source=ExporterSource.SALES,
-            created_by_email="rep@example.com",
+        db.add(
+            OnboardingRequest(
+                tenant_id=uuid.uuid4(),
+                idempotency_key=str(uuid.uuid4()),
+                customer_id=customer_id,
+                status=OnboardingRequestStatus.DRAFT,
+                entity_type=OnboardingEntityType.CORPORATION,
+                legal_name=legacy_name,
+                incorporation_country="IN",
+                initial_user_id="legacy@example.com",
+                initiated_at=datetime.now(UTC),
+                last_activity_at=datetime.now(UTC),
+            )
         )
-    unnamed = uuid.uuid4()
+        await db.commit()
     async with db_services.AsyncSessionLocal() as db:
-        await ExporterProfileService(db).create_or_get_profile(unnamed, source=ExporterSource.SALES)
+        await ExporterProfileService(db).create_or_get_profile(
+            customer_id, source=ExporterSource.SALES
+        )
 
     async with db_services.AsyncSessionLocal() as db:
-        found = await LegacyCompanyIdentityStore(db).get_many([named.customer_id, unnamed])
-    assert set(found) == {named.customer_id}
+        detail = await ExporterProfileService(db).get_profile_detail(customer_id)
+        found = await ExporterProfileService(db).search_profiles(name_contains=legacy_name)
+    assert detail.name is None
+    assert found == []
 
 
 # ── The legacy table is reached through one place only ────────────────────────
 
-#: The CRM's company code, which must not know where identity is kept.
+#: The CRM's company code. Since migration 0014 none of it reaches the legacy
+#: onboarding-request tables for a company's identity — not even through a
+#: transitional store: that store was deleted with 0014.
 _COMPANY_FILES = [
     "api/exporter_router.py",
     "api/schemas/exporter.py",
     "application/exporter_profile_service.py",
     "domain/exporter_profile_views.py",
     "infrastructure/repositories/exporter_profile_repository.py",
+    # Developer 3's pending list, repointed to the company's own name in 0014.
+    "infrastructure/repositories/exporter_activity_repository.py",
 ]
 
 #: Names that mean "reaching the legacy onboarding-request tables".
@@ -251,8 +256,3 @@ async def test_company_code_does_not_import_the_legacy_request_tables(relative_p
     imported = _imported_names(MODULE / relative_path)
     assert not (imported & _LEGACY_NAMES), imported & _LEGACY_NAMES
     assert not any("onboarding_request" in name for name in imported)
-
-
-async def test_the_transitional_store_is_the_one_place_that_does():
-    imported = _imported_names(MODULE / "infrastructure/legacy_company_identity.py")
-    assert "OnboardingRequest" in imported

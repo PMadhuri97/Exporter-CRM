@@ -94,6 +94,12 @@ GATED_ROUTES = [
         {"to_status": "CONTACTED"},
         STAFF,
     ),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/marker",
+        {"marker": "PAUSED", "reason": "Seasonal"},
+        STAFF,
+    ),
     ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
     (
         "POST",
@@ -288,11 +294,19 @@ def test_schema_accepts_exactly_the_real_providers():
 
 # ── Server-side PAN/GSTIN/IEC masking (FIX 5) ────────────────────────────────
 
+def _new_identifiers() -> tuple[str, str, str]:
+    """A valid PAN, a GSTIN that carries it, and an IEC — fresh on every call.
+
+    Since migration 0014 a PAN is format-checked and belongs to one company
+    only, and a GSTIN must carry its company's PAN, so each company these
+    tests create needs its own well-formed set."""
+    letters = "".join(chr(65 + b % 26) for b in uuid.uuid4().bytes[:6])
+    pan = f"{letters[:5]}{uuid.uuid4().int % 10**4:04d}{letters[5]}"
+    return pan, f"27{pan}1Z5", uuid.uuid4().hex[:10].upper()
+
+
 # Unique per run so the search below never has to page past earlier runs' rows.
-_RUN = uuid.uuid4().hex.upper()
-PAN = _RUN[:10]
-GSTIN = _RUN[10:25]
-IEC = _RUN[20:30]
+PAN, GSTIN, IEC = _new_identifiers()
 
 
 def _set_relationship_manager_sync(customer_id: str, user_id: str) -> None:
@@ -343,7 +357,7 @@ async def _identifiers_as(client: AsyncClient, token: str, customer_id: str) -> 
     assert len(rows) == 1, f"{customer_id} not found in the listing"
 
     return [
-        {k: body[k] for k in ("pan", "gstin", "iec")} for body in (detail.json(), rows[0])
+        {k: body[k] for k in ("pan", "gstins", "iec")} for body in (detail.json(), rows[0])
     ]
 
 
@@ -352,7 +366,7 @@ async def exporter_with_identifiers(
     client: AsyncClient, tokens: dict[UserRole, str]
 ) -> str:
     return await _create_exporter(
-        client, tokens[UserRole.COMPLIANCE], pan=PAN, gstin=GSTIN, iec=IEC
+        client, tokens[UserRole.COMPLIANCE], pan=PAN, gstins=[GSTIN], iec=IEC
     )
 
 
@@ -361,7 +375,7 @@ async def test_identifiers_unmasked_for_compliance_and_admin(
     client: AsyncClient, tokens: dict[UserRole, str], exporter_with_identifiers: str, role: UserRole
 ):
     for seen in await _identifiers_as(client, tokens[role], exporter_with_identifiers):
-        assert seen == {"pan": PAN, "gstin": GSTIN, "iec": IEC}
+        assert seen == {"pan": PAN, "gstins": [GSTIN], "iec": IEC}
 
 
 @pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.DEVELOPER])
@@ -378,7 +392,7 @@ async def test_identifiers_masked_for_non_owning_operations_and_developer(
     DEVELOPER are now treated the same here. (API_USER cannot read exporters at
     all — see the 403 cases above.)"""
     for seen in await _identifiers_as(client, tokens[role], exporter_with_identifiers):
-        assert seen == {"pan": _masked(PAN), "gstin": _masked(GSTIN), "iec": _masked(IEC)}
+        assert seen == {"pan": _masked(PAN), "gstins": [_masked(GSTIN)], "iec": _masked(IEC)}
 
 
 async def test_identifiers_masked_even_for_the_owning_relationship_manager(
@@ -395,17 +409,18 @@ async def test_identifiers_masked_even_for_the_owning_relationship_manager(
     behaviour would have re-enabled silently.
     """
     rm_id, rm_token = await user_with_role(client, UserRole.OPERATIONS)
+    pan, gstin, iec = _new_identifiers()
     customer_id = await _create_exporter(
-        client, tokens[UserRole.COMPLIANCE], pan=PAN, gstin=GSTIN, iec=IEC
+        client, tokens[UserRole.COMPLIANCE], pan=pan, gstins=[gstin], iec=iec
     )
 
     _set_relationship_manager_sync(customer_id, rm_id)
     for seen in await _identifiers_as(client, rm_token, customer_id):
-        assert seen == {"pan": _masked(PAN), "gstin": _masked(GSTIN), "iec": _masked(IEC)}
+        assert seen == {"pan": _masked(pan), "gstins": [_masked(gstin)], "iec": _masked(iec)}
 
     # And an OPERATIONS user who is not the RM sees exactly the same thing.
     for seen in await _identifiers_as(client, tokens[UserRole.OPERATIONS], customer_id):
-        assert seen["pan"] == _masked(PAN)
+        assert seen["pan"] == _masked(pan)
 
 
 # ── Identifier search is an existence oracle (L1-10) ─────────────────────────
@@ -482,19 +497,20 @@ async def test_every_identifier_filter_is_named_when_several_are_used(
 async def test_write_responses_are_masked_too(client: AsyncClient, tokens: dict[UserRole, str]):
     """An OPERATIONS non-owner writing a PAN doesn't get it echoed back raw."""
     token = tokens[UserRole.OPERATIONS]
+    pan, gstin, _iec = _new_identifiers()
     resp = await client.post(
-        f"{BASE}/exporters", json={"source": "SALES", "pan": PAN}, headers=auth_header(token)
+        f"{BASE}/exporters", json={"source": "SALES", "pan": pan}, headers=auth_header(token)
     )
     assert resp.status_code == 201, resp.text
-    assert resp.json()["pan"] == _masked(PAN)
+    assert resp.json()["pan"] == _masked(pan)
 
     patched = await client.patch(
         f"{BASE}/exporters/{resp.json()['customer_id']}",
-        json={"gstin": GSTIN},
+        json={"gstins": [gstin]},
         headers=auth_header(token),
     )
     assert patched.status_code == 200, patched.text
-    assert patched.json()["gstin"] == _masked(GSTIN)
+    assert patched.json()["gstins"] == [_masked(gstin)]
 
 
 # ── Contact email/phone masking ──────────────────────────────────────────────

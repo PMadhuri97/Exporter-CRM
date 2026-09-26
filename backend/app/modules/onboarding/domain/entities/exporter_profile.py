@@ -19,12 +19,11 @@ of GSTIN (tax registration), PAN (income-tax id) and IEC (import-export
 code). None of the three duplicate anything ``OnboardingRequest`` already
 stores, so they live here rather than being derived.
 
-The company's **name and country are not columns here yet.** They are the
-company's identity (``docs/contracts/company-record.md`` §2.1) and belong on
-this record; migration 0014 (L2-05) adds them. Until then they are kept by
-``infrastructure/legacy_company_identity.py``, the one place the CRM still
-reaches the legacy ``onboarding_request`` table, and nothing else in the CRM
-knows where they come from.
+The company's identity — ``name``, ``country``, ``cin`` — lives on this
+record (``docs/contracts/company-record.md`` §2.1, migration 0014), as do its
+``pan`` (unique across companies), its GSTINs (``ExporterGstin``, several per
+company) and its commercial ``marker``. No CRM code reads a company's identity
+from the legacy ``onboarding_request`` table.
 """
 
 from __future__ import annotations
@@ -33,15 +32,17 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Enum, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
+    ExporterMarker,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.platform.database.models import AnerModel
 
 if TYPE_CHECKING:
@@ -74,7 +75,6 @@ class ExporterProfile(AnerModel):
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
     # ── India-specific identifiers (not covered by OnboardingRequest) ────────
-    gstin: Mapped[str | None] = mapped_column(String(15), nullable=True)
     pan: Mapped[str | None] = mapped_column(String(10), nullable=True)
     iec: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
@@ -98,6 +98,35 @@ class ExporterProfile(AnerModel):
         UUID(as_uuid=True), nullable=True
     )
 
+    # ── Identity (L2-03, columns from migration 0014) ──────────────────────
+    #: Nullable only while the API's unnamed create path exists; the database
+    #: refuses a blank name (`ck_exporter_profile_name_not_blank`).
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: ISO 3166-1 alpha-2, upper case (`ck_exporter_profile_country_format`).
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    #: Company registration number (`ck_exporter_profile_cin_format`).
+    cin: Mapped[str | None] = mapped_column(String(21), nullable=True)
+
+    #: The company's GSTINs, one row each (`ExporterGstin`), newest last.
+    #: Loaded with the profile (`selectin`), so async code never lazy-loads it.
+    gstin_rows: Mapped[list[ExporterGstin]] = relationship(
+        lazy="selectin",
+        order_by="ExporterGstin.created_at, ExporterGstin.gstin",
+        cascade="all, delete-orphan",
+    )
+
+    # ── Marker (L2-08): commercial pause or ending, not a journey stage ─────
+    marker: Mapped[ExporterMarker] = mapped_column(
+        Enum(ExporterMarker, name="exporter_marker_enum", schema=SCHEMA),
+        nullable=False,
+        server_default=ExporterMarker.NONE.value,
+        default=ExporterMarker.NONE,
+    )
+    #: The current marker's reason; `NULL` exactly when the marker is `NONE`
+    #: (`ck_exporter_profile_marker_reason`). Every change, with its reason,
+    #: is also in the history log.
+    marker_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     lifecycle_status: Mapped[ExporterLifecycleStatus] = mapped_column(
         Enum(ExporterLifecycleStatus, name="exporter_lifecycle_status_enum", schema=SCHEMA),
         nullable=False,
@@ -112,6 +141,11 @@ class ExporterProfile(AnerModel):
     date_added: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    @property
+    def gstins(self) -> list[str]:
+        """The company's GSTINs as plain strings, in `gstin_rows` order."""
+        return [row.gstin for row in self.gstin_rows]
 
 
 __all__ = ["ExporterProfile"]

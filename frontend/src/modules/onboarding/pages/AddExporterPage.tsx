@@ -88,7 +88,8 @@ export function AddExporterPage() {
         // change anyway (a brand-new Lead always starts at LEAD).
         lifecycle_status: 'LEAD',
         relationship_manager: emptyToUndefined(values.relationship_manager),
-        gstin: emptyToUndefined(values.gstin),
+        // One GSTIN from the form; a company may hold several (one per state).
+        gstins: values.gstin ? [values.gstin] : undefined,
         pan: emptyToUndefined(values.pan),
         iec: emptyToUndefined(values.iec),
         industry: emptyToUndefined(values.industry),

@@ -37,10 +37,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.schemas.exporter import (
     CreateExporterProfileRequest,
+    DuplicateGstinWarningResponse,
     ExporterProfileDetailResponse,
     ExporterProfileListItemResponse,
     ExporterProfileResponse,
     ExporterProfileSearchResponse,
+    SetMarkerRequest,
     TransitionLifecycleStatusRequest,
     UpdateExporterProfileRequest,
 )
@@ -48,8 +50,10 @@ from app.modules.onboarding.api.schemas.masking import can_reveal_identifiers
 from app.modules.onboarding.application import ExporterProfileService
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
+    ExporterMarker,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.exceptions import IdentifierSearchNotPermittedError
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
@@ -149,14 +153,15 @@ async def create_exporter_profile(
                 "Creating a named company (name supplied) requires an "
                 "Idempotency-Key header"
             )
-        profile, _identity, created = await ExporterProfileService(db).create_lead(
+        service = ExporterProfileService(db)
+        profile, created = await service.create_lead(
             name=body.name,
             country=body.country,
             idempotency_key=idempotency_key,
             source=body.source,
-            created_by_email=current_user.email,
             customer_id=body.customer_id,
-            gstin=body.gstin,
+            cin=body.cin,
+            gstins=body.gstins,
             pan=body.pan,
             iec=body.iec,
             relationship_manager=body.relationship_manager,
@@ -175,14 +180,16 @@ async def create_exporter_profile(
         # it just always claimed "201 Created" while doing it.
         if not created:
             response.status_code = 200
-        return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
+        return await _company_response(service, profile, current_user)
 
     customer_id = body.customer_id or uuid.uuid4()
-    profile, created = await ExporterProfileService(db).create_or_get_profile(
+    service = ExporterProfileService(db)
+    profile, created = await service.create_or_get_profile(
         customer_id,
         source=body.source,
         lifecycle_status=body.lifecycle_status,
-        gstin=body.gstin,
+        cin=body.cin,
+        gstins=body.gstins,
         pan=body.pan,
         iec=body.iec,
         relationship_manager=body.relationship_manager,
@@ -197,7 +204,7 @@ async def create_exporter_profile(
     )
     if not created:
         response.status_code = 200
-    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
+    return await _company_response(service, profile, current_user)
 
 
 @router.get(
@@ -252,12 +259,13 @@ async def update_exporter_profile(
 ) -> ExporterProfileResponse:
     # `exclude_unset` is what separates "left out" (no change) from "sent as
     # null" (clear). The actor is the session's, never the body's.
-    profile = await ExporterProfileService(db).update_profile(
+    service = ExporterProfileService(db)
+    profile = await service.update_profile(
         customer_id,
         body.model_dump(exclude_unset=True),
         actor_id=str(current_user.id),
     )
-    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
+    return await _company_response(service, profile, current_user)
 
 
 @router.post(
@@ -302,9 +310,12 @@ async def transition_exporter_lifecycle_status(
     response_model=ExporterProfileSearchResponse,
     summary="Search exporter profiles",
     description=(
-        "Filters by gstin, pan, iec, source, lifecycle status (exact match) and "
-        "name (case-insensitive partial match on the company's name). The "
-        "gstin/pan/iec filters are "
+        "Filters by gstin, pan, iec, source, lifecycle status, marker (exact "
+        "match) and name (case-insensitive partial match on the company's "
+        "name). ENDED companies are left out of the default working list: "
+        "with no marker filter and no search term (name, gstin, pan, iec) they "
+        "are excluded; any search term includes them; marker=ENDED lists only "
+        "them. The gstin/pan/iec filters are "
         "COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals "
         "which company holds it even when the response body is masked."
     ),
@@ -328,6 +339,7 @@ async def search_exporter_profiles(
     name: str | None = Query(default=None),
     source: ExporterSource | None = Query(default=None),
     status: ExporterLifecycleStatus | None = Query(default=None),
+    marker: ExporterMarker | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ExporterProfileSearchResponse:
@@ -340,6 +352,7 @@ async def search_exporter_profiles(
         name_contains=name,
         source=source,
         lifecycle_status=status,
+        marker=marker,
         limit=limit,
         offset=offset,
     )
@@ -351,6 +364,54 @@ async def search_exporter_profiles(
         limit=limit,
         offset=offset,
     )
+
+
+# ── Marker (PAUSED / ENDED) ──────────────────────────────────────────────
+
+
+@router.post(
+    "/{customer_id}/marker",
+    response_model=ExporterProfileResponse,
+    summary="Set or clear a company's PAUSED / ENDED marker",
+    description=(
+        "A commercial pause or ending, recorded beside the journey and never "
+        "instead of it: the journey does not move. PAUSED and ENDED need a "
+        "reason; clearing to NONE does not. ENDED -> PAUSED is not a move "
+        "(clear first), and a move to the current value is refused. Every "
+        "change is recorded in the company's history with the signed-in user."
+    ),
+    responses={
+        200: {"model": ExporterProfileResponse},
+        401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        404: {"description": "Exporter profile not found"},
+        409: {"description": "Marker move not allowed"},
+        422: {"description": "Invalid request body, or a PAUSED/ENDED marker without a reason"},
+    },
+)
+async def set_exporter_marker(
+    customer_id: uuid.UUID,
+    body: SetMarkerRequest,
+    current_user: Annotated[User, Depends(_STAFF)],
+    db: AsyncSession = Depends(get_db),
+) -> ExporterProfileResponse:
+    profile = await ExporterProfileService(db).set_marker(
+        customer_id, body.marker, reason=body.reason, actor_id=str(current_user.id)
+    )
+    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
+
+
+async def _company_response(
+    service: ExporterProfileService, profile: ExporterProfile, viewer: User
+) -> ExporterProfileResponse:
+    """A company as a create or edit returns it, with a warning for each of
+    its GSTINs another company also holds (decision 4: warn, never refuse)."""
+    warnings = await service.duplicate_gstin_warnings(profile.customer_id, profile.gstins)
+    response = ExporterProfileResponse.model_validate(profile)
+    response.gstin_warnings = [
+        DuplicateGstinWarningResponse.model_validate(w, from_attributes=True) for w in warnings
+    ]
+    return response.masked_for(viewer)
 
 
 __all__ = ["router"]

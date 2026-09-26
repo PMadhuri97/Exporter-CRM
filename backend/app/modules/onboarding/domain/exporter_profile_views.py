@@ -10,9 +10,9 @@ The contact, activity and pending-activity views moved to
 embeds the first two, because the company page shows them.
 
 ``name`` and ``country`` are the company's identity
-(``docs/contracts/company-record.md`` §2.1). They are ``None`` for a company
-created without them, which the API still allows until migration 0014 makes
-the name a required column on the company record.
+(``docs/contracts/company-record.md`` §2.1), read from the company record's
+own columns (migration 0014). They are ``None`` only for a company created
+through the API's unnamed path.
 """
 
 from __future__ import annotations
@@ -27,16 +27,18 @@ from app.modules.onboarding.domain.engagement_views import (
 )
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterLifecycleStatus,
+    ExporterMarker,
     ExporterSource,
 )
 
 
 @dataclass(frozen=True)
-class CompanyIdentity:
-    """What a company is called and where it is incorporated."""
+class DuplicateGstinWarning:
+    """One of a company's GSTINs is also held by other companies. A warning,
+    never an error (architecture decision 4)."""
 
-    name: str
-    country: str
+    gstin: str
+    other_customer_ids: tuple[uuid.UUID, ...]
 
 
 @dataclass(frozen=True)
@@ -54,13 +56,16 @@ class ExporterProfileDetail:
     customer_id: uuid.UUID
     name: str | None
     country: str | None
-    gstin: str | None
+    cin: str | None
+    gstins: tuple[str, ...]
     pan: str | None
     iec: str | None
     source: ExporterSource
     relationship_manager: str | None
     relationship_manager_user_id: uuid.UUID | None
     lifecycle_status: ExporterLifecycleStatus
+    marker: ExporterMarker
+    marker_reason: str | None
     industry: str | None
     export_markets: list | None
     products: list | None
@@ -71,6 +76,7 @@ class ExporterProfileDetail:
     updated_at: datetime
     contacts: tuple[ExporterContactView, ...]
     recent_activities: tuple[ExporterActivityView, ...]
+    gstin_warnings: tuple[DuplicateGstinWarning, ...]
 
 
 @dataclass(frozen=True)
@@ -79,20 +85,23 @@ class ExporterProfileListItem:
 
     Everything ``ExporterProfileDetail`` has except the per-company
     sub-collections (contacts and activities — too expensive to carry for
-    every row of a list). The page's identities are fetched in one query for
-    the whole page, never one per row.
+    every row of a list). A page's GSTINs are loaded with it in one extra
+    query, never one per row.
     """
 
     customer_id: uuid.UUID
     name: str | None
     country: str | None
-    gstin: str | None
+    cin: str | None
+    gstins: tuple[str, ...]
     pan: str | None
     iec: str | None
     source: ExporterSource
     relationship_manager: str | None
     relationship_manager_user_id: uuid.UUID | None
     lifecycle_status: ExporterLifecycleStatus
+    marker: ExporterMarker
+    marker_reason: str | None
     industry: str | None
     year_established: int | None
     date_added: datetime
@@ -101,7 +110,7 @@ class ExporterProfileListItem:
 
 
 __all__ = [
-    "CompanyIdentity",
+    "DuplicateGstinWarning",
     "ExporterProfileDetail",
     "ExporterProfileListItem",
 ]
