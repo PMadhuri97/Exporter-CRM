@@ -1,10 +1,21 @@
 """RXIL company intake and bulk CSV import routes — **owner: Developer 2**
 (L2-12, L2-13).
 
-Both create companies, so both admit OPERATIONS, COMPLIANCE and ADMIN, as
-company creation does; RXIL intake also records a qualification outcome, which
-the same roles may do. The actor is always the signed-in user — neither an
-RXIL package nor a CSV file can name one.
+Bulk import creates companies, so it admits OPERATIONS, COMPLIANCE and ADMIN,
+as company creation does.
+
+**RXIL intake is ADMIN only.** It records a qualification outcome *as RXIL's*:
+``source = RXIL``, RXIL's own ``decided_by_kind`` and confidence, no deciding
+user. The manual qualification routes refuse every one of those fields on
+purpose (``schemas/qualification.py``), because a person must not be able to
+record a decision as someone else's. Until RXIL delivers through its own
+authenticated integration, a package is pasted in by hand, so the route is
+limited to the role trusted to vouch that a package really came from RXIL.
+``API_USER`` is deliberately not admitted: public sign-up grants it, and it
+reaches nothing in the CRM (assumption A10).
+
+The actor is always the signed-in user — neither an RXIL package nor a CSV
+file can name one.
 
 Mounted by ``router.py`` under the module's ``/onboarding`` prefix.
 """
@@ -38,8 +49,11 @@ from app.shared.exceptions import ValidationError
 router = APIRouter(tags=["Company intake"])
 
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+#: Recording a decision as RXIL's — see the module docstring.
+_PARTNER_INTAKE = require_role(UserRole.ADMIN)
 _401 = {"description": "Unauthorized"}
 _403 = {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"}
+_403_ADMIN = {"description": "ADMIN role required"}
 
 #: The largest CSV accepted, in bytes (a 1,000-row file is well under 1 MB).
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
@@ -57,17 +71,18 @@ MAX_IMPORT_BYTES = 5 * 1024 * 1024
         "existing companies without a PAN to settle it is refused (409) for a person "
         "to decide, never merged. A repeated delivery with the same package_id "
         "changes nothing. The package format is provisional until RXIL's "
-        "specification is published."
+        "specification is published. ADMIN only: the outcome is recorded as RXIL's "
+        "decision, which the manual qualification routes never allow a person to do."
     ),
     responses={
         401: _401,
-        403: _403,
+        403: _403_ADMIN,
         409: {"description": "Matches existing companies ambiguously, or already being handled"},
         422: {"description": "The package cannot be read, or breaks the company rules"},
     },
 )
 async def take_in_rxil_company(
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_PARTNER_INTAKE)],
     package: Annotated[dict[str, Any], Body()],
     db: AsyncSession = Depends(get_db),
 ) -> IntakeResponse:

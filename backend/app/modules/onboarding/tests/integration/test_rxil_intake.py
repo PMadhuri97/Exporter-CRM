@@ -244,6 +244,39 @@ async def test_a_gstin_alone_matches_through_the_pan_it_carries():
     assert result.customer_id == customer_id
 
 
+async def test_a_gstin_only_delivery_is_found_again_when_repeated():
+    """With no PAN the company is created with none — the PAN its GSTIN
+    carries is never written into `pan` — so a repeated delivery must find it
+    by the GSTIN, not refuse it as a possible duplicate of itself."""
+    payload = _package()
+    del payload["exporter"]["pan"]
+    first = await _ingest(payload)
+    counts = await _counts(first.customer_id)
+    second = await _ingest(payload)
+    assert (second.customer_id, second.company, second.qualification) == (
+        first.customer_id, "matched", "already_qualified",
+    )
+    assert await _counts(first.customer_id) == counts
+
+
+async def test_an_interrupted_gstin_only_intake_is_finished_by_the_next_delivery(monkeypatch):
+    payload = _package()
+    del payload["exporter"]["pan"]
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("decision write failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(QualificationService, "record_partner_decision", boom)
+        with pytest.raises(RuntimeError):
+            await _ingest(payload)
+
+    result = await _ingest(payload)
+    assert (result.company, result.qualification) == ("matched", "recorded")
+    company = await _company(result.customer_id)
+    assert (company.pan, company.qualification) == (None, QualificationState.QUALIFIED)
+
+
 async def test_rxil_supersedes_a_local_not_qualified_decision():
     pan = _pan()
     customer_id = uuid.uuid4()
@@ -502,7 +535,7 @@ async def test_intake_writes_nothing_to_onboarding_request():
 
 
 async def test_the_api_takes_the_actor_from_the_session_not_the_package(client: AsyncClient):
-    user_id, token = await user_with_role(client, UserRole.OPERATIONS)
+    user_id, token = await user_with_role(client, UserRole.ADMIN)
     payload = _package()
     payload["exporter"]["recorded_by"] = "someone-else"
     payload["qualification"]["decided_by"] = "someone-else"
@@ -520,16 +553,24 @@ async def test_the_api_takes_the_actor_from_the_session_not_the_package(client: 
     assert (body["state"], body["journey"]) == ("QUALIFIED", "PROSPECT")
 
 
-async def test_a_developer_cannot_take_in_a_company(client: AsyncClient):
-    _, token = await user_with_role(client, UserRole.DEVELOPER)
+@pytest.mark.parametrize(
+    "role", [UserRole.DEVELOPER, UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.API_USER]
+)
+async def test_only_an_admin_can_take_in_a_company(client: AsyncClient, role: UserRole):
+    """Intake records a decision as RXIL's — source, method and confidence the
+    manual routes never let a person set — so only ADMIN may submit one by
+    hand, and nothing is created for anyone else."""
+    _, token = await user_with_role(client, role)
+    payload = _package()
     resp = await client.post(
-        f"{BASE}/rxil/company-intake", json=_package(), headers=auth_header(token)
+        f"{BASE}/rxil/company-intake", json=payload, headers=auth_header(token)
     )
     assert resp.status_code == 403
+    assert await _companies_with_pan(payload["exporter"]["pan"]) == 0
 
 
 async def test_an_invalid_package_is_a_422_listing_reasons(client: AsyncClient):
-    _, token = await user_with_role(client, UserRole.COMPLIANCE)
+    _, token = await user_with_role(client, UserRole.ADMIN)
     payload = _package()
     payload["exporter"]["pan"] = "BAD"
     resp = await client.post(

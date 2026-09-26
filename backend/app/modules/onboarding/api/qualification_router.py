@@ -123,6 +123,7 @@ async def list_qualification_criterion_versions(
         401: _401,
         403: _403_ADMIN,
         404: {"description": "Unknown criterion"},
+        409: {"description": "Another version was added first; reload and try again"},
         422: {"description": "Invalid criterion"},
     },
 )

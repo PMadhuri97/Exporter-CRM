@@ -686,7 +686,7 @@ export interface paths {
         put?: never;
         /**
          * Take in an exporter RXIL has qualified (provisional format)
-         * @description Creates or matches the company by the CRM's own identity rules and records RXIL's qualification exactly as supplied (source RXIL, never recomputed), which makes the company a PROSPECT. A company RXIL delivers that resembles existing companies without a PAN to settle it is refused (409) for a person to decide, never merged. A repeated delivery with the same package_id changes nothing. The package format is provisional until RXIL's specification is published.
+         * @description Creates or matches the company by the CRM's own identity rules and records RXIL's qualification exactly as supplied (source RXIL, never recomputed), which makes the company a PROSPECT. A company RXIL delivers that resembles existing companies without a PAN to settle it is refused (409) for a person to decide, never merged. A repeated delivery with the same package_id changes nothing. The package format is provisional until RXIL's specification is published. ADMIN only: the outcome is recorded as RXIL's decision, which the manual qualification routes never allow a person to do.
          */
         post: operations["take_in_rxil_company_api_v1_onboarding_rxil_company_intake_post"];
         delete?: never;
@@ -3905,8 +3905,15 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required; creating at ONBOARDED or any later status requires COMPLIANCE or ADMIN */
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The PAN is already held by another company */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4649,6 +4656,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Another version was added first; reload and try again */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Invalid criterion */
             422: {
                 headers: {
@@ -4895,7 +4909,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description ADMIN role required */
             403: {
                 headers: {
                     [name: string]: unknown;

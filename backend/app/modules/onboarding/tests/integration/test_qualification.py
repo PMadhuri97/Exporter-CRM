@@ -38,7 +38,14 @@ from app.modules.onboarding.domain.qualification_views import (
     EvidenceRef,
     ResultEntry,
 )
-from app.modules.onboarding.exceptions import QualificationClosedError
+from app.modules.onboarding.exceptions import (
+    QualificationClosedError,
+    QualificationCriterionChangedError,
+    QualificationCriterionExistsError,
+)
+from app.modules.onboarding.infrastructure.repositories.qualification_repository import (
+    QualificationRepository,
+)
 from app.modules.onboarding.tests.fixtures.auth import auth_header, user_with_role
 from app.modules.onboarding.tests.fixtures.companies import insert_company, make_company
 from app.platform.authentication.models import UserRole
@@ -162,6 +169,61 @@ async def test_a_new_version_leaves_the_old_one_exactly_as_it_was():
         v1_snapshot
     )
     assert current[key].version == 2
+
+
+def _inactive_yes_no(label: str) -> CriterionDefinition:
+    return CriterionDefinition(label=label, kind=CriterionKind.YES_NO, required=False, active=False)
+
+
+async def test_two_admins_creating_one_key_get_a_409_not_a_500(monkeypatch):
+    """The second ADMIN read "no such key" before the first one's insert
+    committed; the insert then collides on (key, version). That is the
+    "already exists" refusal, not an unhandled IntegrityError."""
+    key = _throwaway_key()
+    async with db_services.AsyncSessionLocal() as db:
+        await QualificationService(db).create_criterion(
+            key, _inactive_yes_no("First"), actor_id="admin-1"
+        )
+
+    async def not_there_yet(self, key):  # the second ADMIN's stale read
+        return None
+
+    monkeypatch.setattr(QualificationRepository, "latest_version", not_there_yet)
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(QualificationCriterionExistsError):
+            await QualificationService(db).create_criterion(
+                key, _inactive_yes_no("Second"), actor_id="admin-2"
+            )
+
+
+async def test_two_admins_versioning_at_once_get_a_409_and_nothing_is_saved(monkeypatch):
+    """Both read version 1 as current; the first adds version 2. The second,
+    made against a version that is no longer current, is refused — not retried
+    as version 3, and not a 500."""
+    key = _throwaway_key()
+    async with db_services.AsyncSessionLocal() as db:
+        v1 = await QualificationService(db).create_criterion(
+            key, _inactive_yes_no("Original"), actor_id="admin-1"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        await QualificationService(db).add_version(
+            key, _inactive_yes_no("First change"), actor_id="admin-1"
+        )
+
+    async def still_version_one(self, key):  # the second ADMIN's stale read
+        return v1
+
+    monkeypatch.setattr(QualificationRepository, "latest_version", still_version_one)
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(QualificationCriterionChangedError):
+            await QualificationService(db).add_version(
+                key, _inactive_yes_no("Second change"), actor_id="admin-2"
+            )
+    monkeypatch.undo()
+
+    async with db_services.AsyncSessionLocal() as db:
+        versions = await QualificationService(db).list_versions(key)
+    assert [(v.version, v.label) for v in versions] == [(1, "Original"), (2, "First change")]
 
 
 async def test_the_database_refuses_to_change_or_delete_a_criterion_version():

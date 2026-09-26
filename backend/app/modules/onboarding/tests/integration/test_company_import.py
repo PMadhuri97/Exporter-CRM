@@ -190,6 +190,29 @@ async def test_iec_and_cin_agreeing_with_the_pan_match():
     assert (row.status, row.customer_id) == ("accepted", existing.customer_id)
 
 
+async def test_a_gstin_only_row_imported_again_matches_the_company_it_created():
+    """A row with no PAN creates a company with no PAN; the same row in a later
+    file must be matched to it by its GSTIN, not reported as a possible
+    duplicate of the company it created."""
+    row = _row(gstins=_gstin(_pan()))
+    [first] = (await _import(row)).rows
+    [second] = (await _import(row)).rows
+    assert (first.status, first.action) == ("accepted", "created")
+    assert (second.status, second.action, second.customer_id) == (
+        "accepted", "matched", first.customer_id,
+    )
+
+
+async def test_a_gstin_only_row_bringing_a_gstin_the_company_lacks_is_for_a_person():
+    """The GSTIN-only match needs the one PAN-less holder to hold every
+    incoming GSTIN; anything looser stays a possible duplicate."""
+    pan = _pan()
+    holder = await _company(gstins=[_gstin(pan)])
+    [row] = (await _import(_row(gstins=f"{_gstin(pan)};{_gstin(pan, '29')}"))).rows
+    assert row.status == "possible_duplicate"
+    assert row.candidates == [holder.customer_id]
+
+
 async def test_a_gstin_held_elsewhere_is_a_warning_on_an_accepted_row():
     pan = _pan()
     holder = await _company(gstins=[_gstin(pan)])  # holds the GSTIN, has no PAN

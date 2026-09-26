@@ -122,7 +122,7 @@ GATED_ROUTES = [
         STAFF,
     ),
     # company intake and bulk import
-    ("POST", f"{BASE}/rxil/company-intake", {"exporter": {}}, STAFF),
+    ("POST", f"{BASE}/rxil/company-intake", {"exporter": {}}, ADMIN_ONLY),
     ("POST", f"{BASE}/imports/companies", None, STAFF),
     (
         "POST",

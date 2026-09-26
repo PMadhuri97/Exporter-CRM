@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,6 +16,7 @@ import {
   listReasonCodes,
   recordQualificationOutcome,
   setExporterMarker,
+  updateExporterProfile,
 } from '../api';
 import type { ExporterProfileDetail, Qualification } from '../types';
 
@@ -272,6 +273,41 @@ describe('ExporterDetailPage — E9', () => {
     expect(screen.queryByRole('form', { name: 'Record results' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Record:/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument();
+  });
+
+  it('starts every masked identifier empty in the edit form for OPERATIONS, CIN included', async () => {
+    mockUser('OPERATIONS', 'someone-else');
+    vi.mocked(getExporterProfileDetail).mockResolvedValue({
+      ...DETAIL,
+      cin: '•••••••••••••••••6789',
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+    const form = await screen.findByRole('form', { name: 'Edit profile' });
+    for (const label of ['PAN', 'GSTINs (comma-separated)', 'IEC', 'CIN']) {
+      const input = within(form).getByLabelText(label);
+      expect(input).toHaveValue('');
+      expect(input).toHaveAttribute('placeholder', 'Hidden — type to replace');
+    }
+  });
+
+  it('sends a year that is not a number as typed, for the server to refuse, never as a cleared year', async () => {
+    mockUser('COMPLIANCE', 'someone-else');
+    vi.mocked(updateExporterProfile).mockResolvedValue(DETAIL);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
+    const form = await screen.findByRole('form', { name: 'Edit profile' });
+    fireEvent.change(within(form).getByLabelText('Year established'), {
+      target: { value: 'twenty' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Save profile' }));
+    await waitFor(() =>
+      expect(updateExporterProfile).toHaveBeenCalledWith(DETAIL.customer_id, {
+        year_established: 'twenty',
+      }),
+    );
   });
 
   it('records exactly the outcomes the server allowed, with the chosen reason codes', async () => {

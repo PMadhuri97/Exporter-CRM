@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { useCurrentUser } from '@/platform/auth';
 import { MaskedValue } from '@/platform/mask';
 
 import { JourneyChip, MarkerBadge, QualificationChip } from '../components';
@@ -41,6 +42,7 @@ function TableSkeletonRow() {
 }
 
 export function ExportersListPage() {
+  const { role } = useCurrentUser();
   const [searchInput, setSearchInput] = useState('');
   const [nameFilter, setNameFilter] = useState('');
   const [tab, setTab] = useState<Tab>('ALL');
@@ -73,12 +75,15 @@ export function ExportersListPage() {
           >
             Import CSV
           </Link>
-          <Link
-            to="/exporters/rxil-intake"
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
-            RXIL intake
-          </Link>
+          {/* The server admits ADMIN only: intake records a decision as RXIL's. */}
+          {role === 'ADMIN' && (
+            <Link
+              to="/exporters/rxil-intake"
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
+            >
+              RXIL intake
+            </Link>
+          )}
           <Link
             to="/exporters/new"
             className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"

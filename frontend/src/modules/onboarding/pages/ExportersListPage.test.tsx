@@ -151,3 +151,24 @@ describe('ExportersListPage — the journey, qualification and marker filters (L
     expect(screen.queryByText(/compliance review/i)).not.toBeInTheDocument();
   });
 });
+
+describe('ExportersListPage — RXIL intake link', () => {
+  beforeEach(() => {
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
+  });
+
+  it('offers RXIL intake to ADMIN', () => {
+    mockUser('ADMIN', 'user-admin');
+    renderPage();
+    expect(screen.getByRole('link', { name: 'RXIL intake' })).toBeInTheDocument();
+  });
+
+  it.each(['OPERATIONS', 'COMPLIANCE', 'DEVELOPER'])(
+    'does not offer RXIL intake to %s, whom the server refuses',
+    (role) => {
+      mockUser(role, 'user-1');
+      renderPage();
+      expect(screen.queryByRole('link', { name: 'RXIL intake' })).not.toBeInTheDocument();
+    },
+  );
+});

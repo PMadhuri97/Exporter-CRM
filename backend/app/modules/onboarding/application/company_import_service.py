@@ -60,8 +60,12 @@ TEMPLATE_COLUMNS: tuple[str, ...] = (
 )
 TEMPLATE_CSV = ",".join(TEMPLATE_COLUMNS) + "\r\n"
 
-#: Most data rows one file may hold.
-MAX_ROWS = 5000
+#: Most data rows one file may hold. Rows are matched and saved one by one
+#: inside a single request, measured at about 46 ms a row on the app's pooled
+#: engine, so 1,000 rows (the size the plan asks for) finish in about a minute;
+#: 5,000 would run for about four, past a typical proxy timeout, leaving the
+#: user an error while rows kept saving. A larger file needs a background job.
+MAX_ROWS = 1000
 
 #: Sources a row may give. `RXIL` companies arrive through RXIL intake only.
 _IMPORTABLE_SOURCES = {s.value: s for s in ExporterSource if s is not ExporterSource.RXIL}

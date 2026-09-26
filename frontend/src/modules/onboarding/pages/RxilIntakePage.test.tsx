@@ -3,11 +3,25 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useCurrentUser } from '@/platform/auth';
+
 import { submitRxilPackage } from '../api';
 
 import { RxilIntakePage } from './RxilIntakePage';
 
+vi.mock('@/platform/auth', () => ({ useCurrentUser: vi.fn() }));
 vi.mock('../api', () => ({ submitRxilPackage: vi.fn() }));
+
+function mockRole(role: string) {
+  vi.mocked(useCurrentUser).mockReturnValue({
+    id: 'user-1',
+    email: 'user@aner.example',
+    full_name: null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test double, role widened for brevity
+    role: role as any,
+    is_active: true,
+  });
+}
 
 function renderPage() {
   const client = new QueryClient({
@@ -30,7 +44,18 @@ function submit(text: string) {
 describe('RxilIntakePage — RXIL company intake (L2-12, L2-14)', () => {
   beforeEach(() => {
     vi.mocked(submitRxilPackage).mockReset();
+    mockRole('ADMIN');
   });
+
+  it.each(['OPERATIONS', 'COMPLIANCE', 'DEVELOPER'])(
+    'shows %s why it cannot submit, and no form — the server admits ADMIN only',
+    (role) => {
+      mockRole(role);
+      renderPage();
+      expect(screen.getByRole('note')).toHaveTextContent('Only an administrator');
+      expect(screen.queryByLabelText('RXIL package')).not.toBeInTheDocument();
+    },
+  );
 
   it('refuses text that is not JSON without calling the server', () => {
     renderPage();

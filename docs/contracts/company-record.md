@@ -219,8 +219,10 @@ refused with a message naming the field.
 
 **GSTIN contains the PAN.** When a company has a PAN, every GSTIN on it must
 carry that PAN in characters 3–12; a mismatch is refused. When a company has
-no PAN, a GSTIN's embedded PAN is used for duplicate *matching* only; it is
-never written into `pan` silently.
+no PAN, its GSTINs must still all carry the *same* PAN — GSTINs carrying two
+PANs cannot be one company's, and are refused on the company screens as they
+are by import and RXIL intake. That embedded PAN is used for duplicate
+*matching* only; it is never written into `pan` silently.
 
 **Warnings are part of the response, not an error.** A save that raises a
 GSTIN warning succeeds, and the response says which GSTIN is also held by which
@@ -243,6 +245,7 @@ manual creation (`check_identity`):
 |---|---|
 | has a PAN (its own, or the one every GSTIN carries) that an existing company holds, and nothing disagrees | **matched** to that company; nothing on it is changed |
 | …but that company has a different IEC or CIN, or another company holds its IEC or CIN | **conflict** — rejected, every company involved named |
+| has no PAN of its own, its GSTINs all carry one PAN, and exactly one existing company with no PAN holds every one of them (and no GSTIN carrying another PAN) | **matched** to that company — it is the one an earlier GSTIN-only delivery or row created. The IEC/CIN conflict rules above apply |
 | brings its own new PAN, and shares only GSTINs with companies that have no PAN | **new**, with a `GSTIN_HELD_BY_OTHER_COMPANY` warning (decision 4) |
 | shares an IEC or CIN with a company that has a different PAN | **conflict** |
 | otherwise shares a GSTIN, IEC or CIN with one company, and no PAN settles it | **possible duplicate** — nothing created, for a person to decide |

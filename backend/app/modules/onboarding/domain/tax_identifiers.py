@@ -109,10 +109,18 @@ def embedded_pan(gstin: str) -> str:
 def check_gstins_match_pan(pan: str | None, gstins: Iterable[str]) -> None:
     """Every GSTIN must embed the company's PAN, when the company has one.
 
-    With no PAN there is nothing to cross-check: the embedded PAN is used for
-    duplicate matching only, and is never written into ``pan``.
+    With no PAN, the GSTINs must still all embed the *same* PAN: GSTINs
+    carrying two PANs cannot belong to one company (bulk import and RXIL
+    intake refuse them too, as ``CONFLICTING_IDENTIFIERS``). The embedded PAN
+    is used for duplicate matching only, and is never written into ``pan``.
     """
     if pan is None:
+        embedded = sorted({embedded_pan(gstin) for gstin in gstins})
+        if len(embedded) > 1:
+            raise ValidationError(
+                "these GSTINs carry different PANs "
+                f"({', '.join(embedded)}), so they cannot all belong to one company"
+            )
         return
     mismatched = [gstin for gstin in gstins if embedded_pan(gstin) != pan]
     if mismatched:

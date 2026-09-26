@@ -604,6 +604,23 @@ class QualificationCriterionExistsError(AnerBaseException):
         )
 
 
+class QualificationCriterionChangedError(AnerBaseException):
+    """Another change to this criterion landed first: the version this one
+    would have become already exists. Nothing was saved; read the criterion
+    again and re-apply the change on top of the current version."""
+
+    def __init__(self, key: str, version: int) -> None:
+        super().__init__(
+            detail=(
+                f"Version {version} of the qualification criterion {key!r} was added "
+                "by someone else first; nothing was saved — reload it and try again"
+            ),
+            error_code="QUALIFICATION_CRITERION_CHANGED",
+            status_code=409,
+            extensions={"key": key, "version": version},
+        )
+
+
 class QualificationClosedError(AnerBaseException):
     """The company is already QUALIFIED. In the prototype that is final
     (assumption A2): no further results or outcomes are recorded; re-review is

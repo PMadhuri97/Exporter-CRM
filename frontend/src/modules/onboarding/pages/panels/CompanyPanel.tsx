@@ -60,8 +60,8 @@ const FIELDS: { key: keyof ProfileDraft; label: string }[] = [
 
 const LIST_FIELDS = new Set<keyof ProfileDraft>(['gstins', 'export_markets', 'products']);
 
-/** Identifiers masked for roles that may not reveal them. */
-const MASKED_FIELDS = new Set<keyof ProfileDraft>(['pan', 'gstins', 'iec']);
+/** Identifiers masked for roles that may not reveal them — the server masks CIN too. */
+const MASKED_FIELDS = new Set<keyof ProfileDraft>(['pan', 'gstins', 'iec', 'cin']);
 
 /**
  * A role that may not reveal identifiers (OPERATIONS) can still edit, so its
@@ -75,7 +75,7 @@ function draftFrom(profile: ExporterProfileDetail, revealIdentifiers: boolean): 
     pan: revealIdentifiers ? (profile.pan ?? '') : '',
     gstins: revealIdentifiers ? profile.gstins.join(', ') : '',
     iec: revealIdentifiers ? (profile.iec ?? '') : '',
-    cin: profile.cin ?? '',
+    cin: revealIdentifiers ? (profile.cin ?? '') : '',
     relationship_manager: profile.relationship_manager ?? '',
     industry: profile.industry ?? '',
     export_markets: (profile.export_markets ?? []).join(', '),
@@ -109,7 +109,9 @@ function changesBetween(
       const items = splitList(text);
       changes[key] = items.length ? items : null;
     } else if (key === 'year_established') {
-      changes[key] = text ? Number(text) : null;
+      // Anything but digits goes as typed, so the server refuses it (422).
+      // `Number('abc')` is NaN, which JSON sends as null — clearing the year.
+      changes[key] = text ? (/^\d+$/.test(text) ? Number(text) : text) : null;
     } else {
       changes[key] = text || null;
     }
@@ -247,7 +249,7 @@ export function CompanyPanel({
                 )}
               </DetailRow>
               <DetailRow label="IEC"><MaskedValue value={profile.iec} /></DetailRow>
-              <DetailRow label="CIN">{profile.cin ?? '—'}</DetailRow>
+              <DetailRow label="CIN"><MaskedValue value={profile.cin} /></DetailRow>
               <DetailRow label="Source">{humanize(profile.source)}</DetailRow>
               <DetailRow label="Industry">{profile.industry ?? '—'}</DetailRow>
               <DetailRow label="Established">{profile.year_established ?? '—'}</DetailRow>

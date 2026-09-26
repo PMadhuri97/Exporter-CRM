@@ -55,6 +55,12 @@ Thresholds live here, never in code: the CEO's "revenue of at least $100M" and
 previous one remains readable, so a result recorded against version 2 still
 shows the version-2 threshold it was judged against.
 
+As built: if two ADMINs change one criterion at once, the first change becomes
+the next version and the second is refused with 409
+`QUALIFICATION_CRITERION_CHANGED` — nothing saved, reload and re-apply —
+rather than silently stacking as the version after. Two ADMINs creating the
+same key at once get 409 `QUALIFICATION_CRITERION_EXISTS`.
+
 **Initial set** (seeded, then managed by ADMIN): `revenue`,
 `years_in_business`, `export_history`, `export_licence`, `industry`,
 `geography` (trade corridor), `deal_size`. Their kinds and thresholds are seed

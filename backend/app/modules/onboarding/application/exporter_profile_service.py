@@ -34,6 +34,7 @@ import uuid
 from collections.abc import Iterable, Mapping
 
 import structlog
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -427,7 +428,9 @@ class ExporterProfileService:
                 f"update_profile cannot set {sorted(unknown)}: not an editable company field"
             )
 
-        profile = await self._require_profile(customer_id)
+        # Locked, so a concurrent edit waits and then sees this one: every
+        # history row's `from` is the value the edit actually replaced.
+        profile = await self._lock_profile(customer_id)
         wanted = {field: _cleared_to_none(value) for field, value in changes.items()}
         for field in _NOT_CLEARABLE.intersection(wanted):
             if wanted[field] is None:
@@ -533,7 +536,10 @@ class ExporterProfileService:
         The marker, its current reason and one `marker` history row — from,
         to, reason, the signed-in user — commit together.
         """
-        profile = await self._require_profile(customer_id)
+        # Locked, so two concurrent moves are judged one after the other and
+        # the second sees the first: the history never shows two moves from
+        # the same marker.
+        profile = await self._lock_profile(customer_id)
         from_marker = profile.marker
         needs_reason = _MARKER_MOVES.get((from_marker, marker))
         if needs_reason is None:
@@ -611,6 +617,8 @@ class ExporterProfileService:
         pan = _normalise_term(pan)
         gstin = _normalise_term(gstin)
         iec = _normalise_term(iec)
+        # A blank name is no search at all: it must not bring ENDED back.
+        name_contains = (name_contains or "").strip() or None
         searching = any(term is not None for term in (name_contains, pan, gstin, iec))
 
         profiles = await self._profiles.search(
@@ -736,6 +744,20 @@ class ExporterProfileService:
 
     async def _require_profile(self, customer_id: uuid.UUID) -> ExporterProfile:
         profile = await self._profiles.get_by_customer_id(customer_id)
+        if profile is None:
+            raise ExporterProfileNotFoundError(customer_id)
+        return profile
+
+    async def _lock_profile(self, customer_id: uuid.UUID) -> ExporterProfile:
+        """The company row, locked for the rest of the transaction and read
+        fresh — as `QualificationService` locks it before a decision."""
+        result = await self._db.execute(
+            select(ExporterProfile)
+            .where(ExporterProfile.customer_id == customer_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        profile = result.scalar_one_or_none()
         if profile is None:
             raise ExporterProfileNotFoundError(customer_id)
         return profile

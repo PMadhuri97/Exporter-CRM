@@ -36,6 +36,7 @@ from decimal import Decimal
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.history_service import HistoryService
@@ -68,6 +69,7 @@ from app.modules.onboarding.domain.qualification_views import (
 from app.modules.onboarding.exceptions import (
     ExporterProfileNotFoundError,
     QualificationClosedError,
+    QualificationCriterionChangedError,
     QualificationCriterionExistsError,
     QualificationCriterionNotFoundError,
 )
@@ -119,7 +121,13 @@ class QualificationService:
         if await self._repo.latest_version(key) is not None:
             raise QualificationCriterionExistsError(key)
         criterion = _criterion_row(key, 1, definition, actor_id)
-        await self._repo.add(criterion)
+        try:
+            await self._repo.add(criterion)
+        except IntegrityError:
+            # Another ADMIN created the key between the check and the insert
+            # (`uq_qualification_criterion_key_version`).
+            await self._db.rollback()
+            raise QualificationCriterionExistsError(key) from None
         await self._db.commit()
         logger.info("qualification.criterion.created", key=key, actor_id=actor_id)
         return criterion
@@ -135,7 +143,14 @@ class QualificationService:
         if latest is None:
             raise QualificationCriterionNotFoundError(key)
         criterion = _criterion_row(key, latest.version + 1, definition, actor_id)
-        await self._repo.add(criterion)
+        try:
+            await self._repo.add(criterion)
+        except IntegrityError:
+            # Another ADMIN added this version first. Refused rather than
+            # retried as the next number: this change was made against a
+            # version that is no longer current.
+            await self._db.rollback()
+            raise QualificationCriterionChangedError(key, latest.version + 1) from None
         await self._db.commit()
         logger.info(
             "qualification.criterion.versioned",

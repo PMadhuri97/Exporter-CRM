@@ -13,6 +13,13 @@ the company record's own identity rules (``docs/contracts/company-record.md``
   at different companies: ``CONFLICT``, with every company involved named.
 * **GSTINs warn.** Another company holding an incoming GSTIN is a warning,
   never a refusal (decision 4), when a PAN settles which company this is.
+* **A company that arrived by GSTIN alone is found again by it.** An incoming
+  company with no PAN of its own, whose GSTINs all carry one PAN, is
+  ``MATCHED`` to the one company that holds every one of those GSTINs, has no
+  PAN on file, and holds no GSTIN carrying another PAN. That company was
+  created from the same GSTIN-only delivery or row (the embedded PAN is never
+  written into ``pan``), so without this a repeated delivery could never find
+  it. The same IEC/CIN conflict checks as a PAN match apply.
 * **Without a PAN to settle it, shared identifiers are only a resemblance.**
   A company sharing a GSTIN, IEC or CIN with no PAN confirming it is a
   ``POSSIBLE_DUPLICATE`` — for a person to decide, never merged. More than one
@@ -30,6 +37,7 @@ from app.modules.onboarding.domain.company_intake import (
     MatchKind,
     Reason,
 )
+from app.modules.onboarding.domain.tax_identifiers import embedded_pan
 from app.modules.onboarding.infrastructure.repositories import ExporterProfileRepository
 
 
@@ -50,6 +58,9 @@ class CompanyMatcher:
             return CompanyMatch(MatchKind.NEW)
 
         profiles = {p.customer_id: p for p in await self._profiles.get_many(list(holders))}
+        same = _same_gstin_only_company(identity, holders, profiles)
+        if same is not None:
+            return self._confirmed(identity, same, holders)
         candidates = tuple(sorted(holders, key=str))
         by_iec_or_cin = [cid for cid, kinds in holders.items() if kinds & {"iec", "cin"}]
 
@@ -123,6 +134,31 @@ class CompanyMatcher:
         return CompanyMatch(
             MatchKind.MATCHED, customer_id=confirmed.customer_id, warnings=warnings
         )
+
+
+def _same_gstin_only_company(identity: IntakeIdentity, holders, profiles):
+    """The company an earlier GSTIN-only delivery or row created, when this
+    one is evidently the same company again — else ``None``.
+
+    Only for an incoming company with no PAN of its own whose GSTINs all carry
+    one PAN (``matching_pan``), and only when exactly one existing company
+    holds every incoming GSTIN, has no PAN, and holds no GSTIN carrying a
+    different PAN. Anything looser stays a ``POSSIBLE_DUPLICATE`` for a person.
+    """
+    pan = identity.matching_pan
+    if identity.pan is not None or pan is None or not identity.gstins:
+        return None
+    wanted = set(identity.gstins)
+    found = [
+        profile
+        for cid, kinds in holders.items()
+        if "gstin" in kinds
+        and (profile := profiles.get(cid)) is not None
+        and profile.pan is None
+        and wanted <= set(profile.gstins)
+        and all(embedded_pan(g) == pan for g in profile.gstins)
+    ]
+    return found[0] if len(found) == 1 else None
 
 
 def _gstin_warning(holders) -> Reason:

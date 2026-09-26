@@ -12,7 +12,8 @@ Knows nothing about any partner's format. The RXIL adapter
    changes nothing. (The platform idempotency registry is not used: every key
    type it accepts is built on a UUID v4, and a partner's own id is not one —
    registering it would mean inventing a key.) With or without an id, the
-   steps below are themselves repeat-safe: the PAN finds the same company, an
+   steps below are themselves repeat-safe: the PAN finds the same company
+   (or, for a company that arrived with GSTINs only, those GSTINs do), an
    already-``QUALIFIED`` company is left alone, and the company row is locked
    while a decision is recorded, so two concurrent deliveries cannot both
    record one.

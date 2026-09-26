@@ -111,7 +111,8 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
     ) -> list[ExporterProfile]:
         """Filtered profile search, newest first.
 
-        ``name_contains`` is a case-insensitive partial match on the name.
+        ``name_contains`` is a case-insensitive partial match on the name,
+        taken literally: ``%`` and ``_`` in it match only themselves.
         ``gstin`` matches any of a company's GSTINs. ``exclude_ended`` drops
         ``ENDED`` companies — the service decides when (the default working
         list); this query only applies it.
@@ -129,7 +130,9 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         if iec is not None:
             stmt = stmt.where(ExporterProfile.iec == iec)
         if name_contains is not None:
-            stmt = stmt.where(ExporterProfile.name.ilike(f"%{name_contains}%"))
+            stmt = stmt.where(
+                ExporterProfile.name.ilike(f"%{_escape_like(name_contains)}%", escape="\\")
+            )
         if source is not None:
             stmt = stmt.where(ExporterProfile.source == source)
         if journey is not None:
@@ -141,9 +144,21 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         elif exclude_ended:
             stmt = stmt.where(ExporterProfile.marker != ExporterMarker.ENDED)
 
-        stmt = stmt.order_by(ExporterProfile.created_at.desc()).limit(limit).offset(offset)
+        # `customer_id` breaks ties: companies created in one transaction share
+        # a `created_at`, and without it a page boundary could repeat or skip one.
+        stmt = (
+            stmt.order_by(ExporterProfile.created_at.desc(), ExporterProfile.customer_id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+
+def _escape_like(value: str) -> str:
+    """`value` for a LIKE pattern with a backslash as the escape character,
+    so its own `%`, `_` and backslashes are matched literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 __all__ = ["ExporterProfileRepository"]

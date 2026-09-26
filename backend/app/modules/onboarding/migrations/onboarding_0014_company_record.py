@@ -23,6 +23,16 @@ dropped or altered here. Legacy onboarding tables, verification results, the
 bank-activity table and every other module's tables are not touched. Load the
 sample data afterwards with ``python -m app.modules.onboarding.sample_data``.
 
+**It refuses to empty tables that hold rows unless told to.** The approval
+covers the development database, but a migration runs wherever
+``alembic upgrade head`` is run — a teammate's database, a shared or staging
+one. So before the ``TRUNCATE`` it checks the five tables, and if any holds a
+row it stops with an error naming them, changing nothing, unless the
+environment sets ``E9_ALLOW_CRM_RESET=1``. Empty tables (a fresh database, CI)
+need no flag. To run it on a database whose CRM data may be discarded::
+
+    E9_ALLOW_CRM_RESET=1 alembic upgrade head
+
 What it adds:
 
 * **Identity on the company record** — ``name``, ``country``, ``cin`` — so the
@@ -53,6 +63,7 @@ Downgrade restores the previous shape but **not the data**: the emptied rows
 are gone, and every GSTIN beyond a company's first is dropped.
 """
 
+import os
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -75,6 +86,10 @@ _CLEARED = (
     "exporter_profile",
 )
 
+#: Setting this to ``1`` lets ``upgrade()`` empty ``_CLEARED`` when it holds
+#: rows. Without it, a non-empty table stops the migration before any change.
+RESET_FLAG = "E9_ALLOW_CRM_RESET"
+
 #: Child tables that gain a real link to their company.
 _LINKED = (
     "exporter_contact",
@@ -93,8 +108,29 @@ marker_enum = postgresql.ENUM(
 )
 
 
+def _refuse_to_empty_data_without_the_flag() -> None:
+    """Stop, before any change, if a table this migration empties holds rows
+    and ``RESET_FLAG`` is not set — see the module docstring."""
+    if os.environ.get(RESET_FLAG) == "1":
+        return
+    bind = op.get_bind()
+    holding = [
+        table
+        for table in _CLEARED
+        if bind.execute(sa.text(f"SELECT EXISTS (SELECT 1 FROM {SCHEMA}.{table})")).scalar()
+    ]
+    if holding:
+        raise RuntimeError(
+            f"{revision} empties {', '.join(f'{SCHEMA}.{t}' for t in holding)}, which hold "
+            f"rows. That was approved for the development database only. If this "
+            f"database's CRM data may be discarded, run it again with {RESET_FLAG}=1; "
+            f"otherwise stop here. Nothing has been changed."
+        )
+
+
 def upgrade() -> None:
     # ── 1. Start fresh (approved decision; see module docstring) ─────────────
+    _refuse_to_empty_data_without_the_flag()
     op.execute(
         "TRUNCATE " + ", ".join(f"{SCHEMA}.{table}" for table in _CLEARED)
     )

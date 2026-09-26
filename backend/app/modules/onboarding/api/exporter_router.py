@@ -124,12 +124,8 @@ def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
             "description": "Idempotent replay or existing profile for this customer_id",
         },
         401: {"description": "Unauthorized"},
-        403: {
-            "description": (
-                "OPERATIONS, COMPLIANCE or ADMIN role required; creating at "
-                "ONBOARDED or any later status requires COMPLIANCE or ADMIN"
-            )
-        },
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        409: {"description": "The PAN is already held by another company"},
         422: {"description": "Invalid request body"},
     },
 )
@@ -141,11 +137,9 @@ async def create_exporter_profile(
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> ExporterProfileResponse:
     # "Add Exporter": a name and country (the schema guarantees both or
-    # neither) create a named company through `create_lead`. The contact the
-    # legacy identity store needs is the signed-in user's own address, never a
-    # field the caller supplies.
-    if body.name is not None:
-        assert body.country is not None
+    # neither) create a named company through `create_lead`, with the
+    # signed-in user as the actor — never a field the caller supplies.
+    if body.name is not None and body.country is not None:
         if idempotency_key is None:
             raise ValidationError(
                 "Creating a named company (name supplied) requires an "

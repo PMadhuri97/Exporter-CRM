@@ -12,7 +12,9 @@ this package.
 
 from __future__ import annotations
 
+import asyncio
 import pathlib
+import types
 import uuid
 
 import psycopg2
@@ -34,6 +36,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterMarker,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationOutcomeValue
 from app.modules.onboarding.exceptions import DuplicatePanError, InvalidMarkerTransitionError
@@ -98,6 +101,65 @@ async def test_0014_follows_0013_and_the_chain_has_one_head():
     assert script.get_revision(REVISION).down_revision == "onboarding_0013_shared_history"
     assert REVISION in {rev.revision for rev in script.walk_revisions("base", head)}
     assert len(REVISION) <= 32
+
+
+class _FakeBind:
+    """Answers the guard's `SELECT EXISTS` per table, and nothing else."""
+
+    def __init__(self, holding: set[str]) -> None:
+        self.holding = holding
+
+    def execute(self, clause):
+        table = str(clause).split(" FROM ")[1].split(")")[0].split(".")[1]
+        return types.SimpleNamespace(scalar=lambda: table in self.holding)
+
+
+class _FakeOp:
+    def __init__(self, holding: set[str]) -> None:
+        self._bind = _FakeBind(holding)
+        self.executed: list[str] = []
+
+    def get_bind(self):
+        return self._bind
+
+    def execute(self, sql) -> None:
+        self.executed.append(str(sql))
+
+
+def _migration():
+    return _script().get_revision(REVISION).module
+
+
+async def test_0014_refuses_to_empty_tables_holding_rows_without_the_flag(monkeypatch):
+    """The TRUNCATE was approved for the development database only; on any
+    other database with CRM rows the migration must stop before changing
+    anything, and say how to proceed."""
+    migration = _migration()
+    fake = _FakeOp({"exporter_profile", "exporter_contact"})
+    monkeypatch.setattr(migration, "op", fake)
+    monkeypatch.delenv(migration.RESET_FLAG, raising=False)
+
+    with pytest.raises(RuntimeError) as refused:
+        migration.upgrade()
+    assert fake.executed == []  # no TRUNCATE, no DDL
+    message = str(refused.value)
+    assert "onboarding.exporter_profile" in message
+    assert "onboarding.exporter_contact" in message
+    assert f"{migration.RESET_FLAG}=1" in message
+
+
+async def test_0014_empties_tables_holding_rows_when_the_flag_is_set(monkeypatch):
+    migration = _migration()
+    monkeypatch.setattr(migration, "op", _FakeOp({"exporter_profile"}))
+    monkeypatch.setenv(migration.RESET_FLAG, "1")
+    migration._refuse_to_empty_data_without_the_flag()  # does not raise
+
+
+async def test_0014_needs_no_flag_on_empty_tables(monkeypatch):
+    migration = _migration()
+    monkeypatch.setattr(migration, "op", _FakeOp(set()))
+    monkeypatch.delenv(migration.RESET_FLAG, raising=False)
+    migration._refuse_to_empty_data_without_the_flag()  # a fresh database or CI
 
 
 async def test_the_database_is_at_the_head():
@@ -662,3 +724,138 @@ async def test_sample_data_covers_the_states_this_phase_introduces():
     assert by_slug["company-b"].journey is ExporterJourney.PROSPECT  # CUSTOMER waits for L2-11
     assert all(d.name for d in by_slug.values())
     assert legacy_rows == 0  # nothing fake written to the legacy onboarding tables
+
+
+# ── Concurrent writes, GSTINs without a PAN, search ──────────────────────────
+
+
+async def _while_another_session_holds_the_row(customer_id, change, write):
+    """Run `write` while another session holds the company row, changes it
+    with `change`, and commits half a second later — so `write` either waits
+    for that commit (row locked) or reads the old row (not locked)."""
+    async with db_services.AsyncSessionLocal() as holder:
+        profile = await holder.scalar(
+            select(ExporterProfile)
+            .where(ExporterProfile.customer_id == customer_id)
+            .with_for_update()
+        )
+        change(profile)
+        await holder.flush()
+        task = asyncio.create_task(write())
+        await asyncio.sleep(0.5)
+        assert not task.done()  # held up by the other session
+        await holder.commit()
+    return await task
+
+
+async def test_a_marker_move_waits_for_a_concurrent_one_and_records_what_it_replaced():
+    customer_id = await _company_at()
+
+    def pause(profile):
+        profile.marker = ExporterMarker.PAUSED
+        profile.marker_reason = "Paused elsewhere"
+
+    async def end():
+        async with db_services.AsyncSessionLocal() as db:
+            return await ExporterProfileService(db).set_marker(
+                customer_id, ExporterMarker.ENDED, reason="Closed", actor_id="rm-2"
+            )
+
+    await _while_another_session_holds_the_row(customer_id, pause, end)
+    async with db_services.AsyncSessionLocal() as db:
+        [row] = (
+            await HistoryService(db).list_for_company(
+                customer_id, dimension=HISTORY_DIMENSION_MARKER
+            )
+        )[0]
+    assert (row.from_status, row.to_status) == ("PAUSED", "ENDED")  # not NONE -> ENDED
+
+
+async def test_an_edit_waits_for_a_concurrent_one_and_records_what_it_replaced():
+    customer_id = await _company_at()
+
+    def rename(profile):
+        profile.name = "Renamed elsewhere"
+
+    async def edit():
+        async with db_services.AsyncSessionLocal() as db:
+            return await ExporterProfileService(db).update_profile(
+                customer_id, {"name": "Renamed here"}, actor_id="rm-2"
+            )
+
+    await _while_another_session_holds_the_row(customer_id, rename, edit)
+    async with db_services.AsyncSessionLocal() as db:
+        [row] = (await HistoryService(db).list_for_company(customer_id, dimension="profile"))[0]
+    assert (row.event_metadata["from"], row.event_metadata["to"]) == (
+        "Renamed elsewhere", "Renamed here",
+    )
+
+
+async def test_gstins_carrying_two_pans_are_refused_even_without_a_pan():
+    """Import and RXIL intake refuse these as CONFLICTING_IDENTIFIERS; the
+    company screens must refuse them too."""
+    first, second = _new_pan(), _new_pan()
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ValidationError, match="different PANs"):
+            await ExporterProfileService(db).create_or_get_profile(
+                uuid.uuid4(), source=ExporterSource.SALES, name="Two PANs", country="IN",
+                gstins=[_gstin(first), _gstin(second)],
+            )
+    customer_id = await _company_at()
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ValidationError, match="different PANs"):
+            await ExporterProfileService(db).update_profile(
+                customer_id, {"gstins": [_gstin(first), _gstin(second)]}, actor_id="rm-1"
+            )
+
+
+async def test_a_name_search_takes_percent_and_underscore_literally():
+    tag = uuid.uuid4().hex[:8]
+    async with db_services.AsyncSessionLocal() as db:
+        service = ExporterProfileService(db)
+        literal, _ = await service.create_or_get_profile(
+            uuid.uuid4(), source=ExporterSource.SALES, name=f"100% Cotton_{tag}", country="IN"
+        )
+        await service.create_or_get_profile(
+            uuid.uuid4(), source=ExporterSource.SALES, name=f"100X Cotton-{tag}", country="IN"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        found = await ExporterProfileService(db).search_profiles(
+            name_contains=f"0% Cotton_{tag}"
+        )
+    assert [p.customer_id for p in found] == [literal.customer_id]
+
+
+async def test_a_blank_name_is_no_search_and_does_not_bring_ended_back():
+    customer_id = await _company_at()
+    async with db_services.AsyncSessionLocal() as db:
+        await ExporterProfileService(db).set_marker(
+            customer_id, ExporterMarker.ENDED, reason="Closed", actor_id="rm-1"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        listed = await ExporterProfileService(db).search_profiles(name_contains="   ")
+    assert customer_id not in {p.customer_id for p in listed}
+
+
+async def test_companies_created_together_page_in_one_stable_order():
+    """Companies saved in one transaction share a created_at; the company id
+    breaks the tie, so paging through them never repeats or skips one."""
+    tag = uuid.uuid4().hex[:8]
+    ids = [uuid.uuid4() for _ in range(3)]
+    async with db_services.AsyncSessionLocal() as db:
+        for customer_id in ids:
+            db.add(
+                ExporterProfile(
+                    customer_id=customer_id, source=ExporterSource.SALES,
+                    name=f"Same Moment {tag}", country="IN",
+                )
+            )
+        await db.commit()
+    pages = []
+    for offset in range(3):
+        async with db_services.AsyncSessionLocal() as db:
+            [row] = await ExporterProfileService(db).search_profiles(
+                name_contains=f"Same Moment {tag}", limit=1, offset=offset
+            )
+        pages.append(row.customer_id)
+    assert pages == sorted(ids, reverse=True)
