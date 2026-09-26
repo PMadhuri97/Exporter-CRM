@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 
 import { AppShell } from '@/layout/AppShell';
 import { OnboardingRoutes, PipelinePage } from '@/modules/onboarding';
+import { SettingsRoutes } from '@/modules/settings';
 import { DashboardPlaceholder } from '@/pages/DashboardPlaceholder';
 import { LoginPage } from '@/pages/auth/LoginPage';
 
@@ -17,6 +18,7 @@ export function AppRouter() {
             <Route path="/" element={<DashboardPlaceholder />} />
             <Route path="/exporters/*" element={<OnboardingRoutes />} />
             <Route path="/pipeline" element={<PipelinePage />} />
+            <Route path="/settings/*" element={<SettingsRoutes />} />
           </Route>
         </Route>
       </Routes>

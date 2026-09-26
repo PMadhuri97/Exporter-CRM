@@ -40,6 +40,33 @@ class User(AnerModel):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    #: An administrator created this account (so its email is trusted), rather
+    #: than it arriving through self-service sign-up. No email-confirmation
+    #: flow exists yet, so this records provenance rather than a verified
+    #: round-trip — it must not be read as "this address was proven".
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: Stamped on every successful login. Nullable because accounts that have
+    #: never signed in are a real state an administrator needs to see.
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    #: The administrator who created this account; NULL for self-service
+    #: sign-ups and for the first admin created by the bootstrap command.
+    #: ON DELETE SET NULL, since deleting an administrator must never cascade
+    #: into deleting the accounts they created.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{SCHEMA}.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    #: When `is_active` last went false. Cleared on reactivation so it always
+    #: describes the current state rather than accumulating history — the
+    #: audit trail of who deactivated whom belongs in the history log
+    #: (Developer 1's task L1-11), not in this column.
+    deactivated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
