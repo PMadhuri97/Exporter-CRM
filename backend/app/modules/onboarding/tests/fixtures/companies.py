@@ -15,19 +15,12 @@ from __future__ import annotations
 
 import uuid
 
-from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterLifecycleStatus,
-    ExporterSource,
-)
+from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.platform.database import services as db_services
 
 
-async def make_company(
-    customer_id: uuid.UUID | None = None,
-    *,
-    lifecycle_status: ExporterLifecycleStatus = ExporterLifecycleStatus.LEAD,
-) -> uuid.UUID:
+async def make_company(customer_id: uuid.UUID | None = None) -> uuid.UUID:
     """Insert a bare company through the ORM and return its id."""
     customer_id = customer_id or uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
@@ -35,7 +28,6 @@ async def make_company(
             ExporterProfile(
                 customer_id=customer_id,
                 source=ExporterSource.SALES,
-                lifecycle_status=lifecycle_status,
             )
         )
         await db.commit()
@@ -46,8 +38,8 @@ def insert_company(cursor, customer_id: uuid.UUID | None = None) -> uuid.UUID:
     """Insert a bare company with raw SQL, for tests that bypass the ORM."""
     customer_id = customer_id or uuid.uuid4()
     cursor.execute(
-        "INSERT INTO onboarding.exporter_profile (id, customer_id, source, lifecycle_status) "
-        "VALUES (%s, %s, 'SALES', 'LEAD')",
+        "INSERT INTO onboarding.exporter_profile (id, customer_id, source) "
+        "VALUES (%s, %s, 'SALES')",
         (str(uuid.uuid4()), str(customer_id)),
     )
     return customer_id

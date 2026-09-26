@@ -384,7 +384,7 @@ export interface paths {
         };
         /**
          * Search exporter profiles
-         * @description Filters by gstin, pan, iec, source, lifecycle status, marker (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
+         * @description Filters by gstin, pan, iec, source, journey, qualification, marker (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -418,29 +418,9 @@ export interface paths {
         head?: never;
         /**
          * Update an exporter profile's mutable CRM fields
-         * @description Updates CRM fields. A field left out of the body is unchanged; a field sent as null (or an empty string or list) is cleared. Each change is recorded in the company's history with the signed-in user as the actor. `source` and `lifecycle_status` are not accepted here (422 if present) — source is immutable, and lifecycle_status is owned by the transition endpoint.
+         * @description Updates CRM fields. A field left out of the body is unchanged; a field sent as null (or an empty string or list) is cleared. Each change is recorded in the company's history with the signed-in user as the actor. `source`, `journey`, `qualification` and the marker are not accepted here (422 if present): source is immutable, and each of the others has its own write path.
          */
         patch: operations["update_exporter_profile_api_v1_onboarding_exporters__customer_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/onboarding/exporters/{customer_id}/transition": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Transition an exporter's lifecycle_status
-         * @description The only way lifecycle_status changes. Validates the move against the permitted-transition table; an illegal transition returns 409 and leaves the profile untouched.
-         */
-        post: operations["transition_exporter_lifecycle_status_api_v1_onboarding_exporters__customer_id__transition_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/onboarding/exporters/{customer_id}/marker": {
@@ -689,6 +669,63 @@ export interface paths {
          * @description The signed-in reviewer's decision, stored beside the server's suggestion. Allowed from NOT_YET_REVIEWED and, as a re-review, from NOT_QUALIFIED; QUALIFIED is final. NOT_QUALIFIED needs at least one reason code. A QUALIFIED lead becomes a PROSPECT in the same transaction; qualification never makes a company a CUSTOMER.
          */
         post: operations["record_exporter_qualification_outcome_api_v1_onboarding_exporters__customer_id__qualification_outcome_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/rxil/company-intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take in an exporter RXIL has qualified (provisional format)
+         * @description Creates or matches the company by the CRM's own identity rules and records RXIL's qualification exactly as supplied (source RXIL, never recomputed), which makes the company a PROSPECT. A company RXIL delivers that resembles existing companies without a PAN to settle it is refused (409) for a person to decide, never merged. A repeated delivery with the same package_id changes nothing. The package format is provisional until RXIL's specification is published.
+         */
+        post: operations["take_in_rxil_company_api_v1_onboarding_rxil_company_intake_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/imports/companies/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The CSV template for bulk company import */
+        get: operations["get_company_import_template_api_v1_onboarding_imports_companies_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/imports/companies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import companies from a CSV file
+         * @description Every row is checked and matched by the same rules as creating a company by hand, and reported as accepted (created as a LEAD, or matched to the company its PAN belongs to), rejected, or possible_duplicate — each with codes and messages. Each created row is saved on its own: a row that fails cannot undo or damage another.
+         */
+        post: operations["import_companies_api_v1_onboarding_imports_companies_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1138,6 +1175,14 @@ export interface components {
             /** Findings */
             findings: components["schemas"]["BankActivityFindingResponse"][];
         };
+        /** Body_import_companies_api_v1_onboarding_imports_companies_post */
+        Body_import_companies_api_v1_onboarding_imports_companies_post: {
+            /**
+             * File
+             * @description A CSV file in the template's shape
+             */
+            file: string;
+        };
         /** CaseResponse */
         CaseResponse: {
             /**
@@ -1339,11 +1384,10 @@ export interface components {
         };
         /**
          * CreateExporterProfileRequest
-         * @description Create a company. `source` and `lifecycle_status` are the only
-         *     lifecycle-relevant fields the caller may set at creation — `source`
-         *     becomes immutable the moment this succeeds (see
-         *     `ExporterSourceImmutableError`); `lifecycle_status` after creation can
-         *     only move through `POST .../transition`.
+         * @description Create a company. `source` becomes immutable the moment this
+         *     succeeds (see `ExporterSourceImmutableError`). Every company starts as a
+         *     `LEAD`, `NOT_YET_REVIEWED`, with no marker: the journey moves through
+         *     qualification, never through a field set here.
          *
          *     `name` and `country` are the company's identity
          *     (`docs/contracts/company-record.md` §2.1). Supplying them — always
@@ -1366,8 +1410,6 @@ export interface components {
             /** Customer Id */
             customer_id?: string | null;
             source: components["schemas"]["ExporterSource"];
-            /** @default LEAD */
-            lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
             /** Pan */
             pan?: string | null;
             /** Gstins */
@@ -1519,6 +1561,18 @@ export interface components {
             /** Ref */
             ref: string;
         };
+        /**
+         * EvidenceRefOut
+         * @description An evidence reference as stored. Besides the three a request may send,
+         *     a partner intake may store `partner_reference` — the partner's own id for
+         *     its evidence.
+         */
+        EvidenceRefOut: {
+            /** Type */
+            type: string;
+            /** Ref */
+            ref: string;
+        };
         /** ExporterActivityListResponse */
         ExporterActivityListResponse: {
             /**
@@ -1607,22 +1661,11 @@ export interface components {
          *     moved by hand — each move follows from a qualification outcome or a
          *     background-check decision (``docs/contracts/company-record.md`` §3.1).
          *
-         *     Added in migration 0017 beside the ten old ``ExporterLifecycleStatus``
-         *     values, which L2-04 retires.
+         *     Added in migration 0017; the ten-status ``ExporterLifecycleStatus`` it
+         *     replaces was retired in L2-04 (migration 0020).
          * @enum {string}
          */
         ExporterJourney: "LEAD" | "PROSPECT" | "CUSTOMER";
-        /**
-         * ExporterLifecycleStatus
-         * @description The exporter *relationship's* lifecycle — deliberately separate from
-         *     ``OnboardingRequestStatus``, which tracks a single verification pass. A
-         *     customer can be ``ACTIVE`` here across many historical
-         *     ``OnboardingRequest`` rows (re-verification, renewed KYB, a second
-         *     financing product), each of which runs its own ``OnboardingRequestStatus``
-         *     from ``DRAFT`` to a terminal state independently of where this status sits.
-         * @enum {string}
-         */
-        ExporterLifecycleStatus: "LEAD" | "CONTACTED" | "DATA_COLLECTION" | "VERIFICATION_IN_PROGRESS" | "COMPLIANCE_REVIEW" | "ONBOARDED" | "FINANCING_ELIGIBLE" | "ACTIVE" | "SUSPENDED" | "OFFBOARDED";
         /**
          * ExporterMarker
          * @description A commercial pause or ending, kept apart from the journey (decision 3,
@@ -1658,7 +1701,6 @@ export interface components {
             relationship_manager_user_id: string | null;
             journey: components["schemas"]["ExporterJourney"];
             qualification: components["schemas"]["QualificationState"];
-            lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
             marker: components["schemas"]["ExporterMarker"];
             /** Marker Reason */
             marker_reason: string | null;
@@ -1693,6 +1735,8 @@ export interface components {
             recent_activities: components["schemas"]["ExporterActivityResponse"][];
             /** Gstin Warnings */
             gstin_warnings: components["schemas"]["DuplicateGstinWarningResponse"][];
+            /** Allowed Marker Moves */
+            allowed_marker_moves?: components["schemas"]["MarkerMoveResponse"][];
         };
         /**
          * ExporterProfileListItemResponse
@@ -1725,7 +1769,6 @@ export interface components {
             relationship_manager_user_id: string | null;
             journey: components["schemas"]["ExporterJourney"];
             qualification: components["schemas"]["QualificationState"];
-            lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
             marker: components["schemas"]["ExporterMarker"];
             /** Marker Reason */
             marker_reason: string | null;
@@ -1775,7 +1818,6 @@ export interface components {
             relationship_manager_user_id: string | null;
             journey: components["schemas"]["ExporterJourney"];
             qualification: components["schemas"]["QualificationState"];
-            lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
             marker: components["schemas"]["ExporterMarker"];
             /** Marker Reason */
             marker_reason: string | null;
@@ -1806,6 +1848,8 @@ export interface components {
             updated_at: string;
             /** Gstin Warnings */
             gstin_warnings?: components["schemas"]["DuplicateGstinWarningResponse"][];
+            /** Allowed Marker Moves */
+            allowed_marker_moves?: components["schemas"]["MarkerMoveResponse"][];
         };
         /** ExporterProfileSearchResponse */
         ExporterProfileSearchResponse: {
@@ -1948,6 +1992,56 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** ImportReportResponse */
+        ImportReportResponse: {
+            /** Total Rows */
+            total_rows: number;
+            /** Accepted */
+            accepted: number;
+            /** Created */
+            created: number;
+            /** Matched */
+            matched: number;
+            /** Rejected */
+            rejected: number;
+            /** Possible Duplicates */
+            possible_duplicates: number;
+            /** Rows */
+            rows: components["schemas"]["ImportRowResponse"][];
+        };
+        /** ImportRowResponse */
+        ImportRowResponse: {
+            /** Line */
+            line: number;
+            /** Status */
+            status: string;
+            /** Action */
+            action: string | null;
+            /** Customer Id */
+            customer_id: string | null;
+            /** Reasons */
+            reasons: components["schemas"]["ReasonResponse"][];
+            /** Warnings */
+            warnings: components["schemas"]["ReasonResponse"][];
+            /** Candidates */
+            candidates: string[];
+        };
+        /** IntakeResponse */
+        IntakeResponse: {
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            /** Company */
+            company: string;
+            /** Qualification */
+            qualification: string;
+            /** Replayed */
+            replayed: boolean;
+            /** Warnings */
+            warnings: components["schemas"]["ReasonResponse"][];
+        };
         /** LogExporterActivityRequest */
         LogExporterActivityRequest: {
             activity_type: components["schemas"]["ExporterActivityType"];
@@ -1967,6 +2061,16 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * MarkerMoveResponse
+         * @description A marker move the viewer may make now — served by the server from the
+         *     same table `set_marker` enforces, so no screen keeps its own copy.
+         */
+        MarkerMoveResponse: {
+            to: components["schemas"]["ExporterMarker"];
+            /** Reason Required */
+            reason_required: boolean;
         };
         /**
          * NotificationChannel
@@ -2201,6 +2305,13 @@ export interface components {
             results: components["schemas"]["ResultResponse"][];
             /** Outcomes */
             outcomes: components["schemas"]["OutcomeResponse"][];
+            /** Allowed Outcomes */
+            allowed_outcomes?: components["schemas"]["QualificationOutcomeValue"][];
+            /**
+             * Can Record Results
+             * @default false
+             */
+            can_record_results: boolean;
         };
         /**
          * QualificationSource
@@ -2255,6 +2366,16 @@ export interface components {
             requires_note: boolean;
             /** Active */
             active: boolean;
+        };
+        /**
+         * ReasonResponse
+         * @description Machine-readable `code`, human-readable `message`.
+         */
+        ReasonResponse: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
         };
         /**
          * RecordOutcomeRequest
@@ -2340,7 +2461,7 @@ export interface components {
             /** Evidence Note */
             evidence_note: string | null;
             /** Evidence Refs */
-            evidence_refs: components["schemas"]["EvidenceRefModel"][];
+            evidence_refs: components["schemas"]["EvidenceRefOut"][];
             /** Reason */
             reason: string | null;
             /** Confidence */
@@ -2510,10 +2631,6 @@ export interface components {
          * @enum {string}
          */
         TransactionStatus: "INITIATED" | "VALIDATED" | "UNDER_REVIEW" | "APPROVED" | "FUNDED" | "DIGITAL_ASSET_SETTLED" | "SETTLING" | "SETTLED" | "RECONCILED" | "VALIDATION_FAILED" | "BLOCKED" | "DECLINED" | "FAILED" | "RECALLED_VIA_COMPENSATION";
-        /** TransitionLifecycleStatusRequest */
-        TransitionLifecycleStatusRequest: {
-            to_status: components["schemas"]["ExporterLifecycleStatus"];
-        };
         /**
          * TransitionSource
          * @description What caused a case state transition (four exact values).
@@ -2577,8 +2694,8 @@ export interface components {
          *     is recorded in the company's history, with the signed-in user as the
          *     actor; there is no actor field here, and `extra="forbid"` refuses one.
          *
-         *     `source`, `lifecycle_status` and the marker are deliberately not fields
-         *     on this model at all — with `extra="forbid"`, sending any of them is
+         *     `source`, the journey, the qualification gauge and the marker are
+         *     deliberately not fields on this model at all — with `extra="forbid"`, sending any of them is
          *     rejected at the API boundary (422). The marker has its own route.
          */
         UpdateExporterProfileRequest: {
@@ -3702,7 +3819,6 @@ export interface operations {
                 iec?: string | null;
                 name?: string | null;
                 source?: components["schemas"]["ExporterSource"] | null;
-                status?: components["schemas"]["ExporterLifecycleStatus"] | null;
                 journey?: components["schemas"]["ExporterJourney"] | null;
                 qualification?: components["schemas"]["QualificationState"] | null;
                 marker?: components["schemas"]["ExporterMarker"] | null;
@@ -3908,69 +4024,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    transition_exporter_lifecycle_status_api_v1_onboarding_exporters__customer_id__transition_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                customer_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TransitionLifecycleStatusRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExporterProfileResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required; a move out of COMPLIANCE_REVIEW or any later status requires COMPLIANCE or ADMIN */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Exporter profile not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Illegal lifecycle_status transition */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
             };
         };
     };
@@ -4805,6 +4858,138 @@ export interface operations {
                 content?: never;
             };
             /** @description Missing or unknown reason codes, or other invalid input */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    take_in_rxil_company_api_v1_onboarding_rxil_company_intake_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Matches existing companies ambiguously, or already being handled */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The package cannot be read, or breaks the company rules */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_company_import_template_api_v1_onboarding_imports_companies_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The template's header row */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    import_companies_api_v1_onboarding_imports_companies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_companies_api_v1_onboarding_imports_companies_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReportResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a CSV in the template's shape, or too large */
             422: {
                 headers: {
                     [name: string]: unknown;

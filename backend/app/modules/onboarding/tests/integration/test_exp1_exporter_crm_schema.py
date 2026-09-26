@@ -39,7 +39,7 @@ def _execute(query: str, params: tuple = ()):
 
 _INSERT_PROFILE = """
     INSERT INTO onboarding.exporter_profile (
-        id, customer_id, source, lifecycle_status
+        id, customer_id, source, journey
     ) VALUES (%s, %s, %s, %s)
 """
 
@@ -99,7 +99,7 @@ def test_exporter_profile_invalid_source_enum_rejected():
         )
 
 
-def test_exporter_profile_invalid_lifecycle_status_enum_rejected():
+def test_exporter_profile_invalid_journey_enum_rejected():
     with pytest.raises(psycopg2.errors.InvalidTextRepresentation):
         _execute(
             _INSERT_PROFILE,

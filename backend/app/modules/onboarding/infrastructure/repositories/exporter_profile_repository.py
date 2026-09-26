@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterJourney,
-    ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
@@ -103,7 +102,6 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         iec: str | None = None,
         name_contains: str | None = None,
         source: ExporterSource | None = None,
-        lifecycle_status: ExporterLifecycleStatus | None = None,
         journey: ExporterJourney | None = None,
         qualification: QualificationState | None = None,
         marker: ExporterMarker | None = None,
@@ -134,8 +132,6 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
             stmt = stmt.where(ExporterProfile.name.ilike(f"%{name_contains}%"))
         if source is not None:
             stmt = stmt.where(ExporterProfile.source == source)
-        if lifecycle_status is not None:
-            stmt = stmt.where(ExporterProfile.lifecycle_status == lifecycle_status)
         if journey is not None:
             stmt = stmt.where(ExporterProfile.journey == journey)
         if qualification is not None:

@@ -19,16 +19,12 @@ import psycopg2.errors
 import pytest
 from httpx import AsyncClient
 
-from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.application.qualification_service import (
     QUALIFICATION_RESULT_EVENT,
     QualificationService,
 )
-from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterJourney,
-    ExporterLifecycleStatus,
-)
+from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
 from app.modules.onboarding.domain.entities.qualification_enums import (
     CriterionKind,
     CriterionResultValue,
@@ -479,16 +475,9 @@ async def test_qualified_moves_a_lead_to_prospect_and_no_further():
 
     [journey_row] = await _history(customer_id, "journey")
     assert (journey_row.from_status, journey_row.to_status) == ("LEAD", "PROSPECT")
-    assert journey_row.event_type == "journey_transition"
+    assert journey_row.event_type == "lifecycle_transition"  # history contract §3
+    assert journey_row.event_metadata["terminal"] is False
     assert journey_row.actor_id == "rm-7"
-
-
-async def test_qualification_does_not_touch_the_old_lifecycle_status():
-    customer_id = await make_company(lifecycle_status=ExporterLifecycleStatus.CONTACTED)
-    await _outcome(customer_id, Q.QUALIFIED)
-    async with db_services.AsyncSessionLocal() as db:
-        profile = await ExporterProfileService(db)._require_profile(customer_id)
-    assert profile.lifecycle_status is ExporterLifecycleStatus.CONTACTED
 
 
 async def test_not_qualified_needs_a_reason_code_and_stays_a_lead():

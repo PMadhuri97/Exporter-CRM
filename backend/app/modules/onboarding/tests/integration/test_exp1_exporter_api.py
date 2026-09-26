@@ -78,7 +78,7 @@ async def test_full_exporter_profile_flow(client: AsyncClient):
     body = create_resp.json()
     customer_id = body["customer_id"]
     assert body["source"] == "SALES"
-    assert body["lifecycle_status"] == "LEAD"
+    assert (body["journey"], body["qualification"]) == ("LEAD", "NOT_YET_REVIEWED")
 
     # Repeat create for the same customer_id (no Idempotency-Key) returns the
     # existing profile rather than erroring.
@@ -146,22 +146,13 @@ async def test_full_exporter_profile_flow(client: AsyncClient):
     assert len(detail["contacts"]) == 2
     assert len(detail["recent_activities"]) == 1
 
-    # Valid lifecycle transition.
-    transition_resp = await client.post(
+    # The journey is never moved by hand: the old transition route is gone.
+    gone = await client.post(
         f"/api/v1/onboarding/exporters/{customer_id}/transition",
         json={"to_status": "CONTACTED"},
         headers=_auth(token),
     )
-    assert transition_resp.status_code == 200
-    assert transition_resp.json()["lifecycle_status"] == "CONTACTED"
-
-    # Invalid lifecycle transition (skipping straight to ACTIVE) is rejected.
-    invalid_transition_resp = await client.post(
-        f"/api/v1/onboarding/exporters/{customer_id}/transition",
-        json={"to_status": "ACTIVE"},
-        headers=_auth(token),
-    )
-    assert invalid_transition_resp.status_code == 409
+    assert gone.status_code in (404, 405)
 
     # source is not updatable via PATCH — rejected at the schema boundary.
     reject_source_resp = await client.patch(

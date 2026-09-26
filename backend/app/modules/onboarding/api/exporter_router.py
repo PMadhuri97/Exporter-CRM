@@ -42,15 +42,14 @@ from app.modules.onboarding.api.schemas.exporter import (
     ExporterProfileListItemResponse,
     ExporterProfileResponse,
     ExporterProfileSearchResponse,
+    MarkerMoveResponse,
     SetMarkerRequest,
-    TransitionLifecycleStatusRequest,
     UpdateExporterProfileRequest,
 )
 from app.modules.onboarding.api.schemas.masking import can_reveal_identifiers
 from app.modules.onboarding.application import ExporterProfileService
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterJourney,
-    ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
@@ -65,21 +64,18 @@ from app.shared.exceptions import ValidationError
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/exporters", tags=["Exporter CRM"])
 
-# Lifecycle moves are gated per edge in the service
-# (`COMPLIANCE_GATED_FROM_STATUSES`), so RMs can still work the sales stages;
-# the router only admits staff.
-#
 # Routine CRM reads and writes by internal staff (Relationship Managers are
 # OPERATIONS, and may read every exporter). PAN/GSTIN/IEC and contact
 # email/phone are masked per viewer in the response schemas.
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+#: Who may set or clear a marker — the roles `_STAFF` admits.
+_MARKER_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
 # Masked CRM reads. DEVELOPER may read the CRM but never sees a raw
 # identifier (`can_reveal_identifiers` is always False for it), per the role
 # capability matrix in docs/exporter-crm-frontend-tickets.md.
 _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )
-_COMPLIANCE_ROLES = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
 
 
 def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
@@ -189,7 +185,6 @@ async def create_exporter_profile(
     profile, created = await service.create_or_get_profile(
         customer_id,
         source=body.source,
-        lifecycle_status=body.lifecycle_status,
         cin=body.cin,
         gstins=body.gstins,
         pan=body.pan,
@@ -202,7 +197,6 @@ async def create_exporter_profile(
         website=body.website,
         idempotency_key=idempotency_key,
         actor_id=str(current_user.id),
-        compliance_authorized=current_user.role in _COMPLIANCE_ROLES,
     )
     if not created:
         response.status_code = 200
@@ -230,7 +224,9 @@ async def get_exporter_profile_detail(
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileDetailResponse:
     detail = await ExporterProfileService(db).get_profile_detail(customer_id)
-    return ExporterProfileDetailResponse.from_detail(detail).masked_for(current_user)
+    response = ExporterProfileDetailResponse.from_detail(detail).masked_for(current_user)
+    response.allowed_marker_moves = _marker_moves(detail.marker, current_user)
+    return response
 
 
 @router.patch(
@@ -241,9 +237,9 @@ async def get_exporter_profile_detail(
         "Updates CRM fields. A field left out of the body is unchanged; a field "
         "sent as null (or an empty string or list) is cleared. Each change is "
         "recorded in the company's history with the signed-in user as the actor. "
-        "`source` and `lifecycle_status` are not accepted here "
-        "(422 if present) — source is immutable, and lifecycle_status is owned by "
-        "the transition endpoint."
+        "`source`, `journey`, `qualification` and the marker are not accepted "
+        "here (422 if present): source is immutable, and each of the others has "
+        "its own write path."
     ),
     responses={
         200: {"model": ExporterProfileResponse},
@@ -270,49 +266,12 @@ async def update_exporter_profile(
     return await _company_response(service, profile, current_user)
 
 
-@router.post(
-    "/{customer_id}/transition",
-    response_model=ExporterProfileResponse,
-    summary="Transition an exporter's lifecycle_status",
-    description=(
-        "The only way lifecycle_status changes. Validates the move against the "
-        "permitted-transition table; an illegal transition returns 409 and leaves "
-        "the profile untouched."
-    ),
-    responses={
-        200: {"model": ExporterProfileResponse},
-        401: {"description": "Unauthorized"},
-        403: {
-            "description": (
-                "OPERATIONS, COMPLIANCE or ADMIN role required; a move out of "
-                "COMPLIANCE_REVIEW or any later status requires COMPLIANCE or ADMIN"
-            )
-        },
-        404: {"description": "Exporter profile not found"},
-        409: {"description": "Illegal lifecycle_status transition"},
-    },
-)
-async def transition_exporter_lifecycle_status(
-    customer_id: uuid.UUID,
-    body: TransitionLifecycleStatusRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
-    db: AsyncSession = Depends(get_db),
-) -> ExporterProfileResponse:
-    profile = await ExporterProfileService(db).transition_lifecycle_status(
-        customer_id,
-        body.to_status,
-        actor_id=str(current_user.id),
-        compliance_authorized=current_user.role in _COMPLIANCE_ROLES,
-    )
-    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
-
-
 @router.get(
     "",
     response_model=ExporterProfileSearchResponse,
     summary="Search exporter profiles",
     description=(
-        "Filters by gstin, pan, iec, source, lifecycle status, marker (exact "
+        "Filters by gstin, pan, iec, source, journey, qualification, marker (exact "
         "match) and name (case-insensitive partial match on the company's "
         "name). ENDED companies are left out of the default working list: "
         "with no marker filter and no search term (name, gstin, pan, iec) they "
@@ -340,7 +299,6 @@ async def search_exporter_profiles(
     iec: str | None = Query(default=None),
     name: str | None = Query(default=None),
     source: ExporterSource | None = Query(default=None),
-    status: ExporterLifecycleStatus | None = Query(default=None),
     journey: ExporterJourney | None = Query(default=None),
     qualification: QualificationState | None = Query(default=None),
     marker: ExporterMarker | None = Query(default=None),
@@ -355,7 +313,6 @@ async def search_exporter_profiles(
         iec=iec,
         name_contains=name,
         source=source,
-        lifecycle_status=status,
         journey=journey,
         qualification=qualification,
         marker=marker,
@@ -404,7 +361,9 @@ async def set_exporter_marker(
     profile = await ExporterProfileService(db).set_marker(
         customer_id, body.marker, reason=body.reason, actor_id=str(current_user.id)
     )
-    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
+    response = ExporterProfileResponse.model_validate(profile).masked_for(current_user)
+    response.allowed_marker_moves = _marker_moves(profile.marker, current_user)
+    return response
 
 
 async def _company_response(
@@ -417,7 +376,20 @@ async def _company_response(
     response.gstin_warnings = [
         DuplicateGstinWarningResponse.model_validate(w, from_attributes=True) for w in warnings
     ]
-    return response.masked_for(viewer)
+    response = response.masked_for(viewer)
+    response.allowed_marker_moves = _marker_moves(profile.marker, viewer)
+    return response
+
+
+def _marker_moves(current: ExporterMarker, viewer: User) -> list[MarkerMoveResponse]:
+    """The marker moves this viewer may make now: the service's own table,
+    and none at all for a role the marker route refuses."""
+    if viewer.role not in _MARKER_ROLES:
+        return []
+    return [
+        MarkerMoveResponse(to=to_marker, reason_required=needs_reason)
+        for to_marker, needs_reason in ExporterProfileService.allowed_marker_moves(current)
+    ]
 
 
 __all__ = ["router"]

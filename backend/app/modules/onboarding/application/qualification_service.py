@@ -41,6 +41,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.company_intake import PartnerQualification
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
+from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
+    LIFECYCLE_TRANSITION_EVENT,
+)
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification import (
     QualificationCriterion,
@@ -80,7 +83,9 @@ logger = structlog.get_logger(__name__)
 HISTORY_DIMENSION_QUALIFICATION = "qualification"
 HISTORY_DIMENSION_JOURNEY = "journey"
 QUALIFICATION_RESULT_EVENT = "qualification_result"
-JOURNEY_TRANSITION_EVENT = "journey_transition"
+#: The journey keeps the event type its rows have always had (history
+#: contract §3).
+JOURNEY_TRANSITION_EVENT = LIFECYCLE_TRANSITION_EVENT
 
 #: `partner_reference` is a partner's own reference for its evidence; only the
 #: platform's partner intake uses it — the API accepts the other three.
@@ -434,7 +439,11 @@ class QualificationService:
                 actor_id=actor_id,
                 source="qualification_service.record_outcome",
                 event_type=JOURNEY_TRANSITION_EVENT,
-                details={"cause": "qualification_outcome", "outcome_id": str(row.id)},
+                details={
+                    "cause": "qualification_outcome",
+                    "outcome_id": str(row.id),
+                    "terminal": False,  # CUSTOMER is the terminal value; never from here
+                },
             )
 
         logger.info(

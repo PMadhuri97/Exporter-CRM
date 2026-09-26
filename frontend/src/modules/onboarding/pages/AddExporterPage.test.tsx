@@ -52,5 +52,8 @@ describe('AddExporterPage — the company identity (L2-03)', () => {
     expect(payload).not.toHaveProperty('initial_user_email');
     expect(payload).not.toHaveProperty('legal_name');
     expect(payload).not.toHaveProperty('incorporation_country');
+    // The journey starts at LEAD on the server; the retired lifecycle is not sent.
+    expect(payload).not.toHaveProperty('lifecycle_status');
+    expect(payload).not.toHaveProperty('journey');
   });
 });

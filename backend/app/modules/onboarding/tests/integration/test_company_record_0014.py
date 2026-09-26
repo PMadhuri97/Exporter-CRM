@@ -28,12 +28,14 @@ from app.modules.onboarding.application.exporter_profile_service import (
     ExporterProfileService,
 )
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.application.qualification_service import QualificationService
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterLifecycleStatus,
+    ExporterJourney,
     ExporterMarker,
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationOutcomeValue
 from app.modules.onboarding.exceptions import DuplicatePanError, InvalidMarkerTransitionError
 from app.modules.onboarding.sample_data import COMPANIES, SAMPLE_NAMESPACE, load_sample_data
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
@@ -431,14 +433,12 @@ async def test_replacing_the_gstin_list_keeps_the_ones_that_stay():
 # ── The marker ────────────────────────────────────────────────────────────────
 
 
-async def _company_at(status: ExporterLifecycleStatus = ExporterLifecycleStatus.LEAD) -> uuid.UUID:
+async def _company_at() -> uuid.UUID:
     customer_id = uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).create_or_get_profile(
             customer_id,
             source=ExporterSource.SALES,
-            lifecycle_status=status,
-            compliance_authorized=True,
         )
     return customer_id
 
@@ -480,7 +480,7 @@ async def test_a_marker_change_is_recorded_and_leaves_the_journey_alone(
     from app.modules.onboarding.tests.fixtures.auth import user_with_role
 
     user_id, token = await user_with_role(client, UserRole.OPERATIONS)
-    customer_id = await _company_at(ExporterLifecycleStatus.CONTACTED)
+    customer_id = await _company_at()
 
     resp = await client.post(
         f"{BASE}/exporters/{customer_id}/marker",
@@ -490,7 +490,7 @@ async def test_a_marker_change_is_recorded_and_leaves_the_journey_alone(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert (body["marker"], body["marker_reason"]) == ("PAUSED", "Seasonal shutdown")
-    assert body["lifecycle_status"] == "CONTACTED"  # the journey did not move
+    assert body["journey"] == "LEAD"  # the journey did not move
 
     async with db_services.AsyncSessionLocal() as db:
         rows, _ = await HistoryService(db).list_for_company(
@@ -512,15 +512,18 @@ async def test_a_journey_move_leaves_the_marker_alone():
             customer_id, ExporterMarker.PAUSED, reason="On hold", actor_id="rm-1"
         )
     async with db_services.AsyncSessionLocal() as db:
-        profile = await ExporterProfileService(db).transition_lifecycle_status(
-            customer_id, ExporterLifecycleStatus.CONTACTED, actor_id="rm-1"
+        await QualificationService(db).record_outcome(
+            customer_id, QualificationOutcomeValue.QUALIFIED, actor_id="rm-1"
         )
+    async with db_services.AsyncSessionLocal() as db:
+        profile = await ExporterProfileService(db)._require_profile(customer_id)
+    assert profile.journey is ExporterJourney.PROSPECT  # the journey moved
     assert profile.marker is ExporterMarker.PAUSED
     assert profile.marker_reason == "On hold"
 
 
 async def test_the_marker_is_not_a_journey_stage():
-    assert not {m.value for m in ExporterMarker} & {s.value for s in ExporterLifecycleStatus}
+    assert not {m.value for m in ExporterMarker} & {j.value for j in ExporterJourney}
 
 
 @pytest.mark.parametrize(
@@ -629,7 +632,6 @@ async def test_sample_data_is_deterministic_and_safe_to_run_again():
     assert all(
         changes == {
             "created": False,
-            "moves": 0,
             "marker_set": False,
             "contacts_added": 0,
             "activities_added": 0,
@@ -657,6 +659,6 @@ async def test_sample_data_covers_the_states_this_phase_introduces():
     assert len(by_slug["company-b"].gstins) == 2
     assert by_slug["company-f-new-lead"].pan is None
     assert by_slug["company-g-possible-duplicate"].gstin_warnings  # shares B's GSTIN
-    assert by_slug["company-b"].lifecycle_status is ExporterLifecycleStatus.ACTIVE
+    assert by_slug["company-b"].journey is ExporterJourney.PROSPECT  # CUSTOMER waits for L2-11
     assert all(d.name for d in by_slug.values())
     assert legacy_rows == 0  # nothing fake written to the legacy onboarding tables

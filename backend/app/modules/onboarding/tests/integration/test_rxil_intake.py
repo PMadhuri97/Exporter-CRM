@@ -203,7 +203,7 @@ async def test_intake_writes_the_same_history_as_any_review():
     assert ("journey", "lifecycle_initial") in kinds  # created
     assert ("qualification", "qualification_result") in kinds
     assert ("qualification", "qualification_transition") in kinds
-    assert ("journey", "journey_transition") in kinds  # LEAD -> PROSPECT
+    assert ("journey", "lifecycle_transition") in kinds  # LEAD -> PROSPECT
     assert {r.actor_id for r in rows} == {"rxil-desk"}
     outcome_row = next(r for r in rows if r.event_type == "qualification_transition")
     assert outcome_row.event_metadata["source"] == "RXIL"

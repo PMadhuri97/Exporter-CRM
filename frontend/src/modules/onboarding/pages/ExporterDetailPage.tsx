@@ -8,6 +8,7 @@
  * one panel per owner:
  *
  *   panels/CompanyPanel.tsx          Developer 2
+ *   panels/QualificationPanel.tsx    Developer 2
  *   panels/ConversationPanel.tsx     Developer 3
  *   panels/DealsPanel.tsx            Developer 3
  *   panels/BackgroundCheckPanel.tsx  Developer 4
@@ -27,9 +28,12 @@
  * Developer 2's file; moving it needs a deliberate decision about accepting
  * the extra round trip, which is not this phase's to make.
  *
- * The rendered output is unchanged: the panels emit the same markup in the
- * same order, `DealsPanel` renders nothing because deals do not exist yet, and
- * every existing test passes unmodified.
+ * `DealsPanel` renders nothing because deals do not exist yet.
+ *
+ * The header shows the company's three separate positions — journey,
+ * qualification, marker — and offers only the marker moves the server listed
+ * (L2-04 retired the ten-status lifecycle and its move control). The journey
+ * has no control: it is never moved by hand.
  */
 
 import { ArrowLeft } from 'lucide-react';
@@ -39,7 +43,7 @@ import { Link, useParams } from 'react-router-dom';
 import { formatDate } from '@/lib/format';
 import { useCurrentUser } from '@/platform/auth';
 
-import { LifecycleMoveControl, StageChip } from '../components';
+import { JourneyChip, MarkerBadge, MarkerControl, QualificationChip } from '../components';
 import {
   useExporterActivities,
   useExporterContacts,
@@ -50,6 +54,7 @@ import { BackgroundCheckPanel } from './panels/BackgroundCheckPanel';
 import { CompanyPanel } from './panels/CompanyPanel';
 import { ConversationPanel } from './panels/ConversationPanel';
 import { DealsPanel } from './panels/DealsPanel';
+import { QualificationPanel } from './panels/QualificationPanel';
 
 /** Rows per activity page. Lives here because the shell builds the query
  * params and decides whether a next page exists. */
@@ -127,21 +132,23 @@ export function ExporterDetailPage() {
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-xl font-semibold text-ink">{name}</h1>
-              <StageChip status={profile.lifecycle_status} showDetail />
+              <JourneyChip journey={profile.journey} />
+              <QualificationChip state={profile.qualification} />
+              <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />
             </div>
             <p className="mt-1 text-sm text-ink-muted">
               Added {formatDate(profile.date_added)}
               {profile.relationship_manager ? ` · Owner: ${profile.relationship_manager}` : ''}
             </p>
           </div>
-          <LifecycleMoveControl
-            customerId={customerId}
-            currentStatus={profile.lifecycle_status}
-          />
+          {/* Only the moves the server listed for this user; none, nothing. */}
+          <MarkerControl customerId={customerId} moves={profile.allowed_marker_moves ?? []} />
         </div>
       </div>
 
-      <CompanyPanel profile={profile} />
+      <CompanyPanel profile={profile} canEdit={isStaff} />
+
+      <QualificationPanel customerId={customerId} />
 
       <ConversationPanel
         customerId={customerId}

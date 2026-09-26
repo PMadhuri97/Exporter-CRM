@@ -12,11 +12,12 @@ to run as often as you like:
   slug, so the same company is the same row on every machine and every run.
 * **Converges, never duplicates.** Each step checks the current state first —
   a company that exists is not re-created, a contact or activity already
-  logged (matched by name or subject) is not logged again, a journey already
-  walked is continued from where it stands, a marker already set is left
+  logged (matched by name or subject) is not logged again, a qualification
+  already recorded is not recorded again, a marker already set is left
   alone. A run interrupted halfway is finished by the next one.
-* **Through the services.** Companies, journey moves and markers go through
-  ``ExporterProfileService`` and contacts and activities through
+* **Through the services.** Companies and markers go through
+  ``ExporterProfileService``, qualification (and so the journey) through
+  ``QualificationService``, and contacts and activities through
   ``ExporterContactActivityService``, so every history row, check and
   constraint applies exactly as it does for a person using the CRM. Nothing is
   written to the legacy onboarding tables.
@@ -27,14 +28,13 @@ own, per the history contract. Activities need a named actor, so they carry
 
 **What it covers, and what it cannot yet.** Architecture §3.9 describes three
 companies by journey, qualification, conversation, background check and
-deals. The company record, identifiers, markers, contacts, activities and the
-current ten-status journey exist today, and so do qualification and the
-three-stage journey it moves (L2-09/10): A, B and C are qualified and so
-PROSPECTs, and D is NOT_QUALIFIED. Conversation (Dev 3), background check
-(Dev 4), deals (Dev 3) and the move to CUSTOMER (L2-11) do not exist yet, so
-B is a PROSPECT here although §3.9 makes it a CUSTOMER. Companies A, B and C are therefore seeded with what
-exists, each carrying its §3.9 target in ``SampleCompany.target`` so the
-owners of those pieces extend this file as they land.
+deals. The company record, identifiers, markers, contacts, activities,
+qualification and the three-stage journey it moves exist today: A, B and C are
+qualified and so PROSPECTs, and D is NOT_QUALIFIED. Conversation (Dev 3),
+background check (Dev 4), deals (Dev 3) and the move to CUSTOMER (L2-11) do not
+exist yet, so B is a PROSPECT here although §3.9 makes it a CUSTOMER. Each
+company carries its §3.9 target in ``SampleCompany.target`` so the owners of
+those pieces extend this file as they land.
 """
 
 from __future__ import annotations
@@ -58,7 +58,6 @@ from app.modules.onboarding.application.exporter_profile_service import (
 from app.modules.onboarding.application.qualification_service import QualificationService
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
@@ -76,20 +75,6 @@ SAMPLE_NAMESPACE = uuid.UUID("5f1d7c1e-3a54-4d8e-9c1b-0e6f2a7d4c90")
 
 #: The actor recorded on sample activities (the column is NOT NULL).
 SAMPLE_DATA_ACTOR = "sample-data"
-
-#: The old ten-status walk, used to reach each company's current status
-#: through real, recorded transitions. Replaced by the three-stage journey in
-#: L2-04.
-_WALK: tuple[ExporterLifecycleStatus, ...] = (
-    ExporterLifecycleStatus.LEAD,
-    ExporterLifecycleStatus.CONTACTED,
-    ExporterLifecycleStatus.DATA_COLLECTION,
-    ExporterLifecycleStatus.VERIFICATION_IN_PROGRESS,
-    ExporterLifecycleStatus.COMPLIANCE_REVIEW,
-    ExporterLifecycleStatus.ONBOARDED,
-    ExporterLifecycleStatus.ACTIVE,
-)
-
 
 @dataclass(frozen=True)
 class SampleContact:
@@ -115,7 +100,6 @@ class SampleCompany:
     name: str
     country: str
     source: ExporterSource
-    status: ExporterLifecycleStatus
     industry: str
     pan: str | None = None
     gstins: tuple[str, ...] = ()
@@ -154,7 +138,6 @@ COMPANIES: tuple[SampleCompany, ...] = (
         name="Aarav Textiles Pvt Ltd",
         country="IN",
         source=ExporterSource.SALES,
-        status=ExporterLifecycleStatus.CONTACTED,
         industry="Textiles",
         pan="AAACA1111A",
         gstins=("27AAACA1111A1Z5",),
@@ -182,7 +165,6 @@ COMPANIES: tuple[SampleCompany, ...] = (
         name="Bharat Precision Metals Ltd",
         country="IN",
         source=ExporterSource.REFERRAL,
-        status=ExporterLifecycleStatus.ACTIVE,
         industry="Engineering goods",
         pan="AABCB2222B",
         gstins=("27AABCB2222B1Z5", "29AABCB2222B1ZX"),
@@ -209,7 +191,6 @@ COMPANIES: tuple[SampleCompany, ...] = (
         name="Coastal Seafood Exports Pvt Ltd",
         country="IN",
         source=ExporterSource.PARTNER,
-        status=ExporterLifecycleStatus.DATA_COLLECTION,
         industry="Seafood",
         pan="AAACC3333C",
         gstins=("32AAACC3333C1Z1",),
@@ -232,7 +213,6 @@ COMPANIES: tuple[SampleCompany, ...] = (
         name="Deccan Leather Works",
         country="IN",
         source=ExporterSource.EVENT,
-        status=ExporterLifecycleStatus.CONTACTED,
         industry="Leather goods",
         pan="AAAFD4444D",
         gstins=("36AAAFD4444D1Z9",),
@@ -248,7 +228,6 @@ COMPANIES: tuple[SampleCompany, ...] = (
         name="Eastern Spice Traders",
         country="IN",
         source=ExporterSource.MANUAL,
-        status=ExporterLifecycleStatus.LEAD,
         industry="Spices",
         pan="AAAFE5555E",
         marker=ExporterMarker.ENDED,
@@ -260,7 +239,6 @@ COMPANIES: tuple[SampleCompany, ...] = (
         name="Falcon Agro Exports",
         country="IN",
         source=ExporterSource.MANUAL,
-        status=ExporterLifecycleStatus.LEAD,
         industry="Agriculture",
     ),
     # A second record with Company B's Maharashtra GSTIN and no PAN — the
@@ -270,7 +248,6 @@ COMPANIES: tuple[SampleCompany, ...] = (
         name="Bharat Metals (Pune office)",
         country="IN",
         source=ExporterSource.MANUAL,
-        status=ExporterLifecycleStatus.LEAD,
         industry="Engineering goods",
         gstins=("27AABCB2222B1Z5",),
     ),
@@ -294,27 +271,6 @@ async def _ensure_company(company: SampleCompany) -> bool:
             history_source="sample_data",
         )
     return created
-
-
-async def _ensure_status(company: SampleCompany) -> int:
-    """Walk the journey from wherever it stands to the company's status,
-    through recorded transitions. Returns the number of moves made."""
-    target = _WALK.index(company.status)
-    moves = 0
-    while True:
-        async with db_services.AsyncSessionLocal() as db:
-            service = ExporterProfileService(db)
-            current = (await service.get_profile_detail(company.customer_id)).lifecycle_status
-            position = _WALK.index(current)
-            if position >= target:
-                return moves
-            await service.transition_lifecycle_status(
-                company.customer_id,
-                _WALK[position + 1],
-                actor_id=None,  # type: ignore[arg-type]  # the platform acting
-                compliance_authorized=True,
-            )
-        moves += 1
 
 
 async def _ensure_marker(company: SampleCompany) -> bool:
@@ -426,7 +382,6 @@ async def load_sample_data() -> dict[str, dict[str, int | bool]]:
     for company in COMPANIES:
         report[company.slug] = {
             "created": await _ensure_company(company),
-            "moves": await _ensure_status(company),
             "marker_set": await _ensure_marker(company),
             "contacts_added": await _ensure_contacts(company),
             "activities_added": await _ensure_activities(company),

@@ -12,18 +12,15 @@ import uuid
 
 import pytest
 
-from app.modules.onboarding.application.exporter_profile_service import (
-    PERMITTED_LIFECYCLE_TRANSITIONS,
-    ExporterProfileService,
-)
+from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterLifecycleStatus,
+    ExporterJourney,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.modules.onboarding.exceptions import (
     ExporterProfileNotFoundError,
     ExporterSourceImmutableError,
-    InvalidExporterLifecycleTransitionError,
 )
 from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
@@ -44,7 +41,8 @@ async def test_create_or_get_profile_creates_new():
     assert created is True
     assert profile.customer_id == customer_id
     assert profile.source == ExporterSource.SALES
-    assert profile.lifecycle_status == ExporterLifecycleStatus.LEAD
+    assert profile.journey is ExporterJourney.LEAD
+    assert profile.qualification is QualificationState.NOT_YET_REVIEWED
 
 
 async def test_create_or_get_profile_repeat_call_returns_existing_without_key():
@@ -105,7 +103,8 @@ async def test_create_lead_stores_name_and_country_as_the_company_identity():
     assert profile.name == name
     assert profile.country == "US"
     assert profile.source == ExporterSource.SALES
-    assert profile.lifecycle_status == ExporterLifecycleStatus.LEAD
+    assert profile.journey is ExporterJourney.LEAD
+    assert profile.qualification is QualificationState.NOT_YET_REVIEWED
 
     async with db_services.AsyncSessionLocal() as db:
         detail = await ExporterProfileService(db).get_profile_detail(profile.customer_id)
@@ -148,7 +147,7 @@ async def test_update_profile_rejects_source_change():
             )
 
 
-async def test_update_profile_rejects_lifecycle_status_field():
+async def test_update_profile_rejects_the_journey_field():
     customer_id = uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).create_or_get_profile(
@@ -159,7 +158,7 @@ async def test_update_profile_rejects_lifecycle_status_field():
         with pytest.raises(ValidationError):
             await ExporterProfileService(db).update_profile(
                 customer_id,
-                {"lifecycle_status": ExporterLifecycleStatus.ACTIVE},
+                {"journey": ExporterJourney.CUSTOMER},
                 actor_id="agent_1",
             )
 
@@ -238,67 +237,13 @@ async def test_search_profiles_by_name_contains_no_match_returns_empty():
     assert results == []
 
 
-# ── transition_lifecycle_status ────────────────────────────────────────────────
+# ── the journey is never moved by hand ────────────────────────────────────────
 
 
-async def test_transition_lifecycle_status_valid_transition():
-    customer_id = uuid.uuid4()
-    async with db_services.AsyncSessionLocal() as db:
-        await ExporterProfileService(db).create_or_get_profile(
-            customer_id, source=ExporterSource.SALES
-        )
-
-    async with db_services.AsyncSessionLocal() as db:
-        updated = await ExporterProfileService(db).transition_lifecycle_status(
-            customer_id, ExporterLifecycleStatus.CONTACTED, actor_id="agent_1"
-        )
-
-    assert updated.lifecycle_status == ExporterLifecycleStatus.CONTACTED
-
-
-async def test_transition_lifecycle_status_rejects_invalid_transition():
-    """The acceptance criterion's own example: LEAD -> ACTIVE directly is
-    not a permitted edge, and the raised exception names both statuses."""
-    customer_id = uuid.uuid4()
-    async with db_services.AsyncSessionLocal() as db:
-        await ExporterProfileService(db).create_or_get_profile(
-            customer_id, source=ExporterSource.SALES
-        )
-    assert (
-        ExporterLifecycleStatus.LEAD,
-        ExporterLifecycleStatus.ACTIVE,
-    ) not in PERMITTED_LIFECYCLE_TRANSITIONS
-
-    async with db_services.AsyncSessionLocal() as db:
-        with pytest.raises(InvalidExporterLifecycleTransitionError) as exc:
-            await ExporterProfileService(db).transition_lifecycle_status(
-                customer_id, ExporterLifecycleStatus.ACTIVE, actor_id="agent_1"
-            )
-
-    assert "LEAD" in str(exc.value.detail)
-    assert "ACTIVE" in str(exc.value.detail)
-
-
-async def test_transition_lifecycle_status_same_status_rejected():
-    customer_id = uuid.uuid4()
-    async with db_services.AsyncSessionLocal() as db:
-        await ExporterProfileService(db).create_or_get_profile(
-            customer_id, source=ExporterSource.SALES
-        )
-
-    async with db_services.AsyncSessionLocal() as db:
-        with pytest.raises(InvalidExporterLifecycleTransitionError):
-            await ExporterProfileService(db).transition_lifecycle_status(
-                customer_id, ExporterLifecycleStatus.LEAD, actor_id="agent_1"
-            )
-
-
-async def test_transition_lifecycle_status_not_found_raises():
-    async with db_services.AsyncSessionLocal() as db:
-        with pytest.raises(ExporterProfileNotFoundError):
-            await ExporterProfileService(db).transition_lifecycle_status(
-                uuid.uuid4(), ExporterLifecycleStatus.CONTACTED, actor_id="agent_1"
-            )
+async def test_the_service_has_no_way_to_move_the_journey_by_hand():
+    """L2-04: the ten-status transition is gone. The journey moves only
+    through qualification (and, later, the background check)."""
+    assert not hasattr(ExporterProfileService, "transition_lifecycle_status")
 
 
 # ── get_profile_detail ────────────────────────────────────────────────────────

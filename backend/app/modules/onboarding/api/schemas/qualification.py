@@ -277,6 +277,11 @@ class QualificationResponse(BaseModel):
     standings: list[CriterionStandingResponse]
     results: list[ResultResponse]
     outcomes: list[OutcomeResponse]
+    #: The outcomes the signed-in user may record now: none once QUALIFIED
+    #: (final, A2) or for a role that may not record outcomes.
+    allowed_outcomes: list[QualificationOutcomeValue] = Field(default_factory=list)
+    #: Whether the signed-in user may record criterion results now.
+    can_record_results: bool = False
 
     @classmethod
     def of(cls, customer_id: uuid.UUID, view: QualificationView) -> QualificationResponse:

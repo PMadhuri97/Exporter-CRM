@@ -36,7 +36,6 @@ from app.modules.onboarding.api.schemas.masking import (
 )
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterJourney,
-    ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
@@ -105,12 +104,19 @@ class DuplicateGstinWarningResponse(BaseModel):
         return self.model_copy(update={"gstin": mask_identifier(self.gstin)})
 
 
+class MarkerMoveResponse(BaseModel):
+    """A marker move the viewer may make now — served by the server from the
+    same table `set_marker` enforces, so no screen keeps its own copy."""
+
+    to: ExporterMarker
+    reason_required: bool
+
+
 class CreateExporterProfileRequest(BaseModel):
-    """Create a company. `source` and `lifecycle_status` are the only
-    lifecycle-relevant fields the caller may set at creation — `source`
-    becomes immutable the moment this succeeds (see
-    `ExporterSourceImmutableError`); `lifecycle_status` after creation can
-    only move through `POST .../transition`.
+    """Create a company. `source` becomes immutable the moment this
+    succeeds (see `ExporterSourceImmutableError`). Every company starts as a
+    `LEAD`, `NOT_YET_REVIEWED`, with no marker: the journey moves through
+    qualification, never through a field set here.
 
     `name` and `country` are the company's identity
     (`docs/contracts/company-record.md` §2.1). Supplying them — always
@@ -134,7 +140,6 @@ class CreateExporterProfileRequest(BaseModel):
 
     customer_id: uuid.UUID | None = None
     source: ExporterSource
-    lifecycle_status: ExporterLifecycleStatus = ExporterLifecycleStatus.LEAD
     pan: Annotated[str | None, NotMasked] = Field(default=None, max_length=_IDENTIFIER_MAX)
     gstins: list[_GstinIn] | None = None
     iec: Annotated[str | None, NotMasked] = Field(default=None, max_length=10)
@@ -179,8 +184,8 @@ class UpdateExporterProfileRequest(BaseModel):
     is recorded in the company's history, with the signed-in user as the
     actor; there is no actor field here, and `extra="forbid"` refuses one.
 
-    `source`, `lifecycle_status` and the marker are deliberately not fields
-    on this model at all — with `extra="forbid"`, sending any of them is
+    `source`, the journey, the qualification gauge and the marker are
+    deliberately not fields on this model at all — with `extra="forbid"`, sending any of them is
     rejected at the API boundary (422). The marker has its own route.
     """
 
@@ -206,12 +211,6 @@ class UpdateExporterProfileRequest(BaseModel):
         if value is not None and not value.strip():
             return value
         return _clean_country(value)
-
-
-class TransitionLifecycleStatusRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    to_status: ExporterLifecycleStatus
 
 
 class SetMarkerRequest(BaseModel):
@@ -245,7 +244,6 @@ class ExporterProfileResponse(_IdentifierMasking, BaseModel):
     relationship_manager_user_id: uuid.UUID | None
     journey: ExporterJourney
     qualification: QualificationState
-    lifecycle_status: ExporterLifecycleStatus
     marker: ExporterMarker
     marker_reason: str | None
     industry: str | None
@@ -259,6 +257,9 @@ class ExporterProfileResponse(_IdentifierMasking, BaseModel):
     #: GSTINs of this company another company also holds. Filled on create
     #: and edit responses; a warning, never an error.
     gstin_warnings: list[DuplicateGstinWarningResponse] = Field(default_factory=list)
+    #: The marker moves the signed-in user may make now; empty for a role
+    #: that may not set markers.
+    allowed_marker_moves: list[MarkerMoveResponse] = Field(default_factory=list)
 
 
 class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
@@ -274,7 +275,6 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
     relationship_manager_user_id: uuid.UUID | None
     journey: ExporterJourney
     qualification: QualificationState
-    lifecycle_status: ExporterLifecycleStatus
     marker: ExporterMarker
     marker_reason: str | None
     industry: str | None
@@ -288,6 +288,9 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
     contacts: list[ExporterContactResponse]
     recent_activities: list[ExporterActivityResponse]
     gstin_warnings: list[DuplicateGstinWarningResponse]
+    #: The marker moves the signed-in user may make now; empty for a role
+    #: that may not set markers.
+    allowed_marker_moves: list[MarkerMoveResponse] = Field(default_factory=list)
 
     @classmethod
     def from_detail(cls, detail) -> ExporterProfileDetailResponse:
@@ -304,7 +307,6 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
             relationship_manager_user_id=detail.relationship_manager_user_id,
             journey=detail.journey,
             qualification=detail.qualification,
-            lifecycle_status=detail.lifecycle_status,
             marker=detail.marker,
             marker_reason=detail.marker_reason,
             industry=detail.industry,
@@ -347,7 +349,6 @@ class ExporterProfileListItemResponse(_IdentifierMasking, BaseModel):
     relationship_manager_user_id: uuid.UUID | None
     journey: ExporterJourney
     qualification: QualificationState
-    lifecycle_status: ExporterLifecycleStatus
     marker: ExporterMarker
     marker_reason: str | None
     industry: str | None

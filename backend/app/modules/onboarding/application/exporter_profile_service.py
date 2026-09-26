@@ -1,4 +1,4 @@
-"""``ExporterProfileService`` — EXP-1's profile-lifecycle service, mirroring
+"""``ExporterProfileService`` — the company record's service (EXP-1), mirroring
 ``OnboardingRequestService``'s method-per-operation style.
 
 **Idempotency (judgment call — the ticket explicitly asks for one here).**
@@ -47,7 +47,6 @@ from app.modules.onboarding.domain.entities.exporter_activity import ExporterAct
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterJourney,
-    ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
@@ -55,7 +54,6 @@ from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     HISTORY_DIMENSION_JOURNEY,
     LIFECYCLE_INITIAL_EVENT,
-    LIFECYCLE_TRANSITION_EVENT,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
@@ -75,10 +73,8 @@ from app.modules.onboarding.domain.tax_identifiers import (
 )
 from app.modules.onboarding.exceptions import (
     DuplicatePanError,
-    ExporterLifecycleComplianceRequiredError,
     ExporterProfileNotFoundError,
     ExporterSourceImmutableError,
-    InvalidExporterLifecycleTransitionError,
     InvalidMarkerTransitionError,
 )
 from app.modules.onboarding.infrastructure.repositories import (
@@ -99,17 +95,15 @@ _OP_CREATE = "create_or_get_profile"
 #: Fields ``update_profile`` refuses to touch, each for its own reason:
 #: ``source`` is immutable (audit-relevant provenance — see
 #: ``ExporterSourceImmutableError``); ``customer_id``/``id``/``date_added`` are
-#: identity/immutable columns; ``lifecycle_status`` has its own governed write
-#: path (``transition_lifecycle_status``, checked against
-#: ``PERMITTED_LIFECYCLE_TRANSITIONS``) and must never be set as a bare field
-#: update that bypasses that table.
+#: identity/immutable columns; the journey, the qualification gauge and the
+#: marker each have their own governed write path and are never set as a
+#: bare field.
 _UPDATE_FORBIDDEN_FIELDS = frozenset(
     {
         "source",
         "customer_id",
         "id",
         "date_added",
-        "lifecycle_status",
         "journey",
         "qualification",
         "marker",
@@ -165,58 +159,6 @@ _MARKER_MOVES: dict[tuple[ExporterMarker, ExporterMarker], bool] = {
     (ExporterMarker.PAUSED, ExporterMarker.NONE): False,
     (ExporterMarker.ENDED, ExporterMarker.NONE): False,
 }
-
-#: The permitted `(from, to)` lifecycle_status edges — follows `cases`'
-#: `PERMITTED_TRANSITIONS` pattern: a module-level frozenset, not a
-#: free-for-all. `transition_lifecycle_status` is the one place this is
-#: checked, so an attempted skip (e.g. LEAD -> ACTIVE) is rejected uniformly
-#: regardless of caller.
-PERMITTED_LIFECYCLE_TRANSITIONS: frozenset[
-    tuple[ExporterLifecycleStatus, ExporterLifecycleStatus]
-] = frozenset(
-    {
-        (ExporterLifecycleStatus.LEAD, ExporterLifecycleStatus.CONTACTED),
-        (ExporterLifecycleStatus.CONTACTED, ExporterLifecycleStatus.DATA_COLLECTION),
-        (ExporterLifecycleStatus.DATA_COLLECTION, ExporterLifecycleStatus.VERIFICATION_IN_PROGRESS),
-        (
-            ExporterLifecycleStatus.VERIFICATION_IN_PROGRESS,
-            ExporterLifecycleStatus.COMPLIANCE_REVIEW,
-        ),
-        # A compliance rejection sends the relationship back for more data
-        # rather than dead-ending it.
-        (ExporterLifecycleStatus.COMPLIANCE_REVIEW, ExporterLifecycleStatus.DATA_COLLECTION),
-        (ExporterLifecycleStatus.COMPLIANCE_REVIEW, ExporterLifecycleStatus.ONBOARDED),
-        (ExporterLifecycleStatus.ONBOARDED, ExporterLifecycleStatus.FINANCING_ELIGIBLE),
-        (ExporterLifecycleStatus.ONBOARDED, ExporterLifecycleStatus.ACTIVE),
-        (ExporterLifecycleStatus.FINANCING_ELIGIBLE, ExporterLifecycleStatus.ACTIVE),
-        (ExporterLifecycleStatus.ACTIVE, ExporterLifecycleStatus.SUSPENDED),
-        (ExporterLifecycleStatus.SUSPENDED, ExporterLifecycleStatus.ACTIVE),
-        (ExporterLifecycleStatus.ACTIVE, ExporterLifecycleStatus.OFFBOARDED),
-        (ExporterLifecycleStatus.SUSPENDED, ExporterLifecycleStatus.OFFBOARDED),
-    }
-)
-
-#: Statuses an exporter can only reach through a compliance decision. Creating
-#: a profile directly at one of these would skip that decision entirely, so
-#: `create_or_get_profile` refuses it unless the caller is compliance-authorised.
-COMPLIANCE_DECIDED_STATUSES: frozenset[ExporterLifecycleStatus] = frozenset(
-    {
-        ExporterLifecycleStatus.ONBOARDED,
-        ExporterLifecycleStatus.FINANCING_ELIGIBLE,
-        ExporterLifecycleStatus.ACTIVE,
-        ExporterLifecycleStatus.SUSPENDED,
-        ExporterLifecycleStatus.OFFBOARDED,
-    }
-)
-
-#: A move *out of* any of these is a compliance decision: approving or sending
-#: back from COMPLIANCE_REVIEW, and every change to an onboarded relationship.
-#: The sales stages before it (LEAD -> ... -> COMPLIANCE_REVIEW, i.e. submitting
-#: for review) stay open to Relationship Managers.
-COMPLIANCE_GATED_FROM_STATUSES: frozenset[ExporterLifecycleStatus] = (
-    COMPLIANCE_DECIDED_STATUSES | {ExporterLifecycleStatus.COMPLIANCE_REVIEW}
-)
-
 
 class ExporterProfileService:
     """Read/write access to `exporter_profile` and its detail projection (EXP-1)."""
@@ -289,7 +231,6 @@ class ExporterProfileService:
         customer_id: uuid.UUID,
         *,
         source: ExporterSource,
-        lifecycle_status: ExporterLifecycleStatus = ExporterLifecycleStatus.LEAD,
         name: str | None = None,
         country: str | None = None,
         cin: str | None = None,
@@ -305,7 +246,6 @@ class ExporterProfileService:
         idempotency_key: str | None = None,
         correlation_id: str | None = None,
         actor_id: str | None = None,
-        compliance_authorized: bool = False,
         history_source: str = "exporter_profile_service.create_or_get_profile",
     ) -> tuple[ExporterProfile, bool]:
         """Create an exporter_profile, or return the one already on file.
@@ -323,13 +263,10 @@ class ExporterProfileService:
         merged. A GSTIN another company holds is allowed and reported by
         `duplicate_gstin_warnings`.
 
-        Raises ``ExporterLifecycleComplianceRequiredError`` (403) for a
-        ``lifecycle_status`` in ``COMPLIANCE_DECIDED_STATUSES`` unless
-        ``compliance_authorized``.
+        Every company starts as a ``LEAD`` with a ``journey`` history row;
+        the journey moves only through qualification (and, later, the
+        background check), never by a field a caller sets.
         """
-        if lifecycle_status in COMPLIANCE_DECIDED_STATUSES and not compliance_authorized:
-            raise ExporterLifecycleComplianceRequiredError(customer_id, lifecycle_status)
-
         name = normalise_name(name)
         country = normalise_country(country)
         pan = normalise_pan(pan)
@@ -379,7 +316,6 @@ class ExporterProfileService:
         profile = ExporterProfile(
             customer_id=customer_id,
             source=source,
-            lifecycle_status=lifecycle_status,
             name=name,
             country=country,
             cin=cin,
@@ -414,14 +350,7 @@ class ExporterProfileService:
             )
             return winner, False
 
-        await self._record_lifecycle(
-            customer_id,
-            from_status=None,
-            to_status=lifecycle_status,
-            actor_id=actor_id,
-            event_type=LIFECYCLE_INITIAL_EVENT,
-            source=history_source,
-        )
+        await self._record_journey_start(customer_id, actor_id=actor_id, source=history_source)
 
         if idempotency_key is not None:
             await complete_key(
@@ -479,7 +408,7 @@ class ExporterProfileService:
         keyword, never one of `changes`.
 
         Never touches `source` (immutable — see `ExporterSourceImmutableError`),
-        `lifecycle_status` (owned by `transition_lifecycle_status`) or the
+        the journey or the
         marker (owned by `set_marker`), nor the journey or the qualification
         gauge (owned by `QualificationService`).
         """
@@ -489,8 +418,8 @@ class ExporterProfileService:
         if forbidden:
             raise ValidationError(
                 f"update_profile cannot set {sorted(forbidden)}: use the dedicated "
-                f"write path for each (transition_lifecycle_status for lifecycle_status; "
-                f"set_marker for the marker; none for identity/immutable columns)"
+                f"write path for each (qualification moves the journey; set_marker "
+                f"for the marker; none for identity/immutable columns)"
             )
         unknown = set(changes) - _EDITABLE_FIELDS
         if unknown:
@@ -595,7 +524,7 @@ class ExporterProfileService:
 
         The marker is a commercial state beside the journey, never a journey
         stage: this changes the marker and nothing else — not
-        `lifecycle_status`, not any gauge (decision 3). Allowed moves and
+        the journey, not any gauge (decision 3). Allowed moves and
         which of them need a reason are `_MARKER_MOVES` (company-record
         contract §3.3); anything else is `InvalidMarkerTransitionError` (409).
         Setting `PAUSED` or `ENDED` without a reason is a 422, and the
@@ -659,7 +588,6 @@ class ExporterProfileService:
         iec: str | None = None,
         name_contains: str | None = None,
         source: ExporterSource | None = None,
-        lifecycle_status: ExporterLifecycleStatus | None = None,
         journey: ExporterJourney | None = None,
         qualification: QualificationState | None = None,
         marker: ExporterMarker | None = None,
@@ -677,7 +605,7 @@ class ExporterProfileService:
         searchable** (assumption A11): with no `marker` filter and no search
         term (`name_contains`, `pan`, `gstin`, `iec`), `ENDED` companies are
         excluded; any search term includes them; `marker=ENDED` lists only
-        them. `source` and `lifecycle_status` are list filters, not search
+        them. `source`, `journey` and `qualification` are list filters, not search
         terms, and do not bring `ENDED` companies back.
         """
         pan = _normalise_term(pan)
@@ -691,7 +619,6 @@ class ExporterProfileService:
             iec=iec,
             name_contains=name_contains,
             source=source,
-            lifecycle_status=lifecycle_status,
             journey=journey,
             qualification=qualification,
             marker=marker,
@@ -713,7 +640,6 @@ class ExporterProfileService:
                 relationship_manager_user_id=profile.relationship_manager_user_id,
                 journey=profile.journey,
                 qualification=profile.qualification,
-                lifecycle_status=profile.lifecycle_status,
                 marker=profile.marker,
                 marker_reason=profile.marker_reason,
                 industry=profile.industry,
@@ -725,128 +651,43 @@ class ExporterProfileService:
             for profile in profiles
         ]
 
-    # ── Lifecycle transition ─────────────────────────────────────────────
+    # ── Journey ───────────────────────────────────────────────────────────
 
-    async def _record_lifecycle(
-        self,
-        customer_id: uuid.UUID,
-        *,
-        from_status: ExporterLifecycleStatus | None,
-        to_status: ExporterLifecycleStatus,
-        actor_id: str | None,
-        event_type: str,
-        source: str,
-        reason: str | None = None,
+    async def _record_journey_start(
+        self, customer_id: uuid.UUID, *, actor_id: str | None, source: str
     ) -> None:
-        """Append one journey history row through the shared writer.
+        """The creation row of the journey dimension: `NULL` -> `LEAD`.
 
-        A thin adapter over `HistoryService.record`, not a second
-        implementation: it turns this service's `ExporterLifecycleStatus`
-        members into the strings the history log stores, supplies
-        `dimension="journey"`, and computes the `terminal` flag below. There is
-        one writer of `exporter_lifecycle_history` and it is `HistoryService`.
-
-        Still flushed and not committed — the rule has moved into the shared
-        writer rather than away. `transition_lifecycle_status` commits the
-        status column and this row together, so a profile can never hold a
-        status with no record of how it got there.
-
-        `event_type` is passed explicitly rather than letting `record` derive
-        it. The derived names would be `journey_initial`/`journey_transition`;
-        these rows have always been `lifecycle_initial`/`lifecycle_transition`,
-        a downstream consumer (ANER-4.2-S1T2) polls for them, and 1,659 existing
-        rows carry them. Renaming is not this change's to make.
-
-        Enough for a downstream consumer to act on without re-reading the
-        profile: ANER-4.2-S1T2 wants a completion hook on
-        COMPLIANCE_REVIEW -> ONBOARDED, and Epic 4.1 has none. `terminal` is
-        the flag that edge is identified by, computed from the status rather
-        than hardcoded at a call site so adding a lifecycle status cannot
-        silently change what "onboarding completed" means. A profile *created*
-        at ONBOARDED is terminal too — it is onboarded, and the hook must see
-        it. `source` distinguishes the write paths.
+        Flushed, not committed — written in the creating transaction. The event
+        type stays `lifecycle_initial`, the name the journey's rows have always
+        had and a downstream consumer (ANER-4.2-S1T2) polls for (history
+        contract §3); the values are now the three-stage journey's. `terminal`
+        marks a row that reaches `CUSTOMER` — the new model's "onboarding
+        completed" (architecture §5.6: `ONBOARDED` is now a `CLEAR` check and
+        so `CUSTOMER`) — and is false at creation.
         """
         await self._history.record(
             customer_id,
             dimension=HISTORY_DIMENSION_JOURNEY,
-            from_value=from_status.value if from_status is not None else None,
-            to_value=to_status.value,
+            to_value=ExporterJourney.LEAD.value,
             actor_id=actor_id,
-            reason=reason,
             source=source,
-            event_type=event_type,
-            details={"terminal": to_status is ExporterLifecycleStatus.ONBOARDED},
+            event_type=LIFECYCLE_INITIAL_EVENT,
+            details={"terminal": False},
         )
 
-    async def transition_lifecycle_status(
-        self,
-        customer_id: uuid.UUID,
-        to_status: ExporterLifecycleStatus,
-        actor_id: str,
-        *,
-        compliance_authorized: bool = False,
-    ) -> ExporterProfile:
-        """Move `lifecycle_status` to `to_status`, validated against
-        `PERMITTED_LIFECYCLE_TRANSITIONS`. Raises
-        `InvalidExporterLifecycleTransitionError` (naming both the current
-        and attempted status) for any pair not in that table — including a
-        same-status "transition", which has no edge in the table and so is
-        rejected the same way, with no special-casing needed.
+    # ── Allowed moves (served, never copied by the frontend) ────────────────
 
-        A permitted move out of `COMPLIANCE_GATED_FROM_STATUSES` additionally
-        raises `ExporterLifecycleComplianceRequiredError` (403) unless
-        `compliance_authorized`. The edge check runs first, so an illegal move
-        is a 409 for every caller.
-
-        Every accepted move writes an append-only `exporter_lifecycle_history`
-        row carrying `from_status`, `to_status` and `actor_id`, in the same
-        transaction as the column write. Before this, `actor_id` was a parameter
-        that reached a log line and nothing else: the fact that a named person
-        moved an exporter to `ONBOARDED` survived only as long as log retention.
-
-        The row and the column commit together on purpose. Two commits would
-        allow a profile to be `ONBOARDED` with no record of who did it, which is
-        the exact failure being fixed; the trigger on the history table means the
-        row cannot later be quietly adjusted to match a column someone edited by
-        hand.
-
-        Why this is not an `onboarding_event` row — `self._events` is right
-        there, and it was the first choice — is in
-        `ExporterLifecycleHistory`'s module docstring: that table's
-        `onboarding_request_id` is NOT NULL, and most exporter profiles have no
-        onboarding request.
-        """
-        profile = await self._require_profile(customer_id)
-        from_status = profile.lifecycle_status
-
-        if (from_status, to_status) not in PERMITTED_LIFECYCLE_TRANSITIONS:
-            raise InvalidExporterLifecycleTransitionError(customer_id, from_status, to_status)
-
-        if from_status in COMPLIANCE_GATED_FROM_STATUSES and not compliance_authorized:
-            raise ExporterLifecycleComplianceRequiredError(customer_id, to_status, from_status)
-
-        profile.lifecycle_status = to_status
-
-        await self._record_lifecycle(
-            customer_id,
-            from_status=from_status,
-            to_status=to_status,
-            actor_id=actor_id,
-            event_type=LIFECYCLE_TRANSITION_EVENT,
-            source="exporter_profile_service.transition_lifecycle_status",
-        )
-
-        await self._db.commit()
-        await self._db.refresh(profile)
-
-        logger.info(
-            "exporter_profile.transition_lifecycle_status.ok",
-            customer_id=str(customer_id),
-            from_status=from_status.value,
-            to_status=to_status.value,
-            actor_id=actor_id,
-        )
-        return profile
+    @staticmethod
+    def allowed_marker_moves(current: ExporterMarker) -> list[tuple[ExporterMarker, bool]]:
+        """The marker moves the contract allows from `current`, each with
+        whether it needs a reason — the same table `set_marker` enforces, so a
+        screen asks the server instead of keeping its own copy."""
+        return [
+            (to_marker, needs_reason)
+            for (from_marker, to_marker), needs_reason in _MARKER_MOVES.items()
+            if from_marker is current
+        ]
 
     # ── Detail ────────────────────────────────────────────────────────────
 
@@ -876,7 +717,6 @@ class ExporterProfileService:
             relationship_manager_user_id=profile.relationship_manager_user_id,
             journey=profile.journey,
             qualification=profile.qualification,
-            lifecycle_status=profile.lifecycle_status,
             marker=profile.marker,
             marker_reason=profile.marker_reason,
             industry=profile.industry,
@@ -964,4 +804,4 @@ def _activity_view(activity: ExporterActivity) -> ExporterActivityView:
     )
 
 
-__all__ = ["ExporterProfileService", "PERMITTED_LIFECYCLE_TRANSITIONS"]
+__all__ = ["ExporterProfileService"]

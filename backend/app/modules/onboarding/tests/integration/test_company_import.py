@@ -333,6 +333,9 @@ async def test_a_failing_row_cannot_damage_the_rows_around_it(monkeypatch):
     assert stray == 0
 
 
+# Its own budget below is 180s; the suite-wide 120s pytest-timeout would
+# otherwise kill the whole run (thread method) on a slow machine first.
+@pytest.mark.timeout(300)
 async def test_a_representative_thousand_row_file():
     """900 new companies, 40 matches to existing ones, 30 rejects and 30
     possible duplicates, shuffled together."""

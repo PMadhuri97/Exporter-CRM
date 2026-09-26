@@ -7,9 +7,7 @@ yet), and a customer keeps exactly one profile across every historical
 ``OnboardingRequest`` row for its ``customer_id`` (re-verification, renewed
 KYB, a second financing product each start a new ``OnboardingRequest``, never
 a new ``ExporterProfile``). ``customer_id`` is therefore unique here, and
-deliberately not a foreign key to ``onboarding_request`` — see the module
-docstring on ``exporter_enums.ExporterLifecycleStatus`` for why the two
-lifecycles are independent state machines.
+deliberately not a foreign key to ``onboarding_request``.
 
 ``gstin``/``pan``/``iec`` are India-specific identifiers not already covered
 by ``OnboardingRequest.registration_number``: confirmed against that column
@@ -39,7 +37,6 @@ from sqlalchemy.sql import func
 
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterJourney,
-    ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
@@ -131,8 +128,8 @@ class ExporterProfile(AnerModel):
 
     # ── Journey and qualification gauge (migration 0017) ────────────────────
     #: LEAD -> PROSPECT -> CUSTOMER, forward only, never set by hand
-    #: (company-record contract §3.1). Sits beside the old `lifecycle_status`
-    #: until L2-04 retires it.
+    #: (company-record contract §3.1). Replaced the ten-status
+    #: `lifecycle_status`, retired in L2-04 (migration 0020).
     journey: Mapped[ExporterJourney] = mapped_column(
         Enum(ExporterJourney, name="exporter_journey_enum", schema=SCHEMA),
         nullable=False,
@@ -146,11 +143,6 @@ class ExporterProfile(AnerModel):
         nullable=False,
         server_default=QualificationState.NOT_YET_REVIEWED.value,
         default=QualificationState.NOT_YET_REVIEWED,
-    )
-
-    lifecycle_status: Mapped[ExporterLifecycleStatus] = mapped_column(
-        Enum(ExporterLifecycleStatus, name="exporter_lifecycle_status_enum", schema=SCHEMA),
-        nullable=False,
     )
 
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)

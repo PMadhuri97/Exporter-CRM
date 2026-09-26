@@ -27,7 +27,6 @@ from app.modules.onboarding.domain.engagement_views import (
 )
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterJourney,
-    ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
@@ -67,7 +66,6 @@ class ExporterProfileDetail:
     relationship_manager_user_id: uuid.UUID | None
     journey: ExporterJourney
     qualification: QualificationState
-    lifecycle_status: ExporterLifecycleStatus
     marker: ExporterMarker
     marker_reason: str | None
     industry: str | None
@@ -105,7 +103,6 @@ class ExporterProfileListItem:
     relationship_manager_user_id: uuid.UUID | None
     journey: ExporterJourney
     qualification: QualificationState
-    lifecycle_status: ExporterLifecycleStatus
     marker: ExporterMarker
     marker_reason: str | None
     industry: str | None

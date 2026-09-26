@@ -28,6 +28,10 @@ from app.modules.onboarding.api.schemas.qualification import (
     RecordResultsRequest,
 )
 from app.modules.onboarding.application.qualification_service import QualificationService
+from app.modules.onboarding.domain.entities.qualification_enums import (
+    QualificationOutcomeValue,
+    QualificationState,
+)
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
 from app.platform.database.services import get_db
@@ -38,6 +42,7 @@ router = APIRouter(tags=["Qualification"])
 _ADMIN = require_role(UserRole.ADMIN)
 #: Recording results and outcomes.
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+_RECORDING_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
 #: Reading. DEVELOPER is read-only across the CRM.
 _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
@@ -164,7 +169,7 @@ async def get_exporter_qualification(
     db: AsyncSession = Depends(get_db),
 ) -> QualificationResponse:
     view = await QualificationService(db).get_qualification(customer_id)
-    return QualificationResponse.of(customer_id, view)
+    return _for_viewer(QualificationResponse.of(customer_id, view), current_user)
 
 
 @router.post(
@@ -196,7 +201,10 @@ async def record_exporter_qualification_results(
     await service.record_results(
         customer_id, [r.to_entry() for r in body.results], actor_id=str(current_user.id)
     )
-    return QualificationResponse.of(customer_id, await service.get_qualification(customer_id))
+    return _for_viewer(
+        QualificationResponse.of(customer_id, await service.get_qualification(customer_id)),
+        current_user,
+    )
 
 
 @router.post(
@@ -233,7 +241,21 @@ async def record_exporter_qualification_outcome(
         note=body.note,
         actor_id=str(current_user.id),
     )
-    return QualificationResponse.of(customer_id, await service.get_qualification(customer_id))
+    return _for_viewer(
+        QualificationResponse.of(customer_id, await service.get_qualification(customer_id)),
+        current_user,
+    )
+
+
+def _for_viewer(response: QualificationResponse, viewer: User) -> QualificationResponse:
+    """What this viewer may do next, from the service's own rules: nothing
+    once the company is QUALIFIED (final, A2), and nothing for a role that
+    may not record results or outcomes."""
+    open_for_review = response.state is not QualificationState.QUALIFIED
+    may_record = viewer.role in _RECORDING_ROLES and open_for_review
+    response.can_record_results = may_record
+    response.allowed_outcomes = list(QualificationOutcomeValue) if may_record else []
+    return response
 
 
 __all__ = ["router"]

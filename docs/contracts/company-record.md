@@ -300,7 +300,19 @@ dimensions:
 `lifecycle_initial` / `lifecycle_transition` — because a downstream consumer
 (ANER-4.2-S1T2) polls for them (history contract §3). Every other Developer 2
 dimension uses the contract's derived names (`marker_transition`,
-`profile_transition`, ...).
+`profile_transition`, ...). Since L2-04 every journey row — the `LEAD` row at
+creation, the `LEAD` -> `PROSPECT` move a `QUALIFIED` outcome makes, and an
+RXIL intake's rows — uses these two names, and carries `terminal` in its
+details: `false` for `LEAD` and `PROSPECT`; `true` is reserved for the move to
+`CUSTOMER` (L2-11, not built). Rows written before L2-04 for the ten old
+statuses are kept as they were.
+
+**Allowed moves are served, not copied.** Each company response carries
+`allowed_marker_moves` — the marker values this viewer may set from here, each
+with `reason_required` — and the qualification response carries
+`allowed_outcomes` and `can_record_results`. The frontend offers exactly those
+and holds no transition table. The journey has no allowed moves: it is never
+moved by hand. The cross-gauge allowed-moves endpoint remains open item O6.
 
 **How a `profile` row is written** (L2-07, built). One row per field whose
 value actually changes; an edit that changes nothing writes nothing.
@@ -366,7 +378,7 @@ Recorded, not decided here. Each names who decides.
 | # | Question | Decides |
 |---|---|---|
 | O1 | Does 0014 rename `customer_id` to `company_id` in the CRM's own tables and routes? Recommendation: **no** in the prototype — all four developers' code and the generated types would move at once for no behavioural gain | Dev 2 with Dev 1 (types) |
-| O2 | The ANER-4.2-S1T2 consumer watches `lifecycle_transition` rows for `ONBOARDED` (the `terminal` flag). That status disappears in L2-04. Which journey value, if any, replaces it — `CUSTOMER`? | Programme lead, with whoever owns that consumer |
+| O2 | The ANER-4.2-S1T2 consumer watches `lifecycle_transition` rows for `ONBOARDED` (the `terminal` flag). That status is gone (L2-04, migration 0020). Journey rows keep the `lifecycle_*` event types and the `terminal` flag, which only `CUSTOMER` will set (L2-11) — confirm that `CUSTOMER` is the replacement | Programme lead, with whoever owns that consumer |
 | O3 | Decision U4: do Developer 4's `CLEAR` and Developer 2's `CUSTOMER` move commit in one transaction? | Programme lead, Dev 2, Dev 4 |
 | O4 | Is CIN masked like PAN/GSTIN/IEC? Recommendation: **yes** until decided — widening later is safe, narrowing later is not | Programme lead (decision 12's scope) |
 | O5 | ~~Profile-history rows for tax identifiers: masked in the row, or stored in full and masked on read?~~ **Settled for the prototype: masked in the row** (§6). Revisit only if the history read route gains role-based masking | Dev 2 with Dev 1 — Dev 1 to acknowledge |
@@ -384,13 +396,15 @@ Stated separately so nobody reads this contract as a description of the code.
 | Company id (as `customer_id`), `source` immutability, descriptive fields | **implemented** |
 | IEC column | **implemented**, format not yet checked |
 | Server-side masking and identifier-search refusal | **implemented** (Dev 1, L1-10) |
-| `journey` history rows (`lifecycle_*`) | **implemented** — for the old ten statuses |
+| `journey` history rows (`lifecycle_*`, with `terminal`) | **implemented** — for the three journey stages (L2-04); older rows for the ten statuses are kept |
 | `name` / `country` / `cin` as columns on the company record | **implemented** (0014). The transitional identity store is deleted; no CRM code reads a company's identity from `onboarding_request` |
 | `onboarding_history` on the company detail | **removed** (L2-03) |
-| Retiring the ten old statuses; the move to `CUSTOMER` | **not built** — L2-04, L2-11 |
+| Retiring the ten old statuses | **implemented** (L2-04, migration 0020): `lifecycle_status`, its enum, the transition route and the frontend's copy of the graph are gone |
+| The move to `CUSTOMER` | **not built** — L2-11, blocked on U4 (O3) and Developer 4's background-check `CLEAR` |
+| `allowed_marker_moves` on company responses; `allowed_outcomes` / `can_record_results` on qualification | **implemented** (L2-04, L2-14) |
 | `gstins` (several, `exporter_gstin`), PAN format and uniqueness, GSTIN format and PAN cross-check, duplicate-GSTIN warnings | **implemented** (0014, L2-06) |
 | `marker` and `marker_reason`, the marker route, ENDED off the default list | **implemented** (0014, L2-08) |
-| `journey` (`LEAD`/`PROSPECT`/`CUSTOMER`) and `qualification` columns | **implemented** (0017). `journey` sits beside the old `lifecycle_status` until L2-04 retires it; qualification moves it `LEAD` -> `PROSPECT` |
+| `journey` (`LEAD`/`PROSPECT`/`CUSTOMER`) and `qualification` columns | **implemented** (0017); the old `lifecycle_status` beside it was dropped in 0020. Qualification moves it `LEAD` -> `PROSPECT` |
 | `conversation`, `background_check` fields | **not built** — Dev 3's and Dev 4's migrations (see §2.4) |
 | `profile` history on edits; clearing a field | **implemented** (L2-07) |
 | Real links from contacts, activities, screening items, GSTINs and history | **implemented** (0014, `ON DELETE RESTRICT`); `verification_result.entity_reference` deliberately has none |

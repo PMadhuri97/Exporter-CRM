@@ -22,14 +22,16 @@ from app.modules.onboarding.application.exporter_profile_service import (
     ExporterProfileService,
 )
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.application.qualification_service import QualificationService
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterLifecycleStatus,
+    ExporterJourney,
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationOutcomeValue
 from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
@@ -210,7 +212,7 @@ async def test_record_flushes_without_committing():
 async def test_a_rollback_discards_the_state_change_and_its_history_together():
     """The whole point of flush-not-commit, end to end.
 
-    1. the state change begins — a profile's `lifecycle_status` is assigned;
+    1. the state change begins — a profile's `journey` is assigned;
     2. the history writer flushes its row;
     3. the caller rolls back;
     4. neither survives.
@@ -231,16 +233,16 @@ async def test_a_rollback_discards_the_state_change_and_its_history_together():
         profile = await db.scalar(
             select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
         )
-        assert profile.lifecycle_status is ExporterLifecycleStatus.LEAD
+        assert profile.journey is ExporterJourney.LEAD
 
         # 1. the state change
-        profile.lifecycle_status = ExporterLifecycleStatus.CONTACTED
+        profile.journey = ExporterJourney.PROSPECT
         # 2. the history row, flushed
         await HistoryService(db).record(
             company_id,
             dimension="journey",
-            from_value=ExporterLifecycleStatus.LEAD.value,
-            to_value=ExporterLifecycleStatus.CONTACTED.value,
+            from_value=ExporterJourney.LEAD.value,
+            to_value=ExporterJourney.PROSPECT.value,
             actor_id="rm-1",
             source="test.rollback",
         )
@@ -252,10 +254,10 @@ async def test_a_rollback_discards_the_state_change_and_its_history_together():
         after = await db.scalar(
             select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
         )
-        assert after.lifecycle_status is ExporterLifecycleStatus.LEAD
+        assert after.journey is ExporterJourney.LEAD
 
     assert [r.to_status for r in await _rows_for(company_id)] == [
-        ExporterLifecycleStatus.LEAD.value
+        ExporterJourney.LEAD.value
     ], "only the creation row should remain"
 
 
@@ -272,12 +274,12 @@ async def test_state_and_history_commit_together():
         profile = await db.scalar(
             select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
         )
-        profile.lifecycle_status = ExporterLifecycleStatus.CONTACTED
+        profile.journey = ExporterJourney.PROSPECT
         await HistoryService(db).record(
             company_id,
             dimension="journey",
-            from_value=ExporterLifecycleStatus.LEAD.value,
-            to_value=ExporterLifecycleStatus.CONTACTED.value,
+            from_value=ExporterJourney.LEAD.value,
+            to_value=ExporterJourney.PROSPECT.value,
             actor_id="rm-1",
             source="test.commit",
         )
@@ -287,58 +289,59 @@ async def test_state_and_history_commit_together():
         after = await db.scalar(
             select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
         )
-        assert after.lifecycle_status is ExporterLifecycleStatus.CONTACTED
+        assert after.journey is ExporterJourney.PROSPECT
 
-    assert ExporterLifecycleStatus.CONTACTED.value in {
+    assert ExporterJourney.PROSPECT.value in {
         r.to_status for r in await _rows_for(company_id)
     }
 
 
-# ── The lifecycle writer now goes through this service (Task 2) ──────────────
+# ── The journey writer goes through this service (Task 2) ───────────────────
 
 
-async def test_the_lifecycle_transition_still_records_what_it_always_did():
-    """Repointing `ExporterProfileService` at the shared writer must not change
-    a single field of what it writes — a downstream consumer polls these rows."""
+async def test_the_journey_still_records_what_it_always_did():
+    """The journey's rows keep their shape and event types — a downstream
+    consumer polls them. Since L2-04 the values are the three-stage journey's,
+    and the move is made by a qualification outcome, not a transition call."""
     company_id = uuid.uuid4()
 
     async with db_services.AsyncSessionLocal() as db:
-        service = ExporterProfileService(db)
-        await service.create_or_get_profile(company_id, source=ExporterSource.SALES)
-        await service.transition_lifecycle_status(
-            company_id, ExporterLifecycleStatus.CONTACTED, actor_id="rm-jordan"
+        await ExporterProfileService(db).create_or_get_profile(
+            company_id, source=ExporterSource.SALES
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        await QualificationService(db).record_outcome(
+            company_id, QualificationOutcomeValue.QUALIFIED, actor_id="rm-jordan"
         )
 
-    rows = sorted(await _rows_for(company_id), key=lambda r: r.created_at)
+    rows = sorted(
+        [r for r in await _rows_for(company_id) if r.dimension == "journey"],
+        key=lambda r: r.created_at,
+    )
     assert [r.event_type for r in rows] == ["lifecycle_initial", "lifecycle_transition"]
-    assert {r.dimension for r in rows} == {"journey"}
     assert all(r.deal_id is None for r in rows)
 
     move = rows[-1]
-    assert move.from_status == ExporterLifecycleStatus.LEAD.value
-    assert move.to_status == ExporterLifecycleStatus.CONTACTED.value
+    assert move.from_status == ExporterJourney.LEAD.value
+    assert move.to_status == ExporterJourney.PROSPECT.value
     assert move.actor_id == "rm-jordan"
     assert move.event_metadata["terminal"] is False
-    assert move.event_metadata["source"].endswith("transition_lifecycle_status")
 
 
-async def test_the_terminal_flag_still_marks_the_onboarded_edge():
-    """ANER-4.2-S1T2's completion hook filters on this; it must survive the
-    move to the shared writer."""
+async def test_the_terminal_flag_is_false_until_customer():
+    """ANER-4.2-S1T2's completion hook filters on `terminal`. In the new model
+    it marks the move to CUSTOMER (architecture §5.6), which only L2-11 makes;
+    a new company's creation row is not terminal."""
     company_id = uuid.uuid4()
 
     async with db_services.AsyncSessionLocal() as db:
-        service = ExporterProfileService(db)
-        await service.create_or_get_profile(
-            company_id,
-            source=ExporterSource.SALES,
-            lifecycle_status=ExporterLifecycleStatus.ONBOARDED,
-            compliance_authorized=True,
+        await ExporterProfileService(db).create_or_get_profile(
+            company_id, source=ExporterSource.SALES
         )
 
     (row,) = await _rows_for(company_id)
     assert row.event_type == "lifecycle_initial"
-    assert row.event_metadata["terminal"] is True
+    assert row.event_metadata["terminal"] is False
 
 
 # ── Reads ────────────────────────────────────────────────────────────────────

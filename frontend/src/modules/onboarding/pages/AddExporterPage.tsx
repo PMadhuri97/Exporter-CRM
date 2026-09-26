@@ -82,11 +82,6 @@ export function AddExporterPage() {
         name: values.name,
         country: values.country,
         source: values.source,
-        // The backend defaults this to LEAD when omitted, but the generated
-        // type still marks it required — passed explicitly rather than
-        // fighting the generator over a field this form never lets the user
-        // change anyway (a brand-new Lead always starts at LEAD).
-        lifecycle_status: 'LEAD',
         relationship_manager: emptyToUndefined(values.relationship_manager),
         // One GSTIN from the form; a company may hold several (one per state).
         gstins: values.gstin ? [values.gstin] : undefined,

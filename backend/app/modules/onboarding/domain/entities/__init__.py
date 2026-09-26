@@ -13,7 +13,6 @@ from app.modules.onboarding.domain.entities.enums import (
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterLifecycleStatus,
     ExporterMarker,
     ExporterSource,
 )
@@ -110,7 +109,6 @@ __all__ = [
     "ExporterActivity",
     "ExporterLifecycleHistory",
     "ExporterSource",
-    "ExporterLifecycleStatus",
     "ExporterActivityType",
     "VerificationResult",
     "VerificationType",

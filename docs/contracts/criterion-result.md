@@ -298,8 +298,14 @@ further results as well as further outcomes (409).
 derived `qualification_transition`, with `outcome_id`, `reason_codes`,
 `suggested_outcome` and `re_review` in the details and the note as the reason.
 The journey move a `QUALIFIED` outcome causes: dimension `journey`, event type
-`journey_transition` — distinct from the old ten-status rows' `lifecycle_*`
-event types until L2-04 retires them.
+`lifecycle_transition` with `terminal: false` — the journey's own event names
+(`company-record.md` §6). It was `journey_transition` until L2-04 retired the
+ten-status rows that owned the `lifecycle_*` names.
+
+**What a viewer may do is served.** The qualification response carries
+`allowed_outcomes` (the outcomes this viewer may record now: both for
+OPERATIONS, COMPLIANCE and ADMIN until the company is `QUALIFIED`, none after
+or for other roles) and `can_record_results`.
 
 **Reason codes** are seeded by 0017 and checked by the server; there is no
 route to manage them yet (open item Q5).
@@ -313,5 +319,6 @@ route to manage them yet (open item Q5).
 | `qualification` history rows (results and outcomes) | **implemented** |
 | A `qualification_initial` row at company creation (Q2) | **not built** — the column default stands for it |
 | Managing reason codes through the API | **not built** — Q5 |
-| RXIL and import callers | **not built** — L2-12, L2-13 |
+| RXIL and import callers | **implemented** — L2-12, L2-13 |
+| Qualification display and review screens | **implemented** — L2-14 |
 | Anything reused from the screening checklist | **none, by design** (§1) |
