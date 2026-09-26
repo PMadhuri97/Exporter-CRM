@@ -82,6 +82,12 @@ class AdminUserResponse(UserResponse):
     created_by: uuid.UUID | None
     deactivated_at: datetime | None
     created_at: datetime
+    #: The role row whose permissions this account resolves through. NULL means
+    #: "the built-in role matching `role`", which is how most accounts work. The
+    #: name is not denormalised here: a client listing roles already has it, and
+    #: joining on every row to repeat it would be the more expensive lie to keep
+    #: consistent.
+    role_id: uuid.UUID | None
 
     model_config = {"from_attributes": True}
 
@@ -111,6 +117,11 @@ class AdminCreateUserRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     full_name: str | None = Field(default=None, max_length=255)
     role: UserRole
+    #: Optional permission role. Left unset, the account resolves permissions
+    #: through the built-in role matching `role` above — the behaviour before
+    #: role management existed. Set, it points at any assignable role, including
+    #: a custom one, and overrides that resolution.
+    role_id: uuid.UUID | None = None
 
     @field_validator("password")
     @classmethod
@@ -133,6 +144,11 @@ class AdminUpdateUserRequest(BaseModel):
     full_name: str | None = Field(default=None, max_length=255)
     role: UserRole | None = None
     is_active: bool | None = None
+    #: Nullable on purpose, and read via `exclude_unset`: sending
+    #: `{"role_id": null}` clears the explicit assignment and returns the
+    #: account to resolving permissions through its `role` enum, which is a
+    #: distinct intent from not mentioning the field at all.
+    role_id: uuid.UUID | None = None
 
 
 class AdminResetPasswordRequest(BaseModel):

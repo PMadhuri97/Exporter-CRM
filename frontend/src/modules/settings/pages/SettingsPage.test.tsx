@@ -5,8 +5,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuth, useCurrentUser } from '@/platform/auth';
 
-import { listOwnSessions, listUsers, updateUser } from '../api';
-import type { AdminUser } from '../types';
+import {
+  getMyPermissions,
+  getPermissionCatalog,
+  listOwnSessions,
+  listRoles,
+  listUsers,
+  updateUser,
+} from '../api';
+import type { AdminUser, PermissionRef, Role } from '../types';
 
 import { SettingsPage } from './SettingsPage';
 
@@ -24,6 +31,12 @@ vi.mock('../api', () => ({
   updateOwnProfile: vi.fn(),
   changeOwnPassword: vi.fn(),
   revokeOwnSession: vi.fn(),
+  getMyPermissions: vi.fn(),
+  listRoles: vi.fn(),
+  getPermissionCatalog: vi.fn(),
+  createRole: vi.fn(),
+  updateRole: vi.fn(),
+  deleteRole: vi.fn(),
 }));
 
 const SELF_ID = 'self-1111';
@@ -40,16 +53,34 @@ function user(overrides: Partial<AdminUser> = {}): AdminUser {
     created_by: null,
     deactivated_at: null,
     created_at: '2026-01-01T00:00:00Z',
+    role_id: null,
     ...overrides,
   };
 }
 
-function mockSignedInAs(role: AdminUser['role']) {
+function role(overrides: Partial<Role> = {}): Role {
+  return {
+    id: 'role-1',
+    slug: 'operations',
+    name: 'Operations',
+    description: 'Day-to-day CRM work.',
+    builtin_role: 'OPERATIONS',
+    is_builtin: true,
+    is_assignable: true,
+    permissions: [{ module: 'exporters', action: 'view' }],
+    user_count: 3,
+    created_at: '2026-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+/** Grant exactly these permissions to the signed-in user. */
+function signedInWith(permissions: PermissionRef[], roleName = 'Administrator') {
   vi.mocked(useCurrentUser).mockReturnValue({
     id: SELF_ID,
     email: 'me@aner.example',
     full_name: 'Me Myself',
-    role,
+    role: 'ADMIN',
     is_active: true,
   });
   vi.mocked(useAuth).mockReturnValue({
@@ -58,7 +89,25 @@ function mockSignedInAs(role: AdminUser['role']) {
     login: vi.fn(),
     logout: vi.fn(),
   });
+  vi.mocked(getMyPermissions).mockResolvedValue({
+    role: 'ADMIN',
+    role_id: null,
+    role_name: roleName,
+    permissions,
+  });
 }
+
+const ALL_USER_PERMISSIONS: PermissionRef[] = [
+  { module: 'users', action: 'view' },
+  { module: 'users', action: 'create' },
+  { module: 'users', action: 'edit' },
+];
+const ALL_ROLE_PERMISSIONS: PermissionRef[] = [
+  { module: 'roles', action: 'view' },
+  { module: 'roles', action: 'create' },
+  { module: 'roles', action: 'edit' },
+  { module: 'roles', action: 'delete' },
+];
 
 function renderPage() {
   const client = new QueryClient({
@@ -82,86 +131,137 @@ beforeEach(() => {
     limit: 25,
     offset: 0,
   });
-});
-
-describe('SettingsPage — who can see user management', () => {
-  it.each<AdminUser['role']>(['OPERATIONS', 'COMPLIANCE', 'DEVELOPER', 'API_USER'])(
-    'gives %s no Users tab at all — not a disabled one',
-    async (role) => {
-      mockSignedInAs(role);
-      renderPage();
-
-      expect(screen.queryByRole('button', { name: 'Users' })).not.toBeInTheDocument();
-      // And it never asks the server for a list it cannot have.
-      expect(listUsers).not.toHaveBeenCalled();
-      expect(await screen.findByText('Your details')).toBeInTheDocument();
-    },
-  );
-
-  it('shows ADMIN both tabs', async () => {
-    mockSignedInAs('ADMIN');
-    renderPage();
-
-    expect(screen.getByRole('button', { name: 'Users' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'My profile' })).toBeInTheDocument();
+  vi.mocked(listRoles).mockResolvedValue({
+    roles: [
+      role(),
+      role({
+        id: 'role-custom',
+        slug: 'credit-reviewer',
+        name: 'Credit reviewer',
+        builtin_role: null,
+        is_builtin: false,
+        user_count: 0,
+      }),
+    ],
+  });
+  vi.mocked(getPermissionCatalog).mockResolvedValue({
+    modules: [
+      {
+        key: 'users',
+        label: 'User management',
+        description: 'Accounts that can sign in',
+        enforced: true,
+        actions: [{ key: 'view', label: 'View', description: 'See the user list' }],
+      },
+      {
+        key: 'exporters',
+        label: 'Companies',
+        description: 'Exporter profiles',
+        enforced: false,
+        actions: [{ key: 'view', label: 'View', description: 'See companies' }],
+      },
+    ],
   });
 });
 
-describe('UsersTab — self-protection matches the server guards', () => {
-  beforeEach(() => mockSignedInAs('ADMIN'));
+describe('SettingsPage — tabs follow permissions, not role names', () => {
+  it('shows no admin tabs to someone with no permissions', async () => {
+    signedInWith([], 'API user');
+    renderPage();
+
+    expect(await screen.findByText('Your details')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Users' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Roles' })).not.toBeInTheDocument();
+    // And it never asks for a list it cannot have.
+    expect(listUsers).not.toHaveBeenCalled();
+  });
+
+  it('shows the Users tab to any role granted users:view — the whole point of RBAC', async () => {
+    // This is the case that used to need a code change: a non-ADMIN role with
+    // the permission granted now gets the tab.
+    signedInWith([{ module: 'users', action: 'view' }], 'Compliance');
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'Users' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Roles' })).not.toBeInTheDocument();
+  });
+
+  it('shows the Roles tab only with roles:view', async () => {
+    signedInWith(ALL_ROLE_PERMISSIONS);
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'Roles' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Users' })).not.toBeInTheDocument();
+  });
+
+  it('renders no admin tab while permissions are still loading', () => {
+    signedInWith(ALL_USER_PERMISSIONS);
+    // Never resolves: anything on screen was rendered without an answer.
+    vi.mocked(getMyPermissions).mockReturnValue(new Promise(() => {}));
+    renderPage();
+
+    expect(screen.queryByRole('button', { name: 'Users' })).not.toBeInTheDocument();
+  });
+});
+
+describe('UsersTab — write controls follow permissions', () => {
+  it('hides every write control from a view-only user', async () => {
+    signedInWith([{ module: 'users', action: 'view' }]);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Users' }));
+    await waitFor(() => expect(listUsers).toHaveBeenCalled());
+
+    expect(await screen.findByText('colleague@aner.example')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add user' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Edit colleague@aner.example' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Deactivate' })).not.toBeInTheDocument();
+  });
 
   it('offers no Deactivate control on your own row', async () => {
+    signedInWith(ALL_USER_PERMISSIONS);
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Users' }));
-
+    fireEvent.click(await screen.findByRole('button', { name: 'Users' }));
     await waitFor(() => expect(listUsers).toHaveBeenCalled());
-    // The colleague's row has one; there is exactly one in the table, so the
-    // signed-in user's own row does not.
-    const deactivateButtons = await screen.findAllByRole('button', {
-      name: 'Deactivate',
-    });
-    expect(deactivateButtons).toHaveLength(1);
+
+    // Exactly one row offers it — the colleague's — which is itself the
+    // assertion that the signed-in user's own row does not.
+    expect(await screen.findByRole('button', { name: 'Deactivate' })).toBeInTheDocument();
     expect(screen.getByText('(you)')).toBeInTheDocument();
   });
 
   it('marks an account inactive immediately, before the server replies', async () => {
-    // Optimistic update: the request never resolves during this assertion, so
-    // anything on screen came from the cache patch, not the response.
+    signedInWith(ALL_USER_PERMISSIONS);
     vi.mocked(updateUser).mockReturnValue(new Promise(() => {}));
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Users' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Users' }));
     await waitFor(() => expect(listUsers).toHaveBeenCalled());
 
-    // Singular: exactly one row offers it (the colleague's), which is itself
-    // the assertion that your own row does not.
     fireEvent.click(await screen.findByRole('button', { name: 'Deactivate' }));
 
     expect(await screen.findByText('Inactive')).toBeInTheDocument();
   });
 
   it('rolls the row back when the server refuses', async () => {
+    signedInWith(ALL_USER_PERMISSIONS);
     vi.mocked(updateUser).mockRejectedValue(new Error('Refused'));
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Users' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Users' }));
     await waitFor(() => expect(listUsers).toHaveBeenCalled());
 
-    // Singular: exactly one row offers it (the colleague's), which is itself
-    // the assertion that your own row does not.
     fireEvent.click(await screen.findByRole('button', { name: 'Deactivate' }));
 
-    // Back to Active, and the button is offered again — no stale "Inactive"
-    // left behind claiming a change the server rejected.
     await waitFor(() =>
       expect(screen.queryByText('Inactive')).not.toBeInTheDocument(),
     );
-    expect(
-      await screen.findByRole('button', { name: 'Deactivate' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Deactivate' })).toBeInTheDocument();
   });
 
-  it('never offers a role picker for your own account', async () => {
+  it('never offers a role or permission-role picker for your own account', async () => {
+    signedInWith(ALL_USER_PERMISSIONS);
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Users' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Users' }));
     await waitFor(() => expect(listUsers).toHaveBeenCalled());
 
     fireEvent.click(
@@ -169,8 +269,59 @@ describe('UsersTab — self-protection matches the server guards', () => {
     );
 
     expect(await screen.findByLabelText('Role')).toBeDisabled();
+    expect(screen.getByLabelText('Permission role')).toBeDisabled();
+    expect(screen.getByText(/cannot change your own role/i)).toBeInTheDocument();
+  });
+});
+
+describe('RolesTab', () => {
+  beforeEach(() => signedInWith(ALL_ROLE_PERMISSIONS));
+
+  it('lists roles, marks built-ins, and offers delete only for custom ones', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Roles' }));
+    await waitFor(() => expect(listRoles).toHaveBeenCalled());
+
+    expect(await screen.findByText('Operations')).toBeInTheDocument();
+    expect(screen.getByText('Credit reviewer')).toBeInTheDocument();
+    expect(screen.getByText('Built-in')).toBeInTheDocument();
+
+    // The built-in role cannot be deleted server-side, so no control exists.
     expect(
-      screen.getByText(/cannot change your own role/i),
+      screen.queryByRole('button', { name: 'Delete Operations' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Delete Credit reviewer' }),
     ).toBeInTheDocument();
+  });
+
+  it('hides create, edit and delete controls without those permissions', async () => {
+    signedInWith([{ module: 'roles', action: 'view' }]);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Roles' }));
+    await waitFor(() => expect(listRoles).toHaveBeenCalled());
+
+    expect(await screen.findByText('Operations')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New role' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Edit Operations' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Delete Credit reviewer' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says which permissions are not enforced yet, instead of implying they work', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Roles' }));
+    await waitFor(() => expect(listRoles).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Operations' }));
+    await waitFor(() => expect(getPermissionCatalog).toHaveBeenCalled());
+
+    // The catalogue marks `exporters` unenforced and `users` enforced; only the
+    // unenforced one carries the warning.
+    expect(await screen.findByText('Companies')).toBeInTheDocument();
+    expect(screen.getAllByText('Not enforced yet')).toHaveLength(1);
   });
 });

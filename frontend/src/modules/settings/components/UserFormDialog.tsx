@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 
 import { useCurrentUser } from '@/platform/auth';
 
-import { useCreateUser, useUpdateUser } from '../hooks';
+import { useCreateUser, useRoles, useUpdateUser } from '../hooks';
 import { assessPassword } from '../passwordStrength';
 import { ROLE_DESCRIPTION, ROLE_OPTIONS } from '../roles';
 import type { AdminUser } from '../types';
@@ -25,7 +25,15 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
   const [email, setEmail] = useState(user?.email ?? '');
   const [fullName, setFullName] = useState(user?.full_name ?? '');
   const [role, setRole] = useState<AdminUser['role']>(user?.role ?? 'OPERATIONS');
+  const [roleId, setRoleId] = useState<string>(user?.role_id ?? '');
   const [password, setPassword] = useState('');
+
+  // Only assignable roles are offered; the server refuses the rest with a 409,
+  // so listing them would be a choice that cannot be saved.
+  const rolesQuery = useRoles();
+  const assignableRoles = (rolesQuery.data?.roles ?? []).filter(
+    (candidate) => candidate.is_assignable,
+  );
 
   const createMutation = useCreateUser();
   const updateMutation = useUpdateUser();
@@ -42,11 +50,22 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
 
     try {
       if (isEdit) {
+        const nextRoleId = roleId === '' ? null : roleId;
         await updateMutation.mutateAsync({
           userId: user.id,
-          // Never send `role` for your own account: the server refuses it with
-          // a 409, so offering it would be a button that cannot work.
-          body: isSelf ? { full_name: name } : { full_name: name, role },
+          // Never send `role` or `role_id` for your own account: the server
+          // refuses both with a 409, so offering them would be a button that
+          // cannot work. `role_id` is only sent when it actually changed, so an
+          // unrelated name edit does not re-assert the assignment.
+          body: isSelf
+            ? { full_name: name }
+            : {
+                full_name: name,
+                role,
+                ...(nextRoleId !== (user.role_id ?? null)
+                  ? { role_id: nextRoleId }
+                  : {}),
+              },
         });
         toast.success('User updated');
       } else {
@@ -55,6 +74,7 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
           password,
           full_name: name,
           role,
+          ...(roleId === '' ? {} : { role_id: roleId }),
         });
         toast.success('User created');
       }
@@ -160,6 +180,35 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
               {isSelf
                 ? 'You cannot change your own role — ask another administrator.'
                 : ROLE_DESCRIPTION[role]}
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="user-permission-role"
+              className="mb-1 block text-xs font-medium text-ink-muted"
+            >
+              Permission role
+            </label>
+            <select
+              id="user-permission-role"
+              value={roleId}
+              disabled={isSelf}
+              onChange={(event) => setRoleId(event.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:bg-surface-sunken disabled:text-ink-muted"
+            >
+              <option value="">Default for {role}</option>
+              {assignableRoles.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                  {candidate.is_builtin ? '' : ' (custom)'}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-ink-faint">
+              {isSelf
+                ? 'You cannot change your own permission role — ask another administrator.'
+                : 'Leave as the default unless this account needs a different permission set. Only the settings screens consult it today; the CRM screens still follow the account role above.'}
             </p>
           </div>
 

@@ -27,3 +27,21 @@ export interface UserSearchParams {
   limit?: number;
   offset?: number;
 }
+
+// ── Role management (Phase 2) ───────────────────────────────────────────────
+export type Role = components['schemas']['RoleResponse'];
+export type RoleList = components['schemas']['RoleListResponse'];
+export type CreateRoleRequest = components['schemas']['CreateRoleRequest'];
+export type UpdateRoleRequest = components['schemas']['UpdateRoleRequest'];
+export type PermissionRef = components['schemas']['PermissionRef'];
+export type PermissionCatalog =
+  components['schemas']['PermissionCatalogResponse'];
+export type PermissionModule = components['schemas']['ModuleSpecResponse'];
+export type MyPermissions = components['schemas']['MyPermissionsResponse'];
+
+/** `module:action`, the shape permission checks compare on. */
+export type PermissionKey = `${string}:${string}`;
+
+export function permissionKey(permission: PermissionRef): PermissionKey {
+  return `${permission.module}:${permission.action}`;
+}

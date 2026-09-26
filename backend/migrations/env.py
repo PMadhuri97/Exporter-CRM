@@ -29,6 +29,7 @@ import app.modules.reconciliation.domain.entities.reconciliation  # noqa: F401
 import app.modules.settlement.domain.entities.settlement  # noqa: F401
 import app.modules.settlement.domain.entities.settlement_aggregate  # noqa: F401
 import app.platform.authentication.models  # noqa: F401
+import app.platform.authorization.models  # noqa: F401
 import app.platform.idempotency.archive_models  # noqa: F401
 import app.platform.idempotency.models  # noqa: F401
 import app.platform.messaging.models  # noqa: F401

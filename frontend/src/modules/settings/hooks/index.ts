@@ -2,19 +2,26 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   changeOwnPassword,
+  createRole,
   createUser,
+  deleteRole,
+  getPermissionCatalog,
+  listRoles,
   listOwnSessions,
   listUsers,
   resetUserPassword,
   revokeOwnSession,
   updateOwnProfile,
+  updateRole,
   updateUser,
 } from '../api';
 import type {
   AdminUser,
   ChangePasswordRequest,
+  CreateRoleRequest,
   CreateUserRequest,
   UpdateMeRequest,
+  UpdateRoleRequest,
   UpdateUserRequest,
   UserList,
   UserSearchParams,
@@ -125,4 +132,56 @@ export function useRevokeOwnSession() {
       void queryClient.invalidateQueries({ queryKey: ['settings', 'sessions'] });
     },
   });
+}
+
+// ── Role management (Phase 2) ───────────────────────────────────────────────
+
+export function useRoles() {
+  return useQuery({
+    queryKey: ['settings', 'roles'],
+    queryFn: listRoles,
+  });
+}
+
+export function usePermissionCatalog() {
+  return useQuery({
+    queryKey: ['settings', 'permissionCatalog'],
+    queryFn: getPermissionCatalog,
+    // The catalogue is compiled into the backend; it only changes on deploy.
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Invalidates the caller's own permissions too: editing a role can change
+ * what the person doing the editing is allowed to see, and a stale answer there
+ * means a screen that disagrees with the server. */
+function useRoleMutation<TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['settings', 'roles'] });
+      void queryClient.invalidateQueries({
+        queryKey: ['settings', 'myPermissions'],
+      });
+      void queryClient.invalidateQueries({ queryKey: ['settings', 'users'] });
+    },
+  });
+}
+
+export function useCreateRole() {
+  return useRoleMutation((body: CreateRoleRequest) => createRole(body));
+}
+
+export function useUpdateRole() {
+  return useRoleMutation(
+    ({ roleId, body }: { roleId: string; body: UpdateRoleRequest }) =>
+      updateRole(roleId, body),
+  );
+}
+
+export function useDeleteRole() {
+  return useRoleMutation((roleId: string) => deleteRole(roleId));
 }

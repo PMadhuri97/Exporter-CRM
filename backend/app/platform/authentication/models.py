@@ -59,6 +59,19 @@ class User(AnerModel):
         ForeignKey(f"{SCHEMA}.users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    #: The role row backing this account's permissions. NULL means "fall back
+    #: to the built-in role matching the `role` enum above", which is still how
+    #: most accounts work — see `authorization.resolve_permissions`. Set only
+    #: when a role is assigned explicitly (including a custom one).
+    #: RESTRICT rather than SET NULL: silently demoting every holder of a
+    #: deleted role to their enum default is exactly the kind of quiet
+    #: privilege change an audit cannot reconstruct, so the delete is refused
+    #: while anyone still holds the role.
+    role_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{SCHEMA}.role.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     #: When `is_active` last went false. Cleared on reactivation so it always
     #: describes the current state rather than accumulating history — the
     #: audit trail of who deactivated whom belongs in the history log

@@ -4,11 +4,17 @@ import type { User } from '@/lib/api/types';
 import type {
   AdminUser,
   ChangePasswordRequest,
+  CreateRoleRequest,
   CreateUserRequest,
+  MyPermissions,
+  PermissionCatalog,
   ResetPasswordRequest,
+  Role,
+  RoleList,
   Session,
   SessionList,
   UpdateMeRequest,
+  UpdateRoleRequest,
   UpdateUserRequest,
   UserList,
   UserSearchParams,
@@ -74,4 +80,35 @@ export function revokeOwnSession(sessionId: Session['id']): Promise<void> {
   return apiRequest<void>(`/auth/me/sessions/${sessionId}`, {
     method: 'DELETE',
   });
+}
+
+// ── Role management (Phase 2) ───────────────────────────────────────────────
+
+export function listRoles(): Promise<RoleList> {
+  return apiRequest<RoleList>('/auth/roles');
+}
+
+export function getPermissionCatalog(): Promise<PermissionCatalog> {
+  return apiRequest<PermissionCatalog>('/auth/roles/catalog');
+}
+
+export function createRole(body: CreateRoleRequest): Promise<Role> {
+  return apiRequest<Role>('/auth/roles', { method: 'POST', body });
+}
+
+export function updateRole(
+  roleId: string,
+  body: UpdateRoleRequest,
+): Promise<Role> {
+  return apiRequest<Role>(`/auth/roles/${roleId}`, { method: 'PATCH', body });
+}
+
+export function deleteRole(roleId: string): Promise<void> {
+  return apiRequest<void>(`/auth/roles/${roleId}`, { method: 'DELETE' });
+}
+
+/** What the signed-in user may do. Needs no permission of its own, so it is
+ * safe to call from anywhere in the shell. */
+export function getMyPermissions(): Promise<MyPermissions> {
+  return apiRequest<MyPermissions>('/auth/me/permissions');
 }

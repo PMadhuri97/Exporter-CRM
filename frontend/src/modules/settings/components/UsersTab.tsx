@@ -7,6 +7,7 @@ import { useCurrentUser } from '@/platform/auth';
 import { useUpdateUser, useUsers } from '../hooks';
 import { ROLE_CHIP_CLASS, ROLE_OPTIONS } from '../roles';
 import type { AdminUser } from '../types';
+import { usePermissions } from '../usePermissions';
 
 import { ResetPasswordDialog } from './ResetPasswordDialog';
 import { UserFormDialog } from './UserFormDialog';
@@ -47,6 +48,11 @@ function SkeletonRow() {
 
 export function UsersTab() {
   const currentUser = useCurrentUser();
+  // Write controls follow the server's permissions, so a role granted only
+  // users:view sees the list without edit affordances it would get a 403 from.
+  const { can } = usePermissions();
+  const canCreate = can('users', 'create');
+  const canEdit = can('users', 'edit');
   const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
   const [role, setRole] = useState<AdminUser['role'] | 'all'>('all');
@@ -142,13 +148,15 @@ export function UsersTab() {
           </button>
         </form>
 
-        <button
-          type="button"
-          onClick={() => setCreating(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-        >
-          <UserPlus size={15} /> Add user
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            <UserPlus size={15} /> Add user
+          </button>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
@@ -180,13 +188,15 @@ export function UsersTab() {
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center">
                   <p className="text-sm text-ink-muted">No users match this filter.</p>
-                  <button
-                    type="button"
-                    onClick={() => setCreating(true)}
-                    className="mt-2 text-sm font-medium text-brand-600 hover:underline"
-                  >
-                    Add a user
-                  </button>
+                  {canCreate && (
+                    <button
+                      type="button"
+                      onClick={() => setCreating(true)}
+                      className="mt-2 text-sm font-medium text-brand-600 hover:underline"
+                    >
+                      Add a user
+                    </button>
+                  )}
                 </td>
               </tr>
             )}
@@ -228,6 +238,7 @@ export function UsersTab() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
+                      {canEdit && (
                       <button
                         type="button"
                         onClick={() => setEditing(user)}
@@ -236,6 +247,8 @@ export function UsersTab() {
                       >
                         <Pencil size={14} />
                       </button>
+                      )}
+                      {canEdit && (
                       <button
                         type="button"
                         onClick={() => setResetting(user)}
@@ -244,9 +257,10 @@ export function UsersTab() {
                       >
                         <KeyRound size={14} />
                       </button>
+                      )}
                       {/* Deactivating yourself is refused by the server (409),
                           so it is not offered here at all. */}
-                      {!isSelf && (
+                      {canEdit && !isSelf && (
                         <button
                           type="button"
                           onClick={() => void toggleActive(user)}

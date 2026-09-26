@@ -8,6 +8,8 @@ import structlog
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.rest.auth.roles_router import me_router as roles_me_router
+from app.api.rest.auth.roles_router import router as roles_router
 from app.api.rest.auth.schemas import (
     AdminCreateUserRequest,
     AdminResetPasswordRequest,
@@ -35,7 +37,7 @@ from app.platform.authentication.services import (
     refresh_token_expiry,
     verify_password,
 )
-from app.platform.authorization.services import require_role
+from app.platform.authorization.services import require_permission
 from app.platform.configuration.config import settings
 from app.platform.database.services import get_db
 from app.shared.exceptions import AnerBaseException, UnauthorizedError
@@ -43,10 +45,94 @@ from app.shared.exceptions import AnerBaseException, UnauthorizedError
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
-# Managing other people's accounts is ADMIN-only, matching section 3.7 of the
-# architecture plan ("Manage qualification criteria / users: ADMIN"). COMPLIANCE
-# is deliberately not included: it owns compliance decisions, not who may log in.
-_ADMIN_ONLY = require_role(UserRole.ADMIN)
+# Role management and `GET /me/permissions` live in their own module but under
+# this same `/auth` prefix, mirroring how onboarding includes its exporter
+# router: one import surface per area, without a second mount point to keep in
+# sync in app/api/rest/router.py.
+router.include_router(roles_router)
+router.include_router(roles_me_router)
+
+# Managing other people's accounts is permission-gated, not role-gated: role
+# management (Phase 2) exists so this can be granted to another role without a
+# code change. Only the ADMIN role is seeded with these, so out of the box this
+# is exactly the ADMIN-only rule section 3.7 of the architecture plan describes.
+_CAN_VIEW_USERS = require_permission("users", "view")
+_CAN_CREATE_USERS = require_permission("users", "create")
+_CAN_EDIT_USERS = require_permission("users", "edit")
+
+
+#: Sentinel for "the request did not mention role_id at all", which is distinct
+#: from `None` ("clear it").
+_UNSET = object()
+
+#: The permission whose last holder must never be removed: granting any
+#: permission requires it, so once no active account has it, nothing can grant
+#: it back.
+_UNRECOVERABLE_PERMISSION = ("roles", "edit")
+
+
+async def _refuse_removing_last_role_manager(
+    db: AsyncSession,
+    user: User,
+    *,
+    new_role,
+    new_role_id,
+    new_is_active,
+) -> None:
+    """Refuse a user change that would leave nobody able to manage roles."""
+    from app.platform.authorization.adapters.repository import RoleRepository
+
+    module, action = _UNRECOVERABLE_PERMISSION
+    repo = RoleRepository(db)
+
+    async def holds(role_id: uuid.UUID | None, role) -> bool:
+        if role_id is not None:
+            return await repo.grants(role_id, module, action)
+        return await repo.builtin_grants(role, module, action)
+
+    if not await holds(user.role_id, user.role):
+        return  # This account never had it; nothing to lose.
+
+    role_id_after = user.role_id if new_role_id is _UNSET else new_role_id
+    role_after = new_role if new_role is not None else user.role
+    active_after = user.is_active if new_is_active is None else new_is_active
+
+    keeps_it = active_after and await holds(role_id_after, role_after)
+    if keeps_it:
+        return
+
+    others = await repo.count_active_holders_of(module, action, excluding=user.id)
+    if others == 0:
+        raise AnerBaseException(
+            detail=(
+                "This is the only active account that can manage roles. Grant "
+                "role management to someone else first, or nobody will be able "
+                "to grant it back."
+            ),
+            error_code="LAST_ROLE_MANAGER_PROTECTED",
+            status_code=409,
+        )
+
+
+async def _assignable_role_or_refuse(db: AsyncSession, role_id: uuid.UUID) -> None:
+    """A role must exist and be marked assignable before anyone is put in it.
+
+    `is_assignable` exists so a half-built role can be saved without becoming
+    reachable; honouring it here is what makes that flag mean anything.
+    """
+    from app.platform.authorization.adapters.repository import RoleRepository
+
+    role = await RoleRepository(db).get_by_id(role_id)
+    if role is None:
+        raise AnerBaseException(
+            detail="Role not found", error_code="NOT_FOUND", status_code=404
+        )
+    if not role.is_assignable:
+        raise AnerBaseException(
+            detail=f"Role '{role.name}' is not currently assignable",
+            error_code="ROLE_NOT_ASSIGNABLE",
+            status_code=409,
+        )
 
 
 @router.post(
@@ -338,12 +424,12 @@ async def revoke_my_session(
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "ADMIN role required"},
+        403: {"description": "The matching users:* permission is required"},
     },
     tags=["Auth"],
 )
 async def list_users(
-    current_user: Annotated[User, Depends(_ADMIN_ONLY)],
+    current_user: Annotated[User, Depends(_CAN_VIEW_USERS)],
     q: str | None = None,
     role: UserRole | None = None,
     is_active: bool | None = None,
@@ -374,14 +460,14 @@ async def list_users(
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "ADMIN role required"},
+        403: {"description": "The matching users:* permission is required"},
         409: {"description": "Email address already registered"},
     },
     tags=["Auth"],
 )
 async def admin_create_user(
     body: AdminCreateUserRequest,
-    current_user: Annotated[User, Depends(_ADMIN_ONLY)],
+    current_user: Annotated[User, Depends(_CAN_CREATE_USERS)],
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserResponse:
     user_repo = UserRepository(db)
@@ -393,11 +479,15 @@ async def admin_create_user(
             status_code=409,
         )
 
+    if body.role_id is not None:
+        await _assignable_role_or_refuse(db, body.role_id)
+
     user = User(
         email=body.email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
         role=body.role,
+        role_id=body.role_id,
         is_active=True,
         # An administrator vouched for this address; see the column comment for
         # why that is not the same as a proven email round-trip.
@@ -420,14 +510,14 @@ async def admin_create_user(
     summary="Get one user account",
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "ADMIN role required"},
+        403: {"description": "The matching users:* permission is required"},
         404: {"description": "User not found"},
     },
     tags=["Auth"],
 )
 async def admin_get_user(
     user_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_ADMIN_ONLY)],
+    current_user: Annotated[User, Depends(_CAN_VIEW_USERS)],
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserResponse:
     user = await UserRepository(db).get_by_id(user_id)
@@ -458,7 +548,7 @@ async def admin_get_user(
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "ADMIN role required"},
+        403: {"description": "The matching users:* permission is required"},
         404: {"description": "User not found"},
         409: {"description": "Refused: self role change or self deactivation"},
     },
@@ -467,7 +557,7 @@ async def admin_get_user(
 async def admin_update_user(
     user_id: uuid.UUID,
     body: AdminUpdateUserRequest,
-    current_user: Annotated[User, Depends(_ADMIN_ONLY)],
+    current_user: Annotated[User, Depends(_CAN_EDIT_USERS)],
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserResponse:
     user_repo = UserRepository(db)
@@ -495,16 +585,41 @@ async def admin_update_user(
             status_code=409,
         )
 
-    # No separate "last active administrator" guard: the two self-guards above
-    # already make that state unreachable. This route requires an active ADMIN
-    # caller, so demoting or deactivating any *other* account always leaves the
-    # caller behind, and the only account that could be the last one — the
-    # caller's own — is already refused. A third check here would be dead code
-    # raising an error nobody can ever see.
+    if "role_id" in fields and fields["role_id"] is not None:
+        await _assignable_role_or_refuse(db, fields["role_id"])
+    # Assigning yourself a different permission role can silently strip your own
+    # access, exactly like changing your own role, so it is refused the same way.
+    if is_self and "role_id" in fields and fields["role_id"] != user.role_id:
+        raise AnerBaseException(
+            detail=(
+                "You cannot change your own permission role; ask another "
+                "administrator"
+            ),
+            error_code="SELF_ROLE_CHANGE_FORBIDDEN",
+            status_code=409,
+        )
+
+    # Would this change leave nobody able to manage roles? `roles:edit` is the
+    # one permission that cannot be granted back once lost — granting anything
+    # requires it — so losing every holder means database surgery to recover.
+    #
+    # This became reachable when these routes moved from `require_role(ADMIN)` to
+    # a `users:edit` permission: the caller no longer has to be an administrator,
+    # so they can now demote or deactivate the last account that holds it.
+    await _refuse_removing_last_role_manager(
+        db,
+        user,
+        new_role=new_role,
+        new_role_id=fields.get("role_id") if "role_id" in fields else _UNSET,
+        new_is_active=new_is_active,
+    )
+
     if "full_name" in fields:
         user.full_name = fields["full_name"]
     if new_role is not None:
         user.role = new_role
+    if "role_id" in fields:
+        user.role_id = fields["role_id"]
     if new_is_active is not None and new_is_active != user.is_active:
         user.is_active = new_is_active
         user.deactivated_at = None if new_is_active else datetime.now(tz=UTC)
@@ -539,7 +654,7 @@ async def admin_update_user(
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "ADMIN role required"},
+        403: {"description": "The matching users:* permission is required"},
         404: {"description": "User not found"},
     },
     tags=["Auth"],
@@ -547,7 +662,7 @@ async def admin_update_user(
 async def admin_reset_password(
     user_id: uuid.UUID,
     body: AdminResetPasswordRequest,
-    current_user: Annotated[User, Depends(_ADMIN_ONLY)],
+    current_user: Annotated[User, Depends(_CAN_EDIT_USERS)],
     db: AsyncSession = Depends(get_db),
 ) -> None:
     user_repo = UserRepository(db)

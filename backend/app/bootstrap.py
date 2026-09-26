@@ -57,6 +57,7 @@ from app.modules.settlement.domain.entities.settlement_aggregate import (  # noq
     SettlementEvent,
 )
 from app.platform.authentication.models import RefreshToken, User  # noqa: F401
+from app.platform.authorization.models import Role, RolePermission  # noqa: F401
 from app.platform.idempotency.models import IdempotencyRecord  # noqa: F401
 from app.platform.idempotency.stream_processor import IdempotencyViolationStreamProcessor
 from app.platform.messaging.consumers import AuditEventConsumer, BaseConsumer
