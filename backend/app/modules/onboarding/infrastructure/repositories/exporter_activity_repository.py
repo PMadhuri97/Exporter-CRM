@@ -9,12 +9,12 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
-from app.modules.onboarding.domain.entities.exporter_enums import ExporterActivityType
-from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
+from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.platform.database.adapters.repository import AppendOnlyRepository
 
 
@@ -54,38 +54,19 @@ class ExporterActivityRepository(AppendOnlyRepository[ExporterActivity]):
         pending/follow-up list (Piece 2).
 
         Returns `(activity, exporter_display_name)` pairs in one query: the
-        display name is resolved via a single outer join against a "most
-        recent `OnboardingRequest` per `customer_id`" subquery, the same
-        `OnboardingRequest.legal_name` `ExporterProfileService.
-        search_profiles` already joins to — never a second, per-row query
-        (this is the acceptance criterion: no N+1). A bare Lead whose
-        `OnboardingRequest` (if it has one at all) carries no name yet joins
-        to `NULL`, same as `search_profiles`'s own "nothing to match" case.
+        display name is the company's own `exporter_profile.name`, joined
+        once — never a second, per-row query (this is the acceptance
+        criterion: no N+1). A company created without a name joins to `NULL`.
+        (Migration 0014 moved the name onto the company record; this join
+        used to reach the legacy `onboarding_request` table for it.)
 
         Ordered soonest-due first (overdue items sort to the very front,
         since their `due_at` is furthest in the past) — the natural reading
         order for "what needs attention".
         """
-        latest_request = (
-            select(
-                OnboardingRequest.customer_id.label("customer_id"),
-                OnboardingRequest.legal_name.label("legal_name"),
-                func.row_number()
-                .over(
-                    partition_by=OnboardingRequest.customer_id,
-                    order_by=OnboardingRequest.created_at.desc(),
-                )
-                .label("rn"),
-            )
-        ).subquery("latest_request")
-        latest_name = (
-            select(latest_request.c.customer_id, latest_request.c.legal_name)
-            .where(latest_request.c.rn == 1)
-        ).subquery("latest_name")
-
         stmt = (
-            select(ExporterActivity, latest_name.c.legal_name)
-            .outerjoin(latest_name, latest_name.c.customer_id == ExporterActivity.customer_id)
+            select(ExporterActivity, ExporterProfile.name)
+            .outerjoin(ExporterProfile, ExporterProfile.customer_id == ExporterActivity.customer_id)
             .where(ExporterActivity.due_at.isnot(None))
         )
         if actor_id is not None:

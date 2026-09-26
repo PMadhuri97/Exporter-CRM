@@ -5,15 +5,17 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterLifecycleStatus,
+    ExporterJourney,
+    ExporterMarker,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
-from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.platform.database.adapters.repository import BaseRepository
 
 
@@ -27,71 +29,136 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         )
         return result.scalar_one_or_none()
 
+    async def get_by_pan(self, pan: str) -> ExporterProfile | None:
+        """The company holding ``pan`` — at most one (``uq_exporter_profile_pan``)."""
+        result = await self.session.execute(
+            select(ExporterProfile).where(ExporterProfile.pan == pan)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_many(self, customer_ids: Sequence[uuid.UUID]) -> list[ExporterProfile]:
+        if not customer_ids:
+            return []
+        result = await self.session.execute(
+            select(ExporterProfile).where(ExporterProfile.customer_id.in_(customer_ids))
+        )
+        return list(result.scalars().all())
+
+    async def holders_of_identifiers(
+        self,
+        *,
+        gstins: Sequence[str] = (),
+        iec: str | None = None,
+        cin: str | None = None,
+    ) -> dict[uuid.UUID, set[str]]:
+        """Every company holding any of these identifiers, with which ones it
+        holds (`"gstin"`, `"iec"`, `"cin"`). PAN is looked up on its own: it
+        is unique, and says which company a row *is*, not which it resembles."""
+        holders: dict[uuid.UUID, set[str]] = {}
+        if gstins:
+            result = await self.session.execute(
+                select(ExporterGstin.customer_id).where(ExporterGstin.gstin.in_(gstins)).distinct()
+            )
+            for customer_id in result.scalars():
+                holders.setdefault(customer_id, set()).add("gstin")
+        for column, value, label in (
+            (ExporterProfile.iec, iec, "iec"),
+            (ExporterProfile.cin, cin, "cin"),
+        ):
+            if value is None:
+                continue
+            result = await self.session.execute(
+                select(ExporterProfile.customer_id).where(column == value)
+            )
+            for customer_id in result.scalars():
+                holders.setdefault(customer_id, set()).add(label)
+        return holders
+
+    async def other_holders_of_gstins(
+        self, gstins: Sequence[str], customer_id: uuid.UUID
+    ) -> dict[str, list[uuid.UUID]]:
+        """For each of ``gstins`` that another company also holds, those
+        companies' ids. GSTINs nobody else holds are absent."""
+        if not gstins:
+            return {}
+        result = await self.session.execute(
+            select(ExporterGstin.gstin, ExporterGstin.customer_id)
+            .where(
+                ExporterGstin.gstin.in_(gstins),
+                ExporterGstin.customer_id != customer_id,
+            )
+            .order_by(ExporterGstin.gstin, ExporterGstin.customer_id)
+        )
+        holders: dict[str, list[uuid.UUID]] = {}
+        for gstin, holder in result.all():
+            holders.setdefault(gstin, []).append(holder)
+        return holders
+
     async def search(
         self,
         *,
         gstin: str | None = None,
         pan: str | None = None,
         iec: str | None = None,
-        legal_name_customer_ids: Sequence[uuid.UUID] | None = None,
+        name_contains: str | None = None,
         source: ExporterSource | None = None,
-        lifecycle_status: ExporterLifecycleStatus | None = None,
+        journey: ExporterJourney | None = None,
+        qualification: QualificationState | None = None,
+        marker: ExporterMarker | None = None,
+        exclude_ended: bool = False,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[tuple[ExporterProfile, str | None]]:
-        """Filtered profile search.
+    ) -> list[ExporterProfile]:
+        """Filtered profile search, newest first.
 
-        ``legal_name_customer_ids`` is the set of ``customer_id``s already
-        resolved by ``ExporterProfileService.search_profiles`` via a
-        case-insensitive ``ILIKE`` match against
-        ``OnboardingRequest.legal_name`` — a *different* thing from the
-        ``legal_name`` this method itself returns alongside every row (the
-        display name for the list, joined here regardless of whether
-        ``legal_name_contains`` filtering was requested at all).
-
-        Returns ``(profile, legal_name)`` pairs — the same "most recent
-        ``OnboardingRequest`` per ``customer_id``" window-function join
-        ``ExporterActivityRepository.list_pending`` already uses for
-        ``PendingActivityView.exporter_display_name``, so a list screen never
-        needs a second, per-row query (no N+1). ``None`` for a bare Lead with
-        no ``OnboardingRequest`` yet.
+        ``name_contains`` is a case-insensitive partial match on the name,
+        taken literally: ``%`` and ``_`` in it match only themselves.
+        ``gstin`` matches any of a company's GSTINs. ``exclude_ended`` drops
+        ``ENDED`` companies — the service decides when (the default working
+        list); this query only applies it.
         """
-        latest_request = (
-            select(
-                OnboardingRequest.customer_id.label("customer_id"),
-                OnboardingRequest.legal_name.label("legal_name"),
-                func.row_number()
-                .over(
-                    partition_by=OnboardingRequest.customer_id,
-                    order_by=OnboardingRequest.created_at.desc(),
-                )
-                .label("rn"),
-            )
-        ).subquery("latest_request")
-        latest_name = (
-            select(latest_request.c.customer_id, latest_request.c.legal_name)
-            .where(latest_request.c.rn == 1)
-        ).subquery("latest_name")
-
-        stmt = select(ExporterProfile, latest_name.c.legal_name).outerjoin(
-            latest_name, latest_name.c.customer_id == ExporterProfile.customer_id
-        )
+        stmt = select(ExporterProfile)
         if gstin is not None:
-            stmt = stmt.where(ExporterProfile.gstin == gstin)
+            stmt = stmt.where(
+                exists().where(
+                    ExporterGstin.customer_id == ExporterProfile.customer_id,
+                    ExporterGstin.gstin == gstin,
+                )
+            )
         if pan is not None:
             stmt = stmt.where(ExporterProfile.pan == pan)
         if iec is not None:
             stmt = stmt.where(ExporterProfile.iec == iec)
+        if name_contains is not None:
+            stmt = stmt.where(
+                ExporterProfile.name.ilike(f"%{_escape_like(name_contains)}%", escape="\\")
+            )
         if source is not None:
             stmt = stmt.where(ExporterProfile.source == source)
-        if lifecycle_status is not None:
-            stmt = stmt.where(ExporterProfile.lifecycle_status == lifecycle_status)
-        if legal_name_customer_ids is not None:
-            stmt = stmt.where(ExporterProfile.customer_id.in_(legal_name_customer_ids))
+        if journey is not None:
+            stmt = stmt.where(ExporterProfile.journey == journey)
+        if qualification is not None:
+            stmt = stmt.where(ExporterProfile.qualification == qualification)
+        if marker is not None:
+            stmt = stmt.where(ExporterProfile.marker == marker)
+        elif exclude_ended:
+            stmt = stmt.where(ExporterProfile.marker != ExporterMarker.ENDED)
 
-        stmt = stmt.order_by(ExporterProfile.created_at.desc()).limit(limit).offset(offset)
+        # `customer_id` breaks ties: companies created in one transaction share
+        # a `created_at`, and without it a page boundary could repeat or skip one.
+        stmt = (
+            stmt.order_by(ExporterProfile.created_at.desc(), ExporterProfile.customer_id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
         result = await self.session.execute(stmt)
-        return [(row[0], row[1]) for row in result.all()]
+        return list(result.scalars().all())
+
+
+def _escape_like(value: str) -> str:
+    """`value` for a LIKE pattern with a backslash as the escape character,
+    so its own `%`, `_` and backslashes are matched literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 __all__ = ["ExporterProfileRepository"]

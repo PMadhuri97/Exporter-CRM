@@ -39,7 +39,7 @@ def _execute(query: str, params: tuple = ()):
 
 _INSERT_PROFILE = """
     INSERT INTO onboarding.exporter_profile (
-        id, customer_id, source, lifecycle_status
+        id, customer_id, source, journey
     ) VALUES (%s, %s, %s, %s)
 """
 
@@ -99,7 +99,7 @@ def test_exporter_profile_invalid_source_enum_rejected():
         )
 
 
-def test_exporter_profile_invalid_lifecycle_status_enum_rejected():
+def test_exporter_profile_invalid_journey_enum_rejected():
     with pytest.raises(psycopg2.errors.InvalidTextRepresentation):
         _execute(
             _INSERT_PROFILE,
@@ -117,8 +117,8 @@ _INSERT_CONTACT = """
 """
 
 
-def test_exporter_contact_primary_partial_unique_index():
-    customer_id = str(uuid.uuid4())
+def test_exporter_contact_primary_partial_unique_index(exporter_profile):
+    _, customer_id = exporter_profile
     _execute(_INSERT_CONTACT, (str(uuid.uuid4()), customer_id, "Jane Doe", True))
 
     with pytest.raises(psycopg2.errors.UniqueViolation) as exc:
@@ -126,10 +126,10 @@ def test_exporter_contact_primary_partial_unique_index():
     assert "uq_exporter_contact_primary_per_customer" in str(exc.value)
 
 
-def test_exporter_contact_multiple_non_primary_allowed():
+def test_exporter_contact_multiple_non_primary_allowed(exporter_profile):
     """The partial index's boundary: it must not reject a second *non*-primary
     contact for the same customer_id — only a second primary."""
-    customer_id = str(uuid.uuid4())
+    _, customer_id = exporter_profile
     _execute(_INSERT_CONTACT, (str(uuid.uuid4()), customer_id, "Jane Doe", False))
     # Should not raise.
     _execute(_INSERT_CONTACT, (str(uuid.uuid4()), customer_id, "John Smith", False))
@@ -145,9 +145,9 @@ _INSERT_ACTIVITY = """
 """
 
 
-def test_exporter_activity_append_only():
+def test_exporter_activity_append_only(exporter_profile):
     activity_id = str(uuid.uuid4())
-    customer_id = str(uuid.uuid4())
+    _, customer_id = exporter_profile
     _execute(
         _INSERT_ACTIVITY,
         (activity_id, customer_id, "CALL", "Intro call", "agent_1"),

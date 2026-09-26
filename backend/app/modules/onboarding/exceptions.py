@@ -474,56 +474,6 @@ class ExporterSourceImmutableError(AnerBaseException):
         )
 
 
-class InvalidExporterLifecycleTransitionError(AnerBaseException):
-    """``(from_status, to_status)`` is not in
-    ``exporter_profile_service.PERMITTED_LIFECYCLE_TRANSITIONS`` — e.g.
-    ``LEAD`` -> ``ACTIVE`` directly, skipping every intermediate stage.
-    """
-
-    def __init__(self, customer_id: object, from_status: object, to_status: object) -> None:
-        self.customer_id = customer_id
-        self.from_status = from_status
-        self.to_status = to_status
-        super().__init__(
-            detail=(
-                f"Exporter {customer_id} cannot transition from {from_status!r} to "
-                f"{to_status!r}: not a permitted lifecycle_status transition"
-            ),
-            error_code="INVALID_EXPORTER_LIFECYCLE_TRANSITION",
-            status_code=409,
-            extensions={"from_status": str(from_status), "to_status": str(to_status)},
-        )
-
-
-class ExporterLifecycleComplianceRequiredError(AnerBaseException):
-    """A lifecycle move — or a creation at a lifecycle status — that only a
-    compliance decision may make, attempted by a caller not authorised to
-    make one. See ``exporter_profile_service.COMPLIANCE_GATED_FROM_STATUSES``
-    and ``COMPLIANCE_DECIDED_STATUSES``.
-    """
-
-    def __init__(
-        self, customer_id: object, to_status: object, from_status: object | None = None
-    ) -> None:
-        self.customer_id = customer_id
-        self.from_status = from_status
-        self.to_status = to_status
-        action = (
-            f"move from {from_status!r} to {to_status!r}"
-            if from_status is not None
-            else f"be created at {to_status!r}"
-        )
-        super().__init__(
-            detail=(
-                f"Exporter {customer_id} cannot {action} without a compliance "
-                f"decision: COMPLIANCE or ADMIN role required"
-            ),
-            error_code="FORBIDDEN",
-            status_code=403,
-            extensions={"from_status": str(from_status), "to_status": str(to_status)},
-        )
-
-
 class MachineTransitionSourceNotPermittedError(AnerBaseException):
     """A machine attribution (``SYSTEM`` / ``PROVIDER_CALLBACK``) on a case
     transition that did not come through the internal path.
@@ -586,4 +536,133 @@ class IdentifierSearchNotPermittedError(AnerBaseException):
             error_code="FORBIDDEN",
             status_code=403,
             extensions={"role": role, "parameters": parameters},
+        )
+
+
+class DuplicatePanError(AnerBaseException):
+    """A PAN already held by another company (architecture decision 4: a
+    duplicate PAN is refused, never merged). Names the company that holds it,
+    so the person entering the duplicate can open that one instead. The PAN
+    itself is not repeated: the caller sent it, and the response may be read
+    by roles that see it masked."""
+
+    def __init__(self, existing_customer_id: object) -> None:
+        self.existing_customer_id = existing_customer_id
+        super().__init__(
+            detail=(
+                f"This PAN is already held by company {existing_customer_id}; "
+                "a PAN belongs to one company only"
+            ),
+            error_code="DUPLICATE_PAN",
+            status_code=409,
+            extensions={"existing_customer_id": str(existing_customer_id)},
+        )
+
+
+class InvalidMarkerTransitionError(AnerBaseException):
+    """A marker move the company-record contract (§3.3) does not allow:
+    ``ENDED`` -> ``PAUSED`` (clear first), or a move to the value the marker
+    already has."""
+
+    def __init__(self, customer_id: object, from_marker: object, to_marker: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {customer_id}'s marker cannot move from {from_marker!r} "
+                f"to {to_marker!r}"
+            ),
+            error_code="INVALID_MARKER_TRANSITION",
+            status_code=409,
+            extensions={"from_marker": str(from_marker), "to_marker": str(to_marker)},
+        )
+
+
+class QualificationCriterionNotFoundError(AnerBaseException):
+    """No criterion has this key."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__(
+            detail=f"No qualification criterion has the key {key!r}",
+            error_code="QUALIFICATION_CRITERION_NOT_FOUND",
+            status_code=404,
+            extensions={"key": key},
+        )
+
+
+class QualificationCriterionExistsError(AnerBaseException):
+    """A criterion with this key already exists — change it by adding a
+    version, not by creating it again."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__(
+            detail=(
+                f"A qualification criterion with the key {key!r} already exists; "
+                "add a version to change it"
+            ),
+            error_code="QUALIFICATION_CRITERION_EXISTS",
+            status_code=409,
+            extensions={"key": key},
+        )
+
+
+class QualificationCriterionChangedError(AnerBaseException):
+    """Another change to this criterion landed first: the version this one
+    would have become already exists. Nothing was saved; read the criterion
+    again and re-apply the change on top of the current version."""
+
+    def __init__(self, key: str, version: int) -> None:
+        super().__init__(
+            detail=(
+                f"Version {version} of the qualification criterion {key!r} was added "
+                "by someone else first; nothing was saved — reload it and try again"
+            ),
+            error_code="QUALIFICATION_CRITERION_CHANGED",
+            status_code=409,
+            extensions={"key": key, "version": version},
+        )
+
+
+class QualificationClosedError(AnerBaseException):
+    """The company is already QUALIFIED. In the prototype that is final
+    (assumption A2): no further results or outcomes are recorded; re-review is
+    for NOT_QUALIFIED companies."""
+
+    def __init__(self, customer_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {customer_id} is already QUALIFIED; qualification is final "
+                "once QUALIFIED (re-review applies to NOT_QUALIFIED companies)"
+            ),
+            error_code="QUALIFICATION_CLOSED",
+            status_code=409,
+        )
+
+
+class PartnerPackageInvalidError(AnerBaseException):
+    """A partner delivery (RXIL today) could not be read into the CRM's terms:
+    a required field is missing, a value is malformed, or an identifier breaks
+    the company rules. Lists every problem found, each with a code."""
+
+    def __init__(self, partner: str, reasons: list[dict[str, str]]) -> None:
+        super().__init__(
+            detail=f"The {partner} delivery cannot be accepted: "
+            + "; ".join(r["message"] for r in reasons),
+            error_code="PARTNER_PACKAGE_INVALID",
+            status_code=422,
+            extensions={"reasons": reasons},
+        )
+
+
+class IntakeNeedsReviewError(AnerBaseException):
+    """A delivered company resembles, or conflicts with, companies the CRM
+    already has, and no PAN settles which one it is. It is neither merged into
+    one of them nor created as another: a person decides."""
+
+    def __init__(self, reasons: list[dict[str, str]], candidates: list[str]) -> None:
+        super().__init__(
+            detail="This company matches existing companies ambiguously and needs a "
+            "person to decide: "
+            + "; ".join(r["message"] for r in reasons),
+            error_code="INTAKE_NEEDS_REVIEW",
+            status_code=409,
+            extensions={"reasons": reasons, "candidates": candidates},
         )

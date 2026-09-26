@@ -19,10 +19,10 @@ from datetime import UTC, datetime
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.engagement_views import PendingActivityView
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
-from app.modules.onboarding.domain.entities.exporter_enums import ExporterActivityType
-from app.modules.onboarding.domain.exporter_profile_views import PendingActivityView
 from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
     ExporterContactRepository,

@@ -24,6 +24,7 @@ import psycopg2
 import psycopg2.errors
 import pytest
 
+from app.modules.onboarding.tests.fixtures.companies import insert_company
 from app.platform.configuration.config import get_settings
 
 SCHEMA = "onboarding"
@@ -52,12 +53,14 @@ def _insert_row(*, dimension: str, deal_id: str | None = None, reason: str | Non
     conn = _connect()
     cur = conn.cursor()
     try:
+        # Since 0014 a history row must name a company that exists.
+        company_id = insert_company(cur)
         cur.execute(
             f"INSERT INTO {SCHEMA}.{TABLE} "
             "(id, customer_id, dimension, deal_id, event_type, from_status, "
             " to_status, actor_id, reason) "
             "VALUES (%s, %s, %s, %s, 'test_transition', 'A', 'B', 'tester', %s)",
-            (row_id, str(uuid.uuid4()), dimension, deal_id, reason),
+            (row_id, str(company_id), dimension, deal_id, reason),
         )
         conn.commit()
     finally:

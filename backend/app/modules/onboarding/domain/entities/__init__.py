@@ -2,6 +2,7 @@ from app.modules.onboarding.domain.entities.applicant_mapping import ApplicantMa
 from app.modules.onboarding.domain.entities.case import Case
 from app.modules.onboarding.domain.entities.case_state_transition import CaseStateTransition
 from app.modules.onboarding.domain.entities.customer import Customer
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.enums import (
     CaseState,
     CaseType,
@@ -12,9 +13,15 @@ from app.modules.onboarding.domain.entities.enums import (
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterActivityType,
-    ExporterLifecycleStatus,
+    ExporterMarker,
     ExporterSource,
+)
+from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
+from app.modules.onboarding.domain.entities.qualification import (
+    QualificationCriterion,
+    QualificationOutcome,
+    QualificationReasonCode,
+    QualificationResult,
 )
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
@@ -92,11 +99,16 @@ __all__ = [
     "OnboardingValidationStatus",
     "KybNormalisedResult",
     "ExporterProfile",
+    "ExporterGstin",
+    "ExporterMarker",
+    "QualificationCriterion",
+    "QualificationOutcome",
+    "QualificationReasonCode",
+    "QualificationResult",
     "ExporterContact",
     "ExporterActivity",
     "ExporterLifecycleHistory",
     "ExporterSource",
-    "ExporterLifecycleStatus",
     "ExporterActivityType",
     "VerificationResult",
     "VerificationType",

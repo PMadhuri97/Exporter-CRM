@@ -15,15 +15,15 @@ import { useCreateExporterLead } from '../hooks';
 // export_markets/products/year_established are all nullable server-side and
 // left off here — easy to add once there's a reason to.
 const addExporterSchema = z.object({
-  legal_name: z.string().min(1, 'Company name is required').max(500),
-  incorporation_country: z
+  // The company's identity (docs/contracts/company-record.md §2.1). The
+  // person adding the company is never asked for their own contact — the
+  // backend takes it from the signed-in session.
+  name: z.string().trim().min(1, 'Company name is required').max(255),
+  country: z
     .string()
-    .length(2, 'Use a 2-letter country code (e.g. IN, US)')
+    .trim()
+    .regex(/^[A-Za-z]{2}$/, 'Use a 2-letter country code (e.g. IN, US)')
     .transform((v) => v.toUpperCase()),
-  initial_user_email: z
-    .string()
-    .min(1, 'A contact email is required')
-    .email('Enter a valid email'),
   source: z.enum([
     'MANUAL',
     'SALES',
@@ -79,17 +79,12 @@ export function AddExporterPage() {
     setServerError(null);
     try {
       const profile = await createLead.mutateAsync({
-        legal_name: values.legal_name,
-        incorporation_country: values.incorporation_country,
-        initial_user_email: values.initial_user_email,
+        name: values.name,
+        country: values.country,
         source: values.source,
-        // The backend defaults this to LEAD when omitted, but the generated
-        // type still marks it required — passed explicitly rather than
-        // fighting the generator over a field this form never lets the user
-        // change anyway (a brand-new Lead always starts at LEAD).
-        lifecycle_status: 'LEAD',
         relationship_manager: emptyToUndefined(values.relationship_manager),
-        gstin: emptyToUndefined(values.gstin),
+        // One GSTIN from the form; a company may hold several (one per state).
+        gstins: values.gstin ? [values.gstin] : undefined,
         pan: emptyToUndefined(values.pan),
         iec: emptyToUndefined(values.iec),
         industry: emptyToUndefined(values.industry),
@@ -126,25 +121,21 @@ export function AddExporterPage() {
           </div>
         )}
 
-        <Field label="Company Name" error={errors.legal_name?.message} required>
+        <Field label="Company Name" error={errors.name?.message} required>
           <input
             className="input"
             placeholder="e.g. Acme Exports Pvt Ltd"
-            {...register('legal_name')}
+            {...register('name')}
           />
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field
-            label="Incorporation Country"
-            error={errors.incorporation_country?.message}
-            required
-          >
+          <Field label="Country" error={errors.country?.message} required>
             <input
               className="input uppercase"
               placeholder="IN"
               maxLength={2}
-              {...register('incorporation_country')}
+              {...register('country')}
             />
           </Field>
           <Field label="Source" error={errors.source?.message} required>
@@ -157,19 +148,6 @@ export function AddExporterPage() {
             </select>
           </Field>
         </div>
-
-        <Field
-          label="Contact Email"
-          error={errors.initial_user_email?.message}
-          required
-        >
-          <input
-            className="input"
-            type="email"
-            placeholder="e.g. sales-lead@aner.com"
-            {...register('initial_user_email')}
-          />
-        </Field>
 
         <Field
           label="Relationship Manager"

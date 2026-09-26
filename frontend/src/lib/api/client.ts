@@ -66,18 +66,25 @@ export async function apiRequest<TResult>(
 ): Promise<TResult> {
   const accessToken = await ensureFreshAccessToken();
 
+  // A `FormData` body (a file upload) goes as it is: the browser sets the
+  // multipart `Content-Type` with its boundary. Every other body is JSON.
+  const isForm = options.body instanceof FormData;
   const doFetch = (token: string | null) =>
     fetch(`/api/v1${path}`, {
       ...options,
       headers: {
-        ...(options.body !== undefined
+        ...(options.body !== undefined && !isForm
           ? { 'Content-Type': 'application/json' }
           : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
       body:
-        options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        options.body === undefined
+          ? undefined
+          : isForm
+            ? (options.body as FormData)
+            : JSON.stringify(options.body),
     });
 
   let response = await doFetch(accessToken);
@@ -96,5 +103,8 @@ export async function apiRequest<TResult>(
 
   if (!response.ok) throw await parseErrorResponse(response);
   if (response.status === 204) return undefined as TResult;
+  // A non-JSON response (a CSV template, say) comes back as text.
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.includes('json')) return (await response.text()) as TResult;
   return (await response.json()) as TResult;
 }

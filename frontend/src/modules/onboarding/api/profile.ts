@@ -1,13 +1,9 @@
 /**
- * Company record and journey — **owner: Developer 2**.
+ * Company record — **owner: Developer 2**.
  *
- * Split out of the single `api/index.ts` that carried all four developers'
- * request functions, so the company routes, the engagement routes and the
- * verification routes stop sharing one file (architecture §7.2, §8.1). The
- * barrel in `api/index.ts` re-exports everything, so no caller changed.
- *
- * Mechanical move: every function below is byte-identical to the one it
- * replaced, comments included.
+ * The journey has no request here on purpose: it is never moved by hand. A
+ * qualification outcome moves it (`api/qualification.ts`), and the move to
+ * CUSTOMER will follow the background check (L2-11).
  */
 
 import { apiRequest } from '@/lib/api/client';
@@ -18,9 +14,11 @@ import type {
   ExporterProfileDetail,
   ExporterProfileListItem,
   ExporterSearchParams,
+  SetMarkerRequest,
+  UpdateExporterProfileRequest,
 } from '../types';
 
-interface SearchExportersResult {
+export interface SearchExportersResult {
   profiles: ExporterProfileListItem[];
   limit: number;
   offset: number;
@@ -28,53 +26,45 @@ interface SearchExportersResult {
 
 function buildQuery(params: ExporterSearchParams): string {
   const query = new URLSearchParams();
-  if (params.legalName) query.set('legal_name', params.legalName);
-  if (params.gstin) query.set('gstin', params.gstin);
-  if (params.pan) query.set('pan', params.pan);
-  if (params.iec) query.set('iec', params.iec);
-  if (params.source) query.set('source', params.source);
-  if (params.status) query.set('status', params.status);
+  const entries: [string, string | undefined][] = [
+    ['name', params.name],
+    ['gstin', params.gstin],
+    ['pan', params.pan],
+    ['iec', params.iec],
+    ['source', params.source],
+    ['journey', params.journey],
+    ['qualification', params.qualification],
+    ['marker', params.marker],
+  ];
+  for (const [key, value] of entries) if (value) query.set(key, value);
   query.set('limit', String(params.limit ?? 100));
   query.set('offset', String(params.offset ?? 0));
   return query.toString();
 }
 
 /**
- * The stage-group tabs (`STATUS_TO_STAGE_GROUP`) are a display grouping the
- * backend's `status` filter can't express directly (it's a single exact
- * match, not "any of these states") — see this module's `constants.ts`
- * docstring. Rather than firing one request per underlying status and
- * merging results, this fetches unfiltered-by-status (still filtered by
- * every other criterion) and the page groups client-side. Documented
- * simplification, not a hidden one: revisit if a `statuses` (plural)
- * backend filter is ever added and page sizes stop making a full fetch
- * reasonable.
+ * Filters run on the server — journey, qualification and marker included.
+ * The server also decides that ENDED companies leave the default list and
+ * come back for a search or `marker=ENDED`; nothing here re-implements that.
  */
 export function searchExporterProfiles(
-  params: Omit<ExporterSearchParams, 'status'>,
+  params: ExporterSearchParams,
 ): Promise<SearchExportersResult> {
-  return apiRequest<SearchExportersResult>(
-    `/onboarding/exporters?${buildQuery(params)}`,
-  );
+  return apiRequest<SearchExportersResult>(`/onboarding/exporters?${buildQuery(params)}`);
 }
 
 /**
- * `legal_name`/`incorporation_country`/`initial_user_email` must all be
- * present (the backend's `CreateExporterProfileRequest` validator rejects a
- * partial set) — this function's own parameter type requires all three for
- * the same reason, rather than leaving that rule undiscoverable until a 422.
+ * Creates a named company. `name` and `country` are required together — the
+ * backend refuses one without the other — so this function's parameter type
+ * requires both rather than leaving that rule undiscoverable until a 422. The
+ * creator's own contact is never sent: the backend takes it from the session.
  *
  * An `Idempotency-Key` is generated here, not left optional: the backend
- * requires the header for this path (a fresh `OnboardingRequest` row has no
- * other natural uniqueness to dedupe a retried submit against — see the
- * schema's own docstring).
+ * requires the header for a named company, so a retried submit returns the
+ * first company instead of creating a second.
  */
 export function createExporterLead(
-  payload: CreateExporterLeadRequest & {
-    legal_name: string;
-    incorporation_country: string;
-    initial_user_email: string;
-  },
+  payload: CreateExporterLeadRequest & { name: string; country: string },
 ): Promise<ExporterProfile> {
   return apiRequest<ExporterProfile>('/onboarding/exporters', {
     method: 'POST',
@@ -83,18 +73,27 @@ export function createExporterLead(
   });
 }
 
-export function getExporterProfileDetail(
-  customerId: string,
-): Promise<ExporterProfileDetail> {
+export function getExporterProfileDetail(customerId: string): Promise<ExporterProfileDetail> {
   return apiRequest<ExporterProfileDetail>(`/onboarding/exporters/${customerId}`);
 }
 
-export function transitionExporterLifecycle(
+/** Only the fields in `changes` are touched; a field sent as `null` is cleared. */
+export function updateExporterProfile(
   customerId: string,
-  toStatus: import('../types').ExporterLifecycleStatus,
+  changes: UpdateExporterProfileRequest,
 ): Promise<ExporterProfile> {
-  return apiRequest<ExporterProfile>(`/onboarding/exporters/${customerId}/transition`, {
+  return apiRequest<ExporterProfile>(`/onboarding/exporters/${customerId}`, {
+    method: 'PATCH',
+    body: changes,
+  });
+}
+
+export function setExporterMarker(
+  customerId: string,
+  request: SetMarkerRequest,
+): Promise<ExporterProfile> {
+  return apiRequest<ExporterProfile>(`/onboarding/exporters/${customerId}/marker`, {
     method: 'POST',
-    body: { to_status: toStatus },
+    body: request,
   });
 }

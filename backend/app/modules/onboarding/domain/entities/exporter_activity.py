@@ -24,7 +24,7 @@ from sqlalchemy import DateTime, Enum, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.modules.onboarding.domain.entities.exporter_enums import ExporterActivityType
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.platform.database.models import AppendOnlyModel
 
 SCHEMA = "onboarding"

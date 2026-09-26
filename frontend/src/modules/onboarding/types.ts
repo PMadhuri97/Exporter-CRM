@@ -3,32 +3,51 @@ import type { components } from '@/lib/api/schema';
 // Thin aliases onto the generated OpenAPI schema — see lib/api/types.ts's
 // module docstring for why: a backend reshape becomes a compile error at
 // the actual use site, never a silent runtime mismatch.
-export type ExporterProfileListItem =
-  components['schemas']['ExporterProfileListItemResponse'];
-export type ExporterProfileDetail =
-  components['schemas']['ExporterProfileDetailResponse'];
-export type ExporterProfile = components['schemas']['ExporterProfileResponse'];
-export type CreateExporterLeadRequest =
-  components['schemas']['CreateExporterProfileRequest'];
-export type ExporterLifecycleStatus =
-  components['schemas']['ExporterLifecycleStatus'];
-export type ExporterSource = components['schemas']['ExporterSource'];
-export type ExporterContact = components['schemas']['ExporterContactResponse'];
-export type AddExporterContactRequest =
-  components['schemas']['AddExporterContactRequest'];
-export type ExporterActivity =
-  components['schemas']['ExporterActivityResponse'];
-export type ExporterActivityType = components['schemas']['ExporterActivityType'];
-export type LogExporterActivityRequest =
-  components['schemas']['LogExporterActivityRequest'];
+type Schemas = components['schemas'];
+
+export type ExporterProfileListItem = Schemas['ExporterProfileListItemResponse'];
+export type ExporterProfileDetail = Schemas['ExporterProfileDetailResponse'];
+export type ExporterProfile = Schemas['ExporterProfileResponse'];
+export type CreateExporterLeadRequest = Schemas['CreateExporterProfileRequest'];
+export type UpdateExporterProfileRequest = Schemas['UpdateExporterProfileRequest'];
+export type SetMarkerRequest = Schemas['SetMarkerRequest'];
+export type MarkerMove = Schemas['MarkerMoveResponse'];
+export type DuplicateGstinWarning = Schemas['DuplicateGstinWarningResponse'];
+export type ExporterSource = Schemas['ExporterSource'];
+/** The journey: LEAD -> PROSPECT -> CUSTOMER. Never moved by hand. */
+export type ExporterJourney = Schemas['ExporterJourney'];
+/** The qualification gauge, beside the journey — not a journey stage. */
+export type QualificationState = Schemas['QualificationState'];
+/** A commercial pause or ending, beside the journey — not a journey stage. */
+export type ExporterMarker = Schemas['ExporterMarker'];
+export type ExporterContact = Schemas['ExporterContactResponse'];
+export type AddExporterContactRequest = Schemas['AddExporterContactRequest'];
+export type ExporterActivity = Schemas['ExporterActivityResponse'];
+export type ExporterActivityType = Schemas['ExporterActivityType'];
+export type LogExporterActivityRequest = Schemas['LogExporterActivityRequest'];
+
+// ── Qualification ──
+export type Qualification = Schemas['QualificationResponse'];
+export type QualificationOutcomeValue = Schemas['QualificationOutcomeValue'];
+export type CriterionResultValue = Schemas['CriterionResultValue'];
+export type RecordResultsRequest = Schemas['RecordResultsRequest'];
+export type RecordOutcomeRequest = Schemas['RecordOutcomeRequest'];
+export type ReasonCode = Schemas['ReasonCodeResponse'];
+
+// ── Company intake ──
+export type IntakeResult = Schemas['IntakeResponse'];
+export type ImportReport = Schemas['ImportReportResponse'];
+export type ImportRow = Schemas['ImportRowResponse'];
 
 export interface ExporterSearchParams {
-  legalName?: string;
+  name?: string;
   gstin?: string;
   pan?: string;
   iec?: string;
   source?: ExporterSource;
-  status?: ExporterLifecycleStatus;
+  journey?: ExporterJourney;
+  qualification?: QualificationState;
+  marker?: ExporterMarker;
   limit?: number;
   offset?: number;
 }

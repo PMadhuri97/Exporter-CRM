@@ -9,6 +9,8 @@
  *   profile.ts       company record and journey        Developer 2
  *   engagement.ts    contacts and the activity log     Developer 3
  *   verification.ts  checks, screening, bank activity  Developer 4
+ *   qualification.ts qualification results, outcomes  Developer 2
+ *   intake.ts        RXIL intake, bulk CSV import     Developer 2
  *
  * Query keys were not touched by the split. They are still ad-hoc string
  * arrays agreed by convention rather than a shared key factory, so two owners
@@ -22,3 +24,5 @@
 export * from './profile';
 export * from './engagement';
 export * from './verification';
+export * from './qualification';
+export * from './intake';

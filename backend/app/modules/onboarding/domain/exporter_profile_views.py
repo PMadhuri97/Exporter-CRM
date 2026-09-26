@@ -1,9 +1,18 @@
-"""Read-model view types for the Exporter CRM application services (EXP-1).
+"""Read-model view types for the company record (EXP-1) — **owner:
+Developer 2** (architecture §8.1, §9.2).
 
 Pure data structures — no I/O, no session — mirroring
-``onboarding_request_views.py``'s pattern: the application services
-(``ExporterProfileService``, ``ExporterContactActivityService``) assemble
-these from ORM rows; nothing here reaches for a database.
+``onboarding_request_views.py``'s pattern: ``ExporterProfileService``
+assembles these from ORM rows; nothing here reaches for a database.
+
+The contact, activity and pending-activity views moved to
+``engagement_views.py`` (Developer 3) in L2-01. The detail view below still
+embeds the first two, because the company page shows them.
+
+``name`` and ``country`` are the company's identity
+(``docs/contracts/company-record.md`` §2.1), read from the company record's
+own columns (migration 0014). They are ``None`` only for a company created
+through the API's unnamed path.
 """
 
 from __future__ import annotations
@@ -12,89 +21,53 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.modules.onboarding.domain.engagement_views import (
+    ExporterActivityView,
+    ExporterContactView,
+)
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterActivityType,
-    ExporterLifecycleStatus,
+    ExporterJourney,
+    ExporterMarker,
     ExporterSource,
 )
-from app.modules.onboarding.domain.onboarding_request_views import OnboardingHistoryEntry
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 
 
 @dataclass(frozen=True)
-class ExporterContactView:
-    id: uuid.UUID
-    customer_id: uuid.UUID
-    name: str
-    role: str | None
-    email: str | None
-    phone: str | None
-    department: str | None
-    is_primary_contact: bool
+class DuplicateGstinWarning:
+    """One of a company's GSTINs is also held by other companies. A warning,
+    never an error (architecture decision 4)."""
 
-
-@dataclass(frozen=True)
-class ExporterActivityView:
-    id: uuid.UUID
-    customer_id: uuid.UUID
-    activity_type: ExporterActivityType
-    subject: str
-    notes: str | None
-    actor_id: str
-    occurred_at: datetime
-    due_at: datetime | None
-    created_at: datetime
-
-
-@dataclass(frozen=True)
-class PendingActivityView:
-    """One row of `ExporterContactActivityService.list_pending_activities`'s
-    cross-exporter pending/follow-up list (Piece 2).
-
-    Carries the exporter's display name alongside the activity itself so a
-    Follow-ups screen never needs a second, per-row query to answer "pending,
-    for which exporter" — `exporter_display_name` is resolved via one join in
-    `ExporterActivityRepository.list_pending` (the same
-    `OnboardingRequest.legal_name` this module's `search_profiles` already
-    joins to), not a Python-side loop calling back into the database.
-    `None` for a bare Lead whose `OnboardingRequest` (if any) has no name yet
-    — same "nothing to match" case `search_profiles`'s `legal_name_contains`
-    already documents.
-
-    `is_overdue` is computed once, at view-construction time, against the
-    same `now` the query itself was run with — never recomputed from a stale
-    `datetime.now()` deeper in a template or a second pass over the list.
-    """
-
-    id: uuid.UUID
-    customer_id: uuid.UUID
-    exporter_display_name: str | None
-    activity_type: ExporterActivityType
-    subject: str
-    notes: str | None
-    actor_id: str
-    occurred_at: datetime
-    due_at: datetime
-    is_overdue: bool
-    created_at: datetime
+    gstin: str
+    other_customer_ids: tuple[uuid.UUID, ...]
 
 
 @dataclass(frozen=True)
 class ExporterProfileDetail:
-    """Result of ``ExporterProfileService.get_profile_detail``: the profile
-    plus its contacts, recent activities, and linked ``OnboardingRequest``
-    history — all queried by ``customer_id`` alone, no join table, per the
-    confirmed plan that ``OnboardingRequest.customer_id`` already supports
-    multiple historical rows.
+    """Result of ``ExporterProfileService.get_profile_detail``: the company
+    record, its identity, and the contacts and recent activities the company
+    page shows.
+
+    There is no onboarding-request history here any more. The company page
+    used to derive the company's display name from it; the name is now part
+    of the company's own identity (L2-03), and the legacy onboarding path's
+    records stay where they are, served by that path's own routes.
     """
 
     customer_id: uuid.UUID
-    gstin: str | None
+    name: str | None
+    country: str | None
+    cin: str | None
+    gstins: tuple[str, ...]
     pan: str | None
     iec: str | None
     source: ExporterSource
     relationship_manager: str | None
     relationship_manager_user_id: uuid.UUID | None
-    lifecycle_status: ExporterLifecycleStatus
+    journey: ExporterJourney
+    qualification: QualificationState
+    marker: ExporterMarker
+    marker_reason: str | None
     industry: str | None
     export_markets: list | None
     products: list | None
@@ -105,33 +78,33 @@ class ExporterProfileDetail:
     updated_at: datetime
     contacts: tuple[ExporterContactView, ...]
     recent_activities: tuple[ExporterActivityView, ...]
-    onboarding_history: tuple[OnboardingHistoryEntry, ...]
+    gstin_warnings: tuple[DuplicateGstinWarning, ...]
 
 
 @dataclass(frozen=True)
 class ExporterProfileListItem:
     """One row of ``ExporterProfileService.search_profiles``.
 
-    Everything ``ExporterProfileDetail`` has except the per-exporter
-    sub-collections (contacts/activities/history — too expensive to carry
-    for every row of a list), plus ``legal_name``: resolved via the exact
-    same "most recent ``OnboardingRequest`` per ``customer_id``" window-
-    function join ``ExporterActivityRepository.list_pending`` already uses
-    for ``PendingActivityView.exporter_display_name`` — see
-    ``ExporterProfileRepository.search``. ``None`` for a bare Lead with no
-    ``OnboardingRequest`` yet, same "nothing to match" case documented
-    throughout this module.
+    Everything ``ExporterProfileDetail`` has except the per-company
+    sub-collections (contacts and activities — too expensive to carry for
+    every row of a list). A page's GSTINs are loaded with it in one extra
+    query, never one per row.
     """
 
     customer_id: uuid.UUID
-    legal_name: str | None
-    gstin: str | None
+    name: str | None
+    country: str | None
+    cin: str | None
+    gstins: tuple[str, ...]
     pan: str | None
     iec: str | None
     source: ExporterSource
     relationship_manager: str | None
     relationship_manager_user_id: uuid.UUID | None
-    lifecycle_status: ExporterLifecycleStatus
+    journey: ExporterJourney
+    qualification: QualificationState
+    marker: ExporterMarker
+    marker_reason: str | None
     industry: str | None
     year_established: int | None
     date_added: datetime
@@ -140,9 +113,7 @@ class ExporterProfileListItem:
 
 
 __all__ = [
-    "ExporterActivityView",
-    "ExporterContactView",
+    "DuplicateGstinWarning",
     "ExporterProfileDetail",
     "ExporterProfileListItem",
-    "PendingActivityView",
 ]

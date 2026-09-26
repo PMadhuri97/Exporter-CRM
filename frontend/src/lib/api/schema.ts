@@ -384,7 +384,7 @@ export interface paths {
         };
         /**
          * Search exporter profiles
-         * @description Filters by gstin, pan, iec, source, lifecycle status (exact match) and legal_name (case-insensitive partial match against the linked OnboardingRequest.legal_name). The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
+         * @description Filters by gstin, pan, iec, source, journey, qualification, marker (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -408,7 +408,7 @@ export interface paths {
         };
         /**
          * Read an exporter profile's full detail
-         * @description The profile plus its contacts, recent activities, and linked OnboardingRequest history.
+         * @description The company record with its name and country, plus its contacts and recent activities.
          */
         get: operations["get_exporter_profile_detail_api_v1_onboarding_exporters__customer_id__get"];
         put?: never;
@@ -418,12 +418,12 @@ export interface paths {
         head?: never;
         /**
          * Update an exporter profile's mutable CRM fields
-         * @description Updates CRM fields. `source` and `lifecycle_status` are not accepted here (422 if present) — source is immutable, and lifecycle_status is owned by the transition endpoint.
+         * @description Updates CRM fields. A field left out of the body is unchanged; a field sent as null (or an empty string or list) is cleared. Each change is recorded in the company's history with the signed-in user as the actor. `source`, `journey`, `qualification` and the marker are not accepted here (422 if present): source is immutable, and each of the others has its own write path.
          */
         patch: operations["update_exporter_profile_api_v1_onboarding_exporters__customer_id__patch"];
         trace?: never;
     };
-    "/api/v1/onboarding/exporters/{customer_id}/transition": {
+    "/api/v1/onboarding/exporters/{customer_id}/marker": {
         parameters: {
             query?: never;
             header?: never;
@@ -433,10 +433,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Transition an exporter's lifecycle_status
-         * @description The only way lifecycle_status changes. Validates the move against the permitted-transition table; an illegal transition returns 409 and leaves the profile untouched.
+         * Set or clear a company's PAUSED / ENDED marker
+         * @description A commercial pause or ending, recorded beside the journey and never instead of it: the journey does not move. PAUSED and ENDED need a reason; clearing to NONE does not. ENDED -> PAUSED is not a move (clear first), and a move to the current value is refused. Every change is recorded in the company's history with the signed-in user.
          */
-        post: operations["transition_exporter_lifecycle_status_api_v1_onboarding_exporters__customer_id__transition_post"];
+        post: operations["set_exporter_marker_api_v1_onboarding_exporters__customer_id__marker_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -556,6 +556,176 @@ export interface paths {
         get: operations["get_bank_activity_api_v1_onboarding_exporters__customer_id__bank_activity_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/qualification/criteria": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the current version of every qualification criterion */
+        get: operations["list_qualification_criteria_api_v1_onboarding_qualification_criteria_get"];
+        put?: never;
+        /** Add a qualification criterion (version 1) */
+        post: operations["create_qualification_criterion_api_v1_onboarding_qualification_criteria_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/qualification/criteria/{key}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List every version of one criterion, oldest first */
+        get: operations["list_qualification_criterion_versions_api_v1_onboarding_qualification_criteria__key__versions_get"];
+        put?: never;
+        /**
+         * Change a criterion by adding its next version
+         * @description Every change — threshold, allowed values, label, required, active — is a new version. Earlier versions are never altered, and results recorded against them keep pointing at them.
+         */
+        post: operations["add_qualification_criterion_version_api_v1_onboarding_qualification_criteria__key__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/qualification/reason-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the reason codes a NOT_QUALIFIED outcome may give */
+        get: operations["list_qualification_reason_codes_api_v1_onboarding_qualification_reason_codes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/qualification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A company's qualification: gauge, suggestion, results and outcomes */
+        get: operations["get_exporter_qualification_api_v1_onboarding_exporters__customer_id__qualification_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/qualification/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record criterion results for a company
+         * @description Append-only: checking a criterion again adds a result, never changes one. Each result is pinned to the criterion's current version, which must be active. PASS and FAIL need evidence. Recorded as MANUAL, by the signed-in user. Results never move the gauge; they inform the suggestion.
+         */
+        post: operations["record_exporter_qualification_results_api_v1_onboarding_exporters__customer_id__qualification_results_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/qualification/outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a qualification outcome (the reviewer's decision)
+         * @description The signed-in reviewer's decision, stored beside the server's suggestion. Allowed from NOT_YET_REVIEWED and, as a re-review, from NOT_QUALIFIED; QUALIFIED is final. NOT_QUALIFIED needs at least one reason code. A QUALIFIED lead becomes a PROSPECT in the same transaction; qualification never makes a company a CUSTOMER.
+         */
+        post: operations["record_exporter_qualification_outcome_api_v1_onboarding_exporters__customer_id__qualification_outcome_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/rxil/company-intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take in an exporter RXIL has qualified (provisional format)
+         * @description Creates or matches the company by the CRM's own identity rules and records RXIL's qualification exactly as supplied (source RXIL, never recomputed), which makes the company a PROSPECT. A company RXIL delivers that resembles existing companies without a PAN to settle it is refused (409) for a person to decide, never merged. A repeated delivery with the same package_id changes nothing. The package format is provisional until RXIL's specification is published. ADMIN only: the outcome is recorded as RXIL's decision, which the manual qualification routes never allow a person to do.
+         */
+        post: operations["take_in_rxil_company_api_v1_onboarding_rxil_company_intake_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/imports/companies/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The CSV template for bulk company import */
+        get: operations["get_company_import_template_api_v1_onboarding_imports_companies_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/imports/companies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import companies from a CSV file
+         * @description Every row is checked and matched by the same rules as creating a company by hand, and reported as accepted (created as a LEAD, or matched to the company its PAN belongs to), rejected, or possible_duplicate — each with codes and messages. Each created row is saved on its own: a row that fails cannot undo or damage another.
+         */
+        post: operations["import_companies_api_v1_onboarding_imports_companies_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1005,6 +1175,14 @@ export interface components {
             /** Findings */
             findings: components["schemas"]["BankActivityFindingResponse"][];
         };
+        /** Body_import_companies_api_v1_onboarding_imports_companies_post */
+        Body_import_companies_api_v1_onboarding_imports_companies_post: {
+            /**
+             * File
+             * @description A CSV file in the template's shape
+             */
+            file: string;
+        };
         /** CaseResponse */
         CaseResponse: {
             /**
@@ -1180,50 +1358,66 @@ export interface components {
             required_checks?: components["schemas"]["CheckType"][];
         };
         /**
+         * CreateCriterionRequest
+         * @description A new criterion, recorded as version 1.
+         */
+        CreateCriterionRequest: {
+            /** Label */
+            label: string;
+            kind: components["schemas"]["CriterionKind"];
+            /** Required */
+            required: boolean;
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            comparison?: components["schemas"]["ThresholdComparison"] | null;
+            /** Threshold */
+            threshold?: number | string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Allowed Values */
+            allowed_values?: string[] | null;
+            /** Key */
+            key: string;
+        };
+        /**
          * CreateExporterProfileRequest
-         * @description Create a profile. `source` and `lifecycle_status` are the only
-         *     lifecycle-relevant fields the caller may set at creation — `source`
-         *     becomes immutable the moment this succeeds (see
-         *     `ExporterSourceImmutableError`); `lifecycle_status` after creation can
-         *     only move through `POST .../transition`.
+         * @description Create a company. `source` becomes immutable the moment this
+         *     succeeds (see `ExporterSourceImmutableError`). Every company starts as a
+         *     `LEAD`, `NOT_YET_REVIEWED`, with no marker: the journey moves through
+         *     qualification, never through a field set here.
          *
-         *     `customer_id` is optional: when omitted, the API mints a fresh one — the
-         *     common case for a brand-new Lead, which has no prior `OnboardingRequest`
-         *     or other identity to anchor to. A caller onboarding an *existing*
-         *     `OnboardingRequest.customer_id` (backfilling a profile for a customer who
-         *     already has verification history) supplies it explicitly.
+         *     `name` and `country` are the company's identity
+         *     (`docs/contracts/company-record.md` §2.1). Supplying them — always
+         *     together — creates a named company through
+         *     `ExporterProfileService.create_lead`, and requires the `Idempotency-Key`
+         *     header so a retried submit returns the first company rather than a
+         *     second. The creator's contact details are never asked for.
          *
-         *     `legal_name`/`incorporation_country`/`initial_user_email` (EXP-3, "Add
-         *     Exporter"): supplying all three routes this request through
-         *     `ExporterProfileService.create_lead` instead of `create_or_get_profile`,
-         *     creating a minimal `OnboardingRequest` alongside the profile so the new
-         *     Lead actually has a name — see `create_lead`'s own docstring for why
-         *     `create_or_get_profile` alone can never give a Lead a `legal_name`. All
-         *     three are required together (enforced below) or none at all; omitting
-         *     all three keeps this request on the `create_or_get_profile` path exactly
-         *     as before. `initial_user_email` is a reachable contact for the Lead (the
-         *     Sales rep's own address, a lead-intake mailbox, whatever channel sourced
-         *     it) — not necessarily the exporter's own future platform login; see
-         *     `OnboardingRequestService.initiate_onboarding`'s docstring for the full
-         *     reasoning (`create_lead` reuses the same field for the same reason).
-         *     Creating a Lead this way also requires the `Idempotency-Key` header
-         *     (unlike the `create_or_get_profile` path, where it's optional) — a fresh
-         *     `OnboardingRequest` row has a `NOT NULL` idempotency key with no other
-         *     natural uniqueness to fall back on the way `exporter_profile.customer_id`
-         *     provides for the other path.
+         *     Omitting both keeps the older unnamed path (`create_or_get_profile`),
+         *     which some callers still use to open a company by `customer_id` alone.
+         *
+         *     `pan` must not already belong to another company (409). `gstins` may
+         *     hold several registrations; each must carry the PAN when one is given, and
+         *     one already held by another company is reported in `gstin_warnings`, not
+         *     refused. A company starts with no marker.
+         *
+         *     `customer_id` is optional: when omitted, the API mints a fresh one.
          */
         CreateExporterProfileRequest: {
             /** Customer Id */
             customer_id?: string | null;
             source: components["schemas"]["ExporterSource"];
-            /** @default LEAD */
-            lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
-            /** Gstin */
-            gstin?: string | null;
             /** Pan */
             pan?: string | null;
+            /** Gstins */
+            gstins?: string[] | null;
             /** Iec */
             iec?: string | null;
+            /** Cin */
+            cin?: string | null;
             /** Relationship Manager */
             relationship_manager?: string | null;
             /** Industry */
@@ -1236,13 +1430,97 @@ export interface components {
             year_established?: number | null;
             /** Website */
             website?: string | null;
-            /** Legal Name */
-            legal_name?: string | null;
-            /** Incorporation Country */
-            incorporation_country?: string | null;
-            /** Initial User Email */
-            initial_user_email?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Country */
+            country?: string | null;
         };
+        /**
+         * CriterionDefinitionRequest
+         * @description One version of a criterion. Every change is a new version.
+         */
+        CriterionDefinitionRequest: {
+            /** Label */
+            label: string;
+            kind: components["schemas"]["CriterionKind"];
+            /** Required */
+            required: boolean;
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            comparison?: components["schemas"]["ThresholdComparison"] | null;
+            /** Threshold */
+            threshold?: number | string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Allowed Values */
+            allowed_values?: string[] | null;
+        };
+        /**
+         * CriterionKind
+         * @enum {string}
+         */
+        CriterionKind: "NUMBER_THRESHOLD" | "YES_NO" | "ALLOWED_VALUES";
+        /** CriterionListResponse */
+        CriterionListResponse: {
+            /** Criteria */
+            criteria: components["schemas"]["CriterionResponse"][];
+        };
+        /** CriterionResponse */
+        CriterionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Version */
+            version: number;
+            /** Label */
+            label: string;
+            kind: components["schemas"]["CriterionKind"];
+            comparison: components["schemas"]["ThresholdComparison"] | null;
+            /** Threshold */
+            threshold: number | null;
+            /** Unit */
+            unit: string | null;
+            /** Allowed Values */
+            allowed_values: string[] | null;
+            /** Required */
+            required: boolean;
+            /** Active */
+            active: boolean;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * CriterionResultValue
+         * @description ``UNKNOWN`` means "could not establish", not "not yet looked at".
+         * @enum {string}
+         */
+        CriterionResultValue: "PASS" | "FAIL" | "UNKNOWN";
+        /** CriterionStandingResponse */
+        CriterionStandingResponse: {
+            criterion: components["schemas"]["CriterionResponse"];
+            latest_result: components["schemas"]["ResultResponse"] | null;
+            /** Counts */
+            counts: boolean;
+        };
+        /**
+         * DecidedByKind
+         * @description Whether a person or a computer decided (architecture §2.6: manual
+         *     first, automation later, and every decision records which).
+         * @enum {string}
+         */
+        DecidedByKind: "MANUAL" | "AUTOMATED";
         /** DependencyHealth */
         DependencyHealth: {
             /**
@@ -1260,6 +1538,40 @@ export interface components {
              * @description Present only when healthy
              */
             latency_ms?: string | null;
+        };
+        /**
+         * DuplicateGstinWarningResponse
+         * @description One of this company's GSTINs is also held by other companies — a
+         *     warning, never a refusal (architecture decision 4). The other companies
+         *     are named so staff can check they are not entering a duplicate.
+         */
+        DuplicateGstinWarningResponse: {
+            /** Gstin */
+            gstin: string;
+            /** Other Customer Ids */
+            other_customer_ids: string[];
+        };
+        /** EvidenceRefModel */
+        EvidenceRefModel: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "document" | "verification_result" | "url";
+            /** Ref */
+            ref: string;
+        };
+        /**
+         * EvidenceRefOut
+         * @description An evidence reference as stored. Besides the three a request may send,
+         *     a partner intake may store `partner_reference` — the partner's own id for
+         *     its evidence.
+         */
+        EvidenceRefOut: {
+            /** Type */
+            type: string;
+            /** Ref */
+            ref: string;
         };
         /** ExporterActivityListResponse */
         ExporterActivityListResponse: {
@@ -1344,16 +1656,25 @@ export interface components {
             is_primary_contact: boolean;
         };
         /**
-         * ExporterLifecycleStatus
-         * @description The exporter *relationship's* lifecycle — deliberately separate from
-         *     ``OnboardingRequestStatus``, which tracks a single verification pass. A
-         *     customer can be ``ACTIVE`` here across many historical
-         *     ``OnboardingRequest`` rows (re-verification, renewed KYB, a second
-         *     financing product), each of which runs its own ``OnboardingRequestStatus``
-         *     from ``DRAFT`` to a terminal state independently of where this status sits.
+         * ExporterJourney
+         * @description The company's main journey (architecture §3.2): forward only, and never
+         *     moved by hand — each move follows from a qualification outcome or a
+         *     background-check decision (``docs/contracts/company-record.md`` §3.1).
+         *
+         *     Added in migration 0017; the ten-status ``ExporterLifecycleStatus`` it
+         *     replaces was retired in L2-04 (migration 0020).
          * @enum {string}
          */
-        ExporterLifecycleStatus: "LEAD" | "CONTACTED" | "DATA_COLLECTION" | "VERIFICATION_IN_PROGRESS" | "COMPLIANCE_REVIEW" | "ONBOARDED" | "FINANCING_ELIGIBLE" | "ACTIVE" | "SUSPENDED" | "OFFBOARDED";
+        ExporterJourney: "LEAD" | "PROSPECT" | "CUSTOMER";
+        /**
+         * ExporterMarker
+         * @description A commercial pause or ending, kept apart from the journey (decision 3,
+         *     ``docs/contracts/company-record.md`` §3.3). Not a lifecycle stage, and not
+         *     a compliance hold: a compliance concern belongs on the background check.
+         *     ``PAUSED`` and ``ENDED`` always carry a reason.
+         * @enum {string}
+         */
+        ExporterMarker: "NONE" | "PAUSED" | "ENDED";
         /** ExporterProfileDetailResponse */
         ExporterProfileDetailResponse: {
             /**
@@ -1361,8 +1682,14 @@ export interface components {
              * Format: uuid
              */
             customer_id: string;
-            /** Gstin */
-            gstin: string | null;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            /** Cin */
+            cin: string | null;
+            /** Gstins */
+            gstins: string[];
             /** Pan */
             pan: string | null;
             /** Iec */
@@ -1372,7 +1699,11 @@ export interface components {
             relationship_manager: string | null;
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
-            lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
+            journey: components["schemas"]["ExporterJourney"];
+            qualification: components["schemas"]["QualificationState"];
+            marker: components["schemas"]["ExporterMarker"];
+            /** Marker Reason */
+            marker_reason: string | null;
             /** Industry */
             industry: string | null;
             /** Export Markets */
@@ -1402,16 +1733,16 @@ export interface components {
             contacts: components["schemas"]["ExporterContactResponse"][];
             /** Recent Activities */
             recent_activities: components["schemas"]["ExporterActivityResponse"][];
-            /** Onboarding History */
-            onboarding_history: components["schemas"]["OnboardingHistoryEntryResponse"][];
+            /** Gstin Warnings */
+            gstin_warnings: components["schemas"]["DuplicateGstinWarningResponse"][];
+            /** Allowed Marker Moves */
+            allowed_marker_moves?: components["schemas"]["MarkerMoveResponse"][];
         };
         /**
          * ExporterProfileListItemResponse
          * @description One row of `GET /onboarding/exporters` — `ExporterProfileResponse`
-         *     plus `legal_name`, resolved server-side via a join against the
-         *     exporter's most recent `OnboardingRequest` (see
-         *     `ExporterProfileRepository.search`) so a list screen never needs a
-         *     second, per-row lookup just to show a company name.
+         *     without the per-company collections, so a list screen never needs a
+         *     second, per-row lookup just to show a company.
          */
         ExporterProfileListItemResponse: {
             /**
@@ -1419,10 +1750,14 @@ export interface components {
              * Format: uuid
              */
             customer_id: string;
-            /** Legal Name */
-            legal_name: string | null;
-            /** Gstin */
-            gstin: string | null;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            /** Cin */
+            cin: string | null;
+            /** Gstins */
+            gstins: string[];
             /** Pan */
             pan: string | null;
             /** Iec */
@@ -1432,7 +1767,11 @@ export interface components {
             relationship_manager: string | null;
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
-            lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
+            journey: components["schemas"]["ExporterJourney"];
+            qualification: components["schemas"]["QualificationState"];
+            marker: components["schemas"]["ExporterMarker"];
+            /** Marker Reason */
+            marker_reason: string | null;
             /** Industry */
             industry: string | null;
             /** Year Established */
@@ -1460,8 +1799,14 @@ export interface components {
              * Format: uuid
              */
             customer_id: string;
-            /** Gstin */
-            gstin: string | null;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            /** Cin */
+            cin: string | null;
+            /** Gstins */
+            gstins: string[];
             /** Pan */
             pan: string | null;
             /** Iec */
@@ -1471,7 +1816,11 @@ export interface components {
             relationship_manager: string | null;
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
-            lifecycle_status: components["schemas"]["ExporterLifecycleStatus"];
+            journey: components["schemas"]["ExporterJourney"];
+            qualification: components["schemas"]["QualificationState"];
+            marker: components["schemas"]["ExporterMarker"];
+            /** Marker Reason */
+            marker_reason: string | null;
             /** Industry */
             industry: string | null;
             /** Export Markets */
@@ -1497,6 +1846,10 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Gstin Warnings */
+            gstin_warnings?: components["schemas"]["DuplicateGstinWarningResponse"][];
+            /** Allowed Marker Moves */
+            allowed_marker_moves?: components["schemas"]["MarkerMoveResponse"][];
         };
         /** ExporterProfileSearchResponse */
         ExporterProfileSearchResponse: {
@@ -1639,6 +1992,56 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** ImportReportResponse */
+        ImportReportResponse: {
+            /** Total Rows */
+            total_rows: number;
+            /** Accepted */
+            accepted: number;
+            /** Created */
+            created: number;
+            /** Matched */
+            matched: number;
+            /** Rejected */
+            rejected: number;
+            /** Possible Duplicates */
+            possible_duplicates: number;
+            /** Rows */
+            rows: components["schemas"]["ImportRowResponse"][];
+        };
+        /** ImportRowResponse */
+        ImportRowResponse: {
+            /** Line */
+            line: number;
+            /** Status */
+            status: string;
+            /** Action */
+            action: string | null;
+            /** Customer Id */
+            customer_id: string | null;
+            /** Reasons */
+            reasons: components["schemas"]["ReasonResponse"][];
+            /** Warnings */
+            warnings: components["schemas"]["ReasonResponse"][];
+            /** Candidates */
+            candidates: string[];
+        };
+        /** IntakeResponse */
+        IntakeResponse: {
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            /** Company */
+            company: string;
+            /** Qualification */
+            qualification: string;
+            /** Replayed */
+            replayed: boolean;
+            /** Warnings */
+            warnings: components["schemas"]["ReasonResponse"][];
+        };
         /** LogExporterActivityRequest */
         LogExporterActivityRequest: {
             activity_type: components["schemas"]["ExporterActivityType"];
@@ -1658,6 +2061,16 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * MarkerMoveResponse
+         * @description A marker move the viewer may make now — served by the server from the
+         *     same table `set_marker` enforces, so no screen keeps its own copy.
+         */
+        MarkerMoveResponse: {
+            to: components["schemas"]["ExporterMarker"];
+            /** Reason Required */
+            reason_required: boolean;
         };
         /**
          * NotificationChannel
@@ -1713,32 +2126,6 @@ export interface components {
          * @enum {string}
          */
         NotificationStatus: "PENDING" | "DELIVERED" | "FAILED" | "EXHAUSTED";
-        /** OnboardingHistoryEntryResponse */
-        OnboardingHistoryEntryResponse: {
-            /**
-             * Onboarding Id
-             * Format: uuid
-             */
-            onboarding_id: string;
-            status: components["schemas"]["OnboardingRequestStatus"];
-            /** Legal Name */
-            legal_name: string;
-            /** Initiated At */
-            initiated_at: string | null;
-            /** Completed At */
-            completed_at: string | null;
-            rejection_category: components["schemas"]["OnboardingRejectionCategory"] | null;
-        };
-        /**
-         * OnboardingRejectionCategory
-         * @enum {string}
-         */
-        OnboardingRejectionCategory: "KYB_FAILURE" | "SCREENING_BLOCK" | "COMPLIANCE_REJECTION" | "DOCUMENT_FRAUD" | "TIMEOUT";
-        /**
-         * OnboardingRequestStatus
-         * @enum {string}
-         */
-        OnboardingRequestStatus: "DRAFT" | "ENTITY_VERIFICATION_IN_PROGRESS" | "ENTITY_VERIFIED" | "UBO_MAPPING_IN_PROGRESS" | "UBO_MAPPING_COMPLETE" | "DOCUMENT_COLLECTION_IN_PROGRESS" | "DOCUMENT_COLLECTION_COMPLETE" | "SCREENING_IN_PROGRESS" | "SCREENING_COMPLETE" | "RISK_RATING_IN_PROGRESS" | "RISK_RATED" | "PENDING_COMPLIANCE_APPROVAL" | "APPROVED" | "ACCOUNT_CREATION_IN_PROGRESS" | "ACTIVE" | "REJECTED" | "ABANDONED" | "UNDER_REVIEW";
         /**
          * OnboardingStatus
          * @description Verification lifecycle status of an onboarding customer.
@@ -1771,6 +2158,33 @@ export interface components {
             review_answer?: string | null;
             /** Last Updated At */
             last_updated_at?: string | null;
+        };
+        /** OutcomeResponse */
+        OutcomeResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            outcome: components["schemas"]["QualificationOutcomeValue"];
+            /** Reason Codes */
+            reason_codes: string[];
+            /** Note */
+            note: string | null;
+            suggested_outcome: components["schemas"]["QualificationOutcomeValue"];
+            /** Result Ids */
+            result_ids: string[];
+            source: components["schemas"]["QualificationSource"];
+            decided_by_kind: components["schemas"]["DecidedByKind"];
+            /** Supersedes Outcome Id */
+            supersedes_outcome_id: string | null;
+            /** Decided By */
+            decided_by: string | null;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
         };
         /** PendingActivityListResponse */
         PendingActivityListResponse: {
@@ -1868,6 +2282,49 @@ export interface components {
             /** Phone */
             phone: string | null;
         };
+        /**
+         * QualificationOutcomeValue
+         * @description What a reviewer decides. ``NOT_YET_REVIEWED`` is never decided: it is
+         *     only the gauge's value before the first decision.
+         * @enum {string}
+         */
+        QualificationOutcomeValue: "QUALIFIED" | "NOT_QUALIFIED";
+        /** QualificationResponse */
+        QualificationResponse: {
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            state: components["schemas"]["QualificationState"];
+            journey: components["schemas"]["ExporterJourney"];
+            suggested_outcome: components["schemas"]["QualificationOutcomeValue"];
+            /** Standings */
+            standings: components["schemas"]["CriterionStandingResponse"][];
+            /** Results */
+            results: components["schemas"]["ResultResponse"][];
+            /** Outcomes */
+            outcomes: components["schemas"]["OutcomeResponse"][];
+            /** Allowed Outcomes */
+            allowed_outcomes?: components["schemas"]["QualificationOutcomeValue"][];
+            /**
+             * Can Record Results
+             * @default false
+             */
+            can_record_results: boolean;
+        };
+        /**
+         * QualificationSource
+         * @description Where a result or outcome came from.
+         * @enum {string}
+         */
+        QualificationSource: "MANUAL" | "IMPORT" | "RXIL" | "AUTOMATED";
+        /**
+         * QualificationState
+         * @description The company's qualification gauge (contract §4).
+         * @enum {string}
+         */
+        QualificationState: "NOT_YET_REVIEWED" | "QUALIFIED" | "NOT_QUALIFIED";
         /** ReadinessResponse */
         ReadinessResponse: {
             /**
@@ -1893,6 +2350,49 @@ export interface components {
             observability?: {
                 [key: string]: string | boolean;
             };
+        };
+        /** ReasonCodeListResponse */
+        ReasonCodeListResponse: {
+            /** Reason Codes */
+            reason_codes: components["schemas"]["ReasonCodeResponse"][];
+        };
+        /** ReasonCodeResponse */
+        ReasonCodeResponse: {
+            /** Code */
+            code: string;
+            /** Label */
+            label: string;
+            /** Requires Note */
+            requires_note: boolean;
+            /** Active */
+            active: boolean;
+        };
+        /**
+         * ReasonResponse
+         * @description Machine-readable `code`, human-readable `message`.
+         */
+        ReasonResponse: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /**
+         * RecordOutcomeRequest
+         * @description The signed-in reviewer's decision. `NOT_QUALIFIED` needs at least one
+         *     reason code; `other` needs a note.
+         */
+        RecordOutcomeRequest: {
+            outcome: components["schemas"]["QualificationOutcomeValue"];
+            /** Reason Codes */
+            reason_codes?: string[];
+            /** Note */
+            note?: string | null;
+        };
+        /** RecordResultsRequest */
+        RecordResultsRequest: {
+            /** Results */
+            results: components["schemas"]["ResultRequest"][];
         };
         /**
          * RecordReviewRequest
@@ -1923,6 +2423,56 @@ export interface components {
             /** Provider */
             provider: string;
             status: components["schemas"]["OnboardingStatus"];
+        };
+        /**
+         * ResultRequest
+         * @description One criterion checked by the signed-in user. The server pins the
+         *     criterion's current version.
+         */
+        ResultRequest: {
+            /** Criterion Key */
+            criterion_key: string;
+            result: components["schemas"]["CriterionResultValue"];
+            /** Observed Value */
+            observed_value?: string | null;
+            /** Evidence Note */
+            evidence_note?: string | null;
+            /** Evidence Refs */
+            evidence_refs?: components["schemas"]["EvidenceRefModel"][];
+            /** Reason */
+            reason?: string | null;
+        };
+        /** ResultResponse */
+        ResultResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Criterion Key */
+            criterion_key: string;
+            /** Criterion Version */
+            criterion_version: number;
+            result: components["schemas"]["CriterionResultValue"];
+            /** Observed Value */
+            observed_value: string | null;
+            source: components["schemas"]["QualificationSource"];
+            decided_by_kind: components["schemas"]["DecidedByKind"];
+            /** Evidence Note */
+            evidence_note: string | null;
+            /** Evidence Refs */
+            evidence_refs: components["schemas"]["EvidenceRefOut"][];
+            /** Reason */
+            reason: string | null;
+            /** Confidence */
+            confidence: number | null;
+            /** Recorded By */
+            recorded_by: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
         };
         /** ScreeningResult */
         ScreeningResult: {
@@ -2027,6 +2577,17 @@ export interface components {
             level_name: string;
         };
         /**
+         * SetMarkerRequest
+         * @description Set or clear the company's commercial marker (company-record contract
+         *     §3.3). `reason` is required for `PAUSED` and `ENDED`, optional when
+         *     clearing to `NONE`. The marker never moves the journey.
+         */
+        SetMarkerRequest: {
+            marker: components["schemas"]["ExporterMarker"];
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * SubjectType
          * @description What kind of entity a case is about. Discriminates KYC from KYB.
          * @enum {string}
@@ -2043,6 +2604,11 @@ export interface components {
             /** Notes */
             notes?: string | null;
         };
+        /**
+         * ThresholdComparison
+         * @enum {string}
+         */
+        ThresholdComparison: "AT_LEAST" | "AT_MOST";
         /** TokenResponse */
         TokenResponse: {
             /** Access Token */
@@ -2065,10 +2631,6 @@ export interface components {
          * @enum {string}
          */
         TransactionStatus: "INITIATED" | "VALIDATED" | "UNDER_REVIEW" | "APPROVED" | "FUNDED" | "DIGITAL_ASSET_SETTLED" | "SETTLING" | "SETTLED" | "RECONCILED" | "VALIDATION_FAILED" | "BLOCKED" | "DECLINED" | "FAILED" | "RECALLED_VIA_COMPENSATION";
-        /** TransitionLifecycleStatusRequest */
-        TransitionLifecycleStatusRequest: {
-            to_status: components["schemas"]["ExporterLifecycleStatus"];
-        };
         /**
          * TransitionSource
          * @description What caused a case state transition (four exact values).
@@ -2125,18 +2687,30 @@ export interface components {
         };
         /**
          * UpdateExporterProfileRequest
-         * @description Update mutable CRM fields. `source` and `lifecycle_status` are
-         *     deliberately not fields on this model at all — with `extra="forbid"`,
-         *     sending either is rejected at the API boundary (422) before the request
-         *     ever reaches `ExporterProfileService.update_profile`'s own guard.
+         * @description Update mutable CRM fields. A field left out is unchanged; a field sent
+         *     as `null` (or an empty string or list) is cleared — the router keeps the
+         *     two apart with `exclude_unset=True`. `name` and `country` can be
+         *     corrected but not cleared. `gstins` replaces the whole list. Every change
+         *     is recorded in the company's history, with the signed-in user as the
+         *     actor; there is no actor field here, and `extra="forbid"` refuses one.
+         *
+         *     `source`, the journey, the qualification gauge and the marker are
+         *     deliberately not fields on this model at all — with `extra="forbid"`, sending any of them is
+         *     rejected at the API boundary (422). The marker has its own route.
          */
         UpdateExporterProfileRequest: {
-            /** Gstin */
-            gstin?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Country */
+            country?: string | null;
             /** Pan */
             pan?: string | null;
+            /** Gstins */
+            gstins?: string[] | null;
             /** Iec */
             iec?: string | null;
+            /** Cin */
+            cin?: string | null;
             /** Relationship Manager */
             relationship_manager?: string | null;
             /** Industry */
@@ -3243,9 +3817,11 @@ export interface operations {
                 gstin?: string | null;
                 pan?: string | null;
                 iec?: string | null;
-                legal_name?: string | null;
+                name?: string | null;
                 source?: components["schemas"]["ExporterSource"] | null;
-                status?: components["schemas"]["ExporterLifecycleStatus"] | null;
+                journey?: components["schemas"]["ExporterJourney"] | null;
+                qualification?: components["schemas"]["QualificationState"] | null;
+                marker?: components["schemas"]["ExporterMarker"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -3329,8 +3905,15 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required; creating at ONBOARDED or any later status requires COMPLIANCE or ADMIN */
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The PAN is already held by another company */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3451,7 +4034,7 @@ export interface operations {
             };
         };
     };
-    transition_exporter_lifecycle_status_api_v1_onboarding_exporters__customer_id__transition_post: {
+    set_exporter_marker_api_v1_onboarding_exporters__customer_id__marker_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3462,7 +4045,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TransitionLifecycleStatusRequest"];
+                "application/json": components["schemas"]["SetMarkerRequest"];
             };
         };
         responses: {
@@ -3482,7 +4065,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required; a move out of COMPLIANCE_REVIEW or any later status requires COMPLIANCE or ADMIN */
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3496,21 +4079,19 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Illegal lifecycle_status transition */
+            /** @description Marker move not allowed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Invalid request body, or a PAUSED/ENDED marker without a reason */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -3889,6 +4470,545 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    list_qualification_criteria_api_v1_onboarding_qualification_criteria_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CriterionListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_qualification_criterion_api_v1_onboarding_qualification_criteria_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCriterionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CriterionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A criterion with this key already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid criterion */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_qualification_criterion_versions_api_v1_onboarding_qualification_criteria__key__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CriterionListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown criterion */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_qualification_criterion_version_api_v1_onboarding_qualification_criteria__key__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CriterionDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CriterionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown criterion */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Another version was added first; reload and try again */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid criterion */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_qualification_reason_codes_api_v1_onboarding_qualification_reason_codes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReasonCodeListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_exporter_qualification_api_v1_onboarding_exporters__customer_id__qualification_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_exporter_qualification_results_api_v1_onboarding_exporters__customer_id__qualification_results_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordResultsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The company is already QUALIFIED */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid results */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    record_exporter_qualification_outcome_api_v1_onboarding_exporters__customer_id__qualification_outcome_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordOutcomeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The company is already QUALIFIED */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or unknown reason codes, or other invalid input */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    take_in_rxil_company_api_v1_onboarding_rxil_company_intake_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Matches existing companies ambiguously, or already being handled */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The package cannot be read, or breaks the company rules */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_company_import_template_api_v1_onboarding_imports_companies_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The template's header row */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    import_companies_api_v1_onboarding_imports_companies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_companies_api_v1_onboarding_imports_companies_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportReportResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a CSV in the template's shape, or too large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

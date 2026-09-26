@@ -22,14 +22,17 @@ from app.modules.onboarding.application.exporter_profile_service import (
     ExporterProfileService,
 )
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.application.qualification_service import QualificationService
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterLifecycleStatus,
+    ExporterJourney,
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationOutcomeValue
+from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
 
@@ -55,7 +58,7 @@ async def _rows_for(company_id: uuid.UUID) -> list[ExporterLifecycleHistory]:
 
 
 async def test_record_writes_one_row_with_every_contracted_field():
-    company_id = uuid.uuid4()
+    company_id = await make_company()
     deal_id = uuid.uuid4()
 
     async with db_services.AsyncSessionLocal() as db:
@@ -86,7 +89,7 @@ async def test_record_writes_one_row_with_every_contracted_field():
 async def test_record_returns_the_flushed_row():
     """The caller gets the row back with its id, so a decision that needs to
     reference what it just recorded does not have to re-query for it."""
-    company_id = uuid.uuid4()
+    company_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         row = await HistoryService(db).record(
@@ -106,7 +109,7 @@ async def test_event_type_is_derived_from_the_dimension_and_direction():
     """`<dimension>_initial` when a value is set at creation,
     `<dimension>_transition` when it moves — so a new gauge gets consistent
     naming without every writer inventing its own."""
-    company_id = uuid.uuid4()
+    company_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         service = HistoryService(db)
@@ -129,7 +132,7 @@ async def test_event_type_is_derived_from_the_dimension_and_direction():
 async def test_an_explicit_event_type_overrides_the_derived_one():
     """The journey needs this: its rows have always been `lifecycle_transition`,
     a downstream consumer polls for that name, and thousands of rows carry it."""
-    company_id = uuid.uuid4()
+    company_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         await HistoryService(db).record(
@@ -164,7 +167,7 @@ async def test_a_bad_field_is_refused_before_it_reaches_postgres(kwargs: dict, m
 async def test_a_dimension_nobody_has_built_yet_is_accepted():
     """No migration, no enum, no change to this service: a gauge that does not
     exist yet can be recorded the day its writer lands."""
-    company_id = uuid.uuid4()
+    company_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         await HistoryService(db).record(
@@ -185,7 +188,7 @@ async def test_record_flushes_without_committing():
     This is the narrow proof that `record` flushed rather than committed: a
     committed row would already be readable from another session at this point.
     """
-    company_id = uuid.uuid4()
+    company_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         await HistoryService(db).record(
@@ -209,7 +212,7 @@ async def test_record_flushes_without_committing():
 async def test_a_rollback_discards_the_state_change_and_its_history_together():
     """The whole point of flush-not-commit, end to end.
 
-    1. the state change begins — a profile's `lifecycle_status` is assigned;
+    1. the state change begins — a profile's `journey` is assigned;
     2. the history writer flushes its row;
     3. the caller rolls back;
     4. neither survives.
@@ -230,16 +233,16 @@ async def test_a_rollback_discards_the_state_change_and_its_history_together():
         profile = await db.scalar(
             select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
         )
-        assert profile.lifecycle_status is ExporterLifecycleStatus.LEAD
+        assert profile.journey is ExporterJourney.LEAD
 
         # 1. the state change
-        profile.lifecycle_status = ExporterLifecycleStatus.CONTACTED
+        profile.journey = ExporterJourney.PROSPECT
         # 2. the history row, flushed
         await HistoryService(db).record(
             company_id,
             dimension="journey",
-            from_value=ExporterLifecycleStatus.LEAD.value,
-            to_value=ExporterLifecycleStatus.CONTACTED.value,
+            from_value=ExporterJourney.LEAD.value,
+            to_value=ExporterJourney.PROSPECT.value,
             actor_id="rm-1",
             source="test.rollback",
         )
@@ -251,10 +254,10 @@ async def test_a_rollback_discards_the_state_change_and_its_history_together():
         after = await db.scalar(
             select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
         )
-        assert after.lifecycle_status is ExporterLifecycleStatus.LEAD
+        assert after.journey is ExporterJourney.LEAD
 
     assert [r.to_status for r in await _rows_for(company_id)] == [
-        ExporterLifecycleStatus.LEAD.value
+        ExporterJourney.LEAD.value
     ], "only the creation row should remain"
 
 
@@ -271,12 +274,12 @@ async def test_state_and_history_commit_together():
         profile = await db.scalar(
             select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
         )
-        profile.lifecycle_status = ExporterLifecycleStatus.CONTACTED
+        profile.journey = ExporterJourney.PROSPECT
         await HistoryService(db).record(
             company_id,
             dimension="journey",
-            from_value=ExporterLifecycleStatus.LEAD.value,
-            to_value=ExporterLifecycleStatus.CONTACTED.value,
+            from_value=ExporterJourney.LEAD.value,
+            to_value=ExporterJourney.PROSPECT.value,
             actor_id="rm-1",
             source="test.commit",
         )
@@ -286,58 +289,59 @@ async def test_state_and_history_commit_together():
         after = await db.scalar(
             select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
         )
-        assert after.lifecycle_status is ExporterLifecycleStatus.CONTACTED
+        assert after.journey is ExporterJourney.PROSPECT
 
-    assert ExporterLifecycleStatus.CONTACTED.value in {
+    assert ExporterJourney.PROSPECT.value in {
         r.to_status for r in await _rows_for(company_id)
     }
 
 
-# ── The lifecycle writer now goes through this service (Task 2) ──────────────
+# ── The journey writer goes through this service (Task 2) ───────────────────
 
 
-async def test_the_lifecycle_transition_still_records_what_it_always_did():
-    """Repointing `ExporterProfileService` at the shared writer must not change
-    a single field of what it writes — a downstream consumer polls these rows."""
+async def test_the_journey_still_records_what_it_always_did():
+    """The journey's rows keep their shape and event types — a downstream
+    consumer polls them. Since L2-04 the values are the three-stage journey's,
+    and the move is made by a qualification outcome, not a transition call."""
     company_id = uuid.uuid4()
 
     async with db_services.AsyncSessionLocal() as db:
-        service = ExporterProfileService(db)
-        await service.create_or_get_profile(company_id, source=ExporterSource.SALES)
-        await service.transition_lifecycle_status(
-            company_id, ExporterLifecycleStatus.CONTACTED, actor_id="rm-jordan"
+        await ExporterProfileService(db).create_or_get_profile(
+            company_id, source=ExporterSource.SALES
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        await QualificationService(db).record_outcome(
+            company_id, QualificationOutcomeValue.QUALIFIED, actor_id="rm-jordan"
         )
 
-    rows = sorted(await _rows_for(company_id), key=lambda r: r.created_at)
+    rows = sorted(
+        [r for r in await _rows_for(company_id) if r.dimension == "journey"],
+        key=lambda r: r.created_at,
+    )
     assert [r.event_type for r in rows] == ["lifecycle_initial", "lifecycle_transition"]
-    assert {r.dimension for r in rows} == {"journey"}
     assert all(r.deal_id is None for r in rows)
 
     move = rows[-1]
-    assert move.from_status == ExporterLifecycleStatus.LEAD.value
-    assert move.to_status == ExporterLifecycleStatus.CONTACTED.value
+    assert move.from_status == ExporterJourney.LEAD.value
+    assert move.to_status == ExporterJourney.PROSPECT.value
     assert move.actor_id == "rm-jordan"
     assert move.event_metadata["terminal"] is False
-    assert move.event_metadata["source"].endswith("transition_lifecycle_status")
 
 
-async def test_the_terminal_flag_still_marks_the_onboarded_edge():
-    """ANER-4.2-S1T2's completion hook filters on this; it must survive the
-    move to the shared writer."""
+async def test_the_terminal_flag_is_false_until_customer():
+    """ANER-4.2-S1T2's completion hook filters on `terminal`. In the new model
+    it marks the move to CUSTOMER (architecture §5.6), which only L2-11 makes;
+    a new company's creation row is not terminal."""
     company_id = uuid.uuid4()
 
     async with db_services.AsyncSessionLocal() as db:
-        service = ExporterProfileService(db)
-        await service.create_or_get_profile(
-            company_id,
-            source=ExporterSource.SALES,
-            lifecycle_status=ExporterLifecycleStatus.ONBOARDED,
-            compliance_authorized=True,
+        await ExporterProfileService(db).create_or_get_profile(
+            company_id, source=ExporterSource.SALES
         )
 
     (row,) = await _rows_for(company_id)
     assert row.event_type == "lifecycle_initial"
-    assert row.event_metadata["terminal"] is True
+    assert row.event_metadata["terminal"] is False
 
 
 # ── Reads ────────────────────────────────────────────────────────────────────
@@ -361,7 +365,7 @@ async def _seed_mixed(company_id: uuid.UUID, deal_id: uuid.UUID) -> None:
 
 
 async def test_an_unfiltered_read_returns_every_dimension():
-    company_id, deal_id = uuid.uuid4(), uuid.uuid4()
+    company_id, deal_id = await make_company(), uuid.uuid4()
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
@@ -372,7 +376,7 @@ async def test_an_unfiltered_read_returns_every_dimension():
 
 
 async def test_a_dimension_filter_narrows_the_read_and_the_total():
-    company_id, deal_id = uuid.uuid4(), uuid.uuid4()
+    company_id, deal_id = await make_company(), uuid.uuid4()
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
@@ -385,7 +389,7 @@ async def test_a_dimension_filter_narrows_the_read_and_the_total():
 
 
 async def test_a_deal_read_returns_only_that_deals_rows():
-    company_id, deal_id = uuid.uuid4(), uuid.uuid4()
+    company_id, deal_id = await make_company(), uuid.uuid4()
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
@@ -406,7 +410,7 @@ async def test_an_unknown_deal_reads_empty_rather_than_raising():
 
 
 async def test_paging_is_newest_first_and_does_not_repeat_a_row():
-    company_id, deal_id = uuid.uuid4(), uuid.uuid4()
+    company_id, deal_id = await make_company(), uuid.uuid4()
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:

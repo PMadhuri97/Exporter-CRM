@@ -17,12 +17,18 @@ This module's `router` is mounted into `router.py`'s own `router` via
 router.py` applies to the whole module — routes are declared here with only
 the `/exporters` prefix, matching the ticket's `/onboarding/exporters...`
 paths once combined.
+
+**Split by owner (L2-01).** This file now carries only the company routes
+(Developer 2). The contact and activity routes moved to `engagement_router.py`
+(Developer 3) and the screening-review and bank-activity routes to
+`screening_router.py` (Developer 4). All three share the `/exporters` prefix
+and the `Exporter CRM` tag and are mounted side by side in `router.py`, so no
+path, operation or schema changed.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 from typing import Annotated
 
 import structlog
@@ -30,64 +36,46 @@ from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.schemas.exporter import (
-    AddExporterContactRequest,
     CreateExporterProfileRequest,
-    ExporterActivityListResponse,
-    ExporterActivityResponse,
-    ExporterContactListResponse,
-    ExporterContactResponse,
+    DuplicateGstinWarningResponse,
     ExporterProfileDetailResponse,
     ExporterProfileListItemResponse,
     ExporterProfileResponse,
     ExporterProfileSearchResponse,
-    LogExporterActivityRequest,
-    PendingActivityListResponse,
-    PendingActivityResponse,
-    TransitionLifecycleStatusRequest,
+    MarkerMoveResponse,
+    SetMarkerRequest,
     UpdateExporterProfileRequest,
-    UpdateScreeningReviewItemRequest,
-    ScreeningReviewItemResponse,
-    ScreeningReviewListResponse,
-    BankActivityFindingResponse,
-    BankActivityResponse,
-    can_reveal_identifiers,
 )
-from app.modules.onboarding.application import (
-    ExporterContactActivityService,
-    ExporterProfileService,
-)
-from app.modules.onboarding.application.screening_review_service import ScreeningReviewService
+from app.modules.onboarding.api.schemas.masking import can_reveal_identifiers
+from app.modules.onboarding.application import ExporterProfileService
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterActivityType,
-    ExporterLifecycleStatus,
+    ExporterJourney,
+    ExporterMarker,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.modules.onboarding.exceptions import IdentifierSearchNotPermittedError
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
-from app.platform.configuration.config import settings
 from app.platform.database.services import get_db
 from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/exporters", tags=["Exporter CRM"])
 
-# Compliance decisions (recording a screening-checklist decision) are
-# compliance-owned; a plain API_USER must never be able to mark a sanctions
-# check PASSED. Lifecycle moves are gated per edge in the service instead
-# (`COMPLIANCE_GATED_FROM_STATUSES`), so RMs can still work the sales stages.
-_COMPLIANCE_OR_ADMIN = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
 # Routine CRM reads and writes by internal staff (Relationship Managers are
 # OPERATIONS, and may read every exporter). PAN/GSTIN/IEC and contact
 # email/phone are masked per viewer in the response schemas.
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+#: Who may set or clear a marker — the roles `_STAFF` admits.
+_MARKER_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
 # Masked CRM reads. DEVELOPER may read the CRM but never sees a raw
 # identifier (`can_reveal_identifiers` is always False for it), per the role
 # capability matrix in docs/exporter-crm-frontend-tickets.md.
 _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )
-_COMPLIANCE_ROLES = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
 
 
 def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
@@ -136,12 +124,8 @@ def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
             "description": "Idempotent replay or existing profile for this customer_id",
         },
         401: {"description": "Unauthorized"},
-        403: {
-            "description": (
-                "OPERATIONS, COMPLIANCE or ADMIN role required; creating at "
-                "ONBOARDED or any later status requires COMPLIANCE or ADMIN"
-            )
-        },
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        409: {"description": "The PAN is already held by another company"},
         422: {"description": "Invalid request body"},
     },
 )
@@ -152,27 +136,24 @@ async def create_exporter_profile(
     db: AsyncSession = Depends(get_db),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> ExporterProfileResponse:
-    # EXP-3 "Add Exporter": all three lead fields present (the schema's own
-    # validator guarantees "all or nothing") routes through `create_lead`,
-    # which is the only path that gives the new Lead a `legal_name` at all —
-    # see `CreateExporterProfileRequest`'s docstring.
-    if body.legal_name is not None:
-        assert body.incorporation_country is not None
-        assert body.initial_user_email is not None
+    # "Add Exporter": a name and country (the schema guarantees both or
+    # neither) create a named company through `create_lead`, with the
+    # signed-in user as the actor — never a field the caller supplies.
+    if body.name is not None and body.country is not None:
         if idempotency_key is None:
             raise ValidationError(
-                "Creating a new exporter Lead (legal_name supplied) requires an "
+                "Creating a named company (name supplied) requires an "
                 "Idempotency-Key header"
             )
-        _request, profile, created = await ExporterProfileService(db).create_lead(
-            tenant_id=uuid.UUID(settings.ANER_TENANT_ID),
-            legal_name=body.legal_name,
-            incorporation_country=body.incorporation_country,
-            initial_user_email=body.initial_user_email,
+        service = ExporterProfileService(db)
+        profile, created = await service.create_lead(
+            name=body.name,
+            country=body.country,
             idempotency_key=idempotency_key,
             source=body.source,
             customer_id=body.customer_id,
-            gstin=body.gstin,
+            cin=body.cin,
+            gstins=body.gstins,
             pan=body.pan,
             iec=body.iec,
             relationship_manager=body.relationship_manager,
@@ -191,14 +172,15 @@ async def create_exporter_profile(
         # it just always claimed "201 Created" while doing it.
         if not created:
             response.status_code = 200
-        return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
+        return await _company_response(service, profile, current_user)
 
     customer_id = body.customer_id or uuid.uuid4()
-    profile, created = await ExporterProfileService(db).create_or_get_profile(
+    service = ExporterProfileService(db)
+    profile, created = await service.create_or_get_profile(
         customer_id,
         source=body.source,
-        lifecycle_status=body.lifecycle_status,
-        gstin=body.gstin,
+        cin=body.cin,
+        gstins=body.gstins,
         pan=body.pan,
         iec=body.iec,
         relationship_manager=body.relationship_manager,
@@ -209,11 +191,10 @@ async def create_exporter_profile(
         website=body.website,
         idempotency_key=idempotency_key,
         actor_id=str(current_user.id),
-        compliance_authorized=current_user.role in _COMPLIANCE_ROLES,
     )
     if not created:
         response.status_code = 200
-    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
+    return await _company_response(service, profile, current_user)
 
 
 @router.get(
@@ -221,8 +202,8 @@ async def create_exporter_profile(
     response_model=ExporterProfileDetailResponse,
     summary="Read an exporter profile's full detail",
     description=(
-        "The profile plus its contacts, recent activities, and linked "
-        "OnboardingRequest history."
+        "The company record with its name and country, plus its contacts and "
+        "recent activities."
     ),
     responses={
         200: {"model": ExporterProfileDetailResponse},
@@ -237,7 +218,9 @@ async def get_exporter_profile_detail(
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileDetailResponse:
     detail = await ExporterProfileService(db).get_profile_detail(customer_id)
-    return ExporterProfileDetailResponse.from_detail(detail).masked_for(current_user)
+    response = ExporterProfileDetailResponse.from_detail(detail).masked_for(current_user)
+    response.allowed_marker_moves = _marker_moves(detail.marker, current_user)
+    return response
 
 
 @router.patch(
@@ -245,9 +228,12 @@ async def get_exporter_profile_detail(
     response_model=ExporterProfileResponse,
     summary="Update an exporter profile's mutable CRM fields",
     description=(
-        "Updates CRM fields. `source` and `lifecycle_status` are not accepted here "
-        "(422 if present) — source is immutable, and lifecycle_status is owned by "
-        "the transition endpoint."
+        "Updates CRM fields. A field left out of the body is unchanged; a field "
+        "sent as null (or an empty string or list) is cleared. Each change is "
+        "recorded in the company's history with the signed-in user as the actor. "
+        "`source`, `journey`, `qualification` and the marker are not accepted "
+        "here (422 if present): source is immutable, and each of the others has "
+        "its own write path."
     ),
     responses={
         200: {"model": ExporterProfileResponse},
@@ -263,47 +249,15 @@ async def update_exporter_profile(
     current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileResponse:
-    profile = await ExporterProfileService(db).update_profile(
-        customer_id, **body.model_dump(exclude_unset=True)
-    )
-    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
-
-
-@router.post(
-    "/{customer_id}/transition",
-    response_model=ExporterProfileResponse,
-    summary="Transition an exporter's lifecycle_status",
-    description=(
-        "The only way lifecycle_status changes. Validates the move against the "
-        "permitted-transition table; an illegal transition returns 409 and leaves "
-        "the profile untouched."
-    ),
-    responses={
-        200: {"model": ExporterProfileResponse},
-        401: {"description": "Unauthorized"},
-        403: {
-            "description": (
-                "OPERATIONS, COMPLIANCE or ADMIN role required; a move out of "
-                "COMPLIANCE_REVIEW or any later status requires COMPLIANCE or ADMIN"
-            )
-        },
-        404: {"description": "Exporter profile not found"},
-        409: {"description": "Illegal lifecycle_status transition"},
-    },
-)
-async def transition_exporter_lifecycle_status(
-    customer_id: uuid.UUID,
-    body: TransitionLifecycleStatusRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
-    db: AsyncSession = Depends(get_db),
-) -> ExporterProfileResponse:
-    profile = await ExporterProfileService(db).transition_lifecycle_status(
+    # `exclude_unset` is what separates "left out" (no change) from "sent as
+    # null" (clear). The actor is the session's, never the body's.
+    service = ExporterProfileService(db)
+    profile = await service.update_profile(
         customer_id,
-        body.to_status,
+        body.model_dump(exclude_unset=True),
         actor_id=str(current_user.id),
-        compliance_authorized=current_user.role in _COMPLIANCE_ROLES,
     )
-    return ExporterProfileResponse.model_validate(profile).masked_for(current_user)
+    return await _company_response(service, profile, current_user)
 
 
 @router.get(
@@ -311,9 +265,12 @@ async def transition_exporter_lifecycle_status(
     response_model=ExporterProfileSearchResponse,
     summary="Search exporter profiles",
     description=(
-        "Filters by gstin, pan, iec, source, lifecycle status (exact match) and "
-        "legal_name (case-insensitive partial match against the linked "
-        "OnboardingRequest.legal_name). The gstin/pan/iec filters are "
+        "Filters by gstin, pan, iec, source, journey, qualification, marker (exact "
+        "match) and name (case-insensitive partial match on the company's "
+        "name). ENDED companies are left out of the default working list: "
+        "with no marker filter and no search term (name, gstin, pan, iec) they "
+        "are excluded; any search term includes them; marker=ENDED lists only "
+        "them. The gstin/pan/iec filters are "
         "COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals "
         "which company holds it even when the response body is masked."
     ),
@@ -334,9 +291,11 @@ async def search_exporter_profiles(
     gstin: str | None = Query(default=None),
     pan: str | None = Query(default=None),
     iec: str | None = Query(default=None),
-    legal_name: str | None = Query(default=None),
+    name: str | None = Query(default=None),
     source: ExporterSource | None = Query(default=None),
-    status: ExporterLifecycleStatus | None = Query(default=None),
+    journey: ExporterJourney | None = Query(default=None),
+    qualification: QualificationState | None = Query(default=None),
+    marker: ExporterMarker | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ExporterProfileSearchResponse:
@@ -346,9 +305,11 @@ async def search_exporter_profiles(
         gstin=gstin,
         pan=pan,
         iec=iec,
-        legal_name_contains=legal_name,
+        name_contains=name,
         source=source,
-        lifecycle_status=status,
+        journey=journey,
+        qualification=qualification,
+        marker=marker,
         limit=limit,
         offset=offset,
     )
@@ -362,260 +323,67 @@ async def search_exporter_profiles(
     )
 
 
-# ── Contacts ──────────────────────────────────────────────────────────────
+# ── Marker (PAUSED / ENDED) ──────────────────────────────────────────────
 
 
 @router.post(
-    "/{customer_id}/contacts",
-    response_model=ExporterContactResponse,
-    status_code=201,
-    summary="Add a contact to an exporter relationship",
+    "/{customer_id}/marker",
+    response_model=ExporterProfileResponse,
+    summary="Set or clear a company's PAUSED / ENDED marker",
     description=(
-        "Setting is_primary=true demotes any existing primary contact for this "
-        "customer in the same transaction — never two primaries at once."
+        "A commercial pause or ending, recorded beside the journey and never "
+        "instead of it: the journey does not move. PAUSED and ENDED need a "
+        "reason; clearing to NONE does not. ENDED -> PAUSED is not a move "
+        "(clear first), and a move to the current value is refused. Every "
+        "change is recorded in the company's history with the signed-in user."
     ),
     responses={
-        201: {"model": ExporterContactResponse},
+        200: {"model": ExporterProfileResponse},
         401: {"description": "Unauthorized"},
         403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
-        422: {"description": "Invalid request body"},
+        404: {"description": "Exporter profile not found"},
+        409: {"description": "Marker move not allowed"},
+        422: {"description": "Invalid request body, or a PAUSED/ENDED marker without a reason"},
     },
 )
-async def add_exporter_contact(
+async def set_exporter_marker(
     customer_id: uuid.UUID,
-    body: AddExporterContactRequest,
+    body: SetMarkerRequest,
     current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
-) -> ExporterContactResponse:
-    contact = await ExporterContactActivityService(db).add_contact(
-        customer_id,
-        name=body.name,
-        role=body.role,
-        email=body.email,
-        phone=body.phone,
-        department=body.department,
-        is_primary=body.is_primary,
+) -> ExporterProfileResponse:
+    profile = await ExporterProfileService(db).set_marker(
+        customer_id, body.marker, reason=body.reason, actor_id=str(current_user.id)
     )
-    return ExporterContactResponse.model_validate(contact).masked_for(current_user)
+    response = ExporterProfileResponse.model_validate(profile).masked_for(current_user)
+    response.allowed_marker_moves = _marker_moves(profile.marker, current_user)
+    return response
 
 
-@router.get(
-    "/{customer_id}/contacts",
-    response_model=ExporterContactListResponse,
-    summary="List an exporter's contacts",
-    responses={
-        200: {"model": ExporterContactListResponse},
-        401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
-    },
-)
-async def list_exporter_contacts(
-    customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
-    db: AsyncSession = Depends(get_db),
-) -> ExporterContactListResponse:
-    contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
-    return ExporterContactListResponse(
-        customer_id=customer_id,
-        contacts=[
-            ExporterContactResponse.model_validate(c).masked_for(current_user)
-            for c in contacts
-        ],
-    )
+async def _company_response(
+    service: ExporterProfileService, profile: ExporterProfile, viewer: User
+) -> ExporterProfileResponse:
+    """A company as a create or edit returns it, with a warning for each of
+    its GSTINs another company also holds (decision 4: warn, never refuse)."""
+    warnings = await service.duplicate_gstin_warnings(profile.customer_id, profile.gstins)
+    response = ExporterProfileResponse.model_validate(profile)
+    response.gstin_warnings = [
+        DuplicateGstinWarningResponse.model_validate(w, from_attributes=True) for w in warnings
+    ]
+    response = response.masked_for(viewer)
+    response.allowed_marker_moves = _marker_moves(profile.marker, viewer)
+    return response
 
 
-# ── Activities ────────────────────────────────────────────────────────────
-
-
-@router.post(
-    "/{customer_id}/activities",
-    response_model=ExporterActivityResponse,
-    status_code=201,
-    summary="Log a relationship-history activity",
-    description="Append-only: once logged, an activity can never be edited or deleted.",
-    responses={
-        201: {"model": ExporterActivityResponse},
-        401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
-        422: {"description": "Invalid request body"},
-    },
-)
-async def log_exporter_activity(
-    customer_id: uuid.UUID,
-    body: LogExporterActivityRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
-    db: AsyncSession = Depends(get_db),
-) -> ExporterActivityResponse:
-    activity = await ExporterContactActivityService(db).log_activity(
-        customer_id,
-        activity_type=body.activity_type,
-        subject=body.subject,
-        notes=body.notes,
-        due_at=body.due_at,
-        actor_id=str(current_user.id),
-    )
-    return ExporterActivityResponse.model_validate(activity)
-
-
-@router.get(
-    "/{customer_id}/activities",
-    response_model=ExporterActivityListResponse,
-    summary="List an exporter's relationship-history activities",
-    description="Most recent first. Optionally filtered by activity_type.",
-    responses={
-        200: {"model": ExporterActivityListResponse},
-        401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
-    },
-)
-async def list_exporter_activities(
-    customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
-    db: AsyncSession = Depends(get_db),
-    activity_type: ExporterActivityType | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-) -> ExporterActivityListResponse:
-    activities = await ExporterContactActivityService(db).list_activities(
-        customer_id, activity_type=activity_type, limit=limit, offset=offset
-    )
-    return ExporterActivityListResponse(
-        customer_id=customer_id,
-        activities=[ExporterActivityResponse.model_validate(a) for a in activities],
-    )
-
-
-# ── Pending activities (Piece 2: cross-exporter follow-up list) ─────────────
-#
-# Deliberately `/activities/pending`, not nested under `/{customer_id}` — this
-# route spans every exporter, unlike every other route in this file. Two path
-# segments after the `/exporters` prefix keeps it clear of every existing
-# route here (`/{customer_id}`, `/{customer_id}/contacts`,
-# `/{customer_id}/activities`): none of them match a two-segment path whose
-# first segment is the literal `activities`, so there is no ordering hazard
-# regardless of where this route is declared relative to those.
-
-
-@router.get(
-    "/activities/pending",
-    response_model=PendingActivityListResponse,
-    summary="List pending/follow-up activities across every exporter",
-    description=(
-        "Everything pending, across every exporter — a Follow-ups/pending-work "
-        "screen's own query. Omit actor_id for a manager's team-wide view; pass it "
-        "to scope to one person's own pending items. 'Pending' means the activity "
-        "carries a due_at (TASK/FOLLOW_UP entries, typically); each row already "
-        "carries the exporter's display name and a computed is_overdue flag."
-    ),
-    responses={
-        200: {"model": PendingActivityListResponse},
-        401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
-    },
-)
-async def list_pending_exporter_activities(
-    current_user: Annotated[User, Depends(_READER)],
-    db: AsyncSession = Depends(get_db),
-    actor_id: str | None = Query(default=None),
-    activity_type: ExporterActivityType | None = Query(default=None),
-    due_before: datetime | None = Query(default=None),
-    due_after: datetime | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-) -> PendingActivityListResponse:
-    views = await ExporterContactActivityService(db).list_pending_activities(
-        actor_id=actor_id,
-        activity_type=activity_type,
-        due_before=due_before,
-        due_after=due_after,
-        limit=limit,
-        offset=offset,
-    )
-    return PendingActivityListResponse(
-        activities=[PendingActivityResponse.model_validate(v) for v in views],
-        limit=limit,
-        offset=offset,
-    )
-
-
-# ── E9 screening review workspace ─────────────────────────────────────────
-
-@router.get(
-    "/{customer_id}/screening-review",
-    response_model=ScreeningReviewListResponse,
-    summary="List persisted screening-review checklist decisions",
-    responses={
-        401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
-    },
-)
-async def list_screening_review(
-    customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
-    db: AsyncSession = Depends(get_db),
-) -> ScreeningReviewListResponse:
-    items = await ScreeningReviewService(db).list_review_items(customer_id)
-    return ScreeningReviewListResponse(
-        customer_id=customer_id,
-        items=[ScreeningReviewItemResponse.model_validate(item) for item in items],
-    )
-
-
-@router.put(
-    "/{customer_id}/screening-review/{item_key}",
-    response_model=ScreeningReviewItemResponse,
-    summary="Record or update one screening-review checklist decision",
-    responses={
-        401: {"description": "Unauthorized"},
-        403: {"description": "COMPLIANCE or ADMIN role required"},
-    },
-)
-async def update_screening_review(
-    customer_id: uuid.UUID,
-    item_key: str,
-    body: UpdateScreeningReviewItemRequest,
-    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
-    db: AsyncSession = Depends(get_db),
-) -> ScreeningReviewItemResponse:
-    item = await ScreeningReviewService(db).upsert_review_item(
-        customer_id,
-        item_key=item_key,
-        status=body.status,
-        comment=body.comment,
-        actor_id=str(current_user.id),
-    )
-    return ScreeningReviewItemResponse.model_validate(item)
-
-
-@router.get(
-    "/{customer_id}/bank-activity",
-    response_model=BankActivityResponse,
-    summary="List bank-linked suspicious-activity findings",
-    responses={
-        401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
-    },
-    description=(
-        "E9 establishes the stable CRM contract for Surepass/Finpass-style "
-        "bank monitoring. Until a provider feed is connected, this returns an "
-        "empty, valid response instead of fabricated findings."
-    ),
-)
-async def get_bank_activity(
-    customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
-    db: AsyncSession = Depends(get_db),
-) -> BankActivityResponse:
-    findings = await ScreeningReviewService(db).list_bank_findings(customer_id)
-    open_findings = sum(1 for finding in findings if finding.status == "OPEN")
-    last_synced_at = max((finding.detected_at for finding in findings), default=None)
-    return BankActivityResponse(
-        customer_id=customer_id,
-        connected_accounts=0,
-        last_synced_at=last_synced_at,
-        open_findings=open_findings,
-        findings=[BankActivityFindingResponse.model_validate(finding) for finding in findings],
-    )
+def _marker_moves(current: ExporterMarker, viewer: User) -> list[MarkerMoveResponse]:
+    """The marker moves this viewer may make now: the service's own table,
+    and none at all for a role the marker route refuses."""
+    if viewer.role not in _MARKER_ROLES:
+        return []
+    return [
+        MarkerMoveResponse(to=to_marker, reason_required=needs_reason)
+        for to_marker, needs_reason in ExporterProfileService.allowed_marker_moves(current)
+    ]
 
 
 __all__ = ["router"]

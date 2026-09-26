@@ -1,139 +1,81 @@
-import type { UserRole } from '@/lib/api/types';
-
-import type { ExporterLifecycleStatus } from './types';
-
 /**
- * Visual grouping of the backend's 10-state `ExporterLifecycleStatus`, per
- * `docs/exporter-crm-frontend-tickets.md` decision #1: the backend states
- * are NOT simplified (each carries real workflow meaning — which check is
- * outstanding) — only the *display* groups them into fewer columns/tabs.
- * `SUSPENDED`/`OFFBOARDED` are deliberately not a pipeline stage (exits, not
- * a step forward) — surfaced via the "Inactive" filter, never a kanban
- * column once EXP-F10 exists.
+ * Display vocabulary for the company record — **owner: Developer 2**.
+ *
+ * Labels and chip colours only. There is deliberately **no transition graph
+ * here**: the journey is never moved by hand (a qualification outcome moves
+ * it), and the moves a user may make on the marker and on qualification are
+ * served by the API with each company (`allowed_marker_moves`,
+ * `allowed_outcomes`, `can_record_results`). The ten-status lifecycle and the
+ * hand-copied `PERMITTED_LIFECYCLE_TRANSITIONS` that used to live here were
+ * retired in L2-04.
  */
-export const STAGE_GROUPS = [
-  'NEW',
-  'CONTACTED',
-  'ONBOARDING',
-  'APPROVED',
-  'ACTIVE',
-  'INACTIVE',
-] as const;
 
-export type StageGroup = (typeof STAGE_GROUPS)[number];
+import type {
+  CriterionResultValue,
+  ExporterJourney,
+  ExporterMarker,
+  QualificationState,
+} from './types';
 
-export const STAGE_GROUP_LABEL: Record<StageGroup, string> = {
-  NEW: 'New',
-  CONTACTED: 'Contacted',
-  ONBOARDING: 'Onboarding',
-  APPROVED: 'Approved',
-  ACTIVE: 'Active',
-  INACTIVE: 'Inactive',
-};
+/** The journey's three stages, in order — the pipeline's columns. */
+export const JOURNEY_STAGES: readonly ExporterJourney[] = ['LEAD', 'PROSPECT', 'CUSTOMER'];
 
-export const STATUS_TO_STAGE_GROUP: Record<
-  ExporterLifecycleStatus,
-  StageGroup
-> = {
-  LEAD: 'NEW',
-  CONTACTED: 'CONTACTED',
-  DATA_COLLECTION: 'ONBOARDING',
-  VERIFICATION_IN_PROGRESS: 'ONBOARDING',
-  COMPLIANCE_REVIEW: 'ONBOARDING',
-  ONBOARDED: 'APPROVED',
-  FINANCING_ELIGIBLE: 'APPROVED',
-  ACTIVE: 'ACTIVE',
-  SUSPENDED: 'INACTIVE',
-  OFFBOARDED: 'INACTIVE',
-};
-
-/** Human-readable label for the exact backend status — shown as the
- * secondary chip alongside the grouped stage, per the design principle that
- * grouping is a display choice, not information loss. */
-export const STATUS_LABEL: Record<ExporterLifecycleStatus, string> = {
+export const JOURNEY_LABEL: Record<ExporterJourney, string> = {
   LEAD: 'Lead',
-  CONTACTED: 'Contacted',
-  DATA_COLLECTION: 'Data Collection',
-  VERIFICATION_IN_PROGRESS: 'Verification In Progress',
-  COMPLIANCE_REVIEW: 'Compliance Review',
-  ONBOARDED: 'Onboarded',
-  FINANCING_ELIGIBLE: 'Financing Eligible',
-  ACTIVE: 'Active',
-  SUSPENDED: 'Suspended',
-  OFFBOARDED: 'Offboarded',
+  PROSPECT: 'Prospect',
+  CUSTOMER: 'Customer',
 };
 
 /**
- * Full, static Tailwind class strings for each grouped stage's chip — not
- * built by interpolating a color name at runtime (`` `bg-stage-${x}` ``):
- * Tailwind's JIT compiler only generates classes it can see literally in
- * source, so a template-built class name would silently produce no styles
- * at all. Matches `tailwind.config.ts`'s `stage.*` palette.
+ * Full, static Tailwind class strings — never built by interpolating a colour
+ * name at runtime: Tailwind's JIT only generates classes it can see literally
+ * in source.
  */
-export const STAGE_GROUP_CHIP_CLASSES: Record<StageGroup, string> = {
-  NEW: 'bg-stage-new/10 text-stage-new',
-  CONTACTED: 'bg-stage-contacted/10 text-stage-contacted',
-  ONBOARDING: 'bg-stage-onboarding/10 text-stage-onboarding',
-  APPROVED: 'bg-stage-approved/10 text-stage-approved',
-  ACTIVE: 'bg-stage-active/10 text-stage-active',
-  INACTIVE: 'bg-stage-offboarded/10 text-stage-offboarded',
+export const JOURNEY_CHIP_CLASSES: Record<ExporterJourney, string> = {
+  LEAD: 'bg-stage-new/10 text-stage-new',
+  PROSPECT: 'bg-stage-onboarding/10 text-stage-onboarding',
+  CUSTOMER: 'bg-stage-active/10 text-stage-active',
 };
 
-
-/**
- * Frontend mirror of backend
- * `ExporterProfileService.PERMITTED_LIFECYCLE_TRANSITIONS`. This is kept in
- * one place so EXP-F6 and the future EXP-F10 kanban share the exact same
- * definition of a legal move. Drift risk: when the backend graph changes,
- * this constant must change with it until the API exposes the graph as data.
- *
- * SOURCE OF TRUTH: `backend/app/modules/onboarding/application/
- * exporter_profile_service.py:99-122` — a `frozenset` of
- * `(from_status, to_status)` pairs, checked in exactly one place
- * (`transition_lifecycle_status`). Verified edge-for-edge identical to the 13
- * edges below as of 2026-09-23.
- *
- * This duplication is deliberate but temporary. An endpoint exposing the graph
- * as data is planned; when it lands, consume it and delete this constant
- * rather than maintaining two copies. Until then, any change to the backing
- * `frozenset` must be mirrored here in the same commit — nothing enforces
- * that automatically, and a drifted copy shows officers moves the backend
- * will reject.
- */
-export const PERMITTED_LIFECYCLE_TRANSITIONS: Record<
-  ExporterLifecycleStatus,
-  readonly ExporterLifecycleStatus[]
-> = {
-  LEAD: ['CONTACTED'],
-  CONTACTED: ['DATA_COLLECTION'],
-  DATA_COLLECTION: ['VERIFICATION_IN_PROGRESS'],
-  VERIFICATION_IN_PROGRESS: ['COMPLIANCE_REVIEW'],
-  COMPLIANCE_REVIEW: ['DATA_COLLECTION', 'ONBOARDED'],
-  ONBOARDED: ['FINANCING_ELIGIBLE', 'ACTIVE'],
-  FINANCING_ELIGIBLE: ['ACTIVE'],
-  ACTIVE: ['SUSPENDED', 'OFFBOARDED'],
-  SUSPENDED: ['ACTIVE', 'OFFBOARDED'],
-  OFFBOARDED: [],
+export const QUALIFICATION_LABEL: Record<QualificationState, string> = {
+  NOT_YET_REVIEWED: 'Not yet reviewed',
+  QUALIFIED: 'Qualified',
+  NOT_QUALIFIED: 'Not qualified',
 };
 
-/**
- * Statuses a move *out of* is a compliance decision. Mirrors
- * `COMPLIANCE_GATED_FROM_STATUSES` in `backend/app/modules/onboarding/
- * application/exporter_profile_service.py`, which is what actually enforces
- * it (403). Relationship Managers (OPERATIONS) work the sales stages up to
- * submitting for COMPLIANCE_REVIEW; everything from there on is compliance's.
- */
-export const COMPLIANCE_GATED_FROM_STATUSES: ReadonlySet<ExporterLifecycleStatus> = new Set([
-  'COMPLIANCE_REVIEW',
-  'ONBOARDED',
-  'FINANCING_ELIGIBLE',
-  'ACTIVE',
-  'SUSPENDED',
-  'OFFBOARDED',
-]);
+export const QUALIFICATION_CHIP_CLASSES: Record<QualificationState, string> = {
+  NOT_YET_REVIEWED: 'bg-status-pending/10 text-status-pending',
+  QUALIFIED: 'bg-status-passed/10 text-status-passed',
+  NOT_QUALIFIED: 'bg-status-failed/10 text-status-failed',
+};
 
-/** Whether `role` may make any lifecycle move out of `status`. */
-export function canMoveLifecycleFrom(status: ExporterLifecycleStatus, role: UserRole): boolean {
-  if (role === 'COMPLIANCE' || role === 'ADMIN') return true;
-  return role === 'OPERATIONS' && !COMPLIANCE_GATED_FROM_STATUSES.has(status);
-}
+export const MARKER_LABEL: Record<ExporterMarker, string> = {
+  NONE: 'Active relationship',
+  PAUSED: 'Paused',
+  ENDED: 'Ended',
+};
+
+export const MARKER_CHIP_CLASSES: Record<ExporterMarker, string> = {
+  NONE: '',
+  PAUSED: 'bg-stage-suspended/10 text-stage-suspended',
+  ENDED: 'bg-stage-offboarded/15 text-ink-muted',
+};
+
+/** The verb for moving the marker to a value, for buttons. */
+export const MARKER_ACTION_LABEL: Record<ExporterMarker, string> = {
+  NONE: 'Resume relationship',
+  PAUSED: 'Pause relationship',
+  ENDED: 'End relationship',
+};
+
+export const RESULT_LABEL: Record<CriterionResultValue, string> = {
+  PASS: 'Pass',
+  FAIL: 'Fail',
+  UNKNOWN: 'Unknown',
+};
+
+export const RESULT_CLASSES: Record<CriterionResultValue, string> = {
+  PASS: 'text-status-passed',
+  FAIL: 'text-status-failed',
+  UNKNOWN: 'text-ink-muted',
+};
