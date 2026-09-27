@@ -195,6 +195,24 @@ GATED_ROUTES = [
     #
     # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
     # (3B appends here; 3A does not.)
+    # One 403 test per refused role, derived by `REFUSALS` below. Each body is well
+    # formed on purpose: the gate runs as a dependency, so a 403 also proves the
+    # handler never reached the service.
+    ("POST", f"{BASE}/exporters/{_ID}/deals", {"reference": "Rotterdam order"}, STAFF),
+    ("GET", f"{BASE}/exporters/{_ID}/deals", None, READERS),
+    ("GET", f"{BASE}/deals/{_ID}", None, READERS),
+    (
+        "POST",
+        f"{BASE}/deals/{_ID}/transitions",
+        {"to_stage": "GATHERING_PAPERWORK"},
+        STAFF,
+    ),
+    (
+        "PUT",
+        f"{BASE}/deals/{_ID}/buyer",
+        {"name": "Rotterdam Trading BV", "country": "NL"},
+        STAFF,
+    ),
 ]
 
 REFUSALS = [

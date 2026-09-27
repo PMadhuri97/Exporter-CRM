@@ -9,7 +9,7 @@ order so no phase depends on a later one:
 | Phase | Tasks | State |
 |---|---|---|
 | 1 | L3-01b contracts, L3-07 storage, L3-08 scan step | **done** |
-| 2 | L3-05 deal record, L3-06 buyer | not started |
+| 2 | L3-05 deal record, L3-06 buyer | **done** |
 | 3 | L3-09 document records | not started |
 | 4 | L3-10 handover, L3-11b screens | not started |
 
@@ -96,3 +96,102 @@ order so no phase depends on a later one:
 - `lint-imports`: 19 contracts kept, 0 broken.
 - `alembic heads`: one revision (`onboarding_0016_engagement`) — this phase adds no
   migration.
+
+---
+
+## Phase 2 — the deal record and its buyer
+
+### Delivered
+
+- `migrations/onboarding_0018_deal_buyer.py`: `deal_stage_enum`, `deal` and
+  `deal_buyer`. Parent `onboarding_0016_engagement`, one head before and after,
+  upgrade → downgrade → upgrade verified.
+- `domain/entities/deal_enums.py`, `deal.py`, `deal_buyer.py`; `domain/deal_views.py`.
+- `application/deal_service.py`: `open_deal`, `transition_stage`, `set_buyer`,
+  `allowed_stage_moves`, and the A5 guard's read half.
+- `api/deal_router.py` (5 routes) and `api/schemas/deal.py`.
+- `infrastructure/repositories/deal_repository.py`, `deal_buyer_repository.py`.
+- `sample_data_deals.py` — three §3.9 deals, converging (0 on a repeat run).
+- Frontend seam S2 published: `api/deals.ts`, `hooks/deals.ts`, deal types.
+- 47 tests (`test_l3b_deal_stage_rules.py`, `test_l3b_deal_buyer.py`), including a
+  direct-SQL violation test for each of the six new constraints.
+
+### Seams
+
+- **S1 is in.** `open_deal` calls 3A's
+  `ConversationService.mark_ready_now_for_opened_deal` in the same transaction, and
+  a test asserts the gauge moves, that 3A's history row carries the `deal_id`, and
+  that a second deal on an already-ready company writes no second history row
+  (their idempotence). 3A's commit landed first, so the call went in immediately
+  rather than as a follow-up.
+- **S2 is published.** `openDeal`/`useOpenDeal` and the deal types are exported
+  through the barrels the seam commit wired. 3A's Conversation panel does not yet
+  offer the prompt — their work merged before this existed — so that is a small
+  follow-up for them, not a blocker for me.
+
+### Two bugs I made and fixed
+
+1. **`db.get(ExporterProfile, company_id)` looked up the wrong column.**
+   `customer_id` is the company's business key; the table's primary key is the
+   inherited `id`. It found nothing for every company, so the handover guard raised
+   `DEAL_COMPANY_NOT_FOUND` on a company that plainly existed. Ten tests failed on
+   it. Now selects by `customer_id`.
+2. **My deal hooks invalidated a query key that does not exist.** I wrote
+   `['conversation', customerId]`; 3A's keys are `['exporterConversation', …]` and
+   `['conversationHistory', …]`. A query key is a string, so it type-checked
+   perfectly and would simply never have invalidated anything — the gauge would
+   have shown a stale value after opening a deal. Found by grepping their hooks and
+   comparing every key I touch against the real list.
+
+### Decisions
+
+1. **The buyer is its own table** (`deal_buyer`), not columns on `deal` — the
+   contract §3 records why: Developer 4 attaches buyer checks to the buyer, and a
+   check pointing at the deal could not distinguish "about the buyer" from "about
+   the deal".
+2. **A reason on a non-withdrawal is refused, not dropped** — silently discarding
+   it would leave the operator believing it was stored.
+3. **A terminal deal's buyer cannot be edited.** A handed-over deal's buyer is what
+   the lending team was given; a withdrawn deal's is history.
+4. **`event_type="deal_buyer_changed"`** on a `deal` history row, with the changed
+   field names in `details`. A `buyer` dimension would need a change to
+   `history-row.md` §2, which is Developer 1's.
+5. **The handover guard is written but currently refuses everything.** It reports
+   *why* — and while Developer 4's 0015 is missing, the reason is "the background
+   check is not recorded yet". "Not recorded" is never treated as "clear": that
+   would hand a deal to the lending team on the strength of a column that does not
+   exist. `allowed_stage_moves` omits the move, so the screen explains instead of
+   offering a button that 409s.
+6. **Sample data stops at the honest state.** Architecture §3.9 wants one of company
+   B's deals *handed over*, which no deal can legitimately reach yet, and company
+   C's blocked *because its check is flagged*, which is the same missing column.
+   Writing those stages directly would put rows in the database that the service
+   would never have produced, with no history behind them. Both of B's deals stop at
+   `GATHERING_PAPERWORK` with their buyers recorded; C's is `OPEN`. Phase 4 finishes
+   this when 0015 lands.
+
+### Environment findings (not code, but they cost time)
+
+1. **The suite cannot run in the app container without the frontend mounted.**
+   `tests/contract/test_openapi_artifact_is_current.py` resolves the repo root from
+   the backend package, so inside the container it looks for `/frontend/openapi.json`
+   and only `./backend` is mounted. Three tests fail for that reason alone. I mount
+   `./frontend:/frontend:ro` in a local compose override; a host run never sees it.
+2. **The committed `openapi.json` embeds `info.title`, which comes from `APP_NAME`.**
+   `backend/.env` here sets "Aner Settlement Platform" while the committed artifact
+   holds the `Settings` default "Business Platform", so the artifact test fails on a
+   title, and regenerating naively would commit a title that breaks the test for
+   everyone whose `.env` differs. I generate with `APP_NAME` pinned to the default.
+   **Worth raising with Developer 1** (L1-14 owns regeneration): an artifact that
+   embeds an environment-specific value is a trap for whoever regenerates next.
+3. The artifact is **compact JSON**, not indented — regenerate exactly the way
+   `pnpm generate:api` does, or the diff is 10,000 lines instead of one.
+
+### Verification
+
+- 47 new tests pass; route-authorisation suites pass (338) with a row and a refusal
+  test for each of the five new routes.
+- `ruff` clean on every Phase 2 file; `lint-imports` 19 kept, 0 broken.
+- `alembic heads`: one revision (`onboarding_0018_deal_buyer`).
+- Frontend: typecheck clean, `lint` 0 errors, 78 tests pass, `build` succeeds.
+- `openapi.json` and `schema.ts` regenerated and current (contract test passes).

@@ -856,6 +856,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/exporters/{company_id}/deals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a company's deals
+         * @description Newest first. `stage` may be repeated to filter to several stages; omitted, every stage is returned, including withdrawn and handed-over deals — a company's deal history is part of its record.
+         */
+        get: operations["list_company_deals_api_v1_onboarding_exporters__company_id__deals_get"];
+        put?: never;
+        /**
+         * Open a deal on a company
+         * @description Opens a deal at `OPEN` and sets the company's conversation to `READY_NOW` in the same transaction (architecture §3.3). A company may have any number of deals.
+         *
+         *     The stage is not a field on this request: a deal always starts at `OPEN`, and accepting one would let a caller skip every stage guard.
+         */
+        post: operations["open_deal_api_v1_onboarding_exporters__company_id__deals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one deal, its buyer, and the moves allowed from here
+         * @description `allowed_stage_moves` is what **this** deal may do next, as data, so the screen does not keep its own copy of the stage graph (§7.5). A handover that is legal by the graph but blocked by assumption A5's guard is absent from that list, and `handover_blocked_reason` says why.
+         */
+        get: operations["get_deal_api_v1_onboarding_deals__deal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a deal to another stage
+         * @description The only way a deal's stage changes. The move must be one the stage graph allows (deal contract §1.1); `WITHDRAWN` requires a reason (assumption A7) and every other stage refuses one.
+         *
+         *     `HANDED_OVER` additionally requires a buyer and assumption A5's guard — the company a `CUSTOMER` with a `CLEAR` background check. That check is Developer 4's column in migration 0015, which has not landed, so every handover is currently refused with `DEAL_HANDOVER_BLOCKED` rather than being allowed on the strength of a column that does not exist.
+         */
+        post: operations["transition_deal_stage_api_v1_onboarding_deals__deal_id__transitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}/buyer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record or replace the deal's buyer
+         * @description One buyer per deal, so this replaces that one row rather than adding another (deal contract §3). `PUT` rather than `POST` for the same reason.
+         *
+         *     A buyer's problems stay on the buyer: a failed buyer check is recorded against this row and never against the company (architecture §3.5).
+         */
+        put: operations["set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/cases": {
         parameters: {
             query?: never;
@@ -1706,6 +1796,138 @@ export interface components {
             /** Counts */
             counts: boolean;
         };
+        /** DealBuyerResponse */
+        DealBuyerResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Deal Id
+             * Format: uuid
+             */
+            deal_id: string;
+            /** Name */
+            name: string;
+            /** Country */
+            country: string;
+            /** Registration Number */
+            registration_number: string | null;
+            /** Tax Id */
+            tax_id: string | null;
+            /** Contact Email */
+            contact_email: string | null;
+            /** Contact Phone */
+            contact_phone: string | null;
+        };
+        /** DealListItemResponse */
+        DealListItemResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Reference */
+            reference: string;
+            stage: components["schemas"]["DealStage"];
+            /** Buyer Name */
+            buyer_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * DealListResponse
+         * @description ``total`` is the count matching the filter, not the length of this page, so
+         *     a caller can page without a second request.
+         */
+        DealListResponse: {
+            /** Deals */
+            deals: components["schemas"]["DealListItemResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** DealResponse */
+        DealResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Reference */
+            reference: string;
+            stage: components["schemas"]["DealStage"];
+            /** Withdrawal Reason */
+            withdrawal_reason: string | null;
+            /** Handed Over At */
+            handed_over_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            buyer: components["schemas"]["DealBuyerResponse"] | null;
+            /** Allowed Stage Moves */
+            allowed_stage_moves: components["schemas"]["DealStageMoveResponse"][];
+            /** Handover Blocked Reason */
+            handover_blocked_reason: string | null;
+        };
+        /**
+         * DealStage
+         * @description Where a deal has got to — architecture §3.3 ("The deal"), and
+         *     ``docs/contracts/deal-and-buyer.md`` §1.
+         *
+         *     One thing only: whether there is a real, current financing need and how far
+         *     the paperwork has got. Not the sales conversation (``ExporterConversation``),
+         *     not whether the company is safe to lend to (Developer 4's background check),
+         *     and not whether the company met our requirements (``QualificationState``).
+         *
+         *     **Unlike the conversation gauge, any-value-to-any-value is not allowed.** A
+         *     stage is a claim about what has happened to a deal, not a judgement about a
+         *     relationship, so the moves are a fixed table (contract §1.1) and an illegal
+         *     one is refused.
+         * @enum {string}
+         */
+        DealStage: "OPEN" | "GATHERING_PAPERWORK" | "HANDED_OVER" | "WITHDRAWN";
+        /**
+         * DealStageMoveResponse
+         * @description One move the caller may make from the deal's current stage.
+         *
+         *     The screen renders these rather than holding its own copy of the stage graph
+         *     (§7.5, contract §4.1), so a rule change cannot leave a stale button behind.
+         */
+        DealStageMoveResponse: {
+            to_stage: components["schemas"]["DealStage"];
+            /** Reason Required */
+            reason_required: boolean;
+        };
         /**
          * DecidedByKind
          * @description Whether a person or a computer decided (architecture §2.6: manual
@@ -2550,6 +2772,18 @@ export interface components {
             /** Last Updated At */
             last_updated_at?: string | null;
         };
+        /**
+         * OpenDealRequest
+         * @description Open a deal on a company.
+         *
+         *     Carries no ``stage``: a deal always starts at ``OPEN`` (architecture §3.3), and
+         *     accepting a stage here would let a caller create a deal that is already handed
+         *     over, skipping every guard.
+         */
+        OpenDealRequest: {
+            /** Reference */
+            reference: string;
+        };
         /** OutcomeResponse */
         OutcomeResponse: {
             /**
@@ -2989,6 +3223,25 @@ export interface components {
             check_back_on?: string | null;
         };
         /**
+         * SetDealBuyerRequest
+         * @description Record or replace the deal's buyer. One buyer per deal, so this is an
+         *     upsert of that one row, not an add.
+         */
+        SetDealBuyerRequest: {
+            /** Name */
+            name: string;
+            /** Country */
+            country: string;
+            /** Registration Number */
+            registration_number?: string | null;
+            /** Tax Id */
+            tax_id?: string | null;
+            /** Contact Email */
+            contact_email?: string | null;
+            /** Contact Phone */
+            contact_phone?: string | null;
+        };
+        /**
          * SetMarkerRequest
          * @description Set or clear the company's commercial marker (company-record contract
          *     §3.3). `reason` is required for `PAUSED` and `ENDED`, optional when
@@ -3043,6 +3296,16 @@ export interface components {
          * @enum {string}
          */
         TransactionStatus: "INITIATED" | "VALIDATED" | "UNDER_REVIEW" | "APPROVED" | "FUNDED" | "DIGITAL_ASSET_SETTLED" | "SETTLING" | "SETTLED" | "RECONCILED" | "VALIDATION_FAILED" | "BLOCKED" | "DECLINED" | "FAILED" | "RECALLED_VIA_COMPENSATION";
+        /**
+         * TransitionDealStageRequest
+         * @description Move a deal's stage. ``reason`` is required for ``WITHDRAWN`` (A7) and
+         *     refused for anything else.
+         */
+        TransitionDealStageRequest: {
+            to_stage: components["schemas"]["DealStage"];
+            /** Reason */
+            reason?: string | null;
+        };
         /**
          * TransitionSource
          * @description What caused a case state transition (four exact values).
@@ -5799,6 +6062,283 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid request body; RESCHEDULED with no next due date (FOLLOW_UP_RESCHEDULE_NEEDS_DATE); a next due date in the past (FOLLOW_UP_RESCHEDULE_IN_PAST); or a next due date on an outcome that is not RESCHEDULED (FOLLOW_UP_NEXT_DUE_NOT_ALLOWED) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_company_deals_api_v1_onboarding_exporters__company_id__deals_get: {
+        parameters: {
+            query?: {
+                stage?: components["schemas"]["DealStage"][] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_deal_api_v1_onboarding_exporters__company_id__deals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenDealRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or empty reference */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_deal_api_v1_onboarding_deals__deal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transition_deal_stage_api_v1_onboarding_deals__deal_id__transitions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransitionDealStageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The deal is already terminal, or the handover guard is unmet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The move is not allowed from this stage, a withdrawal reason is missing, a reason was sent for a non-withdrawal, or the deal has no buyer */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDealBuyerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The deal is handed over or withdrawn */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing name, or a country that is not ISO-3166-1 alpha-2 */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -199,6 +199,17 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     #
     # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
     # (3B appends here; 3A does not.)
+    #
+    # Opening a deal, moving its stage and recording its buyer are routine CRM
+    # writes by internal staff (architecture §3.7) — the same three roles that may
+    # set the conversation gauge. Reads additionally admit DEVELOPER, which reads
+    # the CRM and writes nothing. There is no delete route for a deal and there
+    # must never be one: `WITHDRAWN` is how a deal ends (deal contract §2).
+    ("POST", f"{CRM}/exporters/{{company_id}}/deals"): STAFF,
+    ("GET", f"{CRM}/exporters/{{company_id}}/deals"): READERS,
+    ("GET", f"{CRM}/deals/{{deal_id}}"): READERS,
+    ("POST", f"{CRM}/deals/{{deal_id}}/transitions"): STAFF,
+    ("PUT", f"{CRM}/deals/{{deal_id}}/buyer"): STAFF,
 }
 
 

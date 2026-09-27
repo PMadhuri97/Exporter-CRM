@@ -955,3 +955,104 @@ class FollowUpCompletionIsImmutableError(AnerBaseException):
 
 # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
 # (3B appends here; 3A does not.)
+
+
+class DealNotFoundError(AnerBaseException):
+    """No deal with that id."""
+
+    def __init__(self, deal_id: object) -> None:
+        super().__init__(
+            detail=f"Deal {deal_id} was not found",
+            error_code="DEAL_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class DealCompanyNotFoundError(AnerBaseException):
+    """A deal was opened for a company that does not exist.
+
+    Distinct from ``DEAL_NOT_FOUND`` so the screen can say which of the two is
+    missing; the database would refuse the row anyway through
+    ``fk_deal_company_id``, and this turns that into a 404 naming the company
+    rather than a 500 carrying a Postgres message.
+    """
+
+    def __init__(self, company_id: object) -> None:
+        super().__init__(
+            detail=f"Company {company_id} was not found, so no deal can be opened for it",
+            error_code="DEAL_COMPANY_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class DealTransitionNotAllowedError(AnerBaseException):
+    """A stage move that is not in the deal contract's §1.1 table.
+
+    Unlike the conversation gauge, a deal's stages are a fixed graph: a stage is a
+    claim about what has happened to a deal, not a judgement about a relationship,
+    so an unlisted move is refused rather than recorded.
+    """
+
+    def __init__(self, deal_id: object, from_stage: object, to_stage: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} cannot move from {from_stage!s} to {to_stage!s}"
+            ),
+            error_code="DEAL_TRANSITION_NOT_ALLOWED",
+            status_code=422,
+            extensions={"from_stage": str(from_stage), "to_stage": str(to_stage)},
+        )
+
+
+class DealTerminalError(AnerBaseException):
+    """A move out of ``HANDED_OVER`` or ``WITHDRAWN``.
+
+    A deal withdrawn in error is a **new deal**, not a reopened one: a record of
+    what was decided must not be editable into a different decision (deal
+    contract §1.1). Separate from ``DEAL_TRANSITION_NOT_ALLOWED`` because the
+    answer is different — not "not that move" but "not this deal, ever again".
+    """
+
+    def __init__(self, deal_id: object, stage: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} is {stage!s} and cannot move again; open a new deal instead"
+            ),
+            error_code="DEAL_TERMINAL",
+            status_code=409,
+            extensions={"stage": str(stage)},
+        )
+
+
+class DealWithdrawalReasonRequiredError(AnerBaseException):
+    """``WITHDRAWN`` without a reason (assumption A7).
+
+    ``ck_deal_withdrawal_reason`` refuses the row as well, so this is the service
+    saying the same thing first, with the deal's id in it.
+    """
+
+    def __init__(self, deal_id: object) -> None:
+        super().__init__(
+            detail=f"Withdrawing deal {deal_id} requires a reason",
+            error_code="DEAL_WITHDRAWAL_REASON_REQUIRED",
+            status_code=422,
+        )
+
+
+class DealBuyerRequiredError(AnerBaseException):
+    """Leaving ``GATHERING_PAPERWORK`` with no buyer recorded.
+
+    A handover payload carries the buyer (architecture §3.6), so a handover
+    without one is not a handover. The buyer stays optional at ``OPEN``, since a
+    deal often starts before the buyer is known (deal contract §3).
+    """
+
+    def __init__(self, deal_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} has no buyer recorded, and the buyer's details are "
+                "part of what the lending team is given"
+            ),
+            error_code="DEAL_BUYER_REQUIRED",
+            status_code=422,
+        )

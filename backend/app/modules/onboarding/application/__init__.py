@@ -73,4 +73,6 @@ __all__ += ["FollowUpService"]
 
 # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
 # (3B appends here; 3A does not.)
-__all__ += []
+from app.modules.onboarding.application.deal_service import DealService
+
+__all__ += ["DealService"]

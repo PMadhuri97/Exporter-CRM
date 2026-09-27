@@ -149,3 +149,22 @@ export interface FollowUpListParams {
 
 // ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
 // (3B appends here; 3A does not.)
+export type Deal = Schemas['DealResponse'];
+export type DealListItem = Schemas['DealListItemResponse'];
+export type DealList = Schemas['DealListResponse'];
+export type OpenDealRequest = Schemas['OpenDealRequest'];
+export type TransitionDealStageRequest = Schemas['TransitionDealStageRequest'];
+export type SetDealBuyerRequest = Schemas['SetDealBuyerRequest'];
+export type DealBuyer = Schemas['DealBuyerResponse'];
+/** One move this user may make from a deal's current stage — served by the API so
+ * no screen keeps its own copy of the stage graph (§7.5). */
+export type DealStageMove = Schemas['DealStageMoveResponse'];
+/** OPEN -> GATHERING_PAPERWORK -> HANDED_OVER, or WITHDRAWN. Both ends terminal. */
+export type DealStage = Schemas['DealStage'];
+
+export interface DealListParams {
+  /** Repeatable: several stages narrow the list to those stages. */
+  stages?: DealStage[];
+  limit?: number;
+  offset?: number;
+}

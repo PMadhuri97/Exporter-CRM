@@ -162,4 +162,8 @@ __all__ += ["FollowUpCompletion", "FollowUpOutcome"]
 
 # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
 # (3B appends here; 3A does not.)
-__all__ += []
+from app.modules.onboarding.domain.entities.deal import Deal
+from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
+from app.modules.onboarding.domain.entities.deal_enums import DealStage
+
+__all__ += ["Deal", "DealBuyer", "DealStage"]
