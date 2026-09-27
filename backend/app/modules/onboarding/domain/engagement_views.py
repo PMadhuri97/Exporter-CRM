@@ -6,15 +6,23 @@ Pure data structures — no I/O, no session — the same pattern as
 ``ExporterContactActivityService`` assembles the pending view; the company
 detail view (``ExporterProfileDetail``, Developer 2) embeds the contact and
 activity views because the company page shows them.
+``ConversationService`` assembles ``ConversationView``.
+
+Phase 2 adds **no** view here: its due/overdue read models live in its own
+``domain/follow_up_views.py`` (phase agreement §6.3).
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
-from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
+from app.modules.onboarding.domain.entities.engagement_enums import (
+    ExporterActivityType,
+    ExporterConversation,
+)
+from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
 
 
 @dataclass(frozen=True)
@@ -72,7 +80,46 @@ class PendingActivityView:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class ConversationMove:
+    """One conversation move the rules allow, as the server serves it.
+
+    Architecture §7.5: "The frontend fetches the allowed journey, gauge and deal
+    moves for the current user instead of keeping hand-copied tables." This is
+    that answer for the conversation gauge, so no screen holds a copy of the
+    values or of the `NOT_NOW` rule.
+
+    `reason_required` and `check_back_required` come from the same table
+    `ConversationService.set_conversation` enforces, so a screen asking what it
+    may do and the server judging what it did can never disagree.
+    """
+
+    to: ExporterConversation
+    reason_required: bool
+    check_back_required: bool
+
+
+@dataclass(frozen=True)
+class ConversationView:
+    """The conversation gauge as the Conversation panel reads it.
+
+    Carries `journey` because the panel has to explain an empty `allowed_moves`
+    to a person: on a `LEAD` the gauge does not apply yet (assumption A4), which
+    is a different sentence from "your role may not move it". The list itself is
+    empty in both cases on purpose — the *screen* never re-derives which — so the
+    journey is here as the thing worth saying, not as an input to a rule.
+    """
+
+    company_id: uuid.UUID
+    conversation: ExporterConversation
+    check_back_on: date | None
+    journey: ExporterJourney
+    allowed_moves: tuple[ConversationMove, ...]
+
+
 __all__ = [
+    "ConversationMove",
+    "ConversationView",
     "ExporterActivityView",
     "ExporterContactView",
     "PendingActivityView",

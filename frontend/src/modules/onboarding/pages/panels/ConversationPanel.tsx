@@ -1,9 +1,25 @@
 /**
- * Contacts and the activity log — **owner: Developer 3** (architecture §9.3).
+ * The conversation: the gauge, contacts, and the activity log — **owner:
+ * Developer 3A** (architecture §9.3, L3-03, L3-04a, L3-11a-i).
  *
- * The sales relationship: who we talk to, and what was said or done. The
- * conversation gauge itself (`NOT_CONTACTED` … `READY_NOW`) is not built yet;
- * when it is, it belongs here.
+ * The sales relationship: how the conversation is going, who we talk to, and what
+ * was said or done.
+ *
+ * **This file is written once, in Phase 1, and closed** (phase agreement §6.3).
+ * Phase 2's only business on this screen is `components/OpenDealPrompt.tsx`, its
+ * own file, and the same is true of whoever lands seam S2's button. That is why the
+ * gauge section below delegates to two components rather than rendering the prompt
+ * inline: a panel that stays closed has to put everything still-open behind a
+ * seam.
+ *
+ * **The gauge query lives here, not in the shell.** The shell hands this panel
+ * contacts and activities as props — see below for why that is deliberate and must
+ * stay — but it knows nothing about the conversation gauge, and Developer 3 does
+ * not edit `ExporterDetailPage.tsx`. So the gauge calls its own hook here. That
+ * costs nothing the props were buying: the profile, contacts and activities still
+ * start together on the first render, and the gauge is a fourth request alongside
+ * them rather than a second round trip after them, because this panel is mounted
+ * with the rest of the page.
  *
  * `AddContactForm`, `ContactRow`, `ActivityForm` and `ActivityRow` were
  * defined inline in `ExporterDetailPage.tsx` and moved here whole, because
@@ -20,14 +36,20 @@
  * existing page test catches it: it awaits the profile heading and then
  * expects the contacts empty state synchronously.
  *
- * So the query calls and the activity pagination state stay in the shell,
- * exactly where the page already had them, and this panel is presentational.
- * The trade is deliberate: identical behaviour now, at the cost of the shell
- * still holding some of Developer 3's state until the two of you decide to
- * move it — see the phase report's note on U1.
+ * So the contact and activity query calls and the pagination state stay in the
+ * shell, exactly where the page already had them, and this panel is presentational
+ * **for those two**. The trade is deliberate: identical behaviour now, at the cost
+ * of the shell still holding some of Developer 3's state until the two of you decide
+ * to move it — see the phase report's note on U1.
  *
- * Markup, classes, toasts and the `data-extension` hooks are byte-identical to
- * what the page rendered before.
+ * The gauge is the exception, and not an inconsistency: the shell was never given
+ * that query to hold, and adding it there would mean editing a file Developer 3 does
+ * not own to buy timing the gauge does not need. Nothing renders before the gauge
+ * resolves except the gauge's own skeleton.
+ *
+ * Markup, classes, toasts and the `data-extension` hooks for contacts and
+ * activities are byte-identical to what the page rendered before; the gauge
+ * section is new.
  */
 
 import {
@@ -45,14 +67,21 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { EmptySection, FormPanel } from '@/components';
-import { formatDateTime, humanize } from '@/lib/format';
+import { formatDate, formatDateTime, humanize } from '@/lib/format';
 
-import { useAddExporterContact, useLogExporterActivity } from '../../hooks';
+import { ConversationGaugeControl, OpenDealPrompt } from '../../components';
+import {
+  useAddExporterContact,
+  useConversationHistory,
+  useExporterConversation,
+  useLogExporterActivity,
+} from '../../hooks';
 import type {
   AddExporterContactRequest,
   ExporterActivity,
   ExporterActivityType,
   ExporterContact,
+  HistoryEntry,
   LogExporterActivityRequest,
 } from '../../types';
 
@@ -324,6 +353,131 @@ function ActivityRow({ activity }: { activity: ExporterActivity }) {
   );
 }
 
+function ConversationHistoryRow({ entry }: { entry: HistoryEntry }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border py-2.5 last:border-b-0">
+      <p className="text-sm text-ink">
+        {entry.from_value ? `${humanize(entry.from_value)} → ` : ''}
+        <span className="font-medium">{humanize(entry.to_value)}</span>
+      </p>
+      {/* The check-back date the move set, as the server recorded it. Read from
+          `details` rather than re-derived: the history row is the record of what
+          was promised at the time, which the company's current date is not. */}
+      {typeof entry.details?.check_back_on === 'string' && (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-status-review">
+          <CalendarClock size={12} /> Check back {formatDate(entry.details.check_back_on)}
+        </span>
+      )}
+      <span className="ml-auto text-xs text-ink-faint">
+        {formatDateTime(entry.occurred_at)}
+      </span>
+      {entry.reason && (
+        <p className="w-full text-sm text-ink-muted">{entry.reason}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The gauge, its check-back date, its moves and its history.
+ *
+ * Every rule is the server's. This renders `allowed_moves` as served and shows
+ * `journey` when that list is empty, because "the gauge does not apply to a lead
+ * yet" and "your role may not move it" are different sentences and the screen must
+ * not guess which — the server tells it the journey, so it can say the true one.
+ */
+function ConversationSection({
+  customerId,
+  isStaff,
+}: {
+  customerId: string;
+  isStaff: boolean;
+}) {
+  const conversation = useExporterConversation(customerId);
+  const history = useConversationHistory(customerId);
+
+  return (
+    <section
+      className="rounded-lg border border-border bg-surface p-5 shadow-card xl:col-span-2"
+      data-extension="conversation-gauge"
+    >
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-ink">Conversation</h2>
+          <p className="mt-0.5 text-sm text-ink-muted">
+            How the sales conversation is going — on its own, beside the journey.
+          </p>
+        </div>
+        {conversation.data && (
+          <span
+            className="inline-flex items-center rounded-full bg-surface-sunken px-2.5 py-1 text-sm font-medium text-ink"
+            data-testid="conversation-chip"
+          >
+            {humanize(conversation.data.conversation)}
+          </span>
+        )}
+      </div>
+
+      {conversation.isLoading ? (
+        <div className="h-20 animate-pulse rounded bg-surface-sunken" />
+      ) : conversation.isError ? (
+        <p className="text-sm text-status-failed">
+          Could not load the conversation. {conversation.error.message}
+        </p>
+      ) : conversation.data ? (
+        <div className="space-y-4">
+          {conversation.data.check_back_on && (
+            <p className="inline-flex items-center gap-1.5 text-sm font-medium text-status-review">
+              <CalendarClock size={14} /> Check back on{' '}
+              {formatDate(conversation.data.check_back_on)}
+            </p>
+          )}
+
+          {conversation.data.conversation === 'READY_NOW' && (
+            <OpenDealPrompt customerId={customerId} isStaff={isStaff} />
+          )}
+
+          {isStaff && conversation.data.allowed_moves.length === 0 ? (
+            <p className="text-sm text-ink-muted">
+              {conversation.data.journey === 'LEAD'
+                ? 'The conversation gauge applies once this company is a prospect.'
+                : 'No conversation moves are available to you.'}
+            </p>
+          ) : (
+            <ConversationGaugeControl
+              customerId={customerId}
+              moves={conversation.data.allowed_moves}
+            />
+          )}
+
+          <div className="border-t border-border pt-3">
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+              History
+            </h3>
+            {history.isLoading ? (
+              <div className="h-12 animate-pulse rounded bg-surface-sunken" />
+            ) : history.isError ? (
+              <p className="text-sm text-status-failed">
+                Could not load the conversation history. {history.error.message}
+              </p>
+            ) : history.data && history.data.entries.length > 0 ? (
+              <div>
+                {history.data.entries.map((entry) => (
+                  <ConversationHistoryRow key={entry.id} entry={entry} />
+                ))}
+              </div>
+            ) : (
+              <EmptySection>
+                No conversation changes recorded yet.
+              </EmptySection>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function ConversationPanel({
   customerId,
   contacts,
@@ -359,6 +513,11 @@ export function ConversationPanel({
 
   return (
     <div className="grid gap-5 xl:grid-cols-[0.9fr_1.6fr]">
+      {/* The gauge first: it is the answer to "how is this going", which is what
+          someone opening this tab came for. Contacts and the activity log are the
+          evidence behind it. */}
+      <ConversationSection customerId={customerId} isStaff={isStaff} />
+
       <section className="rounded-lg border border-border bg-surface p-5 shadow-card" data-extension="contacts">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>

@@ -508,6 +508,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/exporters/{customer_id}/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A company's conversation gauge
+         * @description How the sales conversation is going (NOT_CONTACTED … READY_NOW), the check-back date if it is NOT_NOW, and the moves the signed-in user may make. The moves are served rather than derived: there is no transition table, because any value may follow any other, but which moves need a reason or a check-back date is a rule, and the server owns it. Empty for a role that may not set the conversation, and empty on a LEAD — the gauge applies from PROSPECT onward.
+         */
+        get: operations["get_exporter_conversation_api_v1_onboarding_exporters__customer_id__conversation_get"];
+        put?: never;
+        /**
+         * Move a company's conversation gauge
+         * @description Any value may follow any other — a conversation is a judgement, not a pipeline — except a move to the value already held, which records nothing (409). Moving to NOT_NOW needs a reason **and** a check-back date of today or later; moving away from NOT_NOW clears that date. A check-back date on any other move is refused rather than ignored. The gauge applies from PROSPECT onward, so a move on a LEAD is refused (409). Every change is recorded in the company's history with the signed-in user as the actor, in the same transaction as the change.
+         */
+        post: operations["set_exporter_conversation_api_v1_onboarding_exporters__customer_id__conversation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/conversation/moves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The conversation moves the signed-in user may make
+         * @description The allowed-moves route (architecture §7.5): the frontend fetches the moves for the current user instead of keeping a hand-copied table. The same answer as the `allowed_moves` field of GET /conversation, from the same service method, for a caller that wants only this.
+         */
+        get: operations["list_exporter_conversation_moves_api_v1_onboarding_exporters__customer_id__conversation_moves_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/exporters/{customer_id}/screening-review": {
         parameters: {
             query?: never;
@@ -766,6 +810,46 @@ export interface paths {
         get: operations["list_deal_history_api_v1_onboarding_deals__deal_id__history_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/follow-ups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What we owe exporters next, across every company
+         * @description Two lists. **Follow-ups** are activities with a due date: outstanding while no completion row points at them, overdue while outstanding and past due, and done once one does — derived from the completion, never from a status column on the activity, which is append-only. **Check-backs** are companies parked at NOT_NOW, due to be picked up on their check-back date; they are not completable and are dealt with by moving the conversation gauge. Soonest-due first, so overdue items sort to the front. Visible to the whole team (decision D2): pass `actor_id` to narrow the list to one person, which filters and never gates.
+         */
+        get: operations["list_follow_ups_api_v1_onboarding_follow_ups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/follow-ups/{activity_id}/completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that a follow-up was dealt with
+         * @description Inserts a locked record; it never updates the activity, which is append-only and has no place to mark. One completion per follow-up: a second is refused, never an upsert, because a correction is a new activity plus its own completion. RESCHEDULED needs a future `next_due_at` and also logs a new follow-up for that moment, in the same transaction — the original keeps the date it was promised for. Any other outcome carrying a `next_due_at` is refused rather than ignored. Who completed it comes from the signed-in user.
+         */
+        post: operations["complete_follow_up_api_v1_onboarding_follow_ups__activity_id__completion_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1318,6 +1402,34 @@ export interface components {
          */
         CaseType: "KYC" | "KYB";
         /**
+         * CheckBackResponse
+         * @description A company parked at `NOT_NOW`, due to be picked up on `check_back_on`.
+         *
+         *     Not completable. It is dealt with by moving the conversation gauge —
+         *     `POST /onboarding/exporters/{customer_id}/conversation` — which clears the date in
+         *     the same transaction. There is deliberately no completion route for this.
+         */
+        CheckBackResponse: {
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            /** Exporter Display Name */
+            exporter_display_name: string | null;
+            conversation: components["schemas"]["ExporterConversation"];
+            /**
+             * Check Back On
+             * Format: date
+             */
+            check_back_on: string;
+            /**
+             * Is Overdue
+             * @description The check-back date has passed. A check-back due today is due, not late.
+             */
+            is_overdue: boolean;
+        };
+        /**
          * CheckType
          * @description A single unit of verification work requested from a provider.
          *
@@ -1328,6 +1440,86 @@ export interface components {
          * @enum {string}
          */
         CheckType: "IDENTITY" | "DOCUMENT" | "LIVENESS" | "SANCTIONS" | "PEP" | "ADVERSE_MEDIA" | "WATCHLIST";
+        /**
+         * CompleteFollowUpRequest
+         * @description Record that a follow-up was dealt with.
+         *
+         *     No `actor_id`: who completed it comes from the login session, never from this body
+         *     (architecture §7.5). No `activity_id` either — it is the path parameter, so a body
+         *     cannot disagree with the URL about which follow-up is being completed.
+         */
+        CompleteFollowUpRequest: {
+            outcome: components["schemas"]["FollowUpOutcome"];
+            /**
+             * Note
+             * @description What happened, in your words.
+             */
+            note?: string | null;
+            /**
+             * Next Due At
+             * @description When the follow-up was moved to. Required for RESCHEDULED and must be in the future; refused — not ignored — on any other outcome. Rescheduling also logs a new follow-up for this moment: the original activity is append-only and keeps the date it was promised for.
+             */
+            next_due_at?: string | null;
+        };
+        /**
+         * ConversationMoveListResponse
+         * @description Just the allowed moves, for a caller that wants nothing else.
+         */
+        ConversationMoveListResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            conversation: components["schemas"]["ExporterConversation"];
+            /** Allowed Moves */
+            allowed_moves: components["schemas"]["ConversationMoveResponse"][];
+        };
+        /**
+         * ConversationMoveResponse
+         * @description One move the signed-in user may make on this company's gauge.
+         *
+         *     Served, never derived on the client (architecture §7.5). `reason_required`
+         *     and `check_back_required` come from the same rule table the service enforces,
+         *     so the screen and the server cannot drift apart.
+         */
+        ConversationMoveResponse: {
+            to: components["schemas"]["ExporterConversation"];
+            /**
+             * Reason Required
+             * @description Whether this move is refused without a reason.
+             */
+            reason_required: boolean;
+            /**
+             * Check Back Required
+             * @description Whether this move is refused without a check-back date.
+             */
+            check_back_required: boolean;
+        };
+        /**
+         * ConversationResponse
+         * @description The conversation gauge, its check-back date, and what may be done to it.
+         */
+        ConversationResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            conversation: components["schemas"]["ExporterConversation"];
+            /**
+             * Check Back On
+             * @description The date a NOT_NOW conversation is to be picked up again. Null unless the conversation is NOT_NOW.
+             */
+            check_back_on: string | null;
+            /** @description The company's journey. Present because the gauge applies from PROSPECT onward: on a LEAD there are no moves for that reason rather than because of the caller's role. */
+            journey: components["schemas"]["ExporterJourney"];
+            /**
+             * Allowed Moves
+             * @description The moves this caller may make now. Empty for a role that may not set the conversation, and empty on a LEAD.
+             */
+            allowed_moves: components["schemas"]["ConversationMoveResponse"][];
+        };
         /**
          * CreateCaseRequest
          * @description Create an onboarding case. The case is always created in `DRAFT`.
@@ -1656,6 +1848,37 @@ export interface components {
             is_primary_contact: boolean;
         };
         /**
+         * ExporterConversation
+         * @description How the sales conversation is going — architecture §3.3, and
+         *     `docs/contracts/engagement.md` §1.
+         *
+         *     One thing only. Not the journey (`ExporterJourney`), not whether the company
+         *     met our requirements (`QualificationState`), not whether it is safe to lend
+         *     to (Developer 4's background check), and not a commercial pause
+         *     (`ExporterMarker`). Collapsing those into one line is what the retired
+         *     ten-status `ExporterLifecycleStatus` did.
+         *
+         *     **Any value may follow any other** (contract §1.1). A conversation is a
+         *     judgement, not a pipeline: someone who said `NOT_NOW` in March can be
+         *     `READY_NOW` in April without passing back through `INTERESTED`. So there is
+         *     no transition table here, and none in the frontend — the server serves the
+         *     moves a given user may make (contract §3.1). The only refusal is a move to
+         *     the value already held.
+         *
+         *     Two rules deliberately do **not** live in this enum, and must not be
+         *     inferred from the order of its members:
+         *
+         *     * The gauge applies **from `PROSPECT` onward** (assumption A4). A `LEAD`
+         *       reads `NOT_CONTACTED` because the column is `NOT NULL`, not because
+         *       anyone judged its conversation.
+         *     * `NOT_NOW` carries a reason **and** a check-back date
+         *       (`exporter_profile.conversation_check_back_on`).
+         *
+         *     Both belong to `ConversationService`, the column's only writer.
+         * @enum {string}
+         */
+        ExporterConversation: "NOT_CONTACTED" | "REACHING_OUT" | "SPOKE_TO_THEM" | "INTERESTED" | "NOT_NOW" | "READY_NOW";
+        /**
          * ExporterJourney
          * @description The company's main journey (architecture §3.2): forward only, and never
          *     moved by hand — each move follows from a qualification outcome or a
@@ -1870,6 +2093,174 @@ export interface components {
          * @enum {string}
          */
         ExporterSource: "MANUAL" | "SALES" | "REFERRAL" | "RXIL" | "PARTNER" | "API" | "BROKER" | "EVENT" | "EXISTING_CUSTOMER";
+        /**
+         * FollowUpCompletionResponse
+         * @description A completion, as recorded. Every field comes from the completion row and none
+         *     from the activity — nothing may be written to an activity after it is logged.
+         */
+        FollowUpCompletionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Activity Id
+             * Format: uuid
+             */
+            activity_id: string;
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            outcome: components["schemas"]["FollowUpOutcome"];
+            /** Note */
+            note: string | null;
+            /** Next Due At */
+            next_due_at: string | null;
+            /**
+             * Completed By
+             * @description Who completed it, from their login session. Null means the platform itself acted.
+             */
+            completed_by?: string | null;
+            /**
+             * Completed At
+             * Format: date-time
+             */
+            completed_at: string;
+        };
+        /**
+         * FollowUpCompletionSummary
+         * @description The completion as it appears inside a list row: the same facts without
+         *     repeating `activity_id` and `customer_id`, which the row already carries.
+         */
+        FollowUpCompletionSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            outcome: components["schemas"]["FollowUpOutcome"];
+            /** Note */
+            note: string | null;
+            /** Next Due At */
+            next_due_at: string | null;
+            /** Completed By */
+            completed_by: string | null;
+            /**
+             * Completed At
+             * Format: date-time
+             */
+            completed_at: string;
+        };
+        /**
+         * FollowUpListResponse
+         * @description The Follow-ups screen's answer: both lists, each with its own total.
+         *
+         *     Totals are the counts matching the same filters, not the lengths of the lists, so
+         *     a caller can tell whether there is more without asking for it — the convention
+         *     `HistoryListResponse` uses.
+         */
+        FollowUpListResponse: {
+            /** Follow Ups */
+            follow_ups: components["schemas"]["FollowUpResponse"][];
+            /** Follow Ups Total */
+            follow_ups_total: number;
+            /** Check Backs */
+            check_backs: components["schemas"]["CheckBackResponse"][];
+            /** Check Backs Total */
+            check_backs_total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * FollowUpOutcome
+         * @description How a follow-up was dealt with — ``docs/contracts/engagement.md`` §5.3.
+         *
+         *     Lives here rather than in ``engagement_enums.py`` because that file is Phase
+         *     1's and the phase agreement (§6.3) gives no file to both phases. Phase 1 created
+         *     the Postgres type ``onboarding.follow_up_outcome_enum`` and no Python enum; this
+         *     is it.
+         *
+         *     ``RESCHEDULED`` is the only value that carries ``next_due_at``, and it is not a
+         *     way to move a due date: the activity keeps the date it was promised for, and
+         *     ``FollowUpService`` logs a **new** activity for the new one.
+         * @enum {string}
+         */
+        FollowUpOutcome: "DONE" | "NO_ANSWER" | "RESCHEDULED" | "CANCELLED";
+        /**
+         * FollowUpResponse
+         * @description One follow-up: an activity with a due date, plus its completion if it has
+         *     one.
+         */
+        FollowUpResponse: {
+            /**
+             * Activity Id
+             * Format: uuid
+             */
+            activity_id: string;
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            /**
+             * Exporter Display Name
+             * @description The company's own name; null if it was created without one.
+             */
+            exporter_display_name?: string | null;
+            activity_type: components["schemas"]["ExporterActivityType"];
+            /** Subject */
+            subject: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Actor Id
+             * @description Who logged the follow-up — not who completed it.
+             */
+            actor_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Due At
+             * Format: date-time
+             */
+            due_at: string;
+            /**
+             * Is Overdue
+             * @description Outstanding and past due. Always false once a completion exists: a follow-up dealt with late is done, not overdue.
+             */
+            is_overdue: boolean;
+            /** @description OUTSTANDING, OVERDUE or DONE. Derived from whether a completion exists — there is no status column on an activity, and there must not be one. */
+            state: components["schemas"]["FollowUpState"];
+            /** @description Null exactly when the follow-up is outstanding. */
+            completion?: components["schemas"]["FollowUpCompletionSummary"] | null;
+        };
+        /**
+         * FollowUpState
+         * @description Where a follow-up stands. **Derived, never stored** — architecture §9.3's
+         *     first "Watch out for": there is no status column on an activity, and adding one
+         *     would mean updating an append-only row.
+         *
+         *     The rules, from ``docs/contracts/engagement.md`` §5.6 and this prompt's §7.1:
+         *
+         *     * ``OUTSTANDING`` — the activity has a ``due_at`` and **no** completion row.
+         *     * ``OVERDUE`` — outstanding, and ``due_at`` is in the past. A narrowing of
+         *       ``OUTSTANDING``, not a value beside it: everything overdue is also
+         *       outstanding, which is why ``is_overdue`` is a flag on the row and this enum is
+         *       only what a caller may *filter* by.
+         *     * ``DONE`` — a completion row exists, whatever its outcome. ``CANCELLED`` and
+         *       ``NO_ANSWER`` are dealt-with, not outstanding: someone decided, and that
+         *       decision is the record.
+         * @enum {string}
+         */
+        FollowUpState: "OUTSTANDING" | "OVERDUE" | "DONE";
         /** GatewayHealthResponse */
         GatewayHealthResponse: {
             /**
@@ -2575,6 +2966,27 @@ export interface components {
             user_id: string;
             /** Level Name */
             level_name: string;
+        };
+        /**
+         * SetConversationRequest
+         * @description A conversation move.
+         *
+         *     No `actor_id`: who did it comes from the login session, never from the body
+         *     (architecture §7.5). No `from` value either — the server reads the current
+         *     value under a row lock, so a client cannot assert what it is moving from.
+         */
+        SetConversationRequest: {
+            conversation: components["schemas"]["ExporterConversation"];
+            /**
+             * Reason
+             * @description Why, in your words. Required for NOT_NOW; recorded in the company's history whenever given.
+             */
+            reason?: string | null;
+            /**
+             * Check Back On
+             * @description When to pick this conversation back up. Required for NOT_NOW, today or later. Refused — not ignored — on any other move.
+             */
+            check_back_on?: string | null;
         };
         /**
          * SetMarkerRequest
@@ -4333,6 +4745,171 @@ export interface operations {
             };
         };
     };
+    get_exporter_conversation_api_v1_onboarding_exporters__customer_id__conversation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_exporter_conversation_api_v1_onboarding_exporters__customer_id__conversation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetConversationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The company is a LEAD (CONVERSATION_NOT_AVAILABLE), or the move is to the value already held (INVALID_CONVERSATION_TRANSITION) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request body; NOT_NOW without a reason; NOT_NOW without a check-back date (CONVERSATION_CHECK_BACK_REQUIRED); a check-back date in the past (CONVERSATION_CHECK_BACK_IN_PAST); or a check-back date on a move that is not to NOT_NOW (CONVERSATION_CHECK_BACK_NOT_ALLOWED) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_exporter_conversation_moves_api_v1_onboarding_exporters__customer_id__conversation_moves_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationMoveListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_screening_review_api_v1_onboarding_exporters__customer_id__screening_review_get: {
         parameters: {
             query?: never;
@@ -5107,6 +5684,124 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    list_follow_ups_api_v1_onboarding_follow_ups_get: {
+        parameters: {
+            query?: {
+                /** @description OUTSTANDING (no completion), OVERDUE (outstanding and past due) or DONE (a completion exists). Omit for all three. */
+                state?: components["schemas"]["FollowUpState"] | null;
+                /** @description One company only. */
+                customer_id?: string | null;
+                /** @description Whoever logged the follow-up. Narrows; never gates. */
+                actor_id?: string | null;
+                activity_type?: components["schemas"]["ExporterActivityType"] | null;
+                due_before?: string | null;
+                due_after?: string | null;
+                /** @description Include companies parked at NOT_NOW. They ignore state, actor_id and activity_type, none of which applies to a company with no activity, and they ignore offset — that pages the follow-ups. `check_backs` is the first `limit` of them with a true `check_backs_total` beside it. */
+                include_check_backs?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FollowUpListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_follow_up_api_v1_onboarding_follow_ups__activity_id__completion_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                activity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteFollowUpRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FollowUpCompletionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such activity (FOLLOW_UP_NOT_FOUND) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The activity has no due date, so it is not a follow-up (ACTIVITY_IS_NOT_A_FOLLOW_UP); or it was already completed (FOLLOW_UP_ALREADY_COMPLETED) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request body; RESCHEDULED with no next due date (FOLLOW_UP_RESCHEDULE_NEEDS_DATE); a next due date in the past (FOLLOW_UP_RESCHEDULE_IN_PAST); or a next due date on an outcome that is not RESCHEDULED (FOLLOW_UP_NEXT_DUE_NOT_ALLOWED) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

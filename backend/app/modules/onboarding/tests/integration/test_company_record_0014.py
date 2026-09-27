@@ -40,7 +40,12 @@ from app.modules.onboarding.domain.entities.exporter_profile import ExporterProf
 from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationOutcomeValue
 from app.modules.onboarding.exceptions import DuplicatePanError, InvalidMarkerTransitionError
-from app.modules.onboarding.sample_data import COMPANIES, SAMPLE_NAMESPACE, load_sample_data
+from app.modules.onboarding.sample_data import (
+    COMPANIES,
+    SAMPLE_NAMESPACE,
+    SECTION_9_3_SLUG,
+    load_sample_data,
+)
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import insert_company
 from app.platform.authentication.models import UserRole
@@ -691,6 +696,10 @@ async def test_sample_data_is_deterministic_and_safe_to_run_again():
     await load_sample_data()
     second = await load_sample_data()
 
+    # The per-company rows. `SECTION_9_3_SLUG` is not a company — the three §9.3
+    # seeders the seam commit wired in each span every company, so their counts
+    # have no per-company row to sit in — and it is asserted separately below.
+    per_company = {slug: c for slug, c in second.items() if slug != SECTION_9_3_SLUG}
     assert all(
         changes == {
             "created": False,
@@ -699,8 +708,17 @@ async def test_sample_data_is_deterministic_and_safe_to_run_again():
             "activities_added": 0,
             "qualification_recorded": False,
         }
-        for changes in second.values()
-    ), second
+        for changes in per_company.values()
+    ), per_company
+    assert set(per_company) == {c.slug for c in COMPANIES}
+    # Converges too: every §9.3 seeder reports nothing changed on a second run.
+    # They report zero on a *first* run as well while their owners have not filled
+    # them in, which is why this asserts the keys are present and not merely zero.
+    assert second[SECTION_9_3_SLUG] == {
+        "conversation_moved": 0,
+        "follow_ups_completed": 0,
+        "deals_created": 0,
+    }, second[SECTION_9_3_SLUG]
     assert all(c.customer_id == uuid.uuid5(SAMPLE_NAMESPACE, c.slug) for c in COMPANIES)
 
 

@@ -1,17 +1,28 @@
 /**
- * Contacts and the activity log — **owner: Developer 3**.
+ * Contacts, the activity log and the conversation gauge — **owner: Developer 3**.
  *
- * These are the relationship's own records: who we talk to, and what was said
- * or done. They hang off the company rather than any one verification pass,
- * which is why they sit beside the conversation gauge in Developer 3's area
+ * These are the relationship's own records: who we talk to, what was said or
+ * done, and how the conversation is going. They hang off the company rather than
+ * any one verification pass, which is why they sit together in Developer 3's area
  * (architecture §9.3) rather than with the company record itself.
  *
- * Split out of the single `api/index.ts`; the barrel re-exports everything, so
- * no caller changed. Mechanical move — every function below is byte-identical
- * to the one it replaced.
+ * The contact and activity functions were split out of the single `api/index.ts`
+ * unchanged; the conversation functions are new in L3-03.
+ *
+ * `listConversationHistory` calls **Developer 1's** history route with
+ * `?dimension=conversation`. The gauge writes into the one shared history log
+ * (`docs/contracts/history-row.md`), so a second table of Developer 3's would be
+ * the duplication that contract exists to prevent — and a request function is a
+ * caller, not a claim of ownership.
  */
 
 import { apiRequest } from '@/lib/api/client';
+
+import type {
+  Conversation,
+  HistoryList,
+  SetConversationRequest,
+} from '../types';
 
 export function listExporterContacts(customerId: string): Promise<{
   customer_id: string;
@@ -62,4 +73,49 @@ export function logExporterActivity(
     method: 'POST',
     body: payload,
   });
+}
+
+// ── Conversation gauge (L3-03, L3-04a) ───────────────────────────────
+
+/**
+ * The gauge, the check-back date, and the moves this user may make.
+ *
+ * One request for all three: `allowed_moves` comes back with the value, so the
+ * panel never needs a second call to know what to offer. (The server also serves
+ * the moves on their own, at `/conversation/moves`, for a caller that wants
+ * nothing else — this is not that caller.)
+ */
+export function getExporterConversation(customerId: string): Promise<Conversation> {
+  return apiRequest<Conversation>(`/onboarding/exporters/${customerId}/conversation`);
+}
+
+/**
+ * Move the gauge.
+ *
+ * No actor: who did it comes from the login session on the server, never from
+ * this body. Every refusal — a reason or check-back date missing, a date in the
+ * past, a move on a LEAD — comes back as the server worded it, and the caller
+ * shows that rather than second-guessing it.
+ */
+export function setExporterConversation(
+  customerId: string,
+  payload: SetConversationRequest,
+): Promise<Conversation> {
+  return apiRequest<Conversation>(`/onboarding/exporters/${customerId}/conversation`, {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+/** This company's conversation history, newest first — Developer 1's shared
+ * history route, narrowed to one dimension. */
+export function listConversationHistory(
+  customerId: string,
+  params: { limit?: number } = {},
+): Promise<HistoryList> {
+  const query = new URLSearchParams({ dimension: 'conversation' });
+  query.set('limit', String(params.limit ?? 20));
+  return apiRequest<HistoryList>(
+    `/onboarding/exporters/${customerId}/history?${query.toString()}`,
+  );
 }

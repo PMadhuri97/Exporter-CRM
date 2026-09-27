@@ -1,11 +1,19 @@
 """``ExporterContact`` — a contact person for an exporter relationship (EXP-1).
 
-``customer_id`` is a bare, indexed UUID with no formal FK — the same
-convention ``cases.ComplianceCase`` uses for ``customer_id``/``settlement_id``/
-``onboarding_id`` (see that entity's module docstring): a contact belongs to
-the *exporter relationship*, which may exist (as a bare Lead) before any
-``ExporterProfile`` row is even created, so a hard FK to ``exporter_profile``
-would forbid recording a contact for a lead that hasn't been profiled yet.
+``customer_id`` points at a company that exists: migration 0014 added
+``fk_exporter_contact_customer_id`` (its ``_LINKED`` tuple, step 4), a real
+foreign key to ``exporter_profile.customer_id`` with ``ON DELETE RESTRICT``. It
+is declared on the column below so the ORM says the same thing the database
+does.
+
+This docstring used to say the opposite — "a bare, indexed UUID with no formal
+FK", on the reasoning that a contact could be recorded for a Lead before any
+``ExporterProfile`` row existed. That reasoning stopped applying when the
+company record became the CRM's own table (``docs/contracts/company-record.md``
+§1): a company *is* an ``exporter_profile`` row from the moment it is created,
+Lead or not, so there is no state in which a contact has a company id but no
+company. Corrected in L3-02, which added the constraint's direct-SQL test; the
+constraint itself was already there, and 0016 does not re-add it.
 
 At most one contact per ``customer_id`` may have ``is_primary_contact=True`` —
 enforced by a partial unique index (migration ``onboarding_0005_exporter_crm``)
@@ -18,7 +26,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, Index, String
+from sqlalchemy import Boolean, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
@@ -46,7 +54,18 @@ class ExporterContact(AnerModel):
         {"schema": SCHEMA},
     )
 
-    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    #: The company. `ON DELETE RESTRICT`, so a company with contacts cannot be
+    #: deleted out from under them — the same rule every other child of
+    #: `exporter_profile` got in 0014.
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.exporter_profile.customer_id",
+            name="fk_exporter_contact_customer_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)

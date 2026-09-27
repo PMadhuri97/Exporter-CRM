@@ -19,11 +19,36 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Exporters', path: '/exporters', icon: Users, status: 'ready' },
   {
     label: 'Follow-ups',
-    path: '/follow-ups',
+    // `status` flips to 'ready' in the same commit as `pages/FollowUpsPage.tsx`, per
+    // that ticket's rule: not before (dead navigation) and not after (a shipped page
+    // nobody can reach). `path` moves with it — the screen lives inside the
+    // onboarding module's own subtree, which is mounted at `/exporters/*`, so
+    // `/follow-ups` would resolve to nothing. See `modules/onboarding/routes.tsx`
+    // for why the route is there rather than in the app router.
+    path: '/exporters/follow-ups',
     icon: ListChecks,
-    status: 'soon',
+    status: 'ready',
   },
   { label: 'Pipeline', path: '/pipeline', icon: Kanban, status: 'ready' },
+  // ══ Section 9.3 — anchor blocks for Developers 3A and 3B ══════════════════
+  //
+  // The seam commit cuts the tail of this list into owned blocks so that three
+  // people adding rows — 3A in each of its two phases, and 3B — never share a
+  // hunk. The `Follow-ups` row above already exists; **Phase 2** flips its one
+  // word (`status: 'soon'` -> `'ready'`) when the screen lands, which is a
+  // different line from anything below, so there is no conflict either way.
+  //
+  // ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
+  // (3A appends here; 3B does not.) Cut into the two phase sub-anchors below —
+  // phase agreement §6.3. Phase 1 adds no row: the conversation gauge is a panel
+  // on the company page, which `Exporters` already reaches.
+  //
+  // ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
+  //
+  // ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
+  //
+  // ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
+  // (3B appends here; 3A does not.)
 ];
 
 export function Sidebar() {

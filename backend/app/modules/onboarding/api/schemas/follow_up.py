@@ -1,0 +1,206 @@
+"""Request/response schemas for follow-ups and completions — **owner: Developer
+3A, Phase 2** (L3-04b).
+
+Created as a stub in the seam commit and filled here. The completion shape these
+render is fixed by `docs/contracts/engagement.md` §5.
+
+Two row types, not one. A **follow-up** is an activity with a due date, dealt with
+by recording a completion. A **check-back** is a company parked at `NOT_NOW`, dealt
+with by moving the conversation gauge. They are completed through different services
+and only one of them has an activity, so merging them would make every row half
+null — see `domain/follow_up_views.py` for the longer version.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date, datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.modules.onboarding.domain.entities.engagement_enums import (
+    ExporterActivityType,
+    ExporterConversation,
+)
+from app.modules.onboarding.domain.entities.follow_up_completion import FollowUpOutcome
+from app.modules.onboarding.domain.follow_up_views import (
+    FollowUpListView,
+    FollowUpState,
+    FollowUpView,
+)
+
+
+class CompleteFollowUpRequest(BaseModel):
+    """Record that a follow-up was dealt with.
+
+    No `actor_id`: who completed it comes from the login session, never from this body
+    (architecture §7.5). No `activity_id` either — it is the path parameter, so a body
+    cannot disagree with the URL about which follow-up is being completed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: FollowUpOutcome
+    note: str | None = Field(
+        default=None, description="What happened, in your words."
+    )
+    next_due_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the follow-up was moved to. Required for RESCHEDULED and must be in "
+            "the future; refused — not ignored — on any other outcome. Rescheduling "
+            "also logs a new follow-up for this moment: the original activity is "
+            "append-only and keeps the date it was promised for."
+        ),
+    )
+
+
+class FollowUpCompletionResponse(BaseModel):
+    """A completion, as recorded. Every field comes from the completion row and none
+    from the activity — nothing may be written to an activity after it is logged."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    activity_id: uuid.UUID
+    customer_id: uuid.UUID
+    outcome: FollowUpOutcome
+    note: str | None
+    next_due_at: datetime | None
+    completed_by: str | None = Field(
+        default=None,
+        description=(
+            "Who completed it, from their login session. Null means the platform "
+            "itself acted."
+        ),
+    )
+    completed_at: datetime
+
+
+class FollowUpCompletionSummary(BaseModel):
+    """The completion as it appears inside a list row: the same facts without
+    repeating `activity_id` and `customer_id`, which the row already carries."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    outcome: FollowUpOutcome
+    note: str | None
+    next_due_at: datetime | None
+    completed_by: str | None
+    completed_at: datetime
+
+
+class FollowUpResponse(BaseModel):
+    """One follow-up: an activity with a due date, plus its completion if it has
+    one."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    activity_id: uuid.UUID
+    customer_id: uuid.UUID
+    exporter_display_name: str | None = Field(
+        default=None, description="The company's own name; null if it was created without one."
+    )
+    activity_type: ExporterActivityType
+    subject: str
+    notes: str | None
+    actor_id: str = Field(description="Who logged the follow-up — not who completed it.")
+    occurred_at: datetime
+    due_at: datetime
+    is_overdue: bool = Field(
+        description=(
+            "Outstanding and past due. Always false once a completion exists: a "
+            "follow-up dealt with late is done, not overdue."
+        )
+    )
+    state: FollowUpState = Field(
+        description=(
+            "OUTSTANDING, OVERDUE or DONE. Derived from whether a completion exists — "
+            "there is no status column on an activity, and there must not be one."
+        )
+    )
+    completion: FollowUpCompletionSummary | None = Field(
+        default=None, description="Null exactly when the follow-up is outstanding."
+    )
+
+    @classmethod
+    def from_view(cls, view: FollowUpView) -> FollowUpResponse:
+        """`state` is a property on the view, so it is passed explicitly rather than
+        picked up by `from_attributes` — which reads fields, not properties."""
+        return cls(
+            activity_id=view.activity_id,
+            customer_id=view.customer_id,
+            exporter_display_name=view.exporter_display_name,
+            activity_type=view.activity_type,
+            subject=view.subject,
+            notes=view.notes,
+            actor_id=view.actor_id,
+            occurred_at=view.occurred_at,
+            due_at=view.due_at,
+            is_overdue=view.is_overdue,
+            state=view.state,
+            completion=(
+                None
+                if view.completion is None
+                else FollowUpCompletionSummary.model_validate(view.completion)
+            ),
+        )
+
+
+class CheckBackResponse(BaseModel):
+    """A company parked at `NOT_NOW`, due to be picked up on `check_back_on`.
+
+    Not completable. It is dealt with by moving the conversation gauge —
+    `POST /onboarding/exporters/{customer_id}/conversation` — which clears the date in
+    the same transaction. There is deliberately no completion route for this.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    customer_id: uuid.UUID
+    exporter_display_name: str | None
+    conversation: ExporterConversation
+    check_back_on: date
+    is_overdue: bool = Field(
+        description="The check-back date has passed. A check-back due today is due, not late."
+    )
+
+
+class FollowUpListResponse(BaseModel):
+    """The Follow-ups screen's answer: both lists, each with its own total.
+
+    Totals are the counts matching the same filters, not the lengths of the lists, so
+    a caller can tell whether there is more without asking for it — the convention
+    `HistoryListResponse` uses.
+    """
+
+    follow_ups: list[FollowUpResponse]
+    follow_ups_total: int
+    check_backs: list[CheckBackResponse]
+    check_backs_total: int
+    limit: int
+    offset: int
+
+    @classmethod
+    def from_view(cls, view: FollowUpListView, *, limit: int, offset: int) -> FollowUpListResponse:
+        return cls(
+            follow_ups=[FollowUpResponse.from_view(row) for row in view.follow_ups],
+            follow_ups_total=view.follow_ups_total,
+            check_backs=[
+                CheckBackResponse.model_validate(row) for row in view.check_backs
+            ],
+            check_backs_total=view.check_backs_total,
+            limit=limit,
+            offset=offset,
+        )
+
+
+__all__ = [
+    "CheckBackResponse",
+    "CompleteFollowUpRequest",
+    "FollowUpCompletionResponse",
+    "FollowUpCompletionSummary",
+    "FollowUpListResponse",
+    "FollowUpResponse",
+]

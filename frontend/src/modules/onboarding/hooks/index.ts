@@ -26,3 +26,16 @@ export * from './engagement';
 export * from './verification';
 export * from './qualification';
 export * from './intake';
+
+/*
+ * Section 9.3 — one commit adds all three lines, and nobody adds another.
+ *
+ * `follow-ups` is Developer 3A Phase 2's, `deals` and `documents` Developer
+ * 3B's. All three modules are empty today; the lines are here so that neither
+ * developer — and neither of 3A's two phases — ever edits this barrel again.
+ * A barrel every owner appends to is a queue, which is the thing the per-owner
+ * split (above) exists to avoid.
+ */
+export * from './follow-ups';
+export * from './deals';
+export * from './documents';
