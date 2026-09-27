@@ -19,12 +19,18 @@ import {
   updateExporterProfile,
   getExporterConversation,
   listConversationHistory,
+  listCompanyDeals,
+  listCompanyHistory,
 } from '../api';
 import type { ExporterProfileDetail, Qualification } from '../types';
 
 import { ExporterDetailPage } from './ExporterDetailPage';
 
-vi.mock('@/platform/auth', () => ({ useCurrentUser: vi.fn() }));
+// Partial: the role helpers (`isStaffRole`, …) stay real, only the session is faked.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
+  useCurrentUser: vi.fn(),
+}));
 vi.mock('../api', () => ({
   getExporterProfileDetail: vi.fn(),
   listExporterContacts: vi.fn(),
@@ -51,6 +57,11 @@ vi.mock('../api', () => ({
   getExporterConversation: vi.fn(),
   setExporterConversation: vi.fn(),
   listConversationHistory: vi.fn(),
+  // The tabbed page: the Deals tab's count, the Documents tab and the History tab.
+  listCompanyDeals: vi.fn(),
+  listCompanyDocuments: vi.fn(),
+  getDocumentCategories: vi.fn(),
+  listCompanyHistory: vi.fn(),
 }));
 
 const DETAIL: ExporterProfileDetail = {
@@ -125,13 +136,15 @@ function mockUser(role: string, id: string) {
   });
 }
 
-function renderPage() {
+/** Opens the company page, on `tab` when given (`?tab=`). */
+function renderPage(tab?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const url = `/companies/${DETAIL.customer_id}${tab ? `?tab=${tab}` : ''}`;
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/exporters/${DETAIL.customer_id}`]}>
+      <MemoryRouter initialEntries={[url]}>
         <Routes>
-          <Route path="/exporters/:customerId" element={<ExporterDetailPage />} />
+          <Route path="/companies/:customerId" element={<ExporterDetailPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -189,22 +202,88 @@ describe('ExporterDetailPage — E9', () => {
       limit: 20,
       offset: 0,
     });
+    vi.mocked(listCompanyDeals).mockResolvedValue({ deals: [], total: 0, limit: 50, offset: 0 });
+    vi.mocked(listCompanyHistory).mockResolvedValue({ entries: [], total: 0, limit: 25, offset: 0 });
   });
 
   it('renders relationship sections safely with no contacts or activity', async () => {
     mockUser('COMPLIANCE', 'someone-else');
-    renderPage();
+    renderPage('conversation');
     expect(await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' })).toBeInTheDocument();
     expect(screen.getByText('No contacts yet. Add the first person you work with.')).toBeInTheDocument();
     expect(screen.getByText('No activity logged yet.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Background check' }));
     expect(await screen.findByText('No screening results yet')).toBeInTheDocument();
+  });
+
+  it('opens on the tab named in the URL, and on Overview otherwise', async () => {
+    mockUser('COMPLIANCE', 'someone-else');
+    const { unmount } = renderPage('qualification');
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    expect(screen.getByRole('tab', { name: 'Qualification' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText('Annual exports')).toBeInTheDocument();
+    unmount();
+
+    renderPage('no-such-tab');
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: 'Company profile' })).toBeInTheDocument();
+  });
+
+  it('gives DEVELOPER no Background check tab, since the server refuses it the results', async () => {
+    mockUser('DEVELOPER', 'someone-else');
+    renderPage();
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    expect(screen.queryByRole('tab', { name: 'Background check' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'History' })).toBeInTheDocument();
+  });
+
+  it('shows the company history, with who changed what and why', async () => {
+    mockUser('OPERATIONS', 'someone-else');
+    vi.mocked(listCompanyHistory).mockResolvedValue({
+      entries: [
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          company_id: DETAIL.customer_id,
+          deal_id: null,
+          dimension: 'marker',
+          event_type: 'marker_set',
+          from_value: 'NONE',
+          to_value: 'PAUSED',
+          actor_id: 'user-7',
+          reason: 'Seasonal break',
+          source: 'exporter_profile_service.set_marker',
+          details: null,
+          occurred_at: '2026-09-27T10:00:00Z',
+        },
+      ],
+      total: 1,
+      limit: 25,
+      offset: 0,
+    });
+    renderPage('history');
+    const row = await screen.findByTestId('history-row');
+    expect(row).toHaveTextContent('Relationship');
+    expect(row).toHaveTextContent('None →');
+    expect(row).toHaveTextContent('Paused');
+    expect(row).toHaveTextContent('“Seasonal break”');
+    expect(row).toHaveTextContent('By user-7');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Journey' }));
+    await waitFor(() =>
+      expect(listCompanyHistory).toHaveBeenLastCalledWith(
+        DETAIL.customer_id,
+        expect.objectContaining({ dimension: 'journey', offset: 0 }),
+      ),
+    );
   });
 
   it('masks identifiers and exposes no reveal control to OPERATIONS', async () => {
     mockUser('OPERATIONS', 'someone-else');
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getByText('••••••234F')).toBeInTheDocument();
+    // In the header's summary strip and in the profile, masked in both.
+    expect(screen.getAllByText('••••••234F')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: /reveal value/i })).not.toBeInTheDocument();
   });
 
@@ -216,7 +295,7 @@ describe('ExporterDetailPage — E9', () => {
     mockUser('OPERATIONS', DETAIL.relationship_manager_user_id!);
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getByText('••••••234F')).toBeInTheDocument();
+    expect(screen.getAllByText('••••••234F')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: /reveal value/i })).not.toBeInTheDocument();
   });
 
@@ -224,7 +303,8 @@ describe('ExporterDetailPage — E9', () => {
     mockUser('COMPLIANCE', 'someone-else');
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(3);
+    // PAN, GSTIN and IEC in the profile, plus PAN and GSTIN in the header strip.
+    expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(5);
   });
 
   it('shows the journey, qualification and marker separately, with no journey control', async () => {
@@ -293,11 +373,13 @@ describe('ExporterDetailPage — E9', () => {
 
   it('shows the qualification suggestion and no recording controls the server did not allow', async () => {
     mockUser('DEVELOPER', 'someone-else');
-    renderPage();
+    renderPage('qualification');
     expect(await screen.findByText('Annual exports')).toBeInTheDocument();
     expect(screen.getByTestId('qualification-suggestion')).toHaveTextContent('Suggested: Qualified');
     expect(screen.queryByRole('form', { name: 'Record results' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Record:/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    expect(await screen.findByRole('heading', { name: 'Company profile' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument();
   });
 
@@ -347,7 +429,7 @@ describe('ExporterDetailPage — E9', () => {
       ...QUALIFICATION,
       state: 'NOT_QUALIFIED',
     });
-    renderPage();
+    renderPage('qualification');
     await screen.findByRole('form', { name: 'Record results' });
     expect(screen.getByRole('form', { name: 'Record results' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Record: Qualified' })).not.toBeInTheDocument();

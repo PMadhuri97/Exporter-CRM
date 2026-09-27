@@ -1,5 +1,14 @@
 # Exporter CRM Frontend — Design Principles & Build Tickets (Phase 1)
 
+> **Superseded (2026-09-28).** This document describes the retired ten-status
+> lifecycle, a hand-copied transition table, `/exporters/*` URLs and
+> owner-scoped identifier reveal — none of which exists any more. The
+> requirements are `docs/Exporter-CRM-Architecture-and-Plan.pdf` (its §11 lists
+> this file as one to correct), and the current frontend is described in
+> `docs/frontend-refresh.md`. The design principles below ("quiet chrome,
+> expressive data", one status language, show your work, masked by default,
+> every async state designed) still apply; the tickets and state tables do not.
+
 ## Context
 
 > **Status note (2026-09-23).** The paragraph below described the repository as

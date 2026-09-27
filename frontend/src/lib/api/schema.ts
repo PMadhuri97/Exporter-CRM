@@ -937,6 +937,8 @@ export interface paths {
          * @description One buyer per deal, so this replaces that one row rather than adding another (deal contract §3). `PUT` rather than `POST` for the same reason.
          *
          *     A buyer's problems stay on the buyer: a failed buyer check is recorded against this row and never against the company (architecture §3.5).
+         *
+         *     The registration number, tax ID, contact email and contact phone are masked for OPERATIONS and DEVELOPER. Leave any of them out to keep its stored value — so a role that only sees the masked form can edit the rest — or send null to clear it. A masked value is refused.
          */
         put: operations["set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put"];
         post?: never;
@@ -1954,7 +1956,11 @@ export interface components {
             /** Counts */
             counts: boolean;
         };
-        /** DealBuyerResponse */
+        /**
+         * DealBuyerResponse
+         * @description The deal's buyer. The identifiers and contact details are masked for
+         *     OPERATIONS and DEVELOPER; COMPLIANCE and ADMIN see them in full.
+         */
         DealBuyerResponse: {
             /**
              * Id
@@ -3523,6 +3529,11 @@ export interface components {
          * SetDealBuyerRequest
          * @description Record or replace the deal's buyer. One buyer per deal, so this is an
          *     upsert of that one row, not an add.
+         *
+         *     ``registration_number``, ``tax_id``, ``contact_email`` and ``contact_phone``
+         *     are masked for OPERATIONS and DEVELOPER. Leave one out to keep its stored
+         *     value; send ``null`` or an empty string to clear it; a masked value is
+         *     refused (422).
          */
         SetDealBuyerRequest: {
             /** Name */
@@ -6635,7 +6646,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Missing name, or a country that is not ISO-3166-1 alpha-2 */
+            /** @description Missing name, a country that is not ISO-3166-1 alpha-2, or a masked value sent back */
             422: {
                 headers: {
                     [name: string]: unknown;

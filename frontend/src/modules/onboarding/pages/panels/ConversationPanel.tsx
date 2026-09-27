@@ -47,9 +47,8 @@
  * not own to buy timing the gauge does not need. Nothing renders before the gauge
  * resolves except the gauge's own skeleton.
  *
- * Markup, classes, toasts and the `data-extension` hooks for contacts and
- * activities are byte-identical to what the page rendered before; the gauge
- * section is new.
+ * The `data-extension` hooks for the gauge, contacts and activities are stable;
+ * the markup is built from the shared primitives in `@/components`.
  */
 
 import {
@@ -66,7 +65,17 @@ import {
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { EmptySection, FormPanel } from '@/components';
+import {
+  Button,
+  Chip,
+  EmptySection,
+  FormPanel,
+  Input,
+  Panel,
+  Select,
+  Skeleton,
+  Textarea,
+} from '@/components';
 import { formatDate, formatDateTime, humanize } from '@/lib/format';
 
 import { ConversationGaugeControl, OpenDealPrompt } from '../../components';
@@ -138,8 +147,8 @@ function AddContactForm({
       <div className="grid gap-3 md:grid-cols-2">
         <label className="text-xs font-medium text-ink-muted">
           Name *
-          <input
-            className="input mt-1"
+          <Input
+            className="mt-1"
             value={form.name}
             onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
             required
@@ -147,33 +156,33 @@ function AddContactForm({
         </label>
         <label className="text-xs font-medium text-ink-muted">
           Role / title
-          <input
-            className="input mt-1"
+          <Input
+            className="mt-1"
             value={form.role ?? ''}
             onChange={(event) => setForm((prev) => ({ ...prev, role: event.target.value }))}
           />
         </label>
         <label className="text-xs font-medium text-ink-muted">
           Email
-          <input
+          <Input
             type="email"
-            className="input mt-1"
+            className="mt-1"
             value={form.email ?? ''}
             onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
           />
         </label>
         <label className="text-xs font-medium text-ink-muted">
           Phone
-          <input
-            className="input mt-1"
+          <Input
+            className="mt-1"
             value={form.phone ?? ''}
             onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
           />
         </label>
         <label className="text-xs font-medium text-ink-muted md:col-span-2">
           Department
-          <input
-            className="input mt-1"
+          <Input
+            className="mt-1"
             value={form.department ?? ''}
             onChange={(event) => setForm((prev) => ({ ...prev, department: event.target.value }))}
           />
@@ -184,18 +193,19 @@ function AddContactForm({
           type="checkbox"
           checked={form.is_primary}
           onChange={(event) => setForm((prev) => ({ ...prev, is_primary: event.target.checked }))}
-          className="h-4 w-4 rounded border-border-strong text-brand-600 focus:ring-brand-500"
+          className="h-4 w-4 rounded border-border-strong accent-brand-600"
         />
         Make this the primary contact
       </label>
       <div className="flex justify-end">
-        <button
+        <Button
           type="submit"
-          disabled={mutation.isPending || !form.name.trim()}
-          className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          variant="primary"
+          disabled={!form.name.trim()}
+          loading={mutation.isPending}
         >
-          {mutation.isPending ? 'Adding…' : 'Add contact'}
-        </button>
+          Add contact
+        </Button>
       </div>
     </form>
   );
@@ -211,9 +221,9 @@ function ContactRow({ contact }: { contact: ExporterContact }) {
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-medium text-ink">{contact.name}</p>
           {contact.is_primary_contact && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-900">
-              <Star size={11} /> Primary
-            </span>
+            <Chip tone="brand" icon={<Star size={11} />}>
+              Primary
+            </Chip>
           )}
         </div>
         <p className="mt-0.5 text-sm text-ink-muted">
@@ -274,20 +284,20 @@ function ActivityForm({
       <div className="grid gap-3 md:grid-cols-[180px_1fr]">
         <label className="text-xs font-medium text-ink-muted">
           Activity type
-          <select
-            className="input mt-1"
+          <Select
+            className="mt-1"
             value={type}
             onChange={(event) => setType(event.target.value as ExporterActivityType)}
           >
             {ACTIVITY_TYPES.map((value) => (
               <option key={value} value={value}>{humanize(value)}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="text-xs font-medium text-ink-muted">
           Subject *
-          <input
-            className="input mt-1"
+          <Input
+            className="mt-1"
             value={subject}
             onChange={(event) => setSubject(event.target.value)}
             placeholder="What happened or needs to happen?"
@@ -297,8 +307,8 @@ function ActivityForm({
       </div>
       <label className="block text-xs font-medium text-ink-muted">
         Notes
-        <textarea
-          className="input mt-1 min-h-24 resize-y"
+        <Textarea
+          className="mt-1 min-h-24 resize-y"
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
           placeholder="Optional context"
@@ -307,22 +317,23 @@ function ActivityForm({
       {dueAllowed && (
         <label className="block max-w-xs text-xs font-medium text-ink-muted">
           Due date and time
-          <input
+          <Input
             type="datetime-local"
-            className="input mt-1"
+            className="mt-1"
             value={dueAt}
             onChange={(event) => setDueAt(event.target.value)}
           />
         </label>
       )}
       <div className="flex justify-end">
-        <button
+        <Button
           type="submit"
-          disabled={mutation.isPending || !subject.trim()}
-          className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          variant="primary"
+          disabled={!subject.trim()}
+          loading={mutation.isPending}
         >
-          {mutation.isPending ? 'Saving…' : 'Log activity'}
-        </button>
+          Log activity
+        </Button>
       </div>
     </form>
   );
@@ -332,9 +343,7 @@ function ActivityRow({ activity }: { activity: ExporterActivity }) {
   return (
     <div className="grid gap-2 border-b border-border py-4 last:border-b-0 md:grid-cols-[130px_1fr_auto]">
       <div>
-        <span className="inline-flex rounded-full bg-surface-sunken px-2 py-1 text-xs font-medium text-ink-muted">
-          {humanize(activity.activity_type)}
-        </span>
+        <Chip>{humanize(activity.activity_type)}</Chip>
       </div>
       <div className="min-w-0">
         <p className="font-medium text-ink">{activity.subject}</p>
@@ -397,29 +406,21 @@ function ConversationSection({
   const history = useConversationHistory(customerId);
 
   return (
-    <section
-      className="rounded-lg border border-border bg-surface p-5 shadow-card xl:col-span-2"
+    <Panel
+      className="xl:col-span-2"
       data-extension="conversation-gauge"
-    >
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold text-ink">Conversation</h2>
-          <p className="mt-0.5 text-sm text-ink-muted">
-            How the sales conversation is going — on its own, beside the journey.
-          </p>
-        </div>
-        {conversation.data && (
-          <span
-            className="inline-flex items-center rounded-full bg-surface-sunken px-2.5 py-1 text-sm font-medium text-ink"
-            data-testid="conversation-chip"
-          >
+      title="Conversation"
+      description="How the sales conversation is going — on its own, beside the journey."
+      actions={
+        conversation.data && (
+          <Chip tone="info" className="px-2.5 py-1 text-sm" data-testid="conversation-chip">
             {humanize(conversation.data.conversation)}
-          </span>
-        )}
-      </div>
-
+          </Chip>
+        )
+      }
+    >
       {conversation.isLoading ? (
-        <div className="h-20 animate-pulse rounded bg-surface-sunken" />
+        <Skeleton className="h-20" />
       ) : conversation.isError ? (
         <p className="text-sm text-status-failed">
           Could not load the conversation. {conversation.error.message}
@@ -455,7 +456,7 @@ function ConversationSection({
               History
             </h3>
             {history.isLoading ? (
-              <div className="h-12 animate-pulse rounded bg-surface-sunken" />
+              <Skeleton className="h-12" />
             ) : history.isError ? (
               <p className="text-sm text-status-failed">
                 Could not load the conversation history. {history.error.message}
@@ -474,7 +475,7 @@ function ConversationSection({
           </div>
         </div>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
@@ -518,70 +519,62 @@ export function ConversationPanel({
           evidence behind it. */}
       <ConversationSection customerId={customerId} isStaff={isStaff} />
 
-      <section className="rounded-lg border border-border bg-surface p-5 shadow-card" data-extension="contacts">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-ink">Contacts</h2>
-            <p className="mt-0.5 text-sm text-ink-muted">People connected to this exporter.</p>
-          </div>
-          {isStaff && (
-            <button
-              type="button"
-              onClick={() => setShowContactForm(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-ink hover:bg-surface-subtle"
-            >
+      <Panel
+        data-extension="contacts"
+        title="Contacts"
+        description="People connected to this company."
+        actions={
+          isStaff && (
+            <Button size="sm" onClick={() => setShowContactForm(true)}>
               <Plus size={15} /> Add contact
-            </button>
-          )}
-        </div>
+            </Button>
+          )
+        }
+      >
 
         {showContactForm && <FormPanel title="Add contact" onClose={() => setShowContactForm(false)}><AddContactForm customerId={customerId} onDone={() => setShowContactForm(false)} /></FormPanel>}
 
         {contactsLoading ? (
-          <div className="space-y-3"><div className="h-16 animate-pulse rounded bg-surface-sunken" /><div className="h-16 animate-pulse rounded bg-surface-sunken" /></div>
+          <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
         ) : contacts.length === 0 ? (
           <EmptySection>No contacts yet. Add the first person you work with.</EmptySection>
         ) : (
           <div>{contacts.map((contact) => <ContactRow key={contact.id} contact={contact} />)}</div>
         )}
-      </section>
+      </Panel>
 
-      <section className="rounded-lg border border-border bg-surface p-5 shadow-card" data-extension="activities">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-ink">Activity</h2>
-            <p className="mt-0.5 text-sm text-ink-muted">Append-only relationship history and follow-ups.</p>
-          </div>
-          {isStaff && (
-            <button
-              type="button"
-              onClick={() => setShowActivityForm(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
+      <Panel
+        data-extension="activities"
+        title="Activity"
+        description="Append-only relationship history and follow-ups."
+        actions={
+          isStaff && (
+            <Button size="sm" variant="primary" onClick={() => setShowActivityForm(true)}>
               <MessageSquarePlus size={15} /> Log activity
-            </button>
-          )}
-        </div>
+            </Button>
+          )
+        }
+      >
 
         {showActivityForm && <FormPanel title="Log activity" onClose={() => setShowActivityForm(false)}><ActivityForm customerId={customerId} onDone={() => { setShowActivityForm(false); onActivityPageChange(0); }} /></FormPanel>}
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
           <label className="flex items-center gap-2 text-xs font-medium text-ink-muted">
             Filter
-            <select
+            <Select
               value={activityType}
               onChange={(event) => { onActivityTypeChange(event.target.value as ExporterActivityType | ''); onActivityPageChange(0); }}
-              className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-ink outline-none focus:border-brand-500"
+              className="w-auto py-1.5"
             >
               <option value="">All activity</option>
               {ACTIVITY_TYPES.map((value) => <option key={value} value={value}>{humanize(value)}</option>)}
-            </select>
+            </Select>
           </label>
           <span className="text-xs text-ink-faint">Page {activityPage + 1}</span>
         </div>
 
         {activitiesLoading ? (
-          <div className="space-y-3"><div className="h-20 animate-pulse rounded bg-surface-sunken" /><div className="h-20 animate-pulse rounded bg-surface-sunken" /></div>
+          <div className="space-y-3"><Skeleton className="h-20" /><Skeleton className="h-20" /></div>
         ) : activities.length === 0 ? (
           <EmptySection>{activityPage > 0 ? 'No more activities on this page.' : activityType ? `No ${humanize(activityType).toLowerCase()} activity yet.` : 'No activity logged yet.'}</EmptySection>
         ) : (
@@ -589,24 +582,22 @@ export function ConversationPanel({
         )}
 
         <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
+          <Button
+            size="sm"
             onClick={() => onActivityPageChange(Math.max(0, activityPage - 1))}
             disabled={activityPage === 0 || activitiesFetching}
-            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronLeft size={14} /> Previous
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="sm"
             onClick={() => onActivityPageChange(activityPage + 1)}
             disabled={!hasNextActivityPage || activitiesFetching}
-            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-40"
           >
             Next <ChevronRight size={14} />
-          </button>
+          </Button>
         </div>
-      </section>
+      </Panel>
     </div>
   );
 }

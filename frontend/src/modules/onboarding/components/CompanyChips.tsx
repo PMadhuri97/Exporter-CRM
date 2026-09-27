@@ -4,6 +4,8 @@
  * none of them is a stage of another.
  */
 
+import { Chip } from '@/components';
+
 import {
   JOURNEY_CHIP_CLASSES,
   JOURNEY_LABEL,
@@ -14,22 +16,16 @@ import {
 } from '../constants';
 import type { ExporterJourney, ExporterMarker, QualificationState } from '../types';
 
-const CHIP = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium';
-
 export function JourneyChip({ journey }: { journey: ExporterJourney }) {
   return (
-    <span className={`${CHIP} ${JOURNEY_CHIP_CLASSES[journey]}`} data-testid="journey-chip">
+    <Chip dot className={JOURNEY_CHIP_CLASSES[journey]} data-testid="journey-chip">
       {JOURNEY_LABEL[journey]}
-    </span>
+    </Chip>
   );
 }
 
 export function QualificationChip({ state }: { state: QualificationState }) {
-  return (
-    <span className={`${CHIP} ${QUALIFICATION_CHIP_CLASSES[state]}`}>
-      {QUALIFICATION_LABEL[state]}
-    </span>
-  );
+  return <Chip className={QUALIFICATION_CHIP_CLASSES[state]}>{QUALIFICATION_LABEL[state]}</Chip>;
 }
 
 /** Nothing at all for `NONE`: an unmarked relationship needs no badge. */
@@ -42,8 +38,8 @@ export function MarkerBadge({
 }) {
   if (marker === 'NONE') return null;
   return (
-    <span className={`${CHIP} ${MARKER_CHIP_CLASSES[marker]}`} title={reason ?? undefined}>
+    <Chip className={MARKER_CHIP_CLASSES[marker]} title={reason ?? undefined}>
       {MARKER_LABEL[marker]}
-    </span>
+    </Chip>
   );
 }

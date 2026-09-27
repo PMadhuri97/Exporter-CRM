@@ -57,7 +57,7 @@ describe('DealsPanel', () => {
     expect(await screen.findByText('Rotterdam shipment, March')).toBeInTheDocument();
     expect(screen.getByText('Open')).toBeInTheDocument();
     // A deal with no buyer yet says so rather than showing an empty cell.
-    expect(screen.getByText('No buyer recorded yet')).toBeInTheDocument();
+    expect(screen.getByText(/No buyer recorded yet/)).toBeInTheDocument();
   });
 
   it('shows an honest empty state, and invites staff to open the first deal', async () => {
@@ -71,7 +71,7 @@ describe('DealsPanel', () => {
 
     expect(await screen.findByText(/No deals yet/)).toBeInTheDocument();
     expect(
-      screen.getByText(/Open one when this exporter has something to finance/),
+      screen.getByText(/Open one when this company has something to finance/),
     ).toBeInTheDocument();
   });
 
@@ -89,7 +89,7 @@ describe('DealsPanel', () => {
       screen.queryByRole('button', { name: /Open a deal/ }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText(/Open one when this exporter/),
+      screen.queryByText(/Open one when this company/),
     ).not.toBeInTheDocument();
   });
 
@@ -97,18 +97,17 @@ describe('DealsPanel', () => {
     renderPanel(false);
 
     const link = await screen.findByRole('link', { name: 'Company documents' });
-    expect(link).toHaveAttribute('href', `/exporters/${COMPANY_ID}/documents`);
+    // A tab of the company page now, not a page of its own.
+    expect(link).toHaveAttribute('href', `/companies/${COMPANY_ID}?tab=documents`);
   });
 
   it('links each deal to its own page', async () => {
     renderPanel();
 
+    // The whole row is the link, so its name carries the buyer line too.
     const link = await screen.findByRole('link', {
-      name: 'Rotterdam shipment, March',
+      name: /Rotterdam shipment, March/,
     });
-    expect(link).toHaveAttribute(
-      'href',
-      '/exporters/deals/dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-    );
+    expect(link).toHaveAttribute('href', '/deals/dddddddd-dddd-4ddd-8ddd-dddddddddddd');
   });
 });

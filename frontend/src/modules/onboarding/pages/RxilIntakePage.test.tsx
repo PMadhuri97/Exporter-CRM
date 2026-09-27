@@ -9,7 +9,11 @@ import { submitRxilPackage } from '../api';
 
 import { RxilIntakePage } from './RxilIntakePage';
 
-vi.mock('@/platform/auth', () => ({ useCurrentUser: vi.fn() }));
+// Partial: the role helpers (`isStaffRole`, …) stay real, only the session is faked.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
+  useCurrentUser: vi.fn(),
+}));
 vi.mock('../api', () => ({ submitRxilPackage: vi.fn() }));
 
 function mockRole(role: string) {
@@ -83,7 +87,7 @@ describe('RxilIntakePage — RXIL company intake (L2-12, L2-14)', () => {
     expect(await screen.findByText('Taken in')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open company' })).toHaveAttribute(
       'href',
-      '/exporters/11111111-1111-4111-8111-111111111111',
+      '/companies/11111111-1111-4111-8111-111111111111',
     );
   });
 

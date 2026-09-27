@@ -80,7 +80,7 @@ describe('CompanyImportPage — bulk CSV import (L2-13, L2-14)', () => {
     expect(screen.getByText('Resembles an existing company')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Candidate 1' })).toHaveAttribute(
       'href',
-      '/exporters/22222222-2222-4222-8222-222222222222',
+      '/companies/22222222-2222-4222-8222-222222222222',
     );
   });
 });

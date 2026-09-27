@@ -20,7 +20,11 @@ import type { CheckBack, FollowUp, FollowUpList } from '../types';
 
 import { FollowUpsPage } from './FollowUpsPage';
 
-vi.mock('@/platform/auth', () => ({ useCurrentUser: vi.fn() }));
+// Partial: the role helpers (`isStaffRole`, …) stay real, only the session is faked.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
+  useCurrentUser: vi.fn(),
+}));
 vi.mock('../api', () => ({
   listFollowUps: vi.fn(),
   completeFollowUp: vi.fn(),
@@ -344,6 +348,6 @@ describe('FollowUpsPage — L3-11a-ii', () => {
     const row = await screen.findByTestId('follow-up-row');
     expect(
       within(row).getByRole('link', { name: /Coastal Seafood Exports Pvt Ltd/ }),
-    ).toHaveAttribute('href', `/exporters/${CUSTOMER_ID}`);
+    ).toHaveAttribute('href', `/companies/${CUSTOMER_ID}`);
   });
 });

@@ -7,7 +7,7 @@ import { useAuth } from '@/platform/auth';
 function AuthCheckingSkeleton() {
   return (
     <div className="flex h-screen items-center justify-center bg-surface-subtle">
-      <div className="h-10 w-10 animate-pulse rounded-lg bg-border-strong" />
+      <div className="h-10 w-10 animate-pulse rounded-xl bg-brand-600/30" />
     </div>
   );
 }

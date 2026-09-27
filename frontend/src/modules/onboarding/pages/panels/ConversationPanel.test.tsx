@@ -13,11 +13,13 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   getExporterConversation,
   listConversationHistory,
+  openDeal,
   setExporterConversation,
 } from '../../api';
 import type { Conversation, HistoryEntry, HistoryList } from '../../types';
@@ -32,6 +34,7 @@ vi.mock('../../api', () => ({
   logExporterActivity: vi.fn(),
   listExporterContacts: vi.fn(),
   listExporterActivities: vi.fn(),
+  openDeal: vi.fn(),
 }));
 
 const CUSTOMER_ID = '11111111-1111-4111-8111-111111111111';
@@ -54,21 +57,32 @@ function renderPanel(props: Partial<Parameters<typeof ConversationPanel>[0]> = {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ConversationPanel
-        customerId={CUSTOMER_ID}
-        contacts={[]}
-        contactsLoading={false}
-        activities={[]}
-        activitiesLoading={false}
-        activitiesFetching={false}
-        activityType=""
-        onActivityTypeChange={() => {}}
-        activityPage={0}
-        onActivityPageChange={() => {}}
-        hasNextActivityPage={false}
-        isStaff
-        {...props}
-      />
+      {/* A router, because the READY_NOW prompt goes to the deal it opens. */}
+      <MemoryRouter initialEntries={['/companies/c']}>
+        <Routes>
+          <Route path="/deals/:dealId" element={<p>Deal page</p>} />
+          <Route
+            path="*"
+            element={
+              <ConversationPanel
+                customerId={CUSTOMER_ID}
+                contacts={[]}
+                contactsLoading={false}
+                activities={[]}
+                activitiesLoading={false}
+                activitiesFetching={false}
+                activityType=""
+                onActivityTypeChange={() => {}}
+                activityPage={0}
+                onActivityPageChange={() => {}}
+                hasNextActivityPage={false}
+                isStaff
+                {...props}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -161,16 +175,38 @@ describe('ConversationPanel — the conversation gauge', () => {
     expect(await screen.findByText(/Check back on 15 Jan 2027/)).toBeInTheDocument();
   });
 
-  it('offers to open a deal when the gauge reads READY_NOW, with no button yet', async () => {
+  it('offers to open a deal when the gauge reads READY_NOW, and goes to the new deal', async () => {
     vi.mocked(getExporterConversation).mockResolvedValue({
       ...PROSPECT,
       conversation: 'READY_NOW',
       allowed_moves: [],
     });
+    vi.mocked(openDeal).mockResolvedValue({
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    } as Awaited<ReturnType<typeof openDeal>>);
     renderPanel();
-    // Seam S2: the note is shown because it is true, and there is no button
-    // because Developer 3B's deal route does not exist — never navigation to
-    // something that renders nothing.
+    // Seam S2: the prompt opens a deal through the same form the Deals tab uses.
+    expect(
+      await screen.findByText(/has something they want financed/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /open a deal/i }));
+    fireEvent.change(screen.getByLabelText('Reference'), {
+      target: { value: 'Rotterdam shipment' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Open deal' }));
+    await waitFor(() =>
+      expect(openDeal).toHaveBeenCalledWith(CUSTOMER_ID, { reference: 'Rotterdam shipment' }),
+    );
+    expect(await screen.findByText('Deal page')).toBeInTheDocument();
+  });
+
+  it('gives a reader who may not write no open-a-deal button', async () => {
+    vi.mocked(getExporterConversation).mockResolvedValue({
+      ...PROSPECT,
+      conversation: 'READY_NOW',
+      allowed_moves: [],
+    });
+    renderPanel({ isStaff: false });
     expect(
       await screen.findByText(/has something they want financed/),
     ).toBeInTheDocument();

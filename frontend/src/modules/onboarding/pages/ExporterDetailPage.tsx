@@ -1,73 +1,146 @@
 /**
- * The company detail page — **shell, owner: Developer 2**.
+ * The company page — **shell, owner: Developer 2**.
  *
- * This file was 599 lines carrying all four developers' features: the company
- * record, the contact and activity forms, and the verification section, plus
- * the generic layout components they shared. Four people editing one file is a
- * queue, not parallel work (architecture §7.2), so the rendering now lives in
- * one panel per owner:
+ * A sticky summary header — who the company is and where it stands — over one
+ * tab per part of the relationship. The selected tab is in the URL (`?tab=`),
+ * so a link, a reload or the back button lands where the reader was.
  *
- *   panels/CompanyPanel.tsx          Developer 2
- *   panels/QualificationPanel.tsx    Developer 2
- *   panels/ConversationPanel.tsx     Developer 3
- *   panels/DealsPanel.tsx            Developer 3
- *   panels/BackgroundCheckPanel.tsx  Developer 4
+ * Each tab renders one owner's panel:
  *
- * **The queries stayed here, and that was not an oversight.** The obvious
- * split moves `useExporterContacts` and `useExporterActivities` into
- * `ConversationPanel`. It changes behaviour: all three queries are called
- * below, before the early returns, so profile, contacts and activities start
- * together on the first render. A panel that only mounts once the profile has
- * resolved cannot start its fetches until then, turning one round trip into
- * two. `ExporterDetailPage.test.tsx` catches it — it awaits the profile
- * heading and then expects the contacts empty state synchronously.
+ *   Overview           panels/CompanyPanel.tsx          Developer 2
+ *   Qualification      panels/QualificationPanel.tsx    Developer 2
+ *   Conversation       panels/ConversationPanel.tsx     Developer 3A
+ *   Deals              panels/DealsPanel.tsx            Developer 3B
+ *   Documents          panels/DocumentsPanel.tsx        Developer 3B
+ *   Background check   panels/BackgroundCheckPanel.tsx  Developer 4
+ *   History            components/HistoryTimeline.tsx   Developer 1
  *
- * So the split is presentational: the data-fetching and the activity
- * pagination state stay exactly where the page already had them, and the
- * panels render. The cost is that some of Developer 3's state lives in
- * Developer 2's file; moving it needs a deliberate decision about accepting
- * the extra round trip, which is not this phase's to make.
- *
- * `DealsPanel` renders nothing because deals do not exist yet.
+ * **The contact and activity queries stay here, not in the Conversation
+ * panel.** They start with the profile on the first render, so opening the
+ * Conversation tab shows them at once rather than starting a second round trip
+ * then. The activity pagination state stays with them.
  *
  * The header shows the company's three separate positions — journey,
- * qualification, marker — and offers only the marker moves the server listed
- * (L2-04 retired the ten-status lifecycle and its move control). The journey
- * has no control: it is never moved by hand.
+ * qualification, marker — and offers only the marker moves the server listed.
+ * The journey has no control: it is never moved by hand.
  */
 
-import { ArrowLeft } from 'lucide-react';
+import { CalendarClock } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
-import { formatDate } from '@/lib/format';
-import { useCurrentUser } from '@/platform/auth';
-
-import { JourneyChip, MarkerBadge, MarkerControl, QualificationChip } from '../components';
 import {
+  ErrorState,
+  PageHeader,
+  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  useSearchParamState,
+} from '@/components';
+import { formatDate, humanize } from '@/lib/format';
+import { isStaffRole, useCurrentUser } from '@/platform/auth';
+import { MaskedValue } from '@/platform/mask';
+
+import {
+  CompanyHistory,
+  JourneyChip,
+  MarkerBadge,
+  MarkerControl,
+  QualificationChip,
+} from '../components';
+import {
+  useCompanyDeals,
   useExporterActivities,
   useExporterContacts,
+  useExporterConversation,
   useExporterProfileDetail,
 } from '../hooks';
+import { COMPANY_TABS, paths, type CompanyTab } from '../paths';
 import type { ExporterActivityType, ExporterProfileDetail } from '../types';
 import { BackgroundCheckPanel } from './panels/BackgroundCheckPanel';
 import { CompanyPanel } from './panels/CompanyPanel';
 import { ConversationPanel } from './panels/ConversationPanel';
 import { DealsPanel } from './panels/DealsPanel';
+import { DocumentsPanel } from './panels/DocumentsPanel';
 import { QualificationPanel } from './panels/QualificationPanel';
 
 /** Rows per activity page. Lives here because the shell builds the query
  * params and decides whether a next page exists. */
 const ACTIVITY_PAGE_SIZE = 8;
 
+const TAB_LABEL: Record<CompanyTab, string> = {
+  overview: 'Overview',
+  qualification: 'Qualification',
+  conversation: 'Conversation',
+  deals: 'Deals',
+  documents: 'Documents',
+  'background-check': 'Background check',
+  history: 'History',
+};
+
 function displayName(profile: ExporterProfileDetail): string {
-  return profile.name ?? 'Unnamed exporter';
+  return profile.name ?? 'Unnamed company';
+}
+
+/** One labelled fact in the summary strip. */
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">{label}</dt>
+      <dd className="mt-0.5 truncate text-sm text-ink">{children}</dd>
+    </div>
+  );
+}
+
+function SummaryStrip({ profile }: { profile: ExporterProfileDetail }) {
+  const conversation = useExporterConversation(profile.customer_id);
+  const gauge = conversation.data;
+
+  return (
+    <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border pt-4 sm:grid-cols-3 lg:grid-cols-5">
+      <Fact label="PAN">
+        <MaskedValue value={profile.pan} />
+      </Fact>
+      <Fact label="GSTIN">
+        <MaskedValue value={profile.gstins[0] ?? null} />
+        {profile.gstins.length > 1 && (
+          <span className="ml-1 text-xs text-ink-faint">+{profile.gstins.length - 1}</span>
+        )}
+      </Fact>
+      <Fact label="Country">{profile.country ?? '—'}</Fact>
+      <Fact label="Owner">{profile.relationship_manager ?? '—'}</Fact>
+      <Fact label="Conversation">
+        {gauge ? (
+          <span className="inline-flex flex-wrap items-center gap-x-2">
+            {humanize(gauge.conversation)}
+            {gauge.check_back_on && (
+              <span className="inline-flex items-center gap-1 text-xs text-status-review">
+                <CalendarClock size={12} /> {formatDate(gauge.check_back_on)}
+              </span>
+            )}
+          </span>
+        ) : (
+          '—'
+        )}
+      </Fact>
+    </dl>
+  );
 }
 
 export function ExporterDetailPage() {
   const { customerId } = useParams<{ customerId: string }>();
   const currentUser = useCurrentUser();
-  const { data: profile, isLoading, isError } = useExporterProfileDetail(customerId);
+  // DEVELOPER reads the CRM (masked) but writes nothing and cannot load
+  // verification results — the backend refuses those with 403 — so it gets no
+  // Background check tab at all rather than a tab that renders nothing.
+  const isStaff = isStaffRole(currentUser.role);
+  const tabs = isStaff
+    ? COMPANY_TABS
+    : COMPANY_TABS.filter((value) => value !== 'background-check');
+  const { data: profile, isLoading, isError, refetch } = useExporterProfileDetail(customerId);
+  const [tab, setTab] = useSearchParamState<CompanyTab>('tab', tabs, 'overview');
   const [activityType, setActivityType] = useState<ExporterActivityType | ''>('');
   const [activityPage, setActivityPage] = useState(0);
 
@@ -81,94 +154,117 @@ export function ExporterDetailPage() {
     [activityType, activityPage],
   );
   const activityQuery = useExporterActivities(customerId, activityParams);
+  const dealsQuery = useCompanyDeals(customerId);
 
   if (!customerId) {
-    return <p className="text-sm text-status-failed">Exporter id is missing.</p>;
+    return <p className="text-sm text-status-failed">Company id is missing.</p>;
   }
 
   if (isLoading) {
     return (
-      <div className="space-y-5" aria-label="Loading exporter">
-        <div className="h-8 w-72 animate-pulse rounded bg-surface-sunken" />
-        <div className="h-36 animate-pulse rounded-lg border border-border bg-surface" />
-        <div className="h-64 animate-pulse rounded-lg border border-border bg-surface" />
+      <div className="space-y-5" aria-label="Loading company">
+        <Skeleton className="h-8 w-72" />
+        <Skeleton className="h-28 rounded-lg" />
+        <Skeleton className="h-10 w-full max-w-2xl" />
+        <Skeleton className="h-64 rounded-lg" />
       </div>
     );
   }
 
   if (isError || !profile) {
     return (
-      <div className="rounded-lg border border-border bg-surface p-8 text-center shadow-card">
-        <p className="font-medium text-ink">Couldn't load this exporter.</p>
-        <p className="mt-1 text-sm text-ink-muted">The record may no longer exist or the request failed.</p>
-        <Link to="/exporters" className="mt-4 inline-block text-sm font-medium text-brand-600 underline">
-          Back to exporters
+      <ErrorState title="Couldn't load this company." onRetry={() => void refetch()}>
+        The record may no longer exist or the request failed.{' '}
+        <Link to={paths.companies} className="font-medium text-brand-600 underline">
+          Back to companies
         </Link>
-      </div>
+      </ErrorState>
     );
   }
 
-  // DEVELOPER reads the CRM (masked) but writes nothing and cannot load
-  // verification results — the backend refuses those with 403.
-  const isStaff = currentUser.role !== 'DEVELOPER';
-  const name = displayName(profile);
   // The detail response embeds contacts, so the page shows those until the
   // dedicated contacts query resolves — no empty flash on first paint.
   const contacts = contactQuery.data?.contacts ?? profile.contacts;
   const activities = activityQuery.data?.activities ?? [];
   const hasNextActivityPage = activities.length === ACTIVITY_PAGE_SIZE;
+  const dealCount = dealsQuery.data?.total;
 
   return (
-    <div className="space-y-5">
-      <div>
-        <Link
-          to="/exporters"
-          className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink"
-        >
-          <ArrowLeft size={15} />
-          Exporters
-        </Link>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-xl font-semibold text-ink">{name}</h1>
+    // One `Tabs` root around the sticky header and the panels, so the triggers
+    // and the contents share its ids (the tab <-> tabpanel wiring).
+    <Tabs value={tab} onValueChange={(next) => setTab(next as CompanyTab)}>
+      <div className="sticky -top-5 z-10 -mx-4 mb-5 border-b border-border bg-surface-subtle/95 px-4 pt-1 backdrop-blur sm:-top-6 sm:-mx-6 sm:px-6">
+        <PageHeader
+          back={{ to: paths.companies, label: 'Companies' }}
+          title={displayName(profile)}
+          meta={
+            <>
               <JourneyChip journey={profile.journey} />
               <QualificationChip state={profile.qualification} />
               <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />
-            </div>
-            <p className="mt-1 text-sm text-ink-muted">
+            </>
+          }
+          description={
+            <>
               Added {formatDate(profile.date_added)}
-              {profile.relationship_manager ? ` · Owner: ${profile.relationship_manager}` : ''}
-            </p>
-          </div>
-          {/* Only the moves the server listed for this user; none, nothing. */}
-          <MarkerControl customerId={customerId} moves={profile.allowed_marker_moves ?? []} />
-        </div>
+              {profile.marker_reason ? ` · ${profile.marker_reason}` : ''}
+            </>
+          }
+          // Only the moves the server listed for this user; none, nothing.
+          actions={
+            <MarkerControl customerId={customerId} moves={profile.allowed_marker_moves ?? []} />
+          }
+        />
+        <SummaryStrip profile={profile} />
+
+        <TabsList aria-label="Company sections" className="mt-3 border-b-0">
+          {tabs.map((value) => (
+            <TabsTrigger key={value} value={value}>
+              {TAB_LABEL[value]}
+              {value === 'deals' && dealCount !== undefined && dealCount > 0 && (
+                <span className="rounded-full bg-surface-sunken px-1.5 text-xs tabular-nums text-ink-muted">
+                  {dealCount}
+                </span>
+              )}
+            </TabsTrigger>
+          ))}
+        </TabsList>
       </div>
 
-      <CompanyPanel profile={profile} canEdit={isStaff} />
-
-      <QualificationPanel customerId={customerId} />
-
-      <ConversationPanel
-        customerId={customerId}
-        contacts={contacts}
-        contactsLoading={contactQuery.isLoading}
-        activities={activities}
-        activitiesLoading={activityQuery.isLoading}
-        activitiesFetching={activityQuery.isFetching}
-        activityType={activityType}
-        onActivityTypeChange={setActivityType}
-        activityPage={activityPage}
-        onActivityPageChange={setActivityPage}
-        hasNextActivityPage={hasNextActivityPage}
-        isStaff={isStaff}
-      />
-
-      <DealsPanel customerId={customerId} isStaff={isStaff} />
-
-
-      <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
-    </div>
+      <TabsContent value="overview">
+        <CompanyPanel profile={profile} canEdit={isStaff} />
+      </TabsContent>
+      <TabsContent value="qualification">
+        <QualificationPanel customerId={customerId} />
+      </TabsContent>
+      <TabsContent value="conversation">
+        <ConversationPanel
+          customerId={customerId}
+          contacts={contacts}
+          contactsLoading={contactQuery.isLoading}
+          activities={activities}
+          activitiesLoading={activityQuery.isLoading}
+          activitiesFetching={activityQuery.isFetching}
+          activityType={activityType}
+          onActivityTypeChange={setActivityType}
+          activityPage={activityPage}
+          onActivityPageChange={setActivityPage}
+          hasNextActivityPage={hasNextActivityPage}
+          isStaff={isStaff}
+        />
+      </TabsContent>
+      <TabsContent value="deals">
+        <DealsPanel customerId={customerId} isStaff={isStaff} />
+      </TabsContent>
+      <TabsContent value="documents">
+        <DocumentsPanel customerId={customerId} isStaff={isStaff} />
+      </TabsContent>
+      <TabsContent value="background-check">
+        <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
+      </TabsContent>
+      <TabsContent value="history">
+        <CompanyHistory customerId={customerId} />
+      </TabsContent>
+    </Tabs>
   );
 }

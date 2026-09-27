@@ -128,6 +128,7 @@ export function useSetExporterConversation(customerId: string) {
         queryKey: ['conversationHistory', customerId],
       });
       void queryClient.invalidateQueries({ queryKey: ['followUps'] });
+      void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
       void queryClient.invalidateQueries({
         queryKey: ['exporterProfile', customerId],
       });

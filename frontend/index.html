@@ -5,6 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ANER Exporter CRM</title>
+    <script>
+      // Apply a stored light/dark choice before first paint, so the page never
+      // flashes the wrong theme. Same key and rule as src/platform/theme/theme.ts.
+      try {
+        var theme = window.localStorage.getItem('aner.theme');
+        if (theme === 'light' || theme === 'dark') {
+          document.documentElement.setAttribute('data-theme', theme);
+        }
+      } catch (e) {
+        // No storage: the system preference applies.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

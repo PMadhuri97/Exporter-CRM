@@ -20,6 +20,9 @@ import { Upload } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { Button, Select } from '@/components';
+import { humanize } from '@/lib/format';
+
 import { useDocumentCategories } from '../hooks';
 import type {
   DocumentCategory,
@@ -110,7 +113,7 @@ export function DocumentUpload({
           >
             Category
           </label>
-          <select
+          <Select
             id="document-category"
             value={category}
             disabled={isLoading}
@@ -119,15 +122,14 @@ export function DocumentUpload({
               // A type belongs to one category, so a category change invalidates it.
               setDocumentType('');
             }}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand-500"
           >
             <option value="">Choose a category…</option>
             {categories.map((entry) => (
               <option key={entry.category} value={entry.category}>
-                {entry.category.replaceAll('_', ' ').toLowerCase()}
+                {humanize(entry.category)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div>
@@ -137,12 +139,11 @@ export function DocumentUpload({
           >
             Type
           </label>
-          <select
+          <Select
             id="document-type"
             value={documentType}
             disabled={category === ''}
             onChange={(event) => setDocumentType(event.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand-500 disabled:bg-surface-sunken disabled:text-ink-faint"
           >
             <option value="">
               {category === '' ? 'Choose a category first' : 'Choose a type…'}
@@ -152,7 +153,7 @@ export function DocumentUpload({
                 {type.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -187,7 +188,7 @@ export function DocumentUpload({
             }
             setFile(chosen);
           }}
-          className="w-full rounded-lg border border-border px-3 py-2 text-sm text-ink file:mr-3 file:rounded-md file:border-0 file:bg-surface-sunken file:px-3 file:py-1 file:text-sm file:text-ink-muted"
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink file:mr-3 file:rounded-md file:border-0 file:bg-surface-sunken file:px-3 file:py-1 file:text-sm file:text-ink-muted"
         />
       </div>
 
@@ -202,14 +203,10 @@ export function DocumentUpload({
       )}
 
       <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-        >
-          <Upload size={15} />
-          {isUploading ? 'Uploading…' : 'Upload'}
-        </button>
+        <Button type="submit" variant="primary" disabled={!canSubmit} loading={isUploading}>
+          {!isUploading && <Upload size={15} />}
+          Upload
+        </Button>
       </div>
     </form>
   );

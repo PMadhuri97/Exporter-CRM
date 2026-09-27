@@ -3,27 +3,55 @@
 
 Contract: ``docs/contracts/deal-and-buyer.md``.
 
-Nothing here is masked. A buyer is a foreign company, not a person: its name,
-country and registration numbers are commercial facts, not the PAN/GSTIN of an
-Indian exporter that the role capability matrix protects. Its contact email and
-phone are a company's business contact, and are treated the same way
-``ExporterContactResponse`` treats an exporter's — see ``_masked_contact`` below,
-which reuses that rule rather than inventing a second one.
+**The buyer's identifiers and contact details are masked** for every role that
+may not see an exporter's PAN/GSTIN — the same rule, through the same helpers
+(``masking.py``, ``can_reveal_identifiers``): COMPLIANCE and ADMIN see them in
+full; OPERATIONS and DEVELOPER see ``registration_number`` and ``tax_id`` with
+only the last four characters, the email as ``a•••@domain`` and the phone with
+its last four digits. The buyer's name and country stay visible to everyone: a
+deal is unrecognisable without them.
+
+(This module used to say nothing here was masked and point at a
+``_masked_contact`` helper that was never written, so the contact details — and
+the tax identifiers — reached every reader in full.)
+
+The write side mirrors the company record: a masked value is refused rather than
+saved (``NotMasked``), and a masked field **left out** of the buyer request keeps
+its stored value, so a role that only ever sees the masked form can still edit
+the rest of the buyer without erasing what it cannot see.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.onboarding.api.schemas.masking import (
+    NotMasked,
+    can_reveal_identifiers,
+    mask_email,
+    mask_identifier,
+    mask_phone,
+)
 from app.modules.onboarding.domain.deal_views import (
     DealListItemView,
     DealStageMove,
     DealView,
 )
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.platform.authentication.models import User
+
+#: The buyer fields a masked role never sees in full, and which a buyer request
+#: may therefore leave out to mean "keep what is stored".
+BUYER_MASKED_FIELDS: tuple[str, ...] = (
+    "registration_number",
+    "tax_id",
+    "contact_email",
+    "contact_phone",
+)
 
 
 class OpenDealRequest(BaseModel):
@@ -51,7 +79,12 @@ class TransitionDealStageRequest(BaseModel):
 
 class SetDealBuyerRequest(BaseModel):
     """Record or replace the deal's buyer. One buyer per deal, so this is an
-    upsert of that one row, not an add."""
+    upsert of that one row, not an add.
+
+    ``registration_number``, ``tax_id``, ``contact_email`` and ``contact_phone``
+    are masked for OPERATIONS and DEVELOPER. Leave one out to keep its stored
+    value; send ``null`` or an empty string to clear it; a masked value is
+    refused (422)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -59,13 +92,20 @@ class SetDealBuyerRequest(BaseModel):
     #: Two letters; the service upper-cases and the database re-checks
     #: (``ck_deal_buyer_country_iso``).
     country: str = Field(min_length=2, max_length=2)
-    registration_number: str | None = Field(default=None, max_length=100)
-    tax_id: str | None = Field(default=None, max_length=100)
-    contact_email: str | None = Field(default=None, max_length=255)
-    contact_phone: str | None = Field(default=None, max_length=50)
+    registration_number: Annotated[str | None, NotMasked] = Field(default=None, max_length=100)
+    tax_id: Annotated[str | None, NotMasked] = Field(default=None, max_length=100)
+    contact_email: Annotated[str | None, NotMasked] = Field(default=None, max_length=255)
+    contact_phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
+
+    def fields_to_keep(self) -> frozenset[str]:
+        """The masked fields the caller left out — their stored values stay."""
+        return frozenset(BUYER_MASKED_FIELDS) - self.model_fields_set
 
 
 class DealBuyerResponse(BaseModel):
+    """The deal's buyer. The identifiers and contact details are masked for
+    OPERATIONS and DEVELOPER; COMPLIANCE and ADMIN see them in full."""
+
     id: uuid.UUID
     deal_id: uuid.UUID
     name: str
@@ -74,6 +114,19 @@ class DealBuyerResponse(BaseModel):
     tax_id: str | None
     contact_email: str | None
     contact_phone: str | None
+
+    def masked_for(self, viewer: User) -> DealBuyerResponse:
+        """The same reveal rule as the exporter's identifiers and contacts."""
+        if can_reveal_identifiers(viewer):
+            return self
+        return self.model_copy(
+            update={
+                "registration_number": mask_identifier(self.registration_number),
+                "tax_id": mask_identifier(self.tax_id),
+                "contact_email": mask_email(self.contact_email),
+                "contact_phone": mask_phone(self.contact_phone),
+            }
+        )
 
 
 class DealStageMoveResponse(BaseModel):
@@ -108,7 +161,9 @@ class DealResponse(BaseModel):
     handover_blocked_reason: str | None
 
     @classmethod
-    def from_view(cls, view: DealView) -> DealResponse:
+    def from_view(cls, view: DealView, viewer: User) -> DealResponse:
+        """``viewer`` decides whether the buyer's identifiers and contact details
+        are shown in full — required, so no route can forget to pass it."""
         return cls(
             id=view.id,
             company_id=view.company_id,
@@ -128,7 +183,7 @@ class DealResponse(BaseModel):
                     tax_id=view.buyer.tax_id,
                     contact_email=view.buyer.contact_email,
                     contact_phone=view.buyer.contact_phone,
-                )
+                ).masked_for(viewer)
                 if view.buyer is not None
                 else None
             ),

@@ -24,7 +24,7 @@ export function formatDateTime(value: string | null | undefined): string {
   return format(new Date(value), 'dd MMM yyyy, HH:mm');
 }
 
-/** `DATA_COLLECTION` → `Data Collection`.
+/** `GATHERING_PAPERWORK` → `Gathering Paperwork`.
  *
  * For rendering a backend enum member to a person. Screens show the server's
  * vocabulary rather than inventing labels for it, so a value the API adds

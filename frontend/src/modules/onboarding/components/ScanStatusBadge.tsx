@@ -19,6 +19,8 @@
 
 import { AlertTriangle, CheckCircle2, Clock, ShieldAlert } from 'lucide-react';
 
+import { Chip } from '@/components';
+
 import type { DocumentScanStatus } from '../types';
 
 const LOOK: Record<
@@ -65,13 +67,9 @@ export function ScanStatusBadge({
 
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span
-        title={look.title}
-        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${look.className}`}
-      >
-        <Icon size={11} />
+      <Chip title={look.title} className={look.className} icon={<Icon size={11} />}>
         {look.label}
-      </span>
+      </Chip>
       {scannerName && (
         <span
           className="text-xs uppercase tracking-wide text-ink-faint"

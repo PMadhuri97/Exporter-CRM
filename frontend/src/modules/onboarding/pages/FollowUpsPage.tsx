@@ -1,7 +1,7 @@
 /**
  * The Follow-ups screen — **owner: Developer 3A, Phase 2** (L3-11a-ii).
  *
- * What we owe exporters next, and whether we did it. **The whole team's list**
+ * What we owe companies next, and whether we did it. **The whole team's list**
  * (decision D2): no owner filter is applied by default, and the "mine" filter is a
  * convenience, not a permission — the server would serve the same rows either way.
  *
@@ -18,9 +18,8 @@
  * first "Watch out for"). This page renders what it is told; the one thing it decides
  * is which tab is selected.
  *
- * Reached from the sidebar's `Follow-ups` row, whose `status` flips from `'soon'` in
- * the same commit as this file, so navigation never points at a page that renders
- * nothing.
+ * Reached from the sidebar's `Follow-ups` row at `/follow-ups`, and from the Home
+ * page's cards.
  */
 
 import {
@@ -34,11 +33,25 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { EmptySection } from '@/components';
+import {
+  Button,
+  Chip,
+  EmptySection,
+  Input,
+  PageHeader,
+  Panel,
+  Select,
+  Skeleton,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  Textarea,
+} from '@/components';
 import { formatDate, formatDateTime, humanize } from '@/lib/format';
-import { useCurrentUser } from '@/platform/auth';
+import { isStaffRole, useCurrentUser } from '@/platform/auth';
 
 import { useCompleteFollowUp, useFollowUps } from '../hooks';
+import { paths } from '../paths';
 import type { CheckBack, FollowUp, FollowUpOutcome, FollowUpState } from '../types';
 
 /** The tabs, and the `state` each one asks the server for.
@@ -71,19 +84,15 @@ const TABS: { key: TabKey; label: string }[] = [
 const OUTCOMES: FollowUpOutcome[] = ['DONE', 'NO_ANSWER', 'RESCHEDULED', 'CANCELLED'];
 
 function StateBadge({ row }: { row: FollowUp }) {
-  const classes =
-    row.state === 'OVERDUE'
-      ? 'bg-status-failed/10 text-status-failed'
-      : row.state === 'DONE'
-        ? 'bg-status-passed/10 text-status-passed'
-        : 'bg-status-pending/10 text-status-pending';
   return (
-    <span
-      className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium ${classes}`}
+    <Chip
+      dot
+      tone={row.state === 'OVERDUE' ? 'danger' : row.state === 'DONE' ? 'success' : 'info'}
+      className="shrink-0"
       data-testid="follow-up-state"
     >
       {humanize(row.state)}
-    </span>
+    </Chip>
   );
 }
 
@@ -138,8 +147,8 @@ function CompleteForm({
       <div className="grid gap-3 md:grid-cols-[180px_1fr]">
         <label className="text-xs font-medium text-ink-muted">
           Outcome
-          <select
-            className="input mt-1"
+          <Select
+            className="mt-1"
             value={outcome}
             onChange={(event) => setOutcome(event.target.value as FollowUpOutcome)}
             aria-label="Outcome"
@@ -149,14 +158,14 @@ function CompleteForm({
                 {humanize(value)}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {needsNextDue && (
           <label className="text-xs font-medium text-ink-muted">
             New due date and time
-            <input
+            <Input
               type="datetime-local"
-              className="input mt-1"
+              className="mt-1"
               value={nextDueAt}
               onChange={(event) => setNextDueAt(event.target.value)}
               required
@@ -166,8 +175,8 @@ function CompleteForm({
       </div>
       <label className="block text-xs font-medium text-ink-muted">
         Note
-        <textarea
-          className="input mt-1 min-h-20 resize-y"
+        <Textarea
+          className="mt-1 min-h-20 resize-y"
           value={note}
           onChange={(event) => setNote(event.target.value)}
           placeholder="What happened?"
@@ -180,20 +189,12 @@ function CompleteForm({
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onDone}
-          className="rounded-lg px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-sunken"
-        >
+        <Button variant="ghost" size="sm" onClick={onDone}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={mutation.isPending}
-          className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {mutation.isPending ? 'Saving…' : 'Record'}
-        </button>
+        </Button>
+        <Button type="submit" variant="primary" size="sm" loading={mutation.isPending}>
+          Record
+        </Button>
       </div>
     </form>
   );
@@ -203,13 +204,13 @@ function FollowUpRow({ row, isStaff }: { row: FollowUp; isStaff: boolean }) {
   const [completing, setCompleting] = useState(false);
 
   return (
-    <div className="border-b border-border py-4 last:border-b-0" data-testid="follow-up-row">
+    <div className="border-b border-border py-4 first:pt-1 last:border-b-0" data-testid="follow-up-row">
       <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
         <StateBadge row={row} />
         <div className="min-w-0 flex-1">
           <p className="font-medium text-ink">{row.subject}</p>
           <Link
-            to={`/exporters/${row.customer_id}`}
+            to={paths.company(row.customer_id)}
             className="mt-0.5 inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink"
           >
             {row.exporter_display_name ?? 'Unnamed company'}
@@ -220,7 +221,11 @@ function FollowUpRow({ row, isStaff }: { row: FollowUp; isStaff: boolean }) {
           )}
         </div>
         <div className="text-left text-xs text-ink-faint md:text-right">
-          <p className="inline-flex items-center gap-1 font-medium">
+          <p
+            className={`inline-flex items-center gap-1 font-medium ${
+              row.state === 'OVERDUE' ? 'text-status-failed' : ''
+            }`}
+          >
             <CalendarClock size={12} /> Due {formatDateTime(row.due_at)}
           </p>
           <p className="mt-1">Logged by {row.actor_id}</p>
@@ -250,13 +255,9 @@ function FollowUpRow({ row, isStaff }: { row: FollowUp; isStaff: boolean }) {
         (completing ? (
           <CompleteForm row={row} onDone={() => setCompleting(false)} />
         ) : (
-          <button
-            type="button"
-            onClick={() => setCompleting(true)}
-            className="mt-2 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button size="sm" className="mt-2" onClick={() => setCompleting(true)}>
             Record outcome
-          </button>
+          </Button>
         ))
       )}
     </div>
@@ -266,13 +267,13 @@ function FollowUpRow({ row, isStaff }: { row: FollowUp; isStaff: boolean }) {
 function CheckBackRow({ row }: { row: CheckBack }) {
   return (
     <div
-      className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-border py-3 last:border-b-0"
+      className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-border py-3 first:pt-1 last:border-b-0"
       data-testid="check-back-row"
     >
       <PauseCircle size={16} className="mt-0.5 shrink-0 text-ink-faint" />
       <div className="min-w-0 flex-1">
         <Link
-          to={`/exporters/${row.customer_id}`}
+          to={paths.company(row.customer_id, 'conversation')}
           className="inline-flex items-center gap-1 font-medium text-ink hover:text-brand-600"
         >
           {row.exporter_display_name ?? 'Unnamed company'}
@@ -314,33 +315,29 @@ function Pager({
   onChange: (offset: number) => void;
 }) {
   if (total <= PAGE_SIZE && offset === 0) return null;
-  const buttonClass =
-    'rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-50';
   return (
     <div
       className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3"
       data-testid="follow-ups-pager"
     >
-      <span className="text-sm text-ink-muted">
+      <span className="text-sm tabular-nums text-ink-muted">
         {offset + 1}–{offset + shown} of {total}
       </span>
       <div className="flex gap-2">
-        <button
-          type="button"
-          className={buttonClass}
+        <Button
+          size="sm"
           disabled={offset === 0}
           onClick={() => onChange(Math.max(0, offset - PAGE_SIZE))}
         >
           Previous
-        </button>
-        <button
-          type="button"
-          className={buttonClass}
+        </Button>
+        <Button
+          size="sm"
           disabled={offset + shown >= total}
           onClick={() => onChange(offset + PAGE_SIZE)}
         >
           Next
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -351,10 +348,9 @@ export function FollowUpsPage() {
   // page only renders inside `ProtectedRoute`.
   const currentUser = useCurrentUser();
   // DEVELOPER reads the CRM and writes nothing, so it gets no "Record outcome"
-  // button. The server refuses it too — this only avoids offering it. Same
-  // expression as `ExporterDetailPage`'s, so the two screens cannot disagree about
-  // who is staff.
-  const isStaff = currentUser.role !== 'DEVELOPER';
+  // button. The server refuses it too — this only avoids offering it. The same
+  // helper every screen uses, so no two can disagree about who is staff.
+  const isStaff = isStaffRole(currentUser.role);
 
   const [tab, setTab] = useState<TabKey>('overdue');
   const [mineOnly, setMineOnly] = useState(false);
@@ -392,32 +388,21 @@ export function FollowUpsPage() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="text-xl font-semibold text-ink">Follow-ups</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          What we owe exporters next, across every company — the whole team's list.
-        </p>
-      </header>
+      <PageHeader
+        title="Follow-ups"
+        description="What we owe companies next, across every company — the whole team's list."
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Follow-up state">
-          {TABS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.key}
-              onClick={() => selectTab(item.key)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                tab === item.key
-                  ? 'bg-brand-50 text-brand-600'
-                  : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <Tabs value={tab} onValueChange={(next) => selectTab(next as TabKey)} variant="pill">
+          <TabsList aria-label="Follow-up state">
+            {TABS.map((item) => (
+              <TabsTrigger key={item.key} value={item.key}>
+                {item.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
         <label className="flex items-center gap-2 text-sm text-ink-muted">
           <input
             type="checkbox"
@@ -426,28 +411,30 @@ export function FollowUpsPage() {
               setMineOnly(event.target.checked);
               setOffset(0);
             }}
-            className="h-4 w-4 rounded border-border-strong text-brand-600 focus:ring-brand-500"
+            className="h-4 w-4 rounded border-border-strong accent-brand-600"
           />
           Only the ones I logged
         </label>
       </div>
 
-      <section
-        className="rounded-lg border border-border bg-surface p-5 shadow-card"
+      <Panel
         data-extension="follow-ups"
+        title={
+          <span className="inline-flex items-center gap-2">
+            <ClipboardList size={16} className="text-ink-faint" />
+            Follow-ups
+          </span>
+        }
+        actions={
+          query.data && (
+            <span className="text-sm tabular-nums text-ink-faint">{query.data.follow_ups_total}</span>
+          )
+        }
       >
-        <div className="mb-3 flex items-center gap-2 border-b border-border pb-3">
-          <ClipboardList size={16} className="text-ink-faint" />
-          <h2 className="font-semibold text-ink">Follow-ups</h2>
-          {query.data && (
-            <span className="text-sm text-ink-faint">{query.data.follow_ups_total}</span>
-          )}
-        </div>
-
         {query.isLoading ? (
           <div className="space-y-3">
-            <div className="h-20 animate-pulse rounded bg-surface-sunken" />
-            <div className="h-20 animate-pulse rounded bg-surface-sunken" />
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
           </div>
         ) : query.isError ? (
           <p className="text-sm text-status-failed">
@@ -475,22 +462,23 @@ export function FollowUpsPage() {
             A follow-up is an activity logged with a due date, on a company's page.
           </EmptySection>
         )}
-      </section>
+      </Panel>
 
       {(tab === 'overdue' || tab === 'all') && (
-        <section
-          className="rounded-lg border border-border bg-surface p-5 shadow-card"
+        <Panel
           data-extension="check-backs"
-        >
-          <div className="mb-3 flex items-center gap-2 border-b border-border pb-3">
-            <PauseCircle size={16} className="text-ink-faint" />
-            <h2 className="font-semibold text-ink">
+          title={
+            <span className="inline-flex items-center gap-2">
+              <PauseCircle size={16} className="text-ink-faint" />
               {tab === 'overdue' ? 'Check-backs due' : 'Check-backs'}
-            </h2>
-            {query.data && (
-              <span className="text-sm text-ink-faint">{query.data.check_backs_total}</span>
-            )}
-          </div>
+            </span>
+          }
+          actions={
+            query.data && (
+              <span className="text-sm tabular-nums text-ink-faint">{query.data.check_backs_total}</span>
+            )
+          }
+        >
           <p className="mb-3 text-sm text-ink-muted">
             Companies that said not now
             {tab === 'overdue' ? ', due to be picked up today or earlier' : ''}. These are
@@ -499,7 +487,7 @@ export function FollowUpsPage() {
           </p>
 
           {query.isLoading ? (
-            <div className="h-12 animate-pulse rounded bg-surface-sunken" />
+            <Skeleton className="h-12" />
           ) : query.isError ? (
             <p className="text-sm text-status-failed">
               Could not load check-backs. {query.error.message}
@@ -517,7 +505,7 @@ export function FollowUpsPage() {
                 : 'No company is parked waiting for a check-back.'}
             </EmptySection>
           )}
-        </section>
+        </Panel>
       )}
     </div>
   );

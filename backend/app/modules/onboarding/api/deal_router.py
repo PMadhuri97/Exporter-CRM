@@ -76,7 +76,7 @@ async def open_deal(
     view = await DealService(db).open_deal(
         company_id, reference=body.reference, actor_id=str(current_user.id)
     )
-    return DealResponse.from_view(view)
+    return DealResponse.from_view(view, current_user)
 
 
 @router.get(
@@ -136,7 +136,7 @@ async def get_deal(
     current_user: Annotated[User, Depends(_READER)],
     db: AsyncSession = Depends(get_db),
 ) -> DealResponse:
-    return DealResponse.from_view(await DealService(db).get_deal(deal_id))
+    return DealResponse.from_view(await DealService(db).get_deal(deal_id), current_user)
 
 
 @router.post(
@@ -183,7 +183,7 @@ async def transition_deal_stage(
         reason=body.reason,
         actor_id=str(current_user.id),
     )
-    return DealResponse.from_view(view)
+    return DealResponse.from_view(view, current_user)
 
 
 @router.put(
@@ -195,14 +195,23 @@ async def transition_deal_stage(
         "another (deal contract §3). `PUT` rather than `POST` for the same "
         "reason.\n\n"
         "A buyer's problems stay on the buyer: a failed buyer check is recorded "
-        "against this row and never against the company (architecture §3.5)."
+        "against this row and never against the company (architecture §3.5).\n\n"
+        "The registration number, tax ID, contact email and contact phone are "
+        "masked for OPERATIONS and DEVELOPER. Leave any of them out to keep its "
+        "stored value — so a role that only sees the masked form can edit the "
+        "rest — or send null to clear it. A masked value is refused."
     ),
     responses={
         401: {"description": "Unauthorized"},
         403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
         404: {"description": "Deal not found"},
         409: {"description": "The deal is handed over or withdrawn"},
-        422: {"description": "Missing name, or a country that is not ISO-3166-1 alpha-2"},
+        422: {
+            "description": (
+                "Missing name, a country that is not ISO-3166-1 alpha-2, or a "
+                "masked value sent back"
+            )
+        },
     },
 )
 async def set_deal_buyer(
@@ -219,9 +228,10 @@ async def set_deal_buyer(
         tax_id=body.tax_id,
         contact_email=body.contact_email,
         contact_phone=body.contact_phone,
+        keep=body.fields_to_keep(),
         actor_id=str(current_user.id),
     )
-    return DealResponse.from_view(view)
+    return DealResponse.from_view(view, current_user)
 
 
 __all__ = ["router"]

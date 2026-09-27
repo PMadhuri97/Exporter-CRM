@@ -47,10 +47,11 @@ export function useDeal(dealId: string | undefined) {
 /**
  * Open a deal, then refresh everything opening one changed.
  *
- * Three invalidations, and the third is the one worth explaining:
+ * Four invalidations, and the third is the one worth explaining:
  *
- * - `deals` for the company — the new deal belongs in the list.
- * - `exporterProfile` for the company — its panel shows a deal count.
+ * - `deals` for the company — the new deal belongs in the list, and the
+ *   company page's Deals tab shows the count.
+ * - `exporterProfile` for the company — its `updated_at` moves.
  * - `exporterConversation` **and** `conversationHistory` for the company — the
  *   server moved the gauge to `READY_NOW` as part of this request (architecture
  *   §3.3, seam S1) and wrote a history row for it. Without these, Developer 3A's
@@ -68,6 +69,7 @@ export function useOpenDeal(customerId: string) {
     mutationFn: (body: OpenDealRequest) => openDeal(customerId, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['deals', customerId] });
+      void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
       void queryClient.invalidateQueries({
         queryKey: ['exporterProfile', customerId],
       });
@@ -94,8 +96,10 @@ export function useTransitionDealStage(dealId: string, customerId?: string) {
       transitionDealStage(dealId, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['deal', dealId] });
+      void queryClient.invalidateQueries({ queryKey: ['dealHistory', dealId] });
       if (customerId !== undefined) {
         void queryClient.invalidateQueries({ queryKey: ['deals', customerId] });
+        void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
       }
     },
   });
@@ -107,6 +111,7 @@ export function useSetDealBuyer(dealId: string, customerId?: string) {
     mutationFn: (body: SetDealBuyerRequest) => setDealBuyer(dealId, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['deal', dealId] });
+      void queryClient.invalidateQueries({ queryKey: ['dealHistory', dealId] });
       if (customerId !== undefined) {
         // The list shows the buyer's name per row.
         void queryClient.invalidateQueries({ queryKey: ['deals', customerId] });

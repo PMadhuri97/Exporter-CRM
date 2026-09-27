@@ -9,6 +9,9 @@
 import { apiRequest } from '@/lib/api/client';
 
 import type {
+  CreateCriterionRequest,
+  Criterion,
+  CriterionDefinitionRequest,
   Qualification,
   ReasonCode,
   RecordOutcomeRequest,
@@ -41,4 +44,41 @@ export function recordQualificationOutcome(
 
 export function listReasonCodes(): Promise<{ reason_codes: ReasonCode[] }> {
   return apiRequest<{ reason_codes: ReasonCode[] }>('/onboarding/qualification/reason-codes');
+}
+
+// ── Criteria (ADMIN writes; every staff role and DEVELOPER may read) ──
+
+/** The current version of every criterion, active or not. */
+export function listCriteria(): Promise<{ criteria: Criterion[] }> {
+  return apiRequest<{ criteria: Criterion[] }>('/onboarding/qualification/criteria');
+}
+
+/** Add a criterion as version 1. 409 `QUALIFICATION_CRITERION_EXISTS` if the key is taken. */
+export function createCriterion(request: CreateCriterionRequest): Promise<Criterion> {
+  return apiRequest<Criterion>('/onboarding/qualification/criteria', {
+    method: 'POST',
+    body: request,
+  });
+}
+
+/** Every version of one criterion, oldest first. */
+export function listCriterionVersions(key: string): Promise<{ criteria: Criterion[] }> {
+  return apiRequest<{ criteria: Criterion[] }>(
+    `/onboarding/qualification/criteria/${encodeURIComponent(key)}/versions`,
+  );
+}
+
+/**
+ * Add the next version of a criterion — the only way one changes, label
+ * included. 409 `QUALIFICATION_CRITERION_CHANGED` if someone else added a
+ * version first.
+ */
+export function addCriterionVersion(
+  key: string,
+  request: CriterionDefinitionRequest,
+): Promise<Criterion> {
+  return apiRequest<Criterion>(
+    `/onboarding/qualification/criteria/${encodeURIComponent(key)}/versions`,
+    { method: 'POST', body: request },
+  );
 }

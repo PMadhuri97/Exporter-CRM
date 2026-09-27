@@ -6,19 +6,30 @@
  * one is required. There is no copy of the marker rules here: a role that may
  * not set markers gets no moves and sees nothing, and anything the server
  * refuses is shown as it said it.
+ *
+ * The buttons sit in the company page's header, so the reason is asked for in
+ * a dialog rather than a form that would push the header open.
  */
 
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { Button, Dialog, Textarea } from '@/components';
+
 import { MARKER_ACTION_LABEL } from '../constants';
 import { useSetExporterMarker } from '../hooks';
-import type { ExporterMarker, MarkerMove } from '../types';
+import type { MarkerMove } from '../types';
 
 interface MarkerControlProps {
   customerId: string;
   moves: MarkerMove[];
 }
+
+const CONSEQUENCE: Record<MarkerMove['to'], string> = {
+  NONE: 'The relationship goes back to normal working lists.',
+  PAUSED: 'The company stays in lists, badged as paused. Reversible.',
+  ENDED: 'The company leaves default working lists but stays searchable. Reversible.',
+};
 
 export function MarkerControl({ customerId, moves }: MarkerControlProps) {
   const mutation = useSetExporterMarker(customerId);
@@ -27,75 +38,81 @@ export function MarkerControl({ customerId, moves }: MarkerControlProps) {
 
   if (moves.length === 0) return null;
 
-  const submit = (to: ExporterMarker, withReason: string | null) => {
+  const close = () => {
+    setPending(null);
+    setReason('');
+  };
+
+  const submit = () => {
+    if (!pending) return;
     mutation.mutate(
-      { marker: to, reason: withReason },
+      { marker: pending.to, reason: reason.trim() || null },
       {
         onSuccess: () => {
-          toast.success(`${MARKER_ACTION_LABEL[to]}: done`);
-          setPending(null);
-          setReason('');
+          toast.success(`${MARKER_ACTION_LABEL[pending.to]}: done`);
+          close();
         },
         onError: (error) => toast.error(error.message),
       },
     );
   };
 
-  if (pending) {
-    return (
-      <form
-        className="flex w-full max-w-md flex-col gap-2 rounded-lg border border-border bg-surface p-3 shadow-card"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit(pending.to, reason.trim() || null);
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {moves.map((move) => (
+          <Button
+            key={move.to}
+            size="sm"
+            variant={move.to === 'ENDED' ? 'ghost' : 'secondary'}
+            onClick={() => setPending(move)}
+          >
+            {MARKER_ACTION_LABEL[move.to]}
+          </Button>
+        ))}
+      </div>
+
+      <Dialog
+        open={pending !== null}
+        onOpenChange={(open) => {
+          if (!open) close();
         }}
+        title={pending ? MARKER_ACTION_LABEL[pending.to] : ''}
+        description={pending ? CONSEQUENCE[pending.to] : undefined}
       >
-        <label className="text-sm font-medium text-ink" htmlFor="marker-reason">
-          {MARKER_ACTION_LABEL[pending.to]} — reason
-          {pending.reason_required ? '' : ' (optional)'}
-        </label>
-        <textarea
-          id="marker-reason"
-          className="input min-h-[4rem]"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          required={pending.reason_required}
-        />
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            className="rounded-lg px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-sunken"
-            onClick={() => {
-              setPending(null);
-              setReason('');
+        {pending && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit();
             }}
           >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            Confirm
-          </button>
-        </div>
-      </form>
-    );
-  }
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {moves.map((move) => (
-        <button
-          key={move.to}
-          type="button"
-          onClick={() => setPending(move)}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-subtle"
-        >
-          {MARKER_ACTION_LABEL[move.to]}
-        </button>
-      ))}
-    </div>
+            <label className="block text-sm font-medium text-ink" htmlFor="marker-reason">
+              Reason{pending.reason_required ? '' : ' (optional)'}
+            </label>
+            <Textarea
+              id="marker-reason"
+              className="-mt-2 min-h-[5rem]"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              required={pending.reason_required}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={close}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant={pending.to === 'ENDED' ? 'danger' : 'primary'}
+                loading={mutation.isPending}
+              >
+                Confirm
+              </Button>
+            </div>
+          </form>
+        )}
+      </Dialog>
+    </>
   );
 }

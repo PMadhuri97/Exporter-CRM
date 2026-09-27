@@ -53,6 +53,8 @@ export function invalidateCompany(
 ) {
   void queryClient.invalidateQueries({ queryKey: ['exporterProfile', customerId] });
   void queryClient.invalidateQueries({ queryKey: ['exporterProfiles'] });
+  // Profile, marker and qualification changes each write a history row.
+  void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
 }
 
 export function useUpdateExporterProfile(customerId: string) {

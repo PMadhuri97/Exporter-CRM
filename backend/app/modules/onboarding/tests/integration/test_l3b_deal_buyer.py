@@ -631,3 +631,150 @@ async def test_a_developer_may_read_a_deal_but_not_open_one(client: AsyncClient)
         headers=auth_header(developer),
     )
     assert refused.status_code == 403, refused.text
+
+
+# ── The buyer's identifiers and contact details are masked ───────────────────
+#
+# The same rule as an exporter's PAN/GSTIN and contacts (``masking.py``):
+# COMPLIANCE and ADMIN see them in full, OPERATIONS and DEVELOPER never receive
+# them. Browser masking protects nothing from a caller reading the JSON, so the
+# check is on the response itself.
+
+MASKED_BUYER = {
+    "registration_number": "•••8899",
+    "tax_id": "••••••••••9B01",
+    "contact_email": "a•••@rotterdamtrading.example",
+    "contact_phone": "•••••••••••0101",
+}
+
+
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.DEVELOPER])
+async def test_a_masked_role_never_receives_the_buyers_identifiers(
+    client: AsyncClient, role: UserRole
+):
+    token = await token_with_role(client, role)
+    deal = await _open(await _company())
+    await _set_buyer(deal.id)
+
+    resp = await client.get(f"{BASE}/deals/{deal.id}", headers=auth_header(token))
+    assert resp.status_code == 200, resp.text
+    buyer = resp.json()["buyer"]
+    for field, masked in MASKED_BUYER.items():
+        assert buyer[field] == masked, field
+        assert BUYER[field] not in resp.text, field
+    # Name and country stay readable: the deal is unrecognisable without them.
+    assert buyer["name"] == BUYER["name"]
+    assert buyer["country"] == BUYER["country"]
+
+
+@pytest.mark.parametrize("role", [UserRole.COMPLIANCE, UserRole.ADMIN])
+async def test_compliance_and_admin_see_the_buyer_in_full(client: AsyncClient, role: UserRole):
+    token = await token_with_role(client, role)
+    deal = await _open(await _company())
+    await _set_buyer(deal.id)
+
+    buyer = (await client.get(f"{BASE}/deals/{deal.id}", headers=auth_header(token))).json()[
+        "buyer"
+    ]
+    for field in MASKED_BUYER:
+        assert buyer[field] == BUYER[field], field
+
+
+async def test_every_deal_response_masks_the_buyer_not_just_the_read(client: AsyncClient):
+    """The write routes answer with the deal too, so they must mask it as well."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    deal = await _open(await _company())
+    await _set_buyer(deal.id)
+
+    moved = await client.post(
+        f"{BASE}/deals/{deal.id}/transitions",
+        json={"to_stage": "GATHERING_PAPERWORK"},
+        headers=auth_header(token),
+    )
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["buyer"]["tax_id"] == MASKED_BUYER["tax_id"]
+
+    put = await client.put(
+        f"{BASE}/deals/{deal.id}/buyer",
+        json={"name": "Rotterdam Trading BV", "country": "NL"},
+        headers=auth_header(token),
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["buyer"]["contact_email"] == MASKED_BUYER["contact_email"]
+
+
+async def test_a_masked_value_sent_back_is_refused_not_saved(client: AsyncClient):
+    """A client that writes back what it read would otherwise overwrite the real
+    tax ID with bullets."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    deal = await _open(await _company())
+    await _set_buyer(deal.id)
+
+    resp = await client.put(
+        f"{BASE}/deals/{deal.id}/buyer",
+        json={**BUYER, "tax_id": MASKED_BUYER["tax_id"]},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 422, resp.text
+    assert (await _get(deal.id)).buyer.tax_id == BUYER["tax_id"]
+
+
+async def test_a_masked_field_left_out_keeps_its_stored_value(client: AsyncClient):
+    """OPERATIONS can edit the buyer's name without erasing what it cannot see."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    deal = await _open(await _company())
+    await _set_buyer(deal.id)
+
+    resp = await client.put(
+        f"{BASE}/deals/{deal.id}/buyer",
+        json={"name": "Rotterdam Trading B.V.", "country": "NL", "contact_phone": "+31 10 555 0199"},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    stored = (await _get(deal.id)).buyer
+    assert stored.name == "Rotterdam Trading B.V."
+    assert stored.contact_phone == "+31 10 555 0199"
+    assert stored.registration_number == BUYER["registration_number"]
+    assert stored.tax_id == BUYER["tax_id"]
+    assert stored.contact_email == BUYER["contact_email"]
+
+
+async def test_a_masked_field_sent_as_null_is_cleared(client: AsyncClient):
+    """Left out keeps; null clears — two different requests, two different answers."""
+    token = await token_with_role(client, UserRole.COMPLIANCE)
+    deal = await _open(await _company())
+    await _set_buyer(deal.id)
+
+    resp = await client.put(
+        f"{BASE}/deals/{deal.id}/buyer",
+        json={"name": "Rotterdam Trading BV", "country": "NL", "tax_id": None},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200, resp.text
+    stored = (await _get(deal.id)).buyer
+    assert stored.tax_id is None
+    assert stored.registration_number == BUYER["registration_number"]
+
+
+async def test_keeping_a_field_on_a_new_buyer_leaves_it_empty():
+    deal = await _open(await _company())
+    async with db_services.AsyncSessionLocal() as db:
+        view = await DealService(db).set_buyer(
+            deal.id,
+            name="Rotterdam Trading BV",
+            country="NL",
+            tax_id="ignored because kept",
+            keep={"tax_id"},
+            actor_id="tester",
+        )
+    assert view.buyer.tax_id is None
+
+
+async def test_keep_names_only_the_optional_buyer_fields():
+    deal = await _open(await _company())
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ValueError):
+            await DealService(db).set_buyer(
+                deal.id, name="X", country="NL", keep={"name"}, actor_id="tester"
+            )

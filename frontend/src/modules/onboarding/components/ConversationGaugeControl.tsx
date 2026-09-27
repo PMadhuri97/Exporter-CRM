@@ -21,6 +21,7 @@ import { CalendarClock } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { Button, Input, Textarea } from '@/components';
 import { humanize } from '@/lib/format';
 
 import { useSetExporterConversation } from '../hooks';
@@ -94,10 +95,10 @@ export function ConversationGaugeControl({
         {pending.check_back_required && (
           <label className="text-xs font-medium text-ink-muted" htmlFor="conversation-check-back">
             Check back on
-            <input
+            <Input
               id="conversation-check-back"
               type="date"
-              className="input mt-1"
+              className="mt-1"
               value={checkBackOn}
               onChange={(event) => setCheckBackOn(event.target.value)}
               // Only stops the picker offering a past day; the server still decides
@@ -110,9 +111,9 @@ export function ConversationGaugeControl({
 
         <label className="text-xs font-medium text-ink-muted" htmlFor="conversation-reason">
           Reason{pending.reason_required ? '' : ' (optional)'}
-          <textarea
+          <Textarea
             id="conversation-reason"
-            className="input mt-1 min-h-[4rem]"
+            className="mt-1 min-h-[4rem]"
             value={reason}
             onChange={(event) => setReason(event.target.value)}
             required={pending.reason_required}
@@ -120,37 +121,25 @@ export function ConversationGaugeControl({
         </label>
 
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={reset}
-            className="rounded-lg px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-sunken"
-          >
+          <Button variant="ghost" size="sm" onClick={reset}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {mutation.isPending ? 'Saving…' : 'Confirm'}
-          </button>
+          </Button>
+          <Button type="submit" variant="primary" size="sm" loading={mutation.isPending}>
+            Confirm
+          </Button>
         </div>
       </form>
     );
   }
 
   return (
-    <div className="flex flex-wrap gap-2" data-extension="conversation-moves">
+    <div className="flex flex-wrap items-center gap-2" data-extension="conversation-moves">
+      <span className="mr-1 text-sm text-ink-muted">Move to:</span>
       {moves.map((move) => (
-        <button
-          key={move.to}
-          type="button"
-          onClick={() => setPending(move)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button key={move.to} size="sm" onClick={() => setPending(move)}>
           {humanize(move.to)}
           {move.check_back_required && <CalendarClock size={13} className="text-ink-faint" />}
-        </button>
+        </Button>
       ))}
     </div>
   );

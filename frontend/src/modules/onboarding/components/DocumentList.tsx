@@ -25,7 +25,8 @@
 import { Download, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { EmptySection } from '@/components';
+import { Button, EmptySection, Skeleton } from '@/components';
+import { formatDateTime, humanize } from '@/lib/format';
 
 import { fetchDocumentBlob } from '../api';
 import { useDownloadDocument } from '../hooks';
@@ -39,12 +40,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
+
 
 export function DocumentList({
   documents,
@@ -93,7 +89,7 @@ export function DocumentList({
     return (
       <div className="flex flex-col gap-2">
         {Array.from({ length: 2 }).map((_, index) => (
-          <div key={index} className="h-14 animate-pulse rounded-lg bg-surface-sunken" />
+          <Skeleton key={index} className="h-14 rounded-lg" />
         ))}
       </div>
     );
@@ -104,11 +100,11 @@ export function DocumentList({
   }
 
   return (
-    <ul className="divide-y divide-border rounded-lg border border-border">
+    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
       {documents.map((document_) => (
         <li
           key={document_.id}
-          className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
+          className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 transition-colors hover:bg-surface-subtle"
         >
           <div className="min-w-0">
             <p className="flex items-center gap-2 font-medium text-ink">
@@ -116,13 +112,11 @@ export function DocumentList({
               <span className="truncate">{document_.file_name}</span>
             </p>
             <p className="mt-0.5 text-xs text-ink-muted">
-              {document_.category.replaceAll('_', ' ').toLowerCase()} ·{' '}
-              {document_.document_type.replaceAll('_', ' ')} ·{' '}
+              {humanize(document_.category)} · {document_.document_type.replaceAll('_', ' ')} ·{' '}
               {formatSize(document_.size_bytes)}
             </p>
             <p className="mt-1 text-xs text-ink-faint">
-              {document_.source.replaceAll('_', ' ').toLowerCase()} ·{' '}
-              {formatDateTime(document_.uploaded_at)}
+              {humanize(document_.source)} · {formatDateTime(document_.uploaded_at)}
             </p>
           </div>
 
@@ -133,14 +127,13 @@ export function DocumentList({
             />
             {/* Absent, not disabled, when the file may not be served. */}
             {document_.is_downloadable && (
-              <button
-                type="button"
+              <Button
+                size="sm"
                 onClick={() => void handleDownload(document_)}
                 aria-label={`Download ${document_.file_name}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-ink-muted transition-colors hover:text-ink"
               >
                 <Download size={13} /> Download
-              </button>
+              </Button>
             )}
           </div>
         </li>

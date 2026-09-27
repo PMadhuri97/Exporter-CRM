@@ -18,13 +18,14 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { DetailRow } from '@/components';
+import { Button, DetailRow, Input, LINK_CLASSES, Panel } from '@/components';
 import { formatDate, humanize } from '@/lib/format';
 import { useCurrentUser } from '@/platform/auth';
 import { MaskedValue, canReveal } from '@/platform/mask';
 
 import { JourneyChip, MarkerBadge, QualificationChip } from '../../components';
 import { useUpdateExporterProfile } from '../../hooks';
+import { paths } from '../../paths';
 import type { ExporterProfileDetail, UpdateExporterProfileRequest } from '../../types';
 
 /** The editable fields, as the form holds them (lists as comma-separated text). */
@@ -153,8 +154,7 @@ function ProfileEditForm({
         {FIELDS.map(({ key, label }) => (
           <label key={key} className="flex flex-col gap-1 text-sm text-ink-muted">
             {label}
-            <input
-              className="input"
+            <Input
               placeholder={!reveal && MASKED_FIELDS.has(key) ? 'Hidden — type to replace' : undefined}
               inputMode={key === 'year_established' ? 'numeric' : undefined}
               value={draft[key]}
@@ -164,20 +164,12 @@ function ProfileEditForm({
         ))}
       </div>
       <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onDone}
-          className="rounded-lg px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-sunken"
-        >
+        <Button variant="ghost" size="sm" onClick={onDone}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={!changed || mutation.isPending}
-          className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
+        </Button>
+        <Button type="submit" variant="primary" size="sm" disabled={!changed} loading={mutation.isPending}>
           Save profile
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -197,10 +189,10 @@ export function CompanyPanel({
       {profile.gstin_warnings.length > 0 && (
         <section
           role="alert"
-          className="rounded-lg border border-status-pending/40 bg-status-pending/10 p-4 text-sm text-ink"
+          className="rounded-lg border border-status-review/40 bg-status-review/10 p-4 text-sm text-ink"
         >
           <div className="flex items-center gap-2 font-medium">
-            <AlertTriangle size={15} className="text-status-pending" />
+            <AlertTriangle size={15} className="text-status-review" />
             A GSTIN on this company is also on another company
           </div>
           <ul className="mt-2 space-y-1">
@@ -210,7 +202,7 @@ export function CompanyPanel({
                 {warning.other_customer_ids.map((id, i) => (
                   <span key={id}>
                     {i > 0 && ', '}
-                    <Link to={`/exporters/${id}`} className="text-brand-600 underline">
+                    <Link to={paths.company(id)} className="text-brand-600 underline">
                       another company
                     </Link>
                   </span>
@@ -222,23 +214,21 @@ export function CompanyPanel({
       )}
 
       <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
-        <section className="rounded-lg border border-border bg-surface p-5 shadow-card">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-ink">Exporter profile</h2>
-            {canEdit && !editing && (
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="rounded-lg border border-border px-3 py-1 text-sm font-medium text-ink hover:bg-surface-subtle"
-              >
+        <Panel
+          title="Company profile"
+          actions={
+            canEdit &&
+            !editing && (
+              <Button size="sm" onClick={() => setEditing(true)}>
                 Edit profile
-              </button>
-            )}
-          </div>
+              </Button>
+            )
+          }
+        >
           {editing ? (
             <ProfileEditForm profile={profile} onDone={() => setEditing(false)} />
           ) : (
-            <dl className="mt-2">
+            <dl>
               <DetailRow label="Country">{profile.country ?? '—'}</DetailRow>
               <DetailRow label="PAN"><MaskedValue value={profile.pan} /></DetailRow>
               <DetailRow label={profile.gstins.length > 1 ? 'GSTINs' : 'GSTIN'}>
@@ -255,19 +245,18 @@ export function CompanyPanel({
               <DetailRow label="Established">{profile.year_established ?? '—'}</DetailRow>
               <DetailRow label="Website">
                 {profile.website ? (
-                  <a href={profile.website} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-1 text-brand-600 hover:underline">
+                  <a href={profile.website} target="_blank" rel="noreferrer" className={`inline-flex max-w-full items-center gap-1 ${LINK_CLASSES}`}>
                     <span className="truncate">{profile.website}</span><ExternalLink size={13} className="shrink-0" />
                   </a>
                 ) : '—'}
               </DetailRow>
             </dl>
           )}
-        </section>
+        </Panel>
 
         <div className="space-y-5">
-          <section className="rounded-lg border border-border bg-surface p-5 shadow-card">
-            <h2 className="font-semibold text-ink">Where it stands</h2>
-            <dl className="mt-2">
+          <Panel title="Where it stands">
+            <dl>
               <DetailRow label="Journey"><JourneyChip journey={profile.journey} /></DetailRow>
               <DetailRow label="Qualification"><QualificationChip state={profile.qualification} /></DetailRow>
               <DetailRow label="Relationship">
@@ -279,17 +268,16 @@ export function CompanyPanel({
                 <DetailRow label="Reason">{profile.marker_reason}</DetailRow>
               )}
             </dl>
-          </section>
+          </Panel>
 
-          <section className="rounded-lg border border-border bg-surface p-5 shadow-card">
-            <h2 className="font-semibold text-ink">Business footprint</h2>
-            <dl className="mt-2">
+          <Panel title="Business footprint">
+            <dl>
               <DetailRow label="Export markets">{profile.export_markets?.length ? profile.export_markets.join(', ') : '—'}</DetailRow>
               <DetailRow label="Products">{profile.products?.length ? profile.products.join(', ') : '—'}</DetailRow>
               <DetailRow label="Created">{formatDate(profile.created_at)}</DetailRow>
               <DetailRow label="Last updated">{formatDate(profile.updated_at)}</DetailRow>
             </dl>
-          </section>
+          </Panel>
         </div>
       </div>
     </div>

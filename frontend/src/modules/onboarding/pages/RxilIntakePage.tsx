@@ -14,13 +14,15 @@
  * other role sees why instead of a form the server would refuse.
  */
 
-import { ArrowLeft } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { useCurrentUser } from '@/platform/auth';
+import { Button, Card, Chip, PageHeader, Panel, Textarea } from '@/components';
+import { isAdminRole, useCurrentUser } from '@/platform/auth';
 
 import { useSubmitRxilPackage } from '../hooks';
+import { paths } from '../paths';
 
 export function RxilIntakePage() {
   const { role } = useCurrentUser();
@@ -30,94 +32,85 @@ export function RxilIntakePage() {
   const result = mutation.data;
 
   return (
-    <div className="space-y-5">
-      <div>
-        <Link
-          to="/exporters"
-          className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink"
-        >
-          <ArrowLeft size={15} />
-          Exporters
-        </Link>
-        <h1 className="text-lg font-semibold text-ink">RXIL intake</h1>
-        <p className="text-sm text-ink-muted">
-          Take in a company RXIL has qualified. The package format is provisional.
-        </p>
-      </div>
+    <div className="mx-auto max-w-3xl space-y-5">
+      <PageHeader
+        back={{ to: paths.companies, label: 'Companies' }}
+        title="RXIL intake"
+        meta={<Chip tone="warning">Provisional format</Chip>}
+        description="Take in a company RXIL has qualified. It arrives as a prospect, qualified by RXIL."
+      />
 
-      {role !== 'ADMIN' ? (
-        <p
-          role="note"
-          className="rounded-lg border border-border bg-surface p-5 text-sm text-ink-muted shadow-card"
-        >
-          Only an administrator can take in an RXIL package: it records RXIL's
-          qualification decision, which no one may record by hand as RXIL's.
-        </p>
+      {!isAdminRole(role) ? (
+        <Card role="note" className="p-5 text-sm text-ink-muted">
+          Only an administrator can take in an RXIL package: it records RXIL's qualification
+          decision, which no one may record by hand as RXIL's.
+        </Card>
       ) : (
-        <form
-          className="space-y-3 rounded-lg border border-border bg-surface p-5 shadow-card"
-          onSubmit={(e) => {
-            e.preventDefault();
-            let pkg: unknown;
-            try {
-              pkg = JSON.parse(text);
-            } catch {
-              setParseError('The package is not valid JSON.');
-              return;
-            }
-            setParseError(null);
-            mutation.mutate(pkg);
-          }}
-        >
-          <textarea
-            aria-label="RXIL package"
-            className="input min-h-[14rem] w-full font-mono text-xs"
-            placeholder='{"package_id": "…", …}'
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          {(parseError ?? mutation.error) && (
-            <p role="alert" className="text-sm text-status-failed">
-              {parseError ?? mutation.error?.message}
-            </p>
-          )}
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={!text.trim() || mutation.isPending}
-              className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {mutation.isPending ? 'Submitting…' : 'Submit package'}
-            </button>
-          </div>
-        </form>
+        <Card className="p-5">
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              let pkg: unknown;
+              try {
+                pkg = JSON.parse(text);
+              } catch {
+                setParseError('The package is not valid JSON.');
+                return;
+              }
+              setParseError(null);
+              mutation.mutate(pkg);
+            }}
+          >
+            <Textarea
+              aria-label="RXIL package"
+              className="min-h-[16rem] font-mono text-xs"
+              placeholder='{"package_id": "…", …}'
+              spellCheck={false}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+            {(parseError ?? mutation.error) && (
+              <p role="alert" className="text-sm text-status-failed">
+                {parseError ?? mutation.error?.message}
+              </p>
+            )}
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={!text.trim()}
+                loading={mutation.isPending}
+              >
+                Submit package
+              </Button>
+            </div>
+          </form>
+        </Card>
       )}
 
       {result && (
-        <section
+        <Panel
           aria-label="Intake result"
-          className="rounded-lg border border-border bg-surface p-5 shadow-card text-sm"
+          title={
+            <span className="inline-flex items-center gap-2">
+              <CheckCircle2 size={17} className="text-status-passed" />
+              {result.replayed ? 'Already taken in — nothing changed' : 'Taken in'}
+            </span>
+          }
+          description={`Company ${result.company} · qualification ${result.qualification}`}
         >
-          <h2 className="font-semibold text-ink">
-            {result.replayed ? 'Already taken in — nothing changed' : 'Taken in'}
-          </h2>
-          <p className="mt-1 text-ink-muted">
-            Company {result.company} · qualification {result.qualification}
-          </p>
           {result.warnings.length > 0 && (
-            <ul className="mt-2 list-disc pl-5 text-status-pending">
+            <ul className="mb-3 list-disc pl-5 text-sm text-status-review">
               {result.warnings.map((warning, i) => (
                 <li key={`${warning.code}-${i}`}>{warning.message}</li>
               ))}
             </ul>
           )}
-          <Link
-            to={`/exporters/${result.customer_id}`}
-            className="mt-3 inline-block font-medium text-brand-600 underline"
-          >
+          <Link to={paths.company(result.customer_id)} className="text-sm font-medium text-brand-600 underline">
             Open company
           </Link>
-        </section>
+        </Panel>
       )}
     </div>
   );

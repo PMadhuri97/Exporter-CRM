@@ -10,7 +10,11 @@ import type { ExporterJourney, ExporterProfileListItem, ExporterSearchParams } f
 
 import { PipelinePage } from './PipelinePage';
 
-vi.mock('@/platform/auth', () => ({ useCurrentUser: vi.fn() }));
+// Partial: the role helpers (`isStaffRole`, …) stay real, only the session is faked.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
+  useCurrentUser: vi.fn(),
+}));
 vi.mock('../api', () => ({ searchExporterProfiles: vi.fn() }));
 
 function company(journey: ExporterJourney, name: string): ExporterProfileListItem {

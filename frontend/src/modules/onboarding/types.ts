@@ -33,6 +33,13 @@ export type CriterionResultValue = Schemas['CriterionResultValue'];
 export type RecordResultsRequest = Schemas['RecordResultsRequest'];
 export type RecordOutcomeRequest = Schemas['RecordOutcomeRequest'];
 export type ReasonCode = Schemas['ReasonCodeResponse'];
+/** One version of a qualification criterion. Every change is a new version;
+ * a version is never edited (L2-09). */
+export type Criterion = Schemas['CriterionResponse'];
+export type CriterionKind = Schemas['CriterionKind'];
+export type ThresholdComparison = Schemas['ThresholdComparison'];
+export type CreateCriterionRequest = Schemas['CreateCriterionRequest'];
+export type CriterionDefinitionRequest = Schemas['CriterionDefinitionRequest'];
 
 // ── Company intake ──
 export type IntakeResult = Schemas['IntakeResponse'];
@@ -91,24 +98,11 @@ export type BankActivityResponse =
  * the one every caller here uses. */
 export type ScreeningChecklistStatus = ScreeningReviewItem['status'];
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Section 9.3 — anchor blocks for Developers 3A and 3B
-//
-// This file is Developer 1's (architecture §8.1). Three people add aliases to it
-// — 3A in each of its two phases, and 3B — and one shared append point at the end
-// of the file is one conflicting hunk every time. So the seam commit cuts the
-// tail into owned blocks, and each owner adds aliases only inside its own.
-//
-// Every alias here is a thin name onto the generated OpenAPI schema, as above:
+// Every alias below is a thin name onto the generated OpenAPI schema, as above:
 // nothing is hand-written, so a backend reshape is a compile error at the use
 // site rather than a silent mismatch.
-// ══════════════════════════════════════════════════════════════════════════════
 
-// ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
-// (3A appends here; 3B does not.)
-// Cut into the two phase sub-anchors below — phase agreement §6.3.
-
-// ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
+// ── Conversation gauge — owner: Developer 3A (L3-02, L3-03) ──
 /** How the sales conversation is going. One thing only — not the journey, not
  * qualification, not the background check. Any value may follow any other. */
 export type ExporterConversation = Schemas['ExporterConversation'];
@@ -117,12 +111,36 @@ export type Conversation = Schemas['ConversationResponse'];
  * hand-copied table on the client (architecture §7.5). */
 export type ConversationMove = Schemas['ConversationMoveResponse'];
 export type SetConversationRequest = Schemas['SetConversationRequest'];
-/** A page of the shared CRM history log, read with `?dimension=conversation`.
- * Developer 1 owns the route; these are the generated names for its shapes. */
-export type HistoryEntry = Schemas['HistoryEntryResponse'];
-export type HistoryList = Schemas['HistoryListResponse'];
+/**
+ * One row of the shared CRM history log (Developer 1's route).
+ *
+ * `details` is `dict | None` on the server, which openapi-typescript generates as
+ * `Record<string, never>` — a type that admits no keys, so every reader had to
+ * cast. Retyped here as what it is: an open bag of values, read defensively.
+ */
+export type HistoryEntry = Omit<Schemas['HistoryEntryResponse'], 'details'> & {
+  details?: Record<string, unknown> | null;
+};
+export type HistoryList = Omit<Schemas['HistoryListResponse'], 'entries'> & {
+  entries: HistoryEntry[];
+};
+/** The log's dimensions, as the history route documents them. */
+export type HistoryDimension =
+  | 'journey'
+  | 'qualification'
+  | 'conversation'
+  | 'background_check'
+  | 'deal'
+  | 'marker'
+  | 'profile'
+  | 'verification';
+export interface HistoryListParams {
+  dimension?: HistoryDimension;
+  limit?: number;
+  offset?: number;
+}
 
-// ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
+// ── Follow-ups — owner: Developer 3A (L3-04) ──
 /** One follow-up: an activity with a due date, plus its completion if it has one. */
 export type FollowUp = Schemas['FollowUpResponse'];
 /** OUTSTANDING / OVERDUE / DONE. Derived on the server from whether a completion
@@ -148,7 +166,6 @@ export interface FollowUpListParams {
 }
 
 // ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
-// (3B appends here; 3A does not.)
 export type Deal = Schemas['DealResponse'];
 export type DealListItem = Schemas['DealListItemResponse'];
 export type DealList = Schemas['DealListResponse'];

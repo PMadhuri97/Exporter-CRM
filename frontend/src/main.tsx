@@ -3,6 +3,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Toaster } from 'sonner';
 
+import '@fontsource-variable/inter';
+
 import { queryClient } from '@/lib/queryClient';
 import { AuthProvider } from '@/platform/auth';
 import { AppRouter } from '@/routes/AppRouter';
@@ -17,7 +19,7 @@ createRoot(rootElement).render(
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <AppRouter />
-        <Toaster richColors position="top-right" />
+        <Toaster richColors closeButton position="top-right" />
       </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,

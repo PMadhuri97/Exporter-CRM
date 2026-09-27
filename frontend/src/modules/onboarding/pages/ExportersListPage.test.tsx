@@ -13,7 +13,11 @@ import { ExportersListPage } from './ExportersListPage';
 // vitest hoists vi.mock calls above every import in this file automatically
 // (its esbuild transform, not declaration order), so these apply regardless
 // of being written after the imports they replace.
-vi.mock('@/platform/auth', () => ({ useCurrentUser: vi.fn() }));
+// Partial: the role helpers (`isStaffRole`, …) stay real, only the session is faked.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
+  useCurrentUser: vi.fn(),
+}));
 vi.mock('../api', () => ({ searchExporterProfiles: vi.fn() }));
 
 const PROFILE: ExporterProfileListItem = {

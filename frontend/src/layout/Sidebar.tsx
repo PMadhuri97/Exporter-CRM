@@ -1,54 +1,31 @@
-import { Kanban, LayoutDashboard, ListChecks, Users } from 'lucide-react';
+import { Home, Kanban, ListChecks, SlidersHorizontal, Building2 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
+
+import type { UserRole } from '@/lib/api/types';
+import { cn } from '@/lib/cn';
+import { isAdminRole } from '@/platform/auth';
 
 interface NavItem {
   label: string;
   path: string;
-  icon: typeof LayoutDashboard;
-  /** Screens not built yet render as a disabled row with a "Soon" badge —
-   * never a link to a route that renders nothing, per the design principle
-   * against fake navigation. */
-  status: 'ready' | 'soon';
+  icon: typeof Home;
 }
 
-// One row per later ticket in docs/exporter-crm-frontend-tickets.md's build
-// sequence — flip `status` to 'ready' as each ticket lands, rather than
-// adding the row from scratch.
+/**
+ * The main rows. Deals and documents are reached from a company's page, not
+ * from here: the server has no cross-company deal or document list, and a row
+ * that could only say "pick a company first" would be fake navigation.
+ */
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', path: '/', icon: LayoutDashboard, status: 'ready' },
-  { label: 'Exporters', path: '/exporters', icon: Users, status: 'ready' },
-  {
-    label: 'Follow-ups',
-    // `status` flips to 'ready' in the same commit as `pages/FollowUpsPage.tsx`, per
-    // that ticket's rule: not before (dead navigation) and not after (a shipped page
-    // nobody can reach). `path` moves with it — the screen lives inside the
-    // onboarding module's own subtree, which is mounted at `/exporters/*`, so
-    // `/follow-ups` would resolve to nothing. See `modules/onboarding/routes.tsx`
-    // for why the route is there rather than in the app router.
-    path: '/exporters/follow-ups',
-    icon: ListChecks,
-    status: 'ready',
-  },
-  { label: 'Pipeline', path: '/pipeline', icon: Kanban, status: 'ready' },
-  // ══ Section 9.3 — anchor blocks for Developers 3A and 3B ══════════════════
-  //
-  // The seam commit cuts the tail of this list into owned blocks so that three
-  // people adding rows — 3A in each of its two phases, and 3B — never share a
-  // hunk. The `Follow-ups` row above already exists; **Phase 2** flips its one
-  // word (`status: 'soon'` -> `'ready'`) when the screen lands, which is a
-  // different line from anything below, so there is no conflict either way.
-  //
-  // ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
-  // (3A appends here; 3B does not.) Cut into the two phase sub-anchors below —
-  // phase agreement §6.3. Phase 1 adds no row: the conversation gauge is a panel
-  // on the company page, which `Exporters` already reaches.
-  //
-  // ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
-  //
-  // ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
-  //
-  // ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
-  // (3B appends here; 3A does not.)
+  { label: 'Home', path: '/', icon: Home },
+  { label: 'Companies', path: '/companies', icon: Building2 },
+  { label: 'Follow-ups', path: '/follow-ups', icon: ListChecks },
+  { label: 'Pipeline', path: '/pipeline', icon: Kanban },
+];
+
+/** Rows only ADMIN sees — the server refuses these screens to anyone else. */
+const ADMIN_ITEMS: NavItem[] = [
+  { label: 'Qualification criteria', path: '/settings/qualification-criteria', icon: SlidersHorizontal },
 ];
 
 /** Whether `pathname` is inside `path`: an exact match for the root, otherwise
@@ -59,68 +36,123 @@ function matches(path: string, pathname: string): boolean {
 }
 
 /**
- * The one row to highlight: the **most specific** ready row that matches. Plain
- * `NavLink` matching lights every prefix, so on `/exporters/follow-ups` both
- * `Exporters` and `Follow-ups` would be active; the longest match is the page the
- * user is actually on. `Exporters` still lights for a company page
- * (`/exporters/<id>`), since no longer row matches there.
+ * The one row to highlight: the **most specific** row that matches. Plain
+ * `NavLink` matching lights every prefix; the longest match is the page the
+ * user is actually on.
  */
-function activePath(pathname: string): string | undefined {
-  return NAV_ITEMS.filter((item) => item.status === 'ready' && matches(item.path, pathname))
+function activePath(items: NavItem[], pathname: string): string | undefined {
+  return items
+    .filter((item) => matches(item.path, pathname))
     .map((item) => item.path)
     .sort((a, b) => b.length - a.length)[0];
 }
 
-export function Sidebar() {
-  const active = activePath(useLocation().pathname);
+function NavRow({
+  item,
+  active,
+  collapsed,
+  onNavigate,
+}: {
+  item: NavItem;
+  active: boolean;
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
   return (
-    <nav className="flex w-60 shrink-0 flex-col border-r border-border bg-surface px-3 py-5">
-      <div className="mb-6 flex items-center gap-2 px-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink text-sm font-semibold text-brand-400">
+    <li>
+      <NavLink
+        to={item.path}
+        end={item.path === '/'}
+        onClick={onNavigate}
+        title={collapsed ? item.label : undefined}
+        aria-current={active ? 'page' : false}
+        className={() =>
+          cn(
+            'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+            collapsed && 'justify-center px-0',
+            active
+              ? 'bg-brand-50 text-brand-700'
+              : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
+          )
+        }
+      >
+        <item.icon size={17} strokeWidth={2} className="shrink-0" />
+        <span className={collapsed ? 'sr-only' : undefined}>{item.label}</span>
+      </NavLink>
+    </li>
+  );
+}
+
+export function Sidebar({
+  role,
+  collapsed = false,
+  onNavigate,
+}: {
+  role: UserRole;
+  /** The icon-only rail. */
+  collapsed?: boolean;
+  /** Called after a row is followed — the narrow-screen drawer closes itself. */
+  onNavigate?: () => void;
+}) {
+  const { pathname } = useLocation();
+  const adminItems = isAdminRole(role) ? ADMIN_ITEMS : [];
+  const active = activePath([...NAV_ITEMS, ...adminItems], pathname);
+
+  return (
+    <nav
+      aria-label="Main"
+      className={cn(
+        'flex h-full shrink-0 flex-col border-r border-border bg-surface py-5 transition-[width] duration-150',
+        collapsed ? 'w-16 px-2' : 'w-60 px-3',
+      )}
+    >
+      <div className={cn('mb-6 flex items-center gap-2.5 px-2', collapsed && 'justify-center px-0')}>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white dark:text-surface">
           A
         </div>
-        <div>
-          <p className="text-sm font-semibold text-ink">ANER</p>
-          <p className="text-xs text-ink-faint">Exporter CRM</p>
-        </div>
+        {!collapsed && (
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-tight text-ink">ANER</p>
+            <p className="text-xs text-ink-faint">Exporter CRM</p>
+          </div>
+        )}
       </div>
 
-      <ul className="flex flex-1 flex-col gap-0.5">
+      <ul className="flex flex-col gap-0.5">
         {NAV_ITEMS.map((item) => (
-          <li key={item.path}>
-            {item.status === 'ready' ? (
-              <NavLink
-                to={item.path}
-                end={item.path === '/'}
-                aria-current={item.path === active ? 'page' : false}
-                className={() =>
-                  `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    item.path === active
-                      ? 'bg-brand-50 text-brand-600'
-                      : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
-                  }`
-                }
-              >
-                <item.icon size={17} strokeWidth={2} />
-                {item.label}
-              </NavLink>
-            ) : (
-              <div
-                className="flex items-center justify-between gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-faint"
-                aria-disabled="true"
-              >
-                <span className="flex items-center gap-2.5">
-                  <item.icon size={17} strokeWidth={2} />
-                  {item.label}
-                </span>
-                <span className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
-                  Soon
-                </span>
-              </div>
-            )}
-          </li>
+          <NavRow
+            key={item.path}
+            item={item}
+            active={item.path === active}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
         ))}
       </ul>
+
+      {adminItems.length > 0 && (
+        <div className="mt-6">
+          <p
+            className={cn(
+              'mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint',
+              collapsed && 'sr-only',
+            )}
+          >
+            Settings
+          </p>
+          <ul className="flex flex-col gap-0.5">
+            {adminItems.map((item) => (
+              <NavRow
+                key={item.path}
+                item={item}
+                active={item.path === active}
+                collapsed={collapsed}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
     </nav>
   );
 }

@@ -1,4 +1,12 @@
 // modules/onboarding — public facade.
 // Other modules import ONLY from here.
-export { OnboardingRoutes } from './routes';
-export { PipelinePage } from './pages';
+export { CompanyRoutes, LegacyExporterRoutes } from './routes';
+export {
+  DealDetailPage,
+  FollowUpsPage,
+  PipelinePage,
+  QualificationCriteriaPage,
+} from './pages';
+export { COMPANY_TABS, paths, type CompanyTab } from './paths';
+// The Home page's cards: domain views composed by `src/pages/HomePage.tsx`.
+export { CheckBacksDueCard, FollowUpsDueCard, PipelineSummaryCard } from './components/home';

@@ -1,16 +1,28 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useCurrentUser } from '@/platform/auth';
 
-import { createDownloadLink, fetchDocumentBlob, getDeal, listDealDocuments } from '../api';
+import {
+  createDownloadLink,
+  fetchDocumentBlob,
+  getDeal,
+  getExporterProfileDetail,
+  listDealDocuments,
+  listDealHistory,
+  setDealBuyer,
+} from '../api';
 import type { CrmDocument, Deal } from '../types';
 
 import { DealDetailPage } from './DealDetailPage';
 
-vi.mock('@/platform/auth', () => ({ useCurrentUser: vi.fn() }));
+// Partial: the role helpers (`isStaffRole`, …) stay real, only the session is faked.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
+  useCurrentUser: vi.fn(),
+}));
 vi.mock('../api', () => ({
   getDeal: vi.fn(),
   listDealDocuments: vi.fn(),
@@ -20,6 +32,9 @@ vi.mock('../api', () => ({
   setDealBuyer: vi.fn(),
   transitionDealStage: vi.fn(),
   uploadDealDocument: vi.fn(),
+  // The page names the company in its back link, and shows the deal's history.
+  getExporterProfileDetail: vi.fn(),
+  listDealHistory: vi.fn(),
 }));
 
 const DEAL_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -87,9 +102,9 @@ function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/exporters/deals/${DEAL_ID}`]}>
+      <MemoryRouter initialEntries={[`/deals/${DEAL_ID}`]}>
         <Routes>
-          <Route path="/exporters/deals/:dealId" element={<DealDetailPage />} />
+          <Route path="/deals/:dealId" element={<DealDetailPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -100,6 +115,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   signedInAs('OPERATIONS');
   vi.mocked(getDeal).mockResolvedValue(deal());
+  vi.mocked(getExporterProfileDetail).mockResolvedValue({
+    name: 'Acme Exports Pvt Ltd',
+  } as Awaited<ReturnType<typeof getExporterProfileDetail>>);
+  vi.mocked(listDealHistory).mockResolvedValue({ entries: [], total: 0, limit: 25, offset: 0 });
   vi.mocked(listDealDocuments).mockResolvedValue({
     documents: [document_()],
     total: 1,
@@ -294,18 +313,108 @@ describe("DealDetailPage — the review's findings", () => {
         handover_blocked_reason: null,
       }),
     );
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { transitionDealStage } = await import('../api');
 
     renderPage();
     fireEvent.click(
       await screen.findByRole('button', { name: 'Hand over to lending' }),
     );
 
-    expect(confirm).toHaveBeenCalled();
+    // A dialog, not `window.confirm`: it can say what happens, and be tested.
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/cannot be undone/);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     // Declined, so nothing was sent.
-    const { transitionDealStage } = await import('../api');
     expect(vi.mocked(transitionDealStage)).not.toHaveBeenCalled();
+  });
 
-    confirm.mockRestore();
+  it('hands the deal over once the dialog is confirmed', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        allowed_stage_moves: [{ to_stage: 'HANDED_OVER', reason_required: false }],
+        handover_blocked_reason: null,
+      }),
+    );
+    const { transitionDealStage } = await import('../api');
+    vi.mocked(transitionDealStage).mockResolvedValue(deal({ stage: 'HANDED_OVER' }));
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Hand over to lending' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Hand over' }));
+    await waitFor(() =>
+      expect(vi.mocked(transitionDealStage)).toHaveBeenCalledWith(DEAL_ID, {
+        to_stage: 'HANDED_OVER',
+      }),
+    );
+  });
+});
+
+describe('DealDetailPage — editing a buyer whose details are masked', () => {
+  // What OPERATIONS receives: the server masks the identifiers and contacts.
+  const MASKED = deal({
+    buyer: {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      deal_id: DEAL_ID,
+      name: 'Rotterdam Trading BV',
+      country: 'NL',
+      registration_number: '•••8899',
+      tax_id: '••••••••••9B01',
+      contact_email: 'a•••@rotterdamtrading.example',
+      contact_phone: '•••••••••••0101',
+    },
+  });
+
+  beforeEach(() => {
+    vi.mocked(setDealBuyer).mockResolvedValue(MASKED);
+  });
+
+  it('starts the masked fields empty and leaves them out, so the stored values are kept', async () => {
+    vi.mocked(getDeal).mockResolvedValue(MASKED);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer' }));
+
+    const taxId = screen.getByLabelText('Tax identifier');
+    expect(taxId).toHaveValue('');
+    expect(taxId).toHaveAttribute('placeholder', 'Hidden — type to replace');
+    expect(screen.getByLabelText(/Buyer name/)).toHaveValue('Rotterdam Trading BV');
+
+    fireEvent.change(screen.getByLabelText(/Buyer name/), {
+      target: { value: 'Rotterdam Trading B.V.' },
+    });
+    fireEvent.change(screen.getByLabelText('Contact phone'), {
+      target: { value: '+31 10 555 0199' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save buyer' }));
+
+    await waitFor(() => expect(setDealBuyer).toHaveBeenCalled());
+    const [, body] = vi.mocked(setDealBuyer).mock.calls[0] ?? [];
+    // Typed: sent. Untouched and hidden: left out (kept). Never the bullets.
+    expect(body).toEqual({
+      name: 'Rotterdam Trading B.V.',
+      country: 'NL',
+      contact_phone: '+31 10 555 0199',
+    });
+  });
+
+  it('prefills and sends every field for COMPLIANCE, who sees them in full', async () => {
+    signedInAs('COMPLIANCE');
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer' }));
+    expect(screen.getByLabelText('Registration number')).toHaveValue('NL-8899');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save buyer' }));
+    await waitFor(() => expect(setDealBuyer).toHaveBeenCalled());
+    const [, body] = vi.mocked(setDealBuyer).mock.calls[0] ?? [];
+    expect(body).toEqual({
+      name: 'Rotterdam Trading BV',
+      country: 'NL',
+      registration_number: 'NL-8899',
+      tax_id: null,
+      contact_email: null,
+      contact_phone: null,
+    });
   });
 });

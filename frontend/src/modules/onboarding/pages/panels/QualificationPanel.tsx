@@ -14,13 +14,31 @@
  * prospect on the server; this panel never moves the journey itself.
  */
 
+import { Lightbulb } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import {
+  Button,
+  Chip,
+  EmptySection,
+  Input,
+  Panel,
+  Select,
+  Skeleton,
+  Table,
+  TBody,
+  Td,
+  Textarea,
+  Th,
+  THead,
+  Tr,
+  type ChipTone,
+} from '@/components';
 import { formatDate } from '@/lib/format';
 
 import { QualificationChip } from '../../components';
-import { QUALIFICATION_LABEL, RESULT_CLASSES, RESULT_LABEL } from '../../constants';
+import { QUALIFICATION_LABEL, RESULT_LABEL } from '../../constants';
 import {
   useQualification,
   useReasonCodes,
@@ -35,6 +53,12 @@ import type {
 } from '../../types';
 
 const RESULT_VALUES: CriterionResultValue[] = ['PASS', 'FAIL', 'UNKNOWN'];
+
+const RESULT_TONE: Record<CriterionResultValue, ChipTone> = {
+  PASS: 'success',
+  FAIL: 'danger',
+  UNKNOWN: 'neutral',
+};
 
 interface ResultDraft {
   result: CriterionResultValue | '';
@@ -83,21 +107,25 @@ function ResultsForm({
   return (
     <form
       aria-label="Record results"
-      className="mt-4 space-y-3 border-t border-border pt-4"
+      className="mt-5 space-y-3 border-t border-border pt-4"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
       }}
     >
-      <h3 className="text-sm font-semibold text-ink">Record results</h3>
+      <div>
+        <h3 className="text-sm font-semibold text-ink">Record results</h3>
+        <p className="text-xs text-ink-muted">
+          Only the criteria you set are sent. Earlier results stay on the record.
+        </p>
+      </div>
       {qualification.standings.map(({ criterion }) => {
         const draft = drafts[criterion.key] ?? EMPTY_DRAFT;
         return (
           <div key={criterion.key} className="grid gap-2 md:grid-cols-[1fr_8rem_1fr_1.5fr]">
             <span className="self-center text-sm text-ink">{criterion.label}</span>
-            <select
+            <Select
               aria-label={`${criterion.label} result`}
-              className="input"
               value={draft.result}
               onChange={(e) =>
                 update(criterion.key, { result: e.target.value as CriterionResultValue | '' })
@@ -109,17 +137,15 @@ function ResultsForm({
                   {RESULT_LABEL[value]}
                 </option>
               ))}
-            </select>
-            <input
+            </Select>
+            <Input
               aria-label={`${criterion.label} observed value`}
-              className="input"
               placeholder={criterion.unit ? `Observed (${criterion.unit})` : 'Observed value'}
               value={draft.observed_value}
               onChange={(e) => update(criterion.key, { observed_value: e.target.value })}
             />
-            <input
+            <Input
               aria-label={`${criterion.label} evidence`}
-              className="input"
               placeholder="Evidence note"
               value={draft.evidence_note}
               onChange={(e) => update(criterion.key, { evidence_note: e.target.value })}
@@ -128,13 +154,15 @@ function ResultsForm({
         );
       })}
       <div className="flex justify-end">
-        <button
+        <Button
           type="submit"
-          disabled={entries.length === 0 || mutation.isPending}
-          className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          variant="primary"
+          size="sm"
+          disabled={entries.length === 0}
+          loading={mutation.isPending}
         >
           Save results
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -161,16 +189,17 @@ function OutcomeForm({
 
   if (!outcome) {
     return (
-      <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
+      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border pt-4">
+        <span className="mr-1 text-sm text-ink-muted">Decide:</span>
         {allowed.map((value) => (
-          <button
+          <Button
             key={value}
-            type="button"
+            size="sm"
+            variant={value === 'QUALIFIED' ? 'primary' : 'secondary'}
             onClick={() => setOutcome(value)}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-subtle"
           >
             Record: {QUALIFICATION_LABEL[value]}
-          </button>
+          </Button>
         ))}
       </div>
     );
@@ -181,7 +210,7 @@ function OutcomeForm({
   return (
     <form
       aria-label="Record outcome"
-      className="mt-4 space-y-3 border-t border-border pt-4"
+      className="mt-5 space-y-3 border-t border-border pt-4"
       onSubmit={(e) => {
         e.preventDefault();
         mutation.mutate(
@@ -197,15 +226,21 @@ function OutcomeForm({
       }}
     >
       <h3 className="text-sm font-semibold text-ink">Record: {QUALIFICATION_LABEL[outcome]}</h3>
+      {outcome === 'QUALIFIED' && (
+        <p className="text-xs text-ink-muted">
+          Qualifying a lead makes it a prospect. The decision is final.
+        </p>
+      )}
       {available.length > 0 && (
-        <fieldset className="space-y-1">
-          <legend className="text-xs font-medium uppercase tracking-wide text-ink-faint">
+        <fieldset className="space-y-1.5">
+          <legend className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-faint">
             Reasons
           </legend>
           {available.map((code) => (
             <label key={code.code} className="flex items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
+                className="h-4 w-4 accent-brand-600"
                 checked={codes.includes(code.code)}
                 onChange={(e) =>
                   setCodes((current) =>
@@ -220,28 +255,20 @@ function OutcomeForm({
           ))}
         </fieldset>
       )}
-      <textarea
+      <Textarea
         aria-label="Note"
-        className="input min-h-[4rem] w-full"
+        className="min-h-[4rem]"
         placeholder="Note"
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
       <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={reset}
-          className="rounded-lg px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-sunken"
-        >
+        <Button variant="ghost" size="sm" onClick={reset}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={mutation.isPending}
-          className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
+        </Button>
+        <Button type="submit" variant="primary" size="sm" loading={mutation.isPending}>
           Confirm
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -252,81 +279,89 @@ export function QualificationPanel({ customerId }: { customerId: string }) {
   const allowedOutcomes = data?.allowed_outcomes ?? [];
 
   return (
-    <section
+    <Panel
       aria-label="Qualification"
-      className="rounded-lg border border-border bg-surface p-5 shadow-card"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold text-ink">Qualification</h2>
-        {data && (
+      title="Qualification"
+      description="Criteria are set by an administrator. The suggestion is not the decision — a person decides."
+      actions={
+        data && (
           <div className="flex items-center gap-2 text-sm text-ink-muted">
             <QualificationChip state={data.state} />
             {data.state === 'NOT_YET_REVIEWED' && (
-              <span data-testid="qualification-suggestion">
+              <span data-testid="qualification-suggestion" className="inline-flex items-center gap-1">
+                <Lightbulb size={14} className="text-status-review" />
                 Suggested: {QUALIFICATION_LABEL[data.suggested_outcome]}
               </span>
             )}
           </div>
-        )}
-      </div>
-
-      {isLoading && <div className="mt-3 h-24 animate-pulse rounded bg-surface-sunken" />}
-      {isError && <p className="mt-3 text-sm text-status-failed">Couldn't load qualification.</p>}
+        )
+      }
+    >
+      {isLoading && <Skeleton className="h-24" />}
+      {isError && <p className="text-sm text-status-failed">Couldn't load qualification.</p>}
 
       {data && (
         <>
           {data.standings.length === 0 ? (
-            <p className="mt-3 text-sm text-ink-muted">No qualification criteria are set up yet.</p>
+            <EmptySection>No qualification criteria are set up yet.</EmptySection>
           ) : (
-            <table className="mt-3 w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-xs uppercase tracking-wide text-ink-faint">
-                  <th className="py-2 font-medium">Criterion</th>
-                  <th className="py-2 font-medium">Result</th>
-                  <th className="py-2 font-medium">Observed</th>
-                  <th className="py-2 font-medium">Recorded</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {data.standings.map(({ criterion, latest_result, counts }) => (
-                  <tr key={criterion.key}>
-                    <td className="py-2 text-ink">
-                      {criterion.label}
-                      {criterion.required && (
-                        <span className="ml-1 text-xs text-ink-faint">(required)</span>
-                      )}
-                    </td>
-                    <td className="py-2">
-                      {latest_result ? (
-                        <span className={RESULT_CLASSES[latest_result.result]}>
-                          {RESULT_LABEL[latest_result.result]}
-                          {!counts && (
-                            <span className="ml-1 text-xs text-ink-faint">(earlier version)</span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="text-ink-faint">Not recorded</span>
-                      )}
-                    </td>
-                    <td className="py-2 text-ink-muted">{latest_result?.observed_value ?? '—'}</td>
-                    <td className="py-2 text-ink-muted">
-                      {latest_result ? formatDate(latest_result.recorded_at) : '—'}
-                    </td>
+            <div className="-mx-5">
+              <Table className="min-w-[32rem]">
+                <THead>
+                  <tr>
+                    <Th>Criterion</Th>
+                    <Th>Result</Th>
+                    <Th>Observed</Th>
+                    <Th>Recorded</Th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </THead>
+                <TBody>
+                  {data.standings.map(({ criterion, latest_result, counts }) => (
+                    <Tr key={criterion.key}>
+                      <Td className="text-ink">
+                        {criterion.label}
+                        {criterion.required && (
+                          <span className="ml-1 text-xs text-ink-faint">(required)</span>
+                        )}
+                      </Td>
+                      <Td>
+                        {latest_result ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Chip tone={RESULT_TONE[latest_result.result]}>
+                              {RESULT_LABEL[latest_result.result]}
+                            </Chip>
+                            {!counts && (
+                              <span className="text-xs text-ink-faint">(earlier version)</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-ink-faint">Not recorded</span>
+                        )}
+                      </Td>
+                      <Td className="text-ink-muted">{latest_result?.observed_value ?? '—'}</Td>
+                      <Td className="text-ink-muted">
+                        {latest_result ? formatDate(latest_result.recorded_at) : '—'}
+                      </Td>
+                    </Tr>
+                  ))}
+                </TBody>
+              </Table>
+            </div>
           )}
 
           {data.outcomes.length > 0 && (
-            <div className="mt-4">
+            <div className="mt-5">
               <h3 className="text-xs font-medium uppercase tracking-wide text-ink-faint">
                 Decisions
               </h3>
-              <ul className="mt-1 space-y-1 text-sm">
+              <ol className="mt-2 space-y-2 border-l border-border pl-4 text-sm">
                 {data.outcomes.map((outcome) => (
-                  <li key={outcome.id} className="text-ink">
-                    {QUALIFICATION_LABEL[outcome.outcome]}
+                  <li key={outcome.id} className="relative text-ink">
+                    <span
+                      aria-hidden
+                      className="absolute -left-[1.3rem] top-1.5 h-2 w-2 rounded-full bg-border-strong"
+                    />
+                    <span className="font-medium">{QUALIFICATION_LABEL[outcome.outcome]}</span>
                     <span className="text-ink-muted">
                       {' · '}
                       {formatDate(outcome.decided_at)}
@@ -337,7 +372,7 @@ export function QualificationPanel({ customerId }: { customerId: string }) {
                     </span>
                   </li>
                 ))}
-              </ul>
+              </ol>
             </div>
           )}
 
@@ -349,6 +384,6 @@ export function QualificationPanel({ customerId }: { customerId: string }) {
           )}
         </>
       )}
-    </section>
+    </Panel>
   );
 }

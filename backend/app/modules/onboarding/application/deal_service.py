@@ -40,6 +40,7 @@ separate function for exactly that reason.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -375,9 +376,17 @@ class DealService:
         tax_id: str | None = None,
         contact_email: str | None = None,
         contact_phone: str | None = None,
+        keep: Collection[str] = (),
         actor_id: str | None,
     ) -> DealView:
         """Record or replace the deal's buyer.
+
+        ``keep`` names optional fields to leave exactly as stored, whatever was
+        passed for them. The API uses it for the fields a masked role never sees
+        in full (``registration_number``, ``tax_id``, ``contact_email``,
+        ``contact_phone``): such a caller leaves them out of its request, and they
+        must survive the replace rather than be cleared by it. On a new buyer
+        there is nothing stored, so a kept field starts empty.
 
         One buyer per deal (contract §3), so setting it twice **updates the same
         row** rather than adding a second — which is what
@@ -413,7 +422,13 @@ class DealService:
             "contact_phone": _clean(contact_phone),
         }
 
+        unknown = set(keep) - _BUYER_OPTIONAL_FIELDS
+        if unknown:
+            raise ValueError(f"not an optional buyer field: {sorted(unknown)}")
+
         buyer = await self._buyers.get_for_deal(deal_id)
+        for key in keep:
+            fields[key] = getattr(buyer, key) if buyer is not None else None
         if buyer is None:
             buyer = DealBuyer(deal_id=deal_id, **fields)
             self._db.add(buyer)
@@ -584,6 +599,12 @@ class DealService:
                 )
             )
         ) is not None
+
+
+#: The buyer fields ``set_buyer(keep=...)`` may leave as stored.
+_BUYER_OPTIONAL_FIELDS = frozenset(
+    {"registration_number", "tax_id", "contact_email", "contact_phone"}
+)
 
 
 def _clean(value: str | None) -> str | None:
