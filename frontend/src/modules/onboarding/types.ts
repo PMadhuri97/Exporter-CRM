@@ -141,6 +141,8 @@ export interface FollowUpListParams {
   customerId?: string;
   actorId?: string;
   includeCheckBacks?: boolean;
+  /** Only the check-backs due on or before today — the Overdue tab's view. */
+  checkBacksDueOnly?: boolean;
   limit?: number;
   offset?: number;
 }

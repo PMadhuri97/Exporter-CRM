@@ -113,6 +113,14 @@ async def list_follow_ups(
             "first `limit` of them with a true `check_backs_total` beside it."
         ),
     ),
+    check_backs_due_only: bool = Query(
+        default=False,
+        description=(
+            "Only the check-backs that are due — on or before today (UTC). For an "
+            "overdue view, so a company parked until next quarter is not listed "
+            "beside work that is late. `check_backs_total` counts the same set."
+        ),
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> FollowUpListResponse:
@@ -124,6 +132,7 @@ async def list_follow_ups(
         due_before=due_before,
         due_after=due_after,
         include_check_backs=include_check_backs,
+        check_backs_due_only=check_backs_due_only,
         limit=limit,
         offset=offset,
     )

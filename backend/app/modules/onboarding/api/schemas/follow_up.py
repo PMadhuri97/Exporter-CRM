@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from app.modules.onboarding.domain.entities.engagement_enums import (
     ExporterActivityType,
@@ -44,13 +44,17 @@ class CompleteFollowUpRequest(BaseModel):
     note: str | None = Field(
         default=None, description="What happened, in your words."
     )
-    next_due_at: datetime | None = Field(
+    #: `AwareDatetime`, not `datetime`: a moment with no offset is ambiguous, and the
+    #: service compares it with an aware "now" — a naive value would raise there and
+    #: surface as a 500. Refused here instead, as the 422 every other bad body gets.
+    next_due_at: AwareDatetime | None = Field(
         default=None,
         description=(
-            "When the follow-up was moved to. Required for RESCHEDULED and must be in "
-            "the future; refused — not ignored — on any other outcome. Rescheduling "
-            "also logs a new follow-up for this moment: the original activity is "
-            "append-only and keeps the date it was promised for."
+            "When the follow-up was moved to, with a timezone offset (e.g. `Z` or "
+            "`+05:30`). Required for RESCHEDULED and must be in the future; refused — "
+            "not ignored — on any other outcome. Rescheduling also logs a new "
+            "follow-up for this moment: the original activity is append-only and keeps "
+            "the date it was promised for."
         ),
     )
 

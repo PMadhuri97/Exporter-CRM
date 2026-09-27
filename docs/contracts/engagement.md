@@ -265,6 +265,13 @@ about completions, so it lists completed follow-ups too. Phase 2's list is the o
 that subtracts them; the pending route is **not** changed to do it, because its
 callers today want "everything with a due date".
 
+**Check-backs on an overdue view.** `GET /onboarding/follow-ups` takes
+`check_backs_due_only=true` to list only the check-backs due on or before today
+(UTC — the same date `is_overdue` is judged against), with `check_backs_total`
+counting the same set. The Follow-ups screen's Overdue tab uses it, so a company
+parked until next quarter is not listed beside work that is late; the All tab still
+shows every parked company.
+
 ### 5.7 A completion writes no history row
 
 *Appended by Phase 2, 27 September 2026. A clarification, not a change: §5 was silent
@@ -344,10 +351,11 @@ row above.
 |---|---|---|
 | `FOLLOW_UP_NOT_FOUND` | 404 | No `exporter_activity` row has that id. |
 | `ACTIVITY_IS_NOT_A_FOLLOW_UP` | 409 | The activity exists but carries no `due_at`, so nobody promised it (§5.1). Kept distinct from the 404: "no such activity" and "that is not a follow-up" send a person looking in different places. |
-| `FOLLOW_UP_ALREADY_COMPLETED` | 409 | A completion already points at that activity (`uq_follow_up_completion_activity_id`, §5.4). Carries `completion_id` and `outcome`, so a screen can say what is already recorded. |
+| `FOLLOW_UP_ALREADY_COMPLETED` | 409 | A completion already points at that activity (`uq_follow_up_completion_activity_id`, §5.4). Carries `completion_id` and `outcome`, so a screen can say what is already recorded. Also what the **second of two simultaneous** completions gets: the service locks the activity row before checking, so the second waits for the first to commit and is refused here rather than tripping the unique constraint as a 500. |
 | `FOLLOW_UP_RESCHEDULE_NEEDS_DATE` | 422 | `RESCHEDULED` with no `next_due_at`. |
 | `FOLLOW_UP_NEXT_DUE_NOT_ALLOWED` | 422 | A `next_due_at` on any other outcome — refused, not ignored, for the same reason a check-back date on a non-`NOT_NOW` move is (§4). |
 | `FOLLOW_UP_RESCHEDULE_IN_PAST` | 422 | `next_due_at` is not in the future. |
+| *(request-body validation — FastAPI's `detail` list, no `error_code`)* | 422 | `next_due_at` has no timezone offset (e.g. `2030-01-01T10:00:00`). A moment without an offset names no moment; it is refused at the body rather than guessed. Send `Z` or an offset such as `+05:30`. |
 | `FOLLOW_UP_COMPLETION_IMMUTABLE` | 409 | Something tried to change or remove a completion. There is no route that can reach this; the service raises it so the refusal is a named, tested behaviour rather than an absence. |
 
 **`CONVERSATION_CHECK_BACK_REQUIRED` was reserved for reuse here (§7) and is not

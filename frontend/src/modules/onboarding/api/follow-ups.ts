@@ -32,6 +32,7 @@ export function listFollowUps(params: FollowUpListParams = {}): Promise<FollowUp
   if (params.customerId) query.set('customer_id', params.customerId);
   if (params.actorId) query.set('actor_id', params.actorId);
   if (params.includeCheckBacks === false) query.set('include_check_backs', 'false');
+  if (params.checkBacksDueOnly) query.set('check_backs_due_only', 'true');
   query.set('limit', String(params.limit ?? 50));
   query.set('offset', String(params.offset ?? 0));
   return apiRequest<FollowUpList>(`/onboarding/follow-ups?${query.toString()}`);

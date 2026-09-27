@@ -12,6 +12,7 @@ test minting its own company.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -175,6 +176,37 @@ async def test_a_second_completion_is_refused_and_names_the_first():
     assert caught.value.status_code == 409
     assert caught.value.extensions["completion_id"] == str(first.id)
     assert caught.value.extensions["outcome"] == "DONE"
+
+    async with db_services.AsyncSessionLocal() as db:
+        rows = (
+            await db.execute(
+                select(FollowUpCompletion).where(FollowUpCompletion.activity_id == activity_id)
+            )
+        ).scalars().all()
+    assert len(rows) == 1
+
+
+async def test_two_concurrent_completions_give_one_record_and_one_clean_refusal():
+    """Two people pressing "Record" on the same follow-up at the same moment. Both
+    pass the "already completed?" check unless the activity row is locked, and the
+    loser then hits `uq_follow_up_completion_activity_id` as a raw `IntegrityError` —
+    a 500. With the lock, the second waits for the first to commit and is refused
+    with the documented 409, like any other second completion."""
+    company_id = await _company()
+    activity_id = await _follow_up(company_id)
+
+    results = await asyncio.gather(
+        _complete(activity_id, FollowUpOutcome.DONE),
+        _complete(activity_id, FollowUpOutcome.NO_ANSWER),
+        return_exceptions=True,
+    )
+
+    completions = [r for r in results if isinstance(r, FollowUpCompletion)]
+    refusals = [r for r in results if isinstance(r, BaseException)]
+    assert len(completions) == 1, results
+    assert len(refusals) == 1, results
+    assert isinstance(refusals[0], FollowUpAlreadyCompletedError), refusals[0]
+    assert refusals[0].extensions["completion_id"] == str(completions[0].id)
 
     async with db_services.AsyncSessionLocal() as db:
         rows = (
@@ -557,6 +589,34 @@ async def test_check_backs_can_be_left_out_entirely():
     assert view.check_backs_total == 0
 
 
+async def test_check_backs_due_only_keeps_today_and_drops_the_future():
+    """The Overdue tab's filter. A check-back due today is due and stays; one parked
+    until next month is not late and goes — from the list and from its total."""
+    due_today = await _company()
+    parked = await _company()
+    today = datetime.now(UTC).date()
+    for company_id, check_back in ((due_today, today), (parked, today + timedelta(days=30))):
+        async with db_services.AsyncSessionLocal() as db:
+            await ConversationService(db).set_conversation(
+                company_id,
+                ExporterConversation.NOT_NOW,
+                reason="Not now",
+                check_back_on=check_back,
+                actor_id="user-1",
+            )
+
+    view = await _list(customer_id=due_today, check_backs_due_only=True)
+    assert [row.customer_id for row in view.check_backs] == [due_today]
+    assert view.check_backs_total == 1
+
+    view = await _list(customer_id=parked, check_backs_due_only=True)
+    assert view.check_backs == ()
+    assert view.check_backs_total == 0
+
+    # Without the flag both are listed, as before.
+    assert (await _list(customer_id=parked)).check_backs_total == 1
+
+
 # ── The routes ───────────────────────────────────────────────────────────────
 
 
@@ -704,6 +764,33 @@ async def test_the_route_404s_for_an_activity_that_does_not_exist(client: AsyncC
     )
     assert resp.status_code == 404, resp.text
     assert resp.json()["error_code"] == "FOLLOW_UP_NOT_FOUND"
+
+
+async def test_a_next_due_date_without_a_timezone_is_a_422_not_a_500(
+    client: AsyncClient, tokens
+):
+    """`2030-01-01T10:00:00` names no moment until an offset says which. It used to
+    reach the service, where comparing it with an aware "now" raised `TypeError` — a
+    500. It is refused at the body, and nothing is written."""
+    company_id = await _company()
+    activity_id = await _follow_up(company_id)
+    resp = await client.post(
+        f"{BASE}/follow-ups/{activity_id}/completion",
+        json={"outcome": "RESCHEDULED", "next_due_at": "2030-01-01T10:00:00"},
+        headers=auth_header(tokens[UserRole.OPERATIONS]),
+    )
+    assert resp.status_code == 422, resp.text
+
+    async with db_services.AsyncSessionLocal() as db:
+        assert await FollowUpCompletionRepository(db).get_by_activity(activity_id) is None
+
+    # The same moment with an offset is accepted.
+    resp = await client.post(
+        f"{BASE}/follow-ups/{activity_id}/completion",
+        json={"outcome": "RESCHEDULED", "next_due_at": "2030-01-01T10:00:00+05:30"},
+        headers=auth_header(tokens[UserRole.OPERATIONS]),
+    )
+    assert resp.status_code == 201, resp.text
 
 
 async def test_the_actor_cannot_be_supplied_in_the_body(client: AsyncClient, tokens):

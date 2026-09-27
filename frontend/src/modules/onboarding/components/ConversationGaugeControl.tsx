@@ -26,6 +26,14 @@ import { humanize } from '@/lib/format';
 import { useSetExporterConversation } from '../hooks';
 import type { ConversationMove } from '../types';
 
+/** Today in the browser's timezone, as the `YYYY-MM-DD` a date input takes. */
+function localToday(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 interface ConversationGaugeControlProps {
   customerId: string;
   /** Exactly what the server served. Empty means "no moves for you" — this
@@ -92,6 +100,9 @@ export function ConversationGaugeControl({
               className="input mt-1"
               value={checkBackOn}
               onChange={(event) => setCheckBackOn(event.target.value)}
+              // Only stops the picker offering a past day; the server still decides
+              // (it judges "today" in UTC) and its refusal is shown as worded.
+              min={localToday()}
               required
             />
           </label>

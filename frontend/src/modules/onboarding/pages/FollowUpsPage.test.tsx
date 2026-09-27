@@ -271,9 +271,57 @@ describe('FollowUpsPage — L3-11a-ii', () => {
     );
     renderPage();
     expect(await screen.findByText(/Nothing is overdue/)).toBeInTheDocument();
+    // Overdue lists only the check-backs that are due, and says so when there are none.
+    expect(screen.getByText(/No check-back is due yet/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'All' }));
     expect(
-      screen.getByText(/No company is parked waiting for a check-back/),
+      await screen.findByText(/No company is parked waiting for a check-back/),
     ).toBeInTheDocument();
+  });
+
+  it('asks for only the due check-backs on Overdue, and every one on All', async () => {
+    renderPage();
+    await screen.findByTestId('follow-up-row');
+    expect(listFollowUps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ state: 'OVERDUE', checkBacksDueOnly: true }),
+    );
+    expect(screen.getByRole('heading', { name: 'Check-backs due' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'All' }));
+    await waitFor(() =>
+      expect(listFollowUps).toHaveBeenLastCalledWith(
+        expect.objectContaining({ state: undefined, checkBacksDueOnly: false }),
+      ),
+    );
+  });
+
+  it('shows no pager when everything fits on one page', async () => {
+    renderPage();
+    await screen.findByTestId('follow-up-row');
+    expect(screen.queryByTestId('follow-ups-pager')).not.toBeInTheDocument();
+  });
+
+  it('pages through a long list, and a new tab starts from its first page', async () => {
+    vi.mocked(listFollowUps).mockResolvedValue(list({ follow_ups_total: 120 }));
+    renderPage();
+    const pager = await screen.findByTestId('follow-ups-pager');
+    expect(within(pager).getByText('1–1 of 120')).toBeInTheDocument();
+    expect(within(pager).getByRole('button', { name: 'Previous' })).toBeDisabled();
+
+    fireEvent.click(within(pager).getByRole('button', { name: 'Next' }));
+    await waitFor(() =>
+      expect(listFollowUps).toHaveBeenLastCalledWith(
+        expect.objectContaining({ limit: 50, offset: 50 }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Done' }));
+    await waitFor(() =>
+      expect(listFollowUps).toHaveBeenLastCalledWith(
+        expect.objectContaining({ state: 'DONE', offset: 0 }),
+      ),
+    );
   });
 
   it('shows an error state carrying the server message', async () => {

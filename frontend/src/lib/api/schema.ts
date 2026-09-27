@@ -1457,7 +1457,7 @@ export interface components {
             note?: string | null;
             /**
              * Next Due At
-             * @description When the follow-up was moved to. Required for RESCHEDULED and must be in the future; refused — not ignored — on any other outcome. Rescheduling also logs a new follow-up for this moment: the original activity is append-only and keeps the date it was promised for.
+             * @description When the follow-up was moved to, with a timezone offset (e.g. `Z` or `+05:30`). Required for RESCHEDULED and must be in the future; refused — not ignored — on any other outcome. Rescheduling also logs a new follow-up for this moment: the original activity is append-only and keeps the date it was promised for.
              */
             next_due_at?: string | null;
         };
@@ -5701,6 +5701,8 @@ export interface operations {
                 due_after?: string | null;
                 /** @description Include companies parked at NOT_NOW. They ignore state, actor_id and activity_type, none of which applies to a company with no activity, and they ignore offset — that pages the follow-ups. `check_backs` is the first `limit` of them with a true `check_backs_total` beside it. */
                 include_check_backs?: boolean;
+                /** @description Only the check-backs that are due — on or before today (UTC). For an overdue view, so a company parked until next quarter is not listed beside work that is late. `check_backs_total` counts the same set. */
+                check_backs_due_only?: boolean;
                 limit?: number;
                 offset?: number;
             };

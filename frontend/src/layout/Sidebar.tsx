@@ -1,5 +1,5 @@
 import { Kanban, LayoutDashboard, ListChecks, Users } from 'lucide-react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 
 interface NavItem {
   label: string;
@@ -51,7 +51,28 @@ const NAV_ITEMS: NavItem[] = [
   // (3B appends here; 3A does not.)
 ];
 
+/** Whether `pathname` is inside `path`: an exact match for the root, otherwise
+ * the path itself or anything below it — `NavLink`'s own rule. */
+function matches(path: string, pathname: string): boolean {
+  if (path === '/') return pathname === '/';
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
+/**
+ * The one row to highlight: the **most specific** ready row that matches. Plain
+ * `NavLink` matching lights every prefix, so on `/exporters/follow-ups` both
+ * `Exporters` and `Follow-ups` would be active; the longest match is the page the
+ * user is actually on. `Exporters` still lights for a company page
+ * (`/exporters/<id>`), since no longer row matches there.
+ */
+function activePath(pathname: string): string | undefined {
+  return NAV_ITEMS.filter((item) => item.status === 'ready' && matches(item.path, pathname))
+    .map((item) => item.path)
+    .sort((a, b) => b.length - a.length)[0];
+}
+
 export function Sidebar() {
+  const active = activePath(useLocation().pathname);
   return (
     <nav className="flex w-60 shrink-0 flex-col border-r border-border bg-surface px-3 py-5">
       <div className="mb-6 flex items-center gap-2 px-2">
@@ -71,9 +92,10 @@ export function Sidebar() {
               <NavLink
                 to={item.path}
                 end={item.path === '/'}
-                className={({ isActive }) =>
+                aria-current={item.path === active ? 'page' : false}
+                className={() =>
                   `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    isActive
+                    item.path === active
                       ? 'bg-brand-50 text-brand-600'
                       : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
                   }`

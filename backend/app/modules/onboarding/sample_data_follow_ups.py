@@ -53,11 +53,6 @@ from app.platform.database import services as db_services
 
 logger = structlog.get_logger(__name__)
 
-#: The actor on seeded follow-ups. `exporter_activity.actor_id` is NOT NULL, so a
-#: seeded activity needs a name; `SAMPLE_DATA_ACTOR` is Developer 2's and this reuses
-#: it so the whole sample set reads as one hand.
-_ACTOR = "sample-data"
-
 
 @dataclass(frozen=True)
 class _SampleFollowUp:
@@ -169,15 +164,30 @@ async def _ensure_follow_up(
     activities. Returns its id, or ``None`` if the company does not exist yet — which
     happens only if this hook is somehow called before Dev 2's company step.
     """
+    # Oldest first, and one row. A `RESCHEDULED` seed leaves a replacement activity
+    # with the **same** subject behind it, so on a repeat run this match has two rows;
+    # without an order Postgres may hand back the replacement, which is outstanding,
+    # and the seeder would reschedule it again — a new row every run instead of
+    # converging. The seeded original is always the older (it is logged a week before
+    # its due date; the replacement is logged at the moment of rescheduling).
     async with db_services.AsyncSessionLocal() as db:
         existing = await db.scalar(
-            select(ExporterActivity).where(
+            select(ExporterActivity)
+            .where(
                 ExporterActivity.customer_id == customer_id,
                 ExporterActivity.subject == sample.subject,
             )
+            .order_by(ExporterActivity.occurred_at.asc(), ExporterActivity.id.asc())
+            .limit(1)
         )
     if existing is not None:
         return existing.id
+
+    # `exporter_activity.actor_id` is NOT NULL, so a seeded activity needs a name.
+    # Developer 2's own constant, not a copy of its value, so the whole sample set
+    # reads as one hand. Imported here for the same circular-import reason as
+    # `COMPANIES` above.
+    from app.modules.onboarding.sample_data import SAMPLE_DATA_ACTOR
 
     async with db_services.AsyncSessionLocal() as db:
         activity = await ExporterContactActivityService(db).log_activity(
@@ -186,7 +196,7 @@ async def _ensure_follow_up(
             subject=sample.subject,
             notes=sample.notes,
             due_at=_at(sample.due_in_days),
-            actor_id=_ACTOR,
+            actor_id=SAMPLE_DATA_ACTOR,
             occurred_at=_at(sample.due_in_days - 7),
         )
     return activity.id

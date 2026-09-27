@@ -114,7 +114,8 @@ class FollowUpService:
         The rules, in the order they are checked — each one before anything is
         written, so a refusal leaves neither a completion nor a replacement activity:
 
-        1. The activity exists (404).
+        1. The activity exists (404). Its row is locked from here to the commit, so
+           a concurrent completion of the same follow-up waits and then meets rule 3.
         2. It carries a ``due_at``, so it is a follow-up at all (409).
         3. It has no completion already (409) — a refusal, never an upsert.
         4. ``RESCHEDULED`` carries a ``next_due_at`` (422), and that moment is in the
@@ -225,6 +226,7 @@ class FollowUpService:
         due_before: datetime | None = None,
         due_after: datetime | None = None,
         include_check_backs: bool = True,
+        check_backs_due_only: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> FollowUpListView:
@@ -244,6 +246,11 @@ class FollowUpService:
         completion. They ignore ``offset`` too — see the comment below — and
         ``include_check_backs=False`` leaves them out entirely for a caller that only
         wants activities.
+
+        ``check_backs_due_only=True`` keeps only the check-backs that are due — on or
+        before today — so an "Overdue" view does not list a company parked until next
+        quarter beside the work that is late. "Today" is the same UTC date
+        ``is_overdue`` is judged against, from the same single ``now``.
         """
         now = _now()
         rows = await self._completions.list_follow_ups(
@@ -278,12 +285,16 @@ class FollowUpService:
             # a paged table, so the first `limit` of them, with a true
             # `check_backs_total` beside them, is the useful answer. A caller that
             # needs to page them can ask per company.
+            due_on_or_before = now.date() if check_backs_due_only else None
             profiles = await self._completions.list_check_backs(
-                customer_id=customer_id, limit=limit, offset=0
+                customer_id=customer_id,
+                due_on_or_before=due_on_or_before,
+                limit=limit,
+                offset=0,
             )
             check_backs = tuple(_check_back_view(p, today=now.date()) for p in profiles)
             check_backs_total = await self._completions.count_check_backs(
-                customer_id=customer_id
+                customer_id=customer_id, due_on_or_before=due_on_or_before
             )
 
         return FollowUpListView(
@@ -322,9 +333,19 @@ class FollowUpService:
         Two separate refusals on purpose: "no such activity" (404) and "that activity
         is not something anyone promised to do" (409) send a person looking in
         completely different places.
+
+        **Locked** for the rest of the transaction, so two people completing the same
+        follow-up at once are judged one after the other: the second waits here, then
+        finds the first one's completion and gets ``FOLLOW_UP_ALREADY_COMPLETED`` (409)
+        instead of tripping ``uq_follow_up_completion_activity_id`` as a 500. The same
+        reason ``set_marker`` and ``set_conversation`` lock their row. ``SELECT … FOR
+        UPDATE`` is not an ``UPDATE``, so the activity's append-only trigger does not
+        fire.
         """
         result = await self._db.execute(
-            select(ExporterActivity).where(ExporterActivity.id == activity_id)
+            select(ExporterActivity)
+            .where(ExporterActivity.id == activity_id)
+            .with_for_update()
         )
         activity = result.scalar_one_or_none()
         if activity is None:

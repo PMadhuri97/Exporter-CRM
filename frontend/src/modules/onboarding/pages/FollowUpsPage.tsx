@@ -30,7 +30,7 @@ import {
   ClipboardList,
   PauseCircle,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -291,6 +291,61 @@ function CheckBackRow({ row }: { row: CheckBack }) {
   );
 }
 
+/** Rows per page. The server's default, stated here so the pager and the request
+ * agree on it rather than both assuming. */
+const PAGE_SIZE = 50;
+
+/**
+ * Previous / next over the follow-ups, from the server's `follow_ups_total`.
+ *
+ * The list is soonest-due first, so without paging the Done and All tabs would only
+ * ever show their oldest 50 rows and recent work would be unreachable. Renders
+ * nothing when everything fits on one page.
+ */
+function Pager({
+  offset,
+  shown,
+  total,
+  onChange,
+}: {
+  offset: number;
+  shown: number;
+  total: number;
+  onChange: (offset: number) => void;
+}) {
+  if (total <= PAGE_SIZE && offset === 0) return null;
+  const buttonClass =
+    'rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-50';
+  return (
+    <div
+      className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3"
+      data-testid="follow-ups-pager"
+    >
+      <span className="text-sm text-ink-muted">
+        {offset + 1}–{offset + shown} of {total}
+      </span>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={offset === 0}
+          onClick={() => onChange(Math.max(0, offset - PAGE_SIZE))}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={offset + shown >= total}
+          onClick={() => onChange(offset + PAGE_SIZE)}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function FollowUpsPage() {
   // Non-nullable: `useCurrentUser` throws outside an authenticated tree, and this
   // page only renders inside `ProtectedRoute`.
@@ -303,6 +358,13 @@ export function FollowUpsPage() {
 
   const [tab, setTab] = useState<TabKey>('overdue');
   const [mineOnly, setMineOnly] = useState(false);
+  const [offset, setOffset] = useState(0);
+
+  // A new tab or filter is a new list, so it starts from its first page.
+  const selectTab = (next: TabKey) => {
+    setTab(next);
+    setOffset(0);
+  };
 
   const query = useFollowUps({
     state: TAB_STATE[tab],
@@ -310,9 +372,23 @@ export function FollowUpsPage() {
     // serves everyone's rows unless asked to narrow them.
     actorId: mineOnly ? String(currentUser.id) : undefined,
     // Check-backs have no state, so they are the same set on every tab. Fetched only
-    // on the tabs where showing the same rows four times would not be noise.
+    // on the tabs where showing the same rows four times would not be noise — and on
+    // Overdue only the ones that are due, so a company parked until next quarter is
+    // not listed beside work that is late.
     includeCheckBacks: tab === 'overdue' || tab === 'all',
+    checkBacksDueOnly: tab === 'overdue',
+    limit: PAGE_SIZE,
+    offset,
   });
+
+  // Completing the last row on a later page leaves that page empty. Step back to the
+  // last page that has rows rather than telling the user there is nothing here.
+  const total = query.data?.follow_ups_total;
+  useEffect(() => {
+    if (total !== undefined && offset > 0 && offset >= total) {
+      setOffset(Math.max(0, Math.floor((total - 1) / PAGE_SIZE) * PAGE_SIZE));
+    }
+  }, [total, offset]);
 
   return (
     <div className="space-y-5">
@@ -331,7 +407,7 @@ export function FollowUpsPage() {
               type="button"
               role="tab"
               aria-selected={tab === item.key}
-              onClick={() => setTab(item.key)}
+              onClick={() => selectTab(item.key)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
                 tab === item.key
                   ? 'bg-brand-50 text-brand-600'
@@ -346,7 +422,10 @@ export function FollowUpsPage() {
           <input
             type="checkbox"
             checked={mineOnly}
-            onChange={(event) => setMineOnly(event.target.checked)}
+            onChange={(event) => {
+              setMineOnly(event.target.checked);
+              setOffset(0);
+            }}
             className="h-4 w-4 rounded border-border-strong text-brand-600 focus:ring-brand-500"
           />
           Only the ones I logged
@@ -379,6 +458,12 @@ export function FollowUpsPage() {
             {query.data.follow_ups.map((row) => (
               <FollowUpRow key={row.activity_id} row={row} isStaff={isStaff} />
             ))}
+            <Pager
+              offset={offset}
+              shown={query.data.follow_ups.length}
+              total={query.data.follow_ups_total}
+              onChange={setOffset}
+            />
           </div>
         ) : (
           <EmptySection>
@@ -399,14 +484,18 @@ export function FollowUpsPage() {
         >
           <div className="mb-3 flex items-center gap-2 border-b border-border pb-3">
             <PauseCircle size={16} className="text-ink-faint" />
-            <h2 className="font-semibold text-ink">Check-backs</h2>
+            <h2 className="font-semibold text-ink">
+              {tab === 'overdue' ? 'Check-backs due' : 'Check-backs'}
+            </h2>
             {query.data && (
               <span className="text-sm text-ink-faint">{query.data.check_backs_total}</span>
             )}
           </div>
           <p className="mb-3 text-sm text-ink-muted">
-            Companies that said not now. These are not completed here — move the
-            conversation on the company's page and the check-back clears itself.
+            Companies that said not now
+            {tab === 'overdue' ? ', due to be picked up today or earlier' : ''}. These are
+            not completed here — move the conversation on the company's page and the
+            check-back clears itself.
           </p>
 
           {query.isLoading ? (
@@ -422,7 +511,11 @@ export function FollowUpsPage() {
               ))}
             </div>
           ) : (
-            <EmptySection>No company is parked waiting for a check-back.</EmptySection>
+            <EmptySection>
+              {tab === 'overdue'
+                ? 'No check-back is due yet.'
+                : 'No company is parked waiting for a check-back.'}
+            </EmptySection>
           )}
         </section>
       )}
