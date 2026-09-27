@@ -210,6 +210,20 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/deals/{{deal_id}}"): READERS,
     ("POST", f"{CRM}/deals/{{deal_id}}/transitions"): STAFF,
     ("PUT", f"{CRM}/deals/{{deal_id}}/buyer"): STAFF,
+    #
+    # Documents (L3-09). Uploading is a staff write; reading, the catalogue and
+    # minting a download link are reader routes. `GET /documents/content` is a
+    # reader route **and** needs a valid signature over the key and the expiry, and
+    # refuses any document that has not passed the scan step — to every role, by
+    # state rather than by permission (architecture §3.4).
+    ("GET", f"{CRM}/documents/categories"): READERS,
+    ("GET", f"{CRM}/documents/content"): READERS,
+    ("POST", f"{CRM}/exporters/{{company_id}}/documents"): STAFF,
+    ("GET", f"{CRM}/exporters/{{company_id}}/documents"): READERS,
+    ("POST", f"{CRM}/deals/{{deal_id}}/documents"): STAFF,
+    ("GET", f"{CRM}/deals/{{deal_id}}/documents"): READERS,
+    ("GET", f"{CRM}/documents/{{document_id}}"): READERS,
+    ("POST", f"{CRM}/documents/{{document_id}}/download-link"): READERS,
 }
 
 

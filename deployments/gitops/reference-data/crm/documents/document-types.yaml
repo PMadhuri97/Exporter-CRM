@@ -1,0 +1,94 @@
+# Document types within each CRM category — owner: Developer 3B (L3-09).
+#
+# Architecture §3.4: the ten **categories** are fixed and checked by the server,
+# but the **types** within a category are settings. Adding a type here needs no
+# code change and no migration — which is the whole point of this file, and why
+# `crm_document.document_type` is a string rather than an enum.
+#
+# GitOps-managed, like every other reference vocabulary on the platform
+# (`compliance/documents/document-requirements.yaml`, `rails/rail-codes.yaml`).
+# A category absent from this file accepts no type at all, so every one of the ten
+# appears, including `COMPANY_MARKET_REVIEW`, which nothing generates into yet
+# (decision D16).
+#
+# `key` is what is stored on the row. `label` is for screens. Keys are lowercase
+# with underscores, stable, and never reused for a different meaning: a stored row
+# keeps its key forever.
+
+version: "1.0"
+
+categories:
+  ENTITY_KYC:
+    - key: certificate_of_incorporation
+      label: Certificate of incorporation
+    - key: pan_card
+      label: PAN card
+    - key: gstin_certificate
+      label: GSTIN certificate
+    - key: iec_certificate
+      label: Import-export code certificate
+    - key: board_resolution
+      label: Board resolution
+    - key: owner_declaration
+      label: Owner declaration
+    - key: director_id
+      label: Director identification
+  COMPLIANCE_SCREENING:
+    - key: sanctions_evidence
+      label: Sanctions screening evidence
+    - key: pep_evidence
+      label: Politically-exposed-person evidence
+    - key: adverse_media_evidence
+      label: Adverse-media evidence
+  COMPANY_MARKET_REVIEW:
+    # Nothing generates into this category in the prototype (decision D16); the
+    # type exists so the later generator has somewhere to file its output.
+    - key: generated_market_review
+      label: Generated market review
+  PRE_SHIPMENT:
+    - key: proforma_invoice
+      label: Proforma invoice
+    - key: purchase_order
+      label: Purchase order
+    - key: sales_contract
+      label: Sales contract
+    - key: letter_of_credit
+      label: Letter of credit
+  SHIPPING:
+    - key: bill_of_lading
+      label: Bill of lading
+    - key: electronic_bill_of_lading
+      label: Electronic bill of lading
+    - key: packing_list
+      label: Packing list
+    - key: vessel_report
+      label: Vessel report
+  CUSTOMS_AND_REGULATORY:
+    - key: shipping_bill
+      label: Shipping bill
+    - key: customs_declaration
+      label: Customs declaration
+    - key: gst_return
+      label: GST return
+    - key: tax_residency_certificate
+      label: Tax residency certificate
+  BUYER:
+    - key: buyer_rating_report
+      label: Buyer rating report
+    - key: buyer_kyc
+      label: Buyer KYC
+  BANKING:
+    - key: bank_statement
+      label: Bank statement
+    - key: firc
+      label: Foreign inward remittance certificate
+    - key: e_brc
+      label: Electronic bank realisation certificate
+  INSURANCE:
+    - key: annual_policy
+      label: Annual policy
+    - key: marine_certificate
+      label: Marine insurance certificate
+  OTHER:
+    - key: other
+      label: Other

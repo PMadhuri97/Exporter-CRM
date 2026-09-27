@@ -1056,3 +1056,118 @@ class DealBuyerRequiredError(AnerBaseException):
             error_code="DEAL_BUYER_REQUIRED",
             status_code=422,
         )
+
+
+class DocumentNotFoundError(AnerBaseException):
+    """No document with that id, or no row for that storage key."""
+
+    def __init__(self, document_ref: object) -> None:
+        super().__init__(
+            detail=f"Document {document_ref} was not found",
+            error_code="DOCUMENT_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class DocumentCategoryNotAllowedError(AnerBaseException):
+    """A category filed where it does not belong.
+
+    Architecture §3.4 gives each of the ten categories an owner — a company, a
+    deal, or both — so `SHIPPING` on a company is not a preference but a filing
+    error, and the document would end up where nobody looks for it.
+    """
+
+    def __init__(self, category: object, reason: str) -> None:
+        super().__init__(
+            detail=f"{category} cannot be filed here: {reason}",
+            error_code="DOCUMENT_CATEGORY_NOT_ALLOWED",
+            status_code=422,
+            extensions={"category": str(category)},
+        )
+
+
+class DocumentTypeNotAllowedError(AnerBaseException):
+    """A type that the settings do not configure under this category.
+
+    Types are settings, not code (architecture §3.4), so this is what an unknown
+    one looks like: a 422 naming the category, not a new enum member. Adding the
+    type is a GitOps change to
+    `deployments/gitops/reference-data/crm/documents/document-types.yaml`.
+    """
+
+    def __init__(self, category: object, document_type: object) -> None:
+        super().__init__(
+            detail=(
+                f"{document_type!r} is not a configured document type for {category}"
+            ),
+            error_code="DOCUMENT_TYPE_NOT_ALLOWED",
+            status_code=422,
+            extensions={"category": str(category), "document_type": str(document_type)},
+        )
+
+
+class DocumentContentTypeNotSupportedError(AnerBaseException):
+    """A content type with no extension in the storage allow-list.
+
+    The extension goes into the storage key, so a type with no known extension
+    would have to be stored with a guessed one — and guessing from the uploaded
+    file name is what §9.3's "Watch out for" forbids.
+    """
+
+    def __init__(self, content_type: object) -> None:
+        super().__init__(
+            detail=f"Files of type {content_type!r} are not accepted",
+            error_code="DOCUMENT_CONTENT_TYPE_NOT_SUPPORTED",
+            status_code=422,
+            extensions={"content_type": str(content_type)},
+        )
+
+
+class DocumentNotAvailableError(AnerBaseException):
+    """Content was requested for a document that is not `AVAILABLE`.
+
+    Refused to **every** role: `PENDING_SCAN`, `QUARANTINED` and `SCAN_FAILED` are
+    states, not permissions (architecture §3.4, assumption A9). There is no role,
+    and no flag, that opens a quarantined file.
+    """
+
+    def __init__(self, document_id: object, scan_status: object) -> None:
+        super().__init__(
+            detail=(
+                f"Document {document_id} is {scan_status} and cannot be opened; "
+                "only a document that has passed the scan step is served"
+            ),
+            error_code="DOCUMENT_NOT_AVAILABLE",
+            status_code=409,
+            extensions={"scan_status": str(scan_status)},
+        )
+
+
+class DocumentLinkInvalidError(AnerBaseException):
+    """A download link whose signature does not verify, or which has expired.
+
+    One error for both, deliberately: telling a caller which of the two it was
+    would help someone probing for a valid signature.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            detail="This download link is invalid or has expired",
+            error_code="DOCUMENT_LINK_INVALID",
+            status_code=403,
+        )
+
+
+class StorageKeyRefusedError(AnerBaseException):
+    """A storage key that is absolute, escapes its root, or holds a bad segment.
+
+    Reaching the boundary means something built a key from untrusted input; the
+    implementation refuses it before any I/O (storage contract §2.1).
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(
+            detail=f"Storage key refused: {reason}",
+            error_code="STORAGE_KEY_REFUSED",
+            status_code=422,
+        )

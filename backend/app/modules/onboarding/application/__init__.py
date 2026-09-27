@@ -73,6 +73,9 @@ __all__ += ["FollowUpService"]
 
 # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
 # (3B appends here; 3A does not.)
-from app.modules.onboarding.application.deal_service import DealService
+from app.modules.onboarding.application.deal_service import DealService  # noqa: E402
 
 __all__ += ["DealService"]
+from app.modules.onboarding.application.document_service import DocumentService  # noqa: E402
+
+__all__ += ["DocumentService"]

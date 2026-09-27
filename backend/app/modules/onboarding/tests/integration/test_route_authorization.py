@@ -213,6 +213,22 @@ GATED_ROUTES = [
         {"name": "Rotterdam Trading BV", "country": "NL"},
         STAFF,
     ),
+    # Documents (L3-09). The two uploads are multipart, so they are covered by their
+    # own refusal tests in `test_l3b_documents.py` rather than here — this table
+    # sends a JSON body, and a multipart route refuses a JSON one at parsing with a
+    # 422 before the gate is reached, which would prove nothing about the gate.
+    ("GET", f"{BASE}/documents/categories", None, READERS),
+    ("GET", f"{BASE}/documents/{_ID}", None, READERS),
+    ("GET", f"{BASE}/exporters/{_ID}/documents", None, READERS),
+    ("GET", f"{BASE}/deals/{_ID}/documents", None, READERS),
+    ("POST", f"{BASE}/documents/{_ID}/download-link", None, READERS),
+    (
+        "GET",
+        f"{BASE}/documents/content?key=test%2Fcompany%2Fx%2Finternal%2Fx.pdf"
+        "&expires=1&signature=nope",
+        None,
+        READERS,
+    ),
 ]
 
 REFUSALS = [

@@ -168,3 +168,32 @@ export interface DealListParams {
   limit?: number;
   offset?: number;
 }
+
+export type CrmDocument = Schemas['DocumentResponse'];
+export type DocumentList = Schemas['DocumentListResponse'];
+export type DocumentCategoryOption = Schemas['DocumentCategoryResponse'];
+export type DocumentCategoryList = Schemas['DocumentCategoryListResponse'];
+export type DocumentDownloadLink = Schemas['DownloadLinkResponse'];
+/** The ten fixed categories — architecture §3.4. Which owner each belongs to is a
+ * server rule; ask `GET /documents/categories` rather than hard-coding it. */
+export type DocumentCategory = Schemas['DocumentCategory'];
+export type DocumentSource = Schemas['DocumentSource'];
+/** PENDING_SCAN -> AVAILABLE | QUARANTINED | SCAN_FAILED. Only AVAILABLE is
+ * downloadable, and `CrmDocument.is_downloadable` already says so — branch on that
+ * rather than re-deriving it per screen. */
+export type DocumentScanStatus = Schemas['DocumentScanStatus'];
+export type DocumentOwnerKind = Schemas['DocumentOwnerKind'];
+
+export interface DocumentListParams {
+  /** Repeatable: several categories narrow the list. */
+  categories?: DocumentCategory[];
+  limit?: number;
+  offset?: number;
+}
+
+export interface UploadDocumentInput {
+  file: File;
+  category: DocumentCategory;
+  documentType: string;
+  source?: DocumentSource;
+}

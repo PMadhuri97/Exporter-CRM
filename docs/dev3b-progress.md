@@ -10,7 +10,7 @@ order so no phase depends on a later one:
 |---|---|---|
 | 1 | L3-01b contracts, L3-07 storage, L3-08 scan step | **done** |
 | 2 | L3-05 deal record, L3-06 buyer | **done** |
-| 3 | L3-09 document records | not started |
+| 3 | L3-09 document records | **done** |
 | 4 | L3-10 handover, L3-11b screens | not started |
 
 ---
@@ -195,3 +195,95 @@ order so no phase depends on a later one:
 - `alembic heads`: one revision (`onboarding_0018_deal_buyer`).
 - Frontend: typecheck clean, `lint` 0 errors, 78 tests pass, `build` succeeds.
 - `openapi.json` and `schema.ts` regenerated and current (contract test passes).
+
+---
+
+## Phase 3 — the document record
+
+### Delivered
+
+- `migrations/onboarding_0019_documents.py`: three enums and `crm_document`, parent
+  `onboarding_0018_deal_buyer`. One head; upgrade → downgrade → upgrade verified.
+- `domain/entities/document_enums.py` (ten categories, each carrying the owner it
+  belongs to; four sources) and `crm_document.py`.
+- `domain/document_views.py`, `infrastructure/repositories/crm_document_repository.py`.
+- `infrastructure/document_type_loader.py` plus
+  `deployments/gitops/reference-data/crm/documents/document-types.yaml` — 31 types
+  across all ten categories.
+- `application/document_service.py`: upload (validate → store → scan → record),
+  lists, the category catalogue, download links and content.
+- `api/document_router.py` (8 operations) and `api/schemas/document.py`.
+- Frontend: `api/documents.ts`, `hooks/documents.ts`, document types.
+- 58 tests (`test_l3b_document_rules.py`, `test_l3b_documents.py`), including a
+  direct-SQL violation test for each of the five new constraints.
+
+### A bug I caught before it shipped
+
+**`/documents/content` was declared after `/documents/{document_id}`.** FastAPI
+matches in declaration order, so a GET of the content path would have been read as a
+document id and refused as an invalid UUID — every download broken, and nothing in a
+type-checker or a unit test would have said so. The content route now comes first,
+with a comment saying why, and the API test fetches a real document through the link
+so the ordering is pinned. The same trap 3A documented for `/exporters/follow-ups`.
+
+### Decisions
+
+1. **Types are settings, categories are code.** The ten categories are a database
+   enum because each carries a rule — which owner it may be filed against — and the
+   server enforces it. Types are a GitOps YAML file, so adding one needs no release
+   and no migration (architecture §3.4). A test writes its own settings file and
+   proves a brand-new type works without touching code.
+2. **Exactly one owner, enforced with `num_nonnulls(company_id, deal_id) = 1`** —
+   one expression that stays correct if a third owner kind is ever added. Both
+   halves (neither owner, both owners) have direct-SQL tests.
+3. **Validate, then store, then record.** A refused upload leaves neither a row nor
+   an object; the reverse order would litter the disk with orphans for every
+   rejected request. Tested by asserting the storage root is empty after each kind
+   of refusal.
+4. **`POST` for a download link, not `GET`.** It mints a credential rather than
+   reading a resource, and should not be prefetched or cached. The link is refused
+   for any document that is not `AVAILABLE`, and the scan status is re-checked when
+   the content is fetched, so a link minted while a document was clean stops working
+   if a later verdict quarantines it.
+5. **The signature covers the key *and* the expiry**, and an authentic signature
+   over a passed expiry is still refused — tested, because that is the case a naive
+   implementation gets wrong.
+6. **Content is served as `attachment` with `nosniff`.** An HTML or SVG document
+   served inline from this origin would run as this application.
+7. **No response carries the storage key** (decision D8): it is an internal address,
+   and publishing it invites clients to build their own URLs.
+8. **The file name never enters the key** — it is a column. A test uploads
+   `../../etc/passwd invoice.pdf` and asserts the key contains neither the name nor
+   `passwd`.
+9. **Uploads bypass `apiRequest` on the frontend**, because that helper sets a JSON
+   content type and serialises the body; the multipart boundary has to come from the
+   browser. It still takes the access token from the same place, so an upload
+   refreshes like any other call.
+
+### Housekeeping
+
+- `# noqa: E402` on my appended imports in the three shared index files, matching the
+  style 3A established there — the anchor design puts imports after code by
+  construction, and 3A documented the same exemption.
+- The 9 `ruff` findings left in `app/modules/onboarding` are all pre-existing:
+  verified by running `ruff` against those same files as they stand at `447c6ba`,
+  before any of my work.
+
+### Gate §7.6 — unchanged, and still true
+
+The scanner is still the labelled pass-through: **every document in this build was
+"scanned" by something that checks nothing**, and `scanner_name` says `pass-through`
+on every row and in every API response so no screen can imply otherwise. Still no
+S3, no Object Lock, no KMS, no retention lock.
+
+### Verification
+
+- 186 L3B tests pass together (81 storage + 47 deal + 58 document).
+- Route-authorisation suites pass (362) with a row and a refusal test for each new
+  route. The two multipart uploads are covered by their own refusal tests instead of
+  the shared table, which sends JSON — a multipart route rejects a JSON body at
+  parsing, before the gate, which would prove nothing about the gate.
+- `lint-imports` 19 kept, 0 broken. `alembic heads`: one
+  (`onboarding_0019_documents`).
+- Frontend: typecheck clean, `lint` 0 errors, 78 tests, `build` succeeds.
+- `openapi.json` and `schema.ts` regenerated; artifact contract test passes.

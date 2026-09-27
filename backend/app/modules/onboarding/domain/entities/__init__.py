@@ -162,8 +162,16 @@ __all__ += ["FollowUpCompletion", "FollowUpOutcome"]
 
 # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
 # (3B appends here; 3A does not.)
-from app.modules.onboarding.domain.entities.deal import Deal
-from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
-from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.modules.onboarding.domain.entities.deal import Deal  # noqa: E402
+from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer  # noqa: E402
+from app.modules.onboarding.domain.entities.deal_enums import DealStage  # noqa: E402
 
 __all__ += ["Deal", "DealBuyer", "DealStage"]
+from app.modules.onboarding.domain.entities.crm_document import CrmDocument  # noqa: E402
+from app.modules.onboarding.domain.entities.document_enums import (  # noqa: E402
+    DocumentCategory,
+    DocumentOwnerKind,
+    DocumentSource,
+)
+
+__all__ += ["CrmDocument", "DocumentCategory", "DocumentOwnerKind", "DocumentSource"]
