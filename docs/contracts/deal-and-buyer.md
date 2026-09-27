@@ -6,8 +6,9 @@
 to the deal's buyer; the handover guard reads the company's background check),
 Developer 3A (the `READY_NOW` prompt that opens a deal — seam S2).
 
-**Scope split.** Phase 2 builds §1–§5 and §7. §6 (the handover) is Phase 4, because its
-guard needs a column Developer 4 has not shipped. Nothing in §6 exists yet.
+**State.** All of it is built. §6's handover works end to end **except that its guard
+can never pass** in this build: it needs a column Developer 4 has not shipped, so every
+handover is refused and says why. §6 has the detail.
 
 Architecture §3.3 ("The deal"), §3.5 and §3.6 are the source.
 
@@ -33,13 +34,18 @@ company values) and **not** in `engagement_enums.py` (Developer 3A's). Database 
 |---|---|---|
 | `OPEN` | `GATHERING_PAPERWORK` | — |
 | `OPEN` | `WITHDRAWN` | reason |
-| `GATHERING_PAPERWORK` | `HANDED_OVER` | the §6 guard (Phase 4) |
+| `GATHERING_PAPERWORK` | `HANDED_OVER` | the §6 guard, and a buyer |
 | `GATHERING_PAPERWORK` | `WITHDRAWN` | reason |
 
 `HANDED_OVER` and `WITHDRAWN` are terminal: nothing leaves them. A deal that was
 withdrawn in error is a **new deal**, not a reopened one — the same rule the journey
 uses, and for the same reason: a record of what was decided must not be editable into
 a different decision.
+
+**A terminal deal is closed to edits, not only to stage moves.** Its buyer cannot be
+changed and no document can be added to it (`storage-and-documents.md` §6.2), both
+refused with `DEAL_TERMINAL`. A handed-over deal's buyer and paperwork are what the
+lending team was given; a withdrawn deal's are history.
 
 Unlike the conversation gauge, **any-value-to-any-value is not allowed here.** A stage
 is a claim about what has happened to a deal, not a judgement, so an illegal move is
@@ -134,7 +140,7 @@ written directly.
 
 ---
 
-## 6. Handover — Phase 4, and blocked on Developer 4
+## 6. Handover — built, and blocked on Developer 4
 
 `GATHERING_PAPERWORK → HANDED_OVER` requires, per assumption A5:
 
@@ -190,7 +196,7 @@ which is Developer 1's.
 | `DEAL_TERMINAL` | 409 | A move out of `HANDED_OVER` or `WITHDRAWN`. |
 | `DEAL_WITHDRAWAL_REASON_REQUIRED` | 422 | `WITHDRAWN` without a reason (A7). |
 | `DEAL_BUYER_REQUIRED` | 422 | Leaving `GATHERING_PAPERWORK` with no buyer. |
-| `DEAL_HANDOVER_BLOCKED` | 409 | The §6 guard is unmet. Phase 4. |
+| `DEAL_HANDOVER_BLOCKED` | 409 | The §6 guard is unmet — today, always. |
 | `DEAL_COMPANY_NOT_FOUND` | 404 | Opening a deal for a company that does not exist. |
 
 ---

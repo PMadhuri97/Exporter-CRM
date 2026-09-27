@@ -63,6 +63,7 @@ from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import (
     DealBuyerRequiredError,
     DealCompanyNotFoundError,
+    DealHandoverBlockedError,
     DealNotFoundError,
     DealTerminalError,
     DealTransitionNotAllowedError,
@@ -312,7 +313,7 @@ class DealService:
                 raise DealBuyerRequiredError(deal_id)
             blocked = await self._handover_blocked_reason(deal)
             if blocked is not None:
-                raise self._handover_blocked_error(deal_id, blocked)
+                raise DealHandoverBlockedError(deal_id, blocked)
 
         deal.stage = to_stage
         deal.withdrawal_reason = cleaned_reason
@@ -521,24 +522,6 @@ class DealService:
         if background_check != "CLEAR":
             return f"the background check is {background_check}, not CLEAR"
         return None
-
-    @staticmethod
-    def _handover_blocked_error(deal_id: uuid.UUID, reason: str) -> Exception:
-        """A 409 naming the unmet condition.
-
-        Built here rather than as a class in ``exceptions.py`` because Phase 4 owns
-        the handover and will add ``DealHandoverBlockedError`` with its event and
-        document snapshot; adding the class now would put an exception in a shared
-        file ahead of the route that raises it.
-        """
-        from app.shared.exceptions import AnerBaseException
-
-        return AnerBaseException(
-            detail=f"Deal {deal_id} cannot be handed over: {reason}",
-            error_code="DEAL_HANDOVER_BLOCKED",
-            status_code=409,
-            extensions={"reason": reason},
-        )
 
     # ── Internals ────────────────────────────────────────────────────────────
 

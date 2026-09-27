@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useCurrentUser } from '@/platform/auth';
 
-import { getDeal, listDealDocuments } from '../api';
+import { createDownloadLink, fetchDocumentBlob, getDeal, listDealDocuments } from '../api';
 import type { CrmDocument, Deal } from '../types';
 
 import { DealDetailPage } from './DealDetailPage';
@@ -15,6 +15,7 @@ vi.mock('../api', () => ({
   getDeal: vi.fn(),
   listDealDocuments: vi.fn(),
   createDownloadLink: vi.fn(),
+  fetchDocumentBlob: vi.fn(),
   getDocumentCategories: vi.fn(),
   setDealBuyer: vi.fn(),
   transitionDealStage: vi.fn(),
@@ -218,5 +219,93 @@ describe('DealDetailPage — documents', () => {
     expect(
       await screen.findByText('No documents on this deal yet.'),
     ).toBeInTheDocument();
+  });
+});
+
+describe("DealDetailPage — the review's findings", () => {
+  it('downloads by fetching the content with the token, not by opening the URL', async () => {
+    // `window.open` sends no Authorization header, and the content route is
+    // role-gated, so opening the link returned 401 for every document. The click
+    // must fetch the bytes and save them.
+    vi.mocked(createDownloadLink).mockResolvedValue({
+      document_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      url: '/api/v1/onboarding/documents/content?key=k&expires=1&signature=s',
+      expires_at: '2026-03-02T10:05:00Z',
+    });
+    vi.mocked(fetchDocumentBlob).mockResolvedValue(new Blob(['pdf bytes']));
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const createObjectURL = vi.fn(() => 'blob:fake');
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /^Download/ }));
+
+    await waitFor(() => expect(fetchDocumentBlob).toHaveBeenCalledWith(
+      '/api/v1/onboarding/documents/content?key=k&expires=1&signature=s',
+    ));
+    expect(createObjectURL).toHaveBeenCalled();
+    // The old behaviour, and the bug: never open the URL directly.
+    expect(open).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+    open.mockRestore();
+  });
+
+  it('offers no upload on a handed-over deal, and says why', async () => {
+    // The server refuses it (`DEAL_TERMINAL`): a handed-over deal's paperwork is
+    // what the lending team was given.
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        stage: 'HANDED_OVER',
+        handed_over_at: '2026-03-03T10:00:00Z',
+        allowed_stage_moves: [],
+        handover_blocked_reason: null,
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText(/has been handed over/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Upload a document' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers no upload on a withdrawn deal either', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        stage: 'WITHDRAWN',
+        withdrawal_reason: 'Buyer cancelled',
+        allowed_stage_moves: [],
+        handover_blocked_reason: null,
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText(/was withdrawn/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Upload a document' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('asks before handing a deal over, because it cannot be undone', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        allowed_stage_moves: [{ to_stage: 'HANDED_OVER', reason_required: false }],
+        handover_blocked_reason: null,
+      }),
+    );
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Hand over to lending' }),
+    );
+
+    expect(confirm).toHaveBeenCalled();
+    // Declined, so nothing was sent.
+    const { transitionDealStage } = await import('../api');
+    expect(vi.mocked(transitionDealStage)).not.toHaveBeenCalled();
+
+    confirm.mockRestore();
   });
 });

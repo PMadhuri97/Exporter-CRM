@@ -1171,3 +1171,26 @@ class StorageKeyRefusedError(AnerBaseException):
             error_code="STORAGE_KEY_REFUSED",
             status_code=422,
         )
+
+
+class DealHandoverBlockedError(AnerBaseException):
+    """A handover whose assumption-A5 guard is unmet.
+
+    The company must be a `CUSTOMER` **and** its background check `CLEAR`. The
+    reason names which condition failed, including "the background check is not
+    recorded yet" while Developer 4's migration 0015 is missing — "not recorded" is
+    never treated as "clear".
+
+    A class rather than an inline exception (which is what `deal_service.py` built
+    until the review): the code it raises is part of the documented contract
+    (`deal-and-buyer.md` §8), and every other refusal in this module is a named
+    class.
+    """
+
+    def __init__(self, deal_id: object, reason: str) -> None:
+        super().__init__(
+            detail=f"Deal {deal_id} cannot be handed over: {reason}",
+            error_code="DEAL_HANDOVER_BLOCKED",
+            status_code=409,
+            extensions={"reason": reason},
+        )

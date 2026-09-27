@@ -5,10 +5,10 @@
 **Used by:** Developer 4 (evidence at decision time, plan §8.2), Developer 3A (nothing
 — documents are not part of the conversation gauge), Developer 2 (nothing).
 
-**Scope split.** Phase 1 publishes this whole file and builds §1–§4 (the port, the
-local-disk implementation, the key shape, the scan step). §5 and §6 — the document
-record and its routes — are Phase 3. §7 is Phase 4. Nothing in §5–§7 exists yet, and
-this file says plainly where that is so.
+**State.** All of it is built: §1–§4 (the port, local disk, the key shape, the scan
+step) in Phase 1, §5–§6 (the document record and its routes) in Phase 3, §7 (the
+handover snapshot) in Phase 4. What is **not** built is behind gate §7.6 — a real
+virus scanner and S3 with Object Lock and KMS — and §4 says so where it matters.
 
 Architecture §3.4 is the source; where this file is more specific, it is filling in a
 decision the architecture left to implementation, and says so.
@@ -138,9 +138,7 @@ it is separated from `StoragePort` rather than folded into `put`.
 
 ---
 
-## 5. The document record — Phase 3 builds this
-
-Nothing in this section exists yet.
+## 5. The document record
 
 ### 5.1 Owner: exactly one of a company or a deal
 
@@ -178,31 +176,70 @@ Sources: `RXIL`, `EXPORTER_UPLOAD`, `INTERNAL`, `SYSTEM`.
 
 ---
 
-## 6. Routes — Phase 3 builds this
+## 6. Routes
 
 `POST` upload, `GET` list (by company or by deal), `GET` download. Roles per §3.7:
 OPERATIONS, COMPLIANCE and ADMIN upload and read; DEVELOPER reads; API_USER reaches
 nothing. The download route refuses any document that is not `AVAILABLE` to every
 role, and a link that has expired, both tested.
 
+### 6.1 A download link is a scope, not a credential of its own
+
+`GET /documents/content` is **role-gated as well as signed**. The signature scopes a
+link to one key and expires it; it does not authenticate. So a browser cannot simply
+open the URL — `window.open` sends no `Authorization` header and gets a 401 — and the
+client fetches the content with the access token and saves the bytes as a blob.
+
+The alternative is S3's model: make the signature the only credential, so the URL
+works unauthenticated for as long as it lives. That is a deliberate trade — a leaked
+URL becomes a working grant — and it is **not** what this build does. Revisit it when
+S3 lands, because a presigned S3 URL behaves that way by construction.
+
+### 6.2 A closed deal takes no more paperwork
+
+Uploading against a deal locks the deal row and refuses a terminal stage
+(`DEAL_TERMINAL`):
+
+* a **handed-over** deal's documents are what the lending team was given, and the
+  handover's snapshot names them — adding more afterwards would make the record and
+  the announcement disagree;
+* a **withdrawn** deal's documents are history.
+
+The lock is what makes the snapshot deterministic rather than lucky: without it an
+upload could commit between a handover reading its document list and committing it.
+Same rule, and the same reasoning, as editing a terminal deal's buyer
+(`deal-and-buyer.md` §1.1). Company documents have no such restriction — a company is
+never closed.
+
+### 6.3 File names
+
+The uploaded name is stored as given, capped to `varchar(500)` with its extension
+kept, and never used in a storage key (§2). On download it is returned in
+`Content-Disposition` as **both** an ASCII fallback and RFC 6266's
+`filename*=UTF-8''…`: HTTP headers are latin-1, so a Hindi or `₹` file name in a
+plain `filename` raises inside the server and becomes a 500. When nothing usable
+survives ASCII-folding the stem, the fallback is `document` plus the original
+extension.
+
 ---
 
-## 7. Handover — Phase 4 builds this
+## 7. Handover
 
 `deal.handed_over` carries the list of document ids the handover rested on, as a
 snapshot (architecture §3.6), so a later upload cannot change what the lending team
-was given. `OnboardingEventPublisher.deal_handed_over` already exists and already has
-this payload; Phase 4 calls it and writes no new publisher.
+was given. `OnboardingEventPublisher.deal_handed_over` already existed with this payload, and is
+called rather than replaced. The snapshot is taken inside the handover's transaction
+and the deal is locked against concurrent uploads (§6.2), so the list is what the
+handover rested on rather than whatever happened to be there a moment later.
 
 ---
 
 ## 8. Error codes
 
-All of these are **Phase 3**: they are the HTTP mapping of a domain rule, and
-until there is a route there is nothing to map. Phase 1 raises plain domain
-errors — `StorageKeyError`, `UnsupportedContentTypeError`,
-`DocumentNotServableError` — and adds nothing to `onboarding/exceptions.py`,
-because an exception no boundary raises is dead code in a shared file.
+Every one of these is now raised by a route. The domain still raises plain errors
+inside — `StorageKeyError`, `UnsupportedContentTypeError`,
+`DocumentNotServableError` — and the boundary maps them, which is why the domain
+carries no HTTP status codes.
 
 | Code | Status | Raised from | When |
 |---|---|---|---|

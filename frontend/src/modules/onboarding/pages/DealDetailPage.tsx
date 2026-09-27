@@ -150,6 +150,18 @@ function StageMoves({
   const [reason, setReason] = useState('');
 
   async function move(toStage: DealStage, withReason?: string) {
+    // `HANDED_OVER` is terminal and announces the deal to the lending team, so it
+    // is the one move worth a confirmation. A withdrawal already asks for a reason,
+    // which is its own deliberate step.
+    if (
+      toStage === 'HANDED_OVER' &&
+      !window.confirm(
+        'Hand this deal to the lending team? This cannot be undone, and the deal ' +
+          'and its documents are announced to them as they stand now.',
+      )
+    ) {
+      return;
+    }
     try {
       await mutation.mutateAsync({
         to_stage: toStage,
@@ -240,6 +252,10 @@ export function DealDetailPage() {
   const isStaff = ['OPERATIONS', 'COMPLIANCE', 'ADMIN'].includes(user.role);
 
   const { data: deal, isLoading, isError } = useDeal(dealId);
+  // A handed-over deal's paperwork is what the lending team was given, and a
+  // withdrawn deal's is history: the server refuses both an upload and a buyer edit
+  // on a terminal deal, so neither control is offered.
+  const isClosed = deal?.stage === 'HANDED_OVER' || deal?.stage === 'WITHDRAWN';
   const documents = useDealDocuments(dealId);
   const upload = useUploadDealDocument(dealId ?? '');
   const [editingBuyer, setEditingBuyer] = useState(false);
@@ -311,7 +327,7 @@ export function DealDetailPage() {
               against the buyer, never against the company.
             </p>
           </div>
-          {isStaff && !editingBuyer && deal.stage !== 'HANDED_OVER' && deal.stage !== 'WITHDRAWN' && (
+          {isStaff && !editingBuyer && !isClosed && (
             <button
               type="button"
               onClick={() => setEditingBuyer(true)}
@@ -369,7 +385,7 @@ export function DealDetailPage() {
               team about.
             </p>
           </div>
-          {isStaff && !uploading && (
+          {isStaff && !isClosed && !uploading && (
             <button
               type="button"
               onClick={() => setUploading(true)}
@@ -391,6 +407,13 @@ export function DealDetailPage() {
           </FormPanel>
         )}
 
+        {isClosed && (
+          <p className="mb-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-ink-muted">
+            {deal.stage === 'HANDED_OVER'
+              ? 'This deal has been handed over. Its paperwork is what the lending team was given, so nothing more can be added.'
+              : 'This deal was withdrawn. Its paperwork is kept as a record and nothing more can be added.'}
+          </p>
+        )}
         <DocumentList
           documents={documents.data?.documents ?? []}
           isLoading={documents.isLoading}

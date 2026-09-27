@@ -55,6 +55,7 @@ from app.modules.onboarding.domain.storage import (
 )
 from app.modules.onboarding.exceptions import (
     DealNotFoundError,
+    DealTerminalError,
     DocumentCategoryNotAllowedError,
     DocumentContentTypeNotSupportedError,
     DocumentNotAvailableError,
@@ -171,9 +172,11 @@ class DocumentService:
     ) -> DocumentView:
         """Store a file and record it against exactly one owner.
 
-        Every rule is checked before anything is stored, so a refused upload leaves
-        neither a row nor an object. The reverse order — store, then validate —
-        would leave orphaned bytes on disk for every rejected request.
+        Every rule that *can* be checked first is checked before anything is
+        stored, so a refused upload leaves neither a row nor an object. The reverse
+        order — store, then validate — would leave orphaned bytes on disk for every
+        rejected request. A failure that can only surface at the insert is caught
+        and the stored object removed, so the same guarantee holds there too.
 
         The document's id is generated here because the storage key contains it
         (contract §2): one id, used for the row and the key, so the two can never
@@ -203,7 +206,11 @@ class DocumentService:
             await self._require_company(company_id)
             owner_type, owner_id = StorageOwnerType.COMPANY, company_id
         else:
-            await self._require_deal(deal_id)  # type: ignore[arg-type]
+            # Locked, and its stage checked: a deal that has been handed over or
+            # withdrawn takes no more paperwork (see `_lock_open_deal`), and the
+            # lock means an upload cannot land between a handover reading its
+            # document snapshot and committing it.
+            await self._lock_open_deal(deal_id)  # type: ignore[arg-type]
             owner_type, owner_id = StorageOwnerType.DEAL, deal_id  # type: ignore[assignment]
 
         document_id = uuid.uuid4()
@@ -228,8 +235,10 @@ class DocumentService:
             category=category,
             document_type=document_type,
             source=source,
-            # As uploaded, for display and download — never part of the key.
-            file_name=file_name.strip() or "document",
+            # As uploaded, for display and download — never part of the key, and
+            # capped to the column's width so a long name cannot fail the insert
+            # after the bytes are already on disk.
+            file_name=_capped_file_name(file_name),
             content_type=stored.content_type,
             size_bytes=stored.size_bytes,
             uploaded_by=actor_id,
@@ -239,7 +248,22 @@ class DocumentService:
             storage_key=stored.storage_key,
         )
         self._db.add(document)
-        await self._db.commit()
+        try:
+            await self._db.commit()
+        except Exception:
+            # The object is already stored, so a failed insert would leave a file
+            # on disk that no row points at — unreachable, undeletable through the
+            # API, and counted against nothing. Remove it before re-raising.
+            # `_capped_file_name` makes the known cause impossible; this is for the
+            # ones nobody has thought of yet.
+            await self._db.rollback()
+            await self._storage.delete(stored.storage_key)
+            logger.warning(
+                "document.upload.rolled_back",
+                document_id=str(document_id),
+                storage_key=stored.storage_key,
+            )
+            raise
         await self._db.refresh(document)
 
         logger.info(
@@ -314,10 +338,54 @@ class DocumentService:
         if exists is None:
             raise ExporterProfileNotFoundError(company_id)
 
-    async def _require_deal(self, deal_id: uuid.UUID) -> None:
-        exists = await self._db.scalar(select(Deal.id).where(Deal.id == deal_id))
-        if exists is None:
+    async def _lock_open_deal(self, deal_id: uuid.UUID) -> Deal:
+        """The deal, locked for this transaction, and refused if it is closed.
+
+        Two jobs, both about the handover:
+
+        * **Locked**, so an upload cannot commit between a handover reading its
+          document snapshot and committing — the snapshot is meant to be what the
+          handover rested on, and a race made that a matter of timing.
+        * **Refused when the stage is terminal.** A handed-over deal's paperwork is
+          what the lending team was given, and a withdrawn deal's is history;
+          neither takes new documents. Same rule, and the same reasoning, as
+          editing a terminal deal's buyer (`deal-and-buyer.md` §1.1).
+        """
+        result = await self._db.execute(
+            select(Deal)
+            .where(Deal.id == deal_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        deal = result.scalar_one_or_none()
+        if deal is None:
             raise DealNotFoundError(deal_id)
+        if deal.stage.is_terminal:
+            raise DealTerminalError(deal_id, deal.stage.value)
+        return deal
+
+
+#: `crm_document.file_name` is `varchar(500)`.
+_MAX_FILE_NAME = 500
+
+
+def _capped_file_name(file_name: str) -> str:
+    """The uploaded name, trimmed to fit its column, keeping the extension.
+
+    A name longer than the column used to fail the insert *after* the file was
+    written, which meant a 500 and an orphan. Truncating the stem rather than the
+    whole string keeps the extension, which is what a client needs to open the
+    download.
+    """
+    cleaned = (file_name or "").strip() or "document"
+    if len(cleaned) <= _MAX_FILE_NAME:
+        return cleaned
+
+    stem, dot, extension = cleaned.rpartition(".")
+    if dot and len(extension) < 20:
+        keep = _MAX_FILE_NAME - len(extension) - 1
+        return f"{stem[:keep]}.{extension}"
+    return cleaned[:_MAX_FILE_NAME]
 
 
 def _to_view(document: CrmDocument) -> DocumentView:

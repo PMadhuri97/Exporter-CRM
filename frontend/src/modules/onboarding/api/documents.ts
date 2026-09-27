@@ -5,15 +5,15 @@
  * `export * from './documents'` line in `api/index.ts`, and filled here — so the
  * barrel, which every owner shares, was never opened twice.
  *
- * Uploads are `multipart/form-data`, so they do **not** go through `apiRequest`:
- * that helper sets `Content-Type: application/json` and serialises the body. The
- * one thing it owns that matters here — a fresh access token — is taken from the
- * same place it takes it, so an upload still refreshes like any other call.
+ * Uploads go through `apiRequest` like everything else. An earlier version of this
+ * file called `fetch` directly, with a comment claiming `apiRequest` would force a
+ * JSON content type — that was written against an older `client.ts` and is wrong:
+ * it detects a `FormData` body, passes it through untouched, and lets the browser
+ * set the multipart boundary. Bypassing it cost the upload its token refresh and
+ * its one 401 retry, which is exactly what the review caught.
  */
 
 import { apiRequest } from '@/lib/api/client';
-import { ApiError, parseErrorResponse } from '@/lib/api/errors';
-import { getAccessToken } from '@/lib/api/tokenStorage';
 
 import type {
   CrmDocument,
@@ -90,24 +90,13 @@ export function createDownloadLink(
   );
 }
 
-async function uploadTo(path: string, input: UploadDocumentInput): Promise<CrmDocument> {
+function uploadTo(path: string, input: UploadDocumentInput): Promise<CrmDocument> {
   const form = new FormData();
   form.append('file', input.file);
   form.append('category', input.category);
   form.append('document_type', input.documentType);
   if (input.source) form.append('source', input.source);
-
-  const token = getAccessToken();
-  const response = await fetch(`/api/v1${path}`, {
-    method: 'POST',
-    // No `Content-Type`: the browser sets it with the multipart boundary, and
-    // setting it by hand produces a body the server cannot parse.
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
-
-  if (!response.ok) throw await parseErrorResponse(response);
-  return (await response.json()) as CrmDocument;
+  return apiRequest<CrmDocument>(path, { method: 'POST', body: form });
 }
 
 /** Upload a document against a company. The category must be one that belongs on a
@@ -127,4 +116,28 @@ export function uploadDealDocument(
   return uploadTo(`/onboarding/deals/${dealId}/documents`, input);
 }
 
-export { ApiError };
+/**
+ * Fetch a document's bytes and hand back an object URL to save.
+ *
+ * **Why not just open the link.** The content route is role-gated, so
+ * `window.open(url)` — which sends no `Authorization` header — gets a 401 and the
+ * download silently fails for every document. That is what the review found, and
+ * the backend test missed it because the test adds the header by hand.
+ *
+ * So the link is fetched like any other request (token, refresh, one retry) and the
+ * response becomes a blob the caller saves through a temporary anchor. The
+ * signature on the URL still does its own job: it scopes a link to one key and
+ * expires it, so a leaked URL is not a permanent grant.
+ *
+ * The alternative — making the signature the only credential, the way S3 presigned
+ * URLs work — would let `window.open` work directly, at the cost of a URL that
+ * anyone holding it can fetch unauthenticated. That is a security trade worth
+ * deciding deliberately rather than falling into, and it is recorded in
+ * `docs/contracts/storage-and-documents.md` §6.
+ */
+export async function fetchDocumentBlob(url: string): Promise<Blob> {
+  // `url` arrives absolute (it carries the API prefix), and `apiRequest` prepends
+  // that prefix itself, so the prefix is stripped before handing it over.
+  const path = url.replace(/^\/api\/v1/, '');
+  return apiRequest<Blob>(path, { parseAs: 'blob' });
+}

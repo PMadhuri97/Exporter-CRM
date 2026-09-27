@@ -16,8 +16,10 @@ link that has expired or been tampered with is refused before the row is read.
 
 from __future__ import annotations
 
+import unicodedata
 import uuid
 from typing import Annotated
+from urllib.parse import quote
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -30,7 +32,6 @@ from app.modules.onboarding.api.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
     DownloadLinkResponse,
-    UploadDocumentMetadata,
 )
 from app.modules.onboarding.application.document_service import (
     DocumentService,
@@ -66,6 +67,52 @@ _403_WRITE = {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"}
 _403_READ = {"description": "CRM read role required"}
 
 
+def _asciified(part: str) -> str:
+    """One part of a file name, reduced to ASCII and stripped of header-hostile
+    characters. Quotes and backslashes are dropped rather than escaped: they have no
+    place in a saved file name, and escaping them correctly across clients is not
+    worth the risk."""
+    return (
+        unicodedata.normalize("NFKD", part)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .replace('"', "")
+        .replace("\\", "")
+        .strip()
+    )
+
+
+def content_disposition(file_name: str) -> str:
+    """An `attachment` disposition that survives a non-Latin-1 file name.
+
+    HTTP headers are latin-1, so `filename="प्रमाणपत्र.pdf"` raises
+    `UnicodeEncodeError` inside the server and becomes a 500 — which Indian
+    exporters would hit constantly. RFC 6266 answers this with two parameters: a
+    plain `filename` an old client can read, and `filename*` carrying the real
+    name percent-encoded as UTF-8. Modern browsers prefer `filename*`.
+
+    The ASCII fallback keeps the extension where there is one, so a client that
+    only understands `filename` still saves something openable. Quotes and
+    backslashes are dropped rather than escaped: they have no place in a saved
+    file name and escaping them correctly across clients is not worth the risk.
+    """
+    # Split first: the fallback has to be judged on the stem, not the whole name.
+    # "प्रमाण-₹.txt" reduces to "-.txt", whose extension letters would pass any
+    # check applied to the string as a whole, leaving a useless name.
+    stem, dot, extension = file_name.rpartition(".")
+    if not dot:
+        stem, extension = file_name, ""
+
+    ascii_stem = _asciified(stem)
+    ascii_extension = _asciified(extension)
+    if not any(character.isalnum() for character in ascii_stem):
+        ascii_stem = "document"
+    ascii_name = f"{ascii_stem}.{ascii_extension}" if ascii_extension else ascii_stem
+
+    quoted = quote(file_name, safe="")
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quoted}"
+
+
 async def _read_upload(file: UploadFile) -> bytes:
     if file.size is not None and file.size > MAX_DOCUMENT_BYTES:
         raise ValidationError(
@@ -83,15 +130,15 @@ async def _read_upload(file: UploadFile) -> bytes:
     return content
 
 
-def _metadata(
-    category: DocumentCategory,
-    document_type: str,
-    source: DocumentSource,
-) -> UploadDocumentMetadata:
-    """Form fields, validated through the same model a JSON body would use."""
-    return UploadDocumentMetadata(
-        category=category, document_type=document_type, source=source
-    )
+#: The form fields that accompany an uploaded file. Declared as annotated
+#: parameters rather than built into a model inside the handler: a model
+#: constructed in the body raises a Pydantic error that FastAPI never sees, so an
+#: over-long `document_type` came back as a 500 instead of a 422. These
+#: constraints run before the handler, and match `crm_document.document_type`'s
+#: `varchar(100)`.
+_CategoryField = Annotated[DocumentCategory, Form()]
+_DocumentTypeField = Annotated[str, Form(min_length=1, max_length=100)]
+_SourceField = Annotated[DocumentSource, Form()]
 
 
 # ── The filing catalogue ─────────────────────────────────────────────────────
@@ -175,9 +222,8 @@ async def get_document_content(
         headers={
             # `attachment` so a document is never rendered inline in the browser:
             # an HTML or SVG file served inline from this origin would run as this
-            # application. The file name is quoted and comes from the row, not the
-            # key.
-            "Content-Disposition": f'attachment; filename="{document.file_name}"',
+            # application. The file name comes from the row, not the key.
+            "Content-Disposition": content_disposition(document.file_name),
             "X-Content-Type-Options": "nosniff",
         },
     )
@@ -217,19 +263,18 @@ async def upload_company_document(
     company_id: uuid.UUID,
     current_user: Annotated[User, Depends(_STAFF)],
     file: Annotated[UploadFile, File(description="The document")],
-    category: Annotated[DocumentCategory, Form()],
-    document_type: Annotated[str, Form()],
-    source: Annotated[DocumentSource, Form()] = DocumentSource.EXPORTER_UPLOAD,
+    category: _CategoryField,
+    document_type: _DocumentTypeField,
+    source: _SourceField = DocumentSource.EXPORTER_UPLOAD,
     db: AsyncSession = Depends(get_db),
 ) -> DocumentResponse:
-    metadata = _metadata(category, document_type, source)
     content = await _read_upload(file)
     view = await DocumentService(db).upload(
         content,
         company_id=company_id,
-        category=metadata.category,
-        document_type=metadata.document_type,
-        source=metadata.source,
+        category=category,
+        document_type=document_type,
+        source=source,
         file_name=file.filename or "document",
         content_type=file.content_type or "application/octet-stream",
         actor_id=str(current_user.id),
@@ -300,19 +345,18 @@ async def upload_deal_document(
     deal_id: uuid.UUID,
     current_user: Annotated[User, Depends(_STAFF)],
     file: Annotated[UploadFile, File(description="The document")],
-    category: Annotated[DocumentCategory, Form()],
-    document_type: Annotated[str, Form()],
-    source: Annotated[DocumentSource, Form()] = DocumentSource.EXPORTER_UPLOAD,
+    category: _CategoryField,
+    document_type: _DocumentTypeField,
+    source: _SourceField = DocumentSource.EXPORTER_UPLOAD,
     db: AsyncSession = Depends(get_db),
 ) -> DocumentResponse:
-    metadata = _metadata(category, document_type, source)
     content = await _read_upload(file)
     view = await DocumentService(db).upload(
         content,
         deal_id=deal_id,
-        category=metadata.category,
-        document_type=metadata.document_type,
-        source=metadata.source,
+        category=category,
+        document_type=document_type,
+        source=source,
         file_name=file.filename or "document",
         content_type=file.content_type or "application/octet-stream",
         actor_id=str(current_user.id),

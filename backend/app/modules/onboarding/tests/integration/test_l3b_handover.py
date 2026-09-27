@@ -38,6 +38,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourne
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.storage import DocumentScanStatus, ScanOutcome
 from app.modules.onboarding.events import publisher as publisher_module
+from app.modules.onboarding.exceptions import DealTerminalError
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import make_company
@@ -235,26 +236,34 @@ async def test_the_announcement_carries_the_buyer_and_a_document_snapshot(
 async def test_the_document_snapshot_does_not_change_afterwards(
     clear_background_check, bus, tmp_path: Path
 ):
-    """The snapshot is what the handover rested on: a document uploaded afterwards
-    cannot change what the lending team was told (architecture §3.6)."""
+    """The snapshot is what the handover rested on (architecture §3.6).
+
+    Two guarantees, and the second is stronger than it was when this test was
+    written. The snapshot names the documents that existed at the moment of the
+    handover — and a handed-over deal now refuses new paperwork outright, so there is
+    no later upload to disagree with it. The review asked for that rule; this test is
+    where its effect on the snapshot is pinned.
+    """
     company_id = await _customer()
     deal_id = await _deal_ready_to_hand_over(company_id)
-    before = await _add_document(deal_id, tmp_path, "at-handover.pdf")
+    at_handover = await _add_document(deal_id, tmp_path, "at-handover.pdf")
 
     await _hand_over(deal_id)
-    later = await _add_document(deal_id, tmp_path, "after-handover.pdf")
 
     payload = next(
         e.payload for e in bus.published if e.event_type is EventType.DEAL_HANDED_OVER
     )
-    assert payload["document_ids"] == [str(before)]
-    assert str(later) not in payload["document_ids"]
+    assert payload["document_ids"] == [str(at_handover)]
+
+    # A later upload is refused, rather than landing outside the snapshot.
+    with pytest.raises(DealTerminalError):
+        await _add_document(deal_id, tmp_path, "after-handover.pdf")
 
     # And the history row carries the same list, so the record survives even if the
     # announcement was never received.
     async with db_services.AsyncSessionLocal() as db:
         rows, _ = await HistoryService(db).list_for_company(company_id, dimension="deal")
-    assert rows[0].event_metadata["document_ids"] == [str(before)]
+    assert rows[0].event_metadata["document_ids"] == [str(at_handover)]
 
 
 async def test_a_handover_with_no_documents_is_allowed_and_says_so(

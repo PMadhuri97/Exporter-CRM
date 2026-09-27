@@ -30,6 +30,24 @@ So a reader does not re-raise them:
 | `GET /documents/content` was declared **after** `/documents/{document_id}`; FastAPI matches in declaration order, so every download would have been read as a document id and refused as an invalid UUID | Content route declared first, with a comment saying why, and the API test fetches a real document through a minted link so the order is pinned |
 | A test mutated the shared `compliance` built-in role and restored it in a `finally` whose first assertion sat outside the `try` — a failure left the role corrupted for the rest of the session | Not this branch's code (it was the earlier RBAC work), but the lesson is applied here: **no L3B test mutates a shared or built-in row**; every one mints its own company, deal and storage root |
 
+### 1.1 Fixed from the pull-request review
+
+Every blocker reproduced, so none was argued with. Recorded because two of them
+changed a rule rather than a line, and those rules are now in the contracts.
+
+| Finding | Fix |
+|---|---|
+| **Download 401'd for every document.** `window.open` sends no `Authorization` header, and `GET /documents/content` is role-gated as well as signed. The backend test passed because it added the token by hand | The client fetches the bytes with the token and saves a blob. The reviewer named the alternative — make the signature the only credential, S3-style — and it is refused on purpose: a leaked URL would become a working grant. Both the decision and the trade are `storage-and-documents.md` §6.1, to revisit when S3 lands |
+| **A Hindi or `₹` file name 500'd on download.** HTTP headers are latin-1, so the raw name raised inside the server | ASCII fallback **plus** RFC 6266 `filename*=UTF-8''`. The fallback judges the **stem**, not the whole name: an earlier attempt passed `-.txt` because the extension's letters satisfied `isalnum`. Nothing usable → `document` plus the original extension (§6.3) |
+| **A name over 500 characters 500'd and stranded the file on disk**, because the object is written before the row | Capped to 500 keeping the extension, **and** the commit is wrapped: a failure rolls back, deletes the object and logs `document.upload.rolled_back`. The docstring's "neither a row nor an object" is now true for a failure at any point, not only an early refusal |
+| **A `document_type` over 100 characters gave a raw 500**, since the route built the metadata model by hand | `Annotated[str, Form(min_length=1, max_length=100)]` on each field, so FastAPI answers 422. The hand-rolled `_metadata()` is gone |
+| **An upload could slip past the handover snapshot** — the deal row was not locked | `SELECT … FOR UPDATE` on the deal before storing, which makes the snapshot deterministic rather than lucky |
+| **Documents could be added to handed-over or withdrawn deals.** The reviewer correctly called this a product decision, not a defect | Refused with `DEAL_TERMINAL`, in the API and in the UI, and written down as a rule in both contracts (`deal-and-buyer.md` §1.1, `storage-and-documents.md` §6.2): a handed-over deal's paperwork is what the lending team was given. Company documents are unrestricted — a company is never closed |
+| **Uploads bypassed the token refresh.** My comment claimed `apiRequest` could not carry `FormData`; **the reviewer was right and the comment was wrong** — it had been written against an older copy of `client.ts` | `apiRequest(path, { method: 'POST', body: form })`, comment deleted |
+| **`DealHandoverBlockedError` was never added**, and the inline error still said "Phase 4 will add" it | The class exists and is raised. No "Phase N will" comment survives anywhere in the branch |
+| **Tests wrote real files into `backend/.local-storage`** | A `monkeypatch.setenv("STORAGE_LOCAL_ROOT", …)` fixture per test file, pointing at `tmp_path` — needed because the API tests go through the route's own `build_storage_service()`, which reads the variable |
+| Nits: the file picker kept the old file after an upload; the handover had no confirmation; no `accept` list or client-side size check | All four done — ref reset, `window.confirm`, `ACCEPTED_TYPES`, and a 25 MB check before the request. The reviewer's last nit stands as written: the extension comes from the sniffed content type while the stored name is the user's, so the extension check is deliberately not a validation of the name |
+
 ---
 
 ## 2. Programme lead — decisions
@@ -124,25 +142,35 @@ was touched:
 5. `frontend/src/modules/onboarding/types.ts` and `routes.tsx` — under the 3B
    anchors. Also `pages/index.ts` and `components/index.ts`, which §8.1 does not
    list but 3A appended to the same way.
+6. **`frontend/src/lib/api/client.ts` — one additive option, and it needs your
+   eye.** `parseAs?: 'blob'` on `apiRequest`, plus the one line that honours it.
+   Nothing else changed and every existing caller behaves identically: without the
+   option the JSON path is untouched. It exists because a document download must go
+   through the client that refreshes the token — `window.open` sends no
+   `Authorization` header, so the signed content route answered 401 for every
+   document (`storage-and-documents.md` §6.1). A blob response has no envelope to
+   unwrap, which is why it returns before the JSON parsing rather than after it. If
+   you would rather this lived as a separate `apiRequestBlob` export, say so and I
+   will move it.
 
 **After merge:**
 
-6. **`docs/contracts/migration-register.md` is now wrong in three ways.** The 0018
+7. **`docs/contracts/migration-register.md` is now wrong in three ways.** The 0018
    row says parent `0014`, "not started"; it is parent **`onboarding_0016_engagement`**
    and merged — 3A landed first, so per §3 I parented onto them and did **not**
    re-parent. The 0019 row says "not started"; it is merged, parent `0018`. And the
    "Head today" line still says `onboarding_0013_shared_history`; the head is
    **`onboarding_0019_documents`**.
-7. **`HistoryService.list_for_deal`'s docstring is now stale.** It says "Empty until
+8. **`HistoryService.list_for_deal`'s docstring is now stale.** It says "Empty until
    deals exist (migration 0018, Developer 3)". Deals exist, and it works: a sample
    deal returns three real rows (`deal_initial`, `deal_buyer_changed`,
    `deal_transition`), each with `deal_id` set. Verified through
    `GET /onboarding/deals/{id}/history`. Nothing to build — just a comment, and the
    same for `dev1-remaining-work.md` §4's "`DealsPanel` renders `null`", which it no
    longer does.
-8. Authoritative API regeneration at the milestone (L1-14), and §2.4's `APP_NAME`
+9. Authoritative API regeneration at the milestone (L1-14), and §2.4's `APP_NAME`
    trap, which lands on whoever regenerates.
-9. Acknowledge `deal-and-buyer.md` §7 (the history fields: `dimension="deal"`,
+10. Acknowledge `deal-and-buyer.md` §7 (the history fields: `dimension="deal"`,
    `deal_id` always set, `event_type` `deal_initial` / `deal_transition` /
    `deal_buyer_changed`) and its §8 error codes.
 
@@ -150,22 +178,22 @@ was touched:
 
 ## 4. Developer 2 — review before merge
 
-1. **Both migrations add foreign keys *referencing* `exporter_profile.customer_id`
+11. **Both migrations add foreign keys *referencing* `exporter_profile.customer_id`
    with `ON DELETE RESTRICT`** (`fk_deal_company_id`,
    `fk_crm_document_company_id`). Nothing in `exporter_profile` is altered, but the
    consequence is theirs to know: **a company with a deal or a document can no
    longer be deleted.** Deliberate — deleting a company would destroy the record of
    what was financed — but any future cleanup, and 0014's own truncate guard, must
    remove deals and documents first.
-2. **`app/modules/onboarding/config.py`** gained `CRM_DOCUMENT_CONFIG_DIR` and
+12. **`app/modules/onboarding/config.py`** gained `CRM_DOCUMENT_CONFIG_DIR` and
    `DEFAULT_DOCUMENT_TYPES_PATH`, pointing at
    `deployments/gitops/reference-data/crm/documents/document-types.yaml`. §8.1 does
    not assign that file an owner; it is flagged here because it is theirs by
    proximity.
-3. **`DealsPanel` now renders content** on their detail page, and links to a new
+13. **`DealsPanel` now renders content** on their detail page, and links to a new
    route `/exporters/:customerId/documents`. `ExporterDetailPage.tsx` is **not**
    touched — the shell already mounted the panel with `{ customerId, isStaff }`.
-4. **`sample_data.py` is not touched.** `sample_data_deals.py`'s hook is filled and
+14. **`sample_data.py` is not touched.** `sample_data_deals.py`'s hook is filled and
    seeds three deals; a repeat run reports zero.
 
 **After merge:** acknowledge `deal-and-buyer.md` §2 (a company has many deals) and
@@ -177,18 +205,18 @@ change).
 
 ## 5. Developer 3A — after merge
 
-1. **Seam S2's button is yours to land.** `openDeal` / `useOpenDeal` and every deal
+15. **Seam S2's button is yours to land.** `openDeal` / `useOpenDeal` and every deal
    type are exported through the barrels and have been since `c82d6fc`.
    `components/OpenDealPrompt.tsx` is **your file** and I did not touch it: it still
    renders the note and no button, and its own docstring already names the exact
    imports (`../api`, `../hooks`, never 3B's files directly).
-2. **Seam S1 is in and tested.** `DealService.open_deal` calls
+16. **Seam S1 is in and tested.** `DealService.open_deal` calls
    `mark_ready_now_for_opened_deal` in the same transaction. Tests assert the gauge
    moves, your history row carries the `deal_id`, and a second deal on an
    already-ready company writes no second row (your idempotence).
-3. **`dev3a-remaining-work.md` §5 is now done** — all four items: S1 called, S2
+17. **`dev3a-remaining-work.md` §5 is now done** — all four items: S1 called, S2
    published, 0018 parented on 0016, `# noqa: E402` on the late imports. Retire it.
-4. Acknowledge `deal-and-buyer.md` §5 and `storage-and-documents.md`.
+18. Acknowledge `deal-and-buyer.md` §5 and `storage-and-documents.md`.
 
 ---
 
@@ -208,53 +236,53 @@ exist.
 
 **What to do when 0015 lands:**
 
-1. **Publish the read helper** (L4-01). Then in
+19. **Publish the read helper** (L4-01). Then in
    `application/deal_service.py`, `read_background_check(company)` — a deliberate
    one-function seam — becomes a call to it. That is the whole change.
-2. **Delete the `clear_background_check` fixture** in
+20. **Delete the `clear_background_check` fixture** in
    `tests/integration/test_l3b_handover.py`. Its success-path tests substitute
    exactly that one function today, and say so in their docstrings; with a real
    column they become ordinary end-to-end tests.
-3. **Promote `_handover_blocked_error`** from an inline `AnerBaseException` in
+21. **Promote `_handover_blocked_error`** from an inline `AnerBaseException` in
    `deal_service.py` to a named class in `exceptions.py` (a comment there says why
    it was not added ahead of the route that raises it).
-4. **Finish the §3.9 sample state** (§7.2 below) — one of company B's deals is meant
+22. **Finish the §3.9 sample state** (§7.2 below) — one of company B's deals is meant
    to be handed over, and company C's blocked because its check is *flagged*.
 
 **Also yours, and unblocked today:**
 
-5. **Buyer checks attach to `deal_buyer.id`**, not to the deal and never to the
+23. **Buyer checks attach to `deal_buyer.id`**, not to the deal and never to the
    company (`deal-and-buyer.md` §3, decision 9). That row exists now, one per deal,
    with its own id — which is why it is a table rather than columns.
-6. **Evidence at decision time** (plan §8.2) comes from `DocumentService` and
+24. **Evidence at decision time** (plan §8.2) comes from `DocumentService` and
    `StoragePort`: document ids are stable, `crm_document.storage_key` is unique, and
    content is refused for anything not `AVAILABLE`.
-7. Your placeholder clean-up task and my pass-through scanner meet here: the
+25. Your placeholder clean-up task and my pass-through scanner meet here: the
    scanner is labelled everywhere it appears (§2.2), so the "fake passed that looks
    real" failure is covered on the document side.
-8. Acknowledge `deal-and-buyer.md` §6 and `storage-and-documents.md` §4, §7.
+26. Acknowledge `deal-and-buyer.md` §6 and `storage-and-documents.md` §4, §7.
 
 ---
 
 ## 7. Developer 3B — after merge
 
-1. **Collect the acknowledgements.** L3-01b's done-when is both contracts merged
+27. **Collect the acknowledgements.** L3-01b's done-when is both contracts merged
    *and* 3A, Dev2 and Dev4 each confirming they read them. All still pending.
-2. **Sample data is honest but incomplete.** Architecture §3.9 wants one of company
+28. **Sample data is honest but incomplete.** Architecture §3.9 wants one of company
    B's two deals *handed over*, and company C's blocked *because its check is
    flagged*. Neither state is reachable without 0015, and writing the stage directly
    would put rows in the database that the service would never produce, with no
    history behind them. Both of B's deals stop at `GATHERING_PAPERWORK` with buyers
    recorded; C's is `OPEN`. **No documents are seeded at all** — worth adding once
    there is a scanner worth running.
-3. **S3 implementation of `StoragePort`**, with Object Lock and KMS (§2.2).
-4. **Cross-company deal and document lists**, if the lead wants the sidebar rows
+29. **S3 implementation of `StoragePort`**, with Object Lock and KMS (§2.2).
+30. **Cross-company deal and document lists**, if the lead wants the sidebar rows
    (§2.1).
-5. **No delete or replace path for a document.** `StorageService.delete` exists and
+31. **No delete or replace path for a document.** `StorageService.delete` exists and
    is tested but no route calls it: replacing a document means uploading a new one,
    and nothing in §9.3 asked for deletion. Decide whether an ops person needs it —
    note that seven-year retention argues against ever deleting.
-6. **Optional, if the lead prefers it:** company documents as a section on the
+32. **Optional, if the lead prefers it:** company documents as a section on the
    company page rather than their own route (§2.1's sibling decision).
 
 ---

@@ -27,6 +27,7 @@ from app.modules.onboarding.application.deal_service import DealService
 from app.modules.onboarding.application.document_service import DocumentService
 from app.modules.onboarding.application.storage_service import StorageService
 from app.modules.onboarding.domain.entities.crm_document import CrmDocument
+from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.modules.onboarding.domain.entities.document_enums import (
     DocumentCategory,
     DocumentSource,
@@ -37,6 +38,7 @@ from app.modules.onboarding.domain.storage import (
 )
 from app.modules.onboarding.exceptions import (
     DealNotFoundError,
+    DealTerminalError,
     DocumentCategoryNotAllowedError,
     DocumentContentTypeNotSupportedError,
     DocumentNotAvailableError,
@@ -52,6 +54,19 @@ from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True)
+def _isolated_storage_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Point local-disk storage at ``tmp_path`` for every test in this file.
+
+    The service-level tests inject their own storage, but the API tests go through
+    the route's ``build_storage_service()``, which reads ``STORAGE_LOCAL_ROOT`` — so
+    without this they wrote real files into the developer's
+    ``backend/.local-storage``. ``local_storage_root()`` reads the variable on every
+    call, so setting it here is enough.
+    """
+    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path / "storage"))
 
 BASE = "/api/v1/onboarding"
 PDF = b"%PDF-1.4 sample invoice"
@@ -576,3 +591,150 @@ async def test_a_developer_may_read_documents_but_not_upload(client: AsyncClient
         headers=auth_header(developer),
     )
     assert refused.status_code == 403, refused.text
+
+
+# ── The review's findings ────────────────────────────────────────────────────
+
+
+async def test_a_unicode_file_name_survives_the_download(client: AsyncClient):
+    """HTTP headers are latin-1, so a Hindi or rupee file name used to raise
+    ``UnicodeEncodeError`` inside ``Content-Disposition`` and return a 500 — which
+    Indian exporters would hit constantly. RFC 6266's ``filename*`` carries the
+    real name; the plain ``filename`` is an ASCII fallback."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    company_id = await _company()
+
+    uploaded = await client.post(
+        f"{BASE}/exporters/{company_id}/documents",
+        data={"category": "OTHER", "document_type": "other"},
+        files={"file": ("\u092a\u094d\u0930\u092e\u093e\u0923-\u20b9.txt", b"hello", "text/plain")},
+        headers=auth_header(token),
+    )
+    assert uploaded.status_code == 201, uploaded.text
+
+    link = await client.post(
+        f"{BASE}/documents/{uploaded.json()['id']}/download-link",
+        headers=auth_header(token),
+    )
+    url = link.json()["url"].removeprefix("/api/v1")
+    content = await client.get(f"/api/v1{url}", headers=auth_header(token))
+
+    assert content.status_code == 200, content.text
+    assert content.content == b"hello"
+    disposition = content.headers["content-disposition"]
+    # Both parameters: the percent-encoded real name, and an ASCII fallback that
+    # keeps the extension so an old client still saves something openable.
+    assert "filename*=UTF-8''" in disposition
+    assert "%E0%A4%AA" in disposition  # the first Devanagari character
+    assert 'filename="document.txt"' in disposition
+
+
+async def test_a_file_name_longer_than_the_column_is_capped_not_a_500(
+    client: AsyncClient,
+):
+    """``crm_document.file_name`` is varchar(500). A longer name used to fail the
+    insert *after* the bytes were written: a 500, and a file on disk with no row
+    pointing at it."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    company_id = await _company()
+
+    uploaded = await client.post(
+        f"{BASE}/exporters/{company_id}/documents",
+        data={"category": "OTHER", "document_type": "other"},
+        files={"file": ("n" * 600 + ".txt", b"hello", "text/plain")},
+        headers=auth_header(token),
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    stored_name = uploaded.json()["file_name"]
+    assert len(stored_name) == 500
+    assert stored_name.endswith(".txt")  # the extension survives the cap
+
+    listing = await client.get(
+        f"{BASE}/exporters/{company_id}/documents", headers=auth_header(token)
+    )
+    assert listing.json()["total"] == 1
+
+
+async def test_a_document_type_longer_than_the_column_is_a_422(client: AsyncClient):
+    """Validated on the form parameter, so FastAPI answers 422. Building the model
+    inside the handler raised a Pydantic error FastAPI never saw — a raw 500."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    company_id = await _company()
+
+    resp = await client.post(
+        f"{BASE}/exporters/{company_id}/documents",
+        data={"category": "OTHER", "document_type": "x" * 200},
+        files={"file": ("note.txt", b"hello", "text/plain")},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 422, resp.text
+
+
+async def test_content_is_refused_without_a_token(client: AsyncClient):
+    """A signed link is not a way around authentication — which is why the browser
+    cannot simply open it, and the frontend fetches it with the access token."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    company_id = await _company()
+    uploaded = await client.post(
+        f"{BASE}/exporters/{company_id}/documents",
+        data={"category": "OTHER", "document_type": "other"},
+        files={"file": ("note.txt", b"hello", "text/plain")},
+        headers=auth_header(token),
+    )
+    link = await client.post(
+        f"{BASE}/documents/{uploaded.json()['id']}/download-link",
+        headers=auth_header(token),
+    )
+    url = link.json()["url"].removeprefix("/api/v1")
+
+    anonymous = await client.get(f"/api/v1{url}")
+    assert anonymous.status_code == 401, anonymous.text
+
+
+async def test_no_orphan_file_is_left_when_the_row_cannot_be_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The bytes are stored before the row exists, so a failed insert would leave a
+    file nothing points at. The upload path removes it and re-raises."""
+    company_id = await _company()
+    root = tmp_path / "orphan-check"
+
+    async with db_services.AsyncSessionLocal() as db:
+        service = _service(db, root)
+
+        async def _explode():
+            raise RuntimeError("insert failed")
+
+        monkeypatch.setattr(db, "commit", _explode)
+        with pytest.raises(RuntimeError):
+            await service.upload(
+                PDF,
+                company_id=company_id,
+                category=DocumentCategory.OTHER,
+                document_type="other",
+                source=DocumentSource.INTERNAL,
+                file_name="doomed.pdf",
+                content_type="application/pdf",
+                actor_id="tester",
+            )
+
+    assert list(root.rglob("*.pdf")) == []
+
+
+async def test_a_terminal_deal_takes_no_more_paperwork(tmp_path: Path):
+    """A handed-over deal's documents are what the lending team was given, and a
+    withdrawn deal's are history. Same rule as editing a terminal deal's buyer."""
+    company_id = await _company()
+    deal_id = await _deal(company_id)
+    async with db_services.AsyncSessionLocal() as db:
+        await DealService(db).transition_stage(
+            deal_id, DealStage.WITHDRAWN, reason="fell through", actor_id="tester"
+        )
+
+    with pytest.raises(DealTerminalError):
+        await _upload(
+            tmp_path,
+            deal_id=deal_id,
+            category=DocumentCategory.SHIPPING,
+            document_type="bill_of_lading",
+        )

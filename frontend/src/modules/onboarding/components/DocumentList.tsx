@@ -12,9 +12,14 @@
  * never reveal — a disabled control still invites a click and implies the file is
  * one permission away.
  *
- * Downloading is two steps by design: mint a short-lived link, then follow it. The
- * link is a credential, so it is requested when the user asks for it and never
- * prefetched.
+ * Downloading is three steps, and the third is the one the review caught: mint a
+ * short-lived link, **fetch it with the access token**, then save the bytes. The
+ * content route is role-gated, so `window.open(url)` sends no `Authorization`
+ * header and every click returned 401 — a failure the backend test could not see,
+ * because it adds the header itself.
+ *
+ * The link is still a credential: it is requested when the user asks, never
+ * prefetched, and it expires.
  */
 
 import { Download, FileText } from 'lucide-react';
@@ -22,6 +27,7 @@ import { toast } from 'sonner';
 
 import { EmptySection } from '@/components';
 
+import { fetchDocumentBlob } from '../api';
 import { useDownloadDocument } from '../hooks';
 import type { CrmDocument } from '../types';
 
@@ -52,15 +58,34 @@ export function DocumentList({
   const download = useDownloadDocument();
 
   async function handleDownload(document_: CrmDocument) {
+    let objectUrl: string | null = null;
     try {
       const link = await download.mutateAsync(document_.id);
-      // `url` is opaque (the port hides whether it is a local path or a presigned
-      // URL), so it is followed rather than parsed or rebuilt.
-      window.open(link.url, '_blank', 'noopener,noreferrer');
+      // `url` is opaque (the port hides whether this is a local path or, later, a
+      // presigned URL), so it is fetched rather than parsed or rebuilt.
+      const blob = await fetchDocumentBlob(link.url);
+      objectUrl = URL.createObjectURL(blob);
+      const anchor = window.document.createElement('a');
+      anchor.href = objectUrl;
+      // The server also sends `Content-Disposition`, but a blob URL ignores it, so
+      // the name is set here — from the row, which is where the original name
+      // lives (it is deliberately not in the storage key).
+      anchor.download = document_.file_name;
+      anchor.rel = 'noopener';
+      window.document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Could not open that document',
       );
+    } finally {
+      // Revoked on the next tick: revoking immediately can cancel the download in
+      // some browsers, and never revoking leaks the blob for the life of the tab.
+      if (objectUrl !== null) {
+        const url = objectUrl;
+        window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      }
     }
   }
 
