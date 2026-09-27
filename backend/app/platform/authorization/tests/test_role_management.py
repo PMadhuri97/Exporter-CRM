@@ -183,58 +183,77 @@ async def test_my_permissions_needs_no_permission_of_its_own(
             assert ("users", "view") not in pairs
 
 
-async def test_granting_users_view_to_compliance_opens_the_user_list(
-    client: AsyncClient, tokens: dict[UserRole, str]
+async def test_granting_users_view_opens_the_user_list_without_a_code_change(
+    client: AsyncClient,
 ):
-    """The point of the whole feature: what was a code change ("show the Users
-    tab to COMPLIANCE") becomes a permission grant.
+    """The point of the whole feature: what used to need a code change ("let
+    COMPLIANCE see the Users tab") becomes a permission grant.
 
-    Restores the original grants afterwards, since built-in roles are shared
-    state for every other test in this session.
+    Deliberately does NOT edit the shared `compliance` built-in role. Every test
+    in this session resolves its permissions through those five rows, so mutating
+    one — even with a restore afterwards — makes this suite order-dependent, and
+    a failure before the restore leaves the database wrong for everything that
+    follows. Granting through a custom role assigned to a COMPLIANCE account
+    proves the same thing against state this test owns.
     """
-    admin_token = tokens[UserRole.ADMIN]
-    roles = await _roles_by_slug(client, admin_token)
-    compliance = roles["compliance"]
-    original = sorted(_pairs(compliance))
+    _, admin_token = await user_with_role(client, UserRole.ADMIN)
 
-    _, compliance_token = await user_with_role(client, UserRole.COMPLIANCE)
-    before = await client.get(f"{BASE}/users", headers=auth_header(compliance_token))
-    assert before.status_code == 403
+    # A plain COMPLIANCE account: refused, as the built-in role has no users:*.
+    _, plain_token = await user_with_role(client, UserRole.COMPLIANCE)
+    assert (
+        await client.get(f"{BASE}/users", headers=auth_header(plain_token))
+    ).status_code == 403
 
-    try:
-        granted = await client.patch(
-            f"{ROLES}/{compliance['id']}",
-            json={
-                "permissions": [
-                    {"module": m, "action": a} for m, a in [*original, ("users", "view")]
-                ]
-            },
-            headers=auth_header(admin_token),
-        )
-        assert granted.status_code == 200, granted.text
+    # The same role's permissions plus users:view, as a role of this test's own.
+    granted_role = await client.post(
+        ROLES,
+        json={
+            "slug": f"compliance-plus-{uuid.uuid4().hex[:8]}",
+            "name": "Compliance + user list",
+            "permissions": [
+                {"module": "exporters", "action": "view"},
+                {"module": "screening", "action": "decide"},
+                {"module": "users", "action": "view"},
+            ],
+        },
+        headers=auth_header(admin_token),
+    )
+    assert granted_role.status_code == 201, granted_role.text
 
-        after = await client.get(f"{BASE}/users", headers=auth_header(compliance_token))
-        assert after.status_code == 200, after.text
-        # Reading is now allowed; creating still is not — one grant, not a bundle.
-        create = await client.post(
-            f"{BASE}/users",
-            json={
-                "email": f"x-{uuid.uuid4().hex[:8]}@aner-test.com",
-                "password": PASSWORD,
-                "role": "OPERATIONS",
-            },
-            headers=auth_header(compliance_token),
-        )
-        assert create.status_code == 403, create.text
-    finally:
-        await client.patch(
-            f"{ROLES}/{compliance['id']}",
-            json={"permissions": [{"module": m, "action": a} for m, a in original]},
-            headers=auth_header(admin_token),
-        )
+    email = f"compliance-plus-{uuid.uuid4().hex[:8]}@aner-test.com"
+    made = await client.post(
+        f"{BASE}/users",
+        json={
+            "email": email,
+            "password": PASSWORD,
+            "role": "COMPLIANCE",
+            "role_id": granted_role.json()["id"],
+        },
+        headers=auth_header(admin_token),
+    )
+    assert made.status_code == 201, made.text
+    login = await client.post(f"{BASE}/login", json={"email": email, "password": PASSWORD})
+    granted_token = login.json()["access_token"]
 
-    restored = await client.get(f"{BASE}/users", headers=auth_header(compliance_token))
-    assert restored.status_code == 403
+    listing = await client.get(f"{BASE}/users", headers=auth_header(granted_token))
+    assert listing.status_code == 200, listing.text
+
+    # One grant, not a bundle: reading is allowed, creating still is not.
+    create = await client.post(
+        f"{BASE}/users",
+        json={
+            "email": f"x-{uuid.uuid4().hex[:8]}@aner-test.com",
+            "password": PASSWORD,
+            "role": "OPERATIONS",
+        },
+        headers=auth_header(granted_token),
+    )
+    assert create.status_code == 403, create.text
+
+    # And the plain COMPLIANCE account is untouched by any of it.
+    assert (
+        await client.get(f"{BASE}/users", headers=auth_header(plain_token))
+    ).status_code == 403
 
 
 # ── custom roles ────────────────────────────────────────────────────────────
