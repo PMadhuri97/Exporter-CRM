@@ -1194,3 +1194,39 @@ class DealHandoverBlockedError(AnerBaseException):
             status_code=409,
             extensions={"reason": reason},
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9)
+#
+# Same reason as the §9.3 blocks above: two people append exceptions here in
+# parallel pull requests, and one shared append point is one conflicting hunk
+# every time. The Dev4 seam commit cuts two more owned blocks below the 3B block,
+# and from then on each Dev4 owner adds classes inside its own block and nowhere
+# else. Dev4B may additionally edit the existing `EXP-2: VerificationResult`
+# classes above; Dev4A may not.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Background check — owner: Developer 4A ──
+# (4A appends here; 4B does not.)
+
+
+# ── Verification and screening — owner: Developer 4B ──
+# (4B appends here; 4A does not.)
+
+
+class ComplianceInputsBuyerNotFoundError(AnerBaseException):
+    """No ``deal_buyer`` row exists for the ``deal_buyer_id`` a buyer-check read named.
+
+    Raised by ``ComplianceInputsService.buyer_checks`` (4a/4b-task.md §6.3). Buyer
+    checks are keyed by ``deal_buyer.id`` only — never the deal id, never the
+    company id — so an id that is not a buyer is a 404, not an empty list.
+    """
+
+    def __init__(self, deal_buyer_id: object) -> None:
+        self.deal_buyer_id = deal_buyer_id
+        super().__init__(
+            detail=f"Deal buyer {deal_buyer_id} not found",
+            error_code="DEAL_BUYER_NOT_FOUND",
+            status_code=404,
+        )

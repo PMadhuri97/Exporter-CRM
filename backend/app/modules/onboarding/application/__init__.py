@@ -79,3 +79,26 @@ __all__ += ["DealService"]
 from app.modules.onboarding.application.document_service import DocumentService  # noqa: E402
 
 __all__ += ["DocumentService"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9)
+#
+# The same cut as the §9.3 blocks above, for the two Dev4 pull requests that run
+# in parallel: each owner's import **and** its `__all__` entry go inside its own
+# block, so the 4A and 4B branches never touch the same line. The empty list in
+# each block is the block's real content until its owner adds to it. Imports here
+# need `# noqa: E402` for the reason given in the §9.3 header.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Background check — owner: Developer 4A ──
+# (4A appends here; 4B does not.)
+__all__ += []
+
+# ── Verification and screening — owner: Developer 4B ──
+# (4B appends here; 4A does not.)
+from app.modules.onboarding.application.compliance_inputs import (  # noqa: E402
+    ComplianceInputsService,
+)
+
+__all__ += ["ComplianceInputsService"]

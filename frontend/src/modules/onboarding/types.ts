@@ -214,3 +214,14 @@ export interface UploadDocumentInput {
   documentType: string;
   source?: DocumentSource;
 }
+
+// ══ Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9) ══
+// Two parallel pull requests add aliases here, so each owner adds only inside its
+// own block. Dev4B may also edit the existing `Verification*` / `Screening*` /
+// `BankActivity*` aliases above; Dev4A may not.
+
+// ── Background check — owner: Developer 4A ──
+// (4A appends here; 4B does not.)
+
+// ── Verification and screening — owner: Developer 4B ──
+// (4B appends here; 4A does not.)

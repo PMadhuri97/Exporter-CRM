@@ -104,6 +104,19 @@ router.include_router(deal_router)
 # because documents hang off deals as well as companies.
 router.include_router(document_router)
 
+# ── Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9) ──
+#
+# Developer 4A mounts exactly one router, and does it here: its import and its
+# `router.include_router(background_check_router)` both go in the 4A block below,
+# the import with `# noqa: E402`, so neither Dev4 branch edits the import list at the
+# top of this file for it. Developer 4B mounts nothing new — its routes live in the
+# `EXP-2: generalized verification results` block and `screening_router.py` — and
+# edits only that block and its imports. Nothing is mounted here yet, so the OpenAPI
+# document is unchanged.
+#
+# ── Background check — owner: Developer 4A ──
+# (4A adds its router import and its one include_router here; 4B does not.)
+
 
 # ── Case management and its state machine ───────────────
 # These endpoints are the case model's surface. They resolve no provider route and
