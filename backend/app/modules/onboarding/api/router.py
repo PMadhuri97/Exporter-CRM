@@ -6,8 +6,11 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.company_intake_router import router as company_intake_router
+from app.modules.onboarding.api.deal_router import router as deal_router
+from app.modules.onboarding.api.document_router import router as document_router
 from app.modules.onboarding.api.engagement_router import router as engagement_router
 from app.modules.onboarding.api.exporter_router import router as exporter_router
+from app.modules.onboarding.api.follow_up_router import router as follow_up_router
 from app.modules.onboarding.api.history_router import router as history_router
 from app.modules.onboarding.api.qualification_router import router as qualification_router
 from app.modules.onboarding.api.schemas.case import (
@@ -82,6 +85,24 @@ router.include_router(company_intake_router)
 # (/exporters/{id}/history, /deals/{id}/history) rather than a router prefix,
 # because the deal route is not under /exporters.
 router.include_router(history_router)
+
+# ── The §9.3 routers, mounted once in the seam commit and never re-mounted ──
+#
+# All three are empty when this lands, and mounting an empty router adds nothing
+# to the OpenAPI document — which is the point. Developer 3A (phases 1 and 2)
+# and Developer 3B all append to shared files; the router index is one of them,
+# so it is edited here, once, and by neither of them again.
+#
+# Follow-up completion and the due/overdue list (L3-04) — Developer 3A, Phase 2.
+# Same `/exporters` prefix as `engagement_router`, because a completion is about
+# one company's activity.
+router.include_router(follow_up_router)
+# Deals and buyers (L3-05, L3-06) — Developer 3B. Absolute paths (`/deals/...`),
+# like the deal history route above: a deal is not a company sub-resource.
+router.include_router(deal_router)
+# Documents and storage (L3-07 … L3-10) — Developer 3B. Absolute paths too,
+# because documents hang off deals as well as companies.
+router.include_router(document_router)
 
 
 # ── Case management and its state machine ───────────────

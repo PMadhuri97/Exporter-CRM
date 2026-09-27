@@ -90,3 +90,62 @@ export type BankActivityResponse =
  * `UpdateScreeningReviewItemRequest.status`; this is the read side, which is
  * the one every caller here uses. */
 export type ScreeningChecklistStatus = ScreeningReviewItem['status'];
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Section 9.3 — anchor blocks for Developers 3A and 3B
+//
+// This file is Developer 1's (architecture §8.1). Three people add aliases to it
+// — 3A in each of its two phases, and 3B — and one shared append point at the end
+// of the file is one conflicting hunk every time. So the seam commit cuts the
+// tail into owned blocks, and each owner adds aliases only inside its own.
+//
+// Every alias here is a thin name onto the generated OpenAPI schema, as above:
+// nothing is hand-written, so a backend reshape is a compile error at the use
+// site rather than a silent mismatch.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
+// (3A appends here; 3B does not.)
+// Cut into the two phase sub-anchors below — phase agreement §6.3.
+
+// ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
+/** How the sales conversation is going. One thing only — not the journey, not
+ * qualification, not the background check. Any value may follow any other. */
+export type ExporterConversation = Schemas['ExporterConversation'];
+export type Conversation = Schemas['ConversationResponse'];
+/** One move the server says this user may make, and what it needs. Never a
+ * hand-copied table on the client (architecture §7.5). */
+export type ConversationMove = Schemas['ConversationMoveResponse'];
+export type SetConversationRequest = Schemas['SetConversationRequest'];
+/** A page of the shared CRM history log, read with `?dimension=conversation`.
+ * Developer 1 owns the route; these are the generated names for its shapes. */
+export type HistoryEntry = Schemas['HistoryEntryResponse'];
+export type HistoryList = Schemas['HistoryListResponse'];
+
+// ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
+/** One follow-up: an activity with a due date, plus its completion if it has one. */
+export type FollowUp = Schemas['FollowUpResponse'];
+/** OUTSTANDING / OVERDUE / DONE. Derived on the server from whether a completion
+ * exists — there is no status column on an activity, and there must not be one. */
+export type FollowUpState = Schemas['FollowUpState'];
+export type FollowUpOutcome = Schemas['FollowUpOutcome'];
+export type FollowUpCompletion = Schemas['FollowUpCompletionSummary'];
+export type CompleteFollowUpRequest = Schemas['CompleteFollowUpRequest'];
+/** A company parked at NOT_NOW, due to be picked up on its check-back date. Not a
+ * follow-up and not completable: it is dealt with by moving the conversation gauge. */
+export type CheckBack = Schemas['CheckBackResponse'];
+export type FollowUpList = Schemas['FollowUpListResponse'];
+
+export interface FollowUpListParams {
+  state?: FollowUpState;
+  customerId?: string;
+  actorId?: string;
+  includeCheckBacks?: boolean;
+  /** Only the check-backs due on or before today — the Overdue tab's view. */
+  checkBacksDueOnly?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+// ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
+// (3B appends here; 3A does not.)

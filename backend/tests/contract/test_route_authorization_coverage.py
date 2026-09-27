@@ -164,6 +164,41 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/verifications"): STAFF,
     ("GET", f"{CRM}/verifications/{{verification_result_id}}"): STAFF,
     ("POST", f"{CRM}/verifications/{{verification_result_id}}/review"): COMPLIANCE_OR_ADMIN,
+    # ══ Section 9.3 — anchor blocks for Developers 3A and 3B ══════════════════
+    #
+    # An unclassified route fails this file by construction, so every §9.3 route
+    # adds a row here. Three people add them — 3A in each of its two phases, and
+    # 3B — and one shared append point at the end of this dict is one conflicting
+    # hunk every time. So the seam commit cuts the tail into owned blocks, and
+    # each owner adds rows only inside its own. The block headers are what keeps
+    # two owners' rows in different hunks: git's three lines of context reach a
+    # header rather than the neighbouring owner's last row.
+    #
+    # ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
+    # (3A appends here; 3B does not.)
+    # Cut into the two phase sub-anchors below — phase agreement §6.3.
+    #
+    # ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
+    # Reads admit DEVELOPER, like every other CRM read; setting the gauge is
+    # OPERATIONS/COMPLIANCE/ADMIN (engagement contract §3). A refused role also
+    # gets an empty `allowed_moves` from the reads, so no screen offers a button
+    # that would come back 403.
+    ("GET", f"{CRM}/exporters/{{customer_id}}/conversation"): READERS,
+    ("GET", f"{CRM}/exporters/{{customer_id}}/conversation/moves"): READERS,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/conversation"): STAFF,
+    #
+    # ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
+    # Follow-ups are the whole team's (decision D2), so the list is a reader
+    # route: no default owner filter, and `actor_id` narrows it rather than gating
+    # it. Completing one is a routine CRM write, so the three staff roles — the
+    # same three that may set the conversation gauge (engagement contract §5.5).
+    # There is no route that edits or deletes a completion, and there must never
+    # be one: both tables are append-only.
+    ("GET", f"{CRM}/follow-ups"): READERS,
+    ("POST", f"{CRM}/follow-ups/{{activity_id}}/completion"): STAFF,
+    #
+    # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
+    # (3B appends here; 3A does not.)
 }
 
 

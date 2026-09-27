@@ -17,6 +17,8 @@ import {
   recordQualificationOutcome,
   setExporterMarker,
   updateExporterProfile,
+  getExporterConversation,
+  listConversationHistory,
 } from '../api';
 import type { ExporterProfileDetail, Qualification } from '../types';
 
@@ -41,6 +43,14 @@ vi.mock('../api', () => ({
   getScreeningReview: vi.fn(),
   updateScreeningReviewItem: vi.fn(),
   getBankActivity: vi.fn(),
+  // Developer 3A, L3-03. `ConversationPanel` calls these itself rather than
+  // taking them as props — the shell was never given the gauge to hold, and
+  // Developer 3 does not edit this page. The factory has to list them, because
+  // `vi.mock` with a factory replaces the whole module: a function left out is
+  // `undefined` at the call site, not a passthrough.
+  getExporterConversation: vi.fn(),
+  setExporterConversation: vi.fn(),
+  listConversationHistory: vi.fn(),
 }));
 
 const DETAIL: ExporterProfileDetail = {
@@ -162,6 +172,22 @@ describe('ExporterDetailPage — E9', () => {
       last_synced_at: null,
       open_findings: 0,
       findings: [],
+    });
+    // The gauge as a LEAD has it: the default value and no moves, because the
+    // conversation gauge applies from PROSPECT onward. `DETAIL.journey` is 'LEAD',
+    // so this is the consistent answer for this fixture.
+    vi.mocked(getExporterConversation).mockResolvedValue({
+      company_id: DETAIL.customer_id,
+      conversation: 'NOT_CONTACTED',
+      check_back_on: null,
+      journey: 'LEAD',
+      allowed_moves: [],
+    });
+    vi.mocked(listConversationHistory).mockResolvedValue({
+      entries: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
     });
   });
 

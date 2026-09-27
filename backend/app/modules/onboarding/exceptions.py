@@ -666,3 +666,292 @@ class IntakeNeedsReviewError(AnerBaseException):
             status_code=409,
             extensions={"reasons": reasons, "candidates": candidates},
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Section 9.3 — anchor blocks for Developers 3A and 3B
+#
+# This file is Developer 1's (architecture §8.1): additions only, owner reviews.
+# Three people append exceptions to it — 3A in each of its two phases, and 3B —
+# and a single shared append point means the same conflicting hunk every time.
+# So the tail is cut into owned blocks in one commit (the seam commit), and from
+# then on each owner adds classes inside their own block and nowhere else.
+#
+# The blocks are separated by their own comment headers, which is what keeps two
+# owners' additions in different diff hunks: git's three lines of context reach
+# the header rather than the neighbouring owner's last class.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
+# (3A appends here; 3B does not.)
+# Cut into the two phase sub-anchors below — phase agreement §6.3.
+
+
+# ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
+
+
+class ConversationNotAvailableError(AnerBaseException):
+    """The conversation gauge does not apply to this company yet.
+
+    Assumption A4: the gauge applies **from ``PROSPECT`` onward**. A ``LEAD``
+    carries the column — it is ``NOT NULL`` — reading ``NOT_CONTACTED``, but
+    nobody has judged its conversation and nobody may: a ``LEAD`` becomes a
+    ``PROSPECT`` when a qualification outcome says ``QUALIFIED``, and tracking
+    how the sales conversation is going before we have decided we would finance
+    them at all records an opinion about a company we may never call.
+
+    409 rather than 422: the request is well formed, and the answer depends on
+    the company's current journey rather than on anything the caller sent.
+    """
+
+    def __init__(self, customer_id: object, journey: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {customer_id} is a {journey!s} — the conversation gauge "
+                "applies from PROSPECT onward (assumption A4); qualify the company first"
+            ),
+            error_code="CONVERSATION_NOT_AVAILABLE",
+            status_code=409,
+            extensions={"journey": str(journey)},
+        )
+
+
+class InvalidConversationTransitionError(AnerBaseException):
+    """A move to the value the conversation already has.
+
+    The only conversation move that is refused. Any value may follow any other
+    (``docs/contracts/engagement.md`` §1.1) — a conversation is a judgement, not
+    a pipeline — but a move to the current value records nothing and would put a
+    row whose ``from_value`` equals its ``to_value`` in the history log.
+    """
+
+    def __init__(self, customer_id: object, conversation: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {customer_id}'s conversation is already {conversation!s}; "
+                "a move to the current value records nothing"
+            ),
+            error_code="INVALID_CONVERSATION_TRANSITION",
+            status_code=409,
+            extensions={"conversation": str(conversation)},
+        )
+
+
+class ConversationCheckBackRequiredError(AnerBaseException):
+    """``NOT_NOW`` without a check-back date.
+
+    A conversation parked with no date is a conversation dropped, and the date is
+    what puts the company on the Follow-ups list (``engagement.md`` §4). Stored on
+    the company as ``conversation_check_back_on``; the database refuses the
+    combination too (``ck_exporter_profile_conversation_check_back``).
+    """
+
+    def __init__(self, customer_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Moving company {customer_id} to NOT_NOW needs a check-back date: "
+                "a conversation parked with no date is a conversation dropped"
+            ),
+            error_code="CONVERSATION_CHECK_BACK_REQUIRED",
+            status_code=422,
+        )
+
+
+class ConversationCheckBackNotAllowedError(AnerBaseException):
+    """A check-back date on a move that is not to ``NOT_NOW``.
+
+    Refused rather than ignored. Silently dropping the date would leave the
+    operator believing one was stored, and the database would refuse the row
+    anyway (``ck_exporter_profile_conversation_check_back``): a check-back date
+    exists exactly when the conversation is ``NOT_NOW``.
+    """
+
+    def __init__(self, customer_id: object, conversation: object) -> None:
+        super().__init__(
+            detail=(
+                f"A check-back date belongs only to NOT_NOW, and company {customer_id} "
+                f"is being moved to {conversation!s}"
+            ),
+            error_code="CONVERSATION_CHECK_BACK_NOT_ALLOWED",
+            status_code=422,
+            extensions={"conversation": str(conversation)},
+        )
+
+
+class ConversationCheckBackInPastError(AnerBaseException):
+    """A check-back date before today.
+
+    A date in the past is a typo — 2025 for 2026 is the common one — and a
+    Follow-ups list seeded with dates already overdue on the day they were
+    entered is a list nobody trusts. Today is accepted: "check back later today"
+    is a real thing to promise.
+    """
+
+    def __init__(self, customer_id: object, check_back_on: object, today: object) -> None:
+        super().__init__(
+            detail=(
+                f"The check-back date for company {customer_id} is {check_back_on!s}, "
+                f"which is before today ({today!s})"
+            ),
+            error_code="CONVERSATION_CHECK_BACK_IN_PAST",
+            status_code=422,
+            extensions={"check_back_on": str(check_back_on), "today": str(today)},
+        )
+
+
+
+# ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
+
+
+class FollowUpNotFoundError(AnerBaseException):
+    """No ``exporter_activity`` row has this id.
+
+    Distinct from ``ActivityIsNotAFollowUpError`` below on purpose: "there is no such
+    activity" and "that activity is not something anyone promised to do" send a person
+    looking in completely different places.
+    """
+
+    def __init__(self, activity_id: object) -> None:
+        super().__init__(
+            detail=f"No activity {activity_id} exists to complete",
+            error_code="FOLLOW_UP_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class ActivityIsNotAFollowUpError(AnerBaseException):
+    """The activity exists but carries no ``due_at``, so it is not a follow-up.
+
+    A due date is the append-only activity log's own stand-in for "somebody promised
+    to do this" (``docs/contracts/engagement.md`` §5.1). A logged call with no due
+    date is a record of something that already happened; there is nothing outstanding
+    to complete, and a completion row against it would put a row on the Follow-ups
+    list that was never on it.
+    """
+
+    def __init__(self, activity_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Activity {activity_id} has no due date, so it is not a follow-up; "
+                "only an activity somebody promised to do can be completed"
+            ),
+            error_code="ACTIVITY_IS_NOT_A_FOLLOW_UP",
+            status_code=409,
+        )
+
+
+class FollowUpAlreadyCompletedError(AnerBaseException):
+    """This follow-up already has a completion row.
+
+    A refusal, never an upsert: ``uq_follow_up_completion_activity_id`` allows exactly
+    one (contract §5.4), and a reschedule is a **new** activity, so nothing
+    legitimate completes the same one twice. Correcting a completion is a new activity
+    plus its own completion, because both tables are append-only.
+
+    Carries the existing completion's id and outcome, so a screen can say what is
+    already recorded rather than only that the write failed.
+    """
+
+    def __init__(self, activity_id: object, completion_id: object, outcome: object) -> None:
+        super().__init__(
+            detail=(
+                f"Follow-up {activity_id} was already completed as {outcome!s}; "
+                "a completion is never edited — log a new follow-up instead"
+            ),
+            error_code="FOLLOW_UP_ALREADY_COMPLETED",
+            status_code=409,
+            extensions={"completion_id": str(completion_id), "outcome": str(outcome)},
+        )
+
+
+class FollowUpRescheduleNeedsDateError(AnerBaseException):
+    """``RESCHEDULED`` without a new due date.
+
+    ``ck_follow_up_completion_next_due`` refuses the row too. Rescheduling to nowhere
+    is how a follow-up gets quietly dropped, which is the thing the Follow-ups list
+    exists to prevent — so it is refused here with a code a screen can act on rather
+    than left to the constraint.
+
+    Phase 1 reserved ``CONVERSATION_CHECK_BACK_REQUIRED`` for reuse on this path
+    (``engagement.md`` §7). It is not reused: that code names the *conversation*
+    gauge's check-back date, on the company record, and this is a follow-up's next due
+    moment, on an activity. One code covering both would tell a caller the wrong place
+    to look. Recorded as a decision in ``docs/dev3a-phase2-progress.md``.
+    """
+
+    def __init__(self, activity_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Rescheduling follow-up {activity_id} needs a new due date: "
+                "a follow-up moved to no date is a follow-up dropped"
+            ),
+            error_code="FOLLOW_UP_RESCHEDULE_NEEDS_DATE",
+            status_code=422,
+        )
+
+
+class FollowUpNextDueNotAllowedError(AnerBaseException):
+    """A next due date on an outcome that is not ``RESCHEDULED``.
+
+    Refused rather than ignored, for the same reason a check-back date on a move that
+    is not ``NOT_NOW`` is refused (``engagement.md`` §4): silently dropping it would
+    leave the operator believing the follow-up had been moved rather than closed.
+    """
+
+    def __init__(self, activity_id: object, outcome: object) -> None:
+        super().__init__(
+            detail=(
+                f"A next due date belongs only to a RESCHEDULED follow-up, and "
+                f"{activity_id} is being completed as {outcome!s}"
+            ),
+            error_code="FOLLOW_UP_NEXT_DUE_NOT_ALLOWED",
+            status_code=422,
+            extensions={"outcome": str(outcome)},
+        )
+
+
+class FollowUpRescheduleInPastError(AnerBaseException):
+    """A reschedule to a moment that has already passed.
+
+    A follow-up rescheduled into the past arrives on the list already overdue, which
+    is never what the person meant and makes the overdue count untrustworthy — the
+    same reasoning as ``CONVERSATION_CHECK_BACK_IN_PAST``.
+    """
+
+    def __init__(self, activity_id: object, next_due_at: object) -> None:
+        super().__init__(
+            detail=(
+                f"Follow-up {activity_id} cannot be rescheduled to {next_due_at!s}, "
+                "which is in the past"
+            ),
+            error_code="FOLLOW_UP_RESCHEDULE_IN_PAST",
+            status_code=422,
+            extensions={"next_due_at": str(next_due_at)},
+        )
+
+
+class FollowUpCompletionIsImmutableError(AnerBaseException):
+    """Something tried to change or remove a completion.
+
+    Both layers refuse it: ``FollowUpCompletionRepository`` extends
+    ``AppendOnlyRepository``, which exposes no ``update`` and no ``delete``, and
+    ``trg_follow_up_completion_append_only`` raises at the database whatever code
+    tries. This exception exists so that an attempt through the service is a 409
+    naming the rule rather than a 500 carrying a Postgres message — which is what
+    Phase 2 owes in place of a new direct-SQL constraint test (prompt §3).
+    """
+
+    def __init__(self, completion_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Follow-up completion {completion_id} cannot be changed or removed: "
+                "completions are append-only, and a correction is a new record"
+            ),
+            error_code="FOLLOW_UP_COMPLETION_IMMUTABLE",
+            status_code=409,
+        )
+
+
+
+# ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
+# (3B appends here; 3A does not.)

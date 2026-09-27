@@ -2,13 +2,20 @@
 service, mirroring ``OnboardingRequestService``'s method-per-operation style.
 
 Kept as a separate service from ``ExporterProfileService`` because it owns a
-different pair of aggregates (``ExporterContact``, ``ExporterActivity``) with
-no shared write path to the profile row itself — ``customer_id`` is a bare
-reference on both, the same no-FK convention ``exporter_contact.py`` and
-``exporter_activity.py`` document, so neither method here requires an
-``ExporterProfile`` to already exist for the given ``customer_id`` (a contact
-or a call log can be recorded the moment Sales has a ``customer_id`` to hang
-it on, even before a profile row is created).
+different pair of aggregates (``ExporterContact``, ``ExporterActivity``) and
+never writes the profile row itself. It does **read** it: since migration 0014
+both tables carry a real foreign key to ``exporter_profile.customer_id``
+(``fk_exporter_contact_customer_id``, ``fk_exporter_activity_customer_id``), so
+a contact or an activity for a company that does not exist is refused by the
+database.
+
+This module's docstring used to say the opposite — that neither method required
+an ``ExporterProfile`` to exist, because a contact could be recorded the moment
+Sales had a ``customer_id`` to hang it on. There is no such moment any more: a
+company *is* an ``exporter_profile`` row from creation
+(``docs/contracts/company-record.md`` §1). So both writers check the company
+first (L3-02) and raise ``ExporterProfileNotFoundError`` — a 404 naming the
+company, rather than the 500 an ``IntegrityError`` would surface as.
 """
 
 from __future__ import annotations
@@ -23,9 +30,11 @@ from app.modules.onboarding.domain.engagement_views import PendingActivityView
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
+from app.modules.onboarding.exceptions import ExporterProfileNotFoundError
 from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
     ExporterContactRepository,
+    ExporterProfileRepository,
 )
 
 logger = structlog.get_logger(__name__)
@@ -36,6 +45,10 @@ class ExporterContactActivityService:
         self._db = db
         self._contacts = ExporterContactRepository(db)
         self._activities = ExporterActivityRepository(db)
+        # Read-only. This service never writes the company row — that is
+        # Developer 2's — but both of its writers have to know the company is
+        # real before the foreign key finds out for them.
+        self._profiles = ExporterProfileRepository(db)
 
     # ── Contacts ──────────────────────────────────────────────────────────
 
@@ -55,7 +68,13 @@ class ExporterContactActivityService:
         insert — a single service-layer call a caller cannot race into two
         primaries, backed by ``uq_exporter_contact_primary_per_customer`` as
         the database-level guarantee if this method is ever bypassed.
+
+        Raises ``ExporterProfileNotFoundError`` (404) when no company has this
+        ``customer_id``, before demoting anything — so a write refused for a
+        company that does not exist cannot have demoted somebody's primary
+        contact on the way past.
         """
+        await self._require_company(customer_id)
         if is_primary:
             await self._contacts.demote_existing_primary(customer_id)
 
@@ -100,7 +119,13 @@ class ExporterContactActivityService:
         a caller backfilling a historical activity (e.g. an imported call
         log) may supply it explicitly. The row is append-only from here on —
         see ``exporter_activity.py``'s module docstring.
+
+        Raises ``ExporterProfileNotFoundError`` (404) when no company has this
+        ``customer_id``. The activity table is append-only, so a row written
+        against a ghost company could never be corrected — the check is cheap
+        insurance for a table nothing can repair.
         """
+        await self._require_company(customer_id)
         activity = ExporterActivity(
             customer_id=customer_id,
             activity_type=activity_type,
@@ -133,6 +158,24 @@ class ExporterContactActivityService:
         return await self._activities.list_by_customer(
             customer_id, activity_type=activity_type, limit=limit, offset=offset
         )
+
+    # ── Internals ────────────────────────────────────────────────────────────
+
+    async def _require_company(self, customer_id: uuid.UUID) -> None:
+        """Refuse a write for a company that does not exist, with a 404.
+
+        The database refuses it too — that is what the two foreign keys are for,
+        and ``test_l3a_contact_activity_links.py`` proves it in raw SQL. This
+        check exists so the *API* answer is a 404 naming the company instead of
+        the 500 an ``IntegrityError`` escaping a request handler produces.
+
+        Not locked and not part of a transaction that spans the insert: between
+        this check and the insert the company could in principle be deleted, and
+        then the foreign key refuses the row. That is the right outcome and the
+        reason the constraint is the authority here; this is the error message.
+        """
+        if await self._profiles.get_by_customer_id(customer_id) is None:
+            raise ExporterProfileNotFoundError(customer_id)
 
     # ── Cross-exporter pending/follow-up list (Piece 2) ──────────────────────
 

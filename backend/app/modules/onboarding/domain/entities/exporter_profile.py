@@ -22,19 +22,35 @@ record (``docs/contracts/company-record.md`` §2.1, migration 0014), as do its
 ``pan`` (unique across companies), its GSTINs (``ExporterGstin``, several per
 company) and its commercial ``marker``. No CRM code reads a company's identity
 from the legacy ``onboarding_request`` table.
+
+Each gauge's **current** value is carried here so lists and filters need no join
+(architecture §3.8), and each is written by exactly one service, which writes the
+history row in the same transaction. ``journey`` and ``qualification`` are
+Developer 2's; ``conversation`` and ``conversation_check_back_on`` (0016) are
+Developer 3's and are written only by ``ConversationService``.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    Enum,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterConversation
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterJourney,
     ExporterMarker,
@@ -68,6 +84,15 @@ class ExporterProfile(AnerModel):
     __tablename__ = "exporter_profile"
     __table_args__ = (
         UniqueConstraint("customer_id", name="uq_exporter_profile_customer_id"),
+        # A check-back date exactly when the conversation is `NOT_NOW`, never
+        # otherwise (migration 0016, `docs/contracts/engagement.md` §2.3). Same
+        # shape as `ck_exporter_profile_marker_reason`, and for the same reason:
+        # a value that is only meaningful alongside another must not outlive it.
+        CheckConstraint(
+            "(conversation = 'NOT_NOW' AND conversation_check_back_on IS NOT NULL)"
+            " OR (conversation <> 'NOT_NOW' AND conversation_check_back_on IS NULL)",
+            name="ck_exporter_profile_conversation_check_back",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -144,6 +169,32 @@ class ExporterProfile(AnerModel):
         server_default=QualificationState.NOT_YET_REVIEWED.value,
         default=QualificationState.NOT_YET_REVIEWED,
     )
+
+    # ── Conversation gauge (migration 0016) — Developer 3 ───────────────────
+    #
+    # The two columns below are the only part of this entity Developer 3 owns
+    # (`docs/contracts/company-record.md` §2.4, `engagement.md` §2.1). Everything
+    # else on this table is Developer 2's, and Developer 2 reviewed 0016 because
+    # it adds a column to their table.
+    #
+    #: How the sales conversation is going. Only `ConversationService` writes it,
+    #: and every change writes a `conversation` history row in the same
+    #: transaction. **Applies from `PROSPECT` onward** (assumption A4): a `LEAD`
+    #: reads `NOT_CONTACTED` because the column is `NOT NULL`, not because anyone
+    #: judged it, and the service refuses a move on a `LEAD`.
+    conversation: Mapped[ExporterConversation] = mapped_column(
+        Enum(ExporterConversation, name="exporter_conversation_enum", schema=SCHEMA),
+        nullable=False,
+        server_default=ExporterConversation.NOT_CONTACTED.value,
+        default=ExporterConversation.NOT_CONTACTED,
+    )
+    #: When to pick a `NOT_NOW` conversation back up. `NULL` exactly when the
+    #: conversation is not `NOT_NOW` (`ck_exporter_profile_conversation_check_back`).
+    #: A date, not a timestamp: "check back in the new year" is a day, and a time
+    #: of day would be invented precision. Phase 2's Follow-ups list **reads** this
+    #: and never writes it — a check-back date moves only through
+    #: `ConversationService`.
+    conversation_check_back_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
     export_markets: Mapped[list | None] = mapped_column(JSONB, nullable=True)

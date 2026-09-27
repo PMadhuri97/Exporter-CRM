@@ -33,8 +33,13 @@ qualification and the three-stage journey it moves exist today: A, B and C are
 qualified and so PROSPECTs, and D is NOT_QUALIFIED. Conversation (Dev 3),
 background check (Dev 4), deals (Dev 3) and the move to CUSTOMER (L2-11) do not
 exist yet, so B is a PROSPECT here although §3.9 makes it a CUSTOMER. Each
-company carries its §3.9 target in ``SampleCompany.target`` so the owners of
-those pieces extend this file as they land.
+company carries its §3.9 target in ``SampleCompany.target``.
+
+**How the missing pieces arrive.** Not by editing this file: section 9.3's seam
+commit added one call site each for ``sample_data_engagement`` (the conversation
+gauge, Developer 3A Phase 1), ``sample_data_follow_ups`` (Phase 2) and
+``sample_data_deals`` (Developer 3B), and each owner fills in its own hook. Every
+one is a no-op until then, so a run today reports the same zeros it always did.
 """
 
 from __future__ import annotations
@@ -67,6 +72,15 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
     QualificationState,
 )
 from app.modules.onboarding.domain.qualification_views import ResultEntry
+
+# ── Section 9.3's own seeders, one per owner (the seam commit) ───────────────
+#
+# Each is a hook in its owner's own file, called once below. Adding them here in
+# one commit is what keeps this file — Developer 2's — closed to Developer 3
+# afterwards: nobody edits it again, in either of 3A's phases or in 3B's work.
+from app.modules.onboarding.sample_data_deals import load_deal_sample_data
+from app.modules.onboarding.sample_data_engagement import load_conversation_sample_data
+from app.modules.onboarding.sample_data_follow_ups import load_follow_up_sample_data
 from app.platform.database import services as db_services
 
 #: Namespace for the companies' ``uuid5`` ids. Never change it: every
@@ -75,6 +89,11 @@ SAMPLE_NAMESPACE = uuid.UUID("5f1d7c1e-3a54-4d8e-9c1b-0e6f2a7d4c90")
 
 #: The actor recorded on sample activities (the column is NOT NULL).
 SAMPLE_DATA_ACTOR = "sample-data"
+
+#: The report key the §9.3 seeders' counts land under. Not a company slug: those
+#: three seeders each span every company, so their counts have nowhere to sit in
+#: the per-company rows. `main` prints this row separately for that reason.
+SECTION_9_3_SLUG = "section-9.3"
 
 @dataclass(frozen=True)
 class SampleContact:
@@ -387,14 +406,27 @@ async def load_sample_data() -> dict[str, dict[str, int | bool]]:
             "activities_added": await _ensure_activities(company),
             "qualification_recorded": await _ensure_qualification(company),
         }
+    # Section 9.3's seeders, after every company exists — each of them moves a
+    # gauge or hangs a record off a company, so none of them can run first.
+    # They are no-ops until their owner fills them in, and each converges the
+    # same way the steps above do, so a repeat run reports zeros.
+    report[SECTION_9_3_SLUG] = {
+        "conversation_moved": await load_conversation_sample_data(),
+        "follow_ups_completed": await load_follow_up_sample_data(),
+        "deals_created": await load_deal_sample_data(),
+    }
     return report
 
 
 def main() -> None:
     report = asyncio.run(load_sample_data())
     for slug, changes in report.items():
-        company = next(c for c in COMPANIES if c.slug == slug)
         summary = ", ".join(f"{key}={value}" for key, value in changes.items())
+        if slug == SECTION_9_3_SLUG:
+            # Spans every company, so it has no id and no name of its own.
+            print(f"{'':<38}{'section 9.3':<34} {summary}")
+            continue
+        company = next(c for c in COMPANIES if c.slug == slug)
         print(f"{company.customer_id}  {company.name:<34} {summary}")
 
 
@@ -402,4 +434,10 @@ if __name__ == "__main__":
     main()
 
 
-__all__ = ["COMPANIES", "SAMPLE_DATA_ACTOR", "SAMPLE_NAMESPACE", "load_sample_data"]
+__all__ = [
+    "COMPANIES",
+    "SAMPLE_DATA_ACTOR",
+    "SAMPLE_NAMESPACE",
+    "SECTION_9_3_SLUG",
+    "load_sample_data",
+]

@@ -15,14 +15,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   addExporterContact,
+  getExporterConversation,
+  listConversationHistory,
   listExporterActivities,
   listExporterContacts,
   logExporterActivity,
+  setExporterConversation,
 } from '../api';
 import type {
   AddExporterContactRequest,
   ExporterActivityType,
   LogExporterActivityRequest,
+  SetConversationRequest,
 } from '../types';
 
 export function useExporterContacts(customerId: string | undefined) {
@@ -69,6 +73,61 @@ export function useLogExporterActivity(customerId: string) {
       void queryClient.invalidateQueries({
         queryKey: ['exporterActivities', customerId],
       });
+      void queryClient.invalidateQueries({
+        queryKey: ['exporterProfile', customerId],
+      });
+    },
+  });
+}
+
+// ── Conversation gauge (L3-03, L3-04a) ───────────────────────────────
+
+export function useExporterConversation(customerId: string | undefined) {
+  return useQuery({
+    queryKey: ['exporterConversation', customerId],
+    queryFn: () => getExporterConversation(customerId!),
+    enabled: Boolean(customerId),
+  });
+}
+
+export function useConversationHistory(customerId: string | undefined) {
+  return useQuery({
+    queryKey: ['conversationHistory', customerId],
+    queryFn: () => listConversationHistory(customerId!),
+    enabled: Boolean(customerId),
+  });
+}
+
+/**
+ * Move the gauge, then refresh what the move changed.
+ *
+ * Four invalidations, each for a reason:
+ *
+ * - `exporterConversation` — the value **and** the moves now available from it,
+ *   which are different after every move.
+ * - `conversationHistory` — the move just added a row.
+ * - `followUps` — moving to or away from NOT_NOW adds or removes a check-back on
+ *   the Follow-ups page. Developer 3A's own key.
+ * - `exporterProfile` — the company's record changed. The company response does
+ *   not carry the gauge today, but its `updated_at` does move, and any view built
+ *   on that key should not show a stale record. This is Developer 2's query key,
+ *   invalidated from Developer 3's mutation; the barrel's docstring notes that the
+ *   engagement mutations already do this, and it is the existing convention rather
+ *   than a new coupling.
+ */
+export function useSetExporterConversation(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SetConversationRequest) =>
+      setExporterConversation(customerId, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['exporterConversation', customerId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['conversationHistory', customerId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ['followUps'] });
       void queryClient.invalidateQueries({
         queryKey: ['exporterProfile', customerId],
       });

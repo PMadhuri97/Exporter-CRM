@@ -156,6 +156,45 @@ GATED_ROUTES = [
     ("GET", f"{BASE}/qualification/reason-codes", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/qualification", None, READERS),
     ("GET", f"{BASE}/imports/companies/template", None, STAFF),
+    # ══ Section 9.3 — anchor blocks for Developers 3A and 3B ══════════════════
+    #
+    # §7.7: at least one refusal test per gated route. `REFUSALS` below derives
+    # one per refused role from every row here, so a §9.3 route needs a row and
+    # nothing else. Three people add them — 3A in each of its two phases, and 3B
+    # — so the seam commit cuts the tail into owned blocks rather than leaving one
+    # shared append point, which would conflict every time.
+    #
+    # ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
+    # (3A appends here; 3B does not.)
+    # Cut into the two phase sub-anchors below — phase agreement §6.3.
+    #
+    # ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
+    # `REFUSALS` turns each row into one 403 test per role the row excludes. The
+    # bodies below are well formed on purpose: a gate that runs as a dependency
+    # refuses before the handler, so a 403 here also proves the handler never ran.
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/conversation",
+        {"conversation": "REACHING_OUT"},
+        STAFF,
+    ),
+    ("GET", f"{BASE}/exporters/{_ID}/conversation", None, READERS),
+    ("GET", f"{BASE}/exporters/{_ID}/conversation/moves", None, READERS),
+    #
+    # ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
+    # One 403 test per refused role, derived by `REFUSALS` below. The body is
+    # well formed on purpose: the gate runs as a dependency, so a 403 also proves
+    # the handler never reached the service.
+    (
+        "POST",
+        f"{BASE}/follow-ups/{_ID}/completion",
+        {"outcome": "DONE"},
+        STAFF,
+    ),
+    ("GET", f"{BASE}/follow-ups", None, READERS),
+    #
+    # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
+    # (3B appends here; 3A does not.)
 ]
 
 REFUSALS = [
