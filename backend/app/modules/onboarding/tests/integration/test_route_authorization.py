@@ -195,6 +195,40 @@ GATED_ROUTES = [
     #
     # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
     # (3B appends here; 3A does not.)
+    # One 403 test per refused role, derived by `REFUSALS` below. Each body is well
+    # formed on purpose: the gate runs as a dependency, so a 403 also proves the
+    # handler never reached the service.
+    ("POST", f"{BASE}/exporters/{_ID}/deals", {"reference": "Rotterdam order"}, STAFF),
+    ("GET", f"{BASE}/exporters/{_ID}/deals", None, READERS),
+    ("GET", f"{BASE}/deals/{_ID}", None, READERS),
+    (
+        "POST",
+        f"{BASE}/deals/{_ID}/transitions",
+        {"to_stage": "GATHERING_PAPERWORK"},
+        STAFF,
+    ),
+    (
+        "PUT",
+        f"{BASE}/deals/{_ID}/buyer",
+        {"name": "Rotterdam Trading BV", "country": "NL"},
+        STAFF,
+    ),
+    # Documents (L3-09). The two uploads are multipart, so they are covered by their
+    # own refusal tests in `test_l3b_documents.py` rather than here — this table
+    # sends a JSON body, and a multipart route refuses a JSON one at parsing with a
+    # 422 before the gate is reached, which would prove nothing about the gate.
+    ("GET", f"{BASE}/documents/categories", None, READERS),
+    ("GET", f"{BASE}/documents/{_ID}", None, READERS),
+    ("GET", f"{BASE}/exporters/{_ID}/documents", None, READERS),
+    ("GET", f"{BASE}/deals/{_ID}/documents", None, READERS),
+    ("POST", f"{BASE}/documents/{_ID}/download-link", None, READERS),
+    (
+        "GET",
+        f"{BASE}/documents/content?key=test%2Fcompany%2Fx%2Finternal%2Fx.pdf"
+        "&expires=1&signature=nope",
+        None,
+        READERS,
+    ),
 ]
 
 REFUSALS = [

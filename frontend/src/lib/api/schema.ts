@@ -856,6 +856,228 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/exporters/{company_id}/deals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a company's deals
+         * @description Newest first. `stage` may be repeated to filter to several stages; omitted, every stage is returned, including withdrawn and handed-over deals — a company's deal history is part of its record.
+         */
+        get: operations["list_company_deals_api_v1_onboarding_exporters__company_id__deals_get"];
+        put?: never;
+        /**
+         * Open a deal on a company
+         * @description Opens a deal at `OPEN` and sets the company's conversation to `READY_NOW` in the same transaction (architecture §3.3). A company may have any number of deals.
+         *
+         *     The stage is not a field on this request: a deal always starts at `OPEN`, and accepting one would let a caller skip every stage guard.
+         */
+        post: operations["open_deal_api_v1_onboarding_exporters__company_id__deals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one deal, its buyer, and the moves allowed from here
+         * @description `allowed_stage_moves` is what **this** deal may do next, as data, so the screen does not keep its own copy of the stage graph (§7.5). A handover that is legal by the graph but blocked by assumption A5's guard is absent from that list, and `handover_blocked_reason` says why.
+         */
+        get: operations["get_deal_api_v1_onboarding_deals__deal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a deal to another stage
+         * @description The only way a deal's stage changes. The move must be one the stage graph allows (deal contract §1.1); `WITHDRAWN` requires a reason (assumption A7) and every other stage refuses one.
+         *
+         *     `HANDED_OVER` additionally requires a buyer and assumption A5's guard — the company a `CUSTOMER` with a `CLEAR` background check. That check is Developer 4's column in migration 0015, which has not landed, so every handover is currently refused with `DEAL_HANDOVER_BLOCKED` rather than being allowed on the strength of a column that does not exist.
+         */
+        post: operations["transition_deal_stage_api_v1_onboarding_deals__deal_id__transitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}/buyer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record or replace the deal's buyer
+         * @description One buyer per deal, so this replaces that one row rather than adding another (deal contract §3). `PUT` rather than `POST` for the same reason.
+         *
+         *     A buyer's problems stay on the buyer: a failed buyer check is recorded against this row and never against the company (architecture §3.5).
+         */
+        put: operations["set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/documents/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which categories may be filed here, and the types each accepts
+         * @description Architecture §3.4: the ten categories are fixed and each belongs to a company, a deal, or both, so a screen asks which are valid where the user is standing rather than keeping a copy. The **types** inside each category are settings — adding one is a GitOps change, not a release.
+         *
+         *     `scanner_name` is the scanner that will judge an upload. It is `pass-through` in the prototype: a labelled placeholder that checks nothing, and a screen must say so (assumption A9).
+         */
+        get: operations["list_document_categories_api_v1_onboarding_documents_categories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/documents/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch a document's content with a signed link
+         * @description The link `POST /documents/{id}/download-link` returns. The signature covers the key **and** the expiry, so neither can be changed without invalidating it, and an expired link is refused.
+         *
+         *     Still role-gated: a signed link is not a way around authentication. The scan status is re-checked here too, so a link minted while a document was `AVAILABLE` stops working if a later verdict quarantines it.
+         */
+        get: operations["get_document_content_api_v1_onboarding_documents_content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a company's documents
+         * @description Newest upload first. `category` may be repeated to filter. Documents that have not passed the scan step are listed — hiding them would leave an operator wondering where a file went — but `is_downloadable` is false and their content is refused.
+         */
+        get: operations["list_company_documents_api_v1_onboarding_exporters__company_id__documents_get"];
+        put?: never;
+        /**
+         * Upload a document against a company
+         * @description The file is stored, then scanned, then recorded — in that order, so a refused upload leaves neither a row nor an object.
+         *
+         *     **Every upload lands `PENDING_SCAN` and cannot be opened** until a clean result arrives (architecture §3.4). In the prototype the scanner is a labelled pass-through, so a clean result is immediate and means nothing was checked.
+         *
+         *     The category must be one that belongs on a company, and the type one the settings configure for that category.
+         */
+        post: operations["upload_company_document_api_v1_onboarding_exporters__company_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a deal's documents */
+        get: operations["list_deal_documents_api_v1_onboarding_deals__deal_id__documents_get"];
+        put?: never;
+        /**
+         * Upload a document against a deal
+         * @description As for a company, except the category must be one that belongs on a deal (architecture §3.4). These are the documents a handover's snapshot will list (Phase 4).
+         */
+        post: operations["upload_deal_document_api_v1_onboarding_deals__deal_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one document's details */
+        get: operations["get_document_api_v1_onboarding_documents__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/documents/{document_id}/download-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mint a short-lived link to a document's content
+         * @description `POST`, not `GET`: this mints a credential rather than reading a resource, and it should not be something a browser prefetches or a proxy caches.
+         *
+         *     Refused for a document that is not `AVAILABLE` — to **every** role. An unscanned, quarantined or failed-scan file is a state, not a permission (architecture §3.4).
+         */
+        post: operations["create_download_link_api_v1_onboarding_documents__document_id__download_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/cases": {
         parameters: {
             query?: never;
@@ -1266,6 +1488,32 @@ export interface components {
              * @description A CSV file in the template's shape
              */
             file: string;
+        };
+        /** Body_upload_company_document_api_v1_onboarding_exporters__company_id__documents_post */
+        Body_upload_company_document_api_v1_onboarding_exporters__company_id__documents_post: {
+            /**
+             * File
+             * @description The document
+             */
+            file: string;
+            category: components["schemas"]["DocumentCategory"];
+            /** Document Type */
+            document_type: string;
+            /** @default EXPORTER_UPLOAD */
+            source: components["schemas"]["DocumentSource"];
+        };
+        /** Body_upload_deal_document_api_v1_onboarding_deals__deal_id__documents_post */
+        Body_upload_deal_document_api_v1_onboarding_deals__deal_id__documents_post: {
+            /**
+             * File
+             * @description The document
+             */
+            file: string;
+            category: components["schemas"]["DocumentCategory"];
+            /** Document Type */
+            document_type: string;
+            /** @default EXPORTER_UPLOAD */
+            source: components["schemas"]["DocumentSource"];
         };
         /** CaseResponse */
         CaseResponse: {
@@ -1706,6 +1954,138 @@ export interface components {
             /** Counts */
             counts: boolean;
         };
+        /** DealBuyerResponse */
+        DealBuyerResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Deal Id
+             * Format: uuid
+             */
+            deal_id: string;
+            /** Name */
+            name: string;
+            /** Country */
+            country: string;
+            /** Registration Number */
+            registration_number: string | null;
+            /** Tax Id */
+            tax_id: string | null;
+            /** Contact Email */
+            contact_email: string | null;
+            /** Contact Phone */
+            contact_phone: string | null;
+        };
+        /** DealListItemResponse */
+        DealListItemResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Reference */
+            reference: string;
+            stage: components["schemas"]["DealStage"];
+            /** Buyer Name */
+            buyer_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * DealListResponse
+         * @description ``total`` is the count matching the filter, not the length of this page, so
+         *     a caller can page without a second request.
+         */
+        DealListResponse: {
+            /** Deals */
+            deals: components["schemas"]["DealListItemResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** DealResponse */
+        DealResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Reference */
+            reference: string;
+            stage: components["schemas"]["DealStage"];
+            /** Withdrawal Reason */
+            withdrawal_reason: string | null;
+            /** Handed Over At */
+            handed_over_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            buyer: components["schemas"]["DealBuyerResponse"] | null;
+            /** Allowed Stage Moves */
+            allowed_stage_moves: components["schemas"]["DealStageMoveResponse"][];
+            /** Handover Blocked Reason */
+            handover_blocked_reason: string | null;
+        };
+        /**
+         * DealStage
+         * @description Where a deal has got to — architecture §3.3 ("The deal"), and
+         *     ``docs/contracts/deal-and-buyer.md`` §1.
+         *
+         *     One thing only: whether there is a real, current financing need and how far
+         *     the paperwork has got. Not the sales conversation (``ExporterConversation``),
+         *     not whether the company is safe to lend to (Developer 4's background check),
+         *     and not whether the company met our requirements (``QualificationState``).
+         *
+         *     **Unlike the conversation gauge, any-value-to-any-value is not allowed.** A
+         *     stage is a claim about what has happened to a deal, not a judgement about a
+         *     relationship, so the moves are a fixed table (contract §1.1) and an illegal
+         *     one is refused.
+         * @enum {string}
+         */
+        DealStage: "OPEN" | "GATHERING_PAPERWORK" | "HANDED_OVER" | "WITHDRAWN";
+        /**
+         * DealStageMoveResponse
+         * @description One move the caller may make from the deal's current stage.
+         *
+         *     The screen renders these rather than holding its own copy of the stage graph
+         *     (§7.5, contract §4.1), so a rule change cannot leave a stale button behind.
+         */
+        DealStageMoveResponse: {
+            to_stage: components["schemas"]["DealStage"];
+            /** Reason Required */
+            reason_required: boolean;
+        };
         /**
          * DecidedByKind
          * @description Whether a person or a computer decided (architecture §2.6: manual
@@ -1730,6 +2110,145 @@ export interface components {
              * @description Present only when healthy
              */
             latency_ms?: string | null;
+        };
+        /**
+         * DocumentCategory
+         * @description The ten fixed categories — architecture §3.4, checked by the server.
+         *
+         *     Fixed, unlike types, because each one carries a rule: which owner it may be
+         *     filed against. A free-text category could not answer that, and "stops people
+         *     filing in the wrong category" is the stated reason ``OTHER`` exists at all.
+         * @enum {string}
+         */
+        DocumentCategory: "ENTITY_KYC" | "COMPLIANCE_SCREENING" | "COMPANY_MARKET_REVIEW" | "PRE_SHIPMENT" | "SHIPPING" | "CUSTOMS_AND_REGULATORY" | "BUYER" | "BANKING" | "INSURANCE" | "OTHER";
+        /**
+         * DocumentCategoryListResponse
+         * @description The filing catalogue for one owner kind.
+         *
+         *     ``scanner_name`` rides along so a screen can label the upload control with the
+         *     scanner that will actually judge the file — ``"pass-through"`` today, which the
+         *     screen must say out loud (assumption A9, gate §7.6).
+         */
+        DocumentCategoryListResponse: {
+            /** Categories */
+            categories: components["schemas"]["DocumentCategoryResponse"][];
+            /** Scanner Name */
+            scanner_name: string;
+        };
+        /**
+         * DocumentCategoryResponse
+         * @description One category valid where the caller is standing, and the types it accepts.
+         */
+        DocumentCategoryResponse: {
+            category: components["schemas"]["DocumentCategory"];
+            owner_kind: components["schemas"]["DocumentOwnerKind"];
+            /** Types */
+            types: components["schemas"]["DocumentTypeResponse"][];
+        };
+        /**
+         * DocumentListResponse
+         * @description ``total`` is the count matching the filter, not the length of this page.
+         */
+        DocumentListResponse: {
+            /** Documents */
+            documents: components["schemas"]["DocumentResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * DocumentOwnerKind
+         * @description What a category may be filed against.
+         *
+         *     Architecture §3.4's "Belongs to" column, as a value the server can check. A
+         *     category with ``BOTH`` is legal on either owner; the others are legal on one.
+         * @enum {string}
+         */
+        DocumentOwnerKind: "COMPANY" | "DEAL" | "BOTH";
+        /** DocumentResponse */
+        DocumentResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Deal Id */
+            deal_id: string | null;
+            category: components["schemas"]["DocumentCategory"];
+            /** Document Type */
+            document_type: string;
+            source: components["schemas"]["DocumentSource"];
+            /** File Name */
+            file_name: string;
+            /** Content Type */
+            content_type: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Uploaded By */
+            uploaded_by: string | null;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+            scan_status: components["schemas"]["DocumentScanStatus"];
+            /** Scanner Name */
+            scanner_name: string | null;
+            /** Is Downloadable */
+            is_downloadable: boolean;
+        };
+        /**
+         * DocumentScanStatus
+         * @description Where a stored object is in the scan step (architecture §3.4).
+         *
+         *     Lives here rather than in ``document_enums.py`` because the scanner port
+         *     returns it and the port must not import the document entity's module — the
+         *     dependency runs the other way. Phase 3's ``crm_document`` imports it from
+         *     here for its column.
+         * @enum {string}
+         */
+        DocumentScanStatus: "PENDING_SCAN" | "AVAILABLE" | "QUARANTINED" | "SCAN_FAILED";
+        /**
+         * DocumentSource
+         * @description Where a document came from — architecture §3.4.
+         *
+         *     Stored as given, and never rewritten: the same guarantee the verification
+         *     provider has ("a result recorded with provider RXIL is never observable as
+         *     Internal"). The storage key's fourth segment is this value, lowercased.
+         * @enum {string}
+         */
+        DocumentSource: "RXIL" | "EXPORTER_UPLOAD" | "INTERNAL" | "SYSTEM";
+        /** DocumentTypeResponse */
+        DocumentTypeResponse: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
+        /**
+         * DownloadLinkResponse
+         * @description A short-lived link. ``url`` is opaque: local disk returns an API path with a
+         *     signature, S3 will return a presigned URL, and a client that parses either is
+         *     coupled to the implementation the port hides.
+         */
+        DownloadLinkResponse: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Url */
+            url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /**
          * DuplicateGstinWarningResponse
@@ -2550,6 +3069,18 @@ export interface components {
             /** Last Updated At */
             last_updated_at?: string | null;
         };
+        /**
+         * OpenDealRequest
+         * @description Open a deal on a company.
+         *
+         *     Carries no ``stage``: a deal always starts at ``OPEN`` (architecture §3.3), and
+         *     accepting a stage here would let a caller create a deal that is already handed
+         *     over, skipping every guard.
+         */
+        OpenDealRequest: {
+            /** Reference */
+            reference: string;
+        };
         /** OutcomeResponse */
         OutcomeResponse: {
             /**
@@ -2989,6 +3520,25 @@ export interface components {
             check_back_on?: string | null;
         };
         /**
+         * SetDealBuyerRequest
+         * @description Record or replace the deal's buyer. One buyer per deal, so this is an
+         *     upsert of that one row, not an add.
+         */
+        SetDealBuyerRequest: {
+            /** Name */
+            name: string;
+            /** Country */
+            country: string;
+            /** Registration Number */
+            registration_number?: string | null;
+            /** Tax Id */
+            tax_id?: string | null;
+            /** Contact Email */
+            contact_email?: string | null;
+            /** Contact Phone */
+            contact_phone?: string | null;
+        };
+        /**
          * SetMarkerRequest
          * @description Set or clear the company's commercial marker (company-record contract
          *     §3.3). `reason` is required for `PAUSED` and `ENDED`, optional when
@@ -3043,6 +3593,16 @@ export interface components {
          * @enum {string}
          */
         TransactionStatus: "INITIATED" | "VALIDATED" | "UNDER_REVIEW" | "APPROVED" | "FUNDED" | "DIGITAL_ASSET_SETTLED" | "SETTLING" | "SETTLED" | "RECONCILED" | "VALIDATION_FAILED" | "BLOCKED" | "DECLINED" | "FAILED" | "RECALLED_VIA_COMPENSATION";
+        /**
+         * TransitionDealStageRequest
+         * @description Move a deal's stage. ``reason`` is required for ``WITHDRAWN`` (A7) and
+         *     refused for anything else.
+         */
+        TransitionDealStageRequest: {
+            to_stage: components["schemas"]["DealStage"];
+            /** Reason */
+            reason?: string | null;
+        };
         /**
          * TransitionSource
          * @description What caused a case state transition (four exact values).
@@ -5804,6 +6364,708 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_company_deals_api_v1_onboarding_exporters__company_id__deals_get: {
+        parameters: {
+            query?: {
+                stage?: components["schemas"]["DealStage"][] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_deal_api_v1_onboarding_exporters__company_id__deals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenDealRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or empty reference */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_deal_api_v1_onboarding_deals__deal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transition_deal_stage_api_v1_onboarding_deals__deal_id__transitions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransitionDealStageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The deal is already terminal, or the handover guard is unmet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The move is not allowed from this stage, a withdrawal reason is missing, a reason was sent for a non-withdrawal, or the deal has no buyer */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDealBuyerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The deal is handed over or withdrawn */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing name, or a country that is not ISO-3166-1 alpha-2 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_document_categories_api_v1_onboarding_documents_categories_get: {
+        parameters: {
+            query?: {
+                /** @description Whose page the user is on — COMPANY or DEAL. */
+                owner?: components["schemas"]["DocumentOwnerKind"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCategoryListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_content_api_v1_onboarding_documents_content_get: {
+        parameters: {
+            query: {
+                /** @description The relative storage key from the signed link */
+                key: string;
+                /** @description Expiry, as a Unix timestamp, from the link */
+                expires: number;
+                /** @description The link's signature */
+                signature: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required, or the link is invalid or expired */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No document for that key */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document has not passed the scan step */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_company_documents_api_v1_onboarding_exporters__company_id__documents_get: {
+        parameters: {
+            query?: {
+                category?: components["schemas"]["DocumentCategory"][] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_company_document_api_v1_onboarding_exporters__company_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_company_document_api_v1_onboarding_exporters__company_id__documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Category not filed against a company, unknown document type, unaccepted content type, or an empty or oversized file */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_deal_documents_api_v1_onboarding_deals__deal_id__documents_get: {
+        parameters: {
+            query?: {
+                category?: components["schemas"]["DocumentCategory"][] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_deal_document_api_v1_onboarding_deals__deal_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_deal_document_api_v1_onboarding_deals__deal_id__documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Category not filed against a deal, unknown document type, unaccepted content type, or an empty or oversized file */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_document_api_v1_onboarding_documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_download_link_api_v1_onboarding_documents__document_id__download_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadLinkResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document has not passed the scan step */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

@@ -107,4 +107,16 @@ __all__ += ["FollowUpCompletionRepository"]
 
 # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
 # (3B appends here; 3A does not.)
-__all__ += []
+from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository import (  # noqa: E402
+    DealBuyerRepository,
+)
+from app.modules.onboarding.infrastructure.repositories.deal_repository import (  # noqa: E402
+    DealRepository,
+)
+
+__all__ += ["DealBuyerRepository", "DealRepository"]
+from app.modules.onboarding.infrastructure.repositories.crm_document_repository import (  # noqa: E402
+    CrmDocumentRepository,
+)
+
+__all__ += ["CrmDocumentRepository"]

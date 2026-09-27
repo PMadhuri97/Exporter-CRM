@@ -57,6 +57,18 @@ async function ensureFreshAccessToken(): Promise<string | null> {
 }
 
 interface RequestOptions extends Omit<RequestInit, 'body'> {
+  /**
+   * How to read the response body. Defaults to the content-type sniffing below:
+   * JSON when the server says JSON, text otherwise.
+   *
+   * `'blob'` exists for binary downloads — a PDF read as text is corrupted — and
+   * is opt-in so nothing else changes. Added for the document download
+   * (`modules/onboarding/api/documents.ts`), which has to fetch content with the
+   * access token rather than let the browser open a URL that carries none.
+   * **Owner: Developer 1** (architecture §8.1) — additive, no existing caller
+   * affected.
+   */
+  parseAs?: 'blob';
   body?: unknown;
 }
 
@@ -103,6 +115,7 @@ export async function apiRequest<TResult>(
 
   if (!response.ok) throw await parseErrorResponse(response);
   if (response.status === 204) return undefined as TResult;
+  if (options.parseAs === 'blob') return (await response.blob()) as TResult;
   // A non-JSON response (a CSV template, say) comes back as text.
   const contentType = response.headers.get('content-type') ?? '';
   if (!contentType.includes('json')) return (await response.text()) as TResult;

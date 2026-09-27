@@ -955,3 +955,242 @@ class FollowUpCompletionIsImmutableError(AnerBaseException):
 
 # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
 # (3B appends here; 3A does not.)
+
+
+class DealNotFoundError(AnerBaseException):
+    """No deal with that id."""
+
+    def __init__(self, deal_id: object) -> None:
+        super().__init__(
+            detail=f"Deal {deal_id} was not found",
+            error_code="DEAL_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class DealCompanyNotFoundError(AnerBaseException):
+    """A deal was opened for a company that does not exist.
+
+    Distinct from ``DEAL_NOT_FOUND`` so the screen can say which of the two is
+    missing; the database would refuse the row anyway through
+    ``fk_deal_company_id``, and this turns that into a 404 naming the company
+    rather than a 500 carrying a Postgres message.
+    """
+
+    def __init__(self, company_id: object) -> None:
+        super().__init__(
+            detail=f"Company {company_id} was not found, so no deal can be opened for it",
+            error_code="DEAL_COMPANY_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class DealTransitionNotAllowedError(AnerBaseException):
+    """A stage move that is not in the deal contract's §1.1 table.
+
+    Unlike the conversation gauge, a deal's stages are a fixed graph: a stage is a
+    claim about what has happened to a deal, not a judgement about a relationship,
+    so an unlisted move is refused rather than recorded.
+    """
+
+    def __init__(self, deal_id: object, from_stage: object, to_stage: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} cannot move from {from_stage!s} to {to_stage!s}"
+            ),
+            error_code="DEAL_TRANSITION_NOT_ALLOWED",
+            status_code=422,
+            extensions={"from_stage": str(from_stage), "to_stage": str(to_stage)},
+        )
+
+
+class DealTerminalError(AnerBaseException):
+    """A move out of ``HANDED_OVER`` or ``WITHDRAWN``.
+
+    A deal withdrawn in error is a **new deal**, not a reopened one: a record of
+    what was decided must not be editable into a different decision (deal
+    contract §1.1). Separate from ``DEAL_TRANSITION_NOT_ALLOWED`` because the
+    answer is different — not "not that move" but "not this deal, ever again".
+    """
+
+    def __init__(self, deal_id: object, stage: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} is {stage!s} and cannot move again; open a new deal instead"
+            ),
+            error_code="DEAL_TERMINAL",
+            status_code=409,
+            extensions={"stage": str(stage)},
+        )
+
+
+class DealWithdrawalReasonRequiredError(AnerBaseException):
+    """``WITHDRAWN`` without a reason (assumption A7).
+
+    ``ck_deal_withdrawal_reason`` refuses the row as well, so this is the service
+    saying the same thing first, with the deal's id in it.
+    """
+
+    def __init__(self, deal_id: object) -> None:
+        super().__init__(
+            detail=f"Withdrawing deal {deal_id} requires a reason",
+            error_code="DEAL_WITHDRAWAL_REASON_REQUIRED",
+            status_code=422,
+        )
+
+
+class DealBuyerRequiredError(AnerBaseException):
+    """Leaving ``GATHERING_PAPERWORK`` with no buyer recorded.
+
+    A handover payload carries the buyer (architecture §3.6), so a handover
+    without one is not a handover. The buyer stays optional at ``OPEN``, since a
+    deal often starts before the buyer is known (deal contract §3).
+    """
+
+    def __init__(self, deal_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} has no buyer recorded, and the buyer's details are "
+                "part of what the lending team is given"
+            ),
+            error_code="DEAL_BUYER_REQUIRED",
+            status_code=422,
+        )
+
+
+class DocumentNotFoundError(AnerBaseException):
+    """No document with that id, or no row for that storage key."""
+
+    def __init__(self, document_ref: object) -> None:
+        super().__init__(
+            detail=f"Document {document_ref} was not found",
+            error_code="DOCUMENT_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class DocumentCategoryNotAllowedError(AnerBaseException):
+    """A category filed where it does not belong.
+
+    Architecture §3.4 gives each of the ten categories an owner — a company, a
+    deal, or both — so `SHIPPING` on a company is not a preference but a filing
+    error, and the document would end up where nobody looks for it.
+    """
+
+    def __init__(self, category: object, reason: str) -> None:
+        super().__init__(
+            detail=f"{category} cannot be filed here: {reason}",
+            error_code="DOCUMENT_CATEGORY_NOT_ALLOWED",
+            status_code=422,
+            extensions={"category": str(category)},
+        )
+
+
+class DocumentTypeNotAllowedError(AnerBaseException):
+    """A type that the settings do not configure under this category.
+
+    Types are settings, not code (architecture §3.4), so this is what an unknown
+    one looks like: a 422 naming the category, not a new enum member. Adding the
+    type is a GitOps change to
+    `deployments/gitops/reference-data/crm/documents/document-types.yaml`.
+    """
+
+    def __init__(self, category: object, document_type: object) -> None:
+        super().__init__(
+            detail=(
+                f"{document_type!r} is not a configured document type for {category}"
+            ),
+            error_code="DOCUMENT_TYPE_NOT_ALLOWED",
+            status_code=422,
+            extensions={"category": str(category), "document_type": str(document_type)},
+        )
+
+
+class DocumentContentTypeNotSupportedError(AnerBaseException):
+    """A content type with no extension in the storage allow-list.
+
+    The extension goes into the storage key, so a type with no known extension
+    would have to be stored with a guessed one — and guessing from the uploaded
+    file name is what §9.3's "Watch out for" forbids.
+    """
+
+    def __init__(self, content_type: object) -> None:
+        super().__init__(
+            detail=f"Files of type {content_type!r} are not accepted",
+            error_code="DOCUMENT_CONTENT_TYPE_NOT_SUPPORTED",
+            status_code=422,
+            extensions={"content_type": str(content_type)},
+        )
+
+
+class DocumentNotAvailableError(AnerBaseException):
+    """Content was requested for a document that is not `AVAILABLE`.
+
+    Refused to **every** role: `PENDING_SCAN`, `QUARANTINED` and `SCAN_FAILED` are
+    states, not permissions (architecture §3.4, assumption A9). There is no role,
+    and no flag, that opens a quarantined file.
+    """
+
+    def __init__(self, document_id: object, scan_status: object) -> None:
+        super().__init__(
+            detail=(
+                f"Document {document_id} is {scan_status} and cannot be opened; "
+                "only a document that has passed the scan step is served"
+            ),
+            error_code="DOCUMENT_NOT_AVAILABLE",
+            status_code=409,
+            extensions={"scan_status": str(scan_status)},
+        )
+
+
+class DocumentLinkInvalidError(AnerBaseException):
+    """A download link whose signature does not verify, or which has expired.
+
+    One error for both, deliberately: telling a caller which of the two it was
+    would help someone probing for a valid signature.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            detail="This download link is invalid or has expired",
+            error_code="DOCUMENT_LINK_INVALID",
+            status_code=403,
+        )
+
+
+class StorageKeyRefusedError(AnerBaseException):
+    """A storage key that is absolute, escapes its root, or holds a bad segment.
+
+    Reaching the boundary means something built a key from untrusted input; the
+    implementation refuses it before any I/O (storage contract §2.1).
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(
+            detail=f"Storage key refused: {reason}",
+            error_code="STORAGE_KEY_REFUSED",
+            status_code=422,
+        )
+
+
+class DealHandoverBlockedError(AnerBaseException):
+    """A handover whose assumption-A5 guard is unmet.
+
+    The company must be a `CUSTOMER` **and** its background check `CLEAR`. The
+    reason names which condition failed, including "the background check is not
+    recorded yet" while Developer 4's migration 0015 is missing — "not recorded" is
+    never treated as "clear".
+
+    A class rather than an inline exception (which is what `deal_service.py` built
+    until the review): the code it raises is part of the documented contract
+    (`deal-and-buyer.md` §8), and every other refusal in this module is a named
+    class.
+    """
+
+    def __init__(self, deal_id: object, reason: str) -> None:
+        super().__init__(
+            detail=f"Deal {deal_id} cannot be handed over: {reason}",
+            error_code="DEAL_HANDOVER_BLOCKED",
+            status_code=409,
+            extensions={"reason": reason},
+        )

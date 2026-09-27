@@ -149,3 +149,51 @@ export interface FollowUpListParams {
 
 // ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
 // (3B appends here; 3A does not.)
+export type Deal = Schemas['DealResponse'];
+export type DealListItem = Schemas['DealListItemResponse'];
+export type DealList = Schemas['DealListResponse'];
+export type OpenDealRequest = Schemas['OpenDealRequest'];
+export type TransitionDealStageRequest = Schemas['TransitionDealStageRequest'];
+export type SetDealBuyerRequest = Schemas['SetDealBuyerRequest'];
+export type DealBuyer = Schemas['DealBuyerResponse'];
+/** One move this user may make from a deal's current stage — served by the API so
+ * no screen keeps its own copy of the stage graph (§7.5). */
+export type DealStageMove = Schemas['DealStageMoveResponse'];
+/** OPEN -> GATHERING_PAPERWORK -> HANDED_OVER, or WITHDRAWN. Both ends terminal. */
+export type DealStage = Schemas['DealStage'];
+
+export interface DealListParams {
+  /** Repeatable: several stages narrow the list to those stages. */
+  stages?: DealStage[];
+  limit?: number;
+  offset?: number;
+}
+
+export type CrmDocument = Schemas['DocumentResponse'];
+export type DocumentList = Schemas['DocumentListResponse'];
+export type DocumentCategoryOption = Schemas['DocumentCategoryResponse'];
+export type DocumentCategoryList = Schemas['DocumentCategoryListResponse'];
+export type DocumentDownloadLink = Schemas['DownloadLinkResponse'];
+/** The ten fixed categories — architecture §3.4. Which owner each belongs to is a
+ * server rule; ask `GET /documents/categories` rather than hard-coding it. */
+export type DocumentCategory = Schemas['DocumentCategory'];
+export type DocumentSource = Schemas['DocumentSource'];
+/** PENDING_SCAN -> AVAILABLE | QUARANTINED | SCAN_FAILED. Only AVAILABLE is
+ * downloadable, and `CrmDocument.is_downloadable` already says so — branch on that
+ * rather than re-deriving it per screen. */
+export type DocumentScanStatus = Schemas['DocumentScanStatus'];
+export type DocumentOwnerKind = Schemas['DocumentOwnerKind'];
+
+export interface DocumentListParams {
+  /** Repeatable: several categories narrow the list. */
+  categories?: DocumentCategory[];
+  limit?: number;
+  offset?: number;
+}
+
+export interface UploadDocumentInput {
+  file: File;
+  category: DocumentCategory;
+  documentType: string;
+  source?: DocumentSource;
+}
