@@ -22,17 +22,25 @@ buyer — and ``allowed_stage_moves`` is those rules as data, so the screen asks
 server instead of keeping a copy (§7.5). That split is
 ``ConversationService.allowed_moves``' and is deliberately the same shape.
 
-**The handover is Phase 4.** ``GATHERING_PAPERWORK → HANDED_OVER`` needs the
-company's background check to be ``CLEAR`` (assumption A5), and
+**The handover is built, and currently refuses every deal.**
+``GATHERING_PAPERWORK → HANDED_OVER`` needs the company to be a ``CUSTOMER`` with a
+``CLEAR`` background check (assumption A5). The second half cannot be evaluated:
 ``exporter_profile.background_check`` is Developer 4's column in migration 0015,
-which has not landed. Until it does, the move is not offered, the reason says so,
-and attempting it is refused — see ``_handover_blocked_reason``. Nothing here
-creates or writes that column.
+which has not landed, so ``read_background_check`` returns ``None``, the move is not
+offered, ``handover_blocked_reason`` says why, and attempting it is refused.
+Nothing here creates or writes that column (``company-record.md`` §2.4).
+
+Everything downstream of that guard is real and tested: the document snapshot, the
+history row, and the best-effort ``deal.handed_over`` announcement, in that order
+(architecture §3.6 — the history row is the source of truth, the announcement is an
+announcement). Tests reach it by substituting ``read_background_check``, which is a
+separate function for exactly that reason.
 """
 
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
@@ -51,6 +59,7 @@ from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import (
     DealBuyerRequiredError,
     DealCompanyNotFoundError,
@@ -58,6 +67,9 @@ from app.modules.onboarding.exceptions import (
     DealTerminalError,
     DealTransitionNotAllowedError,
     DealWithdrawalReasonRequiredError,
+)
+from app.modules.onboarding.infrastructure.repositories.crm_document_repository import (
+    CrmDocumentRepository,
 )
 from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository import (
     DealBuyerRepository,
@@ -89,8 +101,49 @@ _NEEDS_BUYER = frozenset({DealStage.HANDED_OVER})
 _HANDOVER_JOURNEY = "CUSTOMER"
 
 
+def read_background_check(company: ExporterProfile) -> str | None:
+    """The company's background check, as a plain string, or ``None`` if there is
+    none recorded.
+
+    **This is a stand-in for Developer 4's read helper** (L4-01), and it is a
+    separate function for two reasons.
+
+    First, honesty: ``exporter_profile.background_check`` is Developer 4's column in
+    migration 0015, which has not landed, so today this always returns ``None`` and
+    every handover is refused. ``company-record.md`` §2.4 forbids creating or
+    writing another developer's gauge field, so the column is not added here, and
+    "not recorded" is never treated as "clear" — that would hand a deal to the
+    lending team on the strength of a column that does not exist.
+
+    Second, testability: the handover path downstream of the guard — the document
+    snapshot, the history row, the announcement — is real code that must be exercised
+    now rather than written blind and discovered broken when 0015 lands. Tests
+    substitute this one function to reach it, and say in their docstrings that they
+    are doing so.
+
+    When Developer 4 publishes their helper, this body becomes a call to it and
+    nothing else changes.
+    """
+    value = getattr(company, "background_check", None)
+    if value is None:
+        return None
+    return str(getattr(value, "value", value))
+
+
+@dataclass(frozen=True)
+class _Handover:
+    """What one handover rests on, captured inside the transaction that made it.
+
+    Frozen, and built once: the whole point is that this cannot change between the
+    commit and the announcement, nor afterwards.
+    """
+
+    buyer: dict
+    document_ids: list[str]
+
+
 class DealService:
-    """Open deals, move their stages, and record their buyers."""
+    """Open deals, move their stages, record their buyers, and hand them over."""
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
@@ -98,6 +151,9 @@ class DealService:
         self._buyers = DealBuyerRepository(db)
         self._history = HistoryService(db)
         self._conversation = ConversationService(db)
+        # Best effort by construction: `deal_handed_over` logs and swallows its
+        # own failures, so a dead bus never undoes a committed handover.
+        self._events = OnboardingEventPublisher()
 
     # ── Read ─────────────────────────────────────────────────────────────────
 
@@ -260,8 +316,14 @@ class DealService:
 
         deal.stage = to_stage
         deal.withdrawal_reason = cleaned_reason
+        handover: _Handover | None = None
         if to_stage is DealStage.HANDED_OVER:
             deal.handed_over_at = datetime.now(tz=UTC)
+            # The snapshot is taken **now**, inside the transaction, so it is the
+            # list the handover actually rested on: a document uploaded a minute
+            # later cannot change what the lending team was given (architecture
+            # §3.6). Collected before the commit, announced after it.
+            handover = await self._handover_snapshot(deal)
 
         await self._history.record(
             deal.company_id,
@@ -273,9 +335,24 @@ class DealService:
             reason=cleaned_reason,
             deal_id=deal.id,
             event_type="deal_transition",
+            details={"document_ids": handover.document_ids} if handover else None,
         )
         await self._db.commit()
         await self._db.refresh(deal)
+
+        if handover is not None:
+            # After the commit, and best effort: the history row is the source of
+            # truth and the announcement is an announcement (architecture §3.6).
+            # Announcing first would risk telling the lending team about a handover
+            # that then failed to commit — and `deal_handed_over` swallows its own
+            # failures, so a dead bus cannot undo a committed handover either.
+            await self._events.deal_handed_over(
+                deal_id=deal.id,
+                company_id=deal.company_id,
+                buyer=handover.buyer,
+                document_ids=handover.document_ids,
+                actor_id=actor_id,
+            )
 
         logger.info(
             "deal.transition.ok",
@@ -370,7 +447,41 @@ class DealService:
         )
         return await self._to_view(deal)
 
-    # ── The A5 handover guard (Phase 4 completes this) ───────────────────────
+    # ── The handover ─────────────────────────────────────────────────────────
+
+    async def _handover_snapshot(self, deal: Deal) -> _Handover:
+        """The buyer and the document ids this handover rests on.
+
+        Both are what the lending team is given (architecture §3.6). The document
+        list is a snapshot, not a live query the receiver could re-run later and get
+        a different answer from.
+
+        The buyer is already loaded on the deal; the documents are read here rather
+        than kept on the deal, because "the paperwork for this deal" is a question
+        about `crm_document`, not a column.
+        """
+        documents = await CrmDocumentRepository(self._db).list_for_deal_ids((deal.id,))
+        buyer = deal.buyer
+        return _Handover(
+            buyer=(
+                {
+                    "name": buyer.name,
+                    "country": buyer.country,
+                    "registration_number": buyer.registration_number,
+                    "tax_id": buyer.tax_id,
+                    "contact_email": buyer.contact_email,
+                    "contact_phone": buyer.contact_phone,
+                }
+                # `_NEEDS_BUYER` already refused a handover without one, so this
+                # branch is unreachable from `transition_stage`; it is here so the
+                # method is safe to call from anywhere.
+                if buyer is not None
+                else {}
+            ),
+            document_ids=[str(document.id) for document in documents],
+        )
+
+    # ── The A5 handover guard ────────────────────────────────────────────────
 
     async def _handover_blocked_reason(self, deal: Deal) -> str | None:
         """Why this deal may not be handed over, or ``None`` if it may.
@@ -401,13 +512,13 @@ class DealService:
         if company.journey.value != _HANDOVER_JOURNEY:
             return f"the company is {company.journey.value}, not {_HANDOVER_JOURNEY}"
 
-        background_check = getattr(company, "background_check", None)
+        background_check = read_background_check(company)
         if background_check is None:
             return (
                 "the background check is not recorded yet — Developer 4's "
                 "migration 0015 has not landed, so no company has one"
             )
-        if getattr(background_check, "value", background_check) != "CLEAR":
+        if background_check != "CLEAR":
             return f"the background check is {background_check}, not CLEAR"
         return None
 

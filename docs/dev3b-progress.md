@@ -11,7 +11,7 @@ order so no phase depends on a later one:
 | 1 | L3-01b contracts, L3-07 storage, L3-08 scan step | **done** |
 | 2 | L3-05 deal record, L3-06 buyer | **done** |
 | 3 | L3-09 document records | **done** |
-| 4 | L3-10 handover, L3-11b screens | not started |
+| 4 | L3-10 handover, L3-11b screens | **done** |
 
 ---
 
@@ -287,3 +287,107 @@ S3, no Object Lock, no KMS, no retention lock.
   (`onboarding_0019_documents`).
 - Frontend: typecheck clean, `lint` 0 errors, 78 tests, `build` succeeds.
 - `openapi.json` and `schema.ts` regenerated; artifact contract test passes.
+
+---
+
+## Phase 4 — the handover, and the screens
+
+### Delivered
+
+- **L3-10.** `DealService.transition_stage` completes a handover: the document
+  snapshot, the history row, then the best-effort `deal.handed_over` announcement,
+  in that order. `read_background_check` is now a named seam (see below).
+- **L3-11b.** `pages/panels/DealsPanel.tsx` (the seam that used to render `null`),
+  `pages/DealDetailPage.tsx`, `pages/DocumentsPage.tsx`,
+  `components/DocumentUpload.tsx`, `components/DocumentList.tsx`,
+  `components/ScanStatusBadge.tsx`, and two routes under my anchor in `routes.tsx`.
+- 11 handover tests and 11 new frontend tests (91 frontend tests in total).
+
+### L3-10 is built, and it refuses every handover — read this before trusting it
+
+**Developer 4's migration 0015 has still not landed**, so
+`exporter_profile.background_check` does not exist. I confirmed this three ways:
+no migration file, `origin/main` unchanged since `447c6ba`, and the column absent
+from the live database.
+
+So assumption A5's second half cannot be satisfied, and the honest consequence is
+that **no deal in this build can be handed over**. The screen says why, the API
+returns `DEAL_HANDOVER_BLOCKED`, and `allowed_stage_moves` omits the move.
+"Not recorded" is never treated as "clear".
+
+What I did **not** do: create that column, write to it, or default it to `CLEAR` to
+make a demo work. `company-record.md` §2.4 forbids the first two, and the third
+would hand a deal to the lending team on the strength of a column that does not
+exist.
+
+**How the rest of the path is tested.** Everything downstream of the guard — the
+snapshot, the history row, the announcement — is real code, and writing it blind
+until 0015 arrives would mean discovering its bugs at the worst moment. So
+`read_background_check` is a **one-function seam**, and the success-path tests
+substitute exactly that function and nothing else. Each says so in its docstring,
+and `test_l3b_handover.py`'s module docstring says it first. The guard itself is
+tested unpatched, and refuses.
+
+**When 0015 lands:** replace `read_background_check`'s body with a call to Developer
+4's published helper (L4-01), delete the `clear_background_check` fixture, and the
+tests that used it become ordinary end-to-end tests. Nothing else changes.
+
+### Decisions
+
+1. **The snapshot is taken inside the transaction, announced after the commit.**
+   The history row is the source of truth and the announcement is best effort
+   (architecture §3.6). Announcing first could tell the lending team about a handover
+   that then failed to commit; a test with a deliberately broken bus proves a dead
+   bus cannot undo a committed handover.
+2. **The document list also goes into the history row**, not only the event. If the
+   announcement is never received, the record of what the handover rested on still
+   exists.
+3. **Paperwork is not a precondition.** A5 names the customer status and the check,
+   and nothing else, so a handover with no documents is allowed and the snapshot is
+   an honest empty list.
+4. **No sidebar rows for Deals or Documents**, against the prompt's §5 expectation.
+   There is no cross-company deal or document endpoint, so those rows would lead to
+   a page that can only say "pick a company first" — the fake navigation
+   `layout/Sidebar.tsx` forbids. Deals are reached from the company's Deals panel,
+   and paperwork from a link beside it. If a cross-company list is wanted, it needs a
+   backend route first; say so and I will add both.
+5. **Company documents get their own route, not a section on the company page.**
+   The detail page's panels are owned one each by Developers 2, 3 and 4 and the shell
+   is closed; company-wide paperwork is also something you go to rather than scroll
+   past.
+6. **`DocumentUpload` asks the server which categories it may offer.** Which of the
+   ten belong on a company and which on a deal is a server rule, and the types inside
+   them are settings — a copy in the component would go stale silently.
+7. **The upload form says the scanner is a placeholder**, in as many words, whenever
+   the catalogue reports `pass-through`. So does every document row, via
+   `ScanStatusBadge`.
+8. **A document that may not be served gets no download control at all**, not a
+   disabled one — the same reasoning the masking design uses for the reveal icon.
+
+### Seam S2 — ready for 3A
+
+`openDeal`/`useOpenDeal` and the deal types have been on the branch since Phase 2, and
+`components/OpenDealPrompt.tsx` — **3A's file** — still renders its note and no
+button. I have not touched it: it is theirs, and §4.2 puts the button in their hands
+once my route merges. **It has merged.** They can wire it whenever they like; the
+prompt's own docstring already names the exact imports.
+
+### Verification
+
+- 197 L3B backend tests pass together. `tests/contract`: 255 pass, so the committed
+  API artifacts are still current (Phase 4 added no route).
+- `ruff` back to the 9 pre-existing findings — one I introduced (import order in the
+  new test) is fixed. `lint-imports` 19 kept, 0 broken.
+- `alembic heads`: one (`onboarding_0019_documents`) — Phase 4 adds no migration.
+- Frontend: 91 tests pass, typecheck clean, `lint` 0 errors, `build` succeeds.
+- Sample data still converges to zero on a repeat run.
+
+### What gate §7.6 still blocks, said plainly one last time
+
+- **There is no virus scanner.** Every document in this build was "scanned" by a
+  pass-through that checks nothing. The status says `AVAILABLE`; the scanner says
+  `pass-through`; the upload form says no malware scanning has happened. Do not put
+  real exporter documents in this build.
+- **There is no S3, Object Lock, KMS or retention lock.** Local disk only, so the
+  seven-year AML retention requirement is not met by anything here.
+- **No deal can be handed over**, because no background check exists to clear it.

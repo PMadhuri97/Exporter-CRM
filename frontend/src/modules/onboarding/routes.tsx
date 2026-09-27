@@ -18,6 +18,8 @@ import {
 // inside the owner anchors further down, and a separate line at least means no two
 // owners ever edit the same one. 3A·2 (Phase 2):
 import { FollowUpsPage } from './pages';
+// 3B (L3-11b): a deal's own page, and one company's paperwork.
+import { DealDetailPage, DocumentsPage } from './pages';
 
 export function OnboardingRoutes() {
   return (
@@ -63,7 +65,24 @@ export function OnboardingRoutes() {
       <Route path="follow-ups" element={<FollowUpsPage />} />
 
       {/* ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ── */}
-      {/* (3B appends here; 3A does not.) */}
+      {/* (3B appends here; 3A does not.)
+
+        Both routes are inside this module's subtree, which the app router mounts at
+        `/exporters/*`, so their URLs are `/exporters/deals/:dealId` and
+        `/exporters/:customerId/documents`. Deals are reached from the company page's
+        Deals panel rather than from the sidebar: there is no cross-company deal or
+        document list on the server, and a sidebar row pointing at a page that can
+        only say "pick a company first" would be the fake navigation
+        `layout/Sidebar.tsx` forbids. That is why no row is added there — see
+        docs/dev3b-progress.md.
+
+        `deals/:dealId` is declared **before** `:customerId` would match it: the
+        company route above is `:customerId` alone, so `/exporters/deals/x` has two
+        segments and cannot collide with it. Kept adjacent so the next person adding
+        a route here sees the constraint.
+      */}
+      <Route path="deals/:dealId" element={<DealDetailPage />} />
+      <Route path=":customerId/documents" element={<DocumentsPage />} />
     </Routes>
   );
 }
