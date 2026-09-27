@@ -10,3 +10,8 @@ venv/
 backend/.env
 htmlcov/
 .coverage
+
+# Local-disk document storage (Developer 3B, L3-07). Uploaded files in a
+# development checkout — never committed; the storage root is configurable via
+# STORAGE_LOCAL_ROOT.
+backend/.local-storage/
