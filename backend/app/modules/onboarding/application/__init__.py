@@ -93,7 +93,11 @@ __all__ += ["DocumentService"]
 
 # ── Background check — owner: Developer 4A ──
 # (4A appends here; 4B does not.)
-__all__ += []
+from app.modules.onboarding.application.background_check_service import (  # noqa: E402
+    BackgroundCheckService,
+)
+
+__all__ += ["BackgroundCheckService"]
 
 # ── Verification and screening — owner: Developer 4B ──
 # (4B appends here; 4A does not.)

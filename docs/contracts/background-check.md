@@ -72,7 +72,7 @@ company goes through a reopen (`CLEAR → IN_REVIEW`) and then `FLAGGED` (archit
 | # | From | To | Who | Text required | Also needs |
 |---|---|---|---|---|---|
 | 1 | `NOT_STARTED` | `IN_REVIEW` | OPERATIONS, COMPLIANCE, ADMIN | — | — (the automatic start on RXIL results is **blocked**, §13) |
-| 2 | `IN_REVIEW` | `CLEAR` | one COMPLIANCE or ADMIN user | **reason** | risk rating; no checks still pending; all eight screening items answered; evidence recorded (A3; exact rules D1–D4) |
+| 2 | `IN_REVIEW` | `CLEAR` | one COMPLIANCE or ADMIN user | **reason** | risk rating; no checks still pending; all eight screening items answered; evidence recorded (A3; exact rules **settled 28 Sep 2026 — §14.1**) |
 | 3 | `IN_REVIEW` | `MORE_INFO` | COMPLIANCE, ADMIN | **note of what is needed** | — |
 | 4 | `MORE_INFO` | `IN_REVIEW` | OPERATIONS, COMPLIANCE, ADMIN | **note of what arrived** | — |
 | 5 | `IN_REVIEW` | `FLAGGED` | COMPLIANCE, ADMIN | **reason** | — |
@@ -218,7 +218,9 @@ Rules:
   (`CrmDocumentRepository.list_for_owner` / `list_for_deal_ids`). Dev4A never queries Developer
   4B's tables. The foreign keys above are referential integrity, not reads.
 - **What** goes into the snapshot — which documents (company only, or also open deals; only
-  `AVAILABLE` ones) and what counts as "evidence recorded" for `CLEAR` — is **D4**. The shape
+  `AVAILABLE` ones) and what counts as "evidence recorded" for `CLEAR` — was **D4**, settled 28
+  September 2026: the company's own `AVAILABLE` documents, and at least one pinned id of any
+  kind for `CLEAR` (§14.1). The shape
   above holds whatever D4 decides.
 
 ### 6.1 Why the review id has no foreign key
@@ -297,7 +299,8 @@ together.
 ## 10. The read helper
 
 Developer 4A publishes a stable read seam for Developer 3's handover guard and Developer 2's
-customer move. **It is specified here and implemented in phase 4A-6; it does not exist yet.**
+customer move. **Built in phase 4A-6** (`application/background_check_reader.py`), and Developer
+3's guard reads the real column through it.
 
 ```python
 # app/modules/onboarding/application/background_check_reader.py   (owner: Dev4A)
@@ -336,6 +339,22 @@ The background check never moves the journey. A `CUSTOMER` whose check is reopen
 on hold **stays** `CUSTOMER` (`company-record.md` §3.1, A5). Dev4A writes no journey value.
 
 ### 11.2 Deal handover (Developer 3)
+
+**The guard share-locks the company row while a handover is in progress** (D10, settled 28
+September 2026). Developer 3's `_handover_blocked_reason` takes `SELECT … FOR SHARE` on
+`exporter_profile` when called from `transition_stage`, and **no lock** when called from the read
+that renders a deal.
+
+Why a lock at all: Dev4A's own moves take `FOR UPDATE`, so without one a `FLAGGED` could commit
+between the guard seeing `CLEAR` and the handover committing, and the lending team would be given
+a deal on a company flagged moments earlier — with nothing in the record showing the overlap. A
+handover cannot be undone, which is what makes the narrow window worth closing.
+
+Why `FOR SHARE` rather than `FOR UPDATE`: it blocks Dev4A's writers, which is the point, while
+two handovers of *different deals on the same company* still proceed in parallel.
+
+Why not on the read: `_to_view` runs on every deal page load. Locking there would have ordinary
+rendering block compliance's decisions — the opposite of the intent.
 
 A deal is handed over only when the company is `CUSTOMER` **and** its check is `CLEAR` (A5). The
 guard and the handover are Developer 3's. Dev4A's part is the read helper (§10):
@@ -399,7 +418,7 @@ can be built against them; the exact class names are fixed when the code lands.
 | Caller's role may not make this move | 403 | `BACKGROUND_CHECK_ROLE_NOT_ALLOWED` |
 | Text missing or blank where §4 requires it | 422 | `BACKGROUND_CHECK_REASON_REQUIRED` |
 | `CLEAR` without a risk rating | 422 | `BACKGROUND_CHECK_RISK_REQUIRED` |
-| `CLEAR` prerequisites unmet (rules per D1–D4) | 409 | `BACKGROUND_CHECK_PREREQUISITES_UNMET`, naming each unmet prerequisite |
+| `CLEAR` prerequisites unmet (rules per §14.1) | 409 | `BACKGROUND_CHECK_PREREQUISITES_UNMET`, naming each unmet prerequisite |
 | A write that bypasses the service and breaks §5.3 or §6 | — | refused by the database (`CheckViolation`, `ForeignKeyViolation`, `UniqueViolation`, `RaiseException`) |
 
 Blocked items are never stubbed: there is no automatic start and no customer move to fail.
@@ -412,18 +431,68 @@ Every answer is recorded here, with its date and who decided. Nothing below is g
 
 | # | Decision | Status | Owner | Blocks |
 |---|---|---|---|---|
-| D1 | **CLEAR prerequisite semantics** beyond A3's wording (risk; no checks pending; eight items answered; evidence) | **Open** | programme lead with compliance | CLEAR's rule function (4A-4) |
-| D2 | **Meaning of "pending"** — `PENDING` only? `REVIEW` without an accepted review? placeholders? unlinked subjects? | **Open** | programme lead with compliance | CLEAR's rule function |
-| D3 | **FAILED / EXEMPT screening vs CLEAR** — does "answered" include them? | **Open** | programme lead with compliance | CLEAR's rule function; UI copy |
-| D4 | **Evidence snapshot scope** — which documents; what counts as "evidence recorded" | **Open** | programme lead | document pinning and CLEAR's evidence rule |
-| D5 | **Risk on the company record; risk on non-CLEAR outcomes** | **Open, non-blocking.** No company risk column; risk lives on the decision | Dev4 (A+B) with the lead | a company column (a later migration if added); Developer 2's list filter; UI |
-| D6 | **Risk shown after a reopen** | **Open** | Dev4A with the lead | `standing.risk_rating` semantics; UI |
-| D8 | **DEVELOPER visibility** of the gauge, reasons and evidence ids | **Open.** Default: no widening | lead with Developer 1 | route roles; UI; history `reason` policy |
-| D10 | **Company row lock during handover** | **Open** | Developer 3 with the lead | Developer 3's guard |
+| D1 | **CLEAR prerequisite semantics** beyond A3's wording (risk; no checks pending; eight items answered; evidence) | **Settled 28 Sep 2026 (programme lead):** the prerequisites are exactly A3's four and no others. D2–D4 fix what its phrases mean; see §14.1 | programme lead with compliance | — |
+| D2 | **Meaning of "pending"** — `PENDING` only? `REVIEW` without an accepted review? placeholders? unlinked subjects? | **Settled 28 Sep 2026 (programme lead):** a check is pending unless it reached a terminal answer with a real provider — `PENDING`, `REVIEW` and placeholder rows all block `CLEAR` | programme lead with compliance | — |
+| D3 | **FAILED / EXEMPT screening vs CLEAR** — does "answered" include them? | **Settled 28 Sep 2026 (programme lead):** "answered" means answered satisfactorily. `PASSED` and `EXEMPT` only; a `FAILED` item blocks `CLEAR` | programme lead with compliance | — |
+| D4 | **Evidence snapshot scope** — which documents; what counts as "evidence recorded" | **Settled 28 Sep 2026 (programme lead):** the company's own documents with `scan_status = AVAILABLE`; and `CLEAR` requires at least one pinned id | programme lead | — |
+| D5 | **Risk on the company record; risk on non-CLEAR outcomes** | **Settled 28 Sep 2026 (programme lead):** **no company risk column.** Risk stays on the decision record and is read through `BackgroundCheckReader.standing` — no second copy to drift, no migration, and Developer 2's list filters through the reader. Whether risk is *required* on non-`CLEAR` outcomes was not asked and is not enforced: the column is nullable and the service neither requires nor refuses it there | Dev4 (A+B) with the lead | nothing |
+| D6 | **Risk shown after a reopen** | **Settled 28 Sep 2026 (programme lead):** keep **the last recorded risk, explicitly labelled**. `standing.risk_rating` is the risk of the most recent decision that set one, and the panel prints "from the most recent decision that set one" beside it whenever the company is not `CLEAR`. It is the best information available; the label is what stops it reading as a current verdict. A consumer must still read `value`, which is what `standing.is_clear` is for | Dev4A with the lead | nothing |
+| D8 | **DEVELOPER visibility** of the gauge, reasons and evidence ids | **Settled 28 Sep 2026 (programme lead):** **no.** DEVELOPER is refused on all three routes, reads included — a decision's reason is free text a compliance officer wrote about a real company. Enforced by `_STAFF` in the router, with rows in both authorisation tables and an API test. **One inconsistency is left open deliberately:** `history_router.py` already admits DEVELOPER and serves `background_check` transition rows including their `reason`. That route is Developer 1's, so closing the gap is their call | lead with Developer 1 | the history route's `reason` policy (Developer 1) |
+| D10 | **Company row lock during handover** | **Settled 28 Sep 2026 (programme lead):** **yes — `FOR SHARE`**, taken on the move and not on the read. Built in Developer 3's guard; **needs Dev3 review**. See §11.2 | Developer 3 with the lead | nothing |
 | D11 / U4 / O3 | **Transaction boundary and announcement for the customer move** | **Blocked** | lead, Developer 2, Dev4A | all of §11.3 |
 | D12 | **RXIL package / results contract**, including the actor of the automatic start | **Blocked** | RXIL, lead, Developer 2 | the automatic `NOT_STARTED → IN_REVIEW` only |
 | D13 | **Risk database type** | **Settled 28 Sep 2026 (Dev4 lead):** a Dev4A-owned `background_check_risk_enum` | — | nothing |
 | D14 | **`history-row.md` §4 omits two required texts** (`MORE_INFO → IN_REVIEW`, `CLEAR`) | **Open** — Dev4A enforces the architecture meanwhile | Developer 1 | the contract's text, before final merge |
+
+### 14.1 D1–D4, as decided on 28 September 2026
+
+Recorded in full because they define what "cleared" means, and because the code carries
+them in exactly one value — `CLEAR_POLICY` in `domain/background_check_views.py` — with
+a test that fails if any of them is changed without meaning to.
+
+**D1 — the prerequisites are A3's four, and no others.** Risk given; no checks still
+pending; all eight screening items answered; evidence recorded. Nothing was added to the
+list, and the service does not invent a fifth condition.
+
+**D2 — "pending" means "has not reached a terminal answer with a real provider".**
+
+| Input | Blocks `CLEAR`? | Why |
+|---|---|---|
+| `status = PENDING` | yes | the check has not come back |
+| `status = REVIEW` | yes | a human has not finished with it |
+| `is_placeholder = true` | yes | created without a provider, so nothing ever ran |
+| `status = PASSED` or `FAILED`, real provider | no | it reached an answer |
+
+The strict reading was chosen on purpose: a check that has not truly concluded should
+not be able to sit quietly underneath a cleared company. Note that a `FAILED`
+*verification* does not block `CLEAR` by itself — it is an answer, and the compliance
+officer weighs it and records the risk. That is deliberate and differs from D3's
+treatment of *screening* items.
+
+**D3 — "answered" means answered satisfactorily: `PASSED` or `EXEMPT` only.** A `FAILED`
+screening item blocks `CLEAR`, and `NEEDS_REVIEW` or a never-recorded item blocks it too.
+A company with a failed screening item is `FLAGGED` — that is what the state is for
+(architecture §3.3) — rather than cleared with a caveat, because a clearing decision that
+names a failed sanctions item as evidence would be very hard to defend later.
+
+**D4 — the snapshot pins the company's own `AVAILABLE` documents, and `CLEAR` requires
+at least one pinned id.**
+
+- **Which:** `crm_document` rows whose `company_id` is this company. **Deal paperwork is
+  not pinned**: it belongs to the deal, not to the company's standing, and a company
+  decision should not change meaning depending on which deals happened to be open.
+- **Scan gate:** only `scan_status = AVAILABLE`. A `PENDING_SCAN`, `QUARANTINED` or
+  `SCAN_FAILED` document is never served (`storage-and-documents.md` §4), so pinning one
+  would name evidence nobody can open.
+- **"Evidence recorded":** at least one pinned id of any kind — document, verification
+  result or screening row. In practice the eight answered screening items already supply
+  ids, so this mostly guards against a decision resting on nothing at all.
+- The rule is applied in `select_evidence`, not in the query, so it is one pure function
+  with unit tests rather than a `WHERE` clause nobody re-reads.
+
+Still open and **not** decided here: D5 (risk on the company record and on non-`CLEAR`
+outcomes), D6 (risk shown after a reopen), D8 (DEVELOPER visibility), D10 (the handover
+row lock), D11/U4/O3, D12 and D14.
 
 ---
 
@@ -445,8 +514,12 @@ Every answer is recorded here, with its date and who decided. Nothing below is g
 | This contract (4A-1) | published |
 | `onboarding_0015_bg_check`: the five enum types, `exporter_profile.background_check`, `background_check_decision`, `background_check_evidence`, every §5.3 and §6 constraint, both triggers, the indexes (4A-2) | built |
 | ORM entities `BackgroundCheckDecision`, `BackgroundCheckEvidence`, the enums in `background_check_enums.py`, `ExporterProfile.background_check`, `BackgroundCheckDecisionRepository` (4A-2) | built |
-| `BackgroundCheckService`, moves, `CLEAR`, reopen, allowed moves (4A-3 … 4A-5) | **not started** |
-| `BackgroundCheckReader` and the Developer 3 swap (4A-6) | **not started** |
-| API routes (4A-7), panel (4A-8) | **not started** |
+| `BackgroundCheckService`: moves 1, 3, 4, 5, 6, the row lock, per-move roles, the text rule, supersession, the evidence snapshot, the history row, one commit, `allowed_moves` (4A-3) | built |
+| `IN_REVIEW → CLEAR` (4A-4) | built. Risk required; A3's four prerequisites evaluated by one pure function under the row lock; **D1–D4 settled 28 Sep 2026** (§14.1) and carried by `CLEAR_POLICY` |
+| Evidence snapshot contents | verification results, screening rows, **and the company's `AVAILABLE` documents** (D4). Deal documents are not pinned |
+| Reopen and reassessment: `CLEAR`/`FLAGGED`/`ON_HOLD` → `IN_REVIEW` (4A-5) | built. All nine §3 moves are now reachable; the superseded decision is untouched and the journey is never written |
+| `BackgroundCheckReader`, `current_background_check` (§10) and the Developer 3 swap (4A-6) | built. `deal_service.read_background_check` calls the helper; its name and signature are unchanged |
+| API routes (4A-7) | built: the three routes of §5.10, `extra="forbid"` on the request, per-move roles in the service, rows in both authorisation tables, artifacts regenerated |
+| Background-check panel (4A-8) | built: gauge, risk chip, decision trail with evidence counts, a move dialog offering only the server's `allowed_moves`, loading/empty/error states, Developer 4B's `VerificationSection` unchanged below it |
 | Customer transition (4A-9) | **blocked** (U4) |
 | Automatic start on RXIL results | **blocked** (D12) |

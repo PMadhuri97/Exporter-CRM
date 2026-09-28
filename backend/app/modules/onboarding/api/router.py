@@ -116,6 +116,11 @@ router.include_router(document_router)
 #
 # ── Background check — owner: Developer 4A ──
 # (4A adds its router import and its one include_router here; 4B does not.)
+from app.modules.onboarding.api.background_check_router import (  # noqa: E402
+    router as background_check_router,
+)
+
+router.include_router(background_check_router)
 
 
 # ── Case management and its state machine ───────────────

@@ -239,6 +239,17 @@ GATED_ROUTES = [
     # ── Background check — owner: Developer 4A ──
     # (4A appends here; 4B does not.)
     #
+    # `STAFF` throughout: DEVELOPER is refused even on the reads, pending D8. These
+    # rows are what proves it, rather than the intention living only in a comment.
+    ("GET", f"{BASE}/exporters/{_ID}/background-check", None, STAFF),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/background-check/decisions",
+        {"to_value": "IN_REVIEW"},
+        STAFF,
+    ),
+    ("GET", f"{BASE}/exporters/{_ID}/background-check/decisions", None, STAFF),
+    #
     # ── Verification and screening — owner: Developer 4B ──
     # (4B appends here; 4A does not.)
 ]

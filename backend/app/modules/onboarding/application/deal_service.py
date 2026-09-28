@@ -22,19 +22,28 @@ buyer — and ``allowed_stage_moves`` is those rules as data, so the screen asks
 server instead of keeping a copy (§7.5). That split is
 ``ConversationService.allowed_moves``' and is deliberately the same shape.
 
-**The handover is built, and currently refuses every deal.**
+**The handover guard is real on both halves.**
 ``GATHERING_PAPERWORK → HANDED_OVER`` needs the company to be a ``CUSTOMER`` with a
-``CLEAR`` background check (assumption A5). The second half cannot be evaluated:
-``exporter_profile.background_check`` is Developer 4's column in migration 0015,
-which has not landed, so ``read_background_check`` returns ``None``, the move is not
-offered, ``handover_blocked_reason`` says why, and attempting it is refused.
-Nothing here creates or writes that column (``company-record.md`` §2.4).
+``CLEAR`` background check (assumption A5). Developer 4A's migration 0015 has landed,
+so ``read_background_check`` calls their published helper (``background-check.md``
+§10) and returns a real value: a company that has never been checked reads
+``NOT_STARTED``, and "not ``CLEAR``" is never treated as "clear". Nothing here
+creates or writes that column (``company-record.md`` §2.4).
 
-Everything downstream of that guard is real and tested: the document snapshot, the
+The guard **share-locks the company row** while a handover is in progress (decision
+D10, settled 28 September 2026), so a concurrent flag cannot land between the guard
+and the commit. The read that renders a deal takes no lock — see
+``_handover_blocked_reason``.
+
+In practice most deals are still refused, because a company only reaches ``CUSTOMER``
+through Developer 2's promotion (L2-11), which does not exist yet. Tests reach the
+path beyond the guard by substituting ``read_background_check``, which is a separate
+function for exactly that reason.
+
+Everything downstream of the guard is real and tested: the document snapshot, the
 history row, and the best-effort ``deal.handed_over`` announcement, in that order
 (architecture §3.6 — the history row is the source of truth, the announcement is an
-announcement). Tests reach it by substituting ``read_background_check``, which is a
-separate function for exactly that reason.
+announcement).
 """
 
 from __future__ import annotations
@@ -48,6 +57,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.application.background_check_reader import current_background_check
 from app.modules.onboarding.application.conversation_service import ConversationService
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.deal_views import (
@@ -104,32 +114,24 @@ _HANDOVER_JOURNEY = "CUSTOMER"
 
 
 def read_background_check(company: ExporterProfile) -> str | None:
-    """The company's background check, as a plain string, or ``None`` if there is
-    none recorded.
+    """The company's background check, as a plain string.
 
-    **This is a stand-in for Developer 4's read helper** (L4-01), and it is a
-    separate function for two reasons.
+    **This now calls Developer 4A's published read helper** (L4-01,
+    ``background-check.md`` §10). It was a stand-in until migration 0015 landed; the
+    body is a call to the helper and the name and signature are unchanged, which is
+    exactly what the stand-in's docstring promised would happen.
 
-    First, honesty: ``exporter_profile.background_check`` is Developer 4's column in
-    migration 0015, which has not landed, so today this always returns ``None`` and
-    every handover is refused. ``company-record.md`` §2.4 forbids creating or
-    writing another developer's gauge field, so the column is not added here, and
-    "not recorded" is never treated as "clear" — that would hand a deal to the
-    lending team on the strength of a column that does not exist.
+    It stays a separate one-line function rather than being inlined at the call site,
+    because that is what makes the seam visible: everything downstream of the guard
+    reads the gauge through this one place, and Dev4A owns only this body
+    (``4a-task.md`` §7).
 
-    Second, testability: the handover path downstream of the guard — the document
-    snapshot, the history row, the announcement — is real code that must be exercised
-    now rather than written blind and discovered broken when 0015 lands. Tests
-    substitute this one function to reach it, and say in their docstrings that they
-    are doing so.
-
-    When Developer 4 publishes their helper, this body becomes a call to it and
-    nothing else changes.
+    The return type keeps ``| None`` for the callers that still handle it, but the
+    column is ``NOT NULL DEFAULT 'NOT_STARTED'``, so in practice a value always comes
+    back. A company that has never been checked reads ``NOT_STARTED`` — a fact, not an
+    absence — and "not ``CLEAR``" is still never treated as "clear".
     """
-    value = getattr(company, "background_check", None)
-    if value is None:
-        return None
-    return str(getattr(value, "value", value))
+    return current_background_check(company)
 
 
 @dataclass(frozen=True)
@@ -312,7 +314,10 @@ class DealService:
         if to_stage in _NEEDS_BUYER:
             if deal.buyer is None:
                 raise DealBuyerRequiredError(deal_id)
-            blocked = await self._handover_blocked_reason(deal)
+            # `lock=True`: D10. The company row is share-locked for the rest of this
+            # transaction, so the check cannot change between this guard and the
+            # commit below.
+            blocked = await self._handover_blocked_reason(deal, lock=True)
             if blocked is not None:
                 raise DealHandoverBlockedError(deal_id, blocked)
 
@@ -499,29 +504,46 @@ class DealService:
 
     # ── The A5 handover guard ────────────────────────────────────────────────
 
-    async def _handover_blocked_reason(self, deal: Deal) -> str | None:
+    async def _handover_blocked_reason(self, deal: Deal, *, lock: bool = False) -> str | None:
         """Why this deal may not be handed over, or ``None`` if it may.
 
         Assumption A5: the company's journey is ``CUSTOMER`` **and** its background
-        check is ``CLEAR``.
+        check is ``CLEAR``. Both are now real: Developer 4A's migration 0015 landed
+        and ``read_background_check`` calls their published helper, so a company that
+        has never been checked reads ``NOT_STARTED`` — a fact, not an absence — and
+        "not ``CLEAR``" is never treated as "clear".
 
-        The second half cannot be evaluated yet. ``exporter_profile`` has no
-        ``background_check`` column — it is Developer 4's, in migration 0015, which
-        has not landed — and ``company-record.md`` §2.4 forbids creating or writing
-        another developer's gauge field. So this reports the missing check
-        honestly rather than treating "not recorded" as "clear", which would hand a
-        deal to the lending team on the strength of a column that does not exist.
+        ``lock`` takes ``FOR SHARE`` on the company row (**decision D10, settled 28
+        September 2026**). It is passed only by ``transition_stage``, never by the
+        read that renders a deal:
 
-        Phase 4 replaces the ``getattr`` below with Developer 4's published read
-        helper (L4-01) once it exists.
+        * **On the move**, the lock closes a real race. Dev4A's own moves take
+          ``FOR UPDATE``, so a share lock here makes a concurrent ``FLAGGED`` wait
+          until this transaction ends. Without it a flag could commit between this
+          guard seeing ``CLEAR`` and the handover committing, and the lending team
+          would be given a deal on a company flagged moments earlier — with nothing
+          in the record showing the overlap. A handover cannot be undone, which is
+          what makes the narrow window worth closing.
+        * **On the read** it would be actively harmful: ``_to_view`` runs on every
+          deal page load, and locking there would have ordinary rendering block
+          compliance's decisions.
+
+        ``FOR SHARE`` rather than ``FOR UPDATE`` deliberately: it blocks Dev4A's
+        writers, which is the point, while two handovers of different deals on the
+        same company still proceed in parallel.
         """
         # By `customer_id`, not `db.get`: `customer_id` is the company's business
         # key and the target of `fk_deal_company_id`, while the table's primary key
         # is the inherited `id`. `db.get` would look up the wrong column and find
         # nothing for every company.
-        company = await self._db.scalar(
-            select(ExporterProfile).where(ExporterProfile.customer_id == deal.company_id)
+        statement = select(ExporterProfile).where(
+            ExporterProfile.customer_id == deal.company_id
         )
+        if lock:
+            statement = statement.with_for_update(read=True).execution_options(
+                populate_existing=True
+            )
+        company = await self._db.scalar(statement)
         if company is None:  # pragma: no cover - the FK makes this unreachable
             raise DealCompanyNotFoundError(deal.company_id)
 
@@ -529,11 +551,6 @@ class DealService:
             return f"the company is {company.journey.value}, not {_HANDOVER_JOURNEY}"
 
         background_check = read_background_check(company)
-        if background_check is None:
-            return (
-                "the background check is not recorded yet — Developer 4's "
-                "migration 0015 has not landed, so no company has one"
-            )
         if background_check != "CLEAR":
             return f"the background check is {background_check}, not CLEAR"
         return None

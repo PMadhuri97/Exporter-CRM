@@ -222,6 +222,26 @@ export interface UploadDocumentInput {
 
 // ── Background check — owner: Developer 4A ──
 // (4A appends here; 4B does not.)
+//
+// Aliases of the generated schema, never hand-written shapes: if the API changes
+// and the panel does not, `tsc` says so here rather than the screen quietly
+// rendering `undefined`.
+export type BackgroundCheck =
+  components['schemas']['BackgroundCheckResponse'];
+export type BackgroundCheckState =
+  components['schemas']['BackgroundCheckState'];
+export type BackgroundCheckRisk =
+  components['schemas']['BackgroundCheckRisk'];
+export type BackgroundCheckMove =
+  components['schemas']['BackgroundCheckMoveResponse'];
+export type BackgroundCheckDecision =
+  components['schemas']['BackgroundCheckDecisionResponse'];
+export type BackgroundCheckDecisionList =
+  components['schemas']['BackgroundCheckDecisionListResponse'];
+export type BackgroundCheckEvidenceItem =
+  components['schemas']['EvidenceItemResponse'];
+export type RecordBackgroundCheckDecisionRequest =
+  components['schemas']['RecordBackgroundCheckDecisionRequest'];
 
 // ── Verification and screening — owner: Developer 4B ──
 // (4B appends here; 4A does not.)

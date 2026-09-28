@@ -30,3 +30,6 @@ export * from './follow-ups';
 export * from './deals';
 export * from './documents';
 export * from './verification';
+
+// ── Background check — owner: Developer 4A ──
+export * from './background-check';

@@ -1080,6 +1080,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/exporters/{company_id}/background-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a company's background check
+         * @description The current value, the risk of the latest decision that set one, the latest decision, and the moves **this caller** may make next.
+         *
+         *     `allowed_moves` is the rule table as data: offer exactly these and no others. Where `CLEAR` is offered but its prerequisites are unmet, `clear_blocked_reasons` names each one, so the screen can say what is outstanding rather than showing a 409 after the fact.
+         */
+        get: operations["get_background_check_api_v1_onboarding_exporters__company_id__background_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a company's background-check decisions
+         * @description Every decision on this company, newest first, each with the evidence snapshot it was recorded against.
+         *
+         *     Decisions are append-only: a reopen or reassessment is a new decision that supersedes the previous one, and nothing here is ever edited. The evidence is ids only — never file contents, provider payloads or checklist comments.
+         */
+        get: operations["list_background_check_decisions_api_v1_onboarding_exporters__company_id__background_check_decisions_get"];
+        put?: never;
+        /**
+         * Record a background-check decision
+         * @description Moves the gauge and records why, as one locked decision with the evidence it rested on, in one transaction.
+         *
+         *     The request names **where the check is going** and nothing about who is deciding: the actor comes from the login session, the source and decided-by kind are the server's, and the evidence snapshot is assembled by the server. A request carrying any of them is refused (422).
+         *
+         *     Roles are enforced per move, not merely per route: OPERATIONS may start a check and record what arrived, and nothing else.
+         */
+        post: operations["record_background_check_decision_api_v1_onboarding_exporters__company_id__background_check_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/cases": {
         parameters: {
             query?: never;
@@ -1427,6 +1479,127 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * BackgroundCheckDecisionListResponse
+         * @description A company's decisions, newest first.
+         */
+        BackgroundCheckDecisionListResponse: {
+            /** Decisions */
+            decisions: components["schemas"]["BackgroundCheckDecisionResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * BackgroundCheckDecisionResponse
+         * @description One recorded move, with the evidence it rested on.
+         */
+        BackgroundCheckDecisionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            from_value: components["schemas"]["BackgroundCheckState"];
+            to_value: components["schemas"]["BackgroundCheckState"];
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided By Kind */
+            decided_by_kind: string;
+            /** Source */
+            source: string;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /** Reason */
+            reason: string | null;
+            risk_rating: components["schemas"]["BackgroundCheckRisk"] | null;
+            /** Supersedes Decision Id */
+            supersedes_decision_id: string | null;
+            /** Evidence */
+            evidence: components["schemas"]["EvidenceItemResponse"][];
+        };
+        /**
+         * BackgroundCheckMoveResponse
+         * @description One move this caller may make, and what it needs.
+         *
+         *     The rules as data (contract §3): the screen offers exactly what is here and keeps
+         *     no move table and no role list of its own, so a rule change cannot leave a stale
+         *     button behind.
+         */
+        BackgroundCheckMoveResponse: {
+            to_value: components["schemas"]["BackgroundCheckState"];
+            /** Reason Required */
+            reason_required: boolean;
+            /** Risk Required */
+            risk_required: boolean;
+        };
+        /**
+         * BackgroundCheckResponse
+         * @description Where a company's check stands, and what this caller may do next.
+         */
+        BackgroundCheckResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            value: components["schemas"]["BackgroundCheckState"];
+            /** @description The risk of the most recent decision that set one. Read `value` before trusting it: a company cleared at LOW and then reopened still reports LOW while it sits at IN_REVIEW. What a reopened company should show is an open decision (D6). */
+            risk_rating?: components["schemas"]["BackgroundCheckRisk"] | null;
+            /** Latest Decision Id */
+            latest_decision_id?: string | null;
+            /**
+             * Clearing Decision Id
+             * @description The decision behind the company's current CLEAR. Null unless `value` is CLEAR, so a reopened company never reports a clearance that was withdrawn.
+             */
+            clearing_decision_id?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * Allowed Moves
+             * @description The moves this caller may make from the current value, with what each needs. Empty for a caller whose role makes no move from here. `CLEAR` may appear while its prerequisites are unmet — `clear_blocked_reasons` names those.
+             */
+            allowed_moves: components["schemas"]["BackgroundCheckMoveResponse"][];
+            /**
+             * Clear Blocked Reasons
+             * @description Which of CLEAR's prerequisites are unmet right now, by name, so the screen can say what is outstanding instead of showing a 409 afterwards. Empty when the company is not IN_REVIEW or when nothing is outstanding.
+             */
+            clear_blocked_reasons?: string[];
+        };
+        /**
+         * BackgroundCheckRisk
+         * @description The CRM risk scale (decision 6), set by compliance on a decision.
+         *
+         *     ``onboarding.background_check_risk_enum`` — a type Developer 4A owns (D13, settled
+         *     28 Sep 2026). It is deliberately **not** ``VerificationRiskLevel`` /
+         *     ``verification_risk_level_enum``, which is Developer 4B's, so neither Dev4
+         *     migration depends on the other's schema. "Prohibited" is not a risk; it is
+         *     ``FLAGGED``.
+         * @enum {string}
+         */
+        BackgroundCheckRisk: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+        /**
+         * BackgroundCheckState
+         * @description The gauge: "is it safe and lawful to work with them?" (architecture §3.3).
+         *
+         *     ``onboarding.background_check_enum``. Carried on ``exporter_profile.background_check``
+         *     and on every decision's ``from_value`` / ``to_value``. The only legal moves between
+         *     these are the nine in the contract's §3, enforced by the service and by
+         *     ``ck_background_check_decision_move``.
+         * @enum {string}
+         */
+        BackgroundCheckState: "NOT_STARTED" | "IN_REVIEW" | "CLEAR" | "MORE_INFO" | "FLAGGED" | "ON_HOLD";
         /** BankActivityFindingResponse */
         BankActivityFindingResponse: {
             /**
@@ -2267,6 +2440,22 @@ export interface components {
             gstin: string;
             /** Other Customer Ids */
             other_customer_ids: string[];
+        };
+        /**
+         * EvidenceItemResponse
+         * @description One id a decision was recorded against. IDs only, never content (contract §6).
+         */
+        EvidenceItemResponse: {
+            /** Kind */
+            kind: string;
+            /** Crm Document Id */
+            crm_document_id?: string | null;
+            /** Verification Result Id */
+            verification_result_id?: string | null;
+            /** Verification Review Id */
+            verification_review_id?: string | null;
+            /** Screening Review Item Id */
+            screening_review_item_id?: string | null;
         };
         /** EvidenceRefModel */
         EvidenceRefModel: {
@@ -3304,6 +3493,26 @@ export interface components {
             code: string;
             /** Message */
             message: string;
+        };
+        /**
+         * RecordBackgroundCheckDecisionRequest
+         * @description A move, as a client may ask for it.
+         *
+         *     Three fields, and `extra="forbid"`. The actor comes from the login session, the
+         *     source and decided-by kind are the server's, and the evidence snapshot is
+         *     assembled by the server from the 4A ↔ 4B seam and Developer 3B's documents. A
+         *     request naming any of them is refused (422) rather than quietly ignored.
+         */
+        RecordBackgroundCheckDecisionRequest: {
+            /** @description The value to move to. Must be one the server offers in `allowed_moves`. */
+            to_value: components["schemas"]["BackgroundCheckState"];
+            /**
+             * Reason
+             * @description Why, or the note of what is needed or what arrived. Required on every move except the first (`NOT_STARTED → IN_REVIEW`).
+             */
+            reason?: string | null;
+            /** @description LOW, MEDIUM, HIGH or CRITICAL. Required on CLEAR. */
+            risk_rating?: components["schemas"]["BackgroundCheckRisk"] | null;
         };
         /**
          * RecordOutcomeRequest
@@ -7077,6 +7286,174 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_background_check_api_v1_onboarding_exporters__company_id__background_check_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_background_check_decisions_api_v1_onboarding_exporters__company_id__background_check_decisions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckDecisionListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_background_check_decision_api_v1_onboarding_exporters__company_id__background_check_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordBackgroundCheckDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckDecisionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required for the route; `BACKGROUND_CHECK_ROLE_NOT_ALLOWED` when the role may not make this particular move */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the current value; or `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR with prerequisites outstanding, naming each */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `BACKGROUND_CHECK_REASON_REQUIRED`, `BACKGROUND_CHECK_RISK_REQUIRED`, or an unknown field in the body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

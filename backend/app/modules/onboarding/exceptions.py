@@ -1211,6 +1211,112 @@ class DealHandoverBlockedError(AnerBaseException):
 # (4A appends here; 4B does not.)
 
 
+class BackgroundCheckMoveNotAllowedError(AnerBaseException):
+    """A move that is not in the background-check contract's §3 table.
+
+    Includes a move to the value already held (which would record nothing) and
+    ``CLEAR → FLAGGED``: new information about a cleared company goes through a
+    reopen and then ``FLAGGED`` (architecture §4.2), so that the reopen's reason is
+    on the record rather than a cleared company silently becoming flagged.
+    """
+
+    def __init__(self, company_id: object, from_value: object, to_value: object) -> None:
+        super().__init__(
+            detail=(
+                f"The background check for company {company_id} cannot move from "
+                f"{from_value!s} to {to_value!s}"
+            ),
+            error_code="BACKGROUND_CHECK_MOVE_NOT_ALLOWED",
+            status_code=409,
+            extensions={"from_value": str(from_value), "to_value": str(to_value)},
+        )
+
+
+class BackgroundCheckRoleNotAllowedError(AnerBaseException):
+    """The caller's role may not make this particular move.
+
+    Roles are enforced **per move**, not only per route (contract §3): OPERATIONS may
+    start a check and answer a ``MORE_INFO``, and nothing else. A route-level check
+    alone would let an operations user flag a company.
+    """
+
+    def __init__(self, from_value: object, to_value: object, role: object) -> None:
+        super().__init__(
+            detail=(
+                f"Role {role!s} may not move a background check from {from_value!s} "
+                f"to {to_value!s}"
+            ),
+            error_code="BACKGROUND_CHECK_ROLE_NOT_ALLOWED",
+            status_code=403,
+            extensions={
+                "from_value": str(from_value),
+                "to_value": str(to_value),
+                "role": str(role),
+            },
+        )
+
+
+class BackgroundCheckReasonRequiredError(AnerBaseException):
+    """A move that needs text arrived without it, or with only whitespace.
+
+    Every move but the start needs a reason or a note (contract §4). The service
+    refuses it before anything is written and ``ck_background_check_decision_reason``
+    refuses it again at the database.
+    """
+
+    def __init__(self, from_value: object, to_value: object) -> None:
+        super().__init__(
+            detail=(
+                f"Moving a background check from {from_value!s} to {to_value!s} "
+                "requires a reason or note"
+            ),
+            error_code="BACKGROUND_CHECK_REASON_REQUIRED",
+            status_code=422,
+            extensions={"from_value": str(from_value), "to_value": str(to_value)},
+        )
+
+
+class BackgroundCheckRiskRequiredError(AnerBaseException):
+    """``CLEAR`` without a risk rating.
+
+    Risk is set by compliance as part of the decision and is required on ``CLEAR``
+    (architecture §3.3, A3, §4.1 step 9; contract §7), enforced here and by
+    ``ck_background_check_decision_clear_risk``.
+    """
+
+    def __init__(self, company_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Clearing the background check for company {company_id} requires a "
+                "risk rating of LOW, MEDIUM, HIGH or CRITICAL"
+            ),
+            error_code="BACKGROUND_CHECK_RISK_REQUIRED",
+            status_code=422,
+            extensions={},
+        )
+
+
+class BackgroundCheckPrerequisitesUnmetError(AnerBaseException):
+    """``IN_REVIEW → CLEAR`` with one or more of A3's prerequisites unmet.
+
+    Names every unmet prerequisite rather than the first, so the screen can list what
+    is outstanding instead of revealing them one refusal at a time. The prerequisites
+    are A3's; what two of its phrases mean is D1–D4 (``background_check_views``).
+    """
+
+    def __init__(self, company_id: object, unmet: object) -> None:
+        names = list(unmet)
+        super().__init__(
+            detail=(
+                f"The background check for company {company_id} cannot be cleared: "
+                f"{', '.join(names)}"
+            ),
+            error_code="BACKGROUND_CHECK_PREREQUISITES_UNMET",
+            status_code=409,
+            extensions={"unmet": names},
+        )
+
+
 # ── Verification and screening — owner: Developer 4B ──
 # (4B appends here; 4A does not.)
 
