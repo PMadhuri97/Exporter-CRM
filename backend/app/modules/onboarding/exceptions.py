@@ -329,51 +329,52 @@ class VerificationResultNotFoundError(AnerBaseException):
         super().__init__(detail=detail, error_code="VERIFICATION_RESULT_NOT_FOUND", status_code=404)
 
 
-class VerificationResultAlreadyReviewedError(AnerBaseException):
-    """`reviewed_by` / `review_status` on a `VerificationResult` are already set.
+class VerificationReviewStaleError(AnerBaseException):
+    """A review did not name the result's **current** review as the one it supersedes.
 
-    Mirrors :class:`OnboardingFieldAlreadySetError`'s role for
-    `onboarding_request`'s write-once columns, for the same reason: EXP-2's
-    ticket leans toward `reviewed_by`/`review_status` being immutable once
-    set, for audit consistency with every other "who decided this" field in
-    this codebase (`ComplianceCase.resolved_by`, the columns
-    `OnboardingFieldAlreadySetError` itself guards). `VerificationService.
-    record_review` raises this *before* attempting the write, as a clean
-    domain exception; the DB trigger
-    (`trg_verification_result_field_immutability`, migration
-    `onboarding_0006_verif_result`) is the defense-in-depth path for a
-    write that reaches Postgres some other way.
-
-    Flag: unlike `resolved_by`, a real compliance review workflow may
-    legitimately need to *correct* a review (escalate after acceptance, or
-    reverse a mistaken rejection) — the PRD does not describe one yet. If that
-    turns out to be a real requirement, this becomes an explicit override path
-    (a new reviewed-by-a-more-senior-actor exception, or a supersession row)
-    rather than lifting the write-once rule outright.
+    Replaces the one-review-only rule (Dev4B 4B-2, 4b-task.md §5.1): a verdict now
+    changes by adding a review that supersedes the current one, never by editing
+    one. The caller must name the chain head it saw — like a compare-and-set — so a
+    reviewer who acted on a stale view gets 409 instead of silently overruling a
+    review they never saw. Raised for: a first review that names a
+    ``supersedes_review_id``; a later review that names none, or names a review that
+    is not the head; and a concurrent review that lost the race
+    (``uq_verification_review_supersedes`` / ``uq_verification_review_first``).
+    ``current_review_id`` is the head to retry against (``None``: not yet reviewed).
     """
 
-    def __init__(self, *, verification_result_id: object) -> None:
+    def __init__(
+        self, *, verification_result_id: object, current_review_id: object | None
+    ) -> None:
         super().__init__(
             detail=(
-                "VerificationResult.reviewed_by/review_status are immutable once set "
-                f"(verification_result_id={verification_result_id})."
+                "A review must supersede the result's current review "
+                f"(verification_result_id={verification_result_id}, "
+                f"current_review_id={current_review_id}). Reload and try again."
             ),
-            error_code="VERIFICATION_RESULT_ALREADY_REVIEWED",
+            error_code="VERIFICATION_REVIEW_STALE",
             status_code=409,
+            extensions={
+                "current_review_id": (
+                    str(current_review_id) if current_review_id is not None else None
+                )
+            },
         )
         self.verification_result_id = verification_result_id
+        self.current_review_id = current_review_id
 
 
 class VerificationResultNotReviewableError(AnerBaseException):
     """The `VerificationResult` is still `PENDING`: no finding exists yet to
     accept, reject or escalate.
 
-    A recorded review is permanent (see
-    :class:`VerificationResultAlreadyReviewedError`), so reviewing a check that
-    has not produced a result would lock in a decision about nothing — and
-    placeholder rows created without a provider stay `PENDING` forever. The UI
-    hides the review controls for these rows; this is the server-side rule, so
-    an API client cannot do it either.
+    A recorded review is permanent (reviews are only ever superseded, never
+    removed), so reviewing a check that has not produced a result would put a
+    decision about nothing on the record — and placeholder rows created without
+    a provider stay `PENDING` forever. The UI hides the review controls for
+    these rows; this is the server-side rule, so an API client cannot do it
+    either. 422 (4b-task.md §5.1): the request is well-formed but the result is
+    not in a reviewable state.
     """
 
     def __init__(self, *, verification_result_id: object) -> None:
@@ -383,7 +384,7 @@ class VerificationResultNotReviewableError(AnerBaseException):
                 f"resolves (verification_result_id={verification_result_id})."
             ),
             error_code="VERIFICATION_RESULT_NOT_REVIEWABLE",
-            status_code=409,
+            status_code=422,
         )
         self.verification_result_id = verification_result_id
 
@@ -1216,11 +1217,13 @@ class DealHandoverBlockedError(AnerBaseException):
 
 
 class ComplianceInputsBuyerNotFoundError(AnerBaseException):
-    """No ``deal_buyer`` row exists for the ``deal_buyer_id`` a buyer-check read named.
+    """No ``deal_buyer`` row exists for the ``deal_buyer_id`` a buyer check named.
 
-    Raised by ``ComplianceInputsService.buyer_checks`` (4a/4b-task.md §6.3). Buyer
-    checks are keyed by ``deal_buyer.id`` only — never the deal id, never the
-    company id — so an id that is not a buyer is a 404, not an empty list.
+    Raised by ``ComplianceInputsService.buyer_checks`` (4a/4b-task.md §6.3), and by
+    ``VerificationService`` when a ``BUYER`` result's ``entity_reference`` is not a
+    ``deal_buyer.id`` (§5.7). Buyer checks are keyed by ``deal_buyer.id`` only —
+    never the deal id, never the company id — so an id that is not a buyer is a 404,
+    not an empty list and not a check on something else.
     """
 
     def __init__(self, deal_buyer_id: object) -> None:
@@ -1229,4 +1232,29 @@ class ComplianceInputsBuyerNotFoundError(AnerBaseException):
             detail=f"Deal buyer {deal_buyer_id} not found",
             error_code="DEAL_BUYER_NOT_FOUND",
             status_code=404,
+        )
+
+
+class VerificationBuyerDealClosedError(AnerBaseException):
+    """A new buyer check named a buyer whose deal is ``HANDED_OVER`` or ``WITHDRAWN``.
+
+    Decision **D17** (lead, 28 Sep 2026): buyer checks are refused once the deal is
+    terminal — the handover snapshot is the final word on a handed-over deal, and a
+    withdrawn deal has no financing need left to check. Checks already recorded stay
+    readable and reviewable. 409: the request is well-formed, the deal's state
+    forbids it.
+    """
+
+    def __init__(self, *, deal_buyer_id: object, deal_id: object, stage: str) -> None:
+        self.deal_buyer_id = deal_buyer_id
+        self.deal_id = deal_id
+        self.stage = stage
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} is {stage}: no new check can be recorded on its buyer "
+                f"{deal_buyer_id}"
+            ),
+            error_code="DEAL_CLOSED",
+            status_code=409,
+            extensions={"deal_id": str(deal_id), "stage": stage},
         )

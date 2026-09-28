@@ -1,4 +1,9 @@
-"""Unit tests for `ManualEntryAdapter` — EXP-2's one shipped `VerificationAdapter`."""
+"""Unit tests for `ManualEntryAdapter` — EXP-2's one shipped `VerificationAdapter`.
+
+Dev4B 4B-4: a manual PASSED carries evidence and a manual PENDING is refused
+(`domain.verification_evidence.check_manual_outcome`, D16), so
+the PASSED requests below carry a note.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +17,10 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationRiskLevel,
     VerificationType,
 )
+from app.modules.onboarding.domain.verification_evidence import (
+    EvidenceRef,
+    VerificationEvidence,
+)
 from app.modules.onboarding.domain.workflow_dependencies import (
     VerificationAdapter,
     VerificationRequest,
@@ -22,14 +31,18 @@ from app.modules.onboarding.infrastructure.adapters.manual_entry_adapter import 
     ManualEntryAdapter,
 )
 from app.shared.enums.kyb import KYBVendorProcessingMode, VendorHealthStatusEnum
+from app.shared.exceptions import ValidationError
+
+_NOTE = VerificationEvidence(note="Called the bank; account confirmed.")
 
 
-def _request(**payload) -> VerificationRequest:
+def _request(evidence: VerificationEvidence | None = _NOTE, **payload) -> VerificationRequest:
     return VerificationRequest(
         verification_type=VerificationType.KYC,
         entity_type=VerificationEntityType.DIRECTOR,
         entity_reference="33333333-3333-3333-3333-333333333333",
         payload=payload,
+        evidence=evidence,
     )
 
 
@@ -123,3 +136,36 @@ def test_get_vendor_health_is_always_healthy():
     health = ManualEntryAdapter().get_vendor_health()
     assert health.status is VendorHealthStatusEnum.HEALTHY
     assert health.response_time_ms == 0
+
+
+# ── Dev4B 4B-4 / 4B-6: the manual outcome rule ──────────────────────────────
+
+
+def test_a_passed_result_without_evidence_is_refused():
+    with pytest.raises(ValidationError, match="evidence"):
+        ManualEntryAdapter().verify(_request(evidence=None, status="PASSED"))
+
+
+def test_a_passed_result_with_a_blank_note_and_no_reference_is_refused():
+    with pytest.raises(ValidationError, match="evidence"):
+        ManualEntryAdapter().verify(
+            _request(evidence=VerificationEvidence(note="   "), status="PASSED")
+        )
+
+
+def test_a_passed_result_with_a_reference_and_no_note_is_accepted():
+    evidence = VerificationEvidence(refs=(EvidenceRef(type="url", ref="https://example.org/r"),))
+    outcome = ManualEntryAdapter().verify(_request(evidence=evidence, status="PASSED"))
+    assert outcome.status is VerificationResultStatus.PASSED
+
+
+@pytest.mark.parametrize("status", ["FAILED", "REVIEW"])
+def test_other_outcomes_need_no_evidence_until_d16_says_otherwise(status: str):
+    outcome = ManualEntryAdapter().verify(_request(evidence=None, status=status))
+    assert outcome.status.value == status
+
+
+def test_a_pending_manual_result_is_refused():
+    """Nothing ever polls a manual entry, so a PENDING one would never resolve."""
+    with pytest.raises(ValidationError, match="PENDING"):
+        ManualEntryAdapter().verify(_request(status="PENDING"))

@@ -4,7 +4,8 @@ Piece 3) end-to-end, **without assuming anything about RXIL's real
 integration mechanism**.
 
 This is explicitly a stub to de-risk the architecture, not a real vendor
-integration. As of this writing, how RXIL actually hands over a batch of
+integration — **RXIL results intake is BLOCKED until the RXIL package/results
+contract exists (D12, 4b-task.md §14 4B-8)**; nothing here pretends otherwise. As of this writing, how RXIL actually hands over a batch of
 checks — a synchronous API call, a file drop, an event stream — is genuinely
 unknown; nothing below guesses at one. `verify_batch` accepts plain
 `VerificationRequest`s whose `payload` already carries the check's outcome
@@ -52,7 +53,14 @@ from app.shared.enums.kyb import KYBVendorProcessingMode, VendorHealthStatusEnum
 #: never rewritten (the same guarantee EXP-2 already proved for the
 #: single-result case; `test_stub_rxil_adapter.py`'s
 #: `test_batch_provider_is_never_rewritten` extends it to the batch case).
-PROVIDER_NAME = "RXIL"
+#:
+#: **Lower-case and says "stub"** (Dev4B 4B-6, 4b-task.md §5.4): providers are
+#: stored lower-case (decision D4 of the earlier plan), and a row this stub wrote
+#: must never be mistaken for RXIL's own answer once a real RXIL adapter exists
+#: and reports `"rxil"`. Rows written before 4B-6 carry `"RXIL"`; they are not
+#: rewritten, and `verification_result.STUB_PROVIDERS` labels both as a stub.
+#: The registry key stays `"rxil"` (`VerificationProvider` is unchanged).
+PROVIDER_NAME = "rxil_stub"
 
 #: The registry key this stub is looked up by. Deliberately lower-case and
 #: distinct from `PROVIDER_NAME`: a registry key is a caller-facing routing
@@ -140,6 +148,16 @@ def _outcome_from_payload(request: VerificationRequest) -> VerificationOutcome:
             f"RXIL batch check payload has an invalid status {raw_status!r}",
             provider_name=PROVIDER_NAME,
         ) from exc
+
+    if status is VerificationResultStatus.PENDING:
+        # Nothing can ever poll this stub (`get_verification_status` raises), so a
+        # PENDING row from it would be pending forever — the placeholder 4b-task.md
+        # §5.9 retires. It records reported outcomes only.
+        raise InvalidProviderPayloadError(
+            "the RXIL stub records reported outcomes only (PASSED, FAILED or REVIEW); "
+            "a PENDING stub result could never resolve",
+            provider_name=PROVIDER_NAME,
+        )
 
     raw_risk_level = payload.get("risk_level")
     risk_level: VerificationRiskLevel | None = None

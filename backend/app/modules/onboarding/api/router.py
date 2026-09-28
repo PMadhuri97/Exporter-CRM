@@ -30,6 +30,7 @@ from app.modules.onboarding.api.schemas.onboarding import (
 from app.modules.onboarding.api.schemas.verification import (
     RecordReviewRequest,
     TriggerVerificationRequest,
+    VerificationCapabilities,
     VerificationResultListResponse,
     VerificationResultResponse,
 )
@@ -43,12 +44,11 @@ from app.modules.onboarding.application import (
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
 )
-from app.modules.onboarding.domain.entities.verification_result import VerificationResult
 from app.modules.onboarding.exceptions import VerificationResultNotFoundError
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
 from app.platform.database.services import get_db
-from app.shared.exceptions import AnerBaseException
+from app.shared.exceptions import AnerBaseException, NotFoundError
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -383,6 +383,14 @@ async def sumsub_webhook(
 # for a director, a bank-account check for an exporter, ...) — see
 # `domain.workflow_dependencies.VerificationAdapter` and
 # `application.verification_service.VerificationService`.
+#
+# Owner: Developer 4B (4b-task.md §5.8, §9). Roles unchanged: writes COMPLIANCE/ADMIN,
+# reads OPERATIONS/COMPLIANCE/ADMIN; DEVELOPER is refused (D8, lead: no widening). The
+# actor and reviewer always come from the session, never the body.
+
+#: Who may record a result or review one. The same tuple gates the routes and
+#: answers the served capabilities, so the two cannot drift.
+_VERIFICATION_DECISION_ROLES = (UserRole.COMPLIANCE, UserRole.ADMIN)
 
 
 @router.post(
@@ -394,13 +402,25 @@ async def sumsub_webhook(
         "Resolves `provider` (default `manual`) to a `VerificationAdapter` via the "
         "EXP-2 registry, runs the check, and persists the outcome as a new "
         "`VerificationResult`. The exact same call handles every `verification_type`/"
-        "`entity_type` combination — there is no per-type branching."
+        "`entity_type` combination — there is no per-type branching. Only "
+        "`provider=manual` is accepted here. An `EXPORTER` subject must be an existing "
+        "company and a `BUYER` subject an existing deal buyer (`deal_buyer.id`) whose "
+        "deal is not `HANDED_OVER` or `WITHDRAWN`. A manual `PASSED` needs evidence (a "
+        "note or at least one reference); a manual `PENDING` is refused. `document` "
+        "evidence must belong to the subject."
     ),
     responses={
         201: {"model": VerificationResultResponse, "description": "Verification result recorded"},
         401: {"description": "Unauthorized"},
         403: {"description": "COMPLIANCE or ADMIN role required"},
-        422: {"description": "Unknown/disabled provider, or an invalid payload for it"},
+        404: {"description": "Subject (company or deal buyer) not found"},
+        409: {"description": "The buyer's deal is HANDED_OVER or WITHDRAWN"},
+        422: {
+            "description": (
+                "Unknown/disabled provider, an invalid payload for it, missing or "
+                "foreign evidence, or an uninterpretable check/subject pair"
+            )
+        },
     },
 )
 async def trigger_verification(
@@ -408,15 +428,18 @@ async def trigger_verification(
     current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResultResponse:
-    result = await VerificationService(db).trigger_verification(
+    service = VerificationService(db)
+    result = await service.trigger_verification(
         body.verification_type,
         body.entity_type,
         body.entity_reference,
         provider=body.provider,
         payload=body.payload,
         actor_id=current_user.id,
+        evidence=body.to_evidence(),
     )
-    return VerificationResultResponse.model_validate(result)
+    view = await service.get_result_view(result.id)
+    return VerificationResultResponse.from_view(view, current_user)
 
 
 @router.get(
@@ -435,19 +458,24 @@ async def get_verification_result(
     current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResultResponse:
-    result = await db.get(VerificationResult, verification_result_id)
-    if result is None:
+    try:
+        view = await VerificationService(db).get_result_view(verification_result_id)
+    except NotFoundError:
         raise VerificationResultNotFoundError(
             f"Verification result '{verification_result_id}' not found"
-        )
-    return VerificationResultResponse.model_validate(result)
+        ) from None
+    return VerificationResultResponse.from_view(view, current_user)
 
 
 @router.get(
     "/verifications",
     response_model=VerificationResultListResponse,
     summary="List verification results for an entity",
-    description="Every check ever run against one exporter/buyer/director/invoice/vessel/shipment.",
+    description=(
+        "Every check ever run against one exporter/buyer/director/invoice/vessel/shipment, "
+        "newest first, each with its review chain; for a buyer, pass the `deal_buyer.id`. "
+        "`capabilities` says whether the caller may record or review a result."
+    ),
     responses={
         200: {"model": VerificationResultListResponse},
         401: {"description": "Unauthorized"},
@@ -460,12 +488,18 @@ async def list_verification_results(
     current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResultListResponse:
-    results = await VerificationService(db).list_verification_results(entity_type, entity_reference)
+    service = VerificationService(db)
+    results = await service.list_verification_results(entity_type, entity_reference)
+    views = await service.views_for(results)
+    may_decide = current_user.role in _VERIFICATION_DECISION_ROLES
     return VerificationResultListResponse(
         entity_type=entity_type,
         entity_reference=entity_reference,
-        results=[VerificationResultResponse.model_validate(r) for r in results],
-        total=len(results),
+        results=[VerificationResultResponse.from_view(v, current_user) for v in views],
+        total=len(views),
+        capabilities=VerificationCapabilities(
+            can_record_result=may_decide, can_review=may_decide
+        ),
     )
 
 
@@ -474,15 +508,19 @@ async def list_verification_results(
     response_model=VerificationResultResponse,
     summary="Record a compliance reviewer's decision",
     description=(
-        "Sets `reviewed_by`/`review_status`, which are immutable once set — a second "
-        "review attempt on the same result returns `409` rather than overwriting it."
+        "Adds a review; nothing is ever edited. A result's first review omits "
+        "`supersedes_review_id`. A later review must name the result's current review "
+        "there and give a `note` — otherwise `409`, so a reviewer never overrules a "
+        "review they have not seen. A `PENDING` result cannot be reviewed (`422`). The "
+        "reviewer is the signed-in user. The response carries the whole review chain."
     ),
     responses={
         200: {"model": VerificationResultResponse},
         401: {"description": "Unauthorized"},
         403: {"description": "COMPLIANCE or ADMIN role required"},
         404: {"description": "Verification result not found"},
-        409: {"description": "Already reviewed"},
+        409: {"description": "`supersedes_review_id` is not the current review"},
+        422: {"description": "Result still PENDING, or a superseding review without a note"},
     },
 )
 async def record_verification_review(
@@ -491,11 +529,15 @@ async def record_verification_review(
     current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResultResponse:
-    result = await VerificationService(db).record_review(
+    service = VerificationService(db)
+    await service.record_review(
         verification_result_id,
         # The reviewer is the authenticated caller, never a client-supplied
         # value — same identifier the screening review stores as `actor_id`.
         reviewed_by=str(current_user.id),
         review_status=body.review_status,
+        note=body.note,
+        supersedes_review_id=body.supersedes_review_id,
     )
-    return VerificationResultResponse.model_validate(result)
+    view = await service.get_result_view(verification_result_id)
+    return VerificationResultResponse.from_view(view, current_user)

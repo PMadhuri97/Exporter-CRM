@@ -167,10 +167,13 @@ describe('ExporterDetailPage — E9', () => {
       entity_reference: DETAIL.customer_id,
       results: [],
       total: 0,
+      capabilities: { can_record_result: true, can_review: true },
     });
     vi.mocked(getScreeningReview).mockResolvedValue({
       customer_id: DETAIL.customer_id,
       items: [],
+      catalogue: [],
+      capabilities: { can_record_decision: true },
     });
     vi.mocked(getQualification).mockResolvedValue(QUALIFICATION);
     vi.mocked(listReasonCodes).mockResolvedValue({
@@ -181,6 +184,9 @@ describe('ExporterDetailPage — E9', () => {
     });
     vi.mocked(getBankActivity).mockResolvedValue({
       customer_id: DETAIL.customer_id,
+      provider_feed_connected: false,
+      provider_feed_status: 'NOT_CONNECTED',
+      provider_feed_message: 'No bank-monitoring provider feed is connected.',
       connected_accounts: 0,
       last_synced_at: null,
       open_findings: 0,

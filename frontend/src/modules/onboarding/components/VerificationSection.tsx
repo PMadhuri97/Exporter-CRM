@@ -8,7 +8,6 @@ import {
   CircleDashed,
   Info,
   Landmark,
-  RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -21,7 +20,6 @@ import {
   useBankActivity,
   useReviewVerification,
   useScreeningReview,
-  useTriggerVerification,
   useUpdateScreeningReviewItem,
   useVerificationResults,
 } from '../hooks';
@@ -44,8 +42,6 @@ const COMPANY_CHECK_TYPES: VerificationType[] = [
   'PEP',
   'ADVERSE_MEDIA',
 ];
-
-const STUB_RUN_TYPES: VerificationType[] = ['KYB', 'AML', 'SANCTIONS'];
 
 type WorkspaceTab = 'COMPANY' | 'BANK';
 
@@ -102,7 +98,7 @@ function Chip({ value }: { value: string }) {
 }
 
 /**
- * A placeholder row created by `runAvailableChecks` rather than by a provider.
+ * A placeholder row created by the retired dev generator rather than by a provider.
  *
  * These carry `normalized_result.stub === true` and no `provider_reference`,
  * and they can never resolve: `ManualEntryAdapter.get_verification_status`
@@ -438,20 +434,17 @@ function ScreeningRow({ result, customerId }: { result: VerificationResult; cust
 }
 
 /**
- * The company check types the tab advertises but nothing in the product can
- * currently produce.
+ * The company check types the tab advertises that have no result yet.
  *
- * `COMPANY_CHECK_TYPES` is what the Company tab is scoped to; `STUB_RUN_TYPES`
- * is the subset the dev placeholder generator knows how to create. Everything
- * in the difference has no route to existence at all — no provider is wired
- * up for it. Listing them is the honest alternative to a tab that silently
- * shows nothing where a check was expected.
+ * `COMPANY_CHECK_TYPES` is what the Company tab is scoped to. No provider is
+ * wired up for any of them, and the dev placeholder generator that used to
+ * fake PENDING rows for three of them is retired (Dev4B 4B-6): listing what is
+ * missing is the honest alternative to a tab that silently shows nothing where
+ * a check was expected.
  */
 function UnavailableChecks({ results }: { results: VerificationResult[] }) {
   const present = new Set(results.map((result) => result.verification_type));
-  const unavailable = COMPANY_CHECK_TYPES.filter(
-    (type) => !present.has(type) && !STUB_RUN_TYPES.includes(type),
-  );
+  const unavailable = COMPANY_CHECK_TYPES.filter((type) => !present.has(type));
   if (unavailable.length === 0) return null;
 
   return (
@@ -544,61 +537,16 @@ function BankActivityPanel({ customerId }: { customerId: string }) {
 }
 
 export function VerificationSection({ customerId }: { customerId: string }) {
-  const user = useCurrentUser();
-  // Triggering a verification is compliance-only on the backend (403 otherwise).
-  const canTrigger = user.role === 'COMPLIANCE' || user.role === 'ADMIN';
   const query = useVerificationResults('EXPORTER', customerId);
-  const triggerMutation = useTriggerVerification('EXPORTER', customerId);
   const [tab, setTab] = useState<WorkspaceTab>('COMPANY');
   const results = query.data?.results ?? [];
   const companyResults = results.filter((result) => result.verification_type !== 'BANK_ACCOUNT' && COMPANY_CHECK_TYPES.includes(result.verification_type));
-
-  async function runAvailableChecks() {
-    const existingTypes = new Set(results.map((result) => result.verification_type));
-    const checksToCreate = STUB_RUN_TYPES.filter((verificationType) => !existingTypes.has(verificationType));
-    if (checksToCreate.length === 0) {
-      toast.info('Available company checks already have screening records');
-      return;
-    }
-    try {
-      for (const verificationType of checksToCreate) {
-        await triggerMutation.mutateAsync({
-          verification_type: verificationType,
-          provider: 'manual',
-          payload: {
-            status: 'PENDING',
-            normalized_result: { stub: true, message: 'Provider integration not configured. Pending record created by the screening workspace.' },
-          },
-        });
-      }
-      toast.success(`${checksToCreate.length} pending screening ${checksToCreate.length === 1 ? 'record' : 'records'} created`);
-    } catch (error) {
-      toast.error(errorMessage(error, 'Could not initialize screening checks'));
-    }
-  }
 
   return (
     <section data-extension="screenings" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-w-0 rounded-lg border border-border bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><div className="flex items-center gap-2"><ShieldCheck size={18} className="text-brand-600" /><h2 className="font-semibold text-ink">Screenings</h2></div><p className="mt-1 text-sm text-ink-muted">Provider results, bank-monitoring signals and compliance review for this exporter.</p></div>
-          {/* TASK: this control creates rows that are terminal at PENDING
-              forever — no provider runs, and they can never resolve. It is
-              therefore dev-only and labelled as a placeholder generator, so it
-              cannot be mistaken for working screening in a demo. Triggering is
-              also COMPLIANCE/ADMIN-only on the backend (403 otherwise). */}
-          {import.meta.env.DEV && canTrigger && (
-            <button
-              type="button"
-              disabled={triggerMutation.isPending}
-              onClick={() => void runAvailableChecks()}
-              title="Developer tool: inserts placeholder PENDING rows. No provider is contacted."
-              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border-strong bg-surface-subtle px-3 py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {triggerMutation.isPending ? <RefreshCw size={15} className="animate-spin" /> : <CircleDashed size={15} />}
-              {triggerMutation.isPending ? 'Creating placeholders…' : 'Create placeholder records (dev)'}
-            </button>
-          )}
         </div>
 
         <div className="mt-4 flex gap-6 border-b border-border">

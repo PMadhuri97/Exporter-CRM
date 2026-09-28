@@ -559,8 +559,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List persisted screening-review checklist decisions */
+        /**
+         * List persisted screening-review checklist decisions
+         * @description The current decision on each checklist item that has one, the full checklist catalogue in display order, and whether the caller may record a decision.
+         */
         get: operations["list_screening_review_api_v1_onboarding_exporters__customer_id__screening_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/screening-review/{item_key}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every decision recorded on one screening-review checklist item
+         * @description Newest first, paged. The checklist table is append-only, so this is the item's complete history; the first row of the first page is its current state.
+         */
+        get: operations["list_screening_review_item_history_api_v1_onboarding_exporters__customer_id__screening_review__item_key__history_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -595,7 +618,7 @@ export interface paths {
         };
         /**
          * List bank-linked suspicious-activity findings
-         * @description E9 establishes the stable CRM contract for Surepass/Finpass-style bank monitoring. Until a provider feed is connected, this returns an empty, valid response instead of fabricated findings.
+         * @description No bank-monitoring provider feed is connected: the response says so (`provider_feed_connected: false`, `provider_feed_status: NOT_CONNECTED`) and never carries fabricated findings.
          */
         get: operations["get_bank_activity_api_v1_onboarding_exporters__customer_id__bank_activity_get"];
         put?: never;
@@ -1234,13 +1257,13 @@ export interface paths {
         };
         /**
          * List verification results for an entity
-         * @description Every check ever run against one exporter/buyer/director/invoice/vessel/shipment.
+         * @description Every check ever run against one exporter/buyer/director/invoice/vessel/shipment, newest first, each with its review chain; for a buyer, pass the `deal_buyer.id`. `capabilities` says whether the caller may record or review a result.
          */
         get: operations["list_verification_results_api_v1_onboarding_verifications_get"];
         put?: never;
         /**
          * Trigger a verification check
-         * @description Resolves `provider` (default `manual`) to a `VerificationAdapter` via the EXP-2 registry, runs the check, and persists the outcome as a new `VerificationResult`. The exact same call handles every `verification_type`/`entity_type` combination — there is no per-type branching.
+         * @description Resolves `provider` (default `manual`) to a `VerificationAdapter` via the EXP-2 registry, runs the check, and persists the outcome as a new `VerificationResult`. The exact same call handles every `verification_type`/`entity_type` combination — there is no per-type branching. Only `provider=manual` is accepted here. An `EXPORTER` subject must be an existing company and a `BUYER` subject an existing deal buyer (`deal_buyer.id`) whose deal is not `HANDED_OVER` or `WITHDRAWN`. A manual `PASSED` needs evidence (a note or at least one reference); a manual `PENDING` is refused. `document` evidence must belong to the subject.
          */
         post: operations["trigger_verification_api_v1_onboarding_verifications_post"];
         delete?: never;
@@ -1277,7 +1300,7 @@ export interface paths {
         put?: never;
         /**
          * Record a compliance reviewer's decision
-         * @description Sets `reviewed_by`/`review_status`, which are immutable once set — a second review attempt on the same result returns `409` rather than overwriting it.
+         * @description Adds a review; nothing is ever edited. A result's first review omits `supersedes_review_id`. A later review must name the result's current review there and give a `note` — otherwise `409`, so a reviewer never overrules a review they have not seen. A `PENDING` result cannot be reviewed (`422`). The reviewer is the signed-in user. The response carries the whole review chain.
          */
         post: operations["record_verification_review_api_v1_onboarding_verifications__verification_result_id__review_post"];
         delete?: never;
@@ -1464,13 +1487,35 @@ export interface components {
              */
             created_at: string;
         };
-        /** BankActivityResponse */
+        /**
+         * BankActivityResponse
+         * @description The bank panel, stated honestly (4b-task.md §5.9): no bank-monitoring
+         *     provider feed is connected, so `provider_feed_connected` is `false` and
+         *     `connected_accounts` is `0` because nothing is connected — not because
+         *     accounts were checked and none found. No finding is ever fabricated.
+         */
         BankActivityResponse: {
             /**
              * Customer Id
              * Format: uuid
              */
             customer_id: string;
+            /**
+             * Provider Feed Connected
+             * @default false
+             */
+            provider_feed_connected: boolean;
+            /**
+             * Provider Feed Status
+             * @default NOT_CONNECTED
+             * @constant
+             */
+            provider_feed_status: "NOT_CONNECTED";
+            /**
+             * Provider Feed Message
+             * @default No bank-monitoring provider feed is connected. Bank activity is not being monitored for this company.
+             */
+            provider_feed_message: string;
             /**
              * Connected Accounts
              * @default 0
@@ -1516,6 +1561,32 @@ export interface components {
             document_type: string;
             /** @default EXPORTER_UPLOAD */
             source: components["schemas"]["DocumentSource"];
+        };
+        /**
+         * BuyerSnapshotResponse
+         * @description A BUYER check's subject as it was when the check was recorded. The
+         *     registration number and tax id are masked for every role but COMPLIANCE and
+         *     ADMIN — the deal buyer's own rule (`masking.py`).
+         */
+        BuyerSnapshotResponse: {
+            /**
+             * Deal Buyer Id
+             * Format: uuid
+             */
+            deal_buyer_id: string;
+            /**
+             * Deal Id
+             * Format: uuid
+             */
+            deal_id: string;
+            /** Name */
+            name: string;
+            /** Country */
+            country: string;
+            /** Registration Number */
+            registration_number: string | null;
+            /** Tax Id */
+            tax_id: string | null;
         };
         /** CaseResponse */
         CaseResponse: {
@@ -2267,28 +2338,6 @@ export interface components {
             gstin: string;
             /** Other Customer Ids */
             other_customer_ids: string[];
-        };
-        /** EvidenceRefModel */
-        EvidenceRefModel: {
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "document" | "verification_result" | "url";
-            /** Ref */
-            ref: string;
-        };
-        /**
-         * EvidenceRefOut
-         * @description An evidence reference as stored. Besides the three a request may send,
-         *     a partner intake may store `partner_reference` — the partner's own id for
-         *     its evidence.
-         */
-        EvidenceRefOut: {
-            /** Type */
-            type: string;
-            /** Ref */
-            ref: string;
         };
         /** ExporterActivityListResponse */
         ExporterActivityListResponse: {
@@ -3328,9 +3377,17 @@ export interface components {
          *     authenticated caller (the router passes `str(current_user.id)`), matching
          *     the screening review's `actor_id`. With `extra="forbid"`, a client still
          *     sending `reviewed_by` is rejected (422) rather than silently ignored.
+         *
+         *     A result's first review leaves `supersedes_review_id` out. Every later review
+         *     names the result's current review there and says why in `note`; naming anything
+         *     else is a 409, so a reviewer never overrules a review they have not seen.
          */
         RecordReviewRequest: {
             review_status: components["schemas"]["VerificationReviewStatus"];
+            /** Note */
+            note?: string | null;
+            /** Supersedes Review Id */
+            supersedes_review_id?: string | null;
         };
         /** RefreshRequest */
         RefreshRequest: {
@@ -3366,7 +3423,7 @@ export interface components {
             /** Evidence Note */
             evidence_note?: string | null;
             /** Evidence Refs */
-            evidence_refs?: components["schemas"]["EvidenceRefModel"][];
+            evidence_refs?: components["schemas"]["app__modules__onboarding__api__schemas__qualification__EvidenceRefModel"][];
             /** Reason */
             reason?: string | null;
         };
@@ -3389,7 +3446,7 @@ export interface components {
             /** Evidence Note */
             evidence_note: string | null;
             /** Evidence Refs */
-            evidence_refs: components["schemas"]["EvidenceRefOut"][];
+            evidence_refs: components["schemas"]["app__modules__onboarding__api__schemas__qualification__EvidenceRefOut"][];
             /** Reason */
             reason: string | null;
             /** Confidence */
@@ -3401,6 +3458,48 @@ export interface components {
              * Format: date-time
              */
             recorded_at: string;
+        };
+        /**
+         * ScreeningCapabilities
+         * @description What the caller may do on this checklist, so the UI keeps no role list.
+         */
+        ScreeningCapabilities: {
+            /** Can Record Decision */
+            can_record_decision: boolean;
+        };
+        /**
+         * ScreeningCatalogueItemResponse
+         * @description One checklist item as the workspace renders it — from the server's one
+         *     catalogue (`screening_review_service.SCREENING_CATALOGUE_ITEMS`).
+         */
+        ScreeningCatalogueItemResponse: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Section */
+            section: string;
+        };
+        /**
+         * ScreeningItemHistoryResponse
+         * @description Every decision recorded on one checklist item, newest first, one page.
+         */
+        ScreeningItemHistoryResponse: {
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            /** Item Key */
+            item_key: string;
+            /** Items */
+            items: components["schemas"]["ScreeningReviewItemResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
         };
         /** ScreeningResult */
         ScreeningResult: {
@@ -3463,6 +3562,9 @@ export interface components {
             customer_id: string;
             /** Items */
             items: components["schemas"]["ScreeningReviewItemResponse"][];
+            /** Catalogue */
+            catalogue: components["schemas"]["ScreeningCatalogueItemResponse"][];
+            capabilities: components["schemas"]["ScreeningCapabilities"];
         };
         /** ScreeningRunResponse */
         ScreeningRunResponse: {
@@ -3627,13 +3729,21 @@ export interface components {
          * TriggerVerificationRequest
          * @description Ask `trigger_verification` to run one check.
          *
-         *     `provider` defaults to `"manual"` (`ManualEntryAdapter`) and is limited to
-         *     the registry keys of the adapters that actually exist (`VerificationProvider`)
-         *     — the value is resolved to a module path, so anything else must be refused
-         *     here at the boundary rather than reaching the registry. `payload` is
+         *     `provider` defaults to `"manual"` (`ManualEntryAdapter`) and, on this route,
+         *     is limited to it (`ManualRouteProvider`, decision D7) — the value is resolved
+         *     to a module path, so anything else must be refused here at the boundary
+         *     rather than reaching the registry. `payload` is
          *     opaque here by design: its shape is between the caller and whichever
          *     adapter `provider` resolves to (see `VerificationRequest`'s docstring),
          *     not something this schema can or should constrain further.
+         *
+         *     `entity_reference` is a company id for `EXPORTER` and a `deal_buyer.id` for
+         *     `BUYER` — never a company or deal id for a buyer.
+         *
+         *     Evidence (`evidence_note`, `evidence_refs`) is what the outcome rests on, in the
+         *     qualification contract's shape. A manual `PASSED` needs some (D16: a note or at
+         *     least one reference). A `document` reference must
+         *     belong to the subject.
          */
         TriggerVerificationRequest: {
             verification_type: components["schemas"]["VerificationType"];
@@ -3646,11 +3756,15 @@ export interface components {
             /**
              * Provider
              * @default manual
-             * @enum {string}
+             * @constant
              */
-            provider: "manual" | "rxil";
+            provider: "manual";
             /** Payload */
             payload?: Record<string, never>;
+            /** Evidence Note */
+            evidence_note?: string | null;
+            /** Evidence Refs */
+            evidence_refs?: components["schemas"]["app__modules__onboarding__api__schemas__verification__EvidenceRefModel"][];
         };
         /**
          * UpdateCaseRequest
@@ -3751,6 +3865,16 @@ export interface components {
             ctx?: Record<string, never>;
         };
         /**
+         * VerificationCapabilities
+         * @description What the caller may do here, so the UI keeps no role list (§5.10).
+         */
+        VerificationCapabilities: {
+            /** Can Record Result */
+            can_record_result: boolean;
+            /** Can Review */
+            can_review: boolean;
+        };
+        /**
          * VerificationEntityType
          * @description What kind of thing a `VerificationResult` is checking.
          *
@@ -3772,6 +3896,7 @@ export interface components {
             results: components["schemas"]["VerificationResultResponse"][];
             /** Total */
             total: number;
+            capabilities: components["schemas"]["VerificationCapabilities"];
         };
         /** VerificationResultResponse */
         VerificationResultResponse: {
@@ -3789,6 +3914,13 @@ export interface components {
             entity_reference: string;
             /** Provider */
             provider: string;
+            /**
+             * Provenance
+             * @enum {string}
+             */
+            provenance: "MANUAL" | "STUB" | "PROVIDER";
+            /** Is Placeholder */
+            is_placeholder: boolean;
             /** Provider Reference */
             provider_reference: string | null;
             status: components["schemas"]["VerificationResultStatus"];
@@ -3804,9 +3936,20 @@ export interface components {
             normalized_result: Record<string, never>;
             /** Evidence Reference */
             evidence_reference: string | null;
+            /** Evidence Note */
+            evidence_note: string | null;
+            /** Evidence Refs */
+            evidence_refs: components["schemas"]["app__modules__onboarding__api__schemas__verification__EvidenceRefOut"][];
+            subject_snapshot: components["schemas"]["BuyerSnapshotResponse"] | null;
             /** Reviewed By */
             reviewed_by: string | null;
             review_status: components["schemas"]["VerificationReviewStatus"] | null;
+            /** Latest Review Id */
+            latest_review_id: string | null;
+            /** Latest Reviewed At */
+            latest_reviewed_at: string | null;
+            /** Reviews */
+            reviews: components["schemas"]["VerificationReviewResponse"][];
             /**
              * Created At
              * Format: date-time
@@ -3829,6 +3972,31 @@ export interface components {
          * @enum {string}
          */
         VerificationResultStatus: "PENDING" | "PASSED" | "FAILED" | "REVIEW";
+        /** VerificationReviewResponse */
+        VerificationReviewResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Verification Result Id
+             * Format: uuid
+             */
+            verification_result_id: string;
+            review_status: components["schemas"]["VerificationReviewStatus"];
+            /** Reviewed By */
+            reviewed_by: string;
+            /**
+             * Reviewed At
+             * Format: date-time
+             */
+            reviewed_at: string;
+            /** Note */
+            note: string | null;
+            /** Supersedes Review Id */
+            supersedes_review_id: string | null;
+        };
         /**
          * VerificationReviewStatus
          * @description A compliance reviewer's decision on a `VerificationResult`.
@@ -3925,6 +4093,48 @@ export interface components {
             country?: string | null;
             /** Level Name */
             level_name?: string | null;
+        };
+        /** EvidenceRefModel */
+        app__modules__onboarding__api__schemas__qualification__EvidenceRefModel: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "document" | "verification_result" | "url";
+            /** Ref */
+            ref: string;
+        };
+        /**
+         * EvidenceRefOut
+         * @description An evidence reference as stored. Besides the three a request may send,
+         *     a partner intake may store `partner_reference` — the partner's own id for
+         *     its evidence.
+         */
+        app__modules__onboarding__api__schemas__qualification__EvidenceRefOut: {
+            /** Type */
+            type: string;
+            /** Ref */
+            ref: string;
+        };
+        /**
+         * EvidenceRefModel
+         * @description One evidence reference: a `crm_document.id` (`document`) or a `url`.
+         */
+        app__modules__onboarding__api__schemas__verification__EvidenceRefModel: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "document" | "url";
+            /** Ref */
+            ref: string;
+        };
+        /** EvidenceRefOut */
+        app__modules__onboarding__api__schemas__verification__EvidenceRefOut: {
+            /** Type */
+            type: string;
+            /** Ref */
+            ref: string;
         };
     };
     responses: never;
@@ -5515,6 +5725,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -5523,6 +5740,60 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    list_screening_review_item_history_api_v1_onboarding_exporters__customer_id__screening_review__item_key__history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                customer_id: string;
+                item_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreeningItemHistoryResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown checklist item */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -5565,14 +5836,19 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown checklist item or status */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -7662,7 +7938,21 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unknown/disabled provider, or an invalid payload for it */
+            /** @description Subject (company or deal buyer) not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The buyer's deal is HANDED_OVER or WITHDRAWN */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown/disabled provider, an invalid payload for it, missing or foreign evidence, or an uninterpretable check/subject pair */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7768,21 +8058,19 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Already reviewed */
+            /** @description `supersedes_review_id` is not the current review */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Result still PENDING, or a superseding review without a note */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };

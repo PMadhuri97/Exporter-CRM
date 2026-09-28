@@ -46,6 +46,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationType,
 )
 from app.modules.onboarding.domain.entities.screening_review import ScreeningReviewItem
+from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
 from app.modules.onboarding.exceptions import (
     ComplianceInputsBuyerNotFoundError,
     ExporterProfileNotFoundError,
@@ -133,6 +134,8 @@ async def _manual_exporter_result(company_id: uuid.UUID, status: str = "PASSED")
             provider="manual",
             payload={"status": status, "risk_level": "LOW", "provider_reference": "bank-1"},
             actor_id="tester",
+            # A manual PASSED needs evidence since 4B-4.
+            evidence=VerificationEvidence(note="Bank letter seen."),
         )
 
 
@@ -319,16 +322,13 @@ async def test_the_latest_screening_row_on_a_timestamp_tie_is_decided_by_id():
     assert reads[0].screening_items[0].status == "FAILED"
 
 
-async def test_the_latest_review_is_the_results_one_review_and_is_stable():
-    """Today a result has at most one review, in its frozen columns (4B-0).
-
-    The status is reported. The review id and time are `None`: today's storage has
-    neither, and the reader does not invent them (4B-2's review table adds both).
-    """
+async def test_the_latest_review_is_the_chain_head_and_is_stable():
+    """Since 4B-2 the latest review is the head of the superseding-review chain:
+    its id, status and time are reported, and a superseding review moves it."""
     company_id = await make_company()
     result = await _manual_exporter_result(company_id)
     async with db_services.AsyncSessionLocal() as db:
-        await VerificationService(db).record_review(
+        first = await VerificationService(db).record_review(
             result.id, reviewed_by="compliance-1", review_status=VerificationReviewStatus.ACCEPTED
         )
 
@@ -336,8 +336,40 @@ async def test_the_latest_review_is_the_results_one_review_and_is_stable():
 
     assert reads[0] == reads[1]
     assert reads[0].latest_review_status == "ACCEPTED"
-    assert reads[0].latest_review_id is None
-    assert reads[0].latest_reviewed_at is None
+    assert reads[0].latest_review_id == first.id
+    assert reads[0].latest_reviewed_at == first.reviewed_at
+
+    async with db_services.AsyncSessionLocal() as db:
+        second = await VerificationService(db).record_review(
+            result.id,
+            reviewed_by="compliance-2",
+            review_status=VerificationReviewStatus.ESCALATED,
+            note="Second look: director mismatch.",
+            supersedes_review_id=first.id,
+        )
+
+    latest = (await _company_inputs(company_id)).verifications[0]
+    assert latest.latest_review_id == second.id
+    assert latest.latest_review_status == "ESCALATED"
+    assert latest.latest_reviewed_at == second.reviewed_at
+
+
+async def test_a_legacy_review_column_without_a_review_row_is_still_reported():
+    """A review written straight into the legacy column (never by the service since
+    0021) keeps 4B-0's reading: the status, and no invented id or time."""
+    company_id = await make_company()
+    with _connect() as conn, conn.cursor() as cur:
+        result_id = _insert_result(cur, entity_type="EXPORTER", entity_reference=company_id)
+        cur.execute(
+            "UPDATE onboarding.verification_result "
+            "SET reviewed_by = 'legacy', review_status = 'REJECTED' WHERE id = %s",
+            (str(result_id),),
+        )
+
+    read = (await _company_inputs(company_id)).verifications[0]
+    assert read.latest_review_status == "REJECTED"
+    assert read.latest_review_id is None
+    assert read.latest_reviewed_at is None
 
 
 # ── Company scope and buyer isolation ────────────────────────────────────────
@@ -584,6 +616,7 @@ async def test_a_check_on_another_subject_takes_no_company_lock():
                 provider="manual",
                 payload={"status": "PASSED"},
                 actor_id="tester",
+                evidence=VerificationEvidence(note="Passport sighted."),
             )
 
     await _finishes_while_company_is_locked(company_id, "FOR UPDATE", write)

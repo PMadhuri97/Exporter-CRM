@@ -599,6 +599,20 @@ Numbering is shared with `4a-task.md`. Only the ones that affect Dev4B are liste
 | D16 | **Minimum evidence** for a manual `PASSED` (note alone, or at least one reference?) and whether `FAILED` needs evidence | A3/L4-07 say "evidence required" only | final merge (rule text) |
 | D17 | **Buyer checks after a deal is `HANDED_OVER`/`WITHDRAWN`** — allowed, refused? | Unsettled | that rule only |
 
+### Dev4B decisions recorded (28 Sep 2026, decided by the lead)
+
+| # | Answer | Where it is implemented |
+|---|---|---|
+| D7 | `POST /verifications` accepts `provider="manual"` only; `"rxil"` is refused there (422) and reserved for the future RXIL intake path | `api/schemas/verification.py` (`ManualRouteProvider`) |
+| D8 | No change: DEVELOPER stays refused on verification/screening routes; `normalized_result` is not masked | unchanged roles |
+| D9 | Screening decisions are also written to the shared history log under a new `screening` dimension (`screening_initial` / `screening_transition`) | `screening_review_service.upsert_review_item`. **Dev1 must add the `screening` row to `history-row.md` §2** |
+| D15 | Checks on DIRECTOR / INVOICE / VESSEL / SHIPMENT write no history row (skipped and logged) | `verification_service._record_history` |
+| D16 | A manual `PASSED` needs a non-blank note **or** at least one reference; `FAILED` / `REVIEW` need none | `domain/verification_evidence.check_manual_outcome` |
+| D17 | A new buyer check on a `HANDED_OVER` or `WITHDRAWN` deal is refused — 409 `DEAL_CLOSED`; existing checks stay readable and reviewable | `verification_service._resolve_subject` |
+
+Also confirmed: reviewing a `PENDING` result is 422 (`VERIFICATION_RESULT_NOT_REVIEWABLE`); the RXIL
+stub stores provider `rxil_stub` and refuses `PENDING`.
+
 Decisions D1, D3, D5, D6, D10, D11, D13 and D14 are Dev4A's (`4a-task.md` §13). D13 is settled
 (28 Sep 2026): Dev4A creates its own risk enum type (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`) in
 `onboarding_0015_bg_check` and does not reuse `verification_risk_level_enum`. Nothing in Dev4B's
