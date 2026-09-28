@@ -3,6 +3,10 @@
 
 Follows `test_exp2_verification_service.py`'s conventions: real Postgres, no
 per-test rollback, each test mints its own fresh ids.
+
+Dev4B (4B-4 … 4B-6): EXPORTER and BUYER subjects must now exist, so those tests
+create a real company / deal buyer; the stub reports the lower-case `rxil_stub`
+(labelled STUB everywhere) and refuses a PENDING it could never resolve.
 """
 
 from __future__ import annotations
@@ -11,6 +15,7 @@ import uuid
 
 import pytest
 
+from app.modules.onboarding.application.deal_service import DealService
 from app.modules.onboarding.application.verification_service import VerificationService
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
@@ -33,6 +38,7 @@ from app.modules.onboarding.infrastructure.adapters.stub_rxil_adapter import (
     REGISTRY_KEY,
     StubRxilAdapter,
 )
+from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.database import services as db_services
 
 pytestmark = pytest.mark.asyncio
@@ -40,6 +46,23 @@ pytestmark = pytest.mark.asyncio
 
 def _actor() -> str:
     return f"officer-{uuid.uuid4().hex[:8]}"
+
+
+async def _deal_buyer() -> uuid.UUID:
+    company_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        deal = await DealService(db).open_deal(company_id, reference="Batch", actor_id="t")
+    async with db_services.AsyncSessionLocal() as db:
+        view = await DealService(db).set_buyer(
+            deal.id, actor_id="t", name="Hamburg Imports GmbH", country="DE"
+        )
+    return view.buyer.id
+
+
+async def test_the_stub_reports_a_lower_case_provider_that_says_stub():
+    """4b-task.md §5.4: stored lower-case, and never mistakable for RXIL itself."""
+    assert PROVIDER_NAME == "rxil_stub"
+    assert PROVIDER_NAME != REGISTRY_KEY
 
 
 # ── Registry / Protocol shape ──────────────────────────────────────────────────
@@ -67,8 +90,8 @@ async def test_stub_rxil_adapter_satisfies_both_protocols():
 async def test_batch_of_three_check_types_produces_three_results_tagged_rxil():
     """The exact scenario the ticket names: one batch payload with KYB + AML
     + INVOICE_DUPLICATION produces exactly 3 VerificationResult rows, each
-    with provider='RXIL' faithfully recorded."""
-    exporter_id = uuid.uuid4()
+    with the stub's own provider name faithfully recorded."""
+    exporter_id = await make_company()
     invoice_id = uuid.uuid4()
 
     requests = [
@@ -120,9 +143,9 @@ async def test_batch_of_three_check_types_produces_three_results_tagged_rxil():
 
 async def test_batch_provider_is_never_rewritten_in_the_read_path():
     """Extends EXP-2's single-result provider-fidelity guarantee to the batch
-    case: a result recorded with provider="RXIL" is never observable as the
-    registry key ("rxil") or anything else, anywhere in the read path."""
-    entity_id = uuid.uuid4()
+    case: a result the stub recorded is never observable as the registry key
+    ("rxil"), as "RXIL" or anything else, anywhere in the read path."""
+    entity_id = await _deal_buyer()
     requests = [
         VerificationRequest(
             verification_type=VerificationType.BUYER,
@@ -142,7 +165,8 @@ async def test_batch_provider_is_never_rewritten_in_the_read_path():
         svc2 = VerificationService(db)
         listed = await svc2.list_verification_results(VerificationEntityType.BUYER, entity_id)
 
-    assert listed[0].provider == "RXIL"
+    assert listed[0].provider == PROVIDER_NAME
+    assert listed[0].provenance == "STUB"
     assert listed[0].provider != REGISTRY_KEY
     assert listed[0].provider != "Internal"
 
@@ -208,7 +232,7 @@ async def test_rxil_batch_check_missing_status_raises_before_persisting():
 
 
 async def test_stub_rxil_adapter_single_check_via_trigger_verification():
-    entity_id = uuid.uuid4()
+    entity_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         svc = VerificationService(db)
         result = await svc.trigger_verification(
@@ -223,3 +247,23 @@ async def test_stub_rxil_adapter_single_check_via_trigger_verification():
     assert result.provider == PROVIDER_NAME
     assert result.status is VerificationResultStatus.PASSED
     assert result.normalized_result == {"gstin_valid": True}
+
+
+async def test_the_stub_refuses_a_pending_result_it_could_never_resolve():
+    """Nothing can poll the stub, so a PENDING row from it would be pending forever
+    (4b-task.md §5.9). Refused before anything is written."""
+    director_id = uuid.uuid4()
+    async with db_services.AsyncSessionLocal() as db:
+        svc = VerificationService(db)
+        with pytest.raises(InvalidProviderPayloadError):
+            await svc.trigger_verification(
+                VerificationType.KYC,
+                VerificationEntityType.DIRECTOR,
+                director_id,
+                provider=REGISTRY_KEY,
+                payload={"status": "PENDING"},
+                actor_id=_actor(),
+            )
+        assert await svc.list_verification_results(
+            VerificationEntityType.DIRECTOR, director_id
+        ) == []

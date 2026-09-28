@@ -26,6 +26,14 @@ adapter's whole job is validating that `payload` and repackaging it as a
   answers that with a capability error).
 * ``risk_level`` (optional): one of `VerificationRiskLevel`'s values.
 * ``valid_until`` (optional): a `datetime`, for checks that expire.
+
+The evidence rule (Dev4B 4B-4, L4-07)
+--------------------------------------
+A person's word is not evidence by itself. ``verify`` applies
+``domain.verification_evidence.check_manual_outcome`` to the outcome and
+``VerificationRequest.evidence``: a ``PASSED`` needs evidence, and a ``PENDING``
+is refused because nothing would ever resolve it (D16, decided by the lead) —
+the rule lives in that one function, not here.
 """
 
 from __future__ import annotations
@@ -38,6 +46,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationRiskLevel,
     VerificationType,
 )
+from app.modules.onboarding.domain.verification_evidence import check_manual_outcome
 from app.modules.onboarding.domain.workflow_dependencies import (
     VerificationCapabilityDeclaration,
     VerificationOutcome,
@@ -70,7 +79,8 @@ class ManualEntryAdapter:
         """Repackage `request.payload` (the manually-observed result) as an
         outcome. Raises `InvalidProviderPayloadError` if `payload["status"]`
         is missing or not a valid `VerificationResultStatus` — the one thing
-        this adapter cannot proceed without.
+        this adapter cannot proceed without — and `ValidationError` (422) when
+        the outcome fails the manual evidence rule (module docstring).
         """
         payload = request.payload
 
@@ -114,6 +124,8 @@ class ManualEntryAdapter:
                 "manual verification entry payload's valid_until must be a datetime",
                 provider_name=PROVIDER_NAME,
             )
+
+        check_manual_outcome(status, request.evidence)
 
         return VerificationOutcome(
             provider=PROVIDER_NAME,

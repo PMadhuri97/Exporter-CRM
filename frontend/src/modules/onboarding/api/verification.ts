@@ -9,7 +9,8 @@
  *
  * Split out of the single `api/index.ts`; the barrel re-exports everything, so
  * no caller changed. Mechanical move — every function below is byte-identical
- * to the one it replaced.
+ * to the one it replaced, except `getScreeningItemHistory`, which Developer 4B
+ * added for the checklist's per-item history (4b-task.md §5.6, 4B-7).
  */
 
 import { apiRequest } from '@/lib/api/client';
@@ -51,6 +52,21 @@ export function getScreeningReview(
 ): Promise<import('../types').ScreeningReviewList> {
   return apiRequest<import('../types').ScreeningReviewList>(
     `/onboarding/exporters/${customerId}/screening-review`,
+  );
+}
+
+/** Every decision recorded on one checklist item, newest first, one page. */
+export function getScreeningItemHistory(
+  customerId: string,
+  itemKey: string,
+  params: { limit?: number; offset?: number } = {},
+): Promise<import('../types').ScreeningItemHistory> {
+  const query = new URLSearchParams({
+    limit: String(params.limit ?? 50),
+    offset: String(params.offset ?? 0),
+  });
+  return apiRequest<import('../types').ScreeningItemHistory>(
+    `/onboarding/exporters/${customerId}/screening-review/${encodeURIComponent(itemKey)}/history?${query.toString()}`,
   );
 }
 

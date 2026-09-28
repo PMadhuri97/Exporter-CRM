@@ -148,8 +148,9 @@ def test_reviewed_by_and_review_status_are_immutable_once_set(verification_resul
     prevent_field_mutation_when_set) rejects a second write to either column
     once it holds a non-null value — the DB-level half of the EXP-2 decision
     to make these write-once, mirroring resolved_by elsewhere in this
-    codebase. The service-level half (VerificationResultAlreadyReviewedError)
-    is covered by test_exp2_verification_service.py."""
+    codebase. Kept by Dev4B 4B-2: the service no longer writes these columns
+    (reviews live in verification_review), but the protection is never
+    dropped."""
     _execute(
         "UPDATE onboarding.verification_result "
         "SET reviewed_by = 'officer_1', review_status = 'ACCEPTED' WHERE id = %s",
@@ -173,28 +174,36 @@ def test_reviewed_by_and_review_status_are_immutable_once_set(verification_resul
     assert "review_status is immutable once set" in str(exc.value)
 
 
-def test_other_columns_remain_mutable_after_review_is_set(verification_result_id):
-    """The trigger only guards reviewed_by/review_status — status, risk_level,
-    normalized_result etc. stay updatable (e.g. by VerificationService.
-    get_verification_status's polling path) even after a review is recorded."""
+def test_a_legacy_review_freezes_the_outcome_but_not_other_columns(verification_result_id):
+    """Rewritten for Dev4B 4B-3 (4b-task.md §5.2). This used to prove the
+    opposite — that polling could still rewrite a reviewed result's outcome.
+    Now `trg_verification_result_outcome_freeze` refuses status, risk_level,
+    normalized_result and valid_until once a result is reviewed, including a
+    review held only in the legacy column. Columns outside the outcome (here
+    provider_reference) stay updatable."""
     _execute(
         "UPDATE onboarding.verification_result "
         "SET reviewed_by = 'officer_1', review_status = 'ACCEPTED' WHERE id = %s",
         (verification_result_id,),
     )
 
-    # Should not raise.
-    _execute(
-        "UPDATE onboarding.verification_result "
-        "SET status = 'PASSED', normalized_result = '{\"x\": 1}'::jsonb WHERE id = %s",
-        (verification_result_id,),
-    )
+    with pytest.raises(psycopg2.errors.RaiseException) as exc:
+        _execute(
+            "UPDATE onboarding.verification_result "
+            "SET status = 'PASSED', normalized_result = '{\"x\": 1}'::jsonb WHERE id = %s",
+            (verification_result_id,),
+        )
+    assert "has been reviewed" in str(exc.value)
 
-    row = _fetch_one(
-        "SELECT status, normalized_result FROM onboarding.verification_result WHERE id = %s",
+    _execute(
+        "UPDATE onboarding.verification_result SET provider_reference = 'ref-2' WHERE id = %s",
         (verification_result_id,),
     )
-    assert row[0] == "PASSED"
+    row = _fetch_one(
+        "SELECT status, provider_reference FROM onboarding.verification_result WHERE id = %s",
+        (verification_result_id,),
+    )
+    assert row == ("PENDING", "ref-2")
 
 
 def test_reviewed_by_alone_can_be_set_without_review_status_yet():

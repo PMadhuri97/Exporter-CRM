@@ -89,12 +89,14 @@ async def test_a_repeat_decision_does_not_overwrite_the_first_one():
     assert second.id != first_id, "a repeat decision must be a new row, not an edit"
 
     async with db_services.AsyncSessionLocal() as db:
-        history = await ScreeningReviewService(db).list_item_history(customer_id, ITEM)
+        # A page and the total behind it since 4B-1's history route.
+        history, total = await ScreeningReviewService(db).list_item_history(customer_id, ITEM)
 
     assert [(h.status, h.reviewed_by) for h in history] == [
         ("PASSED", "reviewer-b"),
         ("FAILED", "reviewer-a"),
     ]
+    assert total == 2
     assert history[-1].comment == "site is parked", (
         "the superseded decision's comment was rewritten"
     )

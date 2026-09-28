@@ -245,3 +245,26 @@ export type RecordBackgroundCheckDecisionRequest =
 
 // ── Verification and screening — owner: Developer 4B ──
 // (4B appends here; 4A does not.)
+//
+// Aliases of the generated schema only, like everything above.
+export type VerificationResultStatus =
+  components['schemas']['VerificationResultStatus'];
+export type VerificationRiskLevel = components['schemas']['VerificationRiskLevel'];
+export type VerificationReview = components['schemas']['VerificationReviewResponse'];
+export type VerificationCapabilities =
+  components['schemas']['VerificationCapabilities'];
+/** An evidence reference a request sends (`document` or `url`). Named
+ * `VerificationEvidenceRef*` in the schema so it cannot collide with qualification's
+ * `EvidenceRefModel` / `EvidenceRefOut`. */
+export type VerificationEvidenceRef =
+  components['schemas']['VerificationEvidenceRefModel'];
+/** An evidence reference as stored on a result. */
+export type VerificationEvidenceRefStored =
+  components['schemas']['VerificationEvidenceRefOut'];
+/** A BUYER check's subject as it was when recorded, masked by the server per role. */
+export type BuyerSnapshot = components['schemas']['BuyerSnapshotResponse'];
+/** One checklist item as the server's catalogue defines it: key, label, section. */
+export type ScreeningCatalogueItem =
+  components['schemas']['ScreeningCatalogueItemResponse'];
+export type ScreeningCapabilities = components['schemas']['ScreeningCapabilities'];
+export type ScreeningItemHistory = components['schemas']['ScreeningItemHistoryResponse'];

@@ -246,6 +246,10 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     #
     # ── Verification and screening — owner: Developer 4B ──
     # (4B appends here; 4A does not.)
+    (
+        "GET",
+        f"{CRM}/exporters/{{customer_id}}/screening-review/{{item_key}}/history",
+    ): STAFF,
 }
 
 

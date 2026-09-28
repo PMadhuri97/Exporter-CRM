@@ -24,18 +24,50 @@ as `provider="RXIL"` everywhere — never silently renamed to the registry key
 the caller passed as `provider=` (which need not be the same string; see
 `ManualEntryAdapter`'s module docstring for why they happen to coincide for
 that one adapter) or to anything else.
+
+Integrity (Developer 4B, 4b-task.md §5)
+---------------------------------------
+* **Subjects are real** (§5.3, §5.7). An `EXPORTER` reference must be a company
+  (404, `ExporterProfileNotFoundError`); a `BUYER` reference must be a
+  `deal_buyer.id` (404, `ComplianceInputsBuyerNotFoundError`) — never a company id
+  or a deal id. DIRECTOR, INVOICE, VESSEL and SHIPMENT have no table to check.
+* **Buyer snapshot** (§5.7). A BUYER result stores the buyer's identity as it was
+  when the check was recorded (`subject_snapshot`), because `DealService.set_buyer`
+  rewrites the buyer row in place under the same id.
+* **Evidence** (§5.3). `evidence_note` / `evidence_refs` are stored on the result.
+  `document` references must exist, belong to the subject (the company for
+  EXPORTER; the buyer's deal or its company for BUYER) and be `AVAILABLE` (scanned
+  clean), read through Developer 3B's `CrmDocumentRepository`. What a *manual* outcome must carry is
+  `domain.verification_evidence.check_manual_outcome` (D16, decided: a note or at
+  least one reference), applied by `ManualEntryAdapter`.
+* **Reviews supersede** (§5.1). `record_review` appends a `verification_review`
+  that must name the current review; nothing is edited.
+* **A reviewed result's outcome is frozen** (§5.2). `get_verification_status`
+  ignores and logs a later provider answer for it; the database refuses it too.
+* **History** (history-row contract §2, dimension `verification`). Recording a
+  result, a polled status change and every review write one row, in the same
+  transaction as the change: on the company for EXPORTER; on the deal's company
+  with `deal_id` set for BUYER. DIRECTOR, INVOICE, VESSEL and SHIPMENT subjects
+  have no company to hang a row on — **D15** (lead, 28 Sep 2026): no row is written
+  for them, and that is logged.
+* **Terminal deals** (D17, lead, 28 Sep 2026). A new BUYER check on a HANDED_OVER
+  or WITHDRAWN deal is refused (409, `DEAL_CLOSED`).
+* **Company lock** (§6.2 invariant 6). Writers of company-scoped inputs (EXPORTER
+  subjects) take `FOR SHARE` on the company after any provider call and before the
+  write. Buyer checks are not company inputs and never touch `background_check`.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 from sqlalchemy import select
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Importing the adapters package runs its module-level `register_adapter(...)`
@@ -45,6 +77,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # `get_adapter("manual")` has something to find.
 import app.modules.onboarding.infrastructure.adapters  # noqa: F401
 from app.modules.onboarding.application.company_input_lock import share_lock_companies
+from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
     VerificationResultStatus,
@@ -52,6 +86,11 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationType,
 )
 from app.modules.onboarding.domain.entities.verification_result import VerificationResult
+from app.modules.onboarding.domain.entities.verification_review import VerificationReview
+from app.modules.onboarding.domain.verification_evidence import (
+    VerificationEvidence,
+    check_evidence_shape,
+)
 from app.modules.onboarding.domain.workflow_dependencies import (
     BatchVerificationAdapter,
     VerificationOutcome,
@@ -59,13 +98,33 @@ from app.modules.onboarding.domain.workflow_dependencies import (
     get_adapter,
 )
 from app.modules.onboarding.exceptions import (
+    ComplianceInputsBuyerNotFoundError,
+    ExporterProfileNotFoundError,
     ProviderCapabilityError,
-    VerificationResultAlreadyReviewedError,
+    VerificationBuyerDealClosedError,
+    VerificationLegacyReviewUnchainedError,
     VerificationResultNotReviewableError,
+    VerificationReviewStaleError,
+)
+from app.modules.onboarding.infrastructure.repositories.crm_document_repository import (
+    CrmDocumentRepository,
+)
+from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository import (
+    DealBuyerRepository,
+)
+from app.modules.onboarding.infrastructure.repositories.deal_repository import DealRepository
+from app.modules.onboarding.infrastructure.repositories.verification_review_repository import (
+    VerificationReviewRepository,
 )
 from app.shared.exceptions import NotFoundError, ValidationError
 
 logger = structlog.get_logger(__name__)
+
+#: The history dimension this service writes (history-row contract §2).
+HISTORY_DIMENSION = "verification"
+#: `event_type` of a review's history row. Results use the contract's derived
+#: `verification_initial` / `verification_transition`.
+REVIEW_EVENT = "verification_reviewed"
 
 
 def _as_uuid(value: uuid.UUID | str) -> uuid.UUID:
@@ -88,6 +147,31 @@ def _company_subjects(
         for entity_type, reference in subjects
         if entity_type == VerificationEntityType.EXPORTER
     ]
+
+
+@dataclass(frozen=True)
+class _Subject:
+    """What a result's subject resolves to.
+
+    `company_id` / `deal_id` place its history rows; `None` company means the subject
+    has no company link (D15). `snapshot` is the BUYER identity to store.
+    """
+
+    company_id: uuid.UUID | None
+    deal_id: uuid.UUID | None = None
+    snapshot: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class VerificationResultView:
+    """A result with its review chain, first review first, current review last."""
+
+    result: VerificationResult
+    reviews: tuple[VerificationReview, ...]
+
+    @property
+    def latest_review(self) -> VerificationReview | None:
+        return self.reviews[-1] if self.reviews else None
 
 
 # ── verification_type / entity_type cross-validation ─────────────────────────
@@ -243,6 +327,8 @@ def _result_from_outcome(
     entity_reference: uuid.UUID,
     raw_result: dict[str, Any],
     outcome: VerificationOutcome,
+    evidence: VerificationEvidence | None = None,
+    subject_snapshot: dict[str, Any] | None = None,
 ) -> VerificationResult:
     """The one place `VerificationOutcome` becomes a `VerificationResult` row.
 
@@ -255,6 +341,10 @@ def _result_from_outcome(
     `VerificationOutcome.normalized_result` under a convention of its own
     choosing; nothing here prevents that. Flagged as a judgment call — see
     this ticket's report.
+
+    `evidence` and `subject_snapshot` (Dev4B) are facts about the moment of
+    recording and are frozen once written. The legacy `evidence_reference`,
+    `reviewed_by` and `review_status` are never written.
     """
     return VerificationResult(
         verification_type=verification_type,
@@ -268,6 +358,9 @@ def _result_from_outcome(
         valid_until=outcome.valid_until,
         raw_result=raw_result,
         normalized_result=outcome.normalized_result,
+        evidence_note=evidence.cleaned_note if evidence is not None else None,
+        evidence_refs=[ref.as_json() for ref in evidence.refs] if evidence is not None else [],
+        subject_snapshot=subject_snapshot,
     )
 
 
@@ -276,6 +369,166 @@ class VerificationService:
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+        self._reviews = VerificationReviewRepository(db)
+
+    # ── Subjects, evidence and history ───────────────────────────────────────
+
+    async def _resolve_subject(
+        self,
+        entity_type: VerificationEntityType,
+        reference: uuid.UUID,
+        *,
+        new_check: bool = False,
+    ) -> _Subject:
+        """Check the subject exists and find where its history belongs.
+
+        `new_check` is true when a check is being recorded (not reviewed or polled):
+        only then does D17's terminal-deal rule apply.
+
+        Raises:
+            ExporterProfileNotFoundError: an EXPORTER reference that is not a company.
+            ComplianceInputsBuyerNotFoundError: a BUYER reference that is not a
+                `deal_buyer.id` — including a company id or a deal id.
+            VerificationBuyerDealClosedError: a new check on a buyer whose deal is
+                HANDED_OVER or WITHDRAWN (D17).
+        """
+        if entity_type == VerificationEntityType.EXPORTER:
+            exists = await self._db.scalar(
+                select(ExporterProfile.customer_id).where(
+                    ExporterProfile.customer_id == reference
+                )
+            )
+            if exists is None:
+                raise ExporterProfileNotFoundError(reference)
+            return _Subject(company_id=reference)
+        if entity_type == VerificationEntityType.BUYER:
+            buyer = await DealBuyerRepository(self._db).get(reference)
+            if buyer is None:
+                raise ComplianceInputsBuyerNotFoundError(reference)
+            deal = await DealRepository(self._db).get_by_id(buyer.deal_id)
+            if deal is None:  # pragma: no cover — deal_buyer.deal_id is a NOT NULL FK
+                raise ComplianceInputsBuyerNotFoundError(reference)
+            # D17 (lead, 28 Sep 2026): no new check on a buyer of a HANDED_OVER or
+            # WITHDRAWN deal. Existing checks stay readable and reviewable.
+            if new_check and deal.stage.is_terminal:
+                raise VerificationBuyerDealClosedError(
+                    deal_buyer_id=reference, deal_id=deal.id, stage=deal.stage.value
+                )
+            return _Subject(
+                company_id=deal.company_id,
+                deal_id=deal.id,
+                snapshot={
+                    "deal_buyer_id": str(buyer.id),
+                    "deal_id": str(deal.id),
+                    "name": buyer.name,
+                    "country": buyer.country,
+                    "registration_number": buyer.registration_number,
+                    "tax_id": buyer.tax_id,
+                },
+            )
+        # DIRECTOR, INVOICE, VESSEL, SHIPMENT: no table to validate against and no
+        # company link. D15 (lead, 28 Sep 2026): they get no history row.
+        return _Subject(company_id=None)
+
+    async def _history_target(self, result: VerificationResult) -> _Subject:
+        """Where a later history row for `result` goes. A BUYER whose row has since
+        disappeared (or a pre-4B-5 row naming no real buyer) has no target."""
+        try:
+            return await self._resolve_subject(result.entity_type, result.entity_reference)
+        except (ExporterProfileNotFoundError, ComplianceInputsBuyerNotFoundError):
+            return _Subject(company_id=None)
+
+    async def _check_evidence_documents(
+        self,
+        evidence: VerificationEvidence | None,
+        entity_type: VerificationEntityType,
+        subject: _Subject,
+    ) -> None:
+        """Every `document` reference exists, belongs to the subject and is
+        `AVAILABLE`.
+
+        EXPORTER: a document of that company. BUYER: a document of the buyer's deal
+        or of the deal's company (4b-task.md §5.3; which of those Dev4A's evidence
+        snapshot may use is its D4). Subjects with no company link cannot own a
+        document, so a document reference on one is refused. A document that is not
+        `AVAILABLE` (`PENDING_SCAN`, `QUARANTINED`, `SCAN_FAILED`) is refused: it can
+        never be opened (`storage-and-documents.md` §4), so it cannot be what an
+        outcome rests on — the same scan gate as Dev4A's evidence snapshot (D4).
+        """
+        check_evidence_shape(evidence)
+        if evidence is None:
+            return
+        document_ids = evidence.document_ids()
+        if not document_ids:
+            return
+        if subject.company_id is None:
+            raise ValidationError(
+                f"document evidence cannot be attached to a {entity_type.value} subject: "
+                "only a company (EXPORTER) or a deal buyer (BUYER) owns documents"
+            )
+        documents = CrmDocumentRepository(self._db)
+        for document_id in document_ids:
+            document = await documents.get_by_id(document_id)
+            if document is None:
+                raise ValidationError(f"evidence document {document_id} does not exist")
+            owned = document.company_id == subject.company_id or (
+                subject.deal_id is not None and document.deal_id == subject.deal_id
+            )
+            if not owned:
+                raise ValidationError(
+                    f"evidence document {document_id} does not belong to this "
+                    f"{entity_type.value} subject"
+                )
+            # Only a document that can be opened can be evidence: PENDING_SCAN,
+            # QUARANTINED and SCAN_FAILED are refused to everyone
+            # (storage-and-documents.md §4), and the evidence is frozen once
+            # written, so a document still being scanned cannot be named now and
+            # "become" evidence later. Checked after ownership, so a foreign
+            # document's scan state is never disclosed.
+            if not document.scan_status.is_servable:
+                raise ValidationError(
+                    f"evidence document {document_id} is {document.scan_status.value}: "
+                    "only an AVAILABLE (scanned clean) document can be evidence"
+                )
+
+    async def _record_history(
+        self,
+        subject: _Subject,
+        *,
+        to_value: str,
+        from_value: str | None,
+        actor_id: str | None,
+        source: str,
+        details: dict[str, Any],
+        reason: str | None = None,
+        event_type: str | None = None,
+    ) -> None:
+        """One `verification` history row, flushed in the caller's transaction."""
+        if subject.company_id is None:
+            # D15 (lead, 28 Sep 2026): no company to write a history row against.
+            logger.info(
+                "verification.history.skipped_no_company",
+                reason="D15: subject has no company link",
+                **{k: v for k, v in details.items() if isinstance(v, str)},
+            )
+            return
+        await HistoryService(self._db).record(
+            subject.company_id,
+            dimension=HISTORY_DIMENSION,
+            to_value=to_value,
+            from_value=from_value,
+            actor_id=actor_id,
+            source=source,
+            reason=reason,
+            deal_id=subject.deal_id,
+            details=details,
+            event_type=event_type,
+        )
+
+    async def _is_reviewed(self, result: VerificationResult) -> bool:
+        if result.review_status is not None:  # legacy column, pre-0021 or raw SQL
+            return True
+        return bool(await self._reviews.chain_for(result.id))
 
     # ── Trigger ──────────────────────────────────────────────────────────────
 
@@ -288,6 +541,7 @@ class VerificationService:
         provider: str = "manual",
         payload: dict[str, Any] | None = None,
         actor_id: uuid.UUID | str,
+        evidence: VerificationEvidence | None = None,
     ) -> VerificationResult:
         """Run one verification check and persist its outcome.
 
@@ -300,32 +554,44 @@ class VerificationService:
         Args:
             verification_type: What kind of check to run.
             entity_type: What kind of thing is being checked.
-            entity_reference: That entity's own id.
+            entity_reference: That entity's own id — a company id for EXPORTER,
+                a `deal_buyer.id` for BUYER.
             provider: The registry name to resolve. Defaults to `"manual"`
-                (`ManualEntryAdapter`) — the only adapter this ticket ships.
+                (`ManualEntryAdapter`).
             payload: Type-specific input. For `ManualEntryAdapter`, this is
                 where the manually-observed result itself travels (see its
                 module docstring); for a future real vendor adapter, this is
                 whatever that vendor's `verify()` needs to submit a check.
-            actor_id: Who/what triggered this check, for the audit log line.
+            actor_id: Who triggered this check — from the session, never a body.
+            evidence: What the outcome rests on (note and/or references).
 
         Returns:
             The persisted, refreshed `VerificationResult`.
+
+        Raises:
+            ValidationError: an uninterpretable type/subject pair, malformed or
+                foreign evidence, or an outcome the adapter's rule refuses.
+            ExporterProfileNotFoundError / ComplianceInputsBuyerNotFoundError:
+                the subject does not exist.
         """
         # Before the adapter is resolved or called: a pair this service
         # cannot interpret must not reach a provider or a row.
         _validate_type_pair(verification_type, entity_type)
 
+        reference = _as_uuid(entity_reference)
+        subject = await self._resolve_subject(entity_type, reference, new_check=True)
+        await self._check_evidence_documents(evidence, entity_type, subject)
+
         adapter_cls = get_adapter(provider)
         adapter = adapter_cls()
 
-        reference = _as_uuid(entity_reference)
         request_payload = dict(payload or {})
         request = VerificationRequest(
             verification_type=verification_type,
             entity_type=entity_type,
             entity_reference=str(reference),
             payload=request_payload,
+            evidence=evidence,
         )
 
         outcome = adapter.verify(request)
@@ -336,10 +602,21 @@ class VerificationService:
             entity_reference=reference,
             raw_result=request_payload,
             outcome=outcome,
+            evidence=evidence,
+            subject_snapshot=subject.snapshot,
         )
         # After the provider call, so no lock is held while a provider works.
         await share_lock_companies(self._db, _company_subjects([(entity_type, reference)]))
         self._db.add(result)
+        await self._db.flush()
+        await self._record_history(
+            subject,
+            to_value=outcome.status.value,
+            from_value=None,
+            actor_id=str(actor_id),
+            source="verification_service.trigger_verification",
+            details=_result_details(result),
+        )
         await self._db.commit()
         await self._db.refresh(result)
 
@@ -368,7 +645,9 @@ class VerificationService:
         persist one `VerificationResult` per check, all in a single
         transaction — the "one payload produces many `VerificationResult`
         rows" shape a real RXIL integration will need (the EXP-2 plan's point
-        6), proven here end-to-end against `StubRxilAdapter`.
+        6), proven here end-to-end against `StubRxilAdapter`. RXIL results
+        intake itself is BLOCKED on the RXIL package contract (D12); this has
+        no production caller.
 
         Resolves `provider` via the exact same registry
         `trigger_verification` uses (`workflow_dependencies.get_adapter`),
@@ -384,6 +663,8 @@ class VerificationService:
         different `verification_type`/`entity_type` combination (that's the
         point: one RXIL payload can carry KYB + AML + INVOICE_DUPLICATION
         together), and every one of them is handled by the exact same loop.
+        Subjects are validated exactly as `trigger_verification` validates
+        them, before the adapter is called.
 
         All-or-nothing: if the adapter raises, or returns a mismatched number
         of outcomes, nothing is persisted — no partial batch ever lands in
@@ -393,10 +674,19 @@ class VerificationService:
             raise ValidationError("trigger_verification_batch requires at least one request")
 
         # Validated up front, before the adapter is called, so an
-        # uninterpretable pair anywhere in the batch fails the whole batch
-        # rather than being rejected after a provider has already done work.
+        # uninterpretable pair or a ghost subject anywhere in the batch fails the
+        # whole batch rather than being rejected after a provider has already
+        # done work.
+        subjects: list[_Subject] = []
         for candidate in requests:
             _validate_type_pair(candidate.verification_type, candidate.entity_type)
+            candidate_subject = await self._resolve_subject(
+                candidate.entity_type, _as_uuid(candidate.entity_reference), new_check=True
+            )
+            await self._check_evidence_documents(
+                candidate.evidence, candidate.entity_type, candidate_subject
+            )
+            subjects.append(candidate_subject)
 
         adapter_cls = get_adapter(provider)
         adapter = adapter_cls()
@@ -417,15 +707,26 @@ class VerificationService:
             ),
         )
         results: list[VerificationResult] = []
-        for request, outcome in zip(requests, outcomes, strict=True):
+        for request, outcome, subject in zip(requests, outcomes, subjects, strict=True):
             result = _result_from_outcome(
                 verification_type=request.verification_type,
                 entity_type=request.entity_type,
                 entity_reference=_as_uuid(request.entity_reference),
                 raw_result=dict(request.payload),
                 outcome=outcome,
+                evidence=request.evidence,
+                subject_snapshot=subject.snapshot,
             )
             self._db.add(result)
+            await self._db.flush()
+            await self._record_history(
+                subject,
+                to_value=outcome.status.value,
+                from_value=None,
+                actor_id=str(actor_id),
+                source="verification_service.trigger_verification_batch",
+                details=_result_details(result),
+            )
             results.append(result)
 
         await self._db.commit()
@@ -450,66 +751,126 @@ class VerificationService:
         performed one, if more than one shares it — a caller retrying a
         submission with the same reference is the expected case), asks that
         row's own `provider` adapter for its current status, and updates the
-        row if the status has changed. A synchronous adapter (e.g.
+        row if the answer has changed. A synchronous adapter (e.g.
         `ManualEntryAdapter`) never has a `PENDING` row to poll in practice,
         since it resolves everything in `trigger_verification`'s call to
         `.verify()` — its `get_verification_status` raises rather than being
         reached here for a normal caller.
 
+        **A reviewed result is never changed** (4b-task.md §5.2, L4-02): once it
+        has any review, a different provider answer is logged
+        (`verification.status_polled.ignored_reviewed`, with the provider's new
+        values) and the row is returned untouched. The provider is asked first,
+        with no lock held while it works (as in `trigger_verification`); the row is
+        then re-read `FOR UPDATE` — the same lock `record_review` takes — and the
+        answer is judged against the row as it is *then*, so a review that landed
+        while the provider was working is seen, and a review and a poll's write
+        cannot interleave. `trg_verification_result_outcome_freeze` refuses the
+        write at the database for anything that does not come through here.
+
+        Polling has no production caller and no scheduler; none is added.
+
         Raises:
             NotFoundError: no `VerificationResult` carries this
                 `provider_reference`.
         """
-        stmt = (
-            select(VerificationResult)
-            .where(VerificationResult.provider_reference == provider_reference)
-            .order_by(VerificationResult.performed_at.desc())
-            .limit(1)
+        not_found = NotFoundError(
+            f"No verification_result found for provider_reference '{provider_reference}'"
         )
-        execution = await self._db.execute(stmt)
-        result = execution.scalar_one_or_none()
-        if result is None:
-            raise NotFoundError(
-                f"No verification_result found for provider_reference '{provider_reference}'"
+        found = (
+            await self._db.execute(
+                select(VerificationResult)
+                .where(VerificationResult.provider_reference == provider_reference)
+                .order_by(VerificationResult.performed_at.desc())
+                .limit(1)
             )
+        ).scalar_one_or_none()
+        if found is None:
+            raise not_found
 
-        adapter_cls = get_adapter(result.provider)
+        # The provider works with no row lock held.
+        adapter_cls = get_adapter(found.provider)
         adapter = adapter_cls()
         outcome = adapter.get_verification_status(provider_reference)
 
-        if (
+        # Then the row as it is now, under the lock `record_review` takes.
+        result = (
+            await self._db.execute(
+                select(VerificationResult)
+                .where(VerificationResult.id == found.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if result is None:  # pragma: no cover — results are never deleted
+            raise not_found
+
+        changed = (
             outcome.status != result.status
             or outcome.risk_level != result.risk_level
             or outcome.normalized_result != result.normalized_result
             or outcome.valid_until != result.valid_until
-        ):
-            previous_status = result.status
-            await share_lock_companies(
-                self._db, _company_subjects([(result.entity_type, result.entity_reference)])
-            )
-            result.status = outcome.status
-            result.risk_level = outcome.risk_level
-            result.normalized_result = outcome.normalized_result
-            result.valid_until = outcome.valid_until
-            self._db.add(result)
+        )
+        if not changed:
+            await self._db.commit()  # ends the transaction and releases the row lock
+            return result
+
+        if await self._is_reviewed(result):
             await self._db.commit()
-            await self._db.refresh(result)
-            logger.info(
-                "verification.status_polled.changed",
+            logger.warning(
+                "verification.status_polled.ignored_reviewed",
                 verification_result_id=str(result.id),
                 provider=result.provider,
-                previous_status=previous_status.value,
-                new_status=result.status.value,
+                provider_reference=provider_reference,
+                stored_status=result.status.value,
+                provider_status=outcome.status.value,
+                provider_risk_level=(
+                    outcome.risk_level.value if outcome.risk_level is not None else None
+                ),
+                provider_normalized_result=outcome.normalized_result,
+                provider_valid_until=(
+                    outcome.valid_until.isoformat() if outcome.valid_until is not None else None
+                ),
             )
+            return result
+
+        previous_status = result.status
+        await share_lock_companies(
+            self._db, _company_subjects([(result.entity_type, result.entity_reference)])
+        )
+        result.status = outcome.status
+        result.risk_level = outcome.risk_level
+        result.normalized_result = outcome.normalized_result
+        result.valid_until = outcome.valid_until
+        self._db.add(result)
+        await self._db.flush()
+        if previous_status != outcome.status:
+            await self._record_history(
+                await self._history_target(result),
+                to_value=outcome.status.value,
+                from_value=previous_status.value,
+                actor_id=None,  # the provider, not a person
+                source="verification_service.get_verification_status",
+                details=_result_details(result),
+            )
+        await self._db.commit()
+        await self._db.refresh(result)
+        logger.info(
+            "verification.status_polled.changed",
+            verification_result_id=str(result.id),
+            provider=result.provider,
+            previous_status=previous_status.value,
+            new_status=result.status.value,
+        )
         return result
 
-    # ── List ─────────────────────────────────────────────────────────────────
+    # ── Read ─────────────────────────────────────────────────────────────────
 
     async def list_verification_results(
         self, entity_type: VerificationEntityType, entity_reference: uuid.UUID | str
     ) -> list[VerificationResult]:
         """Every check ever run against one exporter/buyer/director/invoice/
-        vessel/shipment, most recent first."""
+        vessel/shipment, most recent first (ties broken by `created_at`, `id`)."""
         reference = _as_uuid(entity_reference)
         stmt = (
             select(VerificationResult)
@@ -517,10 +878,35 @@ class VerificationService:
                 VerificationResult.entity_type == entity_type,
                 VerificationResult.entity_reference == reference,
             )
-            .order_by(VerificationResult.performed_at.desc())
+            .order_by(
+                VerificationResult.performed_at.desc(),
+                VerificationResult.created_at.desc(),
+                VerificationResult.id.desc(),
+            )
         )
         execution = await self._db.execute(stmt)
         return list(execution.scalars().all())
+
+    async def views_for(
+        self, results: Sequence[VerificationResult]
+    ) -> list[VerificationResultView]:
+        """Attach each result's review chain, in one query."""
+        chains = await self._reviews.chains_for(result.id for result in results)
+        return [
+            VerificationResultView(result=result, reviews=chains.get(result.id, ()))
+            for result in results
+        ]
+
+    async def get_result_view(self, verification_result_id: uuid.UUID) -> VerificationResultView:
+        """One result with its review chain.
+
+        Raises:
+            NotFoundError: no such result.
+        """
+        result = await self._db.get(VerificationResult, verification_result_id)
+        if result is None:
+            raise NotFoundError(f"No verification_result found with id '{verification_result_id}'")
+        return (await self.views_for([result]))[0]
 
     # ── Review ───────────────────────────────────────────────────────────────
 
@@ -530,46 +916,108 @@ class VerificationService:
         *,
         reviewed_by: str,
         review_status: VerificationReviewStatus,
-    ) -> VerificationResult:
-        """Record a compliance reviewer's decision.
+        note: str | None = None,
+        supersedes_review_id: uuid.UUID | None = None,
+    ) -> VerificationReview:
+        """Record a compliance reviewer's decision as a new, immutable review.
 
-        `reviewed_by`/`review_status` are immutable once set — see
-        `VerificationResultAlreadyReviewedError`'s docstring for the reasoning
-        and the documented risk of that choice. This method raises that
-        exception itself, as a clean domain error, before ever attempting the
-        write; `trg_verification_result_field_immutability` (migration
-        `onboarding_0006_verif_result`) is the defense-in-depth path if
-        a write reaches Postgres some other way.
+        The first review names no `supersedes_review_id`. Every later review must
+        name the result's **current** review (the chain head) and give a `note`;
+        otherwise `VerificationReviewStaleError` (409) — a reviewer never silently
+        overrules a review they did not see. Earlier reviews are never edited: the
+        table refuses it, and the unique supersedes pointer and the one-first-
+        review index mean two concurrent reviewers cannot fork the chain — the one
+        that loses the race gets the same 409.
+
+        The result row is taken `FOR UPDATE` first (the lock polling takes too), so
+        reviews of one result are judged one at a time. The legacy
+        `reviewed_by`/`review_status` columns are not written.
+
+        Writes one `verification` history row: `from_value` the previous review's
+        status (or `None`), `to_value` the new one, `reason` the note.
 
         Raises:
             NotFoundError: no such `VerificationResult`.
-            VerificationResultAlreadyReviewedError: already reviewed.
-            VerificationResultNotReviewableError: still `PENDING` — there is
-                no finding yet, and a review cannot be undone.
+            VerificationResultNotReviewableError: still `PENDING` (422).
+            VerificationLegacyReviewUnchainedError: the result has a legacy
+                `review_status` but no review record to supersede (409; only
+                reachable if the legacy columns were written outside the service).
+            VerificationReviewStaleError: `supersedes_review_id` is not the current
+                review (409).
+            ValidationError: a superseding review without a note (422).
         """
         result_id = _as_uuid(verification_result_id)
         stmt = (
             select(VerificationResult)
             .where(VerificationResult.id == result_id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         execution = await self._db.execute(stmt)
         result = execution.scalar_one_or_none()
         if result is None:
             raise NotFoundError(f"No verification_result found with id '{result_id}'")
 
-        if result.reviewed_by is not None or result.review_status is not None:
-            raise VerificationResultAlreadyReviewedError(verification_result_id=result_id)
-
         if result.status == VerificationResultStatus.PENDING:
             raise VerificationResultNotReviewableError(verification_result_id=result_id)
+
+        chain = await self._reviews.chain_for(result_id)
+        if not chain and result.review_status is not None:
+            # A legacy verdict with no review record (set outside the service after
+            # migration 0021, which copied every earlier one). A "first" review here
+            # would overrule it with no supersede link and no reason — refused.
+            raise VerificationLegacyReviewUnchainedError(
+                verification_result_id=result_id,
+                legacy_review_status=result.review_status.value,
+            )
+        head = chain[-1] if chain else None
+        current_head_id = head.id if head is not None else None
+        if supersedes_review_id != current_head_id:
+            raise VerificationReviewStaleError(
+                verification_result_id=result_id, current_review_id=current_head_id
+            )
+
+        cleaned_note = (note or "").strip() or None
+        if head is not None and cleaned_note is None:
+            raise ValidationError("a review that supersedes another must say why (note)")
 
         await share_lock_companies(
             self._db, _company_subjects([(result.entity_type, result.entity_reference)])
         )
-        result.reviewed_by = reviewed_by
-        result.review_status = review_status
-        self._db.add(result)
+        review = VerificationReview(
+            verification_result_id=result_id,
+            review_status=review_status,
+            reviewed_by=reviewed_by,
+            note=cleaned_note,
+            supersedes_review_id=supersedes_review_id,
+        )
+        try:
+            review = await self._reviews.create(review)
+        except IntegrityError:
+            await self._db.rollback()
+            latest = await self._reviews.chain_for(result_id)
+            raise VerificationReviewStaleError(
+                verification_result_id=result_id,
+                current_review_id=latest[-1].id if latest else None,
+            ) from None
+
+        await self._record_history(
+            await self._history_target(result),
+            to_value=review_status.value,
+            from_value=head.review_status.value if head is not None else None,
+            actor_id=reviewed_by,
+            source="verification_service.record_review",
+            reason=cleaned_note,
+            event_type=REVIEW_EVENT,
+            details={
+                "verification_result_id": str(result_id),
+                "review_id": str(review.id),
+                "supersedes_review_id": (
+                    str(supersedes_review_id) if supersedes_review_id is not None else None
+                ),
+                "verification_type": result.verification_type.value,
+            },
+        )
 
         try:
             await self._db.commit()
@@ -577,14 +1025,28 @@ class VerificationService:
             await self._db.rollback()
             raise
 
-        await self._db.refresh(result)
+        await self._db.refresh(review)
         logger.info(
             "verification.reviewed",
             verification_result_id=str(result_id),
+            review_id=str(review.id),
+            supersedes_review_id=(
+                str(supersedes_review_id) if supersedes_review_id is not None else None
+            ),
             reviewed_by=reviewed_by,
             review_status=review_status.value,
         )
-        return result
+        return review
 
 
-__all__ = ["VerificationService"]
+def _result_details(result: VerificationResult) -> dict[str, Any]:
+    return {
+        "verification_result_id": str(result.id),
+        "verification_type": result.verification_type.value,
+        "entity_type": result.entity_type.value,
+        "entity_reference": str(result.entity_reference),
+        "provider": result.provider,
+    }
+
+
+__all__ = ["VerificationResultView", "VerificationService"]

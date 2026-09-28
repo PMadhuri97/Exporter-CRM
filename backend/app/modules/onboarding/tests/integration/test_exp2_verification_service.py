@@ -17,6 +17,11 @@ ships. `RxilAdapter` doesn't exist until the next ticket, so
 guarantee ahead of that integration landing (this is the ticket's own
 prescribed approach — see docs/exporter-crm-tickets.md's EXP-2 acceptance
 criteria).
+
+Dev4B (4B-2, 4B-4, 4B-5): EXPORTER and BUYER subjects must exist, so those tests
+create a real company / deal buyer; a manual PASSED carries evidence; and the
+one-review-only rule is replaced by superseding reviews
+(`test_record_review_supersedes_the_current_review_instead_of_overwriting_it`).
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ import uuid
 
 import pytest
 
+from app.modules.onboarding.application.deal_service import DealService
 from app.modules.onboarding.application.verification_service import VerificationService
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
@@ -33,6 +39,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationRiskLevel,
     VerificationType,
 )
+from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
 from app.modules.onboarding.domain.workflow_dependencies import (
     VERIFICATION_ADAPTER_REGISTRY,
     VerificationCapabilityDeclaration,
@@ -40,9 +47,10 @@ from app.modules.onboarding.domain.workflow_dependencies import (
     register_adapter,
 )
 from app.modules.onboarding.exceptions import (
-    VerificationResultAlreadyReviewedError,
     VerificationResultNotReviewableError,
+    VerificationReviewStaleError,
 )
+from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.database import services as db_services
 from app.shared.contracts.kyb import VendorHealthStatus
 from app.shared.enums.kyb import KYBVendorProcessingMode, VendorHealthStatusEnum
@@ -51,6 +59,18 @@ from app.shared.exceptions import NotFoundError, ValidationError
 
 def _actor() -> str:
     return f"officer-{uuid.uuid4().hex[:8]}"
+
+
+_NOTE = VerificationEvidence(note="Checked against the source document.")
+
+
+async def _deal_buyer() -> uuid.UUID:
+    company_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        deal = await DealService(db).open_deal(company_id, reference="EXP-2", actor_id="t")
+    async with db_services.AsyncSessionLocal() as db:
+        view = await DealService(db).set_buyer(deal.id, actor_id="t", name="Buyer BV", country="NL")
+    return view.buyer.id
 
 
 class _FakeAlwaysPassAdapter:
@@ -180,7 +200,7 @@ def registered_fake_async_vendor():
 
 
 async def test_manual_entry_adapter_round_trips_trigger_to_list():
-    entity_reference = uuid.uuid4()
+    entity_reference = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         svc = VerificationService(db)
         result = await svc.trigger_verification(
@@ -194,6 +214,7 @@ async def test_manual_entry_adapter_round_trips_trigger_to_list():
                 "provider_reference": f"manual-{uuid.uuid4().hex[:8]}",
             },
             actor_id=_actor(),
+            evidence=_NOTE,
         )
 
     assert result.provider == "manual"
@@ -248,7 +269,7 @@ async def test_kyc_director_and_bank_account_exporter_share_identical_code_path(
     own request named — nothing more, nothing type-specific bolted on.
     """
     director_id = uuid.uuid4()
-    exporter_id = uuid.uuid4()
+    exporter_id = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         svc = VerificationService(db)
@@ -288,7 +309,7 @@ async def test_provider_is_never_rewritten(registered_fake_rxil):
     """A result recorded with provider="RXIL" is never observable as anything
     else — not "Internal", not the registry key ("fake_rxil_registry_key")
     the caller passed as `provider=`, anywhere in the read path."""
-    buyer_id = uuid.uuid4()
+    buyer_id = await _deal_buyer()
 
     async with db_services.AsyncSessionLocal() as db:
         svc = VerificationService(db)
@@ -377,7 +398,7 @@ async def test_list_verification_results_scoped_to_entity():
         svc = VerificationService(db)
         await svc.trigger_verification(
             VerificationType.KYC, VerificationEntityType.DIRECTOR, entity_a,
-            payload={"status": "PASSED"}, actor_id=_actor(),
+            payload={"status": "PASSED"}, actor_id=_actor(), evidence=_NOTE,
         )
         await svc.trigger_verification(
             VerificationType.AML, VerificationEntityType.DIRECTOR, entity_a,
@@ -385,7 +406,7 @@ async def test_list_verification_results_scoped_to_entity():
         )
         await svc.trigger_verification(
             VerificationType.KYC, VerificationEntityType.DIRECTOR, entity_b,
-            payload={"status": "PASSED"}, actor_id=_actor(),
+            payload={"status": "PASSED"}, actor_id=_actor(), evidence=_NOTE,
         )
 
         results_a = await svc.list_verification_results(VerificationEntityType.DIRECTOR, entity_a)
@@ -399,7 +420,7 @@ async def test_list_verification_results_scoped_to_entity():
 # ── record_review ─────────────────────────────────────────────────────────────
 
 
-async def test_record_review_sets_reviewed_by_and_review_status():
+async def test_record_review_adds_the_first_review():
     async with db_services.AsyncSessionLocal() as db:
         svc = VerificationService(db)
         triggered = await svc.trigger_verification(
@@ -407,65 +428,94 @@ async def test_record_review_sets_reviewed_by_and_review_status():
             payload={"status": "REVIEW"}, actor_id=_actor(),
         )
 
-        reviewed = await svc.record_review(
+        review = await svc.record_review(
             triggered.id, reviewed_by="compliance_officer_1",
             review_status=VerificationReviewStatus.ACCEPTED,
         )
 
-    assert reviewed.reviewed_by == "compliance_officer_1"
-    assert reviewed.review_status is VerificationReviewStatus.ACCEPTED
+    assert review.verification_result_id == triggered.id
+    assert review.reviewed_by == "compliance_officer_1"
+    assert review.review_status is VerificationReviewStatus.ACCEPTED
+    assert review.supersedes_review_id is None
+    assert review.reviewed_at is not None
+
+    async with db_services.AsyncSessionLocal() as db:
+        view = await VerificationService(db).get_result_view(triggered.id)
+    assert [r.id for r in view.reviews] == [review.id]
+    # The legacy columns are no longer written (4B-2).
+    assert view.result.reviewed_by is None
+    assert view.result.review_status is None
 
 
-async def test_record_review_rejects_a_second_review_with_conflicting_outcome():
-    """Immutable-once-set (this ticket's decision, mirroring resolved_by
-    elsewhere in this codebase) — a second call, even with a different
-    outcome, is rejected rather than silently overwriting the first."""
+async def test_record_review_supersedes_the_current_review_instead_of_overwriting_it():
+    """Rewritten for 4B-2 (4b-task.md §5.1). The old rule — a second review is
+    refused outright — is replaced by superseding reviews: a later review must name
+    the current review, and a stale or missing name is refused (409) rather than
+    silently overwriting. The earlier review is never edited."""
     async with db_services.AsyncSessionLocal() as db:
         svc = VerificationService(db)
         triggered = await svc.trigger_verification(
             VerificationType.KYC, VerificationEntityType.DIRECTOR, uuid.uuid4(),
             payload={"status": "REVIEW"}, actor_id=_actor(),
         )
-        await svc.record_review(
+        first = await svc.record_review(
             triggered.id, reviewed_by="compliance_officer_1",
             review_status=VerificationReviewStatus.ACCEPTED,
         )
 
-        with pytest.raises(VerificationResultAlreadyReviewedError):
-            await svc.record_review(
+    # A second review that does not name the current one is stale.
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(VerificationReviewStaleError) as stale:
+            await VerificationService(db).record_review(
                 triggered.id, reviewed_by="compliance_officer_2",
                 review_status=VerificationReviewStatus.REJECTED,
+                note="Disagree",
             )
+    assert stale.value.status_code == 409
+    assert stale.value.current_review_id == first.id
 
-    # The original decision is untouched.
     async with db_services.AsyncSessionLocal() as db:
-        refreshed = await db.get(type(triggered), triggered.id)
-    assert refreshed.reviewed_by == "compliance_officer_1"
-    assert refreshed.review_status is VerificationReviewStatus.ACCEPTED
+        second = await VerificationService(db).record_review(
+            triggered.id, reviewed_by="compliance_officer_2",
+            review_status=VerificationReviewStatus.REJECTED,
+            note="Registry extract contradicts the director list.",
+            supersedes_review_id=first.id,
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        view = await VerificationService(db).get_result_view(triggered.id)
+    assert [r.id for r in view.reviews] == [first.id, second.id]
+    assert view.latest_review.review_status is VerificationReviewStatus.REJECTED
+    # The first decision is untouched.
+    assert view.reviews[0].reviewed_by == "compliance_officer_1"
+    assert view.reviews[0].review_status is VerificationReviewStatus.ACCEPTED
 
 
-async def test_record_review_refuses_a_pending_result():
-    """A PENDING check has no finding yet, and a review is permanent — so the
-    service refuses it rather than locking in a decision about nothing. The
-    UI hides the controls; this is the rule an API client hits."""
+async def test_record_review_refuses_a_pending_result(registered_fake_async_vendor):
+    """A PENDING check has no finding yet, and a review stays on the record — so
+    the service refuses it (422) rather than recording a decision about nothing.
+    A manual entry can no longer be PENDING (4B-6), so the PENDING row comes from
+    an asynchronous vendor double."""
     async with db_services.AsyncSessionLocal() as db:
         svc = VerificationService(db)
         triggered = await svc.trigger_verification(
-            VerificationType.KYB, VerificationEntityType.EXPORTER, uuid.uuid4(),
-            payload={"status": "PENDING"}, actor_id=_actor(),
+            VerificationType.KYC, VerificationEntityType.DIRECTOR, uuid.uuid4(),
+            provider=registered_fake_async_vendor,
+            payload={"provider_reference": f"pending-{uuid.uuid4().hex[:8]}"},
+            actor_id=_actor(),
         )
         assert triggered.status is VerificationResultStatus.PENDING
 
-        with pytest.raises(VerificationResultNotReviewableError):
+        with pytest.raises(VerificationResultNotReviewableError) as refused:
             await svc.record_review(
                 triggered.id, reviewed_by="compliance_officer_1",
                 review_status=VerificationReviewStatus.ACCEPTED,
             )
+    assert refused.value.status_code == 422
 
     async with db_services.AsyncSessionLocal() as db:
-        refreshed = await db.get(type(triggered), triggered.id)
-    assert refreshed.reviewed_by is None
-    assert refreshed.review_status is None
+        view = await VerificationService(db).get_result_view(triggered.id)
+    assert view.reviews == ()
 
 
 async def test_record_review_raises_not_found_for_unknown_id():

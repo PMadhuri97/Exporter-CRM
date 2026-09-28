@@ -5,13 +5,17 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, String, Text, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.platform.database.models import AnerModel
 
 SCHEMA = "onboarding"
+
+#: The four statuses a checklist decision may carry — the API's `Literal` and
+#: `ck_screening_review_item_status` (migration onboarding_0021_verif_review).
+SCREENING_STATUSES: tuple[str, ...] = ("NEEDS_REVIEW", "PASSED", "FAILED", "EXEMPT")
 
 
 class ScreeningReviewItem(AnerModel):
@@ -34,6 +38,13 @@ class ScreeningReviewItem(AnerModel):
     append-only: ``AppendOnlyModel`` has no ``updated_at``, and
     ``ScreeningReviewItemResponse`` requires that field. It is always equal to
     ``created_at`` here.
+
+    ``customer_id`` references the company. The database constraint
+    (``fk_screening_review_item_customer_id``) has existed since migration
+    0014; declaring it here only makes the model say what the table already
+    enforces, so it needs no migration (``dev2-remaining-work.md`` §5).
+    ``status`` is one of ``SCREENING_STATUSES`` at the database too
+    (``ck_screening_review_item_status``, migration 0021).
     """
 
     __tablename__ = "screening_review_item"
@@ -48,10 +59,22 @@ class ScreeningReviewItem(AnerModel):
             text("created_at DESC"),
             text("id DESC"),
         ),
+        CheckConstraint(
+            "status IN (" + ", ".join(f"'{s}'" for s in SCREENING_STATUSES) + ")",
+            name="ck_screening_review_item_status",
+        ),
         {"schema": SCHEMA},
     )
 
-    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.exporter_profile.customer_id",
+            name="fk_screening_review_item_customer_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
     item_key: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="NEEDS_REVIEW")
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -84,4 +107,4 @@ class BankActivityFinding(AnerModel):
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-__all__ = ["ScreeningReviewItem", "BankActivityFinding"]
+__all__ = ["SCREENING_STATUSES", "ScreeningReviewItem", "BankActivityFinding"]

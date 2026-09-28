@@ -5,13 +5,17 @@
  * Split out of the single `hooks/index.ts`; the barrel re-exports everything,
  * so no component changed. Mechanical move — every hook below is
  * byte-identical to the one it replaced, query keys and invalidations
- * included.
+ * included — except `useScreeningItemHistory`, added by Developer 4B (4B-7).
+ * Recording a decision invalidates the item histories too, so an open history
+ * shows the new decision. Every write also refreshes what it feeds
+ * (`invalidateWhatAWriteFeeds`).
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   getBankActivity,
+  getScreeningItemHistory,
   getScreeningReview,
   listVerificationResults,
   reviewVerification,
@@ -24,6 +28,35 @@ import type {
   TriggerVerificationRequest,
   VerificationEntityType,
 } from '../types';
+
+/**
+ * What a verification or screening write changes beyond its own list (Developer 4B).
+ *
+ * A company's results and screening decisions are the inputs to its background
+ * check (4b-task.md §6), and Developer 4A's panel shows what still blocks `CLEAR` —
+ * and disables `CLEAR` — from the `['backgroundCheck', id]` query. Without this, a
+ * finished checklist or an accepted review left `CLEAR` disabled until the page was
+ * reloaded. Each write also adds a history row: on the company for an `EXPORTER`
+ * subject, on the deal's company and deal for a `BUYER` (whose ids this hook does not
+ * know, so every history list refreshes). DIRECTOR, INVOICE, VESSEL and SHIPMENT
+ * subjects feed neither (D15).
+ *
+ * The keys are Developer 4A's (`hooks/background-check.ts`) and Developer 1's
+ * (`hooks/history.ts`), used as prefixes.
+ */
+function invalidateWhatAWriteFeeds(
+  queryClient: QueryClient,
+  entityType: VerificationEntityType,
+  entityReference: string,
+) {
+  if (entityType === 'EXPORTER') {
+    void queryClient.invalidateQueries({ queryKey: ['backgroundCheck', entityReference] });
+    void queryClient.invalidateQueries({ queryKey: ['companyHistory', entityReference] });
+  } else if (entityType === 'BUYER') {
+    void queryClient.invalidateQueries({ queryKey: ['companyHistory'] });
+    void queryClient.invalidateQueries({ queryKey: ['dealHistory'] });
+  }
+}
 
 export function useVerificationResults(
   entityType: VerificationEntityType,
@@ -52,6 +85,7 @@ export function useTriggerVerification(
       void queryClient.invalidateQueries({
         queryKey: ['verificationResults', entityType, entityReference],
       });
+      invalidateWhatAWriteFeeds(queryClient, entityType, entityReference);
     },
   });
 }
@@ -73,6 +107,7 @@ export function useReviewVerification(
       void queryClient.invalidateQueries({
         queryKey: ['verificationResults', entityType, entityReference],
       });
+      invalidateWhatAWriteFeeds(queryClient, entityType, entityReference);
     },
   });
 }
@@ -99,7 +134,23 @@ export function useUpdateScreeningReviewItem(customerId: string) {
     }) => updateScreeningReviewItem(customerId, itemKey, { status, comment }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['screeningReview', customerId] });
+      void queryClient.invalidateQueries({ queryKey: ['screeningItemHistory', customerId] });
+      // A screening decision is a background-check input on the company (D9 history row).
+      invalidateWhatAWriteFeeds(queryClient, 'EXPORTER', customerId);
     },
+  });
+}
+
+/** One page of an item's decision history, fetched only while `enabled`. */
+export function useScreeningItemHistory(
+  customerId: string,
+  itemKey: string,
+  { limit, offset, enabled }: { limit: number; offset: number; enabled: boolean },
+) {
+  return useQuery({
+    queryKey: ['screeningItemHistory', customerId, itemKey, limit, offset],
+    queryFn: () => getScreeningItemHistory(customerId, itemKey, { limit, offset }),
+    enabled,
   });
 }
 

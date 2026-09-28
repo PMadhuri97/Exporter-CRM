@@ -22,13 +22,23 @@ in this checkout). This is the same bare-reference convention
 `ComplianceCase.customer_id` / `.settlement_id` / `.onboarding_id` already
 uses for exactly this situation — a record that can point at more than one
 kind of subject, with no cross-module or not-yet-existent-table referential
-integrity mechanism to enforce it.
+integrity mechanism to enforce it. The service validates the subjects that do
+exist as tables (Dev4B 4B-4/4B-5): an ``EXPORTER`` reference must be a company,
+a ``BUYER`` reference must be a ``deal_buyer.id``.
+
+Provenance
+----------
+``provider`` is stored exactly as the adapter reported it and never rewritten.
+``provenance_of`` turns it into an honest label: ``manual`` is a person; the RXIL
+stub (``rxil_stub``, and the upper-case ``RXIL`` it reported before 4B-6) is a
+**stub**, not RXIL, until the RXIL results contract exists (D12).
 """
 
 import uuid
 from datetime import datetime
+from typing import Any, Literal
 
-from sqlalchemy import DateTime, Enum, Index, String
+from sqlalchemy import CheckConstraint, DateTime, Enum, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -43,25 +53,86 @@ from app.platform.database.models import AnerModel
 
 SCHEMA = "onboarding"
 
+#: Stored providers that are a stub, not the provider they are named after. The
+#: RXIL stub reported ``"RXIL"`` until 4B-6 and ``"rxil_stub"`` since; both are
+#: kept here because stored values are never rewritten.
+STUB_PROVIDERS: frozenset[str] = frozenset({"rxil_stub", "RXIL"})
+#: Stored providers that mean "a person recorded this".
+MANUAL_PROVIDERS: frozenset[str] = frozenset({"manual"})
+
+Provenance = Literal["MANUAL", "STUB", "PROVIDER"]
+
+
+def provenance_of(provider: str) -> Provenance:
+    """An honest label for a stored ``provider`` (4b-task.md §5.4)."""
+    if provider in MANUAL_PROVIDERS:
+        return "MANUAL"
+    if provider in STUB_PROVIDERS:
+        return "STUB"
+    return "PROVIDER"
+
+
+def is_placeholder_result(normalized_result: Any, provider_reference: str | None) -> bool:
+    """A placeholder row: ``normalized_result.stub`` is ``true`` and no provider
+    reference — what the retired dev generator created. Flagged, never deleted
+    (4b-task.md §5.9); whether it counts as pending is Dev4A's D2."""
+    return (
+        isinstance(normalized_result, dict)
+        and normalized_result.get("stub") is True
+        and not provider_reference
+    )
+
 
 class VerificationResult(AnerModel):
     """One verification check's request and outcome.
 
-    `reviewed_by` / `review_status` are immutable once set (migration
-    `onboarding_0006_verif_result`'s `trg_verification_result_field_
-    immutability` trigger, reusing the exact `onboarding.
-    prevent_field_mutation_when_set()` function `onboarding_0002` already
-    created for `onboarding_request` / `ubo_record` / `onboarding_document` /
-    `kyb_vendor_result`) — the same "who decided this, once, on the record"
-    guarantee `ComplianceCase.resolved_by` carries. See
-    `application/verification_service.py::VerificationService.record_review`'s
-    docstring for the reasoning and the documented risk of that choice.
+    Reviews (Dev4B 4B-2)
+    --------------------
+    Reviews live in ``verification_review`` (``verification_review.py``), as
+    superseding records. **The legacy ``reviewed_by`` / ``review_status``
+    columns here are no longer written** by any code path: migration
+    ``onboarding_0021_verif_review`` copied each one into the review table as
+    that result's first review, so the review table is the one source of "the
+    current review". The columns and their immutability trigger
+    (``trg_verification_result_field_immutability``, migration 0006) are kept
+    — protection is never dropped — and read only as a fallback for a row
+    written outside the service.
+
+    Frozen once reviewed (4B-3)
+    ---------------------------
+    Once a result has any review, ``status``, ``risk_level``,
+    ``normalized_result`` and ``valid_until`` never change:
+    ``VerificationService.get_verification_status`` ignores (and logs) a later
+    provider answer, and ``trg_verification_result_outcome_freeze`` refuses the
+    ``UPDATE`` at the database.
+
+    Evidence (4B-4) and subject snapshot (4B-5)
+    -------------------------------------------
+    ``evidence_note`` / ``evidence_refs`` hold what a result rests on, in the
+    qualification contract's shape (``{type, ref}``, ``type`` ``document`` —
+    a ``crm_document.id`` — or ``url``). ``evidence_reference`` is **retired**:
+    no code path ever wrote it and none does now; it stays only so the column
+    is not dropped under existing rows. ``subject_snapshot`` is a BUYER's
+    identity at record time. Evidence and snapshot are frozen once set
+    (``trg_verification_result_input_immutability``).
     """
 
     __tablename__ = "verification_result"
     __table_args__ = (
         Index("ix_verification_result_entity", "entity_type", "entity_reference"),
         Index("ix_verification_result_provider_reference", "provider_reference"),
+        Index(
+            "ix_verification_result_entity_recent",
+            "entity_type",
+            "entity_reference",
+            text("performed_at DESC"),
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
+        CheckConstraint(
+            "jsonb_typeof(evidence_refs) = 'array'",
+            name="ck_verification_result_evidence_refs_array",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -106,11 +177,28 @@ class VerificationResult(AnerModel):
     raw_result: Mapped[dict] = mapped_column(JSONB, nullable=False)
     normalized_result: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
+    #: Retired — never written. See the class docstring.
     evidence_reference: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    evidence_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: ``[{"type": "document" | "url", "ref": str}, ...]``
+    evidence_refs: Mapped[list[dict[str, str]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    #: BUYER subjects only: ``{deal_buyer_id, deal_id, name, country,
+    #: registration_number, tax_id}`` as they were when the check was recorded.
+    subject_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
-    # Immutable once set — see class docstring.
+    # Legacy, no longer written — see class docstring. Immutable once set.
     reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     review_status: Mapped[VerificationReviewStatus | None] = mapped_column(
         Enum(VerificationReviewStatus, name="verification_review_status_enum", schema=SCHEMA),
         nullable=True,
     )
+
+    @property
+    def is_placeholder(self) -> bool:
+        return is_placeholder_result(self.normalized_result, self.provider_reference)
+
+    @property
+    def provenance(self) -> Provenance:
+        return provenance_of(self.provider)

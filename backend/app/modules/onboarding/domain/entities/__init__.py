@@ -213,4 +213,8 @@ __all__ += [
 
 # ── Verification and screening — owner: Developer 4B ──
 # (4B appends here; 4A does not.)
-__all__ += []
+from app.modules.onboarding.domain.entities.verification_review import (  # noqa: E402
+    VerificationReview,
+)
+
+__all__ += ["VerificationReview"]

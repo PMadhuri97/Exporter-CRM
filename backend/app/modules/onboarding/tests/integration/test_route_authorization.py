@@ -51,15 +51,19 @@ def _case_body() -> dict:
     }
 
 
-def _trigger_body() -> dict:
+def _trigger_body(entity_reference: str | None = None) -> dict:
     return {
         # KYB, not KYC: KYC is a check on a person, and the service rejects a
         # KYC/EXPORTER pair (422) before the route gate under test matters.
         "verification_type": "KYB",
         "entity_type": "EXPORTER",
-        "entity_reference": str(uuid.uuid4()),
+        # Since Dev4B 4B-4 the subject must be a real company (a random id is a
+        # 404) — the gate tests never reach the handler, so any id does there.
+        "entity_reference": entity_reference or str(uuid.uuid4()),
         "provider": "manual",
         "payload": {"status": "PASSED"},
+        # A manual PASSED needs evidence since 4B-4 (D16: a note suffices).
+        "evidence_note": "Registry extract checked.",
     }
 
 
@@ -252,6 +256,12 @@ GATED_ROUTES = [
     #
     # ── Verification and screening — owner: Developer 4B ──
     # (4B appends here; 4A does not.)
+    (
+        "GET",
+        f"{BASE}/exporters/{_ID}/screening-review/website-reviewed/history",
+        None,
+        STAFF,
+    ),
 ]
 
 REFUSALS = [
@@ -356,7 +366,11 @@ async def test_operations_can_perform_routine_crm_writes(
 
 
 async def _trigger(client: AsyncClient, token: str) -> str:
-    resp = await client.post(f"{BASE}/verifications", json=_trigger_body(), headers=auth_header(token))
+    # A real company: a ghost subject is refused (404) since Dev4B 4B-4.
+    customer_id = await _create_exporter(client, token)
+    resp = await client.post(
+        f"{BASE}/verifications", json=_trigger_body(customer_id), headers=auth_header(token)
+    )
     assert resp.status_code == 201, resp.text
     return resp.json()["id"]
 
@@ -410,10 +424,12 @@ def test_schema_accepts_exactly_the_real_providers():
 
     base = {k: v for k, v in _trigger_body().items() if k != "provider"}
     assert TriggerVerificationRequest(**base).provider == "manual"
-    for provider in ("manual", "rxil"):
-        assert TriggerVerificationRequest(**base, provider=provider).provider == provider
-    with pytest.raises(ValidationError):
-        TriggerVerificationRequest(**base, provider="kyb")
+    assert TriggerVerificationRequest(**base, provider="manual").provider == "manual"
+    # D7 (lead, 28 Sep 2026): the manual route is manual only; "rxil" is reserved
+    # for the future RXIL intake path.
+    for provider in ("rxil", "kyb"):
+        with pytest.raises(ValidationError):
+            TriggerVerificationRequest(**base, provider=provider)
 
 
 # ── Server-side PAN/GSTIN/IEC masking (FIX 5) ────────────────────────────────

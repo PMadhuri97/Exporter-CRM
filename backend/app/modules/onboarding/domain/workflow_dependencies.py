@@ -83,6 +83,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationRiskLevel,
     VerificationType,
 )
+from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
 from app.shared.contracts.kyb import VendorHealthStatus
 from app.shared.enums.kyb import KYBVendorProcessingMode, NormalisedResult
 
@@ -456,12 +457,19 @@ class VerificationRequest:
     that the caller and the adapter agree on shape, not the service layer in
     between. ``ManualEntryAdapter`` additionally uses ``payload`` to carry the
     manually-observed result itself (see its module docstring).
+
+    ``evidence`` (Dev4B 4B-4) is what the outcome rests on — a note and/or
+    references. It is not part of ``payload``: the service stores it on the
+    result and validates its document references against the subject, whatever
+    the adapter. An adapter that has an evidence rule of its own
+    (``ManualEntryAdapter``) reads it from here.
     """
 
     verification_type: VerificationType
     entity_type: VerificationEntityType
     entity_reference: str
     payload: dict[str, Any] = field(default_factory=dict)
+    evidence: VerificationEvidence | None = None
 
     def __post_init__(self) -> None:
         _require_text(self.entity_reference, "entity_reference")
