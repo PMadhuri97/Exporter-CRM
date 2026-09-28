@@ -63,7 +63,17 @@ Where these disagree, the architecture wins; where it is silent, the item is a d
 
 ## 3. Current Repository Baseline
 
-As measured by the Dev4 audit (28 Sep 2026):
+**Current state (re-baselined 28 Sep 2026, after Dev4A and user management merged):**
+
+| Item | Value |
+|---|---|
+| `main` | `12d255c` — merge of PR #12 (user management / RBAC). Before it: PR #11 `f129c6f` (Dev4A, carrying the 4B-0 seam), Dev3B PR #10 `f703c05`, Dev3A PR #9 `447c6ba`, Dev2 PR #8 `c117fdf`, Dev1 PR #7 `8fb8729` |
+| Dev4B branch | `feature/4b-verification-screening-integrity` @ `38ab720` — `dabe28d` (4B-1 … 4B-6) plus `38ab720` (merge of `main` @ `12d255c`) |
+| Alembic on `main` | One head, `auth_0004_rbac`: … → `onboarding_0019_documents` → `onboarding_0015_bg_check` (Dev4A) → `auth_0003_user_admin` → `auth_0004_rbac` |
+| Alembic on the Dev4B branch | One head, `onboarding_0021_verif_review`, re-parented onto `auth_0004_rbac` when `main` was merged in (§10); round trip clean |
+| Known failures on `main` since PR #12 (not Dev4B's) | `test_route_authorization_coverage::test_every_mounted_route_is_classified` (16 unclassified `/api/v1/auth/*` routes, PR #12 / Dev1); `test_l4a_background_check_schema::test_0015_parents_onto_0019_and_the_chain_has_one_head` and `::test_the_database_is_at_0015` (pin 0015 as the head, Dev4A). See `docs/dev4/4b-remaining-work.md` §2 |
+
+**As measured by the Dev4 audit (28 Sep 2026)** — the baseline the task was written against:
 
 | Item | Value |
 |---|---|
@@ -72,7 +82,8 @@ As measured by the Dev4 audit (28 Sep 2026):
 | Backend suite | 30 failed / 3728 passed / 7 skipped / 22 errors. **Environment baseline: 29 failed + 22 errors** (compliance-module routes; read-only role passwords). The 30th, `test_l3a_conversation_gauge::test_a_check_back_date_in_the_past_is_refused`, fails only 00:00–05:30 IST (local vs UTC date) — a Dev3A test defect. None are Dev4's; do not "fix" them. |
 | Other gates | ruff 16 · import-linter 19/0 · OpenAPI artifacts current · tsc clean · eslint 0 errors / 2 warnings · vitest 16 files / 131 · build ok |
 
-What exists (all paths under `backend/app/modules/onboarding/`):
+What existed at the audit, **before Dev4B's work** (all paths under
+`backend/app/modules/onboarding/`; what changed since is in the §14 status notes):
 
 **Verification results (System 2)**
 
@@ -561,25 +572,27 @@ PR.
 
 | Item | Class | Why | Owner of the dependency | What clears it | Blocks |
 |---|---|---|---|---|---|
-| 4B-0 seam PR (anchors + §6 contract + read-only reader) | **COMPLETE (28 Sep 2026)**, see §14 4B-0 status | first thing on `main` | Dev4B (reviewed by 4A, Dev1) | — | nothing further; the merge to `main` is the remaining step |
-| Superseding reviews | CONTRACT-DEPENDENT | route-auth anchors and exception block | Dev4B (seam) | seam merged | implementation |
-| Verification history rows (EXPORTER, BUYER) | PARALLEL | `verification` dimension already reserved | — | — | — |
-| Verification history for unlinked subjects | DECISION-BLOCKED | D15 | lead + Dev1 | decision | that case only |
-| Polling safety | PARALLEL | — | — | — | — |
-| Manual evidence mechanism | PARALLEL | reads Dev3B's documents | — | — | — |
-| Manual evidence minimum | DECISION-BLOCKED | D16 | lead / compliance | written rule | final merge (rule text) |
-| `_trigger_body` / FIX 3–4 updates | CONTRACT-DEPENDENT | Dev1's file | Dev1 review | seam + review | final merge |
-| Provider provenance for `rxil` on the manual route | DECISION-BLOCKED | D7 | lead | decision | that change only; behaviour unchanged until then |
-| Screening catalogue, CHECK, 404, ORM FK, history route | PARALLEL | — | — | — | — |
-| Screening in the shared history log | DECISION-BLOCKED | D9; Dev1 contract | Dev1 + lead | contract amendment | those rows only |
-| Buyer checks (validation, snapshot, reads) | PARALLEL | Dev3B's `deal_buyer` exists on `main` | — | — | — |
-| Buyer checks on terminal deals | DECISION-BLOCKED | D17 | lead + Dev3 | decision | that rule only |
+| 4B-0 seam PR (anchors + §6 contract + read-only reader) | **COMPLETE — merged** (on `main` via PR #11 `f129c6f`) | first thing on `main` | Dev4B (reviewed by 4A, Dev1) | — | nothing |
+| Superseding reviews | **COMPLETE (4B-2)** | route-auth anchors and exception block | Dev4B (seam) | — | nothing |
+| Verification history rows (EXPORTER, BUYER) | **COMPLETE (4B-2, 4B-4, 4B-5)** | `verification` dimension already reserved | — | — | — |
+| Verification history for unlinked subjects | **DECIDED (D15) — COMPLETE**: no row, skipped and logged | D15 | lead + Dev1 | — | nothing; Dev1 may record D15 in the history contract |
+| Polling safety | **COMPLETE (4B-3)** | — | — | — | — |
+| Manual evidence mechanism | **COMPLETE (4B-4)**, incl. the `AVAILABLE` scan gate on `document` evidence | reads Dev3B's documents | — | — | — |
+| Manual evidence minimum | **DECIDED (D16) — COMPLETE** | D16 | lead / compliance | — | nothing |
+| Which documents may be evidence for a verification result | **IMPLEMENTED, CONFIRMATION PENDING** (4B's side of D4, see §13) | D4 | lead | written confirmation | nothing in code; the rule text |
+| `_trigger_body` / FIX 3–4 updates | **DONE on the branch — awaiting Dev1 review** | Dev1's file | Dev1 review | Dev1's review | final merge |
+| Provider provenance for `rxil` on the manual route | **DECIDED (D7) — COMPLETE (4B-6)** | D7 | lead | — | nothing |
+| Screening catalogue, CHECK, 404, ORM FK, history route | **COMPLETE (4B-1)** | — | — | — | — |
+| Screening in the shared history log | **DECIDED (D9) — code COMPLETE**; the contract row is Dev1's | D9; Dev1 contract | Dev1 | `screening` row in `history-row.md` §2 | contract text only |
+| Buyer checks (validation, snapshot, reads) | **COMPLETE (4B-5, backend)** | Dev3B's `deal_buyer` exists on `main` | — | — | — |
+| Buyer checks on terminal deals | **DECIDED (D17) — COMPLETE** | D17 | lead + Dev3 | — | nothing |
+| `BuyerChecks` component | **COMPLETE — built and tested, not mounted** | — | Dev4B | — | — |
 | Buyer checks shown on the deal page | DEV3-DEPENDENT, POST-MERGE | Dev3's page | Dev3 | Dev3 mounts `BuyerChecks` | final demo |
-| Masking of `normalized_result`; DEVELOPER access | DECISION-BLOCKED | D8 | lead + Dev1 | decision | route roles/masking; default: no widening |
-| Honest placeholders (backend + frontend) | PARALLEL | — | — | — | — |
-| Verification frontend + tests | PARALLEL (after backend phases) | — | — | — | — |
+| Masking of `normalized_result`; DEVELOPER access | **DECIDED (D8): no change** | D8 | lead + Dev1 | — | nothing |
+| Honest placeholders (backend + frontend) | **COMPLETE** (backend 4B-6, UI 4B-7) | — | — | — | — |
+| Verification frontend + tests | **COMPLETE (4B-7)** | — | Dev4B | — | — |
 | RXIL results intake (L4-10) | DECISION-BLOCKED — **RXIL PACKAGE CONTRACT REQUIRED** | no results section in the provisional package; parser is Dev2's | RXIL, lead, Dev2 | published package contract | full intake |
-| Reader returning real review chains to Dev4A | POST-MERGE (behaviour); CONTRACT-DEPENDENT (shape) | shape fixed in seam | Dev4B | 4B PR merged | Dev4A integration tests only |
+| Reader returning real review chains to Dev4A | **Done on the branch** (shape unchanged); POST-MERGE for Dev4A's integration tests | shape fixed in seam | Dev4B | 4B PR merged | Dev4A integration tests only |
 
 ---
 
@@ -587,17 +600,17 @@ PR.
 
 Numbering is shared with `4a-task.md`. Only the ones that affect Dev4B are listed.
 
-| # | Decision | Status on `main` | Blocks for Dev4B |
+| # | Decision | Status | Blocks for Dev4B |
 |---|---|---|---|
 | D2 | **Meaning of "pending"** — decided for Dev4A's CLEAR rule, but Dev4B must expose enough facts (status, review, placeholder flag, subject type) | **Settled 28 Sep 2026** (programme lead; clarified in the Dev4A PR review): `PENDING`, `REVIEW` and placeholders block `CLEAR`, except that a `REVIEW` result whose `latest_review_status` is `ACCEPTED` or `REJECTED` no longer blocks (`background-check.md` §14.1) | nothing in 4B if the §6 facts are complete; a new fact is a contract change. **4B-2 must keep `latest_review_status` = the status of the latest (superseding) review**, since Dev4A's rule now reads it |
-| D4 | **Evidence snapshot scope** — which documents may be evidence for a verification result (company only? the buyer's deal?) | Unsettled | integration (document validation rule) |
-| D7 | **Manual-route provenance for RXIL** — may COMPLIANCE record `provider="rxil"` through `POST /verifications`? | Open (audit finding) | implementation of that restriction; final merge |
-| D8 | **DEVELOPER visibility and masking of sensitive compliance data** — DEVELOPER on verification/screening reads? mask `normalized_result`/comments for OPERATIONS? | Unsettled | route roles, masking, UI; default: no widening |
-| D9 | **Screening and the shared history log** — mirror screening decisions into `exporter_lifecycle_history`? under which dimension? | No dimension in `history-row.md` §2 | those history rows only; the history **route** is not blocked |
+| D4 | **Evidence snapshot scope** — which documents may be evidence for a verification result (company only? the buyer's deal?) | Dev4A's side is settled (`background-check.md` D4: the company's own `AVAILABLE` documents). **Dev4B's side is implemented but awaits the lead's written confirmation:** EXPORTER → the company's own documents; BUYER → the buyer's deal's documents or the deal's company's documents; every `document` reference must be `AVAILABLE` (the same scan gate as Dev4A's, since other states can never be opened — `storage-and-documents.md` §4) | nothing in code; the rule text before the final merge |
+| D7 | **Manual-route provenance for RXIL** — may COMPLIANCE record `provider="rxil"` through `POST /verifications`? | **Decided 28 Sep 2026 (lead); applied** — see *Dev4B decisions recorded* below | nothing |
+| D8 | **DEVELOPER visibility and masking of sensitive compliance data** — DEVELOPER on verification/screening reads? mask `normalized_result`/comments for OPERATIONS? | **Decided 28 Sep 2026 (lead): no change; applied** — see below | nothing |
+| D9 | **Screening and the shared history log** — mirror screening decisions into `exporter_lifecycle_history`? under which dimension? | **Decided 28 Sep 2026 (lead); applied** — see below. The `screening` row in `history-row.md` §2 is Dev1's to add | contract text only (Dev1) |
 | D12 | **RXIL package / results contract** | Undecided (architecture §11) | full RXIL results intake |
-| D15 | **Verification history for subjects with no company link** (DIRECTOR, INVOICE, VESSEL, SHIPMENT) — history rows need a company id | Unsettled | those rows only |
-| D16 | **Minimum evidence** for a manual `PASSED` (note alone, or at least one reference?) and whether `FAILED` needs evidence | A3/L4-07 say "evidence required" only | final merge (rule text) |
-| D17 | **Buyer checks after a deal is `HANDED_OVER`/`WITHDRAWN`** — allowed, refused? | Unsettled | that rule only |
+| D15 | **Verification history for subjects with no company link** (DIRECTOR, INVOICE, VESSEL, SHIPMENT) — history rows need a company id | **Decided 28 Sep 2026 (lead); applied** — see below | nothing |
+| D16 | **Minimum evidence** for a manual `PASSED` (note alone, or at least one reference?) and whether `FAILED` needs evidence | **Decided 28 Sep 2026 (lead); applied** — see below | nothing |
+| D17 | **Buyer checks after a deal is `HANDED_OVER`/`WITHDRAWN`** — allowed, refused? | **Decided 28 Sep 2026 (lead); applied** — see below | nothing |
 
 ### Dev4B decisions recorded (28 Sep 2026, decided by the lead)
 
@@ -612,6 +625,22 @@ Numbering is shared with `4a-task.md`. Only the ones that affect Dev4B are liste
 
 Also confirmed: reviewing a `PENDING` result is 422 (`VERIFICATION_RESULT_NOT_REVIEWABLE`); the RXIL
 stub stores provider `rxil_stub` and refuses `PENDING`.
+
+Also applied by Dev4B (follow-ups from the branch audit, `4b-remaining-work.md` §3.1; no new
+decision, each follows from an existing rule):
+
+- **Scan gate on document evidence.** A `document` reference whose `crm_document.scan_status` is
+  not `AVAILABLE` (`PENDING_SCAN`, `QUARANTINED`, `SCAN_FAILED`) is refused, 422 —
+  `verification_service._check_evidence_documents`. Such a document can never be opened
+  (`storage-and-documents.md` §4), and the evidence is frozen once written, so a document still
+  being scanned cannot be named now and become evidence later. Ownership is checked first, so a
+  foreign document's scan state is never disclosed.
+- **A legacy verdict with no review record is not overruled.** If `verification_result.review_status`
+  is set but no `verification_review` row exists (only possible when the legacy columns were written
+  outside the service after migration 0021, which copied every earlier verdict), `record_review`
+  refuses with 409 `VERIFICATION_LEGACY_REVIEW_UNCHAINED` instead of recording a "first" review that
+  would overrule the legacy verdict with no supersede link and no reason (§5.1: never a silent
+  overwrite). The remedy is to copy the legacy verdict into `verification_review`, as 0021 did.
 
 Decisions D1, D3, D5, D6, D10, D11, D13 and D14 are Dev4A's (`4a-task.md` §13). D13 is settled
 (28 Sep 2026): Dev4A creates its own risk enum type (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`) in
@@ -692,7 +721,10 @@ reports.
 >    flush, no commit and no row lock (another connection can `FOR UPDATE NOWAIT` every row
 >    read).
 > 7. **Not in 4B-0:** Dev4B phases 4B-1 onward (serving the catalogue, superseding reviews,
->    polling safety, evidence, buyer validation, frontend) are **not started**.
+>    polling safety, evidence, buyer validation, frontend) are **not started**. *(Since done on
+>    `feature/4b-verification-screening-integrity` — see the status note under each phase.)*
+>
+> The seam reached `main` inside Dev4A's PR #11 (`f129c6f`).
 
 ### 4B-1 — Screening integrity
 - **Objective:** §5.5 and §5.6.
@@ -704,6 +736,13 @@ reports.
   unchanged; 404; route-auth rows for the new route; OpenAPI current.
 - **Stop when:** the frontend could render the checklist from the server alone.
 
+> **4B-1 STATUS: COMPLETE (backend).** `SCREENING_CATALOGUE_ITEMS` (key, label, section, in
+> order) is the one backend catalogue and is served in the list response with
+> `capabilities.can_record_decision`; `ck_screening_review_item_status` (0021) plus a service
+> check; 404 for an unknown company on read, write and history; ORM FK declared;
+> `GET …/screening-review/{item_key}/history` (paged, newest first) with route-auth rows in both
+> tables; D9 `screening` history rows. The UI still renders its own copy until 4B-7.
+
 ### 4B-2 — Superseding verification reviews
 - **Objective:** §5.1.
 - **Scope:** review table + copy of existing reviews (migration); service; route; `verification`
@@ -714,11 +753,22 @@ reports.
   one-review test; reader output unchanged in shape.
 - **Stop when:** a reviewer can change a verdict only by adding a record.
 
+> **4B-2 STATUS: COMPLETE.** `verification_review` (append-only; unique supersedes pointer; one
+> first review per result; same-result composite FK; note required on a supersede); legacy
+> verdicts copied by 0021; stale supersede → 409 `VERIFICATION_REVIEW_STALE`; race tests;
+> `verification` history rows; the reader reports the chain head (`latest_review_*`); the legacy
+> columns are no longer written. A legacy verdict with no review record is refused (409
+> `VERIFICATION_LEGACY_REVIEW_UNCHAINED`, §13).
+
 ### 4B-3 — Polling safety
 - **Objective:** §5.2.
 - **Scope:** service guard + DB trigger.
 - **Tests:** L4-02's test; direct-SQL trigger test; an unreviewed row still updates.
 - **Stop when:** no path can change a reviewed result's outcome fields.
+
+> **4B-3 STATUS: COMPLETE.** `get_verification_status` reads the row `FOR UPDATE`, ignores and
+> logs a changed provider answer for a reviewed result; `trg_verification_result_outcome_freeze`
+> refuses it at the database; service and direct-SQL tests; an unreviewed row still updates.
 
 ### 4B-4 — Manual evidence and subject validation
 - **Objective:** §5.3.
@@ -732,6 +782,13 @@ reports.
   (refused); ghost subject refused; route-auth tables green.
 - **Stop when:** no manual PASSED can be stored without evidence.
 
+> **4B-4 STATUS: COMPLETE.** `evidence_note` / `evidence_refs` (frozen once set); D16 in
+> `domain/verification_evidence.check_manual_outcome`; a manual `PENDING` is refused; `document`
+> references must exist, belong to the subject and be `AVAILABLE` (read through
+> `CrmDocumentRepository`); a ghost EXPORTER subject is 404; the reader fills
+> `evidence_document_ids`; `_trigger_body` / FIX 3 / FIX 4 updated in the controlled region
+> (awaiting Dev1's review).
+
 ### 4B-5 — Buyer verification
 - **Objective:** §5.7.
 - **Scope:** BUYER subject validation; subject snapshot (migration field); masked reads; history
@@ -741,6 +798,13 @@ reports.
   `set_buyer` rename; failed buyer check leaves `exporter_profile` untouched; masking per role.
 - **Stop when:** buyer checks are recorded and read with no company effect.
 
+> **4B-5 STATUS: COMPLETE.** Backend: BUYER subjects validated against `deal_buyer.id` (a company
+> or deal id is 404); `subject_snapshot` survives `set_buyer`; the snapshot's registration number
+> and tax id are masked for every role but COMPLIANCE and ADMIN; history on the deal's company
+> with `deal_id`; D17 → 409 `DEAL_CLOSED`; `buyer_checks` in the reader; a failed buyer check
+> leaves the company untouched (tested). Frontend: `components/BuyerChecks.tsx` with its tests —
+> **not mounted and not exported from `components/index.ts`**; Dev3 mounts it after the merge.
+
 ### 4B-6 — Honest placeholders and provenance
 - **Objective:** §5.9 and the non-gated part of §5.4.
 - **Scope:** bank "not connected" in the response; placeholder rows flagged; RXIL stub label and
@@ -748,6 +812,13 @@ reports.
 - **Tests:** bank response says not connected with no findings; no route creates a
   pending-forever row; stored provider never rewritten.
 - **Stop when:** §7.6's Dev4 gate items are true for the verification side.
+
+> **4B-6 STATUS: COMPLETE (backend).** Dev placeholder generator removed from
+> `VerificationSection.tsx`; `is_placeholder` and `provenance` (`MANUAL` / `STUB` / `PROVIDER`)
+> served; the stub stores `rxil_stub` (rows written as `RXIL` before still read as a stub) and
+> refuses `PENDING`; D7 applied (`POST /verifications` is `manual` only); the bank response says
+> `provider_feed_connected: false` / `NOT_CONNECTED` with no findings. The UI's labels and bank
+> panel wording followed in 4B-7.
 
 ### 4B-7 — Verification frontend and tests
 - **Objective:** §5.10.
@@ -760,10 +831,26 @@ reports.
 - **Stop when:** tsc, eslint, vitest, build pass and no `user.role` comparison remains in Dev4B's
   files.
 
+> **4B-7 STATUS: COMPLETE.** `VerificationSection({ customerId })` keeps its export and props and
+> is now a shell over Dev4B sub-components beside it: `ManualResultForm` (manual only, no `PENDING`,
+> D16 checked client-side, `AVAILABLE` documents only, server refusals shown as worded),
+> `ReviewDialog` / `ReviewChain` (whole chain; first review names nothing; a later one supersedes
+> `latest_review_id` with a required reason; 409 stale → refetch and explain), `ScreeningChecklist`
+> (from the served `catalogue`, unknown keys still shown read-only) with `ScreeningItemHistory`
+> (paged, newest first), `BankActivityPanel` (`NOT_CONNECTED` stated; no zero counts),
+> `VerificationResultRow` (served `provenance` / `is_placeholder`), `EvidenceList` (note + refs;
+> documents through `createDownloadLink`). Every action is gated by the served `capabilities`;
+> no `user.role` comparison, `CHECKLIST_ITEMS` copy or `normalized_result.stub` rule remains in
+> Dev4B files. `BuyerChecks` now uses the same form and dialog, still unmounted. vitest per
+> sub-component.
+
 ### 4B-8 — RXIL results intake — **BLOCKED — RXIL PACKAGE CONTRACT REQUIRED**
 - Not started until D12 is published. Allowed now, only if it pretends nothing about the format:
   keep `StubRxilAdapter` and `trigger_verification_batch` as they are, labelled stub. The
   automatic `NOT_STARTED → IN_REVIEW` move on arrival is Dev4A's and also blocked.
+
+> **4B-8 STATUS: BLOCKED (D12), untouched.** `StubRxilAdapter` is labelled a stub and
+> `trigger_verification_batch` still has no caller.
 
 ---
 

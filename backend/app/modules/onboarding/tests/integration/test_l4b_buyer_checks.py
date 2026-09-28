@@ -217,6 +217,22 @@ async def test_a_document_of_another_deal_is_not_buyer_evidence():
         )
 
 
+@pytest.mark.parametrize("scan_status", ["PENDING_SCAN", "QUARANTINED", "SCAN_FAILED"])
+async def test_a_buyer_document_that_is_not_available_is_not_evidence(scan_status):
+    """The buyer's own deal document still has to be AVAILABLE (storage §4)."""
+    _, deal_id, buyer_id = await deal_buyer()
+    with pg() as cur:
+        on_deal = insert_document(cur, deal_id=deal_id, scan_status=scan_status)
+    with pytest.raises(ValidationError, match=f"is {scan_status}"):
+        await _buyer_check(
+            buyer_id,
+            status="PASSED",
+            evidence=VerificationEvidence(refs=(EvidenceRef(type="document", ref=str(on_deal)),)),
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        assert await ComplianceInputsService(db).buyer_checks(buyer_id) == ()
+
+
 # ── API and masking ──────────────────────────────────────────────────────────
 
 

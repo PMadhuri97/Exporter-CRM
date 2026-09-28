@@ -1543,7 +1543,7 @@ export interface paths {
         put?: never;
         /**
          * Trigger a verification check
-         * @description Resolves `provider` (default `manual`) to a `VerificationAdapter` via the EXP-2 registry, runs the check, and persists the outcome as a new `VerificationResult`. The exact same call handles every `verification_type`/`entity_type` combination — there is no per-type branching. Only `provider=manual` is accepted here. An `EXPORTER` subject must be an existing company and a `BUYER` subject an existing deal buyer (`deal_buyer.id`) whose deal is not `HANDED_OVER` or `WITHDRAWN`. A manual `PASSED` needs evidence (a note or at least one reference); a manual `PENDING` is refused. `document` evidence must belong to the subject.
+         * @description Resolves `provider` (default `manual`) to a `VerificationAdapter` via the EXP-2 registry, runs the check, and persists the outcome as a new `VerificationResult`. The exact same call handles every `verification_type`/`entity_type` combination — there is no per-type branching. Only `provider=manual` is accepted here. An `EXPORTER` subject must be an existing company and a `BUYER` subject an existing deal buyer (`deal_buyer.id`) whose deal is not `HANDED_OVER` or `WITHDRAWN`. A manual `PASSED` needs evidence (a note or at least one reference); a manual `PENDING` is refused. `document` evidence must belong to the subject and be `AVAILABLE` (scanned clean).
          */
         post: operations["trigger_verification_api_v1_onboarding_verifications_post"];
         delete?: never;
@@ -2881,6 +2881,28 @@ export interface components {
             /** Screening Review Item Id */
             screening_review_item_id?: string | null;
         };
+        /** EvidenceRefModel */
+        EvidenceRefModel: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "document" | "verification_result" | "url";
+            /** Ref */
+            ref: string;
+        };
+        /**
+         * EvidenceRefOut
+         * @description An evidence reference as stored. Besides the three a request may send,
+         *     a partner intake may store `partner_reference` — the partner's own id for
+         *     its evidence.
+         */
+        EvidenceRefOut: {
+            /** Type */
+            type: string;
+            /** Ref */
+            ref: string;
+        };
         /** ExporterActivityListResponse */
         ExporterActivityListResponse: {
             /**
@@ -4035,7 +4057,7 @@ export interface components {
             /** Evidence Note */
             evidence_note?: string | null;
             /** Evidence Refs */
-            evidence_refs?: components["schemas"]["app__modules__onboarding__api__schemas__qualification__EvidenceRefModel"][];
+            evidence_refs?: components["schemas"]["EvidenceRefModel"][];
             /** Reason */
             reason?: string | null;
         };
@@ -4058,7 +4080,7 @@ export interface components {
             /** Evidence Note */
             evidence_note: string | null;
             /** Evidence Refs */
-            evidence_refs: components["schemas"]["app__modules__onboarding__api__schemas__qualification__EvidenceRefOut"][];
+            evidence_refs: components["schemas"]["EvidenceRefOut"][];
             /** Reason */
             reason: string | null;
             /** Confidence */
@@ -4417,8 +4439,8 @@ export interface components {
          *
          *     Evidence (`evidence_note`, `evidence_refs`) is what the outcome rests on, in the
          *     qualification contract's shape. A manual `PASSED` needs some (D16: a note or at
-         *     least one reference). A `document` reference must
-         *     belong to the subject.
+         *     least one reference). A `document` reference must belong to the subject and be
+         *     `AVAILABLE` (scanned clean).
          */
         TriggerVerificationRequest: {
             verification_type: components["schemas"]["VerificationType"];
@@ -4439,7 +4461,7 @@ export interface components {
             /** Evidence Note */
             evidence_note?: string | null;
             /** Evidence Refs */
-            evidence_refs?: components["schemas"]["app__modules__onboarding__api__schemas__verification__EvidenceRefModel"][];
+            evidence_refs?: components["schemas"]["VerificationEvidenceRefModel"][];
         };
         /**
          * UpdateCaseRequest
@@ -4605,6 +4627,35 @@ export interface components {
          * @enum {string}
          */
         VerificationEntityType: "EXPORTER" | "BUYER" | "DIRECTOR" | "INVOICE" | "VESSEL" | "SHIPMENT";
+        /**
+         * VerificationEvidenceRefModel
+         * @description One evidence reference: a `crm_document.id` (`document`) or a `url`.
+         *
+         *     Prefixed because OpenAPI schema names are global: qualification already has an
+         *     `EvidenceRefModel` / `EvidenceRefOut` (`schemas/qualification.py`), and a second
+         *     class of the same name makes FastAPI rename *both* to module-qualified names,
+         *     silently changing Developer 2's generated types.
+         */
+        VerificationEvidenceRefModel: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "document" | "url";
+            /** Ref */
+            ref: string;
+        };
+        /**
+         * VerificationEvidenceRefOut
+         * @description An evidence reference as stored. Prefixed for the reason
+         *     `VerificationEvidenceRefModel` gives.
+         */
+        VerificationEvidenceRefOut: {
+            /** Type */
+            type: string;
+            /** Ref */
+            ref: string;
+        };
         /** VerificationResultListResponse */
         VerificationResultListResponse: {
             entity_type: components["schemas"]["VerificationEntityType"];
@@ -4660,7 +4711,7 @@ export interface components {
             /** Evidence Note */
             evidence_note: string | null;
             /** Evidence Refs */
-            evidence_refs: components["schemas"]["app__modules__onboarding__api__schemas__verification__EvidenceRefOut"][];
+            evidence_refs: components["schemas"]["VerificationEvidenceRefOut"][];
             subject_snapshot: components["schemas"]["BuyerSnapshotResponse"] | null;
             /** Reviewed By */
             reviewed_by: string | null;
@@ -4814,48 +4865,6 @@ export interface components {
             country?: string | null;
             /** Level Name */
             level_name?: string | null;
-        };
-        /** EvidenceRefModel */
-        app__modules__onboarding__api__schemas__qualification__EvidenceRefModel: {
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "document" | "verification_result" | "url";
-            /** Ref */
-            ref: string;
-        };
-        /**
-         * EvidenceRefOut
-         * @description An evidence reference as stored. Besides the three a request may send,
-         *     a partner intake may store `partner_reference` — the partner's own id for
-         *     its evidence.
-         */
-        app__modules__onboarding__api__schemas__qualification__EvidenceRefOut: {
-            /** Type */
-            type: string;
-            /** Ref */
-            ref: string;
-        };
-        /**
-         * EvidenceRefModel
-         * @description One evidence reference: a `crm_document.id` (`document`) or a `url`.
-         */
-        app__modules__onboarding__api__schemas__verification__EvidenceRefModel: {
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "document" | "url";
-            /** Ref */
-            ref: string;
-        };
-        /** EvidenceRefOut */
-        app__modules__onboarding__api__schemas__verification__EvidenceRefOut: {
-            /** Type */
-            type: string;
-            /** Ref */
-            ref: string;
         };
     };
     responses: never;
@@ -9538,7 +9547,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unknown/disabled provider, an invalid payload for it, missing or foreign evidence, or an uninterpretable check/subject pair */
+            /** @description Unknown/disabled provider, an invalid payload for it, missing or foreign evidence, a `document` that is not `AVAILABLE`, or an uninterpretable check/subject pair */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -9644,7 +9653,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description `supersedes_review_id` is not the current review */
+            /** @description `supersedes_review_id` is not the current review, or the result has a legacy review with no review record to supersede */
             409: {
                 headers: {
                     [name: string]: unknown;

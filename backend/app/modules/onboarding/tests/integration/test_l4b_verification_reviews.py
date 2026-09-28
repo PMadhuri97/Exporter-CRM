@@ -8,6 +8,8 @@ A reviewer changes a verdict only by adding a record:
 * concurrent reviews cannot fork the chain — one wins, the other gets 409;
 * PENDING results stay unreviewable (422);
 * old reviews are never edited; the legacy columns are not written;
+* a legacy verdict with no review record (set outside the service after migration
+  0021) is refused (409), never overruled by a new "first" review;
 * every review writes a ``verification`` history row on the subject's company;
 * the reviewer is the session user — a body cannot name one;
 * the reader reports the chain head.
@@ -28,6 +30,7 @@ from app.modules.onboarding.application.compliance_inputs import ComplianceInput
 from app.modules.onboarding.application.verification_service import VerificationService
 from app.modules.onboarding.domain.entities.orchestration_enums import VerificationReviewStatus
 from app.modules.onboarding.exceptions import (
+    VerificationLegacyReviewUnchainedError,
     VerificationResultNotReviewableError,
     VerificationReviewStaleError,
 )
@@ -38,6 +41,7 @@ from app.modules.onboarding.tests.integration._l4b_support import (
     exporter_result,
     history_rows,
     insert_result,
+    insert_review,
     pg,
 )
 from app.platform.authentication.models import UserRole
@@ -131,6 +135,53 @@ async def test_the_legacy_columns_are_not_written():
             (str(result.id),),
         )
         assert cur.fetchone() == (None, None)
+
+
+def _legacy_verdict_without_a_review_row(cur, **result) -> uuid.UUID:
+    """A result whose legacy columns were set by raw SQL after migration 0021 —
+    the only way to have a legacy verdict and no ``verification_review`` row."""
+    result_id = insert_result(cur, status="REVIEW", **result)
+    cur.execute(
+        "UPDATE onboarding.verification_result "
+        "SET reviewed_by = 'legacy', review_status = 'ACCEPTED' WHERE id = %s",
+        (str(result_id),),
+    )
+    return result_id
+
+
+async def test_a_legacy_verdict_with_no_review_record_is_refused_not_overruled():
+    company_id = await make_company()
+    with pg() as cur:
+        result_id = _legacy_verdict_without_a_review_row(
+            cur, entity_type="EXPORTER", entity_reference=company_id
+        )
+
+    # Neither a "first" review nor one naming some review can land: there is
+    # nothing to supersede, and a first review would overrule the legacy verdict
+    # with no link and no reason.
+    for supersedes, note in ((None, None), (uuid.uuid4(), "overrule")):
+        with pytest.raises(VerificationLegacyReviewUnchainedError) as refused:
+            await _review(result_id, REJECTED, note=note, supersedes=supersedes)
+        assert refused.value.status_code == 409
+        assert refused.value.legacy_review_status == "ACCEPTED"
+
+    assert await _chain(result_id) == ()
+    with pg() as cur:
+        assert history_rows(cur, company_id) == []
+        cur.execute(
+            "SELECT reviewed_by, review_status FROM onboarding.verification_result WHERE id = %s",
+            (str(result_id),),
+        )
+        assert cur.fetchone() == ("legacy", "ACCEPTED")
+
+
+async def test_once_the_legacy_verdict_is_copied_into_a_review_it_can_be_superseded():
+    """The repair the refusal names — what migration 0021 did for earlier verdicts."""
+    with pg() as cur:
+        result_id = _legacy_verdict_without_a_review_row(cur)
+        copied = insert_review(cur, result_id, status="ACCEPTED")
+    later = await _review(result_id, REJECTED, note="Registry mismatch", supersedes=copied)
+    assert [r.id for r in await _chain(result_id)] == [copied, later.id]
 
 
 # ── Concurrency ──────────────────────────────────────────────────────────────
@@ -298,3 +349,17 @@ async def test_the_api_refuses_to_review_a_pending_result(client):
     )
     assert resp.status_code == 422, resp.text
     assert resp.json()["error_code"] == "VERIFICATION_RESULT_NOT_REVIEWABLE"
+
+
+async def test_the_api_answers_409_for_a_legacy_verdict_with_no_review_record(client):
+    _, token = await user_with_role(client, UserRole.COMPLIANCE)
+    with pg() as cur:
+        result_id = _legacy_verdict_without_a_review_row(cur)
+    resp = await client.post(
+        f"{BASE}/verifications/{result_id}/review",
+        json={"review_status": "REJECTED"},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error_code"] == "VERIFICATION_LEGACY_REVIEW_UNCHAINED"
+    assert await _chain(result_id) == ()

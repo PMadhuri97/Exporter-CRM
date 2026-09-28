@@ -412,7 +412,7 @@ _VERIFICATION_DECISION_ROLES = (UserRole.COMPLIANCE, UserRole.ADMIN)
         "company and a `BUYER` subject an existing deal buyer (`deal_buyer.id`) whose "
         "deal is not `HANDED_OVER` or `WITHDRAWN`. A manual `PASSED` needs evidence (a "
         "note or at least one reference); a manual `PENDING` is refused. `document` "
-        "evidence must belong to the subject."
+        "evidence must belong to the subject and be `AVAILABLE` (scanned clean)."
     ),
     responses={
         201: {"model": VerificationResultResponse, "description": "Verification result recorded"},
@@ -423,7 +423,8 @@ _VERIFICATION_DECISION_ROLES = (UserRole.COMPLIANCE, UserRole.ADMIN)
         422: {
             "description": (
                 "Unknown/disabled provider, an invalid payload for it, missing or "
-                "foreign evidence, or an uninterpretable check/subject pair"
+                "foreign evidence, a `document` that is not `AVAILABLE`, or an "
+                "uninterpretable check/subject pair"
             )
         },
     },
@@ -524,7 +525,12 @@ async def list_verification_results(
         401: {"description": "Unauthorized"},
         403: {"description": "COMPLIANCE or ADMIN role required"},
         404: {"description": "Verification result not found"},
-        409: {"description": "`supersedes_review_id` is not the current review"},
+        409: {
+            "description": (
+                "`supersedes_review_id` is not the current review, or the result has a "
+                "legacy review with no review record to supersede"
+            )
+        },
         422: {"description": "Result still PENDING, or a superseding review without a note"},
     },
 )

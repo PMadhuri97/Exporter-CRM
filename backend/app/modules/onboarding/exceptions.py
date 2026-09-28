@@ -1415,3 +1415,33 @@ class VerificationBuyerDealClosedError(AnerBaseException):
             status_code=409,
             extensions={"deal_id": str(deal_id), "stage": stage},
         )
+
+
+class VerificationLegacyReviewUnchainedError(AnerBaseException):
+    """A result carries a legacy verdict (``verification_result.review_status``) but
+    has no ``verification_review`` row for a new review to supersede.
+
+    Migration ``onboarding_0021_verif_review`` copied every legacy verdict into the
+    review table as its first review, and the service never writes the legacy columns
+    since, so this state exists only if those columns were set outside the service
+    afterwards (raw SQL). A new review would have nothing to supersede: recording it
+    as a "first" review would overrule the legacy verdict with no supersede link and
+    no stated reason — the silent overwrite 4b-task.md §5.1 forbids. So it is refused
+    (409) until the legacy verdict is copied into ``verification_review`` the way the
+    migration did; retrying does not help, unlike ``VerificationReviewStaleError``.
+    """
+
+    def __init__(self, *, verification_result_id: object, legacy_review_status: str) -> None:
+        self.verification_result_id = verification_result_id
+        self.legacy_review_status = legacy_review_status
+        super().__init__(
+            detail=(
+                f"Verification result {verification_result_id} has a legacy review "
+                f"({legacy_review_status}) with no review record to supersede. Its "
+                "verdict must be copied into verification_review, as migration "
+                "onboarding_0021_verif_review did, before it can be reviewed again."
+            ),
+            error_code="VERIFICATION_LEGACY_REVIEW_UNCHAINED",
+            status_code=409,
+            extensions={"legacy_review_status": legacy_review_status},
+        )

@@ -160,7 +160,8 @@ def test_a_passed_result_with_a_reference_and_no_note_is_accepted():
 
 
 @pytest.mark.parametrize("status", ["FAILED", "REVIEW"])
-def test_other_outcomes_need_no_evidence_until_d16_says_otherwise(status: str):
+def test_failed_and_review_need_no_evidence(status: str):
+    """D16 (lead, 28 Sep 2026): only a manual PASSED needs evidence."""
     outcome = ManualEntryAdapter().verify(_request(evidence=None, status=status))
     assert outcome.status.value == status
 

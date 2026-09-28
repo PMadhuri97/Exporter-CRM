@@ -5,13 +5,16 @@
  * Split out of the single `hooks/index.ts`; the barrel re-exports everything,
  * so no component changed. Mechanical move — every hook below is
  * byte-identical to the one it replaced, query keys and invalidations
- * included.
+ * included — except `useScreeningItemHistory`, added by Developer 4B (4B-7).
+ * Recording a decision invalidates the item histories too, so an open history
+ * shows the new decision.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   getBankActivity,
+  getScreeningItemHistory,
   getScreeningReview,
   listVerificationResults,
   reviewVerification,
@@ -99,7 +102,21 @@ export function useUpdateScreeningReviewItem(customerId: string) {
     }) => updateScreeningReviewItem(customerId, itemKey, { status, comment }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['screeningReview', customerId] });
+      void queryClient.invalidateQueries({ queryKey: ['screeningItemHistory', customerId] });
     },
+  });
+}
+
+/** One page of an item's decision history, fetched only while `enabled`. */
+export function useScreeningItemHistory(
+  customerId: string,
+  itemKey: string,
+  { limit, offset, enabled }: { limit: number; offset: number; enabled: boolean },
+) {
+  return useQuery({
+    queryKey: ['screeningItemHistory', customerId, itemKey, limit, offset],
+    queryFn: () => getScreeningItemHistory(customerId, itemKey, { limit, offset }),
+    enabled,
   });
 }
 

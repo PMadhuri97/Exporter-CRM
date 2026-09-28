@@ -61,12 +61,12 @@ def test_a_manual_passed_needs_evidence():
     ],
     ids=["note", "url", "document"],
 )
-def test_until_d16_a_note_or_one_reference_is_enough_for_passed(evidence):
+def test_a_note_or_one_reference_is_enough_for_passed(evidence):
     check_manual_outcome(VerificationResultStatus.PASSED, evidence)
 
 
 @pytest.mark.parametrize("status", [VerificationResultStatus.FAILED, VerificationResultStatus.REVIEW])
-def test_until_d16_other_outcomes_need_no_evidence(status):
+def test_failed_and_review_need_no_evidence(status):
     check_manual_outcome(status, None)
 
 

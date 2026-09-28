@@ -48,8 +48,13 @@ VerificationProvider = Literal["manual", "rxil"]
 ManualRouteProvider = Literal["manual"]
 
 
-class EvidenceRefModel(BaseModel):
-    """One evidence reference: a `crm_document.id` (`document`) or a `url`."""
+class VerificationEvidenceRefModel(BaseModel):
+    """One evidence reference: a `crm_document.id` (`document`) or a `url`.
+
+    Prefixed because OpenAPI schema names are global: qualification already has an
+    `EvidenceRefModel` / `EvidenceRefOut` (`schemas/qualification.py`), and a second
+    class of the same name makes FastAPI rename *both* to module-qualified names,
+    silently changing Developer 2's generated types."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -73,8 +78,8 @@ class TriggerVerificationRequest(BaseModel):
 
     Evidence (`evidence_note`, `evidence_refs`) is what the outcome rests on, in the
     qualification contract's shape. A manual `PASSED` needs some (D16: a note or at
-    least one reference). A `document` reference must
-    belong to the subject.
+    least one reference). A `document` reference must belong to the subject and be
+    `AVAILABLE` (scanned clean).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -85,7 +90,7 @@ class TriggerVerificationRequest(BaseModel):
     provider: ManualRouteProvider = "manual"
     payload: dict[str, Any] = Field(default_factory=dict)
     evidence_note: str | None = Field(default=None, max_length=4000)
-    evidence_refs: list[EvidenceRefModel] = Field(default_factory=list, max_length=50)
+    evidence_refs: list[VerificationEvidenceRefModel] = Field(default_factory=list, max_length=50)
 
     def to_evidence(self) -> VerificationEvidence | None:
         if self.evidence_note is None and not self.evidence_refs:
@@ -114,7 +119,10 @@ class RecordReviewRequest(BaseModel):
     supersedes_review_id: uuid.UUID | None = None
 
 
-class EvidenceRefOut(BaseModel):
+class VerificationEvidenceRefOut(BaseModel):
+    """An evidence reference as stored. Prefixed for the reason
+    `VerificationEvidenceRefModel` gives."""
+
     type: str
     ref: str
 
@@ -169,7 +177,7 @@ class VerificationResultResponse(BaseModel):
     #: Retired: never written. Kept so the response shape does not shrink.
     evidence_reference: str | None
     evidence_note: str | None
-    evidence_refs: list[EvidenceRefOut]
+    evidence_refs: list[VerificationEvidenceRefOut]
     subject_snapshot: BuyerSnapshotResponse | None
     #: The current review's reviewer and status (the chain head), or `None`.
     reviewed_by: str | None
@@ -211,7 +219,9 @@ class VerificationResultResponse(BaseModel):
             normalized_result=result.normalized_result,
             evidence_reference=result.evidence_reference,
             evidence_note=result.evidence_note,
-            evidence_refs=[EvidenceRefOut(**ref) for ref in (result.evidence_refs or [])],
+            evidence_refs=[
+                VerificationEvidenceRefOut(**ref) for ref in (result.evidence_refs or [])
+            ],
             subject_snapshot=_snapshot_for(result.subject_snapshot, viewer),
             reviewed_by=reviewed_by,
             review_status=review_status,
@@ -258,8 +268,8 @@ class VerificationResultListResponse(BaseModel):
 
 __all__ = [
     "BuyerSnapshotResponse",
-    "EvidenceRefModel",
-    "EvidenceRefOut",
+    "VerificationEvidenceRefModel",
+    "VerificationEvidenceRefOut",
     "ManualRouteProvider",
     "RecordReviewRequest",
     "TriggerVerificationRequest",

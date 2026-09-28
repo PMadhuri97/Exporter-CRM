@@ -5,6 +5,9 @@
   a note or at least one reference);
 * a note, a valid document, or a url is accepted; a foreign or missing document is
   refused; a document on a subject that cannot own one is refused;
+* a document must be ``AVAILABLE``: ``PENDING_SCAN``, ``QUARANTINED`` and
+  ``SCAN_FAILED`` can never be opened (``storage-and-documents.md`` §4) and are
+  refused — service and API;
 * evidence is stored and the reader reports its document ids;
 * a ghost EXPORTER subject is 404;
 * no manual result is ever PENDING.
@@ -66,7 +69,8 @@ async def test_a_manual_passed_without_evidence_is_refused_and_writes_nothing():
         assert history_rows(cur, company_id) == []
 
 
-async def test_a_note_is_accepted_and_stored_until_d16_says_otherwise():
+async def test_a_note_alone_is_enough_evidence_for_a_manual_passed():
+    """D16: a non-blank note or at least one reference."""
     company_id = await make_company()
     result = await exporter_result(
         company_id, evidence=VerificationEvidence(note="  Bank letter dated 2 Sep  ")
@@ -121,6 +125,64 @@ async def test_a_missing_document_is_refused():
         await exporter_result(company_id, evidence=_documents(uuid.uuid4()))
 
 
+# ── The scan gate: only an AVAILABLE document is evidence ────────────────────
+
+#: Every scan state but AVAILABLE. None of them can ever be opened
+#: (storage-and-documents.md §4), so none of them can be what an outcome rests on.
+_NOT_AVAILABLE = ["PENDING_SCAN", "QUARANTINED", "SCAN_FAILED"]
+
+
+async def test_an_available_document_is_accepted():
+    company_id = await make_company()
+    with pg() as cur:
+        document = insert_document(cur, company_id=company_id, scan_status="AVAILABLE")
+    result = await exporter_result(company_id, evidence=_documents(document))
+    assert result.evidence_refs == [{"type": "document", "ref": str(document)}]
+
+
+@pytest.mark.parametrize("scan_status", _NOT_AVAILABLE)
+async def test_a_document_that_is_not_available_is_refused_and_writes_nothing(scan_status):
+    company_id = await make_company()
+    with pg() as cur:
+        document = insert_document(cur, company_id=company_id, scan_status=scan_status)
+    with pytest.raises(ValidationError, match=f"is {scan_status}"):
+        await exporter_result(company_id, evidence=_documents(document))
+    assert await _count_results(VerificationEntityType.EXPORTER, company_id) == 0
+    with pg() as cur:
+        assert history_rows(cur, company_id) == []
+
+
+async def test_one_unavailable_document_refuses_the_whole_evidence():
+    """A note and a clean document do not carry a quarantined one along."""
+    company_id = await make_company()
+    with pg() as cur:
+        clean = insert_document(cur, company_id=company_id)
+        quarantined = insert_document(cur, company_id=company_id, scan_status="QUARANTINED")
+    evidence = VerificationEvidence(
+        note="Registry extract and bank letter",
+        refs=(
+            EvidenceRef(type="document", ref=str(clean)),
+            EvidenceRef(type="document", ref=str(quarantined)),
+        ),
+    )
+    with pytest.raises(ValidationError, match="is QUARANTINED"):
+        await exporter_result(company_id, evidence=evidence)
+    assert await _count_results(VerificationEntityType.EXPORTER, company_id) == 0
+
+
+@pytest.mark.parametrize("scan_status", _NOT_AVAILABLE)
+async def test_a_foreign_document_is_refused_as_foreign_whatever_its_scan_state(scan_status):
+    """Ownership is checked first: the refusal never discloses another company's
+    document's scan state."""
+    company_id = await make_company()
+    other_company = await make_company()
+    with pg() as cur:
+        foreign = insert_document(cur, company_id=other_company, scan_status=scan_status)
+    with pytest.raises(ValidationError, match="does not belong") as refused:
+        await exporter_result(company_id, evidence=_documents(foreign))
+    assert scan_status not in str(refused.value)
+
+
 async def test_document_evidence_on_a_subject_with_no_company_is_refused():
     company_id = await make_company()
     with pg() as cur:
@@ -138,7 +200,8 @@ async def test_document_evidence_on_a_subject_with_no_company_is_refused():
 
 
 @pytest.mark.parametrize("status", ["FAILED", "REVIEW"])
-async def test_other_manual_outcomes_are_unchanged_pending_d16(status):
+async def test_a_manual_failed_or_review_needs_no_evidence(status):
+    """D16: only a manual PASSED needs evidence."""
     result = await exporter_result(await make_company(), status=status, evidence=None)
     assert result.status.value == status
 
@@ -182,7 +245,7 @@ async def test_recording_a_result_writes_a_verification_history_row():
     }
 
 
-async def test_a_director_check_writes_no_history_row_pending_d15():
+async def test_a_director_check_writes_no_history_row():
     """No company link — D15 (lead, 28 Sep 2026): no history row."""
     director = uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
@@ -261,6 +324,23 @@ async def test_the_api_refuses_a_foreign_document(client, compliance_token):
         headers=auth_header(compliance_token),
     )
     assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.parametrize("scan_status", _NOT_AVAILABLE)
+async def test_the_api_refuses_a_document_that_is_not_available(
+    client, compliance_token, scan_status
+):
+    company_id = await make_company()
+    with pg() as cur:
+        document = insert_document(cur, company_id=company_id, scan_status=scan_status)
+    resp = await client.post(
+        f"{BASE}/verifications",
+        json=_body(company_id, evidence_refs=[{"type": "document", "ref": str(document)}]),
+        headers=auth_header(compliance_token),
+    )
+    assert resp.status_code == 422, resp.text
+    assert scan_status in resp.text
+    assert await _count_results(VerificationEntityType.EXPORTER, company_id) == 0
 
 
 async def test_the_api_refuses_an_unknown_reference_type(client, compliance_token):

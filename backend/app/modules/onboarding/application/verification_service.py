@@ -35,9 +35,9 @@ Integrity (Developer 4B, 4b-task.md §5)
   when the check was recorded (`subject_snapshot`), because `DealService.set_buyer`
   rewrites the buyer row in place under the same id.
 * **Evidence** (§5.3). `evidence_note` / `evidence_refs` are stored on the result.
-  `document` references must exist and belong to the subject (the company for
-  EXPORTER; the buyer's deal or its company for BUYER), read through Developer 3B's
-  `CrmDocumentRepository`. What a *manual* outcome must carry is
+  `document` references must exist, belong to the subject (the company for
+  EXPORTER; the buyer's deal or its company for BUYER) and be `AVAILABLE` (scanned
+  clean), read through Developer 3B's `CrmDocumentRepository`. What a *manual* outcome must carry is
   `domain.verification_evidence.check_manual_outcome` (D16, decided: a note or at
   least one reference), applied by `ManualEntryAdapter`.
 * **Reviews supersede** (§5.1). `record_review` appends a `verification_review`
@@ -102,6 +102,7 @@ from app.modules.onboarding.exceptions import (
     ExporterProfileNotFoundError,
     ProviderCapabilityError,
     VerificationBuyerDealClosedError,
+    VerificationLegacyReviewUnchainedError,
     VerificationResultNotReviewableError,
     VerificationReviewStaleError,
 )
@@ -443,12 +444,16 @@ class VerificationService:
         entity_type: VerificationEntityType,
         subject: _Subject,
     ) -> None:
-        """Every `document` reference exists and belongs to the subject.
+        """Every `document` reference exists, belongs to the subject and is
+        `AVAILABLE`.
 
         EXPORTER: a document of that company. BUYER: a document of the buyer's deal
         or of the deal's company (4b-task.md §5.3; which of those Dev4A's evidence
         snapshot may use is its D4). Subjects with no company link cannot own a
-        document, so a document reference on one is refused.
+        document, so a document reference on one is refused. A document that is not
+        `AVAILABLE` (`PENDING_SCAN`, `QUARANTINED`, `SCAN_FAILED`) is refused: it can
+        never be opened (`storage-and-documents.md` §4), so it cannot be what an
+        outcome rests on — the same scan gate as Dev4A's evidence snapshot (D4).
         """
         check_evidence_shape(evidence)
         if evidence is None:
@@ -473,6 +478,17 @@ class VerificationService:
                 raise ValidationError(
                     f"evidence document {document_id} does not belong to this "
                     f"{entity_type.value} subject"
+                )
+            # Only a document that can be opened can be evidence: PENDING_SCAN,
+            # QUARANTINED and SCAN_FAILED are refused to everyone
+            # (storage-and-documents.md §4), and the evidence is frozen once
+            # written, so a document still being scanned cannot be named now and
+            # "become" evidence later. Checked after ownership, so a foreign
+            # document's scan state is never disclosed.
+            if not document.scan_status.is_servable:
+                raise ValidationError(
+                    f"evidence document {document_id} is {document.scan_status.value}: "
+                    "only an AVAILABLE (scanned clean) document can be evidence"
                 )
 
     async def _record_history(
@@ -908,6 +924,9 @@ class VerificationService:
         Raises:
             NotFoundError: no such `VerificationResult`.
             VerificationResultNotReviewableError: still `PENDING` (422).
+            VerificationLegacyReviewUnchainedError: the result has a legacy
+                `review_status` but no review record to supersede (409; only
+                reachable if the legacy columns were written outside the service).
             VerificationReviewStaleError: `supersedes_review_id` is not the current
                 review (409).
             ValidationError: a superseding review without a note (422).
@@ -928,6 +947,14 @@ class VerificationService:
             raise VerificationResultNotReviewableError(verification_result_id=result_id)
 
         chain = await self._reviews.chain_for(result_id)
+        if not chain and result.review_status is not None:
+            # A legacy verdict with no review record (set outside the service after
+            # migration 0021, which copied every earlier one). A "first" review here
+            # would overrule it with no supersede link and no reason — refused.
+            raise VerificationLegacyReviewUnchainedError(
+                verification_result_id=result_id,
+                legacy_review_status=result.review_status.value,
+            )
         head = chain[-1] if chain else None
         current_head_id = head.id if head is not None else None
         if supersedes_review_id != current_head_id:

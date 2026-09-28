@@ -66,20 +66,25 @@ async def deal_buyer(**fields: Any) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
 
 
 def insert_document(
-    cursor: Any, *, company_id: uuid.UUID | None = None, deal_id: uuid.UUID | None = None
+    cursor: Any,
+    *,
+    company_id: uuid.UUID | None = None,
+    deal_id: uuid.UUID | None = None,
+    scan_status: str = "AVAILABLE",
 ) -> uuid.UUID:
-    """A ``crm_document`` row owned by a company or a deal. The file itself is never
-    read by these tests, so no object is stored."""
+    """A ``crm_document`` row owned by a company or a deal, ``AVAILABLE`` unless told
+    otherwise. The file itself is never read by these tests, so no object is stored."""
     document_id = uuid.uuid4()
     cursor.execute(
         "INSERT INTO onboarding.crm_document (id, company_id, deal_id, category, document_type, "
         " source, file_name, content_type, size_bytes, uploaded_at, scan_status, storage_key) "
         "VALUES (%s, %s, %s, 'COMPLIANCE_SCREENING', 'bank_letter', 'INTERNAL', 'letter.pdf', "
-        " 'application/pdf', 10, now(), 'AVAILABLE', %s)",
+        " 'application/pdf', 10, now(), %s, %s)",
         (
             str(document_id),
             str(company_id) if company_id else None,
             str(deal_id) if deal_id else None,
+            scan_status,
             f"test/l4b/{document_id}.pdf",
         ),
     )
