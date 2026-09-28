@@ -148,7 +148,12 @@ export function Sidebar({
         ))}
       </ul>
 
-      <div className="mt-6">
+      {/* `mt-auto` pins this group to the foot of the rail. Settings is where
+          you go to stop working, not another stage of the work, so it sits
+          apart from the workflow rows rather than below them in the same list.
+          The nav is `h-full` and a flex column, which is what makes the push
+          work at any viewport height. */}
+      <div className="mt-auto border-t border-border pt-4">
         <p
           className={cn(
             'mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint',
