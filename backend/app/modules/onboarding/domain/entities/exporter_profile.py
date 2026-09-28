@@ -7,9 +7,7 @@ yet), and a customer keeps exactly one profile across every historical
 ``OnboardingRequest`` row for its ``customer_id`` (re-verification, renewed
 KYB, a second financing product each start a new ``OnboardingRequest``, never
 a new ``ExporterProfile``). ``customer_id`` is therefore unique here, and
-deliberately not a foreign key to ``onboarding_request`` — see the module
-docstring on ``exporter_enums.ExporterLifecycleStatus`` for why the two
-lifecycles are independent state machines.
+deliberately not a foreign key to ``onboarding_request``.
 
 ``gstin``/``pan``/``iec`` are India-specific identifiers not already covered
 by ``OnboardingRequest.registration_number``: confirmed against that column
@@ -19,29 +17,49 @@ of GSTIN (tax registration), PAN (income-tax id) and IEC (import-export
 code). None of the three duplicate anything ``OnboardingRequest`` already
 stores, so they live here rather than being derived.
 
-``legal_name`` is deliberately **not** a column here — ``search_profiles``'s
-``legal_name_contains`` criterion joins to ``OnboardingRequest.legal_name``
-instead (see ``application/exporter_profile_service.py``), per the ticket's
-explicit instruction not to duplicate a field ``OnboardingRequest`` already
-has. A profile with no ``OnboardingRequest`` yet (a bare Lead) simply has no
-``legal_name`` to search by until one exists.
+The company's identity — ``name``, ``country``, ``cin`` — lives on this
+record (``docs/contracts/company-record.md`` §2.1, migration 0014), as do its
+``pan`` (unique across companies), its GSTINs (``ExporterGstin``, several per
+company) and its commercial ``marker``. No CRM code reads a company's identity
+from the legacy ``onboarding_request`` table.
+
+Each gauge's **current** value is carried here so lists and filters need no join
+(architecture §3.8), and each is written by exactly one service, which writes the
+history row in the same transaction. ``journey`` and ``qualification`` are
+Developer 2's; ``conversation`` and ``conversation_check_back_on`` (0016) are
+Developer 3's and are written only by ``ConversationService``; ``background_check``
+(0015) is Developer 4A's.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    DateTime,
+    Enum,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
+from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterConversation
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterLifecycleStatus,
+    ExporterJourney,
+    ExporterMarker,
     ExporterSource,
 )
+from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
+from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.platform.database.models import AnerModel
 
 if TYPE_CHECKING:
@@ -68,13 +86,21 @@ class ExporterProfile(AnerModel):
     __tablename__ = "exporter_profile"
     __table_args__ = (
         UniqueConstraint("customer_id", name="uq_exporter_profile_customer_id"),
+        # A check-back date exactly when the conversation is `NOT_NOW`, never
+        # otherwise (migration 0016, `docs/contracts/engagement.md` §2.3). Same
+        # shape as `ck_exporter_profile_marker_reason`, and for the same reason:
+        # a value that is only meaningful alongside another must not outlive it.
+        CheckConstraint(
+            "(conversation = 'NOT_NOW' AND conversation_check_back_on IS NOT NULL)"
+            " OR (conversation <> 'NOT_NOW' AND conversation_check_back_on IS NULL)",
+            name="ck_exporter_profile_conversation_check_back",
+        ),
         {"schema": SCHEMA},
     )
 
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
     # ── India-specific identifiers (not covered by OnboardingRequest) ────────
-    gstin: Mapped[str | None] = mapped_column(String(15), nullable=True)
     pan: Mapped[str | None] = mapped_column(String(10), nullable=True)
     iec: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
@@ -98,9 +124,95 @@ class ExporterProfile(AnerModel):
         UUID(as_uuid=True), nullable=True
     )
 
-    lifecycle_status: Mapped[ExporterLifecycleStatus] = mapped_column(
-        Enum(ExporterLifecycleStatus, name="exporter_lifecycle_status_enum", schema=SCHEMA),
+    # ── Identity (L2-03, columns from migration 0014) ──────────────────────
+    #: Nullable only while the API's unnamed create path exists; the database
+    #: refuses a blank name (`ck_exporter_profile_name_not_blank`).
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: ISO 3166-1 alpha-2, upper case (`ck_exporter_profile_country_format`).
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    #: Company registration number (`ck_exporter_profile_cin_format`).
+    cin: Mapped[str | None] = mapped_column(String(21), nullable=True)
+
+    #: The company's GSTINs, one row each (`ExporterGstin`), newest last.
+    #: Loaded with the profile (`selectin`), so async code never lazy-loads it.
+    gstin_rows: Mapped[list[ExporterGstin]] = relationship(
+        lazy="selectin",
+        order_by="ExporterGstin.created_at, ExporterGstin.gstin",
+        cascade="all, delete-orphan",
+    )
+
+    # ── Marker (L2-08): commercial pause or ending, not a journey stage ─────
+    marker: Mapped[ExporterMarker] = mapped_column(
+        Enum(ExporterMarker, name="exporter_marker_enum", schema=SCHEMA),
         nullable=False,
+        server_default=ExporterMarker.NONE.value,
+        default=ExporterMarker.NONE,
+    )
+    #: The current marker's reason; `NULL` exactly when the marker is `NONE`
+    #: (`ck_exporter_profile_marker_reason`). Every change, with its reason,
+    #: is also in the history log.
+    marker_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ── Journey and qualification gauge (migration 0017) ────────────────────
+    #: LEAD -> PROSPECT -> CUSTOMER, forward only, never set by hand
+    #: (company-record contract §3.1). Replaced the ten-status
+    #: `lifecycle_status`, retired in L2-04 (migration 0020).
+    journey: Mapped[ExporterJourney] = mapped_column(
+        Enum(ExporterJourney, name="exporter_journey_enum", schema=SCHEMA),
+        nullable=False,
+        server_default=ExporterJourney.LEAD.value,
+        default=ExporterJourney.LEAD,
+    )
+    #: The qualification gauge's current value; only `QualificationService`
+    #: writes it, from a recorded outcome (criterion-result contract §4).
+    qualification: Mapped[QualificationState] = mapped_column(
+        Enum(QualificationState, name="qualification_state_enum", schema=SCHEMA),
+        nullable=False,
+        server_default=QualificationState.NOT_YET_REVIEWED.value,
+        default=QualificationState.NOT_YET_REVIEWED,
+    )
+
+    # ── Conversation gauge (migration 0016) — Developer 3 ───────────────────
+    #
+    # The two columns below are the only part of this entity Developer 3 owns
+    # (`docs/contracts/company-record.md` §2.4, `engagement.md` §2.1). Everything
+    # else on this table is Developer 2's, and Developer 2 reviewed 0016 because
+    # it adds a column to their table.
+    #
+    #: How the sales conversation is going. Only `ConversationService` writes it,
+    #: and every change writes a `conversation` history row in the same
+    #: transaction. **Applies from `PROSPECT` onward** (assumption A4): a `LEAD`
+    #: reads `NOT_CONTACTED` because the column is `NOT NULL`, not because anyone
+    #: judged it, and the service refuses a move on a `LEAD`.
+    conversation: Mapped[ExporterConversation] = mapped_column(
+        Enum(ExporterConversation, name="exporter_conversation_enum", schema=SCHEMA),
+        nullable=False,
+        server_default=ExporterConversation.NOT_CONTACTED.value,
+        default=ExporterConversation.NOT_CONTACTED,
+    )
+    #: When to pick a `NOT_NOW` conversation back up. `NULL` exactly when the
+    #: conversation is not `NOT_NOW` (`ck_exporter_profile_conversation_check_back`).
+    #: A date, not a timestamp: "check back in the new year" is a day, and a time
+    #: of day would be invented precision. Phase 2's Follow-ups list **reads** this
+    #: and never writes it — a check-back date moves only through
+    #: `ConversationService`.
+    conversation_check_back_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # ── Background-check gauge (migration 0015) — Developer 4A ──────────────
+    #
+    # The one column below is the only part of this entity Developer 4A owns
+    # (`docs/contracts/company-record.md` §2.4, `background-check.md` §2). Developer 2
+    # reviews it because it is on their table, as they reviewed 0016.
+    #
+    #: Is it safe and lawful to work with them? Only `BackgroundCheckService` writes it,
+    #: together with a locked decision, its evidence snapshot and a `background_check`
+    #: history row, in one transaction. There is **no** company-level risk column: risk
+    #: is on the decision, and whether it is also carried here is D5, open.
+    background_check: Mapped[BackgroundCheckState] = mapped_column(
+        Enum(BackgroundCheckState, name="background_check_enum", schema=SCHEMA),
+        nullable=False,
+        server_default=BackgroundCheckState.NOT_STARTED.value,
+        default=BackgroundCheckState.NOT_STARTED,
     )
 
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -112,6 +224,11 @@ class ExporterProfile(AnerModel):
     date_added: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    @property
+    def gstins(self) -> list[str]:
+        """The company's GSTINs as plain strings, in `gstin_rows` order."""
+        return [row.gstin for row in self.gstin_rows]
 
 
 __all__ = ["ExporterProfile"]

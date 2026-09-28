@@ -1,28 +1,30 @@
 import type { UserRole } from '@/lib/api/types';
 
 /**
- * Implements the role capability matrix in
- * `docs/exporter-crm-frontend-tickets.md` (updated 2026-09-21):
+ * Who may see a raw tax identifier:
  *
- *   COMPLIANCE / ADMIN  — always unmasked.
- *   OPERATIONS          — masked, EXCEPT on records this user owns
- *                          (`isOwner`) — an ownership-scoped exception, not
- *                          a blanket role exception.
- *   DEVELOPER / API_USER — always masked, no reveal under any circumstance.
+ *   COMPLIANCE / ADMIN                — unmasked.
+ *   OPERATIONS / DEVELOPER / API_USER — masked, always.
  *
- * `isOwner` answers "is the current user this record's assigned
- * relationship_manager" — callers compute that comparison themselves (see
- * that field's known backend gap in the ticket doc: it's currently a bare
- * display string, not a stable id, so this function does not attempt the
- * comparison itself).
+ * This mirrors `can_reveal_identifiers` in
+ * `backend/app/modules/onboarding/api/schemas/exporter.py`, which is what
+ * actually enforces it — the server masks before the value ever reaches the
+ * browser, so this function decides whether to render a reveal control, not
+ * whether the data is protected.
+ *
+ * It previously carried an ownership exception: OPERATIONS could reveal on
+ * records where it was the assigned relationship manager. Architecture
+ * decision 12 settles the prototype the other way — sales staff see masked
+ * values, and relationship-manager ownership waits until after the prototype —
+ * so both sides dropped that branch together. Re-adding it here without
+ * changing the backend would produce a reveal control that reveals bullets.
  */
-export function canReveal(role: UserRole, isOwner = false): boolean {
+export function canReveal(role: UserRole): boolean {
   switch (role) {
     case 'COMPLIANCE':
     case 'ADMIN':
       return true;
     case 'OPERATIONS':
-      return isOwner;
     case 'DEVELOPER':
     case 'API_USER':
       return false;
@@ -42,7 +44,6 @@ function maskTail(value: string): string {
 
 export interface MaskContext {
   role: UserRole;
-  isOwner?: boolean;
 }
 
 /**
@@ -55,6 +56,6 @@ export function maskIdentifier(
   context: MaskContext,
 ): string | null {
   if (value === null || value === undefined) return value ?? null;
-  if (canReveal(context.role, context.isOwner)) return value;
+  if (canReveal(context.role)) return value;
   return maskTail(value);
 }

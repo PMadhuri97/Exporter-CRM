@@ -6,8 +6,12 @@ fact. ``trg_exporter_activity_append_only`` (migration
 level, reusing the shared ``public.prevent_mutation()`` function
 ``onboarding_event`` already relies on.
 
-``customer_id`` is a bare, indexed UUID with no formal FK, for the same
-reason ``ExporterContact.customer_id`` is bare — see that module's docstring.
+``customer_id`` points at a company that exists: migration 0014 added
+``fk_exporter_activity_customer_id``, a real foreign key to
+``exporter_profile.customer_id`` with ``ON DELETE RESTRICT``, declared on the
+column below. This docstring used to claim the column was bare, for the same
+(since-retired) reason ``ExporterContact``'s did — see that module's docstring
+for what changed and why 0016 does not re-add the constraint.
 
 ``due_at`` is nullable and meaningful only for ``TASK``/``FOLLOW_UP`` entries;
 it is left unconstrained at the database level (no CHECK tying it to
@@ -20,11 +24,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Index, String
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.modules.onboarding.domain.entities.exporter_enums import ExporterActivityType
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.platform.database.models import AppendOnlyModel
 
 SCHEMA = "onboarding"
@@ -37,7 +41,18 @@ class ExporterActivity(AppendOnlyModel):
         {"schema": SCHEMA},
     )
 
-    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    #: The company. `ON DELETE RESTRICT`: an activity is the relationship's
+    #: record of what happened, and this table is append-only, so nothing may
+    #: remove the company it happened to either.
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.exporter_profile.customer_id",
+            name="fk_exporter_activity_customer_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
     activity_type: Mapped[ExporterActivityType] = mapped_column(
         Enum(ExporterActivityType, name="exporter_activity_type_enum", schema=SCHEMA),
         nullable=False,

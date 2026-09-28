@@ -29,6 +29,7 @@ that one adapter) or to anything else.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -43,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # this module names a concrete adapter: this import exists solely so
 # `get_adapter("manual")` has something to find.
 import app.modules.onboarding.infrastructure.adapters  # noqa: F401
+from app.modules.onboarding.application.company_input_lock import share_lock_companies
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
     VerificationResultStatus,
@@ -68,6 +70,24 @@ logger = structlog.get_logger(__name__)
 
 def _as_uuid(value: uuid.UUID | str) -> uuid.UUID:
     return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+
+
+def _company_subjects(
+    subjects: Iterable[tuple[VerificationEntityType, uuid.UUID]],
+) -> list[uuid.UUID]:
+    """The company ids among `(entity_type, entity_reference)` pairs.
+
+    A result whose subject is the company (`EXPORTER`) is an input to Developer 4A's
+    background-check decision, so its writer takes `FOR SHARE` on the company row
+    first (4b-task.md §6.2 invariant 6; `company_input_lock.py`). Other subjects —
+    BUYER, DIRECTOR, INVOICE, VESSEL, SHIPMENT — are not company-scoped inputs and
+    take no company lock.
+    """
+    return [
+        reference
+        for entity_type, reference in subjects
+        if entity_type == VerificationEntityType.EXPORTER
+    ]
 
 
 # ── verification_type / entity_type cross-validation ─────────────────────────
@@ -317,6 +337,8 @@ class VerificationService:
             raw_result=request_payload,
             outcome=outcome,
         )
+        # After the provider call, so no lock is held while a provider works.
+        await share_lock_companies(self._db, _company_subjects([(entity_type, reference)]))
         self._db.add(result)
         await self._db.commit()
         await self._db.refresh(result)
@@ -388,6 +410,12 @@ class VerificationService:
                 f"{len(requests)} requests in the batch"
             )
 
+        await share_lock_companies(
+            self._db,
+            _company_subjects(
+                (request.entity_type, _as_uuid(request.entity_reference)) for request in requests
+            ),
+        )
         results: list[VerificationResult] = []
         for request, outcome in zip(requests, outcomes, strict=True):
             result = _result_from_outcome(
@@ -456,6 +484,9 @@ class VerificationService:
             or outcome.valid_until != result.valid_until
         ):
             previous_status = result.status
+            await share_lock_companies(
+                self._db, _company_subjects([(result.entity_type, result.entity_reference)])
+            )
             result.status = outcome.status
             result.risk_level = outcome.risk_level
             result.normalized_result = outcome.normalized_result
@@ -533,6 +564,9 @@ class VerificationService:
         if result.status == VerificationResultStatus.PENDING:
             raise VerificationResultNotReviewableError(verification_result_id=result_id)
 
+        await share_lock_companies(
+            self._db, _company_subjects([(result.entity_type, result.entity_reference)])
+        )
         result.reviewed_by = reviewed_by
         result.review_status = review_status
         self._db.add(result)

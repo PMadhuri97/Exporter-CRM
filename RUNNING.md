@@ -27,12 +27,43 @@ cp .env.example .env
 # 4. Schema
 python -m alembic upgrade head
 
-# 5. Run it
+# 5. First roles. `POST /auth/register` only ever grants API_USER, which reaches
+#    nothing in the CRM, so the first ADMIN has to come from here. Set
+#    FIRST_ADMIN_EMAIL / FIRST_ADMIN_PASSWORD and
+#    FIRST_COMPLIANCE_EMAIL / FIRST_COMPLIANCE_PASSWORD in .env first.
+python -m app.platform.authentication.cli bootstrap
+
+# 6. Run it
 python -m uvicorn app.main:app --reload
 # GET http://localhost:8000/api/v1/health         -> internal platform health
 # GET http://localhost:8000/health                -> gateway health probe
 # GET http://localhost:8000/api/v1/docs           -> Swagger UI
 ```
+
+### Granting roles
+
+```bash
+# Create the first ADMIN and one COMPLIANCE user from the environment.
+# Idempotent: an account that already exists is left exactly as it is —
+# same role, same password, same updated_at — so running it twice changes
+# nothing. It refuses to run with a blank password rather than inventing one.
+python -m app.platform.authentication.cli bootstrap
+
+# Change an existing user's role. Refuses an address with no account, so a
+# typo cannot quietly mint a second ADMIN.
+python -m app.platform.authentication.cli promote someone@example.com COMPLIANCE
+```
+
+Roles are `ADMIN`, `COMPLIANCE`, `OPERATIONS`, `DEVELOPER` (read-only) and
+`API_USER` (the lowest; what self-service sign-up grants). Both subcommands
+exit `2` with a message on stderr when the configuration is wrong, so a deploy
+script can branch on it.
+
+`SELF_SERVICE_SIGNUP_ENABLED=false` turns `POST /api/v1/auth/register` off
+entirely — it returns `404`, because a disabled route should not advertise
+that it exists. The default is `true`, and the test suite does not depend on
+that route either way (test accounts are created directly by
+`app.platform.authentication.testing.create_user_direct`).
 
 `docker-compose.yml` at the repo root also works end to end (it brings up
 Temporal, Kafka/Redpanda, OTel/Jaeger/Prometheus/Grafana too) but none of

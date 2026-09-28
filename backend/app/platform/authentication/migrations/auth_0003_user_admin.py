@@ -23,7 +23,7 @@ All four are nullable or defaulted, so existing rows upgrade without a
 backfill and the downgrade is a clean drop.
 
 Revision ID: auth_0003_user_admin
-Revises: onboarding_0012_risk_critical
+Revises: onboarding_0015_bg_check
 Create Date: 2026-09-25
 """
 from collections.abc import Sequence
@@ -33,7 +33,12 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "auth_0003_user_admin"
-down_revision: str | None = "onboarding_0012_risk_critical"
+# Re-parented when `main` was merged in. It was written against
+# `onboarding_0012_risk_critical`, which `onboarding_0013_shared_history` has since
+# taken as its parent on `main`; leaving it there would give that revision two
+# children and Alembic two heads. Nothing in this migration depends on the
+# onboarding schema — the parent only fixes where it sits in the order.
+down_revision: str | None = "onboarding_0015_bg_check"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

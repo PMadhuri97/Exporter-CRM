@@ -5,20 +5,18 @@ import { canReveal, maskIdentifier } from './maskIdentifier';
 const PAN = 'ABCDE1234F';
 
 describe('maskIdentifier', () => {
-  it('masks for OPERATIONS on a record the user does not own', () => {
-    expect(maskIdentifier(PAN, { role: 'OPERATIONS', isOwner: false })).toBe(
+  // Decision 12: sales staff see masked tax IDs. This used to be two tests —
+  // masked for a non-owner, unmasked for the assigned relationship manager —
+  // because `canReveal` carried an ownership exception. That exception is gone
+  // on both sides, so ownership is no longer an input and there is one case.
+  it('masks for OPERATIONS, owner or not', () => {
+    expect(maskIdentifier(PAN, { role: 'OPERATIONS' })).toBe(
       '••••••234F',
     );
   });
 
-  it('does not mask for OPERATIONS on a record the user owns', () => {
-    expect(maskIdentifier(PAN, { role: 'OPERATIONS', isOwner: true })).toBe(
-      PAN,
-    );
-  });
-
-  it('never masks for COMPLIANCE, regardless of ownership', () => {
-    expect(maskIdentifier(PAN, { role: 'COMPLIANCE', isOwner: false })).toBe(
+  it('never masks for COMPLIANCE', () => {
+    expect(maskIdentifier(PAN, { role: 'COMPLIANCE' })).toBe(
       PAN,
     );
   });
@@ -28,7 +26,7 @@ describe('maskIdentifier', () => {
   });
 
   it('always masks for DEVELOPER, even claiming ownership', () => {
-    expect(maskIdentifier(PAN, { role: 'DEVELOPER', isOwner: true })).toBe(
+    expect(maskIdentifier(PAN, { role: 'DEVELOPER' })).toBe(
       '••••••234F',
     );
   });
@@ -51,10 +49,8 @@ describe('canReveal', () => {
   it('matches the capability matrix in docs/exporter-crm-frontend-tickets.md', () => {
     expect(canReveal('COMPLIANCE')).toBe(true);
     expect(canReveal('ADMIN')).toBe(true);
-    expect(canReveal('OPERATIONS', true)).toBe(true);
-    expect(canReveal('OPERATIONS', false)).toBe(false);
     expect(canReveal('OPERATIONS')).toBe(false);
-    expect(canReveal('DEVELOPER', true)).toBe(false);
-    expect(canReveal('API_USER', true)).toBe(false);
+    expect(canReveal('DEVELOPER')).toBe(false);
+    expect(canReveal('API_USER')).toBe(false);
   });
 });

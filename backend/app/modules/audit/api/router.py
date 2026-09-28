@@ -14,14 +14,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.audit.api.schemas import AuditEventListResponse, AuditEventResponse
 from app.modules.audit.application.services import AuditService
 from app.modules.audit.domain.entities.audit import ActorType
-from app.platform.authentication.dependencies import get_current_active_user
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
 from app.platform.database.services import get_db
 
 router = APIRouter()
 
-# The cross-transaction feed is a privileged, platform-wide view.
+# Every route here reads the platform-wide audit trail — the record of who did
+# what across every module — so all four carry the same gate. The three
+# by-id routes checked only that the caller was logged in, which meant any
+# account, including a fresh self-service API_USER, could read it.
 _COMPLIANCE_OR_ADMIN = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
 
 
@@ -67,12 +69,13 @@ async def query_audit_events(
     responses={
         200: {"model": AuditEventResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "COMPLIANCE or ADMIN role required"},
         404: {"description": "Audit event not found"},
     },
 )
 async def get_audit_event(
     event_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
 ) -> AuditEventResponse:
     return await AuditService(db).get_event(event_id)
@@ -86,12 +89,13 @@ async def get_audit_event(
     responses={
         200: {"model": AuditEventListResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "COMPLIANCE or ADMIN role required"},
         404: {"description": "Transaction not found"},
     },
 )
 async def get_transaction_audit_trail(
     transaction_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -112,11 +116,12 @@ async def get_transaction_audit_trail(
     responses={
         200: {"model": AuditEventListResponse},
         401: {"description": "Unauthorized"},
+        403: {"description": "COMPLIANCE or ADMIN role required"},
     },
 )
 async def get_correlation_audit_trail(
     correlation_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
     db: AsyncSession = Depends(get_db),
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
     offset: Annotated[int, Query(ge=0)] = 0,

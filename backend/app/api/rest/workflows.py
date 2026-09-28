@@ -12,13 +12,20 @@ import structlog
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 
-from app.platform.authentication.dependencies import get_current_active_user
-from app.platform.authentication.models import User
+from app.platform.authentication.models import User, UserRole
+from app.platform.authorization.services import require_role
 from app.platform.configuration.config import settings
 from app.shared.exceptions import AnerBaseException, NotFoundError
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
+
+# Workflow status exposes a settlement's internal execution state, and
+# `/start` launches one. Both are operational tools, so both are gated to
+# staff. Before this they checked only that the caller was logged in, so any
+# account — including a fresh self-service API_USER — could start a
+# settlement workflow for any transaction id it could guess.
+_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 
 
 class WorkflowStatusResponse(BaseModel):
@@ -35,14 +42,15 @@ class WorkflowStatusResponse(BaseModel):
     summary="Get Temporal workflow status for a transaction",
     responses={
         200: {"model": WorkflowStatusResponse},
-        404: {"description": "Workflow not found or Temporal not enabled"},
         401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        404: {"description": "Workflow not found or Temporal not enabled"},
         503: {"description": "Temporal unavailable"},
     },
 )
 async def get_workflow_status(
     transaction_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
 ) -> WorkflowStatusResponse:
     if not settings.TEMPORAL_ENABLED:
         raise NotFoundError(
@@ -86,13 +94,15 @@ async def get_workflow_status(
     summary="Manually start (or re-attach to) a SettlementWorkflow",
     responses={
         202: {"model": WorkflowStatusResponse, "description": "Workflow started or already running"},
+        401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
         404: {"description": "Transaction not found"},
         503: {"description": "Temporal unavailable"},
     },
 )
 async def start_workflow(
     transaction_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[User, Depends(_STAFF)],
 ) -> WorkflowStatusResponse:
     """
     Manually trigger SettlementWorkflow for a transaction.

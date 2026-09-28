@@ -49,7 +49,11 @@ export default tseslint.config(
           capture: ['moduleName'],
         },
         { type: 'platform', pattern: 'src/platform/*', mode: 'folder' },
-        { type: 'app', pattern: 'src/{routes,layout,pages,lib,test}/**' },
+        // `components` joined this list when ExporterDetailPage was split into
+        // per-owner panels: the generic pieces it shared (DetailRow, EmptySection,
+        // FormPanel) moved to src/components/, and a path matching no element type
+        // is invisible to every rule below.
+        { type: 'app', pattern: 'src/{routes,layout,pages,lib,test,components}/**' },
       ],
     },
     rules: {

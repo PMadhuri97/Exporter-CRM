@@ -13,10 +13,9 @@ from app.modules.onboarding.application.exporter_contact_activity_service import
     ExporterContactActivityService,
 )
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
-from app.modules.onboarding.domain.entities.exporter_enums import (
-    ExporterActivityType,
-    ExporterSource,
-)
+from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
+from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
+from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.database import services as db_services
 
 pytestmark = pytest.mark.asyncio
@@ -46,7 +45,7 @@ def _count_queries():
 
 
 async def test_add_contact_creates_record():
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         contact = await ExporterContactActivityService(db).add_contact(
             customer_id, name="Jane Doe", role="CFO", email="jane@example.com"
@@ -61,7 +60,7 @@ async def test_add_contact_second_primary_demotes_first():
     """Service-level half of the acceptance criterion: setting a second
     contact as primary demotes the first — never two primaries at once. The
     direct-SQL half lives in test_exp1_exporter_crm_schema.py."""
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         svc = ExporterContactActivityService(db)
         first = await svc.add_contact(customer_id, name="Jane Doe", is_primary=True)
@@ -77,8 +76,8 @@ async def test_add_contact_second_primary_demotes_first():
 
 
 async def test_list_contacts_returns_all_for_customer():
-    customer_id = uuid.uuid4()
-    other_customer_id = uuid.uuid4()
+    customer_id = await make_company()
+    other_customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         svc = ExporterContactActivityService(db)
         await svc.add_contact(customer_id, name="Contact A")
@@ -95,7 +94,7 @@ async def test_list_contacts_returns_all_for_customer():
 
 
 async def test_log_activity_creates_entry():
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         activity = await ExporterContactActivityService(db).log_activity(
             customer_id,
@@ -111,7 +110,7 @@ async def test_log_activity_creates_entry():
 
 
 async def test_log_activity_with_due_at_for_follow_up():
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
     due = datetime.now(UTC) + timedelta(days=3)
     async with db_services.AsyncSessionLocal() as db:
         activity = await ExporterContactActivityService(db).log_activity(
@@ -127,7 +126,7 @@ async def test_log_activity_with_due_at_for_follow_up():
 
 
 async def test_list_activities_filters_by_type_and_orders_recent_first():
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         svc = ExporterContactActivityService(db)
         await svc.log_activity(
@@ -156,7 +155,7 @@ async def test_list_activities_filters_by_type_and_orders_recent_first():
 
 
 async def test_list_pending_activities_marks_past_due_as_overdue():
-    customer_id = uuid.uuid4()
+    customer_id = await make_company()
     actor_id = f"agent-{uuid.uuid4().hex[:8]}"
     past_due = datetime.now(UTC) - timedelta(days=1)
     future_due = datetime.now(UTC) + timedelta(days=5)
@@ -198,11 +197,11 @@ async def test_list_pending_activities_filters_by_actor_id():
     async with db_services.AsyncSessionLocal() as db:
         svc = ExporterContactActivityService(db)
         await svc.log_activity(
-            uuid.uuid4(), activity_type=ExporterActivityType.TASK,
+            await make_company(), activity_type=ExporterActivityType.TASK,
             subject="A's task", actor_id=actor_a, due_at=due,
         )
         await svc.log_activity(
-            uuid.uuid4(), activity_type=ExporterActivityType.TASK,
+            await make_company(), activity_type=ExporterActivityType.TASK,
             subject="B's task", actor_id=actor_b, due_at=due,
         )
 
@@ -225,11 +224,9 @@ async def test_list_pending_activities_carries_exporter_display_name():
     actor_id = f"agent-{uuid.uuid4().hex[:8]}"
 
     async with db_services.AsyncSessionLocal() as db:
-        request, _profile, _created = await ExporterProfileService(db).create_lead(
-            tenant_id=uuid.uuid4(),
-            legal_name=legal_name,
-            incorporation_country="US",
-            initial_user_email=f"{uuid.uuid4().hex[:8]}@example.com",
+        request, _created = await ExporterProfileService(db).create_lead(
+            name=legal_name,
+            country="US",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
         )
@@ -261,7 +258,7 @@ async def test_list_pending_activities_has_no_n_plus_one():
     async with db_services.AsyncSessionLocal() as db:
         svc = ExporterContactActivityService(db)
         for i in range(5):
-            profile_db_customer_id = uuid.uuid4()
+            profile_db_customer_id = await make_company()
             await svc.log_activity(
                 profile_db_customer_id, activity_type=ExporterActivityType.TASK,
                 subject=f"Task {i}", actor_id=actor_id, due_at=due,

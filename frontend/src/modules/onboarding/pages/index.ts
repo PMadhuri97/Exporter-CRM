@@ -1,4 +1,9 @@
 export { AddExporterPage } from './AddExporterPage';
+export { CompanyImportPage } from './CompanyImportPage';
+export { DealDetailPage } from './DealDetailPage';
 export { ExporterDetailPage } from './ExporterDetailPage';
 export { ExportersListPage } from './ExportersListPage';
+export { FollowUpsPage } from './FollowUpsPage';
 export { PipelinePage } from './PipelinePage';
+export { QualificationCriteriaPage } from './QualificationCriteriaPage';
+export { RxilIntakePage } from './RxilIntakePage';

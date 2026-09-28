@@ -1,110 +1,174 @@
 import {
+  Building2,
+  Home,
   Kanban,
-  LayoutDashboard,
   ListChecks,
   Settings,
-  Users,
+  SlidersHorizontal,
 } from 'lucide-react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
+
+import type { UserRole } from '@/lib/api/types';
+import { cn } from '@/lib/cn';
+import { isAdminRole } from '@/platform/auth';
 
 interface NavItem {
   label: string;
   path: string;
-  icon: typeof LayoutDashboard;
-  /** Screens not built yet render as a disabled row with a "Soon" badge —
-   * never a link to a route that renders nothing, per the design principle
-   * against fake navigation. */
-  status: 'ready' | 'soon';
+  icon: typeof Home;
 }
 
-// One row per later ticket in docs/exporter-crm-frontend-tickets.md's build
-// sequence — flip `status` to 'ready' as each ticket lands, rather than
-// adding the row from scratch.
+/**
+ * The main rows. Deals and documents are reached from a company's page, not
+ * from here: the server has no cross-company deal or document list, and a row
+ * that could only say "pick a company first" would be fake navigation.
+ */
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', path: '/', icon: LayoutDashboard, status: 'ready' },
-  { label: 'Exporters', path: '/exporters', icon: Users, status: 'ready' },
-  {
-    label: 'Follow-ups',
-    path: '/follow-ups',
-    icon: ListChecks,
-    status: 'soon',
-  },
-  { label: 'Pipeline', path: '/pipeline', icon: Kanban, status: 'ready' },
+  { label: 'Home', path: '/', icon: Home },
+  { label: 'Companies', path: '/companies', icon: Building2 },
+  { label: 'Follow-ups', path: '/follow-ups', icon: ListChecks },
+  { label: 'Pipeline', path: '/pipeline', icon: Kanban },
 ];
 
-// Settings sits apart from the workflow rows above — it is where you go to
-// stop working, not another stage of the work — so it is pinned to the bottom
-// of the rail rather than added to NAV_ITEMS. Every role gets it: the page
-// always has a profile tab, and the Users tab appears only for ADMIN.
-const SETTINGS_ITEM: NavItem = {
-  label: 'Settings',
-  path: '/settings',
-  icon: Settings,
-  status: 'ready',
-};
+/**
+ * Settings, for **every** role. The page always has a profile tab; the Users
+ * and Roles tabs appear inside it only for ADMIN, decided by the server rather
+ * than by hiding the row here.
+ */
+const SETTINGS_ITEM: NavItem = { label: 'Settings', path: '/settings', icon: Settings };
 
-function NavRow({ item }: { item: NavItem }) {
-  if (item.status === 'soon') {
-    return (
-      <div
-        className="flex items-center justify-between gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-faint"
-        aria-disabled="true"
-      >
-        <span className="flex items-center gap-2.5">
-          <item.icon size={17} strokeWidth={2} />
-          {item.label}
-        </span>
-        <span className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-faint">
-          Soon
-        </span>
-      </div>
-    );
-  }
+/** Rows only ADMIN sees — the server refuses these screens to anyone else. */
+const ADMIN_ITEMS: NavItem[] = [
+  { label: 'Qualification criteria', path: '/settings/qualification-criteria', icon: SlidersHorizontal },
+];
 
+/** Whether `pathname` is inside `path`: an exact match for the root, otherwise
+ * the path itself or anything below it — `NavLink`'s own rule. */
+function matches(path: string, pathname: string): boolean {
+  if (path === '/') return pathname === '/';
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
+/**
+ * The one row to highlight: the **most specific** row that matches. Plain
+ * `NavLink` matching lights every prefix; the longest match is the page the
+ * user is actually on.
+ *
+ * This is what keeps `/settings` and `/settings/qualification-criteria` apart:
+ * on the criteria page only the criteria row lights, not both.
+ */
+function activePath(items: NavItem[], pathname: string): string | undefined {
+  return items
+    .filter((item) => matches(item.path, pathname))
+    .map((item) => item.path)
+    .sort((a, b) => b.length - a.length)[0];
+}
+
+function NavRow({
+  item,
+  active,
+  collapsed,
+  onNavigate,
+}: {
+  item: NavItem;
+  active: boolean;
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
   return (
-    <NavLink
-      to={item.path}
-      end={item.path === '/'}
-      className={({ isActive }) =>
-        `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-          isActive
-            ? 'bg-brand-50 text-brand-600'
-            : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
-        }`
-      }
-    >
-      <item.icon size={17} strokeWidth={2} />
-      {item.label}
-    </NavLink>
+    <li>
+      <NavLink
+        to={item.path}
+        end={item.path === '/'}
+        onClick={onNavigate}
+        title={collapsed ? item.label : undefined}
+        aria-current={active ? 'page' : false}
+        className={() =>
+          cn(
+            'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+            collapsed && 'justify-center px-0',
+            active
+              ? 'bg-brand-50 text-brand-700'
+              : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
+          )
+        }
+      >
+        <item.icon size={17} strokeWidth={2} className="shrink-0" />
+        <span className={collapsed ? 'sr-only' : undefined}>{item.label}</span>
+      </NavLink>
+    </li>
   );
 }
 
-export function Sidebar() {
+export function Sidebar({
+  role,
+  collapsed = false,
+  onNavigate,
+}: {
+  role: UserRole;
+  /** The icon-only rail. */
+  collapsed?: boolean;
+  /** Called after a row is followed — the narrow-screen drawer closes itself. */
+  onNavigate?: () => void;
+}) {
+  const { pathname } = useLocation();
+  // Settings itself is for everyone; the criteria screen is not.
+  const settingsItems = [SETTINGS_ITEM, ...(isAdminRole(role) ? ADMIN_ITEMS : [])];
+  const active = activePath([...NAV_ITEMS, ...settingsItems], pathname);
+
   return (
-    <nav className="flex w-60 shrink-0 flex-col border-r border-border bg-surface px-3 py-5">
-      <div className="mb-6 flex items-center gap-2 px-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink text-sm font-semibold text-brand-400">
+    <nav
+      aria-label="Main"
+      className={cn(
+        'flex h-full shrink-0 flex-col border-r border-border bg-surface py-5 transition-[width] duration-150',
+        collapsed ? 'w-16 px-2' : 'w-60 px-3',
+      )}
+    >
+      <div className={cn('mb-6 flex items-center gap-2.5 px-2', collapsed && 'justify-center px-0')}>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white dark:text-surface">
           A
         </div>
-        <div>
-          <p className="text-sm font-semibold text-ink">ANER</p>
-          <p className="text-xs text-ink-faint">Exporter CRM</p>
-        </div>
+        {!collapsed && (
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-tight text-ink">ANER</p>
+            <p className="text-xs text-ink-faint">Exporter CRM</p>
+          </div>
+        )}
       </div>
 
-      <ul className="flex flex-1 flex-col gap-0.5">
+      <ul className="flex flex-col gap-0.5">
         {NAV_ITEMS.map((item) => (
-          <li key={item.path}>
-            <NavRow item={item} />
-          </li>
+          <NavRow
+            key={item.path}
+            item={item}
+            active={item.path === active}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
         ))}
       </ul>
 
-      <ul className="mt-2 border-t border-border pt-2">
-        <li>
-          <NavRow item={SETTINGS_ITEM} />
-        </li>
-      </ul>
+      <div className="mt-6">
+        <p
+          className={cn(
+            'mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint',
+            collapsed && 'sr-only',
+          )}
+        >
+          Settings
+        </p>
+        <ul className="flex flex-col gap-0.5">
+          {settingsItems.map((item) => (
+            <NavRow
+              key={item.path}
+              item={item}
+              active={item.path === active}
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </ul>
+      </div>
     </nav>
   );
 }

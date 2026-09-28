@@ -93,6 +93,25 @@ class UpdateCaseRequest(BaseModel):
     policy_id: str | None = Field(default=None, max_length=64)
 
 
+#: The transition sources a caller may declare over HTTP.
+#:
+#: ``TransitionSource`` has four members, but only these two describe a person
+#: acting. ``SYSTEM`` and ``PROVIDER_CALLBACK`` say the platform itself moved
+#: the case — an attribution no request from outside the platform can honestly
+#: make about itself. Leaving them open let an authenticated compliance user
+#: approve a case with ``source="SYSTEM"``, which
+#: ``CaseService._actor_type_for`` mapped to ``ActorType.SYSTEM``, which in
+#: turn blanked the actor: a human approval recorded as a machine's, with no
+#: name on it.
+#:
+#: Machine transitions are not removed — they are moved to an internal path.
+#: ``CaseService.transition(..., allow_machine_source=True)`` still accepts
+#: them, and no HTTP route passes that keyword.
+HUMAN_TRANSITION_SOURCES: frozenset[TransitionSource] = frozenset(
+    {TransitionSource.USER_ACTION, TransitionSource.ADMIN_OVERRIDE}
+)
+
+
 class CaseTransitionRequest(BaseModel):
     """
     Ask the state machine to move a case.
@@ -100,6 +119,10 @@ class CaseTransitionRequest(BaseModel):
     The caller names the *destination* and *why*; it never names the previous state.
     The machine reads that from the case itself, so two racing callers cannot both
     believe they moved the case out of the same state.
+
+    It also never names *who* acted: the actor is taken from the authenticated
+    session by the route, and ``source`` is restricted to
+    ``HUMAN_TRANSITION_SOURCES`` so it cannot be used to claim otherwise.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -107,6 +130,17 @@ class CaseTransitionRequest(BaseModel):
     next_state: CaseState
     source: TransitionSource
     reason: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("source")
+    @classmethod
+    def _reject_machine_source(cls, value: TransitionSource) -> TransitionSource:
+        if value not in HUMAN_TRANSITION_SOURCES:
+            permitted = ", ".join(sorted(s.value for s in HUMAN_TRANSITION_SOURCES))
+            raise ValueError(
+                f"{value.value} attributes the move to the platform itself and "
+                f"cannot be chosen by a caller; use one of: {permitted}"
+            )
+        return value
 
 
 class CaseTransitionResponse(BaseModel):

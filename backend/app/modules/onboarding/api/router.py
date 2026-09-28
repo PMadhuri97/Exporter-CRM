@@ -5,7 +5,14 @@ import structlog
 from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.company_intake_router import router as company_intake_router
+from app.modules.onboarding.api.deal_router import router as deal_router
+from app.modules.onboarding.api.document_router import router as document_router
+from app.modules.onboarding.api.engagement_router import router as engagement_router
 from app.modules.onboarding.api.exporter_router import router as exporter_router
+from app.modules.onboarding.api.follow_up_router import router as follow_up_router
+from app.modules.onboarding.api.history_router import router as history_router
+from app.modules.onboarding.api.qualification_router import router as qualification_router
 from app.modules.onboarding.api.schemas.case import (
     CaseResponse,
     CaseTransitionListResponse,
@@ -26,6 +33,7 @@ from app.modules.onboarding.api.schemas.verification import (
     VerificationResultListResponse,
     VerificationResultResponse,
 )
+from app.modules.onboarding.api.screening_router import router as screening_router
 from app.modules.onboarding.application import (
     CaseService,
     OnboardingService,
@@ -58,6 +66,61 @@ _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 # mount prefix, giving the ticket's documented paths
 # (/onboarding/exporters...) with no prefix duplicated in two places.
 router.include_router(exporter_router)
+# The same `/exporters` routes, split by owner in L2-01: contacts and activities
+# (Developer 3) and the screening checklist and bank activity (Developer 4).
+# Included straight after the company routes, in the order they were declared
+# when all three lived in exporter_router.py, so route matching is unchanged.
+router.include_router(engagement_router)
+router.include_router(screening_router)
+# Qualification (L2-09, L2-10) — Developer 2's, in its own file. Its paths are
+# absolute (/qualification/..., /exporters/{id}/qualification...), because the
+# criteria are not under /exporters.
+router.include_router(qualification_router)
+# RXIL company intake and bulk CSV import (L2-12, L2-13) — Developer 2's.
+router.include_router(company_intake_router)
+
+# Shared CRM history log (L1-11) — Developer 1's, in its own file for the same
+# reason the Exporter CRM routes are in theirs, and included here so it
+# inherits the "/onboarding" mount prefix. It carries its own full paths
+# (/exporters/{id}/history, /deals/{id}/history) rather than a router prefix,
+# because the deal route is not under /exporters.
+router.include_router(history_router)
+
+# ── The §9.3 routers, mounted once in the seam commit and never re-mounted ──
+#
+# All three are empty when this lands, and mounting an empty router adds nothing
+# to the OpenAPI document — which is the point. Developer 3A (phases 1 and 2)
+# and Developer 3B all append to shared files; the router index is one of them,
+# so it is edited here, once, and by neither of them again.
+#
+# Follow-up completion and the due/overdue list (L3-04) — Developer 3A, Phase 2.
+# Same `/exporters` prefix as `engagement_router`, because a completion is about
+# one company's activity.
+router.include_router(follow_up_router)
+# Deals and buyers (L3-05, L3-06) — Developer 3B. Absolute paths (`/deals/...`),
+# like the deal history route above: a deal is not a company sub-resource.
+router.include_router(deal_router)
+# Documents and storage (L3-07 … L3-10) — Developer 3B. Absolute paths too,
+# because documents hang off deals as well as companies.
+router.include_router(document_router)
+
+# ── Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9) ──
+#
+# Developer 4A mounts exactly one router, and does it here: its import and its
+# `router.include_router(background_check_router)` both go in the 4A block below,
+# the import with `# noqa: E402`, so neither Dev4 branch edits the import list at the
+# top of this file for it. Developer 4B mounts nothing new — its routes live in the
+# `EXP-2: generalized verification results` block and `screening_router.py` — and
+# edits only that block and its imports. Nothing is mounted here yet, so the OpenAPI
+# document is unchanged.
+#
+# ── Background check — owner: Developer 4A ──
+# (4A adds its router import and its one include_router here; 4B does not.)
+from app.modules.onboarding.api.background_check_router import (  # noqa: E402
+    router as background_check_router,
+)
+
+router.include_router(background_check_router)
 
 
 # ── Case management and its state machine ───────────────
@@ -169,7 +232,12 @@ async def update_case(
         403: {"description": "COMPLIANCE or ADMIN role required"},
         404: {"description": "Case not found"},
         409: {"description": "Illegal state transition — the case is not mutated"},
-        422: {"description": "Unknown state or transition source"},
+        422: {
+            "description": (
+                "Unknown state, or a transition source only the platform may claim "
+                "(SYSTEM / PROVIDER_CALLBACK)"
+            )
+        },
     },
 )
 async def transition_case(

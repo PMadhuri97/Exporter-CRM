@@ -176,6 +176,30 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # ── Auth / self-service sign-up ───────────────────────────────────────────
+    # `POST /auth/register` is unauthenticated and always grants API_USER, which
+    # reaches nothing in the CRM. It stays on by default (planning assumption
+    # A10) so the current behaviour is unchanged, and this is the per-deployment
+    # kill switch for an environment that wants no public sign-up at all. Off
+    # makes the route 404, not 403: a disabled route should not advertise that
+    # it exists.
+    #
+    # Turning it off does not affect the test suite — test accounts are created
+    # directly with `app.platform.authentication.testing.create_user_direct`,
+    # which never touches this route.
+    SELF_SERVICE_SIGNUP_ENABLED: bool = True
+
+    # ── Auth / first-admin bootstrap ──────────────────────────────────────────
+    # Read by `python -m app.platform.authentication.cli bootstrap`. Blank by
+    # default and blank in `.env.example` on purpose: whatever is written as an
+    # example becomes the real password in every environment that copies the
+    # file. The command refuses to run with a blank password rather than
+    # inventing one.
+    FIRST_ADMIN_EMAIL: str = ""
+    FIRST_ADMIN_PASSWORD: str = ""
+    FIRST_COMPLIANCE_EMAIL: str = ""
+    FIRST_COMPLIANCE_PASSWORD: str = ""
+
     # ── Notifications ─────────────────────────────────────────────────────────
     NOTIFICATION_WEBHOOK_SECRET: str = "change-me-webhook-hmac-secret"  # shared secret for X-Aner-Signature
     NOTIFICATION_MAX_ATTEMPTS: int = 3        # attempts before a delivery is EXHAUSTED (per webhook contract)
