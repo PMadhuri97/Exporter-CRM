@@ -120,3 +120,26 @@ from app.modules.onboarding.infrastructure.repositories.crm_document_repository 
 )
 
 __all__ += ["CrmDocumentRepository"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9)
+#
+# The same cut as the §9.3 blocks above, for the two Dev4 pull requests that run
+# in parallel: each owner's import **and** its `__all__` entry go inside its own
+# block, so the 4A and 4B branches never touch the same line. The empty list in
+# each block is the block's real content until its owner adds to it. Imports here
+# need `# noqa: E402` for the reason given in the §9.3 header.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Background check — owner: Developer 4A ──
+# (4A appends here; 4B does not.)
+from app.modules.onboarding.infrastructure.repositories.background_check_decision_repository import (  # noqa: E402
+    BackgroundCheckDecisionRepository,
+)
+
+__all__ += ["BackgroundCheckDecisionRepository"]
+
+# ── Verification and screening — owner: Developer 4B ──
+# (4B appends here; 4A does not.)
+__all__ += []

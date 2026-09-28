@@ -175,3 +175,42 @@ from app.modules.onboarding.domain.entities.document_enums import (  # noqa: E40
 )
 
 __all__ += ["CrmDocument", "DocumentCategory", "DocumentOwnerKind", "DocumentSource"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9)
+#
+# The same cut as the §9.3 blocks above, for the two Dev4 pull requests that run
+# in parallel: each owner's import **and** its `__all__` entry go inside its own
+# block, so the 4A and 4B branches never touch the same line. The empty list in
+# each block is the block's real content until its owner adds to it. Imports here
+# need `# noqa: E402` for the reason given in the §9.3 header.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Background check — owner: Developer 4A ──
+# (4A appends here; 4B does not.)
+from app.modules.onboarding.domain.entities.background_check_decision import (  # noqa: E402
+    BackgroundCheckDecision,
+    BackgroundCheckEvidence,
+)
+from app.modules.onboarding.domain.entities.background_check_enums import (  # noqa: E402
+    BackgroundCheckDecidedByKind,
+    BackgroundCheckDecisionSource,
+    BackgroundCheckEvidenceKind,
+    BackgroundCheckRisk,
+    BackgroundCheckState,
+)
+
+__all__ += [
+    "BackgroundCheckDecidedByKind",
+    "BackgroundCheckDecision",
+    "BackgroundCheckDecisionSource",
+    "BackgroundCheckEvidence",
+    "BackgroundCheckEvidenceKind",
+    "BackgroundCheckRisk",
+    "BackgroundCheckState",
+]
+
+# ── Verification and screening — owner: Developer 4B ──
+# (4B appends here; 4A does not.)
+__all__ += []

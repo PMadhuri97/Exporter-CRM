@@ -16,3 +16,9 @@ export { DocumentUpload } from './DocumentUpload';
 export { ScanStatusBadge } from './ScanStatusBadge';
 // Developer 1: the shared history log.
 export { CompanyHistory, DealHistory } from './HistoryTimeline';
+
+// ── Background check — owner: Developer 4A ──
+export { BackgroundCheckGauge } from './BackgroundCheckGauge';
+export { RiskChip } from './RiskChip';
+export { BackgroundCheckMoveDialog } from './BackgroundCheckMoveDialog';
+export { DecisionHistory } from './DecisionHistory';

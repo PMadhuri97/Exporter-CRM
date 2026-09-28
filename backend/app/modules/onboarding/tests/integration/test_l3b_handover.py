@@ -146,14 +146,15 @@ async def _hand_over(deal_id: uuid.UUID):
 
 async def test_the_handover_is_refused_while_no_background_check_exists():
     """No substitution here. This is what the build actually does today: a customer
-    with a buyer and paperwork still cannot be handed over, because nothing has
-    recorded a background check — and "not recorded" is not "clear"."""
+    with a buyer and paperwork still cannot be handed over, because its background
+    check is ``NOT_STARTED`` (migration 0015) — and "not started" is not "clear".
+    Until 0015 the reason read "not recorded yet" (Developer 4A, 4A-2, §5.8)."""
     company_id = await _customer()
     deal_id = await _deal_ready_to_hand_over(company_id)
 
     async with db_services.AsyncSessionLocal() as db:
         view = await DealService(db).get_deal(deal_id)
-    assert "background check is not recorded yet" in (view.handover_blocked_reason or "")
+    assert "background check is NOT_STARTED, not CLEAR" in (view.handover_blocked_reason or "")
     assert DealStage.HANDED_OVER not in {m.to for m in view.allowed_stage_moves}
 
     with pytest.raises(Exception) as caught:
@@ -353,7 +354,9 @@ async def test_the_api_refuses_the_handover_and_names_the_reason(client: AsyncCl
 
     detail = await client.get(f"{BASE}/deals/{deal_id}", headers=auth_header(token))
     assert detail.status_code == 200, detail.text
-    assert "background check is not recorded yet" in detail.json()["handover_blocked_reason"]
+    assert (
+        "background check is NOT_STARTED, not CLEAR" in detail.json()["handover_blocked_reason"]
+    )
     assert "HANDED_OVER" not in {
         move["to_stage"] for move in detail.json()["allowed_stage_moves"]
     }

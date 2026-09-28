@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.application.company_input_lock import share_lock_companies
 from app.modules.onboarding.domain.entities.screening_review import (
     BankActivityFinding,
     ScreeningReviewItem,
@@ -40,18 +41,21 @@ from app.shared.exceptions import ValidationError
 #: `frontend/src/modules/onboarding/components/VerificationSection.tsx`. The two
 #: lists are the same list; keeping them in step is the price of validating at
 #: all, and is cheaper than the silent no-op it replaces.
-VALID_ITEM_KEYS: frozenset[str] = frozenset(
-    {
-        "website-reviewed",
-        "address-physical",
-        "business-consistency",
-        "payment-purpose",
-        "bank-statements-reviewed",
-        "suspicious-bank-indicators",
-        "exception-approval",
-        "exception-evidence",
-    }
+#:
+#: Held as an ordered tuple (Dev4 seam, 4B-0) because the compliance-inputs
+#: contract serves the catalogue "in display order" (4b-task.md §6.1);
+#: `VALID_ITEM_KEYS` is derived from it, so there is still one backend copy.
+SCREENING_CATALOGUE: tuple[str, ...] = (
+    "website-reviewed",
+    "address-physical",
+    "business-consistency",
+    "payment-purpose",
+    "bank-statements-reviewed",
+    "suspicious-bank-indicators",
+    "exception-approval",
+    "exception-evidence",
 )
+VALID_ITEM_KEYS: frozenset[str] = frozenset(SCREENING_CATALOGUE)
 
 
 class ScreeningReviewService:
@@ -132,6 +136,10 @@ class ScreeningReviewService:
 
         Raises `ValidationError` (422) for an `item_key` outside
         `VALID_ITEM_KEYS`.
+
+        Takes `FOR SHARE` on the company row before the insert (4b-task.md §6.2
+        invariant 6), so a decision cannot land in the middle of Developer 4A's
+        background-check decision, which holds that row `FOR UPDATE`.
         """
         if item_key not in VALID_ITEM_KEYS:
             raise ValidationError(
@@ -139,6 +147,7 @@ class ScreeningReviewService:
                 f"Expected one of: {', '.join(sorted(VALID_ITEM_KEYS))}."
             )
 
+        await share_lock_companies(self._db, [customer_id])
         item = ScreeningReviewItem(
             customer_id=customer_id,
             item_key=item_key,
@@ -161,4 +170,4 @@ class ScreeningReviewService:
         return list(result.scalars().all())
 
 
-__all__ = ["ScreeningReviewService", "VALID_ITEM_KEYS"]
+__all__ = ["SCREENING_CATALOGUE", "ScreeningReviewService", "VALID_ITEM_KEYS"]
