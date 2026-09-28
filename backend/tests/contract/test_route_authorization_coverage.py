@@ -234,6 +234,16 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # ── Background check — owner: Developer 4A ──
     # (4A appends here; 4B does not.)
     #
+    # `STAFF`, not `READERS`: DEVELOPER is deliberately **not** admitted to any of
+    # these, including the two reads. Whether DEVELOPER may see the gauge, the
+    # decision reasons and the evidence ids is D8 (`4a-task.md` §13) and is
+    # unanswered; the recorded default is no widening. A decision's reason is free
+    # text a compliance officer wrote about a company, so admitting DEVELOPER "for
+    # now" would be deciding D8 by omission.
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check"): STAFF,
+    ("POST", f"{CRM}/exporters/{{company_id}}/background-check/decisions"): STAFF,
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/decisions"): STAFF,
+    #
     # ── Verification and screening — owner: Developer 4B ──
     # (4B appends here; 4A does not.)
     (

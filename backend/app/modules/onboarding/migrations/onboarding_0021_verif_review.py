@@ -3,7 +3,7 @@ subject snapshots on verification results, and the screening status check —
 **owner: Developer 4B** (``docs/dev4/4b-task.md`` §10).
 
 Revision ID: onboarding_0021_verif_review
-Revises: onboarding_0019_documents
+Revises: auth_0004_rbac
 
 ``onboarding_0021_verif_review`` is 28 characters, inside the register's 32-character
 limit on ``alembic_version.version_num``. 0021 is the next free label after 0020 so
@@ -82,7 +82,12 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "onboarding_0021_verif_review"
-down_revision: str | None = "onboarding_0019_documents"
+# Re-parented when `main` was merged in. Written against `onboarding_0019_documents`,
+# which Dev4A's `onboarding_0015_bg_check` took as its parent first, followed on `main`
+# by `auth_0003_user_admin` and `auth_0004_rbac`; this merged second, so it moves onto
+# the head (4b-task.md §10). Nothing here depends on the background check or auth
+# schema — the parent only fixes where it sits in the order.
+down_revision: str | None = "auth_0004_rbac"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

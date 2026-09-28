@@ -589,7 +589,7 @@ Numbering is shared with `4a-task.md`. Only the ones that affect Dev4B are liste
 
 | # | Decision | Status on `main` | Blocks for Dev4B |
 |---|---|---|---|
-| D2 | **Meaning of "pending"** — decided for Dev4A's CLEAR rule, but Dev4B must expose enough facts (status, review, placeholder flag, subject type) | Unsettled | nothing in 4B if the §6 facts are complete; a new fact is a contract change |
+| D2 | **Meaning of "pending"** — decided for Dev4A's CLEAR rule, but Dev4B must expose enough facts (status, review, placeholder flag, subject type) | **Settled 28 Sep 2026** (programme lead; clarified in the Dev4A PR review): `PENDING`, `REVIEW` and placeholders block `CLEAR`, except that a `REVIEW` result whose `latest_review_status` is `ACCEPTED` or `REJECTED` no longer blocks (`background-check.md` §14.1) | nothing in 4B if the §6 facts are complete; a new fact is a contract change. **4B-2 must keep `latest_review_status` = the status of the latest (superseding) review**, since Dev4A's rule now reads it |
 | D4 | **Evidence snapshot scope** — which documents may be evidence for a verification result (company only? the buyer's deal?) | Unsettled | integration (document validation rule) |
 | D7 | **Manual-route provenance for RXIL** — may COMPLIANCE record `provider="rxil"` through `POST /verifications`? | Open (audit finding) | implementation of that restriction; final merge |
 | D8 | **DEVELOPER visibility and masking of sensitive compliance data** — DEVELOPER on verification/screening reads? mask `normalized_result`/comments for OPERATIONS? | Unsettled | route roles, masking, UI; default: no widening |

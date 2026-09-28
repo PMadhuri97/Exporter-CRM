@@ -27,7 +27,8 @@ Each gauge's **current** value is carried here so lists and filters need no join
 (architecture §3.8), and each is written by exactly one service, which writes the
 history row in the same transaction. ``journey`` and ``qualification`` are
 Developer 2's; ``conversation`` and ``conversation_check_back_on`` (0016) are
-Developer 3's and are written only by ``ConversationService``.
+Developer 3's and are written only by ``ConversationService``; ``background_check``
+(0015) is Developer 4A's.
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
+from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterConversation
 from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterJourney,
@@ -195,6 +197,23 @@ class ExporterProfile(AnerModel):
     #: and never writes it — a check-back date moves only through
     #: `ConversationService`.
     conversation_check_back_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # ── Background-check gauge (migration 0015) — Developer 4A ──────────────
+    #
+    # The one column below is the only part of this entity Developer 4A owns
+    # (`docs/contracts/company-record.md` §2.4, `background-check.md` §2). Developer 2
+    # reviews it because it is on their table, as they reviewed 0016.
+    #
+    #: Is it safe and lawful to work with them? Only `BackgroundCheckService` writes it,
+    #: together with a locked decision, its evidence snapshot and a `background_check`
+    #: history row, in one transaction. There is **no** company-level risk column: risk
+    #: is on the decision, and whether it is also carried here is D5, open.
+    background_check: Mapped[BackgroundCheckState] = mapped_column(
+        Enum(BackgroundCheckState, name="background_check_enum", schema=SCHEMA),
+        nullable=False,
+        server_default=BackgroundCheckState.NOT_STARTED.value,
+        default=BackgroundCheckState.NOT_STARTED,
+    )
 
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
     export_markets: Mapped[list | None] = mapped_column(JSONB, nullable=True)

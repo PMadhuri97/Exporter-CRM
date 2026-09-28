@@ -193,11 +193,10 @@ it relied on are stored with it." Dev4A owns the snapshot contract:
   `CRITICAL`. Dev4B's `verification_risk_level_enum` is **not** reused, so neither Dev4 migration
   depends on the other's schema. This is the CRM background-check risk vocabulary of decision 6;
   it changes no legacy, customer or onboarding risk type.
-- **Not settled — decision gates:** whether risk is also carried on `exporter_profile` for list
-  filters (Figure 3 draws `risk` on the company; company-record §2.4 leaves it to Dev4) — **D5**;
-  whether risk is required or allowed on non-`CLEAR` outcomes — **D5**; what the company shows
-  after a reopen — **D6**. D5 is open but does **not** block the migration: until it is decided,
-  risk is stored on the decision record only, and no company risk column is added.
+- **Settled later (28 Sep 2026):** no risk column on `exporter_profile` (**D5**); risk is
+  **refused** on every non-`CLEAR` outcome (D5, amended in the PR review — see "PR review
+  fixes" in §14); after a reopen the company shows the last clearance's risk, labelled
+  (**D6**).
 - Do not alter any existing risk enum to make it fit.
 - `CRITICAL` must look different on screen (architecture §3.3, L4-08).
 
@@ -281,7 +280,7 @@ class BackgroundCheckReader:
   `"NOT_STARTED"`, so two assertions whose premise was "the column does not exist" become false:
   `test_l3b_deal_buyer.py::test_handover_is_blocked_because_no_background_check_exists_yet` and
   `test_l3b_handover.py::test_the_handover_is_refused_while_no_background_check_exists`. Dev4A
-  updates only those two assertions (to the new, true blocked reason) in the same phase that adds
+  updates only those two assertions (to the new, true blocked reason) — plus a third with the same premise, found in 4A-2 (see the 4A-2 status) — in the same phase that adds
   the column, with Dev3 review. This is a direct consequence of Dev4A's change, not an unrelated
   test.
 
@@ -563,18 +562,18 @@ is a post-merge item (§17).
 |---|---|---|---|---|---|
 | L4-01 background-check contract doc | PARALLEL | — | Dev4A | — | — |
 | Migration + ORM column | CONTRACT-DEPENDENT; **seam CLEARED (4B-0 complete, 28 Sep 2026)** | needs the seam's anchor blocks in `entities/__init__.py` | Dev4B (seam PR) | seam PR merged | nothing once the seam is on `main` |
-| Risk on company | DECISION-BLOCKED (partly) | D5 (D13, the risk type, settled 28 Sep 2026: Dev4A-owned) | Dev4 (A+B) with lead | written decision in `background-check.md` | the company column only; the decision's risk and its type are settled |
+| Risk on company | **CLEARED (28 Sep 2026)** | D5 — answered: no company column | Dev4 (A+B) with lead | recorded in `background-check.md` §14 | nothing |
 | Gauge moves except CLEAR | CONTRACT-DEPENDENT | every decision snapshots evidence through the reader | Dev4B | seam PR merged | implementation |
 | CLEAR mechanism | CONTRACT-DEPENDENT | reads inputs through the reader | Dev4B | seam PR merged | implementation |
-| CLEAR prerequisite rules | DECISION-BLOCKED | D1, D2, D3 | programme lead with compliance | answers recorded in `background-check.md` | final merge (mechanism can be built and tested with parameterised rules) |
-| Evidence snapshot contents | DECISION-BLOCKED (partly) | D4 | programme lead | answer in contract | final merge of the document part; ids of checks/screening rows are settled |
+| CLEAR prerequisite rules | **CLEARED (28 Sep 2026)** | D1, D2, D3 — answered | programme lead with compliance | recorded in `background-check.md` §14.1 | nothing |
+| Evidence snapshot contents | **CLEARED (28 Sep 2026)** | D4 — answered | programme lead | recorded in `background-check.md` §14.1 | nothing |
 | Reopen / reassess | PARALLEL (after gauge phase) | — | — | — | — |
 | Read helper | PARALLEL | — | — | — | — |
 | Dev3 stand-in swap + two test assertions | DEV3-DEPENDENT | edits Dev3's file under their sanction | Dev3 | Dev3 review on the PR | integration, not implementation |
-| Handover guard row lock | DECISION-BLOCKED | D10; Dev3's code | Dev3 + lead | decision; Dev3 change if "yes" | final integration only |
+| Handover guard row lock | **CLEARED (28 Sep 2026)** | D10 — answered: `FOR SHARE` on the move only | Dev3 + lead | built; **needs Dev3 review** | nothing |
 | API + route-auth rows | CONTRACT-DEPENDENT | route-auth anchors | Dev4B (seam) | seam PR | implementation |
 | Frontend panel | PARALLEL once the API exists on the branch | renders Dev4B's `VerificationSection` by its existing props | Dev4B keeps `VerificationSection({ customerId })` stable | §6 / §9 of `4b-task.md` | — |
-| DEVELOPER visibility | DECISION-BLOCKED | D8 | lead + Dev1 | decision | route roles and UI for DEVELOPER; default until decided: no widening |
+| DEVELOPER visibility | **CLEARED (28 Sep 2026)** | D8 — answered: no | lead + Dev1 | built and tested | the history route's `reason` policy, which is Dev1's |
 | L4-05 signal / CUSTOMER move / `became_customer` | DECISION-BLOCKED — **U4 / O3 DECISION REQUIRED** | cross-service transaction and who announces | lead, Dev2, Dev4A | written U4 decision | everything in §5.9 |
 | Automatic start on RXIL results (A8) | DECISION-BLOCKED — **RXIL PACKAGE CONTRACT REQUIRED** | no results format; actor for an automatic move (D12) | RXIL, lead, Dev2 (parser) | published package contract | that move only |
 | Company list chip / filter (L4-08 "filter") | DEV2-DEPENDENT, POST-MERGE | Dev2's list/schemas | Dev2 | Dev2 PR using `RiskChip` + the column | final demo, not Dev4A's PR |
@@ -589,14 +588,14 @@ Numbering is shared with `4b-task.md`. Only the ones that affect Dev4A are liste
 
 | # | Decision | Status on `main` | Blocks for Dev4A |
 |---|---|---|---|
-| D1 | **CLEAR prerequisite semantics** — what exactly must be true (A3: risk; no checks pending; eight items answered; evidence). | Unsettled beyond A3's wording | final merge (rule function); not the mechanism |
-| D2 | **Meaning of "pending"** — `status=PENDING` only? also `REVIEW` without an accepted review? placeholder rows? DIRECTOR/other subjects with no company link? | Unsettled | final merge (rule function) |
-| D3 | **FAILED screening vs CLEAR** — does "answered" include `FAILED`? `EXEMPT`? can a company be CLEAR with a FAILED item? | Unsettled | final merge (rule function); UI copy |
-| D4 | **Evidence snapshot scope** — which documents (company only? company + open deals? only `AVAILABLE`?); what counts as "evidence recorded" for CLEAR | Unsettled | final merge of document pinning and the CLEAR evidence rule |
-| D5 | **Risk placement and requiredness** — on the company record too? required/allowed on `FLAGGED`/`ON_HOLD`/others? | **Open** (Figure 3 vs company-record §2.4). Non-blocking for 4A-2: the migration omits the company column and risk lives on the decision record | the company column only (a later migration if D5 adds it), integration (Dev2 list), UI |
-| D6 | **Risk after reopening** — does the company keep showing the last CLEAR's risk while `IN_REVIEW`? cleared? | Unsettled | integration and UI; `standing.risk_rating` semantics |
-| D8 | **DEVELOPER visibility** — may DEVELOPER read the gauge value, the decision reasons, the evidence ids? (history route already admits DEVELOPER) | Unsettled | route roles, UI, history `reason` policy; default: no widening |
-| D10 | **Company row lock during handover** — must Dev3's guard lock/share-lock the company row? | Guard reads without a lock today | final integration (Dev3 change) |
+| D1 | **CLEAR prerequisite semantics** — what exactly must be true (A3: risk; no checks pending; eight items answered; evidence). | **Settled 28 Sep 2026 (programme lead):** exactly A3's four and no others (`background-check.md` §14.1) | nothing |
+| D2 | **Meaning of "pending"** — `status=PENDING` only? also `REVIEW` without an accepted review? placeholder rows? DIRECTOR/other subjects with no company link? | **Settled 28 Sep 2026 (programme lead):** pending unless terminal with a real provider — `PENDING`, `REVIEW` and placeholders all block. **Clarified in the PR review (28 Sep, at the user's instruction; lead to confirm):** a `REVIEW` result with an `ACCEPTED` or `REJECTED` review no longer blocks | nothing |
+| D3 | **FAILED screening vs CLEAR** — does "answered" include `FAILED`? `EXEMPT`? can a company be CLEAR with a FAILED item? | **Settled 28 Sep 2026 (programme lead):** `PASSED`/`EXEMPT` only; a `FAILED` item blocks `CLEAR` (the company is `FLAGGED` instead) | nothing in the rule; UI copy still to write (4A-8) |
+| D4 | **Evidence snapshot scope** — which documents (company only? company + open deals? only `AVAILABLE`?); what counts as "evidence recorded" for CLEAR | **Settled 28 Sep 2026 (programme lead):** the company's own `AVAILABLE` documents (no deal paperwork); `CLEAR` needs at least one pinned id | nothing |
+| D5 | **Risk placement and requiredness** — on the company record too? required/allowed on `FLAGGED`/`ON_HOLD`/others? | **Settled 28 Sep 2026:** no company risk column; risk stays on the decision. **Amended in the PR review (28 Sep, at the user's instruction):** risk is refused on every non-`CLEAR` outcome | nothing |
+| D6 | **Risk after reopening** — does the company keep showing the last CLEAR's risk while `IN_REVIEW`? cleared? | **Settled 28 Sep 2026:** keep the last recorded risk, explicitly labelled on screen | nothing |
+| D8 | **DEVELOPER visibility** — may DEVELOPER read the gauge value, the decision reasons, the evidence ids? (history route already admits DEVELOPER) | **Settled 28 Sep 2026:** no — refused on all three routes, reads included | nothing |
+| D10 | **Company row lock during handover** — must Dev3's guard lock/share-lock the company row? | **Settled 28 Sep 2026:** yes, `FOR SHARE`, on the move only. Built; needs Dev3 review | nothing |
 | D11 | **U4 / O3 transaction boundary** — S1-style flush-only seam, shared session, or retry-safe separate commits; and who publishes `company.became_customer` after the commit | Undecided | all of §5.9 (BLOCKED) |
 | D12 | **RXIL package / results contract**, including the actor of the automatic `NOT_STARTED → IN_REVIEW` move | Undecided | the automatic start only |
 | D13 | **Risk database type** — reuse `onboarding.verification_risk_level_enum` (Dev4B's) or a Dev4A-owned type | **Settled 28 Sep 2026 (Dev4 lead):** a Dev4A-owned enum type with exactly `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`, created in `onboarding_0015_bg_check`. Dev4B's enum is not reused, keeping the two migrations independently owned with no schema dependency between them. It is the CRM background-check risk vocabulary (decision 6 fixes the values, not the type) and changes no legacy, customer or onboarding risk type | nothing (was: migration) |
@@ -613,11 +612,11 @@ Record every answer in `docs/contracts/background-check.md` with its date and wh
 > | Item | Status |
 > |---|---|
 > | **4B-0 dependency** (the §6 seam and the §9 anchor blocks) | **CLEARED.** Dev4B Phase 4B-0 is complete (`4b-task.md` §14, 4B-0 status). Dev4A consumes `domain/compliance_inputs.py` and `ComplianceInputsService` exactly as §6 documents, and edits only its own anchor blocks. |
-> | **Dev4A implementation** | **NOT STARTED.** No contract doc, migration, entity, service, reader, API or panel yet. |
+> | **Dev4A implementation** | **4A-1 … 4A-8 COMPLETE (28 Sep 2026).** **4A-9 remains BLOCKED — U4 / O3 DECISION REQUIRED**: no customer promotion, no Dev2 call, no `company.became_customer`. See the status blocks below. |
 > | **D13** (risk database type) | **Settled:** a Dev4A-owned enum type (§13). |
-> | **D5** (risk on the company record) | **Open, non-blocking:** no company risk column (§13). |
+> | **D5** (risk on the company record) | **Settled:** no company risk column; risk refused off `CLEAR` (§13). |
 > | **U4 / D11** (customer transition) | **Blocked:** §5.9 and 4A-9 untouched. |
-> | **D1–D4** (CLEAR prerequisites, evidence scope) | **Required before CLEAR implementation** (4A-4). |
+> | **D1–D4** (CLEAR prerequisites, evidence scope) | **Settled 28 Sep 2026** (programme lead). Recorded in full in `background-check.md` §14.1 and carried in code by one value, `CLEAR_POLICY`. |
 >
 > Two seam facts Dev4A builds on (from the 4B-0 status): company-scoped Dev4B writers already
 > take `FOR SHARE` on the company row, so Dev4A's `FOR UPDATE` serialises against them; and
@@ -638,6 +637,17 @@ OpenAPI artifact current. A phase that cannot meet its stop condition stops and 
 - **Tests:** none.
 - **Stop when:** the doc is written and every open item is listed with an owner.
 
+> **4A-1 STATUS: COMPLETE (28 Sep 2026).** `docs/contracts/background-check.md` is published.
+> It covers the six values; the nine-move table with roles, required text and prerequisites; the
+> reasons (including the two D14 rows); the locked decision record and every database invariant
+> on it; the supersedes chain; the evidence snapshot (ids only, the verification review id bare);
+> risk (D13 settled, D5 open with no company risk column, D6 open); history usage; one
+> transaction per move; the `BackgroundCheckReader` contract (not yet implemented); the planned
+> error codes; the relationships to the journey, to Developer 3's handover and to the blocked
+> customer transition; the 4A ↔ 4B seam by reference; and every open decision (D1–D6, D8,
+> D10–D14) with its owner. Acknowledgements from Developers 1, 2, 3 and 4B are **requested**
+> (contract §15) and are a merge condition (§19), not a 4A-1 output.
+
 ### 4A-2 — Schema, entities and ORM column
 - **Objective:** migration `onboarding_0015_bg_check` and the entities.
 - **Scope:** §10 contents; `ExporterProfile.background_check`; entity/repository registration in
@@ -653,6 +663,47 @@ OpenAPI artifact current. A phase that cannot meet its stop condition stops and 
   risk `CHECK`s; unique supersedes; FK RESTRICT on company and evidence targets; column default.
 - **Stop when:** round trip clean, suite at baseline including the two updated Dev3 assertions.
 
+> **4A-2 STATUS: COMPLETE (28 Sep 2026).**
+>
+> - **Migration:** `onboarding_0015_bg_check`, `down_revision = onboarding_0019_documents` (the
+>   head at branch time). One head. Round trip run against live Postgres:
+>   `upgrade head → downgrade -1 → upgrade head` clean, and the downgrade leaves no
+>   `background_check*` type, table or column behind.
+> - **Schema:** five Dev4A enum types (`background_check_enum`, `background_check_risk_enum`
+>   [D13], `background_check_decided_by_kind_enum`, `background_check_decision_source_enum`,
+>   `background_check_evidence_kind_enum`); `exporter_profile.background_check` `NOT NULL DEFAULT
+>   'NOT_STARTED'` with `ix_exporter_profile_background_check`; `background_check_decision` and
+>   `background_check_evidence`, both locked by `public.prevent_mutation()`. The database
+>   enforces the nine-move table, the text rule (including `CLEAR` and `MORE_INFO → IN_REVIEW`),
+>   risk on `CLEAR`, a named actor on `MANUAL` decisions, one chain per company, no fork, and a
+>   predecessor of the same company ending where the move starts (composite chain FK). Every FK
+>   is `RESTRICT`. Evidence FKs go to `crm_document`, `verification_result` and
+>   `screening_review_item`; `verification_review_id` is a bare uuid. **No company risk column**
+>   (D5 open). Nothing of Developer 4B's is created or altered.
+> - **Entities and repository:** `domain/entities/background_check_enums.py`,
+>   `domain/entities/background_check_decision.py` (`BackgroundCheckDecision`,
+>   `BackgroundCheckEvidence`, `LEGAL_MOVES`),
+>   `infrastructure/repositories/background_check_decision_repository.py` (append-only,
+>   flush-only `record`, chain-head `latest_for_company`, `list_for_company`, `evidence_for`),
+>   `ExporterProfile.background_check` (Developer 2 review). Registered only in the 4A anchor
+>   blocks of `domain/entities/__init__.py` and `infrastructure/repositories/__init__.py`.
+> - **Dev3 assertions (Developer 3 review):** the column's arrival turns the handover's blocked
+>   reason from "not recorded yet" into "the background check is NOT_STARTED, not CLEAR". The two
+>   §5.8 assertions were updated to that reason. **A third assertion with the same premise**,
+>   `test_l3b_handover.py::test_the_api_refuses_the_handover_and_names_the_reason`, was updated
+>   the same way; §5.8 did not list it. Nothing else in Developer 3's tests or code changed:
+>   `deal_service.py` is untouched (the swap is 4A-6) and the `clear_background_check` fixture
+>   stays.
+> - **Tests:** `test_l4a_background_check_schema.py` (137, direct SQL: all 36 from/to pairs,
+>   text, risk, actor, chain, fork, cross-company, continuity, `UPDATE`/`DELETE` refused on both
+>   tables, company and evidence `RESTRICT`, every index and trigger, the enum catalogue, one head
+>   and the parent) and `test_l4a_background_check_repository.py` (15, ORM). The Dev3 deal,
+>   handover and document suites pass (94). **Full suite: 30 failed / 3918 passed / 7 skipped /
+>   22 errors**, the §3 baseline plus the 152 new tests; the 52 failing and erroring test ids are
+>   identical to the 4B-0 run (29 environment + the Dev3A clock test).
+> - **Gates:** ruff 16 (baseline); import-linter 19 kept / 0 broken; `openapi.json` and
+>   `schema.ts` untouched (no route).
+
 ### 4A-3 — Gauge service: forward moves
 - **Objective:** `BackgroundCheckService` for every move except `CLEAR` and the moves out of
   `CLEAR`/`FLAGGED`/`ON_HOLD`.
@@ -665,6 +716,47 @@ OpenAPI artifact current. A phase that cannot meet its stop condition stops and 
   chain.
 - **Stop when:** the §5.1 table is covered except CLEAR and the reassess/reopen rows.
 
+> **4A-3 STATUS: COMPLETE (28 Sep 2026).**
+>
+> - **Service:** `application/background_check_service.py`. One private `_move` implements
+>   contract §9's eight steps and every public move is a call to it, so there is no second
+>   transaction shape to keep in step: lock `FOR UPDATE` (`_lock_profile`, copied from
+>   `QualificationService`) → check move, role and text → read the seam → insert decision +
+>   evidence → assign the gauge → history row (flush) → one commit.
+> - **Moves built:** 1 (`start_review`), 3 (`request_more_info`), 4 (`record_more_info`),
+>   5 (`flag`), 6 (`hold`). **Move 6, `FLAGGED → ON_HOLD`, is here, not in 4A-5**: the phase
+>   brief for this run said "transitions out of `FLAGGED`", which would have left move 6 in no
+>   phase at all, since 4A-5's objective is only the three `→ IN_REVIEW` rows. This phase's own
+>   stop condition ("except CLEAR and the reassess/reopen rows") is what was followed.
+> - **Moves 7, 8, 9 deliberately absent.** They are legal per contract §3 and belong to 4A-5, so
+>   `_MOVES` omits them, `allowed_moves` does not offer them and the service refuses them. The
+>   table carries a comment saying so and
+>   `test_the_reopen_and_reassess_rows_are_not_offered_yet` pins it, so 4A-5 gets a failing test
+>   as its reminder rather than a surprise. Nothing user-facing is affected: there is no router
+>   until 4A-7.
+> - **Roles per move, not per route** (contract §3): OPERATIONS makes moves 1 and 4 only;
+>   DEVELOPER and API_USER make none. Enforced in the service, because one route will serve
+>   several moves.
+> - **`allowed_moves(current, role)`** is a `staticmethod` over the table — the same shape as
+>   `ConversationService.allowed_moves` and `DealService.allowed_stage_moves`. No universal
+>   allowed-moves framework was built (U1 is unowned).
+> - **Evidence:** `select_evidence` (pure) pins every verification result with its
+>   `latest_review_id`, and every screening row that exists. **No documents — D4 unanswered**;
+>   guessing it would put rows in an append-only table that cannot be corrected. A snapshot is
+>   taken for every decision, not only `CLEAR`, and may legitimately be empty.
+> - **The seam is the only way in.** The service imports `ComplianceInputsReader` /
+>   `ComplianceInputsService` and nothing else of Dev4B's — no `screening_review_item`, no
+>   `verification_result`, no review tables. The reader is constructor-injected so unit and
+>   integration tests drive a fake through the Protocol; one test class runs the same moves
+>   against the real `ComplianceInputsService`.
+> - **Exceptions** added under the 4A anchor of `exceptions.py` only, with contract §13's codes
+>   and statuses: `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` (409), `_ROLE_NOT_ALLOWED` (403),
+>   `_REASON_REQUIRED` (422), `_RISK_REQUIRED` (422), `_PREREQUISITES_UNMET` (409).
+>   `BackgroundCheckService` registered in the 4A anchor of `application/__init__.py`.
+> - **Not done here (correctly):** no router, no schema, no frontend, no reader helper
+>   (4A-6), no Dev3 swap, no customer transition. `deal_service.py` and Dev3's tests are
+>   untouched and the `clear_background_check` fixture stays.
+
 ### 4A-4 — CLEAR orchestration
 - **Objective:** `IN_REVIEW → CLEAR`.
 - **Scope:** single COMPLIANCE/ADMIN user; risk required; prerequisites as one pure rule function
@@ -675,6 +767,74 @@ OpenAPI artifact current. A phase that cannot meet its stop condition stops and 
 - **Stop when:** mechanism complete. If D1–D4 are unanswered, stop with the rule function holding
   only what A3 states verbatim, flagged `DECISION PENDING` in code and contract — the PR cannot
   pass final review until they are answered.
+
+> **4A-4 STATUS: COMPLETE (28 Sep 2026).**
+>
+> The mechanism was built first and the rule's content followed: **D1–D4 were answered on 28
+> September 2026** by the programme lead, recorded in full in `background-check.md` §14.1, and
+> the placeholder the mechanism had been running against was replaced.
+>
+> - **Built:** `BackgroundCheckService.clear` — move 2. One COMPLIANCE or ADMIN user (decision 5,
+>   no second approver); risk required before anything is assigned
+>   (`BACKGROUND_CHECK_RISK_REQUIRED`); reason required (architecture §4.1 step 9, which
+>   `history-row.md` §4 omits — **D14**, Dev1's contract text, nothing in code waits on it);
+>   prerequisites evaluated under the row lock; refusal names **every** unmet prerequisite, not
+>   the first.
+> - **The rule:** `evaluate_clear_prerequisites(inputs, *, risk, evidence, policy)` in
+>   `domain/background_check_views.py` — pure over `CompanyComplianceInputs` plus the decision's
+>   own inputs, no session, no repository query. Returns A3's four names: `risk_rating`,
+>   `no_checks_pending`, `screening_items_answered`, `evidence_recorded`. "All eight items" is
+>   read from the seam's `screening_catalogue`, never a hard-coded eight.
+> - **The answers, in one value.** `CLEAR_POLICY` carries D2 (pending unless terminal with a real
+>   provider: `PENDING`, `REVIEW` and placeholder rows all block), D3 (`PASSED`/`EXEMPT` only — a
+>   `FAILED` screening item blocks `CLEAR`, and the company is `FLAGGED` instead) and D4's gate
+>   (at least one pinned id). Keeping them in a `ClearPolicy` rather than in the rule body is why
+>   answering them was a one-value change, and it is why a future change to any of them will be
+>   too.
+> - **D4's scope is now implemented.** `select_evidence` pins the company's own documents whose
+>   `scan_status` is `AVAILABLE`. **Deal paperwork is not pinned** — it belongs to the deal, not
+>   to the company's standing. The documents are read through Developer 3B's
+>   `CrmDocumentRepository.list_for_owner`, the only method §8 permits, and **paged to
+>   exhaustion**: it defaults to 50, and a company with more would otherwise get a permanently
+>   truncated snapshot in an append-only table. The scan-status rule is applied in the pure
+>   function, not in the query, so it stays testable in one place.
+> - **Tests pin the answers deliberately.** Most prerequisite tests still pass an explicit policy,
+>   so they prove the *mechanism* rather than the answer; one test asserts `CLEAR_POLICY`'s four
+>   fields, so changing what "cleared" means arrives with a failing test rather than quietly.
+> - **Still open, and not touched here:** D5, D6, D8, D10, D11/U4/O3, D12, D14.
+
+> **4A-3 + 4A-4 GATES (28 Sep 2026).**
+>
+> - **New tests: 109, all passing** (96 at first pass, plus 13 for D1–D4 once answered). `tests/unit/test_l4a_background_check_rules.py` (47: the move
+>   table per state and per role, the evidence selection, A3's prerequisites under explicit
+>   policies) and `tests/integration/test_l4a_background_check_service.py` (49: every legal move,
+>   every illegal one, role refusals per move, blank-text refusals, one-transaction and rollback,
+>   reader-failure propagation, the supersession chain, concurrent moves serialising, the
+>   database's fork backstop, the evidence snapshot, `CLEAR`'s refusals, the journey untouched,
+>   and the same moves against the real `ComplianceInputsService`). The D4 additions cover
+>   document pinning against Developer 3B's real `crm_document` rows: only `AVAILABLE` ones are
+>   pinned, a pinned document cannot then be deleted (`RESTRICT`), and a company with 55
+>   documents has all 55 pinned rather than the first page.
+> - **Regression:** the Dev3 deal, handover and document suites and the 4A-2 schema and
+>   repository suites — **552 passed** together with the new ones.
+> - **Full suite: 23 failed / 4039 passed / 6 skipped / 5 errors** (10m07s). **Zero failures in
+>   `onboarding`, zero in the L4A and L3B suites, zero in `backend/tests/contract`.** All 28
+>   failing and erroring ids are the environment baseline in `app/modules/compliance` (21 + 5)
+>   and `app/modules/audit` (2), which come from the deliberately unmounted `payments`/`fx`
+>   routers and are untouched by this work. The 4A-2 status block records 30/3918/7/22 for the
+>   same suite; the counts moved because that run was made in a different environment (the
+>   `./frontend` mount and `APP_NAME`, `dev3b-remaining-work.md` §2.4), not because of code here
+>   — **no new failure was accepted as baseline**.
+> - **ruff:** 9 findings in `app/modules/onboarding`, **all pre-existing and none in Dev4A's
+>   files** (1 `application/__init__.py` I001, present before this work and verified by stashing;
+>   1 `domain/entities/__init__.py`; 7 in a merge migration).
+> - **import-linter:** 19 contracts kept, 0 broken — the seam boundary holds, and nothing in
+>   Dev4A imports Dev4B's tables, repositories or services.
+> - **Alembic:** one head (`onboarding_0015_bg_check`). No migration was added by these phases.
+>   The dev database was one revision behind and was upgraded to head to run the tests.
+> - **Untouched, as required:** no router, no schema, no OpenAPI artifact, no frontend
+>   (`openapi.json` and `schema.ts` unchanged — there is no route yet), no Dev4B file, no
+>   `deal_service.py`, no Dev3 test, no customer transition.
 
 ### 4A-5 — Reopen and reassessment
 - **Objective:** `CLEAR → IN_REVIEW`, `FLAGGED/ON_HOLD → IN_REVIEW`.
@@ -711,6 +871,159 @@ OpenAPI artifact current. A phase that cannot meet its stop condition stops and 
 - **Tests:** vitest for gauge render per value, CRITICAL distinct, move dialog offers only served
   moves, reason required, error/empty/loading, `VerificationSection` still rendered.
 - **Stop when:** tsc, eslint, vitest, build pass.
+
+> **4A-5 STATUS: COMPLETE (28 Sep 2026).**
+>
+> - `reassess` (moves 7 and 8) and `reopen` (move 9). One method for the two
+>   reassessment rows because they are the same act under two origins; `_move`'s
+>   `expected_from` became a set to carry that, and a company in neither state is still
+>   refused.
+> - **All nine of contract §3 are now in `_MOVES`**, asserted against the entity's
+>   `LEGAL_MOVES` so the service and the database can never disagree about which moves
+>   exist. 4A-3's test that pinned their *absence* was replaced by one that pins their
+>   presence — its failure was the intended signal that this phase had arrived.
+> - `CLEAR → FLAGGED` is still refused, and tested: new information about a cleared
+>   company goes through a reopen so the reason is on the chain first (architecture §4.2).
+> - **The superseded decision is untouched**, proved by direct SQL rather than through
+>   the ORM: the clearing row is read before and after a reopen and compared field by
+>   field, so a cached or refreshed instance cannot make an edited row look unchanged.
+> - **The journey is never written.** A company inserted at `CUSTOMER` is still
+>   `CUSTOMER` after its check is reopened (company-record §3.1, A5). Inserted directly,
+>   because Developer 2's promotion (L2-11) does not exist and Dev4A must not invent it.
+> - 17 new tests.
+
+> **4A-6 STATUS: COMPLETE (28 Sep 2026).**
+>
+> - `application/background_check_reader.py`: `BackgroundCheckStanding`,
+>   `current_background_check` (pure) and `BackgroundCheckReader.standing`, exactly the
+>   §10 shape. Strings, not enums, so a consumer never imports Dev4A's enum.
+> - **Read-only and unlocked**, and both are tested: a read leaves the session with
+>   nothing new, dirty or deleted, and a read running beside a move neither blocks it
+>   nor is blocked. The caller owns locking — **D10 is not decided here**, and the
+>   documented boundary is preserved: Dev4A's own moves always take the row lock, so a
+>   guard that also locks is fully serialised against them. Dev3's guard still reads
+>   without one, which is exactly the open question D10 names.
+> - `clearing_decision_id` is `None` unless the company is `CLEAR` now, so a reopened
+>   company never reports a clearance that was withdrawn — it is what
+>   `company.became_customer` will carry.
+> - `risk_rating` is the latest decision that **set** one, not the chain head's (only
+>   `CLEAR` must carry a risk, so the head of a reopened company has none). What that
+>   should mean is **D6, open**; the interim behaviour is documented on the field, in the
+>   contract and in a test, and the panel says where the number came from rather than
+>   implying it describes the company now.
+> - **The Dev3 swap (Dev3 review):** `read_background_check`'s body is
+>   `return current_background_check(company)`. Name and signature unchanged; nothing
+>   else in `deal_service.py` was touched. **Dev3's 213 tests pass unchanged.**
+> - The `clear_background_check` fixture **stays**: a real `CUSTOMER` still needs L2-11,
+>   so removing it would delete the only coverage of the handover path.
+> - Buyer isolation re-checked: the standing is a function of the company's own
+>   decisions, and the gauge never calls `buyer_checks`.
+> - 19 new tests.
+>
+> **Left for Developer 3, deliberately (§7 permits Dev4A only the body of
+> `read_background_check`).** Three pieces of prose in `deal_service.py` are now false
+> *because of* this swap, and Dev4A did not edit them rather than widen its own
+> ownership. They mislead a reader until Dev3 corrects them:
+>
+> 1. the **module docstring** ("The handover is built, and currently refuses every
+>    deal" … "migration 0015, which has not landed, so `read_background_check` returns
+>    `None`"). The column exists; the guard now reports "the background check is
+>    NOT_STARTED, not CLEAR".
+> 2. `_handover_blocked_reason`'s **docstring** ("`exporter_profile` has no
+>    `background_check` column" … "Phase 4 replaces the `getattr` below with Developer
+>    4's published read helper"). That replacement is what this phase did.
+> 3. the **dead branch** in the same method: `if background_check is None:` and its
+>    "not recorded yet — Developer 4's migration 0015 has not landed" message. The
+>    column is `NOT NULL`, so it is now unreachable.
+>
+> None of the three affects behaviour and all 213 Dev3 tests pass, so this is a
+> documentation defect, not a bug — but it was created here and should not be lost.
+
+> **4A-7 STATUS: COMPLETE (28 Sep 2026).**
+>
+> - Three routes (§5.10), `api/background_check_router.py` and
+>   `api/schemas/background_check.py`, mounted from the 4A anchor in `api/router.py`.
+> - **The client cannot supply what is the server's.** `extra="forbid"` on the request,
+>   with a parametrised test proving each of `decided_by`, `decided_by_kind`, `source`,
+>   `evidence`, `evidence_ids`, `company_id`, `decided_at` and `supersedes_decision_id`
+>   is a 422 — refused, not ignored. Silently dropping them would let a caller believe
+>   it had recorded an `AUTOMATED` decision from `RXIL` on someone else's behalf.
+> - The actor is `user.id` from the session; the evidence snapshot is assembled
+>   server-side from the seam and Dev3B's documents.
+> - `allowed_moves` is served per caller, and `clear_blocked_reasons` names CLEAR's
+>   outstanding prerequisites so the screen explains rather than showing a 409.
+> - Roles are checked **twice**: `require_role` on the route, per-move roles in the
+>   service. An API test proves OPERATIONS is refused 403 by the *service* on a route it
+>   is admitted to — the refusal a route-level check alone would miss.
+> - **D8 applied as documented, not decided:** DEVELOPER is refused on all three routes,
+>   including the reads. Rows in both authorisation tables plus an API test.
+> - 401/403/404/409/422 all declared in `responses=` and all tested.
+> - `openapi.json` and `schema.ts` **regenerated**, never hand-edited, with `APP_NAME`
+>   pinned to the `Settings` default. `test_openapi_artifact_is_current` passes.
+> - 31 new API tests; both authorisation tables pass (377).
+
+> **4A-8 STATUS: COMPLETE (28 Sep 2026).**
+>
+> - `pages/panels/BackgroundCheckPanel.tsx` rebuilt as the gauge panel, with
+>   `BackgroundCheckGauge`, `RiskChip`, `BackgroundCheckMoveDialog` and
+>   `DecisionHistory`, plus `api/background-check.ts` and `hooks/background-check.ts`.
+>   Types are aliases of the generated schema in the 4A block; three barrel lines.
+> - **No move table and no role list in the browser.** The dialog renders
+>   `allowed_moves` and requires a reason or a risk exactly where the server says. A
+>   test proves a move the server did not offer is absent from the dialog.
+> - `CRITICAL` is visibly distinct — filled, bordered and bold, where the other three
+>   are tinted — and a test asserts that rather than trusting the class name.
+> - **Honest wording:** `NOT_STARTED` reads "Not started" with "No background check has
+>   been started for this company", never "pending" or "clear". The evidence trail shows
+>   **counts of ids**, never contents, because ids are all the snapshot holds.
+> - Loading, empty and error states for both the gauge and the decision trail.
+> - Developer 4B's `VerificationSection` is rendered unchanged below the gauge, and a
+>   test asserts it is still there — the checks are the inputs to the decision, so they
+>   read in that order.
+> - 20 new tests. Frontend gate: `tsc -b` clean, ESLint 0 errors (2 pre-existing
+>   warnings), **vitest 151 passed / 17 files**, `vite build` clean.
+
+> **PR REVIEW FIXES (28 Sep 2026)** — from the audit of `feature/4b-decision-engine-and-integration`
+> @ `7e0058e` (the branch name is a typo; it is this Dev4A PR). All three blockers were
+> reproduced with a scratch test before being fixed.
+>
+> - **Blocker — the dialog sent a hidden risk.** Choosing a risk for `CLEAR` and then
+>   switching to another move submitted the rating with it, onto an append-only decision
+>   the panel then showed as the company's risk. The rating now resets when the move
+>   changes and is sent only for a move whose `risk_required` is true.
+> - **Blocker — risk accepted on every move from every role.** An OPERATIONS start with
+>   `risk_rating: CRITICAL` returned 201 and the standing then read `CRITICAL`. Risk is now
+>   refused off `CLEAR`: `422 BACKGROUND_CHECK_RISK_NOT_ALLOWED` in the service, and
+>   `ck_background_check_decision_risk_only_on_clear` in migration 0015 (D5 amended).
+> - **Blocker — a reviewed `REVIEW` result blocked `CLEAR` for ever.**
+>   `VerificationService.review` sets `review_status` and never changes `status`, and
+>   `CLEAR_POLICY` counted every `REVIEW` as pending. New `ClearPolicy.concluding_review_statuses`
+>   (`ACCEPTED`, `REJECTED`); `ESCALATED` still blocks and placeholders always block (D2
+>   clarified — **the lead should confirm**).
+> - **Stale screens.** The request takes an optional `from_value`; if the company has moved
+>   since, `409 BACKGROUND_CHECK_STATE_CHANGED` instead of the request becoming a different
+>   act (a reassessment turning into a reopen). The panel always sends it and reloads the
+>   standing on any refused move.
+> - **D10 tested by behaviour.** The source-text assertions were replaced by two-session
+>   tests: a reopen waits while a handover of a `CLEAR` company is in flight (verified to
+>   fail when `lock=True` is removed), and rendering a deal never blocks a move.
+> - **Ordering.** `decided_at` defaults to `clock_timestamp()` instead of `now()`, so a
+>   move that waited on the row lock cannot sort before the decision it supersedes.
+> - **Error context.** The 4A exceptions put `BackgroundCheckState.IN_REVIEW` into `detail`
+>   and `error_context`; they now carry plain values.
+> - **Panel.** Outstanding prerequisites are shown as sentences, not keys; a refused move
+>   shows the server's message.
+> - **Documentation.** D5, D6, D8 and D10 are recorded as settled throughout. Correction to
+>   the 4A-6 status above: the three pieces of `deal_service.py` prose it left for Developer 3
+>   were updated by commit `7e0058e` together with the D10 lock, and the review also updated
+>   `transition_stage`'s docstring. **All of those `deal_service.py` changes go beyond §7 and
+>   need Developer 3's review.**
+> - **Migration 0015 was edited in place** (it is unmerged): the new check constraint and the
+>   `decided_at` default. A database already at 0015 must run `downgrade -1` then
+>   `upgrade head` (lossy for decisions, as the downgrade states). Round trip run clean.
+> - **Still merge conditions, not code:** Developer 1/2/3/4B acknowledgements (contract §15);
+>   D14 (Developer 1's contract text); the lead's confirmation of the D2 clarification and the
+>   D5 amendment.
 
 ### 4A-9 — Customer transition hand-off — **BLOCKED — U4 / O3 DECISION REQUIRED**
 - Not started until D11 is written down. Then: the agreed seam with Dev2 (L2-11), the announcement

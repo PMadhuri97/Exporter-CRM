@@ -64,6 +64,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/roles/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every permission that can be granted
+         * @description The vocabulary role editing works against. `enforced` is false for a module whose routes still use the older role check — those permissions are stored and will apply once those routes migrate, but they gate nothing today, and a client must say so rather than implying otherwise.
+         */
+        get: operations["get_catalog_api_v1_auth_roles_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List roles with their permissions and holder counts */
+        get: operations["list_roles_api_v1_auth_roles_get"];
+        put?: never;
+        /**
+         * Create a custom role
+         * @description A custom role can be assigned immediately, but only the routes listed as enforced in the catalogue consult it. Everything else still reads the account's built-in role, so a custom role does not yet widen or narrow access to the CRM screens.
+         */
+        post: operations["create_role_api_v1_auth_roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/roles/{role_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one role */
+        get: operations["get_role_api_v1_auth_roles__role_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a custom role
+         * @description Refused for a built-in role: those back the account role values every unmigrated route still reads, so deleting one would leave its holders resolving to no permissions at all.
+         *
+         *     Also refused while any account still holds the role — reassign them first. Silently demoting people is a privilege change nobody asked for.
+         */
+        delete: operations["delete_role_api_v1_auth_roles__role_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a role or change what it grants
+         * @description Built-in roles are editable, by decision — section 3.7 of the architecture plan describes their starting permissions, not a guarantee. `permissions`, when supplied, replaces the whole set.
+         *
+         *     One edit is refused: removing `roles:edit` from the role you yourself hold, because no one could grant it back afterwards.
+         */
+        patch: operations["update_role_api_v1_auth_roles__role_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/auth/me/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's own permissions
+         * @description Needs no permission of its own: every caller may ask what they themselves can do. This is what a client should branch on instead of comparing role names, so a permission granted in role management takes effect in the UI without a code change.
+         */
+        get: operations["my_permissions_api_v1_auth_me_permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/register": {
         parameters: {
             query?: never;
@@ -146,6 +236,142 @@ export interface paths {
         get: operations["me_api_v1_auth_me_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update your own profile
+         * @description Edits your own display name. Role, email and active status are not fields on this request at all — sending one returns 422.
+         */
+        patch: operations["update_me_api_v1_auth_me_patch"];
+        trace?: never;
+    };
+    "/api/v1/auth/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change your own password
+         * @description Requires the current password. On success every refresh token for the account is revoked, including this client's, so the user signs in again with the new password — a password change is exactly when a stolen session should stop working.
+         */
+        post: operations["change_my_password_api_v1_auth_me_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List your active sessions
+         * @description Active (unrevoked, unexpired) refresh tokens for your own account. Only timestamps are reported: no device or IP is recorded on these rows, so none is invented here.
+         */
+        get: operations["list_my_sessions_api_v1_auth_me_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one of your own sessions
+         * @description The session is looked up by id *and* owner, so one user can never revoke another's session by guessing an id — an unknown or someone else's id is a 404, which also avoids confirming it exists.
+         */
+        delete: operations["revoke_my_session_api_v1_auth_me_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List and search user accounts
+         * @description ADMIN only. `q` matches email or full name as a case-insensitive partial match; `role` and `is_active` filter exactly. `total` is the count matching the filter, not the length of this page.
+         */
+        get: operations["list_users_api_v1_auth_users_get"];
+        put?: never;
+        /**
+         * Create a user account with a role
+         * @description ADMIN only. This is the supported way to create a working staff account: `POST /auth/register` is unauthenticated and therefore always produces an API_USER, which can reach nothing in the CRM.
+         */
+        post: operations["admin_create_user_api_v1_auth_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one user account */
+        get: operations["admin_get_user_api_v1_auth_users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a user's name, role or active status
+         * @description ADMIN only. Two changes are refused outright, because each one can lock an administrator out of the deployment:
+         *
+         *     * changing your own role — self-promotion, and a self-demotion that you would then have no way to undo;
+         *     * deactivating your own account.
+         *
+         *     Together these are also what prevents the last administrator disappearing: the caller is always an active ADMIN, so any *other* account can be demoted or deactivated while at least the caller remains.
+         *
+         *     Deactivating an account also revokes every refresh token it holds, so the block takes effect on the next request rather than whenever the current access token happens to expire.
+         */
+        patch: operations["admin_update_user_api_v1_auth_users__user_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/auth/users/{user_id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a new password for a user
+         * @description ADMIN only, for a colleague who cannot sign in. Every refresh token for that account is revoked, so an attacker who already has a session does not keep it. The administrator supplies the password rather than the server generating one: with no email delivery in this build, a generated secret would have to travel back in a response body.
+         */
+        post: operations["admin_reset_password_api_v1_auth_users__user_id__password_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1103,6 +1329,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/exporters/{company_id}/background-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a company's background check
+         * @description The current value, the risk of the latest decision that set one, the latest decision, and the moves **this caller** may make next.
+         *
+         *     `allowed_moves` is the rule table as data: offer exactly these and no others. Where `CLEAR` is offered but its prerequisites are unmet, `clear_blocked_reasons` names each one, so the screen can say what is outstanding rather than showing a 409 after the fact.
+         */
+        get: operations["get_background_check_api_v1_onboarding_exporters__company_id__background_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a company's background-check decisions
+         * @description Every decision on this company, newest first, each with the evidence snapshot it was recorded against.
+         *
+         *     Decisions are append-only: a reopen or reassessment is a new decision that supersedes the previous one, and nothing here is ever edited. The evidence is ids only — never file contents, provider payloads or checklist comments.
+         */
+        get: operations["list_background_check_decisions_api_v1_onboarding_exporters__company_id__background_check_decisions_get"];
+        put?: never;
+        /**
+         * Record a background-check decision
+         * @description Moves the gauge and records why, as one locked decision with the evidence it rested on, in one transaction.
+         *
+         *     The request names **where the check is going** and nothing about who is deciding: the actor comes from the login session, the source and decided-by kind are the server's, and the evidence snapshot is assembled by the server. A request carrying any of them is refused (422).
+         *
+         *     Send `from_value` (the value the screen showed) so that a request made from a stale screen is refused (409) rather than becoming a different act.
+         *
+         *     Roles are enforced per move, not merely per route: OPERATIONS may start a check and record what arrived, and nothing else.
+         */
+        post: operations["record_background_check_decision_api_v1_onboarding_exporters__company_id__background_check_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/cases": {
         parameters: {
             query?: never;
@@ -1333,6 +1613,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActionSpecResponse */
+        ActionSpecResponse: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+        };
         /**
          * ActorType
          * @description Class of principal an audit row is attributed to — not the user's role.
@@ -1361,6 +1650,98 @@ export interface components {
              * @default false
              */
             is_primary: boolean;
+        };
+        /**
+         * AdminCreateUserRequest
+         * @description An administrator creating an account for a colleague.
+         *
+         *     Unlike `RegisterRequest` this *does* carry a role: the route is
+         *     ADMIN-gated, so choosing the role is the point rather than an escalation.
+         *     This is the intended replacement for self-service sign-up as a way to get
+         *     a working staff account.
+         */
+        AdminCreateUserRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+            /** Full Name */
+            full_name?: string | null;
+            role: components["schemas"]["UserRole"];
+            /** Role Id */
+            role_id?: string | null;
+        };
+        /**
+         * AdminResetPasswordRequest
+         * @description An administrator setting a new password for someone who cannot sign in.
+         *
+         *     The administrator supplies the value rather than the server generating
+         *     one: there is no email delivery in this build, so a generated secret would
+         *     have to come back in an HTTP response body, which is a worse place for it
+         *     than the administrator's own password manager.
+         */
+        AdminResetPasswordRequest: {
+            /** New Password */
+            new_password: string;
+        };
+        /**
+         * AdminUpdateUserRequest
+         * @description Change another account's role, name or active flag.
+         *
+         *     Every field is optional, and `None` is indistinguishable from "absent" for
+         *     `role`/`is_active` on purpose — neither is nullable, so only
+         *     `model_dump(exclude_unset=True)` decides what changes. `full_name` is
+         *     genuinely nullable (clearing a name is a legitimate edit), so the route
+         *     reads the same `exclude_unset` set rather than testing for None.
+         */
+        AdminUpdateUserRequest: {
+            /** Full Name */
+            full_name?: string | null;
+            role?: components["schemas"]["UserRole"] | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Role Id */
+            role_id?: string | null;
+        };
+        /**
+         * AdminUserResponse
+         * @description What an administrator sees, on top of `UserResponse`'s common fields.
+         *
+         *     A separate model rather than extra optional fields on `UserResponse`:
+         *     `GET /auth/me` is served to every role, and `created_by` /`last_login_at`
+         *     are administrative facts about an account, not things every caller needs.
+         */
+        AdminUserResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string | null;
+            role: components["schemas"]["UserRole"];
+            /** Is Active */
+            is_active: boolean;
+            /** Is Verified */
+            is_verified: boolean;
+            /** Last Login At */
+            last_login_at: string | null;
+            /** Created By */
+            created_by: string | null;
+            /** Deactivated At */
+            deactivated_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Role Id */
+            role_id: string | null;
         };
         /**
          * ApprovalDecision
@@ -1450,6 +1831,127 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * BackgroundCheckDecisionListResponse
+         * @description A company's decisions, newest first.
+         */
+        BackgroundCheckDecisionListResponse: {
+            /** Decisions */
+            decisions: components["schemas"]["BackgroundCheckDecisionResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * BackgroundCheckDecisionResponse
+         * @description One recorded move, with the evidence it rested on.
+         */
+        BackgroundCheckDecisionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            from_value: components["schemas"]["BackgroundCheckState"];
+            to_value: components["schemas"]["BackgroundCheckState"];
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided By Kind */
+            decided_by_kind: string;
+            /** Source */
+            source: string;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /** Reason */
+            reason: string | null;
+            risk_rating: components["schemas"]["BackgroundCheckRisk"] | null;
+            /** Supersedes Decision Id */
+            supersedes_decision_id: string | null;
+            /** Evidence */
+            evidence: components["schemas"]["EvidenceItemResponse"][];
+        };
+        /**
+         * BackgroundCheckMoveResponse
+         * @description One move this caller may make, and what it needs.
+         *
+         *     The rules as data (contract §3): the screen offers exactly what is here and keeps
+         *     no move table and no role list of its own, so a rule change cannot leave a stale
+         *     button behind.
+         */
+        BackgroundCheckMoveResponse: {
+            to_value: components["schemas"]["BackgroundCheckState"];
+            /** Reason Required */
+            reason_required: boolean;
+            /** Risk Required */
+            risk_required: boolean;
+        };
+        /**
+         * BackgroundCheckResponse
+         * @description Where a company's check stands, and what this caller may do next.
+         */
+        BackgroundCheckResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            value: components["schemas"]["BackgroundCheckState"];
+            /** @description The risk of the most recent CLEAR decision (only CLEAR carries one). Read `value` before trusting it: a company cleared at LOW and then reopened still reports LOW while it sits at IN_REVIEW — the last recorded risk, to be labelled as such (D6). */
+            risk_rating?: components["schemas"]["BackgroundCheckRisk"] | null;
+            /** Latest Decision Id */
+            latest_decision_id?: string | null;
+            /**
+             * Clearing Decision Id
+             * @description The decision behind the company's current CLEAR. Null unless `value` is CLEAR, so a reopened company never reports a clearance that was withdrawn.
+             */
+            clearing_decision_id?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * Allowed Moves
+             * @description The moves this caller may make from the current value, with what each needs. Empty for a caller whose role makes no move from here. `CLEAR` may appear while its prerequisites are unmet — `clear_blocked_reasons` names those.
+             */
+            allowed_moves: components["schemas"]["BackgroundCheckMoveResponse"][];
+            /**
+             * Clear Blocked Reasons
+             * @description Which of CLEAR's prerequisites are unmet right now, by name, so the screen can say what is outstanding instead of showing a 409 afterwards. Empty when the company is not IN_REVIEW or when nothing is outstanding.
+             */
+            clear_blocked_reasons?: string[];
+        };
+        /**
+         * BackgroundCheckRisk
+         * @description The CRM risk scale (decision 6), set by compliance on a decision.
+         *
+         *     ``onboarding.background_check_risk_enum`` — a type Developer 4A owns (D13, settled
+         *     28 Sep 2026). It is deliberately **not** ``VerificationRiskLevel`` /
+         *     ``verification_risk_level_enum``, which is Developer 4B's, so neither Dev4
+         *     migration depends on the other's schema. "Prohibited" is not a risk; it is
+         *     ``FLAGGED``.
+         * @enum {string}
+         */
+        BackgroundCheckRisk: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+        /**
+         * BackgroundCheckState
+         * @description The gauge: "is it safe and lawful to work with them?" (architecture §3.3).
+         *
+         *     ``onboarding.background_check_enum``. Carried on ``exporter_profile.background_check``
+         *     and on every decision's ``from_value`` / ``to_value``. The only legal moves between
+         *     these are the nine in the contract's §3, enforced by the service and by
+         *     ``ck_background_check_decision_move``.
+         * @enum {string}
+         */
+        BackgroundCheckState: "NOT_STARTED" | "IN_REVIEW" | "CLEAR" | "MORE_INFO" | "FLAGGED" | "ON_HOLD";
         /** BankActivityFindingResponse */
         BankActivityFindingResponse: {
             /**
@@ -1723,6 +2225,19 @@ export interface components {
          */
         CaseType: "KYC" | "KYB";
         /**
+         * ChangePasswordRequest
+         * @description Change your own password. `current_password` is required even though
+         *     the caller is already authenticated — an access token found on an
+         *     unlocked laptop should not be enough to lock the owner out of their own
+         *     account.
+         */
+        ChangePasswordRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
+        /**
          * CheckBackResponse
          * @description A company parked at `NOT_NOW`, due to be picked up on `check_back_on`.
          *
@@ -1947,6 +2462,17 @@ export interface components {
             name?: string | null;
             /** Country */
             country?: string | null;
+        };
+        /** CreateRoleRequest */
+        CreateRoleRequest: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Permissions */
+            permissions?: components["schemas"]["PermissionRef"][];
         };
         /**
          * CriterionDefinitionRequest
@@ -2338,6 +2864,22 @@ export interface components {
             gstin: string;
             /** Other Customer Ids */
             other_customer_ids: string[];
+        };
+        /**
+         * EvidenceItemResponse
+         * @description One id a decision was recorded against. IDs only, never content (contract §6).
+         */
+        EvidenceItemResponse: {
+            /** Kind */
+            kind: string;
+            /** Crm Document Id */
+            crm_document_id?: string | null;
+            /** Verification Result Id */
+            verification_result_id?: string | null;
+            /** Verification Review Id */
+            verification_review_id?: string | null;
+            /** Screening Review Item Id */
+            screening_review_item_id?: string | null;
         };
         /** ExporterActivityListResponse */
         ExporterActivityListResponse: {
@@ -3037,6 +3579,35 @@ export interface components {
             /** Reason Required */
             reason_required: boolean;
         };
+        /** ModuleSpecResponse */
+        ModuleSpecResponse: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Enforced */
+            enforced: boolean;
+            /** Actions */
+            actions: components["schemas"]["ActionSpecResponse"][];
+        };
+        /**
+         * MyPermissionsResponse
+         * @description What the signed-in user may do, for a client deciding what to render.
+         *
+         *     The role is included so a client can label it; the permission list is what
+         *     it should actually branch on.
+         */
+        MyPermissionsResponse: {
+            role: components["schemas"]["UserRole"];
+            /** Role Id */
+            role_id: string | null;
+            /** Role Name */
+            role_name: string;
+            /** Permissions */
+            permissions: components["schemas"]["PermissionRef"][];
+        };
         /**
          * NotificationChannel
          * @enum {string}
@@ -3217,6 +3788,25 @@ export interface components {
              */
             created_at: string;
         };
+        /** PermissionCatalogResponse */
+        PermissionCatalogResponse: {
+            /** Modules */
+            modules: components["schemas"]["ModuleSpecResponse"][];
+        };
+        /**
+         * PermissionRef
+         * @description One (module, action) pair, validated against the catalogue.
+         *
+         *     Validating here means an unknown pair is a 422 at the boundary rather than a
+         *     row in `auth.role_permission` that no route will ever check — a permission
+         *     nobody enforces looks granted in the UI and is worse than an error.
+         */
+        PermissionRef: {
+            /** Module */
+            module: string;
+            /** Action */
+            action: string;
+        };
         /**
          * PersonProfileInput
          * @description Subject identity attributes. **PII** — never log an instance of this.
@@ -3355,6 +3945,28 @@ export interface components {
             message: string;
         };
         /**
+         * RecordBackgroundCheckDecisionRequest
+         * @description A move, as a client may ask for it.
+         *
+         *     Four fields, and `extra="forbid"`. The actor comes from the login session, the
+         *     source and decided-by kind are the server's, and the evidence snapshot is
+         *     assembled by the server from the 4A ↔ 4B seam and Developer 3B's documents. A
+         *     request naming any of them is refused (422) rather than quietly ignored.
+         */
+        RecordBackgroundCheckDecisionRequest: {
+            /** @description The value to move to. Must be one the server offers in `allowed_moves`. */
+            to_value: components["schemas"]["BackgroundCheckState"];
+            /**
+             * Reason
+             * @description Why, or the note of what is needed or what arrived. Required on every move except the first (`NOT_STARTED → IN_REVIEW`).
+             */
+            reason?: string | null;
+            /** @description LOW, MEDIUM, HIGH or CRITICAL. Required on CLEAR and refused (422 `BACKGROUND_CHECK_RISK_NOT_ALLOWED`) on every other move. */
+            risk_rating?: components["schemas"]["BackgroundCheckRisk"] | null;
+            /** @description The value the client was looking at when it chose this move. If the check has moved since, the request is refused (409 `BACKGROUND_CHECK_STATE_CHANGED`) instead of becoming a different act — four moves share the destination IN_REVIEW. Optional, but a screen should always send it. */
+            from_value?: components["schemas"]["BackgroundCheckState"] | null;
+        };
+        /**
          * RecordOutcomeRequest
          * @description The signed-in reviewer's decision. `NOT_QUALIFIED` needs at least one
          *     reason code; `other` needs a note.
@@ -3458,6 +4070,39 @@ export interface components {
              * Format: date-time
              */
             recorded_at: string;
+        };
+        /** RoleListResponse */
+        RoleListResponse: {
+            /** Roles */
+            roles: components["schemas"]["RoleResponse"][];
+        };
+        /** RoleResponse */
+        RoleResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            builtin_role: components["schemas"]["UserRole"] | null;
+            /** Is Builtin */
+            is_builtin: boolean;
+            /** Is Assignable */
+            is_assignable: boolean;
+            /** Permissions */
+            permissions: components["schemas"]["PermissionRef"][];
+            /** User Count */
+            user_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * ScreeningCapabilities
@@ -3605,6 +4250,36 @@ export interface components {
             user_id: string;
             /** Level Name */
             level_name: string;
+        };
+        /** SessionListResponse */
+        SessionListResponse: {
+            /** Sessions */
+            sessions: components["schemas"]["SessionResponse"][];
+        };
+        /**
+         * SessionResponse
+         * @description One active refresh token.
+         *
+         *     No device or IP columns exist on `auth.refresh_tokens`, so this reports
+         *     only what is genuinely recorded — times. Showing a fabricated
+         *     "Chrome on Windows" would be worse than showing nothing.
+         */
+        SessionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /**
          * SetConversationRequest
@@ -3821,6 +4496,37 @@ export interface components {
             /** Website */
             website?: string | null;
         };
+        /**
+         * UpdateMeRequest
+         * @description Edit your own profile. Deliberately has no `role`, `is_active` or
+         *     `email` field: with `extra="forbid"`, a caller trying to promote itself
+         *     gets a 422 at the boundary instead of reaching a handler that has to
+         *     remember to ignore it.
+         */
+        UpdateMeRequest: {
+            /** Full Name */
+            full_name?: string | null;
+        };
+        /**
+         * UpdateRoleRequest
+         * @description Every field optional. `permissions` replaces the whole set when present
+         *     — a partial add/remove API would need its own ordering rules and would make
+         *     "what does this role grant?" depend on request history rather than on one
+         *     request body.
+         *
+         *     `slug` is deliberately absent: it is the stable identifier other systems and
+         *     tests refer to.
+         */
+        UpdateRoleRequest: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Permissions */
+            permissions?: components["schemas"]["PermissionRef"][] | null;
+            /** Is Assignable */
+            is_assignable?: boolean | null;
+        };
         /** UpdateScreeningReviewItemRequest */
         UpdateScreeningReviewItemRequest: {
             /**
@@ -3830,6 +4536,21 @@ export interface components {
             status: "NEEDS_REVIEW" | "PASSED" | "FAILED" | "EXEMPT";
             /** Comment */
             comment?: string | null;
+        };
+        /**
+         * UserListResponse
+         * @description `total` is the count matching the filter, not the page length, so the
+         *     caller can page without a second request.
+         */
+        UserListResponse: {
+            /** Users */
+            users: components["schemas"]["AdminUserResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
         };
         /** UserResponse */
         UserResponse: {
@@ -4205,6 +4926,285 @@ export interface operations {
             };
         };
     };
+    get_catalog_api_v1_auth_roles_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionCatalogResponse"];
+                };
+            };
+            /** @description roles:view permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_roles_api_v1_auth_roles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleListResponse"];
+                };
+            };
+            /** @description roles:view permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_role_api_v1_auth_roles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleResponse"];
+                };
+            };
+            /** @description roles:create permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A role with this slug already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_role_api_v1_auth_roles__role_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleResponse"];
+                };
+            };
+            /** @description roles:view permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Role not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_role_api_v1_auth_roles__role_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description roles:delete permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Role not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused: built-in role, or the role is still held */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_role_api_v1_auth_roles__role_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleResponse"];
+                };
+            };
+            /** @description roles:edit permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Role not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused: would remove your own ability to manage roles */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_permissions_api_v1_auth_me_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyPermissionsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     register_api_v1_auth_register_post: {
         parameters: {
             query?: never;
@@ -4365,6 +5365,424 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+        };
+    };
+    update_me_api_v1_auth_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_my_password_api_v1_auth_me_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized, or current password incorrect */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description New password fails the strength rule */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_my_sessions_api_v1_auth_me_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    revoke_my_session_api_v1_auth_me_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such session for this user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_api_v1_auth_users_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                role?: components["schemas"]["UserRole"] | null;
+                is_active?: boolean | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The matching users:* permission is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_create_user_api_v1_auth_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The matching users:* permission is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Email address already registered */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_get_user_api_v1_auth_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The matching users:* permission is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_update_user_api_v1_auth_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The matching users:* permission is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused: self role change or self deactivation */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_reset_password_api_v1_auth_users__user_id__password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminResetPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The matching users:* permission is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -7353,6 +8771,174 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_background_check_api_v1_onboarding_exporters__company_id__background_check_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_background_check_decisions_api_v1_onboarding_exporters__company_id__background_check_decisions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckDecisionListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_background_check_decision_api_v1_onboarding_exporters__company_id__background_check_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordBackgroundCheckDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckDecisionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required for the route; `BACKGROUND_CHECK_ROLE_NOT_ALLOWED` when the role may not make this particular move */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the current value; `BACKGROUND_CHECK_STATE_CHANGED` — the check is no longer at `from_value`; or `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR with prerequisites outstanding, naming each */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `BACKGROUND_CHECK_REASON_REQUIRED`, `BACKGROUND_CHECK_RISK_REQUIRED`, `BACKGROUND_CHECK_RISK_NOT_ALLOWED`, or an unknown field in the body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

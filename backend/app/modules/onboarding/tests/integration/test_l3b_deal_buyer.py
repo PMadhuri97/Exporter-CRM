@@ -486,13 +486,14 @@ async def test_handover_needs_a_buyer_before_anything_else():
 
 
 async def test_handover_is_blocked_because_no_background_check_exists_yet():
-    """Assumption A5's second half cannot be evaluated: Developer 4's migration
-    0015 has not landed, so ``exporter_profile`` has no ``background_check``
-    column. "Not recorded" must not be treated as "clear" — that would hand a deal
-    to the lending team on the strength of a column that does not exist.
+    """Assumption A5's second half: a company's background check starts at
+    ``NOT_STARTED`` (migration 0015, Developer 4A), and anything but ``CLEAR``
+    refuses the handover — "not started" is never treated as "clear".
 
-    When 0015 lands, this test should start failing on the *reason* rather than on
-    the refusal, which is the signal to wire Developer 4's read helper in.
+    Until 0015 this asserted "the background check is not recorded yet"; with the
+    column in place the true reason is the value itself (Developer 4A, 4A-2, as
+    ``docs/dev4/4a-task.md`` §5.8 sanctions). Wiring Developer 4's read helper in is
+    still 4A-6.
     """
     company_id = await _company(ExporterJourney.CUSTOMER)
     deal = await _open(company_id)
@@ -501,7 +502,7 @@ async def test_handover_is_blocked_because_no_background_check_exists_yet():
 
     view = await _get(deal.id)
     assert view.handover_blocked_reason is not None
-    assert "background check is not recorded yet" in view.handover_blocked_reason
+    assert "background check is NOT_STARTED, not CLEAR" in view.handover_blocked_reason
     # Not offered, so the screen explains instead of showing a button that 409s.
     assert DealStage.HANDED_OVER not in {move.to for move in view.allowed_stage_moves}
 

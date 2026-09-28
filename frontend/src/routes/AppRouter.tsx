@@ -10,6 +10,7 @@ import {
   PipelinePage,
   QualificationCriteriaPage,
 } from '@/modules/onboarding';
+import { SettingsRoutes } from '@/modules/settings';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { HomePage } from '@/pages/HomePage';
 
@@ -27,7 +28,11 @@ export function AppRouter() {
             <Route path="/follow-ups" element={<FollowUpsPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
             <Route path="/deals/:dealId" element={<DealDetailPage />} />
+            {/* `/settings/qualification-criteria` is a static path and
+                `/settings/*` a splat, so React Router's ranking picks the
+                specific one first whatever order they appear in here. */}
             <Route path="/settings/qualification-criteria" element={<QualificationCriteriaPage />} />
+            <Route path="/settings/*" element={<SettingsRoutes />} />
             <Route path="/exporters/*" element={<LegacyExporterRoutes />} />
             <Route path="*" element={<NotFound />} />
           </Route>
