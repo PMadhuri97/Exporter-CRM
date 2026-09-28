@@ -1543,7 +1543,7 @@ export interface paths {
         put?: never;
         /**
          * Trigger a verification check
-         * @description Resolves `provider` (default `manual`) to a `VerificationAdapter` via the EXP-2 registry, runs the check, and persists the outcome as a new `VerificationResult`. The exact same call handles every `verification_type`/`entity_type` combination — there is no per-type branching. Only `provider=manual` is accepted here. An `EXPORTER` subject must be an existing company and a `BUYER` subject an existing deal buyer (`deal_buyer.id`) whose deal is not `HANDED_OVER` or `WITHDRAWN`. A manual `PASSED` needs evidence (a note or at least one reference); a manual `PENDING` is refused. `document` evidence must belong to the subject and be `AVAILABLE` (scanned clean).
+         * @description Resolves `provider` (default `manual`) to a `VerificationAdapter` via the EXP-2 registry, runs the check, and persists the outcome as a new `VerificationResult`. The exact same call handles every `verification_type`/`entity_type` combination — there is no per-type branching. Only `provider=manual` is accepted here. An `EXPORTER` subject must be an existing company and a `BUYER` subject an existing deal buyer (`deal_buyer.id`) whose deal is not `HANDED_OVER` or `WITHDRAWN`. A manual `PASSED` needs evidence (a note or at least one reference); a manual `PENDING` is refused. `document` evidence must belong to the subject and be `AVAILABLE` (scanned clean); `url` evidence must be an `http://` or `https://` link.
          */
         post: operations["trigger_verification_api_v1_onboarding_verifications_post"];
         delete?: never;
@@ -4440,7 +4440,7 @@ export interface components {
          *     Evidence (`evidence_note`, `evidence_refs`) is what the outcome rests on, in the
          *     qualification contract's shape. A manual `PASSED` needs some (D16: a note or at
          *     least one reference). A `document` reference must belong to the subject and be
-         *     `AVAILABLE` (scanned clean).
+         *     `AVAILABLE` (scanned clean); a `url` reference must be an http(s) link.
          */
         TriggerVerificationRequest: {
             verification_type: components["schemas"]["VerificationType"];
@@ -4629,7 +4629,8 @@ export interface components {
         VerificationEntityType: "EXPORTER" | "BUYER" | "DIRECTOR" | "INVOICE" | "VESSEL" | "SHIPMENT";
         /**
          * VerificationEvidenceRefModel
-         * @description One evidence reference: a `crm_document.id` (`document`) or a `url`.
+         * @description One evidence reference: a `crm_document.id` (`document`) or an `http://` /
+         *     `https://` link (`url`) — any other scheme is refused (422).
          *
          *     Prefixed because OpenAPI schema names are global: qualification already has an
          *     `EvidenceRefModel` / `EvidenceRefOut` (`schemas/qualification.py`), and a second
@@ -9547,7 +9548,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unknown/disabled provider, an invalid payload for it, missing or foreign evidence, a `document` that is not `AVAILABLE`, or an uninterpretable check/subject pair */
+            /** @description Unknown/disabled provider, an invalid payload for it, missing or foreign evidence, a `document` that is not `AVAILABLE`, a `url` that is not http(s), or an uninterpretable check/subject pair */
             422: {
                 headers: {
                     [name: string]: unknown;

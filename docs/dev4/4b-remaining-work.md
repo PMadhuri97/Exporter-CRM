@@ -5,16 +5,18 @@
 > merge of `main` @ `12d255c`). The local dev database was upgraded to this branch's head to run
 > the tests.
 >
-> **Update, same day — Prompt 1 done (unstaged, uncommitted):** B1, B3, B4, the `4b-task.md`
-> updates and the `BuyerChecks` component are complete, and one extra fix (§3.5) was found and
-> made on the way.
+> **Update, same day — Prompt 1 done:** B1, B3, B4, the `4b-task.md` updates and the
+> `BuyerChecks` component are complete, and one extra fix (§3.5) was found and made on the way.
 >
-> **Update, same day — Prompt 2 done (unstaged, uncommitted):** the 4B-7 frontend (F1–F11, §3.3)
-> is complete. **No Dev4B code work remains.** What is left is coordination (§4) — the lead's D4
-> confirmation, Dev1's contract rows and review, Dev4A's two red tests — and the PR itself.
+> **Update, same day — Prompt 2 done:** the 4B-7 frontend (F1–F11, §3.3) is complete. Prompts 1
+> and 2 were committed as `206b817`.
 >
-> Use this file as the source for the next Dev4B prompt. Section 3 is the work; section 6 is
-> copy-paste prompt scaffolding.
+> **Update, same day — PR audit of `206b817`:** one blocker (a stored `javascript:` evidence link)
+> and four smaller findings, all fixed (§3.6). **No Dev4B code work remains.** What is left is
+> coordination (§4) — the lead's D4 confirmation, Dev1's contract rows and review, Dev4A's two
+> red tests — and the merge.
+>
+> Section 3 is the work; section 6 is the prompt scaffolding that produced it.
 
 ---
 
@@ -45,6 +47,8 @@ Dev4B's own §19 items are met. The PR still waits on:
 | Frontend, after Prompt 1 | tsc clean · eslint 0 errors / 2 warnings (baseline) · vitest 20 files / 198 (was 19 / 178; +20 `BuyerChecks` tests) · build ok |
 | Frontend, after Prompt 2 | tsc clean · eslint 0 errors / 2 warnings (baseline, `AuthContext.tsx`) · vitest **27 files / 258** · build ok (the >500 kB chunk warning is the existing one) |
 | Backend after Prompt 2 (no backend change in Prompt 2) | OpenAPI artifact tests + every `test_l4b_*`: 199 passed |
+| **PR audit, on `206b817` before the §3.6 fixes** | Full suite 34 failed / 4401 passed / 7 skipped / 5 errors — the known set only. Round trip, and the lossy downgrade keeping the chain head in the legacy columns, verified on a throwaway database. `schema.ts` identical to a fresh regeneration |
+| **Final, after the §3.6 fixes** | `alembic heads` one (0021) · ruff 16 (changed files clean) · import-linter 19/0 · OpenAPI artifact + route-auth 155 passed · full suite **27 failed / 4426 passed / 7 skipped / 5 errors** — every failure also failed in the audit run: 22 environment (compliance, audit, screening-rule-registry) + the 3 below + `test_expiry_sweep` + `test_role_management` (above); +18 new tests · frontend tsc clean · eslint 0 errors / 2 warnings · vitest **27 files / 268** · build ok |
 
 **The 3 failures in the targeted set are already failing on `main`. None is caused by 4B.**
 
@@ -177,6 +181,20 @@ Dev4B's frontend files returns nothing.
   `openapi.json` and `schema.ts` were regenerated with the `pnpm generate:api` commands and
   `APP_NAME` pinned. The diff contains only these renames and the B1/B4 description text.
 
+### 3.6 PR audit of `206b817` (28 Sep 2026) — **DONE**
+
+Each finding was probed before the fix, and each new test was mutation-checked (it fails with
+the fix reverted). Recorded in `4b-task.md` §13, *PR audit follow-ups*.
+
+| # | Finding | Fix |
+|---|---|---|
+| A1 | **Blocker — stored XSS.** A `url` evidence reference accepted any non-blank text and `EvidenceList` rendered it as `<a href>`; React 18 does not block `javascript:`, and the refresh token is in `localStorage`. Probed: the API stored a `javascript:` link (201) and it rendered as a live `href`. | Server: `check_evidence_shape` refuses a `url` that is not an `http(s)://` link with a host (422). UI: `isWebLink` (`verification-labels.ts`); `ManualResultForm` refuses such a link; `EvidenceList` shows any non-web `url` as text. API descriptions say so; `openapi.json` / `schema.ts` regenerated (description text only). |
+| A2 | 4B writes never refreshed Dev4A's `['backgroundCheck', id]` query (`staleTime` 30 s), so `CLEAR` stayed disabled after the checklist or a review was finished. | `invalidateWhatAWriteFeeds` in `hooks/verification.ts`: the background check and company history for an `EXPORTER`, the history lists for a `BUYER`. |
+| A3 | `VerificationSection` dropped `EXPORTER` results outside the screening set, yet Dev4A's `CLEAR` counts them. Probed: a `BANK_ACCOUNT` result in `REVIEW` blocks `CLEAR` and was invisible. | Listed under "Other checks on this company", reviewable; the tab count covers every result. |
+| A4 | `router.py` said `_VERIFICATION_DECISION_ROLES` gates the routes; the routes used a separate `_COMPLIANCE_OR_ADMIN`. | `_VERIFICATION_DECIDER = require_role(*_VERIFICATION_DECISION_ROLES)` on the two write routes (roles unchanged). |
+| A5 | `get_verification_status` held the result row lock while the provider worked. | Provider first, then the row re-read `FOR UPDATE`; a test proves no lock is held and that a review landing meanwhile is honoured. |
+| A6 | Docs: stale branch state; the D8 / history-route gap and the placeholder dead end were unrecorded. | `4b-task.md` §3, §13 and the 4B-3/4B-7 notes; §4 below. |
+
 ---
 
 ## 4. Items for other owners (not Dev4B code; raise them in the PR)
@@ -189,6 +207,9 @@ Dev4B's frontend files returns nothing.
 | **Dev1 / PR #12 author** | Classify the 16 `/api/v1/auth/*` routes in `test_route_authorization_coverage.py` (red on `main`). Also look at `test_role_management.py::test_last_role_manager_cannot_be_demoted_by_a_non_admin_user_editor`, which is red here in isolation (§2). |
 | **Dev4A** | Fix the two `test_l4a_background_check_schema` tests that pin 0015 as head / DB version (red on `main`). Optionally rename `test_developer_is_refused_pending_d8`, since D8 is decided. |
 | **Lead** | Confirm 4B's side of D4 (document scope + the `AVAILABLE` scan gate, B1/B2). |
+| **Dev1 / lead** | D8 gap on the history route: `/history` admits DEVELOPER and now carries screening comments (D9) and review notes (§5.1) as `reason` — text D8 keeps from DEVELOPER on the verification and screening routes. Same gap Dev4A recorded for background-check reasons. The route's `reason` policy is Dev1's (`4b-task.md` §13, *Open*). |
+| **Lead / Dev4A** | Placeholder rows can never stop blocking `CLEAR`: `PENDING` is unreviewable and D2 counts placeholders as pending. The generator was dev-only; the shared dev DB held 20 on 16 companies. A D2 amendment or a recorded data step is needed if any environment has them (`4b-task.md` §13, *Open*). |
+| **Dev2** | `pages/panels/CompanyPanel.tsx` renders `profile.website` as `<a href>` with no scheme check — the same `javascript:` risk fixed in 4B's evidence (§3.6 A1), in Dev2's page and schema (`website` is any string ≤ 2048). Pre-existing on `main`; not touched here. |
 | **Dev3 (post-merge)** | Mount `BuyerChecks` on the deal page: `<BuyerChecks dealId={deal.id} dealBuyerId={buyer.id} />` (one import, one element). |
 | **Dev2 (post-merge)** | Sample-data hook for the §3.9 companies (B reaches CLEAR, C is FLAGGED) through a Dev4 hook. |
 | **Dev4A (post-merge, §17)** | Integration tests: CLEAR end to end with real review chains and evidence ids, and a buyer check never moving the gauge. |

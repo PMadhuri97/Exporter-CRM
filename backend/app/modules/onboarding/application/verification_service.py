@@ -760,10 +760,13 @@ class VerificationService:
         **A reviewed result is never changed** (4b-task.md §5.2, L4-02): once it
         has any review, a different provider answer is logged
         (`verification.status_polled.ignored_reviewed`, with the provider's new
-        values) and the row is returned untouched. The row is read `FOR UPDATE`,
-        the same lock `record_review` takes, so a review and a poll cannot
-        interleave; `trg_verification_result_outcome_freeze` refuses the write at
-        the database for anything that does not come through here.
+        values) and the row is returned untouched. The provider is asked first,
+        with no lock held while it works (as in `trigger_verification`); the row is
+        then re-read `FOR UPDATE` — the same lock `record_review` takes — and the
+        answer is judged against the row as it is *then*, so a review that landed
+        while the provider was working is seen, and a review and a poll's write
+        cannot interleave. `trg_verification_result_outcome_freeze` refuses the
+        write at the database for anything that does not come through here.
 
         Polling has no production caller and no scheduler; none is added.
 
@@ -771,24 +774,36 @@ class VerificationService:
             NotFoundError: no `VerificationResult` carries this
                 `provider_reference`.
         """
-        stmt = (
-            select(VerificationResult)
-            .where(VerificationResult.provider_reference == provider_reference)
-            .order_by(VerificationResult.performed_at.desc())
-            .limit(1)
-            .with_for_update()
-            .execution_options(populate_existing=True)
+        not_found = NotFoundError(
+            f"No verification_result found for provider_reference '{provider_reference}'"
         )
-        execution = await self._db.execute(stmt)
-        result = execution.scalar_one_or_none()
-        if result is None:
-            raise NotFoundError(
-                f"No verification_result found for provider_reference '{provider_reference}'"
+        found = (
+            await self._db.execute(
+                select(VerificationResult)
+                .where(VerificationResult.provider_reference == provider_reference)
+                .order_by(VerificationResult.performed_at.desc())
+                .limit(1)
             )
+        ).scalar_one_or_none()
+        if found is None:
+            raise not_found
 
-        adapter_cls = get_adapter(result.provider)
+        # The provider works with no row lock held.
+        adapter_cls = get_adapter(found.provider)
         adapter = adapter_cls()
         outcome = adapter.get_verification_status(provider_reference)
+
+        # Then the row as it is now, under the lock `record_review` takes.
+        result = (
+            await self._db.execute(
+                select(VerificationResult)
+                .where(VerificationResult.id == found.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if result is None:  # pragma: no cover — results are never deleted
+            raise not_found
 
         changed = (
             outcome.status != result.status

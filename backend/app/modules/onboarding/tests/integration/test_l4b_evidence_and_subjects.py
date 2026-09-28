@@ -355,6 +355,29 @@ async def test_the_api_refuses_an_unknown_reference_type(client, compliance_toke
     assert resp.status_code == 422, resp.text
 
 
+@pytest.mark.parametrize(
+    "url",
+    ["javascript:alert(document.cookie)", "data:text/html,<script>1</script>", "www.example.com"],
+)
+async def test_the_api_refuses_a_url_that_is_not_an_http_link_and_writes_nothing(
+    client, compliance_token, url
+):
+    """A url reference is rendered to other staff as a link: a `javascript:` one
+    would run in the reader's session, so only http(s) is stored."""
+    company_id = await make_company()
+    resp = await client.post(
+        f"{BASE}/verifications",
+        json=_body(company_id, evidence_refs=[{"type": "url", "ref": url}]),
+        headers=auth_header(compliance_token),
+    )
+    assert resp.status_code == 422, resp.text
+    assert "http" in resp.text
+    async with db_services.AsyncSessionLocal() as db:
+        assert await VerificationService(db).list_verification_results(
+            VerificationEntityType.EXPORTER, company_id
+        ) == []
+
+
 async def test_the_api_404s_a_ghost_company(client, compliance_token):
     resp = await client.post(
         f"{BASE}/verifications",

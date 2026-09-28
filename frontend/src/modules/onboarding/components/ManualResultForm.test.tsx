@@ -164,6 +164,21 @@ describe('ManualResultForm — the evidence rule (D16)', () => {
     );
   });
 
+  it.each(['javascript:alert(1)', 'www.example.com'])(
+    'refuses an evidence link that is not http(s) before calling the server: %s',
+    async (link) => {
+      const form = renderForm();
+      fireEvent.change(within(form).getByLabelText('Outcome'), { target: { value: 'PASSED' } });
+      fireEvent.change(within(form).getByLabelText('Evidence link'), { target: { value: link } });
+      fireEvent.click(within(form).getByRole('button', { name: 'Record check' }));
+
+      expect(await within(form).findByRole('alert')).toHaveTextContent(
+        'The evidence link must start with http:// or https://.',
+      );
+      expect(triggerVerification).not.toHaveBeenCalled();
+    },
+  );
+
   it('lets a FAILED through without evidence', async () => {
     const form = renderForm();
     fireEvent.change(within(form).getByLabelText('Outcome'), { target: { value: 'FAILED' } });

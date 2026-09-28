@@ -82,3 +82,19 @@ export function formatReviewer(value: string | null | undefined): string {
   if (UUID_PATTERN.test(value)) return `User ${value.slice(0, 8)}…`;
   return value;
 }
+
+/**
+ * Whether a `url` evidence reference is a web link that is safe to render as `href`:
+ * an absolute `http:` or `https:` URL with a host. React 18 does not block a
+ * `javascript:` href, so anything else — including a row stored before the server
+ * refused it — is shown as text, never as a link. Same rule as the server's
+ * `verification_evidence.check_evidence_shape`.
+ */
+export function isWebLink(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.host !== '';
+  } catch {
+    return false;
+  }
+}

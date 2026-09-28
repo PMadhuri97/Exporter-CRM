@@ -8,6 +8,11 @@ Whether a ``document`` reference exists and belongs to the result's subject is c
 against the database by ``VerificationService``; this module only says what a manual
 outcome must carry.
 
+A ``url`` reference must be an absolute ``http`` or ``https`` link with a host. It is
+stored as given and shown to other staff as a link, so anything else — a
+``javascript:`` or ``data:`` URL above all — would be script run in the reader's
+session (PR audit, 28 Sep 2026).
+
 **``check_manual_outcome`` is the one place the rule lives.**
 
 D16 — minimum evidence for a manual ``PASSED`` (decided by the lead, 28 Sep 2026)
@@ -29,12 +34,15 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from typing import Literal
+from urllib.parse import urlsplit
 
 from app.modules.onboarding.domain.entities.orchestration_enums import VerificationResultStatus
 from app.shared.exceptions import ValidationError
 
 EvidenceRefType = Literal["document", "url"]
 EVIDENCE_REF_TYPES: frozenset[str] = frozenset({"document", "url"})
+#: The only schemes a ``url`` reference may use (module docstring).
+URL_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 
 
 @dataclass(frozen=True)
@@ -76,8 +84,21 @@ class VerificationEvidence:
         return tuple(ids)
 
 
+def _is_web_link(value: str) -> bool:
+    """An absolute http(s) link with a host. The stored value is checked as given:
+    ``urlsplit``, like the browser that later renders it, ignores leading spaces and
+    embedded tabs or newlines, so ``" javascript:…"`` and ``"java\\tscript:…"`` are
+    seen as the ``javascript:`` URLs they are."""
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return False
+    return parts.scheme.lower() in URL_SCHEMES and bool(parts.netloc)
+
+
 def check_evidence_shape(evidence: VerificationEvidence | None) -> None:
-    """Every reference names a known type and a non-blank ref."""
+    """Every reference names a known type and a non-blank ref; a ``url`` is an
+    http(s) link."""
     if evidence is None:
         return
     for ref in evidence.refs:
@@ -85,6 +106,10 @@ def check_evidence_shape(evidence: VerificationEvidence | None) -> None:
             raise ValidationError(
                 "evidence references need a type "
                 f"({', '.join(sorted(EVIDENCE_REF_TYPES))}) and a non-blank ref"
+            )
+        if ref.type == "url" and not _is_web_link(ref.ref):
+            raise ValidationError(
+                "a url evidence reference must be an http:// or https:// link"
             )
     evidence.document_ids()
 
@@ -114,6 +139,7 @@ def check_manual_outcome(
 
 __all__ = [
     "EVIDENCE_REF_TYPES",
+    "URL_SCHEMES",
     "EvidenceRef",
     "EvidenceRefType",
     "VerificationEvidence",

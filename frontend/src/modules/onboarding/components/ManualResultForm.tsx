@@ -32,7 +32,7 @@ import type {
   VerificationType,
 } from '../types';
 
-import { MANUAL_OUTCOMES, RISK_LEVELS } from './verification-labels';
+import { isWebLink, MANUAL_OUTCOMES, RISK_LEVELS } from './verification-labels';
 
 const FIELD =
   'mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-brand-500 disabled:opacity-60';
@@ -94,7 +94,14 @@ export function ManualResultForm({
       return;
     }
     const refs: VerificationEvidenceRef[] = documentIds.map((id) => ({ type: 'document', ref: id }));
-    if (url.trim()) refs.push({ type: 'url', ref: url.trim() });
+    const link = url.trim();
+    // Other staff open this as a link, so only http(s) is accepted; the server refuses
+    // anything else too.
+    if (link && !isWebLink(link)) {
+      setError('The evidence link must start with http:// or https://.');
+      return;
+    }
+    if (link) refs.push({ type: 'url', ref: link });
     const trimmedNote = note.trim();
     // D16: a manual PASSED needs a note or at least one reference.
     if (outcome === 'PASSED' && !trimmedNote && refs.length === 0) {

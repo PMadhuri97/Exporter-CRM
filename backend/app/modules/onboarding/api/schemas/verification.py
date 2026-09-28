@@ -49,7 +49,8 @@ ManualRouteProvider = Literal["manual"]
 
 
 class VerificationEvidenceRefModel(BaseModel):
-    """One evidence reference: a `crm_document.id` (`document`) or a `url`.
+    """One evidence reference: a `crm_document.id` (`document`) or an `http://` /
+    `https://` link (`url`) — any other scheme is refused (422).
 
     Prefixed because OpenAPI schema names are global: qualification already has an
     `EvidenceRefModel` / `EvidenceRefOut` (`schemas/qualification.py`), and a second
@@ -79,7 +80,7 @@ class TriggerVerificationRequest(BaseModel):
     Evidence (`evidence_note`, `evidence_refs`) is what the outcome rests on, in the
     qualification contract's shape. A manual `PASSED` needs some (D16: a note or at
     least one reference). A `document` reference must belong to the subject and be
-    `AVAILABLE` (scanned clean).
+    `AVAILABLE` (scanned clean); a `url` reference must be an http(s) link.
     """
 
     model_config = ConfigDict(extra="forbid")

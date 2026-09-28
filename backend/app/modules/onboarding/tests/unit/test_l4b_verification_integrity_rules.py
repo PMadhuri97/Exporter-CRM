@@ -89,6 +89,37 @@ def test_malformed_references_are_refused(ref):
         check_evidence_shape(VerificationEvidence(refs=(ref,)))
 
 
+# A url reference is shown to other staff as a link, so only a web link may be
+# stored: anything else would be script run in the reader's session.
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert(document.cookie)",
+        "JavaScript:alert(1)",
+        " javascript:alert(1)",
+        "java\tscript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "vbscript:msgbox(1)",
+        "file:///etc/passwd",
+        "//evil.example/path",
+        "www.example.com",
+        "https://",
+        "http://[::1",
+    ],
+)
+def test_a_url_reference_must_be_an_http_link(url):
+    with pytest.raises(ValidationError, match="http"):
+        check_evidence_shape(VerificationEvidence(refs=(EvidenceRef(type="url", ref=url),)))
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://registry.example/entity/1", "http://news.example/a?b=c#d", "HTTPS://EXAMPLE.ORG"],
+)
+def test_an_http_or_https_link_is_accepted(url):
+    check_evidence_shape(VerificationEvidence(refs=(EvidenceRef(type="url", ref=url),)))
+
+
 def test_document_ids_are_the_document_references_only_in_order():
     first, second = uuid.uuid4(), uuid.uuid4()
     evidence = VerificationEvidence(

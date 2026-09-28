@@ -21,6 +21,8 @@ import { fetchDocumentBlob, getDocument } from '../api';
 import { useDownloadDocument } from '../hooks';
 import type { VerificationEvidenceRefStored } from '../types';
 
+import { isWebLink } from './verification-labels';
+
 export function EvidenceList({
   note,
   refs,
@@ -84,10 +86,15 @@ export function EvidenceList({
                     <Download size={12} /> Download
                   </button>
                 </span>
-              ) : ref.type === 'url' ? (
+              ) : ref.type === 'url' && isWebLink(ref.ref) ? (
                 <a href={ref.ref} target="_blank" rel="noreferrer" className="underline">
                   {ref.ref}
                 </a>
+              ) : ref.type === 'url' ? (
+                // Not an http(s) link (e.g. `javascript:`): shown, never made clickable.
+                <span data-testid="evidence-unsafe-url">
+                  {ref.ref} <span className="text-ink-faint">(not a web link — not opened)</span>
+                </span>
               ) : (
                 // A type this build does not know: shown as stored, not dropped.
                 `${ref.type}: ${ref.ref}`

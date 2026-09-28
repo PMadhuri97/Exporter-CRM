@@ -102,6 +102,22 @@ describe('VerificationResultRow — evidence', () => {
     expect(within(row).queryByTestId('evidence')).not.toBeInTheDocument();
   });
 
+  it.each([
+    'javascript:alert(document.cookie)',
+    ' javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'www.example.com',
+  ])('never makes a stored url that is not an http(s) link clickable: %s', (url) => {
+    // React 18 renders a `javascript:` href as given; a row stored before the server
+    // refused such urls must not become script in the reader's session.
+    const row = renderRow(verificationResult({ evidence_refs: [{ type: 'url', ref: url }] }));
+    const evidence = within(row).getByTestId('evidence');
+    expect(within(evidence).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(evidence).getByTestId('evidence-unsafe-url')).toHaveTextContent(
+      'not a web link',
+    );
+  });
+
   it('downloads a document through the existing download flow', async () => {
     vi.mocked(getDocument).mockResolvedValue(crmDocument());
     vi.mocked(createDownloadLink).mockResolvedValue({

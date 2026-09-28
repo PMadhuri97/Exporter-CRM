@@ -68,7 +68,7 @@ Where these disagree, the architecture wins; where it is silent, the item is a d
 | Item | Value |
 |---|---|
 | `main` | `12d255c` — merge of PR #12 (user management / RBAC). Before it: PR #11 `f129c6f` (Dev4A, carrying the 4B-0 seam), Dev3B PR #10 `f703c05`, Dev3A PR #9 `447c6ba`, Dev2 PR #8 `c117fdf`, Dev1 PR #7 `8fb8729` |
-| Dev4B branch | `feature/4b-verification-screening-integrity` @ `38ab720` — `dabe28d` (4B-1 … 4B-6) plus `38ab720` (merge of `main` @ `12d255c`) |
+| Dev4B branch | `feature/4b-verification-screening-integrity` @ `206b817` — `dabe28d` (4B-1 … 4B-6), `38ab720` (merge of `main` @ `12d255c`), `206b817` (scan gate, legacy-review 409, `BuyerChecks`, 4B-7), plus the PR-audit follow-ups of 28 Sep 2026 (§13, *PR audit follow-ups*) |
 | Alembic on `main` | One head, `auth_0004_rbac`: … → `onboarding_0019_documents` → `onboarding_0015_bg_check` (Dev4A) → `auth_0003_user_admin` → `auth_0004_rbac` |
 | Alembic on the Dev4B branch | One head, `onboarding_0021_verif_review`, re-parented onto `auth_0004_rbac` when `main` was merged in (§10); round trip clean |
 | Known failures on `main` since PR #12 (not Dev4B's) | `test_route_authorization_coverage::test_every_mounted_route_is_classified` (16 unclassified `/api/v1/auth/*` routes, PR #12 / Dev1); `test_l4a_background_check_schema::test_0015_parents_onto_0019_and_the_chain_has_one_head` and `::test_the_database_is_at_0015` (pin 0015 as the head, Dev4A). See `docs/dev4/4b-remaining-work.md` §2 |
@@ -617,7 +617,7 @@ Numbering is shared with `4a-task.md`. Only the ones that affect Dev4B are liste
 | # | Answer | Where it is implemented |
 |---|---|---|
 | D7 | `POST /verifications` accepts `provider="manual"` only; `"rxil"` is refused there (422) and reserved for the future RXIL intake path | `api/schemas/verification.py` (`ManualRouteProvider`) |
-| D8 | No change: DEVELOPER stays refused on verification/screening routes; `normalized_result` is not masked | unchanged roles |
+| D8 | No change: DEVELOPER stays refused on verification/screening routes; `normalized_result` is not masked | unchanged roles. The shared history route still admits DEVELOPER — open for Dev1 (below) |
 | D9 | Screening decisions are also written to the shared history log under a new `screening` dimension (`screening_initial` / `screening_transition`) | `screening_review_service.upsert_review_item`. **Dev1 must add the `screening` row to `history-row.md` §2** |
 | D15 | Checks on DIRECTOR / INVOICE / VESSEL / SHIPMENT write no history row (skipped and logged) | `verification_service._record_history` |
 | D16 | A manual `PASSED` needs a non-blank note **or** at least one reference; `FAILED` / `REVIEW` need none | `domain/verification_evidence.check_manual_outcome` |
@@ -641,6 +641,44 @@ decision, each follows from an existing rule):
   refuses with 409 `VERIFICATION_LEGACY_REVIEW_UNCHAINED` instead of recording a "first" review that
   would overrule the legacy verdict with no supersede link and no reason (§5.1: never a silent
   overwrite). The remedy is to copy the legacy verdict into `verification_review`, as 0021 did.
+
+**PR audit follow-ups** (28 Sep 2026, PR at `206b817`; no new decision, each follows from an
+existing rule):
+
+- **A `url` evidence reference must be an `http://` or `https://` link** with a host, 422
+  otherwise — `domain/verification_evidence.check_evidence_shape`. It is stored as given and shown
+  to other staff as a link, and React 18 renders a `javascript:` `href` as written, so a stored
+  `javascript:` link would run in the reader's session (where the refresh token lives). The UI
+  applies the same rule (`verification-labels.isWebLink`): `ManualResultForm` refuses such a
+  link, and `EvidenceList` shows any non-web `url` — including one stored before this rule — as
+  text, never as a link.
+- **Writes refresh what they feed.** Recording or reviewing a result, and saving a screening
+  decision, refresh Developer 4A's `['backgroundCheck', id]` query (which lists what blocks
+  `CLEAR` and disables it) and the history lists (`hooks/verification.ts`,
+  `invalidateWhatAWriteFeeds`). Before, `CLEAR` stayed disabled after the inputs were complete.
+- **Every result on the company is shown.** An `EXPORTER` result outside the screening set (e.g.
+  `BANK_ACCOUNT`) is a `CLEAR` input like any other; `VerificationSection` lists it under "Other
+  checks on this company", reviewable, instead of filtering it out.
+- **One role tuple.** The two verification write routes are gated by
+  `require_role(*_VERIFICATION_DECISION_ROLES)`, the tuple that answers `capabilities` (roles
+  unchanged).
+- **No lock while a provider works.** `get_verification_status` asks the provider first, then
+  re-reads the row `FOR UPDATE` and judges the answer against it (4B-3 status).
+
+**Open, for other owners (found in the PR audit; Dev4B changes nothing here):**
+
+- **D8 and the history route — Developer 1 / lead.** D9 and §5.1 put screening comments and
+  review notes into the shared history's `reason`. `history_router.py` admits DEVELOPER, so
+  DEVELOPER can read there what D8 keeps from them on `/verifications` and
+  `/screening-review`. It is the same inconsistency Developer 4A recorded for background-check
+  reasons (`background-check.md`, D8); the history route and its `reason` policy are Developer
+  1's.
+- **Placeholders can never stop blocking `CLEAR` — lead / Developer 4A.** A placeholder is
+  `PENDING`, a `PENDING` result cannot be reviewed (422), and D2 counts a placeholder as pending,
+  so a company with one can never be cleared; §5.9 says placeholders are flagged, never deleted,
+  so nothing retires one. The generator was dev-only (`import.meta.env.DEV`), so production
+  should hold none; the shared dev database held 20 on 16 companies (28 Sep 2026). A way out (a
+  D2 amendment, or a recorded data step) is a decision, not something Dev4B invents.
 
 Decisions D1, D3, D5, D6, D10, D11, D13 and D14 are Dev4A's (`4a-task.md` §13). D13 is settled
 (28 Sep 2026): Dev4A creates its own risk enum type (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`) in
@@ -766,9 +804,11 @@ reports.
 - **Tests:** L4-02's test; direct-SQL trigger test; an unreviewed row still updates.
 - **Stop when:** no path can change a reviewed result's outcome fields.
 
-> **4B-3 STATUS: COMPLETE.** `get_verification_status` reads the row `FOR UPDATE`, ignores and
-> logs a changed provider answer for a reviewed result; `trg_verification_result_outcome_freeze`
-> refuses it at the database; service and direct-SQL tests; an unreviewed row still updates.
+> **4B-3 STATUS: COMPLETE.** `get_verification_status` asks the provider with no row lock held,
+> then re-reads the row `FOR UPDATE` and ignores and logs a changed provider answer for a
+> reviewed result — including one reviewed while the provider was working;
+> `trg_verification_result_outcome_freeze` refuses it at the database; service and direct-SQL
+> tests; an unreviewed row still updates.
 
 ### 4B-4 — Manual evidence and subject validation
 - **Objective:** §5.3.
@@ -842,7 +882,10 @@ reports.
 > documents through `createDownloadLink`). Every action is gated by the served `capabilities`;
 > no `user.role` comparison, `CHECKLIST_ITEMS` copy or `normalized_result.stub` rule remains in
 > Dev4B files. `BuyerChecks` now uses the same form and dialog, still unmounted. vitest per
-> sub-component.
+> sub-component. After the PR audit (§13, *PR audit follow-ups*): a `url` reference is a link
+> only when it is http(s); every write refreshes Developer 4A's background-check query and the
+> history lists; company results outside the screening set are listed under "Other checks on
+> this company".
 
 ### 4B-8 — RXIL results intake — **BLOCKED — RXIL PACKAGE CONTRACT REQUIRED**
 - Not started until D12 is published. Allowed now, only if it pretends nothing about the format:

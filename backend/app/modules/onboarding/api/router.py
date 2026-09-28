@@ -393,9 +393,11 @@ async def sumsub_webhook(
 # reads OPERATIONS/COMPLIANCE/ADMIN; DEVELOPER is refused (D8, lead: no widening). The
 # actor and reviewer always come from the session, never the body.
 
-#: Who may record a result or review one. The same tuple gates the routes and
-#: answers the served capabilities, so the two cannot drift.
+#: Who may record a result or review one. The same tuple gates the two write routes
+#: (`_VERIFICATION_DECIDER`) and answers the served capabilities, so the two cannot
+#: drift.
 _VERIFICATION_DECISION_ROLES = (UserRole.COMPLIANCE, UserRole.ADMIN)
+_VERIFICATION_DECIDER = require_role(*_VERIFICATION_DECISION_ROLES)
 
 
 @router.post(
@@ -412,7 +414,8 @@ _VERIFICATION_DECISION_ROLES = (UserRole.COMPLIANCE, UserRole.ADMIN)
         "company and a `BUYER` subject an existing deal buyer (`deal_buyer.id`) whose "
         "deal is not `HANDED_OVER` or `WITHDRAWN`. A manual `PASSED` needs evidence (a "
         "note or at least one reference); a manual `PENDING` is refused. `document` "
-        "evidence must belong to the subject and be `AVAILABLE` (scanned clean)."
+        "evidence must belong to the subject and be `AVAILABLE` (scanned clean); `url` "
+        "evidence must be an `http://` or `https://` link."
     ),
     responses={
         201: {"model": VerificationResultResponse, "description": "Verification result recorded"},
@@ -423,15 +426,15 @@ _VERIFICATION_DECISION_ROLES = (UserRole.COMPLIANCE, UserRole.ADMIN)
         422: {
             "description": (
                 "Unknown/disabled provider, an invalid payload for it, missing or "
-                "foreign evidence, a `document` that is not `AVAILABLE`, or an "
-                "uninterpretable check/subject pair"
+                "foreign evidence, a `document` that is not `AVAILABLE`, a `url` that "
+                "is not http(s), or an uninterpretable check/subject pair"
             )
         },
     },
 )
 async def trigger_verification(
     body: TriggerVerificationRequest,
-    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    current_user: Annotated[User, Depends(_VERIFICATION_DECIDER)],
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResultResponse:
     service = VerificationService(db)
@@ -537,7 +540,7 @@ async def list_verification_results(
 async def record_verification_review(
     verification_result_id: uuid.UUID,
     body: RecordReviewRequest,
-    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    current_user: Annotated[User, Depends(_VERIFICATION_DECIDER)],
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResultResponse:
     service = VerificationService(db)

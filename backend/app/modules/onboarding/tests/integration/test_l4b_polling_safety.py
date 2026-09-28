@@ -206,6 +206,48 @@ async def test_a_poll_with_no_new_answer_writes_nothing(vendor):
         assert len(history_rows(cur, company_id)) == 1
 
 
+async def test_the_provider_works_with_no_row_lock_and_a_review_meanwhile_is_honoured(
+    vendor, monkeypatch
+):
+    """No lock is held on the row while the provider works; the row is then re-read
+    under the lock, so a review that landed meanwhile is seen and the provider's
+    answer is ignored rather than written over it."""
+    company_id = await make_company()
+    reference = f"poll-{uuid.uuid4().hex[:10]}"
+    result = await _trigger(company_id, reference, "REVIEW")
+    late = _provider_now_says(reference)
+    seen: list[str] = []
+
+    def provider_meanwhile(self, provider_reference: str) -> VerificationOutcome:
+        with pg() as cur:
+            # Another connection can take the row lock at once: the poll holds none.
+            cur.execute("BEGIN")
+            cur.execute(
+                "SELECT 1 FROM onboarding.verification_result WHERE id = %s FOR UPDATE NOWAIT",
+                (str(result.id),),
+            )
+            cur.execute("ROLLBACK")
+            seen.append("row not locked")
+            # A reviewer acts while the provider is still working.
+            cur.execute(
+                "INSERT INTO onboarding.verification_review "
+                "(id, verification_result_id, review_status, reviewed_by) "
+                "VALUES (%s, %s, 'ACCEPTED', 'c1')",
+                (str(uuid.uuid4()), str(result.id)),
+            )
+        return late
+
+    monkeypatch.setattr(_PollableVendor, "get_verification_status", provider_meanwhile)
+    polled = await _poll(reference)
+
+    assert seen == ["row not locked"]
+    stored = await _stored(result.id)
+    for row in (polled, stored):
+        assert row.status is VerificationResultStatus.REVIEW
+        assert row.risk_level is None
+        assert row.normalized_result == {"stage": "first"}
+
+
 async def test_the_database_refuses_a_reviewed_outcome_change_that_bypasses_the_service(vendor):
     """Defence in depth: an ORM write straight to the row, not via polling."""
     company_id = await make_company()

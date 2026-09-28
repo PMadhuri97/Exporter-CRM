@@ -1,4 +1,5 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { QueryClient } from '@tanstack/react-query';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -6,13 +7,17 @@ import {
   getScreeningReview,
   listCompanyDocuments,
   listVerificationResults,
+  reviewVerification,
+  updateScreeningReviewItem,
 } from '../api';
 
 import {
   bankActivity,
+  CATALOGUE,
   COMPANY_ID,
   renderWithClient,
   resultList,
+  screeningItem,
   screeningList,
   verificationResult,
 } from './verification-test-fixtures';
@@ -109,6 +114,78 @@ describe('VerificationSection — capabilities, not roles', () => {
     expect(listCompanyDocuments).toHaveBeenCalledWith(COMPANY_ID, {});
     fireEvent.click(within(form).getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByTestId('manual-result-form')).not.toBeInTheDocument();
+  });
+});
+
+describe('VerificationSection — every result on the company is shown', () => {
+  it('lists a result outside the screening set, reviewable, instead of dropping it', async () => {
+    // A BANK_ACCOUNT result in REVIEW blocks CLEAR like any other company result.
+    vi.mocked(listVerificationResults).mockResolvedValue(
+      resultList([
+        verificationResult(),
+        verificationResult({
+          id: 'aaaaaaaa-0000-4000-8000-000000000002',
+          verification_type: 'BANK_ACCOUNT',
+        }),
+      ]),
+    );
+    renderSection();
+    const other = await screen.findByTestId('other-company-checks');
+    expect(within(other).getByText('Bank Account')).toBeInTheDocument();
+    expect(within(other).getByRole('button', { name: 'Review' })).toBeInTheDocument();
+    expect(screen.getAllByTestId('verification-result')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: /Company screenings/ })).toHaveTextContent('(2)');
+  });
+
+  it('shows no such group when every result is in the screening set', async () => {
+    renderSection();
+    await screen.findByTestId('verification-result');
+    expect(screen.queryByTestId('other-company-checks')).not.toBeInTheDocument();
+  });
+});
+
+describe('VerificationSection — writes refresh the background check', () => {
+  // Developer 4A's panel disables CLEAR from ['backgroundCheck', id]; a write here that
+  // did not refresh it left CLEAR disabled after the inputs were complete.
+  function invalidatedKeys(spy: { mock: { calls: unknown[][] } }) {
+    return spy.mock.calls.map((call) => (call[0] as { queryKey: unknown[] }).queryKey);
+  }
+
+  it('after a review', async () => {
+    const spy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    try {
+      vi.mocked(reviewVerification).mockResolvedValue(verificationResult());
+      renderSection();
+      fireEvent.click(await screen.findByRole('button', { name: 'Review' }));
+      fireEvent.change(screen.getByLabelText('Verdict'), { target: { value: 'ACCEPTED' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Record review' }));
+
+      await waitFor(() =>
+        expect(invalidatedKeys(spy)).toContainEqual(['backgroundCheck', COMPANY_ID]),
+      );
+      expect(invalidatedKeys(spy)).toContainEqual(['companyHistory', COMPANY_ID]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('after a screening decision', async () => {
+    const spy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    try {
+      vi.mocked(updateScreeningReviewItem).mockResolvedValue(screeningItem());
+      renderSection();
+      const select = await screen.findByLabelText(`${CATALOGUE[0]!.label} status`);
+      fireEvent.change(select, { target: { value: 'PASSED' } });
+      const card = select.closest('[data-testid="screening-item"]') as HTMLElement;
+      fireEvent.click(within(card).getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(invalidatedKeys(spy)).toContainEqual(['backgroundCheck', COMPANY_ID]),
+      );
+      expect(invalidatedKeys(spy)).toContainEqual(['companyHistory', COMPANY_ID]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

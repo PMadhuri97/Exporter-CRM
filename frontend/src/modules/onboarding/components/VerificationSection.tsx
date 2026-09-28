@@ -93,6 +93,12 @@ export function VerificationSection({ customerId }: { customerId: string }) {
   const companyResults = results.filter((result) =>
     COMPANY_CHECK_TYPES.includes(result.verification_type),
   );
+  // Every result on the company is a background-check input — a `REVIEW` or `PENDING`
+  // one of any type blocks CLEAR — so one outside the screening set is listed too,
+  // never dropped where nobody can see or review it.
+  const otherResults = results.filter(
+    (result) => !COMPANY_CHECK_TYPES.includes(result.verification_type),
+  );
 
   return (
     <section data-extension="screenings" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -135,7 +141,7 @@ export function VerificationSection({ customerId }: { customerId: string }) {
             className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium ${tab === 'COMPANY' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-muted hover:text-ink'}`}
           >
             <Building2 size={15} /> Company screenings{' '}
-            <span className="text-xs text-ink-faint">({companyResults.length})</span>
+            <span className="text-xs text-ink-faint">({results.length})</span>
           </button>
           <button
             type="button"
@@ -181,6 +187,26 @@ export function VerificationSection({ customerId }: { customerId: string }) {
                       onStale={() => void query.refetch()}
                     />
                   ))}
+                </div>
+              )}
+              {otherResults.length > 0 && (
+                <div data-testid="other-company-checks" className="mt-4">
+                  <p className="text-xs font-semibold text-ink">Other checks on this company</p>
+                  <p className="mt-0.5 text-xs leading-5 text-ink-muted">
+                    Recorded on this company outside the screening set. They count toward the
+                    background check like any other result.
+                  </p>
+                  <div className="mt-2 rounded-lg border border-border px-4">
+                    {otherResults.map((result) => (
+                      <VerificationResultRow
+                        key={result.id}
+                        result={result}
+                        customerId={customerId}
+                        canReview={capabilities?.can_review ?? false}
+                        onStale={() => void query.refetch()}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
               <MissingChecks results={results} />
