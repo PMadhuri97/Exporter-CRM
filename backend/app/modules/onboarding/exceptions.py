@@ -1211,6 +1211,15 @@ class DealHandoverBlockedError(AnerBaseException):
 # (4A appends here; 4B does not.)
 
 
+def _bc_value(value: object) -> str:
+    """An enum's value (``IN_REVIEW``), not its repr-ish ``str`` (``BackgroundCheckState.IN_REVIEW``).
+
+    The gauge and role enums mix in ``str`` but keep ``Enum.__str__``, so ``str()`` and
+    ``!s`` would put the class name into the message and the error context a client reads.
+    """
+    return str(getattr(value, "value", value))
+
+
 class BackgroundCheckMoveNotAllowedError(AnerBaseException):
     """A move that is not in the background-check contract's §3 table.
 
@@ -1224,11 +1233,11 @@ class BackgroundCheckMoveNotAllowedError(AnerBaseException):
         super().__init__(
             detail=(
                 f"The background check for company {company_id} cannot move from "
-                f"{from_value!s} to {to_value!s}"
+                f"{_bc_value(from_value)} to {_bc_value(to_value)}"
             ),
             error_code="BACKGROUND_CHECK_MOVE_NOT_ALLOWED",
             status_code=409,
-            extensions={"from_value": str(from_value), "to_value": str(to_value)},
+            extensions={"from_value": _bc_value(from_value), "to_value": _bc_value(to_value)},
         )
 
 
@@ -1243,15 +1252,15 @@ class BackgroundCheckRoleNotAllowedError(AnerBaseException):
     def __init__(self, from_value: object, to_value: object, role: object) -> None:
         super().__init__(
             detail=(
-                f"Role {role!s} may not move a background check from {from_value!s} "
-                f"to {to_value!s}"
+                f"Role {_bc_value(role)} may not move a background check from {_bc_value(from_value)} "
+                f"to {_bc_value(to_value)}"
             ),
             error_code="BACKGROUND_CHECK_ROLE_NOT_ALLOWED",
             status_code=403,
             extensions={
-                "from_value": str(from_value),
-                "to_value": str(to_value),
-                "role": str(role),
+                "from_value": _bc_value(from_value),
+                "to_value": _bc_value(to_value),
+                "role": _bc_value(role),
             },
         )
 
@@ -1267,12 +1276,12 @@ class BackgroundCheckReasonRequiredError(AnerBaseException):
     def __init__(self, from_value: object, to_value: object) -> None:
         super().__init__(
             detail=(
-                f"Moving a background check from {from_value!s} to {to_value!s} "
+                f"Moving a background check from {_bc_value(from_value)} to {_bc_value(to_value)} "
                 "requires a reason or note"
             ),
             error_code="BACKGROUND_CHECK_REASON_REQUIRED",
             status_code=422,
-            extensions={"from_value": str(from_value), "to_value": str(to_value)},
+            extensions={"from_value": _bc_value(from_value), "to_value": _bc_value(to_value)},
         )
 
 
@@ -1293,6 +1302,48 @@ class BackgroundCheckRiskRequiredError(AnerBaseException):
             error_code="BACKGROUND_CHECK_RISK_REQUIRED",
             status_code=422,
             extensions={},
+        )
+
+
+class BackgroundCheckRiskNotAllowedError(AnerBaseException):
+    """A risk rating on a move that is not ``CLEAR``.
+
+    Risk is compliance's rating at the moment of clearing (contract §7). Accepting it
+    elsewhere would let any move — an OPERATIONS start included — record a rating
+    that the reader then reports as the company's. Refused here and again by
+    ``ck_background_check_decision_risk_only_on_clear``.
+    """
+
+    def __init__(self, from_value: object, to_value: object) -> None:
+        super().__init__(
+            detail=(
+                f"A risk rating is recorded only when a background check is cleared, "
+                f"not on a move from {_bc_value(from_value)} to {_bc_value(to_value)}"
+            ),
+            error_code="BACKGROUND_CHECK_RISK_NOT_ALLOWED",
+            status_code=422,
+            extensions={"from_value": _bc_value(from_value), "to_value": _bc_value(to_value)},
+        )
+
+
+class BackgroundCheckStateChangedError(AnerBaseException):
+    """The caller acted on a value the company no longer holds.
+
+    The move request names a destination, and several moves share one (four reach
+    ``IN_REVIEW``). A caller that sends the value it saw as ``from_value`` is refused
+    here if someone moved the check in the meantime, rather than having its request
+    silently become a different act — a reassessment turning into a reopen.
+    """
+
+    def __init__(self, company_id: object, expected: object, current: object) -> None:
+        super().__init__(
+            detail=(
+                f"The background check for company {company_id} is now {_bc_value(current)}, "
+                f"not {_bc_value(expected)}. Reload it and decide again"
+            ),
+            error_code="BACKGROUND_CHECK_STATE_CHANGED",
+            status_code=409,
+            extensions={"expected": _bc_value(expected), "current": _bc_value(current)},
         )
 
 

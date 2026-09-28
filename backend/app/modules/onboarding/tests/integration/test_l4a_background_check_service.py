@@ -52,8 +52,10 @@ from app.modules.onboarding.exceptions import (
     BackgroundCheckMoveNotAllowedError,
     BackgroundCheckPrerequisitesUnmetError,
     BackgroundCheckReasonRequiredError,
+    BackgroundCheckRiskNotAllowedError,
     BackgroundCheckRiskRequiredError,
     BackgroundCheckRoleNotAllowedError,
+    BackgroundCheckStateChangedError,
     ExporterProfileNotFoundError,
 )
 from app.modules.onboarding.infrastructure.repositories import (
@@ -1329,3 +1331,101 @@ class TestReassess:
         from app.modules.onboarding.domain.entities.background_check_decision import LEGAL_MOVES
 
         assert set(_MOVES) == set(LEGAL_MOVES)
+
+
+# ── Risk belongs to CLEAR only (PR review, 28 Sep 2026) ──────────────────────
+
+
+class TestRiskOnlyOnClear:
+    """Risk is compliance's rating at the moment of clearing (contract §7). A rating on
+    any other move would become what the reader reports as the company's risk, and
+    an OPERATIONS start could set it."""
+
+    async def test_operations_cannot_set_a_risk_by_starting_a_check(self):
+        company_id = await make_company()
+        async with db_services.AsyncSessionLocal() as db:
+            with pytest.raises(BackgroundCheckRiskNotAllowedError):
+                await _service(db).record_decision(
+                    company_id,
+                    to_value=State.IN_REVIEW,
+                    reason=None,
+                    risk=BackgroundCheckRisk.CRITICAL,
+                    actor_id="ops-user",
+                    actor_role=UserRole.OPERATIONS,
+                )
+        assert await _state(company_id) is State.NOT_STARTED
+        assert await _decisions(company_id) == []
+        assert await _history(company_id) == []
+
+    @pytest.mark.parametrize("to_value", [State.MORE_INFO, State.FLAGGED])
+    async def test_compliance_cannot_attach_a_risk_to_a_non_clear_move(self, to_value):
+        company_id = await _started()
+        before = len(await _decisions(company_id))
+        async with db_services.AsyncSessionLocal() as db:
+            with pytest.raises(BackgroundCheckRiskNotAllowedError):
+                await _service(db).record_decision(
+                    company_id,
+                    to_value=to_value,
+                    reason="because",
+                    risk=BackgroundCheckRisk.HIGH,
+                    actor_id="compliance-user",
+                    actor_role=UserRole.COMPLIANCE,
+                )
+        assert await _state(company_id) is State.IN_REVIEW
+        assert len(await _decisions(company_id)) == before
+
+
+# ── The caller's premise: a stale screen cannot become a different act ──────
+
+
+class TestSeenValue:
+    """Four moves share the destination `IN_REVIEW`. Without `seen_value`, a
+    reassessment sent from a screen still showing `FLAGGED` would reopen a company
+    someone had cleared in the meantime."""
+
+    async def test_a_stale_reassessment_does_not_reopen_a_clearance(self):
+        company_id = await _cleared()
+        before = await _decisions(company_id)
+        async with db_services.AsyncSessionLocal() as db:
+            with pytest.raises(BackgroundCheckStateChangedError) as caught:
+                await _service(db).record_decision(
+                    company_id,
+                    to_value=State.IN_REVIEW,
+                    reason="reassessing the flag",
+                    risk=None,
+                    actor_id="compliance-user",
+                    actor_role=UserRole.COMPLIANCE,
+                    seen_value=State.FLAGGED,
+                )
+        assert caught.value.error_code == "BACKGROUND_CHECK_STATE_CHANGED"
+        assert await _state(company_id) is State.CLEAR
+        assert len(await _decisions(company_id)) == len(before)
+
+    async def test_a_matching_premise_makes_the_move(self):
+        company_id = await _flagged()
+        async with db_services.AsyncSessionLocal() as db:
+            view = await _service(db).record_decision(
+                company_id,
+                to_value=State.IN_REVIEW,
+                reason="reassessing the flag",
+                risk=None,
+                actor_id="compliance-user",
+                actor_role=UserRole.COMPLIANCE,
+                seen_value=State.FLAGGED,
+            )
+        assert view.from_value is State.FLAGGED
+        assert await _state(company_id) is State.IN_REVIEW
+
+    async def test_without_a_premise_the_move_is_resolved_from_the_current_value(self):
+        """`seen_value` is optional: server code and older clients keep working."""
+        company_id = await _cleared()
+        async with db_services.AsyncSessionLocal() as db:
+            view = await _service(db).record_decision(
+                company_id,
+                to_value=State.IN_REVIEW,
+                reason="new adverse media",
+                risk=None,
+                actor_id="compliance-user",
+                actor_role=UserRole.COMPLIANCE,
+            )
+        assert view.from_value is State.CLEAR

@@ -9,6 +9,12 @@
  * The reason box is required exactly when the server says so, so the person is asked
  * before submitting rather than shown a 422 afterwards — and the same for the risk
  * rating on `CLEAR`.
+ *
+ * **A risk rating is sent only with a move that asks for one.** Choosing a rating for
+ * `CLEAR` and then switching to another move clears it; otherwise the hidden value
+ * would ride along on, say, a `FLAGGED` decision — which is append-only — and become
+ * the company's displayed risk. The server refuses that too
+ * (`BACKGROUND_CHECK_RISK_NOT_ALLOWED`); this keeps the screen from ever trying.
  */
 
 import { useState } from 'react';
@@ -18,6 +24,7 @@ import type {
   BackgroundCheckRisk,
   BackgroundCheckState,
 } from '../types';
+import { describeClearBlocker } from './background-check-labels';
 
 const MOVE_LABELS: Partial<Record<BackgroundCheckState, string>> = {
   IN_REVIEW: 'Move to in review',
@@ -76,7 +83,10 @@ export function BackgroundCheckMoveDialog({
                 name="to_value"
                 value={candidate.to_value}
                 checked={selected === candidate.to_value}
-                onChange={() => setSelected(candidate.to_value)}
+                onChange={() => {
+                  setSelected(candidate.to_value);
+                  setRisk('');
+                }}
               />
               {MOVE_LABELS[candidate.to_value] ?? candidate.to_value}
             </label>
@@ -86,7 +96,7 @@ export function BackgroundCheckMoveDialog({
 
       {clearIsBlocked && (
         <p className="mt-3 rounded bg-amber-50 p-2 text-xs text-amber-800">
-          This company cannot be cleared yet: {blockedReasons.join(', ')}.
+          This company cannot be cleared yet: {blockedReasons.map(describeClearBlocker).join('; ')}.
         </p>
       )}
 
@@ -139,7 +149,7 @@ export function BackgroundCheckMoveDialog({
             onSubmit({
               to_value: move.to_value,
               reason: reason.trim() || null,
-              risk_rating: risk === '' ? null : risk,
+              risk_rating: move.risk_required && risk !== '' ? risk : null,
             })
           }
           className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-40"

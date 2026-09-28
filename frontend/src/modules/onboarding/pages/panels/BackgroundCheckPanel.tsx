@@ -11,13 +11,19 @@
  * the signed-in user, and the dialog offers exactly those. This file holds no move
  * table and no role list: a rule change on the server cannot leave a stale button here.
  *
+ * Every move is sent with the value the panel was showing (`from_value`). If someone
+ * moved the check in the meantime the server refuses it with a 409 instead of turning
+ * it into a different act, and the panel reloads so the person decides again on what
+ * is actually there.
+ *
  * The one role check that remains is the one the page already applied: DEVELOPER may
- * read the CRM but the background-check routes refuse it (D8 is unanswered and the
- * default is no widening), so the panel is not rendered for it rather than rendered
- * broken.
+ * read the CRM but the background-check routes refuse it (D8, settled 28 September
+ * 2026), so the panel is not rendered for it rather than rendered broken.
  */
 
 import { useState } from 'react';
+
+import { ApiError } from '@/lib/api/errors';
 
 import {
   BackgroundCheckGauge,
@@ -26,6 +32,7 @@ import {
   RiskChip,
   VerificationSection,
 } from '../../components';
+import { describeClearBlocker } from '../../components/background-check-labels';
 import {
   useBackgroundCheck,
   useBackgroundCheckDecisions,
@@ -96,7 +103,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
 
       {standing.value === 'IN_REVIEW' && blocked.length > 0 && (
         <p className="mt-3 rounded bg-slate-50 p-2 text-xs text-slate-600">
-          Before this company can be cleared: {blocked.join(', ')}.
+          Before this company can be cleared: {blocked.map(describeClearBlocker).join('; ')}.
         </p>
       )}
 
@@ -106,9 +113,18 @@ function GaugeSection({ customerId }: { customerId: string }) {
             moves={moves}
             blockedReasons={blocked}
             isPending={record.isPending}
-            error={record.isError ? 'The decision could not be recorded.' : null}
+            error={
+              record.isError
+                ? record.error instanceof ApiError
+                  ? record.error.message
+                  : 'The decision could not be recorded.'
+                : null
+            }
             onSubmit={(body) =>
-              record.mutate(body, { onSuccess: () => setDialogOpen(false) })
+              record.mutate(
+                { ...body, from_value: standing.value },
+                { onSuccess: () => setDialogOpen(false) },
+              )
             }
             onCancel={() => setDialogOpen(false)}
           />

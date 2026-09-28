@@ -1123,6 +1123,8 @@ export interface paths {
          *
          *     The request names **where the check is going** and nothing about who is deciding: the actor comes from the login session, the source and decided-by kind are the server's, and the evidence snapshot is assembled by the server. A request carrying any of them is refused (422).
          *
+         *     Send `from_value` (the value the screen showed) so that a request made from a stale screen is refused (409) rather than becoming a different act.
+         *
          *     Roles are enforced per move, not merely per route: OPERATIONS may start a check and record what arrived, and nothing else.
          */
         post: operations["record_background_check_decision_api_v1_onboarding_exporters__company_id__background_check_decisions_post"];
@@ -1555,7 +1557,7 @@ export interface components {
              */
             company_id: string;
             value: components["schemas"]["BackgroundCheckState"];
-            /** @description The risk of the most recent decision that set one. Read `value` before trusting it: a company cleared at LOW and then reopened still reports LOW while it sits at IN_REVIEW. What a reopened company should show is an open decision (D6). */
+            /** @description The risk of the most recent CLEAR decision (only CLEAR carries one). Read `value` before trusting it: a company cleared at LOW and then reopened still reports LOW while it sits at IN_REVIEW — the last recorded risk, to be labelled as such (D6). */
             risk_rating?: components["schemas"]["BackgroundCheckRisk"] | null;
             /** Latest Decision Id */
             latest_decision_id?: string | null;
@@ -3498,7 +3500,7 @@ export interface components {
          * RecordBackgroundCheckDecisionRequest
          * @description A move, as a client may ask for it.
          *
-         *     Three fields, and `extra="forbid"`. The actor comes from the login session, the
+         *     Four fields, and `extra="forbid"`. The actor comes from the login session, the
          *     source and decided-by kind are the server's, and the evidence snapshot is
          *     assembled by the server from the 4A ↔ 4B seam and Developer 3B's documents. A
          *     request naming any of them is refused (422) rather than quietly ignored.
@@ -3511,8 +3513,10 @@ export interface components {
              * @description Why, or the note of what is needed or what arrived. Required on every move except the first (`NOT_STARTED → IN_REVIEW`).
              */
             reason?: string | null;
-            /** @description LOW, MEDIUM, HIGH or CRITICAL. Required on CLEAR. */
+            /** @description LOW, MEDIUM, HIGH or CRITICAL. Required on CLEAR and refused (422 `BACKGROUND_CHECK_RISK_NOT_ALLOWED`) on every other move. */
             risk_rating?: components["schemas"]["BackgroundCheckRisk"] | null;
+            /** @description The value the client was looking at when it chose this move. If the check has moved since, the request is refused (409 `BACKGROUND_CHECK_STATE_CHANGED`) instead of becoming a different act — four moves share the destination IN_REVIEW. Optional, but a screen should always send it. */
+            from_value?: components["schemas"]["BackgroundCheckState"] | null;
         };
         /**
          * RecordOutcomeRequest
@@ -7441,14 +7445,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the current value; or `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR with prerequisites outstanding, naming each */
+            /** @description `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the current value; `BACKGROUND_CHECK_STATE_CHANGED` — the check is no longer at `from_value`; or `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR with prerequisites outstanding, naming each */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description `BACKGROUND_CHECK_REASON_REQUIRED`, `BACKGROUND_CHECK_RISK_REQUIRED`, or an unknown field in the body */
+            /** @description `BACKGROUND_CHECK_REASON_REQUIRED`, `BACKGROUND_CHECK_RISK_REQUIRED`, `BACKGROUND_CHECK_RISK_NOT_ALLOWED`, or an unknown field in the body */
             422: {
                 headers: {
                     [name: string]: unknown;

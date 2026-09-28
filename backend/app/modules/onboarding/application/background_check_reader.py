@@ -8,10 +8,10 @@ a consumer needs the standing, never the chain.
 
 **Read-only, and deliberately weak.** It never commits, never flushes, never writes and
 **never locks**. The caller owns locking, because only the caller knows what it is about
-to do with the answer: Dev3's handover guard may want the company row locked so a
-concurrent ``FLAGGED`` cannot slip past it, and whether it must is **D10**, which this
-module does not decide. Dev4A's own moves always take the row lock, so a consumer that
-also locks is fully serialised against them.
+to do with the answer. Dev3's handover guard share-locks the company row on the move
+(**D10**, settled 28 September 2026) and reads it unlocked on a page render. Dev4A's own
+moves always take the row lock, so a consumer that also locks is fully serialised
+against them.
 
 **"Not ``CLEAR``" is never "clear".** Every consumer compares against ``CLEAR``
 explicitly. There is no "is_ok" convenience here, for the same reason the 4A ↔ 4B seam
@@ -53,12 +53,12 @@ class BackgroundCheckStanding:
     """One of the six §2 values. The current gauge, straight off the company row."""
 
     risk_rating: str | None
-    """The risk of the latest decision that set one.
+    """The risk of the latest decision that set one — only ``CLEAR`` decisions can.
 
     **Read ``value`` before trusting this.** A company that was cleared at ``LOW`` and
-    then reopened still reports ``LOW`` here while it sits at ``IN_REVIEW`` — what a
-    company *should* show after a reopen is **D6, open** (contract §10). Until D6 is
-    answered, this is the last risk anyone recorded, not a claim about the company now.
+    then reopened still reports ``LOW`` here while it sits at ``IN_REVIEW``: **D6**
+    (settled 28 September 2026) keeps the last recorded risk, explicitly labelled. It
+    is the last clearance's rating, not a claim about the company now.
     """
 
     latest_decision_id: uuid.UUID | None
@@ -144,9 +144,10 @@ class BackgroundCheckReader:
     async def _latest_risk(self, company_id: uuid.UUID) -> str | None:
         """The risk of the most recent decision that set one, or ``None``.
 
-        Not simply the chain head's risk: only ``CLEAR`` is required to carry a risk,
-        so the head of a reopened company has none and the last recorded rating would
-        otherwise vanish from the read. What that *should* mean is D6.
+        Not simply the chain head's risk: only ``CLEAR`` may carry a risk, so the head
+        of a reopened company has none and the last recorded rating would otherwise
+        vanish from the read (D6). ``decided_at`` is insert-time wall clock, taken after
+        the row lock, so it orders decisions the way the chain does.
         """
         risk = await self._db.scalar(
             select(BackgroundCheckDecision.risk_rating)

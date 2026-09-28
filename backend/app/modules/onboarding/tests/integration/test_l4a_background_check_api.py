@@ -214,7 +214,11 @@ class TestRecordDecision:
         )
 
         assert response.status_code == 409
-        assert response.json()["error_code"] == "BACKGROUND_CHECK_MOVE_NOT_ALLOWED"
+        body = response.json()
+        assert body["error_code"] == "BACKGROUND_CHECK_MOVE_NOT_ALLOWED"
+        # Plain values, not `BackgroundCheckState.NOT_STARTED`: a client reads these.
+        assert body["error_context"] == {"from_value": "NOT_STARTED", "to_value": "FLAGGED"}
+        assert "BackgroundCheckState" not in body["detail"]
 
     async def test_operations_flagging_is_403_by_the_service_not_the_route(
         self, client: AsyncClient
@@ -282,6 +286,54 @@ class TestRecordDecision:
         body = response.json()
         assert body["error_code"] == "BACKGROUND_CHECK_PREREQUISITES_UNMET"
         assert "screening_items_answered" in body["error_context"]["unmet"]
+
+    async def test_operations_cannot_set_a_risk_by_starting_a_check(self, client: AsyncClient):
+        """Risk is compliance's, and only on CLEAR — refused, not stored."""
+        token = await token_with_role(client, UserRole.OPERATIONS)
+        company_id = await make_company()
+
+        response = await client.post(
+            f"{_url(company_id)}/decisions",
+            json={"to_value": "IN_REVIEW", "risk_rating": "CRITICAL"},
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error_code"] == "BACKGROUND_CHECK_RISK_NOT_ALLOWED"
+        standing = await client.get(_url(company_id), headers=auth_header(token))
+        assert standing.json()["value"] == "NOT_STARTED"
+        assert standing.json()["risk_rating"] is None
+
+    async def test_a_request_from_a_stale_screen_is_409(self, client: AsyncClient):
+        """The screen saw NOT_STARTED; someone started the check meanwhile."""
+        token = await token_with_role(client, UserRole.COMPLIANCE)
+        company_id = await make_company()
+        await _start(company_id)
+
+        response = await client.post(
+            f"{_url(company_id)}/decisions",
+            json={"to_value": "IN_REVIEW", "from_value": "NOT_STARTED"},
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["error_code"] == "BACKGROUND_CHECK_STATE_CHANGED"
+        assert body["error_context"] == {"expected": "NOT_STARTED", "current": "IN_REVIEW"}
+
+    async def test_a_request_naming_the_current_value_is_accepted(self, client: AsyncClient):
+        token = await token_with_role(client, UserRole.COMPLIANCE)
+        company_id = await make_company()
+        await _start(company_id)
+
+        response = await client.post(
+            f"{_url(company_id)}/decisions",
+            json={"to_value": "FLAGGED", "reason": "a hit", "from_value": "IN_REVIEW"},
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == 201, response.text
+        assert response.json()["from_value"] == "IN_REVIEW"
 
     async def test_an_invalid_risk_value_is_422(self, client: AsyncClient):
         token = await token_with_role(client, UserRole.COMPLIANCE)

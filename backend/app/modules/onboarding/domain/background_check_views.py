@@ -198,6 +198,16 @@ class ClearPolicy:
     evidence_required: bool
     """D4 — whether "evidence recorded" means at least one pinned id."""
 
+    concluding_review_statuses: frozenset[str] = frozenset()
+    """D2 — which ``latest_review_status`` values mean a human has finished with a
+    result whose ``status`` alone would count as pending.
+
+    Needed because a review never changes ``status``: ``VerificationService.review``
+    records ``review_status`` and leaves a ``REVIEW`` result at ``REVIEW`` for ever.
+    Without this, a result compliance had already accepted would block ``CLEAR``
+    permanently. Empty (the default) is the strictest reading: no review concludes
+    anything. A placeholder row is never concluded by a review — nothing ran."""
+
 
 #: **The settled CLEAR rule — D1, D2, D3 and D4, decided 28 September 2026** (recorded
 #: with the decider in ``docs/contracts/background-check.md`` §14).
@@ -208,6 +218,11 @@ CLEAR_POLICY = ClearPolicy(
     # `REVIEW` means a human has not finished; a placeholder row means nothing ever ran.
     pending_verification_statuses=frozenset({"PENDING", "REVIEW"}),
     placeholder_counts_as_pending=True,
+    # D2, clarified 28 September 2026 in the Dev4A PR review: `REVIEW` blocks while
+    # "a human has not finished with it". A human has finished once the result has an
+    # `ACCEPTED` or `REJECTED` review — the answer compliance then weighs, exactly as
+    # it weighs a `FAILED` result. `ESCALATED` is not finished, so it still blocks.
+    concluding_review_statuses=frozenset({"ACCEPTED", "REJECTED"}),
     # D3: "answered" means answered satisfactorily. A `FAILED` item blocks `CLEAR` —
     # a company with a failed screening item is `FLAGGED`, which is what that state is
     # for (architecture §3.3). `NEEDS_REVIEW` and a never-recorded item also block.
@@ -252,9 +267,13 @@ def evaluate_clear_prerequisites(
     if risk is None:
         unmet.append(CLEAR_RISK_REQUIRED)
 
-    # 2. "no checks still pending" — D2 supplies what pending means.
+    # 2. "no checks still pending" — D2 supplies what pending means. A status that
+    #    reads as pending is concluded by a finishing review; a placeholder never is.
     if any(
-        check.status in policy.pending_verification_statuses
+        (
+            check.status in policy.pending_verification_statuses
+            and check.latest_review_status not in policy.concluding_review_statuses
+        )
         or (policy.placeholder_counts_as_pending and check.is_placeholder)
         for check in inputs.verifications
     ):

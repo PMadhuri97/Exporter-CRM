@@ -15,11 +15,9 @@ because one route serves nine moves and OPERATIONS may make only two of them. Th
 route-level check alone would let an operations user flag a company.
 
 **DEVELOPER is not admitted.** Unlike the deal and document reads, these routes admit
-only OPERATIONS, COMPLIANCE and ADMIN. Whether DEVELOPER may read the gauge, the
-decision reasons and the evidence ids is **D8, open**; the recorded default until it
-is answered is no widening (``4a-task.md`` §13). A decision's reason is free text a
-compliance officer typed about a company, which is exactly the kind of thing D8 exists
-to decide rather than assume.
+only OPERATIONS, COMPLIANCE and ADMIN: **D8**, settled 28 September 2026, refuses
+DEVELOPER the gauge, the decision reasons and the evidence ids, reads included. A
+decision's reason is free text a compliance officer typed about a real company.
 """
 
 from __future__ import annotations
@@ -54,7 +52,7 @@ from app.platform.database.services import get_db
 
 router = APIRouter(tags=["Exporter CRM"])
 
-#: Compliance work by internal staff (architecture §3.7). DEVELOPER is absent — D8.
+#: Compliance work by internal staff (architecture §3.7). DEVELOPER is absent (D8).
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 
 
@@ -118,6 +116,8 @@ async def get_background_check(
         "deciding: the actor comes from the login session, the source and "
         "decided-by kind are the server's, and the evidence snapshot is assembled "
         "by the server. A request carrying any of them is refused (422).\n\n"
+        "Send `from_value` (the value the screen showed) so that a request made from "
+        "a stale screen is refused (409) rather than becoming a different act.\n\n"
         "Roles are enforced per move, not merely per route: OPERATIONS may start a "
         "check and record what arrived, and nothing else."
     ),
@@ -134,14 +134,16 @@ async def get_background_check(
         409: {
             "description": (
                 "`BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the "
-                "current value; or `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR "
-                "with prerequisites outstanding, naming each"
+                "current value; `BACKGROUND_CHECK_STATE_CHANGED` — the check is no "
+                "longer at `from_value`; or `BACKGROUND_CHECK_PREREQUISITES_UNMET` — "
+                "CLEAR with prerequisites outstanding, naming each"
             )
         },
         422: {
             "description": (
                 "`BACKGROUND_CHECK_REASON_REQUIRED`, "
-                "`BACKGROUND_CHECK_RISK_REQUIRED`, or an unknown field in the body"
+                "`BACKGROUND_CHECK_RISK_REQUIRED`, "
+                "`BACKGROUND_CHECK_RISK_NOT_ALLOWED`, or an unknown field in the body"
             )
         },
     },
@@ -157,6 +159,7 @@ async def record_background_check_decision(
         to_value=payload.to_value,
         reason=payload.reason,
         risk=payload.risk_rating,
+        seen_value=payload.from_value,
         # From the session, never the body (contract §5.1).
         actor_id=str(user.id),
         actor_role=user.role,

@@ -139,9 +139,9 @@ when, reason, supersedes." Table `onboarding.background_check_decision`, one row
 | `decided_by` | `varchar(255)` | yes | **Who.** `str(user.id)` from the login session, never from a request body. `NULL` only for a platform-originated move, and none exists until RXIL intake (§13). |
 | `decided_by_kind` | `background_check_decided_by_kind_enum` | no | `MANUAL` (a person) or `AUTOMATED` (the platform) — the vocabulary `criterion-result.md` uses. Always `MANUAL` in the prototype. |
 | `source` | `background_check_decision_source_enum` | no | Where the decision came from: `MANUAL`; `RXIL` is reserved for the blocked intake. |
-| `decided_at` | `timestamptz` | no | **When.** `server_default now()`; server time, never supplied by a caller. |
+| `decided_at` | `timestamptz` | no | **When.** `server_default clock_timestamp()`; server time, never supplied by a caller. Wall clock at insert, not transaction start: a move inserts only after it holds the company lock, so `decided_at` follows the chain (a move that waited on the lock cannot sort before its predecessor). |
 | `reason` | `text` | yes | **Why.** Required where §4 says so. |
-| `risk_rating` | `background_check_risk_enum` | yes | Required on `CLEAR` (§7). |
+| `risk_rating` | `background_check_risk_enum` | yes | Required on `CLEAR`, refused on every other move (§7). |
 | `supersedes_decision_id` | `uuid` | yes | The previous decision for the same company. `NULL` only on the company's first decision. |
 | `details` | `jsonb` | no | `DEFAULT '{}'`. Anything a reader needs without a second query. IDs only, never evidence content or PII. |
 
@@ -162,6 +162,7 @@ in the database.
 | `ck_background_check_decision_move` | `(from_value, to_value)` is one of the nine §3 moves. |
 | `ck_background_check_decision_reason` | Every move except `NOT_STARTED → IN_REVIEW` carries a non-blank `reason`. |
 | `ck_background_check_decision_clear_risk` | `to_value = 'CLEAR'` carries a `risk_rating`. |
+| `ck_background_check_decision_risk_only_on_clear` | Only `to_value = 'CLEAR'` carries a `risk_rating` (added in the PR review, 28 Sep 2026 — see §7). |
 | `ck_background_check_decision_decided_by` | A `MANUAL` decision names a non-blank `decided_by`. |
 | `ck_background_check_decision_first` | `supersedes_decision_id IS NULL` exactly when `from_value = 'NOT_STARTED'`: the first decision is the start, and every later decision names its predecessor. |
 | `uq_background_check_decision_first_per_company` | Partial unique index on `company_id WHERE supersedes_decision_id IS NULL`: one chain per company. |
@@ -242,9 +243,9 @@ agree (`4a-task.md` §17).
 | **Database type** | `onboarding.background_check_risk_enum` — **owned by Developer 4A** and created in `onboarding_0015_bg_check`. **D13, settled 28 Sep 2026:** Developer 4B's `verification_risk_level_enum` is **not** reused, so neither Dev4 migration depends on the other's schema. |
 | **Where** | On the **decision** (`background_check_decision.risk_rating`). Set by compliance as part of the decision (architecture §3.3, A3, §4.1 step 9). |
 | **Required** | On `CLEAR` — by the service and by `ck_background_check_decision_clear_risk`. |
-| **On the company record** | **None.** There is no company-level risk column. Whether one is added for list filters is **D5 — open, non-blocking**. The current risk is read from the decisions through the read helper (§10). |
-| **On other outcomes** | The column is nullable and unconstrained on non-`CLEAR` decisions. Whether risk is required, allowed or refused on `FLAGGED` / `ON_HOLD` / others is **D5**. The service does not invent a rule. |
-| **After a reopen** | What the company shows while `IN_REVIEW` after a `CLEAR` is **D6**. |
+| **On the company record** | **None** (**D5**, settled). There is no company-level risk column. The current risk is read from the decisions through the read helper (§10). |
+| **On other outcomes** | **Refused** — `422 BACKGROUND_CHECK_RISK_NOT_ALLOWED` in the service and `ck_background_check_decision_risk_only_on_clear` in the database. Risk is compliance's rating at the moment of clearing. While it was merely "not refused", any move carried one — including an OPERATIONS start — and the reader (§10) reported it as the company's risk. Found and closed in the Dev4A PR review, 28 Sep 2026 (D5 row, §14). |
+| **After a reopen** | The last clearance's risk, explicitly labelled (**D6**, settled). |
 | **On screen** | `CRITICAL` must look different (architecture §3.3, L4-08). |
 
 This is the CRM background-check risk vocabulary. It changes no existing risk type:
@@ -272,8 +273,8 @@ never commits separately, and commits once (`history-row.md` §5).
 
 - `event_metadata` carries **ids, never evidence content or PII**.
 - The history route admits DEVELOPER (`history_router.py`). What free text DEVELOPER may read —
-  the `reason` on these rows — is **D8**. Until decided: no widening of any background-check route
-  to DEVELOPER.
+  the `reason` on these rows — is **D8**, settled 28 Sep 2026: DEVELOPER is refused on every
+  background-check route. The history route's own `reason` policy is Developer 1's (§14, D8).
 - Dev4A does not edit `history_service.py` or the history contract.
 
 ---
@@ -326,8 +327,9 @@ class BackgroundCheckReader:
   never flushes and **never locks**; the caller owns locking.
 - **Errors:** an unknown company raises `ExporterProfileNotFoundError` (existing, Developer 2's).
 - **"Not `CLEAR`" is never treated as "clear".**
-- `risk_rating`'s meaning after a reopen follows **D6**; until then it is the risk of the latest
-  decision that set one, and a consumer must read `value` to know whether the company is clear.
+- `risk_rating` is the risk of the latest decision that set one — only `CLEAR` decisions can
+  (§7) — so after a reopen it is the last clearance's rating, to be labelled as such (**D6**,
+  settled). A consumer must read `value` to know whether the company is clear.
 
 ---
 
@@ -363,12 +365,16 @@ guard and the handover are Developer 3's. Dev4A's part is the read helper (§10)
   (4A-2) it returns the real value — `"NOT_STARTED"` for every company until a move is recorded —
   so every handover is refused with "the background check is NOT_STARTED, not CLEAR".
 - In phase 4A-6 its body becomes `return current_background_check(company)`, with Developer 3's
-  review. Its name and signature do not change, and nothing else in `deal_service.py` does.
+  review. Its name and signature do not change. (Built in 4A-6; the D10 lock below and the
+  docstrings the swap made false were also changed in `deal_service.py` — **Developer 3 review
+  required**.)
 - The `clear_background_check` fixture in `test_l3b_handover.py` stays until a real `CUSTOMER` can
   be produced (L2-11).
-- Whether Developer 3's guard must lock or share-lock the company row, so a concurrent `FLAGGED`
-  cannot slip past a handover, is **D10**. Dev4A's own moves always take the row lock, so a guard
-  that also locks is fully serialised against them.
+- **D10, settled 28 Sep 2026:** Developer 3's guard share-locks the company row (`FOR SHARE`) on
+  the handover move, and takes no lock on the read that renders a deal. Dev4A's moves take
+  `FOR UPDATE`, so a reopen issued while a handover is in flight waits for the handover to commit.
+  Proved by a two-session test (`test_l4a_background_check_reader.py::TestTheHandoverLock`) that
+  fails if the lock is removed.
 
 ### 11.3 Customer transition (Developer 2) — **BLOCKED: U4 / O3**
 
@@ -408,8 +414,9 @@ Dev4A imports the seam and nothing else of Developer 4B's.
 
 ## 13. Errors
 
-Planned for the service and routes (phases 4A-3 to 4A-7). Named here so the routes and the screen
-can be built against them; the exact class names are fixed when the code lands.
+Raised by `BackgroundCheckService` and served by the routes (phases 4A-3 to 4A-7, and the PR
+review of 28 Sep 2026). Each `error_context` carries plain values (`IN_REVIEW`, not
+`BackgroundCheckState.IN_REVIEW`).
 
 | Case | HTTP | `error_code` |
 |---|---|---|
@@ -418,6 +425,8 @@ can be built against them; the exact class names are fixed when the code lands.
 | Caller's role may not make this move | 403 | `BACKGROUND_CHECK_ROLE_NOT_ALLOWED` |
 | Text missing or blank where §4 requires it | 422 | `BACKGROUND_CHECK_REASON_REQUIRED` |
 | `CLEAR` without a risk rating | 422 | `BACKGROUND_CHECK_RISK_REQUIRED` |
+| A risk rating on any move other than `CLEAR` | 422 | `BACKGROUND_CHECK_RISK_NOT_ALLOWED` |
+| The request's optional `from_value` is not the company's current value (the screen was stale) | 409 | `BACKGROUND_CHECK_STATE_CHANGED`, with `expected` and `current` |
 | `CLEAR` prerequisites unmet (rules per §14.1) | 409 | `BACKGROUND_CHECK_PREREQUISITES_UNMET`, naming each unmet prerequisite |
 | A write that bypasses the service and breaks §5.3 or §6 | — | refused by the database (`CheckViolation`, `ForeignKeyViolation`, `UniqueViolation`, `RaiseException`) |
 
@@ -432,10 +441,10 @@ Every answer is recorded here, with its date and who decided. Nothing below is g
 | # | Decision | Status | Owner | Blocks |
 |---|---|---|---|---|
 | D1 | **CLEAR prerequisite semantics** beyond A3's wording (risk; no checks pending; eight items answered; evidence) | **Settled 28 Sep 2026 (programme lead):** the prerequisites are exactly A3's four and no others. D2–D4 fix what its phrases mean; see §14.1 | programme lead with compliance | — |
-| D2 | **Meaning of "pending"** — `PENDING` only? `REVIEW` without an accepted review? placeholders? unlinked subjects? | **Settled 28 Sep 2026 (programme lead):** a check is pending unless it reached a terminal answer with a real provider — `PENDING`, `REVIEW` and placeholder rows all block `CLEAR` | programme lead with compliance | — |
+| D2 | **Meaning of "pending"** — `PENDING` only? `REVIEW` without an accepted review? placeholders? unlinked subjects? | **Settled 28 Sep 2026 (programme lead):** a check is pending unless it reached a terminal answer with a real provider — `PENDING`, `REVIEW` and placeholder rows all block `CLEAR`. **Clarified the same day in the Dev4A PR review** (at the user's instruction; to be confirmed by the lead): a `REVIEW` result stops blocking once it has an `ACCEPTED` or `REJECTED` review, because a review never changes `status` and the literal reading would have made such a company impossible to clear. See §14.1 | programme lead with compliance | — |
 | D3 | **FAILED / EXEMPT screening vs CLEAR** — does "answered" include them? | **Settled 28 Sep 2026 (programme lead):** "answered" means answered satisfactorily. `PASSED` and `EXEMPT` only; a `FAILED` item blocks `CLEAR` | programme lead with compliance | — |
 | D4 | **Evidence snapshot scope** — which documents; what counts as "evidence recorded" | **Settled 28 Sep 2026 (programme lead):** the company's own documents with `scan_status = AVAILABLE`; and `CLEAR` requires at least one pinned id | programme lead | — |
-| D5 | **Risk on the company record; risk on non-CLEAR outcomes** | **Settled 28 Sep 2026 (programme lead):** **no company risk column.** Risk stays on the decision record and is read through `BackgroundCheckReader.standing` — no second copy to drift, no migration, and Developer 2's list filters through the reader. Whether risk is *required* on non-`CLEAR` outcomes was not asked and is not enforced: the column is nullable and the service neither requires nor refuses it there | Dev4 (A+B) with the lead | nothing |
+| D5 | **Risk on the company record; risk on non-CLEAR outcomes** | **Settled 28 Sep 2026 (programme lead):** **no company risk column.** Risk stays on the decision record and is read through `BackgroundCheckReader.standing` — no second copy to drift, no migration, and Developer 2's list filters through the reader. **Risk on non-`CLEAR` outcomes: refused** (Dev4A PR review, 28 Sep 2026, at the user's instruction). The first answer left it "neither required nor refused", which let any move — an OPERATIONS start included — record a rating the reader then reported as the company's (§7) | Dev4 (A+B) with the lead | nothing |
 | D6 | **Risk shown after a reopen** | **Settled 28 Sep 2026 (programme lead):** keep **the last recorded risk, explicitly labelled**. `standing.risk_rating` is the risk of the most recent decision that set one, and the panel prints "from the most recent decision that set one" beside it whenever the company is not `CLEAR`. It is the best information available; the label is what stops it reading as a current verdict. A consumer must still read `value`, which is what `standing.is_clear` is for | Dev4A with the lead | nothing |
 | D8 | **DEVELOPER visibility** of the gauge, reasons and evidence ids | **Settled 28 Sep 2026 (programme lead):** **no.** DEVELOPER is refused on all three routes, reads included — a decision's reason is free text a compliance officer wrote about a real company. Enforced by `_STAFF` in the router, with rows in both authorisation tables and an API test. **One inconsistency is left open deliberately:** `history_router.py` already admits DEVELOPER and serves `background_check` transition rows including their `reason`. That route is Developer 1's, so closing the gap is their call | lead with Developer 1 | the history route's `reason` policy (Developer 1) |
 | D10 | **Company row lock during handover** | **Settled 28 Sep 2026 (programme lead):** **yes — `FOR SHARE`**, taken on the move and not on the read. Built in Developer 3's guard; **needs Dev3 review**. See §11.2 | Developer 3 with the lead | nothing |
@@ -459,8 +468,9 @@ list, and the service does not invent a fifth condition.
 | Input | Blocks `CLEAR`? | Why |
 |---|---|---|
 | `status = PENDING` | yes | the check has not come back |
-| `status = REVIEW` | yes | a human has not finished with it |
-| `is_placeholder = true` | yes | created without a provider, so nothing ever ran |
+| `status = REVIEW`, no review or an `ESCALATED` one | yes | a human has not finished with it |
+| `status = REVIEW` with an `ACCEPTED` or `REJECTED` review | **no** | a human has finished with it. `VerificationService.review` records `review_status` and never changes `status`, so without this row a result compliance had already dealt with would block `CLEAR` for ever (clarified in the Dev4A PR review, 28 Sep 2026; `ClearPolicy.concluding_review_statuses`) |
+| `is_placeholder = true` | yes | created without a provider, so nothing ever ran — a review does not change that |
 | `status = PASSED` or `FAILED`, real provider | no | it reached an answer |
 
 The strict reading was chosen on purpose: a check that has not truly concluded should
@@ -490,9 +500,8 @@ at least one pinned id.**
 - The rule is applied in `select_evidence`, not in the query, so it is one pure function
   with unit tests rather than a `WHERE` clause nobody re-reads.
 
-Still open and **not** decided here: D5 (risk on the company record and on non-`CLEAR`
-outcomes), D6 (risk shown after a reopen), D8 (DEVELOPER visibility), D10 (the handover
-row lock), D11/U4/O3, D12 and D14.
+D5, D6, D8 and D10 were settled later the same day (table above). Still open: D11/U4/O3, D12
+and D14.
 
 ---
 
@@ -521,5 +530,6 @@ row lock), D11/U4/O3, D12 and D14.
 | `BackgroundCheckReader`, `current_background_check` (§10) and the Developer 3 swap (4A-6) | built. `deal_service.read_background_check` calls the helper; its name and signature are unchanged |
 | API routes (4A-7) | built: the three routes of §5.10, `extra="forbid"` on the request, per-move roles in the service, rows in both authorisation tables, artifacts regenerated |
 | Background-check panel (4A-8) | built: gauge, risk chip, decision trail with evidence counts, a move dialog offering only the server's `allowed_moves`, loading/empty/error states, Developer 4B's `VerificationSection` unchanged below it |
+| PR review fixes (28 Sep 2026) | built: risk refused off `CLEAR` (service + `ck_background_check_decision_risk_only_on_clear`); D2's reviewed-`REVIEW` clarification (`concluding_review_statuses`); optional `from_value` with `BACKGROUND_CHECK_STATE_CHANGED`; `decided_at` on `clock_timestamp()`; plain values in error context; the dialog never sends a hidden risk; readable prerequisites and server error text in the panel; a behavioural D10 test |
 | Customer transition (4A-9) | **blocked** (U4) |
 | Automatic start on RXIL results | **blocked** (D12) |

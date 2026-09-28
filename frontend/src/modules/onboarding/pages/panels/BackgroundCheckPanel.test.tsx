@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '@/lib/api/errors';
+
 import {
   getBackgroundCheck,
   listBackgroundCheckDecisions,
@@ -219,8 +221,44 @@ describe('BackgroundCheckPanel — the move dialog', () => {
         to_value: 'FLAGGED',
         reason: 'adverse media',
         risk_rating: null,
+        // The value on screen, so a move made from a stale screen is refused (409).
+        from_value: 'IN_REVIEW',
       }),
     );
+  });
+
+  it('drops a risk chosen for CLEAR when another move is chosen instead', async () => {
+    // Decisions are append-only: a hidden rating riding along on a FLAGGED decision
+    // could never be taken back, and would show as the company's risk.
+    vi.mocked(recordBackgroundCheckDecision).mockResolvedValue(decision());
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Record a decision' }));
+    fireEvent.click(screen.getByLabelText(/Clear this company/));
+    fireEvent.change(screen.getByLabelText('Risk rating'), { target: { value: 'LOW' } });
+    fireEvent.click(screen.getByLabelText(/Flag this company/));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'sanctions hit' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record decision' }));
+
+    await waitFor(() =>
+      expect(recordBackgroundCheckDecision).toHaveBeenCalledWith(COMPANY_ID, {
+        to_value: 'FLAGGED',
+        reason: 'sanctions hit',
+        risk_rating: null,
+        from_value: 'IN_REVIEW',
+      }),
+    );
+  });
+
+  it('starts the risk rating afresh when CLEAR is chosen again', async () => {
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Record a decision' }));
+    fireEvent.click(screen.getByLabelText(/Clear this company/));
+    fireEvent.change(screen.getByLabelText('Risk rating'), { target: { value: 'HIGH' } });
+    fireEvent.click(screen.getByLabelText(/Flag this company/));
+    fireEvent.click(screen.getByLabelText(/Clear this company/));
+
+    expect(screen.getByLabelText('Risk rating')).toHaveValue('');
   });
 
   it('refuses to submit a CLEAR whose prerequisites are outstanding, and says why', async () => {
@@ -235,6 +273,18 @@ describe('BackgroundCheckPanel — the move dialog', () => {
 
     expect(screen.getByText(/cannot be cleared yet/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Record decision' })).toBeDisabled();
+  });
+
+  it('says what each outstanding prerequisite asks for, not its key', async () => {
+    vi.mocked(getBackgroundCheck).mockResolvedValue(
+      standing({ clear_blocked_reasons: ['no_checks_pending', 'screening_items_answered'] }),
+    );
+    renderPanel();
+
+    const note = await screen.findByText(/Before this company can be cleared/);
+    expect(note).toHaveTextContent(/every verification check needs a final answer/);
+    expect(note).toHaveTextContent(/every screening item must be passed or exempt/);
+    expect(note).not.toHaveTextContent('no_checks_pending');
   });
 
   it('shows what is outstanding on the panel itself, before the dialog is opened', async () => {
@@ -261,6 +311,28 @@ describe('BackgroundCheckPanel — the move dialog', () => {
       'The decision could not be recorded.',
     );
     expect(screen.getByRole('button', { name: 'Record decision' })).toBeInTheDocument();
+  });
+
+  it("shows the server's reason for a refusal and reloads the standing", async () => {
+    vi.mocked(recordBackgroundCheckDecision).mockRejectedValue(
+      new ApiError(
+        409,
+        'The background check for company x is now CLEAR, not IN_REVIEW. Reload it and decide again',
+        'BACKGROUND_CHECK_STATE_CHANGED',
+      ),
+    );
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Record a decision' }));
+    const loads = vi.mocked(getBackgroundCheck).mock.calls.length;
+    fireEvent.click(screen.getByLabelText(/Flag this company/));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'reason' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record decision' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/is now CLEAR, not IN_REVIEW/);
+    await waitFor(() =>
+      expect(vi.mocked(getBackgroundCheck).mock.calls.length).toBeGreaterThan(loads),
+    );
   });
 });
 

@@ -317,68 +317,117 @@ class TestTheHandoverGuard:
         )
 
 # ── D10: the handover guard's lock (settled 28 September 2026) ───────────────
+#
+# Behavioural, not a search of the source: each test runs Developer 3's real
+# `DealService` beside Dev4A's real `reopen` in two sessions and watches who waits.
+
+
+async def _cleared_customer_with_a_deal() -> tuple[uuid.UUID, uuid.UUID]:
+    """A `CUSTOMER` whose check is really `CLEAR`, with a deal ready to hand over —
+    no substitution of `read_background_check` anywhere."""
+    from app.modules.onboarding.tests.integration.test_l3b_handover import (
+        _customer,
+        _deal_ready_to_hand_over,
+    )
+
+    company_id = await _customer()
+    await _document(company_id, DocumentScanStatus.AVAILABLE)
+    async with db_services.AsyncSessionLocal() as db:
+        await _service(db).start_review(company_id, actor_id="ops", actor_role=UserRole.OPERATIONS)
+    async with db_services.AsyncSessionLocal() as db:
+        await _service(db).clear(
+            company_id,
+            risk=BackgroundCheckRisk.LOW,
+            reason="in order",
+            actor_id="compliance-user",
+            actor_role=UserRole.COMPLIANCE,
+        )
+    return company_id, await _deal_ready_to_hand_over(company_id)
+
+
+async def _reopen(company_id: uuid.UUID) -> str:
+    async with db_services.AsyncSessionLocal() as db:
+        await _service(db).reopen(
+            company_id,
+            reason="new adverse media",
+            actor_id="compliance-user",
+            actor_role=UserRole.COMPLIANCE,
+        )
+    return "reopened"
+
+
+#: Long enough that an unblocked reopen finishes, short enough to keep the suite fast.
+_WAIT = 1.5
 
 
 class TestTheHandoverLock:
     """The guard share-locks the company row while a handover is in progress.
 
-    Dev4A's moves take `FOR UPDATE`, so a share lock in the guard makes a concurrent
-    `FLAGGED` wait. Without it, a flag could commit between the guard seeing `CLEAR`
-    and the handover committing, and a deal would reach the lending team on a company
-    flagged moments earlier.
+    Dev4A's moves take `FOR UPDATE`, so the share lock makes a concurrent reopen wait
+    until the handover commits. Without it a reopen could commit between the guard
+    seeing `CLEAR` and the handover committing, and the lending team would be given a
+    deal on a company whose clearance had just been withdrawn.
     """
 
-    async def test_the_guard_locks_only_when_a_handover_is_happening(self):
-        """`lock=True` from `transition_stage`, and nowhere else.
+    async def test_a_reopen_waits_for_a_handover_in_progress(self, monkeypatch):
+        from app.modules.onboarding.application.deal_service import DealService
+        from app.modules.onboarding.domain.entities.deal_enums import DealStage
+        from app.modules.onboarding.events import publisher as publisher_module
+        from app.platform.messaging.ports import InMemoryEventBus
 
-        Asserted at the call sites rather than by timing, because the harm of getting
-        this wrong is not a failed test — it is every deal page load taking a lock on
-        the company and blocking compliance.
-        """
-        import inspect
+        monkeypatch.setattr(publisher_module, "get_event_bus", InMemoryEventBus)
+        company_id, deal_id = await _cleared_customer_with_a_deal()
 
-        from app.modules.onboarding.application import deal_service
+        guard_passed = asyncio.Event()
+        release = asyncio.Event()
+        original = DealService._handover_snapshot
 
-        source = inspect.getsource(deal_service.DealService)
-        # The move locks.
-        assert "_handover_blocked_reason(deal, lock=True)" in source
-        # The view does not.
-        assert "await self._handover_blocked_reason(deal)\n" in source
+        async def paused_snapshot(self, deal):
+            # Runs after the guard, inside the handover's transaction.
+            guard_passed.set()
+            await release.wait()
+            return await original(self, deal)
 
-    async def test_the_lock_is_a_share_lock_not_an_exclusive_one(self):
-        """`FOR SHARE`, so two handovers on one company still run in parallel.
+        monkeypatch.setattr(DealService, "_handover_snapshot", paused_snapshot)
 
-        `FOR UPDATE` would close the same race and also serialise unrelated
-        handovers, which buys nothing.
-        """
-        import inspect
-
-        from app.modules.onboarding.application import deal_service
-
-        source = inspect.getsource(deal_service.DealService._handover_blocked_reason)
-        assert "with_for_update(read=True)" in source
-
-    async def test_a_read_of_a_deal_does_not_block_a_background_check_move(self):
-        """The counterpart: rendering a deal must never delay compliance."""
-        company_id = await _at_in_review()
-
-        async def read_the_company():
-            # What `_to_view` does: no lock.
+        async def hand_over():
             async with db_services.AsyncSessionLocal() as db:
-                for _ in range(5):
-                    await db.scalar(
-                        select(ExporterProfile).where(
-                            ExporterProfile.customer_id == company_id
-                        )
-                    )
-            return "read"
-
-        async def flag():
-            async with db_services.AsyncSessionLocal() as db:
-                await _service(db).flag(
-                    company_id, reason="hit", actor_id="c", actor_role=UserRole.COMPLIANCE
+                return await DealService(db).transition_stage(
+                    deal_id, DealStage.HANDED_OVER, actor_id="tester"
                 )
-            return "flagged"
 
-        results = await asyncio.gather(read_the_company(), flag())
-        assert set(results) == {"read", "flagged"}
+        handover = asyncio.create_task(hand_over())
+        await asyncio.wait_for(guard_passed.wait(), timeout=10)
+
+        reopen = asyncio.create_task(_reopen(company_id))
+        try:
+            done, _ = await asyncio.wait({reopen}, timeout=_WAIT)
+            assert not done, "the reopen ran while a handover of a CLEAR company was in flight"
+            assert (await _standing(company_id)).value == "CLEAR"
+        finally:
+            # Always let the handover finish, so a failure above cannot leave a task
+            # holding a lock for the rest of the suite.
+            release.set()
+        view = await asyncio.wait_for(handover, timeout=10)
+        assert view.stage is DealStage.HANDED_OVER
+        assert await asyncio.wait_for(reopen, timeout=10) == "reopened"
+        assert (await _standing(company_id)).value == "IN_REVIEW"
+
+    async def test_rendering_a_deal_never_blocks_a_background_check_move(self):
+        """The counterpart: the read path takes no lock, so a deal page left open in a
+        transaction cannot delay compliance."""
+        from app.modules.onboarding.application.deal_service import DealService
+
+        company_id, deal_id = await _cleared_customer_with_a_deal()
+
+        async with db_services.AsyncSessionLocal() as db:
+            # The guard runs unlocked inside `get_deal`; the transaction stays open.
+            view = await DealService(db).get_deal(deal_id)
+            assert view.handover_blocked_reason is None
+
+            reopen = asyncio.create_task(_reopen(company_id))
+            done, _ = await asyncio.wait({reopen}, timeout=_WAIT * 4)
+            assert done, "a deal read blocked a background-check move"
+            await db.rollback()
+
+        assert (await _standing(company_id)).value == "IN_REVIEW"

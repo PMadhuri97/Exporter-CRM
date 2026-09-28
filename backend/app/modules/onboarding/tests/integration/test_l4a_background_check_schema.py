@@ -289,7 +289,9 @@ def test_the_database_admits_exactly_the_nine_moves(from_value, to_value):
         attempt = dict(
             supersedes=None if is_start else uuid.uuid4(),
             reason="because",
-            risk="LOW",
+            # Risk only where it is allowed, so a legal move is stopped by nothing but
+            # the chain FK below.
+            risk="LOW" if to_value == "CLEAR" else None,
         )
         if not legal:
             with _refused(psycopg2.errors.CheckViolation, "ck_background_check_decision_move"):
@@ -394,11 +396,35 @@ def test_a_risk_outside_the_scale_is_refused(risk):
             _decide(cur, company_id, "IN_REVIEW", "CLEAR", supersedes=start, risk=risk)
 
 
-def test_risk_on_a_non_clear_decision_is_neither_required_nor_refused():
-    """D5 is open: the database takes no position on risk away from `CLEAR`."""
+@pytest.mark.parametrize(
+    ("from_value", "to_value"),
+    [
+        (from_value.value, to_value.value)
+        for from_value, to_value in LEGAL_MOVES
+        if to_value is not BackgroundCheckState.CLEAR
+    ],
+)
+def test_risk_on_a_non_clear_decision_is_refused(from_value, to_value):
+    """Risk is compliance's rating at the moment of clearing (contract §7), so every
+    other move — an OPERATIONS start included — is refused one. Without this the reader
+    would report whatever rating any move carried as the company's."""
+    with _connect() as conn, conn.cursor() as cur:
+        company_id = insert_company(cur)
+        is_start = from_value == "NOT_STARTED"
+        with _refused(
+            psycopg2.errors.CheckViolation, "ck_background_check_decision_risk_only_on_clear"
+        ):
+            _decide(
+                cur, company_id, from_value, to_value,
+                supersedes=None if is_start else uuid.uuid4(),
+                reason="because", risk="HIGH",
+            )
+
+
+def test_a_non_clear_decision_without_risk_is_accepted():
     with _connect() as conn, conn.cursor() as cur:
         company_id, start = _started(cur)
-        flagged = _decide(cur, company_id, "IN_REVIEW", "FLAGGED", supersedes=start, risk="HIGH")
+        flagged = _decide(cur, company_id, "IN_REVIEW", "FLAGGED", supersedes=start, risk=None)
         _decide(cur, company_id, "FLAGGED", "ON_HOLD", supersedes=flagged, risk=None)
 
 
@@ -424,11 +450,26 @@ def test_decided_at_is_server_time():
     with _connect() as conn, conn.cursor() as cur:
         company_id, start = _started(cur)
         cur.execute(
-            f"SELECT decided_at = now(), details FROM {SCHEMA}.background_check_decision"
-            " WHERE id = %s",
+            f"SELECT decided_at BETWEEN now() AND clock_timestamp(), details"
+            f" FROM {SCHEMA}.background_check_decision WHERE id = %s",
             (str(start),),
         )
         assert cur.fetchone() == (True, {})
+
+
+def test_decided_at_follows_the_chain_not_the_transaction_start():
+    """`clock_timestamp()`, not `now()`: a move that waited on the company lock is
+    inserted after its predecessor, so it must not sort before it. Two decisions in one
+    transaction stand in for that here — under `now()` they would tie."""
+    with _connect() as conn, conn.cursor() as cur:
+        company_id, start = _started(cur)
+        second = _decide(cur, company_id, "IN_REVIEW", "FLAGGED", supersedes=start)
+        cur.execute(
+            f"SELECT (SELECT decided_at FROM {SCHEMA}.background_check_decision WHERE id = %s)"
+            f" > (SELECT decided_at FROM {SCHEMA}.background_check_decision WHERE id = %s)",
+            (str(second), str(start)),
+        )
+        assert cur.fetchone() == (True,)
 
 
 # ── Decisions: the supersedes chain ──────────────────────────────────────────

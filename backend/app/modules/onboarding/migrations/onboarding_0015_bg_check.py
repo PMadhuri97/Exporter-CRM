@@ -163,10 +163,14 @@ def upgrade() -> None:
         sa.Column("decided_by", sa.String(255), nullable=True),
         sa.Column("decided_by_kind", decided_by_kind_enum, nullable=False),
         sa.Column("source", source_enum, nullable=False),
+        # `clock_timestamp()`, not `now()`: a move inserts its decision only after it
+        # holds the company row lock, so wall-clock time at insert follows the chain.
+        # `now()` is transaction-start time, and a move that waited on the lock would
+        # sort *before* the decision it supersedes.
         sa.Column(
             "decided_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=sa.text("clock_timestamp()"),
             nullable=False,
         ),
         sa.Column("reason", sa.Text(), nullable=True),
@@ -199,6 +203,13 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "to_value <> 'CLEAR' OR risk_rating IS NOT NULL",
             name="ck_background_check_decision_clear_risk",
+        ),
+        # Risk is compliance's rating at the moment of clearing (contract §7), so it
+        # belongs to `CLEAR` decisions only. Without this, any move — including an
+        # OPERATIONS start — could carry a rating the reader would then report.
+        sa.CheckConstraint(
+            "to_value = 'CLEAR' OR risk_rating IS NULL",
+            name="ck_background_check_decision_risk_only_on_clear",
         ),
         sa.CheckConstraint(
             "decided_by_kind <> 'MANUAL' OR (decided_by IS NOT NULL AND btrim(decided_by) <> '')",
@@ -233,9 +244,9 @@ def upgrade() -> None:
         schema=SCHEMA,
         postgresql_where=sa.text("supersedes_decision_id IS NULL"),
     )
-    # One company's decisions, newest first. `decided_at` is transaction time, so `id`
-    # breaks the tie and the order is deterministic rather than chronological — the
-    # caveat every such index in this schema carries. Also serves the company FK.
+    # One company's decisions, newest first. `decided_at` is insert-time wall clock, so
+    # it follows the chain; `id` only breaks a (theoretical) exact tie. Also serves the
+    # company FK.
     op.create_index(
         "ix_background_check_decision_company_recent",
         "background_check_decision",

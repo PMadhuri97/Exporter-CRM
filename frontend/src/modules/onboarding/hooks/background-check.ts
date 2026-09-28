@@ -3,7 +3,8 @@
  *
  * Recording a decision invalidates **both** the standing and the decision list: the
  * standing carries `allowed_moves`, so a stale copy would keep offering the move that
- * was just made.
+ * was just made. A **refused** decision reloads the standing too — a 409 usually means
+ * the check moved under the screen, and the moves on offer should be the current ones.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -51,6 +52,9 @@ export function useRecordBackgroundCheckDecision(customerId: string) {
       void queryClient.invalidateQueries({ queryKey: decisionsKey(customerId) });
       // The gauge is part of the company's story, so the history timeline changes too.
       void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: backgroundCheckKey(customerId) });
     },
   });
 }

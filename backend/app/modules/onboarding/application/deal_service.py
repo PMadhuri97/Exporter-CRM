@@ -289,8 +289,9 @@ class DealService:
         4. ``WITHDRAWN`` carries a reason (422).
         5. ``HANDED_OVER`` has a buyer (422) and satisfies the A5 guard (409).
 
-        Step 5's guard is Phase 4's, and it currently refuses every handover
-        because Developer 4's ``background_check`` column does not exist yet.
+        Step 5's guard reads Developer 4A's ``background_check`` through
+        ``read_background_check`` and share-locks the company row while it does (D10),
+        so a concurrent reopen or flag waits until this handover commits.
         """
         deal = await self._lock_deal(deal_id)
         from_stage = deal.stage

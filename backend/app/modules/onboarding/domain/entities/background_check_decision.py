@@ -104,6 +104,10 @@ class BackgroundCheckDecision(AppendOnlyModel):
             name="ck_background_check_decision_clear_risk",
         ),
         CheckConstraint(
+            "to_value = 'CLEAR' OR risk_rating IS NULL",
+            name="ck_background_check_decision_risk_only_on_clear",
+        ),
+        CheckConstraint(
             "decided_by_kind <> 'MANUAL' OR (decided_by IS NOT NULL AND btrim(decided_by) <> '')",
             name="ck_background_check_decision_decided_by",
         ),
@@ -117,7 +121,7 @@ class BackgroundCheckDecision(AppendOnlyModel):
             unique=True,
             postgresql_where=text("supersedes_decision_id IS NULL"),
         ),
-        # Newest first; `id` breaks the transaction-time tie deterministically.
+        # Newest first; `decided_at` follows the chain, `id` breaks an exact tie.
         Index(
             "ix_background_check_decision_company_recent",
             "company_id",
@@ -166,12 +170,13 @@ class BackgroundCheckDecision(AppendOnlyModel):
     )
     #: Server time. Not set by callers.
     decided_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
     )
     #: The reason, or the note of what is needed / what arrived. Required on every
     #: move but the start (`ck_background_check_decision_reason`, contract §4).
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    #: Required on `CLEAR` (`ck_background_check_decision_clear_risk`). Elsewhere: D5.
+    #: Required on `CLEAR` (`ck_background_check_decision_clear_risk`) and refused on
+    #: every other move (`ck_background_check_decision_risk_only_on_clear`).
     risk_rating: Mapped[BackgroundCheckRisk | None] = mapped_column(
         Enum(BackgroundCheckRisk, name="background_check_risk_enum", schema=SCHEMA),
         nullable=True,

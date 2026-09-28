@@ -193,11 +193,10 @@ it relied on are stored with it." Dev4A owns the snapshot contract:
   `CRITICAL`. Dev4B's `verification_risk_level_enum` is **not** reused, so neither Dev4 migration
   depends on the other's schema. This is the CRM background-check risk vocabulary of decision 6;
   it changes no legacy, customer or onboarding risk type.
-- **Not settled — decision gates:** whether risk is also carried on `exporter_profile` for list
-  filters (Figure 3 draws `risk` on the company; company-record §2.4 leaves it to Dev4) — **D5**;
-  whether risk is required or allowed on non-`CLEAR` outcomes — **D5**; what the company shows
-  after a reopen — **D6**. D5 is open but does **not** block the migration: until it is decided,
-  risk is stored on the decision record only, and no company risk column is added.
+- **Settled later (28 Sep 2026):** no risk column on `exporter_profile` (**D5**); risk is
+  **refused** on every non-`CLEAR` outcome (D5, amended in the PR review — see "PR review
+  fixes" in §14); after a reopen the company shows the last clearance's risk, labelled
+  (**D6**).
 - Do not alter any existing risk enum to make it fit.
 - `CRITICAL` must look different on screen (architecture §3.3, L4-08).
 
@@ -590,10 +589,10 @@ Numbering is shared with `4b-task.md`. Only the ones that affect Dev4A are liste
 | # | Decision | Status on `main` | Blocks for Dev4A |
 |---|---|---|---|
 | D1 | **CLEAR prerequisite semantics** — what exactly must be true (A3: risk; no checks pending; eight items answered; evidence). | **Settled 28 Sep 2026 (programme lead):** exactly A3's four and no others (`background-check.md` §14.1) | nothing |
-| D2 | **Meaning of "pending"** — `status=PENDING` only? also `REVIEW` without an accepted review? placeholder rows? DIRECTOR/other subjects with no company link? | **Settled 28 Sep 2026 (programme lead):** pending unless terminal with a real provider — `PENDING`, `REVIEW` and placeholders all block | nothing |
+| D2 | **Meaning of "pending"** — `status=PENDING` only? also `REVIEW` without an accepted review? placeholder rows? DIRECTOR/other subjects with no company link? | **Settled 28 Sep 2026 (programme lead):** pending unless terminal with a real provider — `PENDING`, `REVIEW` and placeholders all block. **Clarified in the PR review (28 Sep, at the user's instruction; lead to confirm):** a `REVIEW` result with an `ACCEPTED` or `REJECTED` review no longer blocks | nothing |
 | D3 | **FAILED screening vs CLEAR** — does "answered" include `FAILED`? `EXEMPT`? can a company be CLEAR with a FAILED item? | **Settled 28 Sep 2026 (programme lead):** `PASSED`/`EXEMPT` only; a `FAILED` item blocks `CLEAR` (the company is `FLAGGED` instead) | nothing in the rule; UI copy still to write (4A-8) |
 | D4 | **Evidence snapshot scope** — which documents (company only? company + open deals? only `AVAILABLE`?); what counts as "evidence recorded" for CLEAR | **Settled 28 Sep 2026 (programme lead):** the company's own `AVAILABLE` documents (no deal paperwork); `CLEAR` needs at least one pinned id | nothing |
-| D5 | **Risk placement and requiredness** — on the company record too? required/allowed on `FLAGGED`/`ON_HOLD`/others? | **Settled 28 Sep 2026:** no company risk column; risk stays on the decision. Requiredness on non-`CLEAR` outcomes was not asked | nothing |
+| D5 | **Risk placement and requiredness** — on the company record too? required/allowed on `FLAGGED`/`ON_HOLD`/others? | **Settled 28 Sep 2026:** no company risk column; risk stays on the decision. **Amended in the PR review (28 Sep, at the user's instruction):** risk is refused on every non-`CLEAR` outcome | nothing |
 | D6 | **Risk after reopening** — does the company keep showing the last CLEAR's risk while `IN_REVIEW`? cleared? | **Settled 28 Sep 2026:** keep the last recorded risk, explicitly labelled on screen | nothing |
 | D8 | **DEVELOPER visibility** — may DEVELOPER read the gauge value, the decision reasons, the evidence ids? (history route already admits DEVELOPER) | **Settled 28 Sep 2026:** no — refused on all three routes, reads included | nothing |
 | D10 | **Company row lock during handover** — must Dev3's guard lock/share-lock the company row? | **Settled 28 Sep 2026:** yes, `FOR SHARE`, on the move only. Built; needs Dev3 review | nothing |
@@ -615,7 +614,7 @@ Record every answer in `docs/contracts/background-check.md` with its date and wh
 > | **4B-0 dependency** (the §6 seam and the §9 anchor blocks) | **CLEARED.** Dev4B Phase 4B-0 is complete (`4b-task.md` §14, 4B-0 status). Dev4A consumes `domain/compliance_inputs.py` and `ComplianceInputsService` exactly as §6 documents, and edits only its own anchor blocks. |
 > | **Dev4A implementation** | **4A-1 … 4A-8 COMPLETE (28 Sep 2026).** **4A-9 remains BLOCKED — U4 / O3 DECISION REQUIRED**: no customer promotion, no Dev2 call, no `company.became_customer`. See the status blocks below. |
 > | **D13** (risk database type) | **Settled:** a Dev4A-owned enum type (§13). |
-> | **D5** (risk on the company record) | **Open, non-blocking:** no company risk column (§13). |
+> | **D5** (risk on the company record) | **Settled:** no company risk column; risk refused off `CLEAR` (§13). |
 > | **U4 / D11** (customer transition) | **Blocked:** §5.9 and 4A-9 untouched. |
 > | **D1–D4** (CLEAR prerequisites, evidence scope) | **Settled 28 Sep 2026** (programme lead). Recorded in full in `background-check.md` §14.1 and carried in code by one value, `CLEAR_POLICY`. |
 >
@@ -983,6 +982,48 @@ OpenAPI artifact current. A phase that cannot meet its stop condition stops and 
 >   read in that order.
 > - 20 new tests. Frontend gate: `tsc -b` clean, ESLint 0 errors (2 pre-existing
 >   warnings), **vitest 151 passed / 17 files**, `vite build` clean.
+
+> **PR REVIEW FIXES (28 Sep 2026)** — from the audit of `feature/4b-decision-engine-and-integration`
+> @ `7e0058e` (the branch name is a typo; it is this Dev4A PR). All three blockers were
+> reproduced with a scratch test before being fixed.
+>
+> - **Blocker — the dialog sent a hidden risk.** Choosing a risk for `CLEAR` and then
+>   switching to another move submitted the rating with it, onto an append-only decision
+>   the panel then showed as the company's risk. The rating now resets when the move
+>   changes and is sent only for a move whose `risk_required` is true.
+> - **Blocker — risk accepted on every move from every role.** An OPERATIONS start with
+>   `risk_rating: CRITICAL` returned 201 and the standing then read `CRITICAL`. Risk is now
+>   refused off `CLEAR`: `422 BACKGROUND_CHECK_RISK_NOT_ALLOWED` in the service, and
+>   `ck_background_check_decision_risk_only_on_clear` in migration 0015 (D5 amended).
+> - **Blocker — a reviewed `REVIEW` result blocked `CLEAR` for ever.**
+>   `VerificationService.review` sets `review_status` and never changes `status`, and
+>   `CLEAR_POLICY` counted every `REVIEW` as pending. New `ClearPolicy.concluding_review_statuses`
+>   (`ACCEPTED`, `REJECTED`); `ESCALATED` still blocks and placeholders always block (D2
+>   clarified — **the lead should confirm**).
+> - **Stale screens.** The request takes an optional `from_value`; if the company has moved
+>   since, `409 BACKGROUND_CHECK_STATE_CHANGED` instead of the request becoming a different
+>   act (a reassessment turning into a reopen). The panel always sends it and reloads the
+>   standing on any refused move.
+> - **D10 tested by behaviour.** The source-text assertions were replaced by two-session
+>   tests: a reopen waits while a handover of a `CLEAR` company is in flight (verified to
+>   fail when `lock=True` is removed), and rendering a deal never blocks a move.
+> - **Ordering.** `decided_at` defaults to `clock_timestamp()` instead of `now()`, so a
+>   move that waited on the row lock cannot sort before the decision it supersedes.
+> - **Error context.** The 4A exceptions put `BackgroundCheckState.IN_REVIEW` into `detail`
+>   and `error_context`; they now carry plain values.
+> - **Panel.** Outstanding prerequisites are shown as sentences, not keys; a refused move
+>   shows the server's message.
+> - **Documentation.** D5, D6, D8 and D10 are recorded as settled throughout. Correction to
+>   the 4A-6 status above: the three pieces of `deal_service.py` prose it left for Developer 3
+>   were updated by commit `7e0058e` together with the D10 lock, and the review also updated
+>   `transition_stage`'s docstring. **All of those `deal_service.py` changes go beyond §7 and
+>   need Developer 3's review.**
+> - **Migration 0015 was edited in place** (it is unmerged): the new check constraint and the
+>   `decided_at` default. A database already at 0015 must run `downgrade -1` then
+>   `upgrade head` (lossy for decisions, as the downgrade states). Round trip run clean.
+> - **Still merge conditions, not code:** Developer 1/2/3/4B acknowledgements (contract §15);
+>   D14 (Developer 1's contract text); the lead's confirmation of the D2 clarification and the
+>   D5 amendment.
 
 ### 4A-9 — Customer transition hand-off — **BLOCKED — U4 / O3 DECISION REQUIRED**
 - Not started until D11 is written down. Then: the agreed seam with Dev2 (L2-11), the announcement

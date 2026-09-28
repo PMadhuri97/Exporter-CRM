@@ -10,7 +10,8 @@ was (company-record §3.1, A5).
 **Every move is one transaction** (contract §9), in this order:
 
 1. lock the company row ``FOR UPDATE``;
-2. check the move, the role and the text — nothing is assigned yet;
+2. check the caller's premise, the move, the role, the text and the risk — nothing
+   is assigned yet;
 3. read the inputs through the 4A ↔ 4B seam in the same session;
 4. (``CLEAR`` only) evaluate A3's prerequisites, still assigning nothing;
 5. insert the decision and its evidence rows;
@@ -74,8 +75,10 @@ from app.modules.onboarding.exceptions import (
     BackgroundCheckMoveNotAllowedError,
     BackgroundCheckPrerequisitesUnmetError,
     BackgroundCheckReasonRequiredError,
+    BackgroundCheckRiskNotAllowedError,
     BackgroundCheckRiskRequiredError,
     BackgroundCheckRoleNotAllowedError,
+    BackgroundCheckStateChangedError,
     ExporterProfileNotFoundError,
 )
 from app.modules.onboarding.infrastructure.repositories.background_check_decision_repository import (  # noqa: E501
@@ -126,8 +129,10 @@ _NO_TEXT_REQUIRED: frozenset[tuple[_State, _State]] = frozenset(
     {(_State.NOT_STARTED, _State.IN_REVIEW)}
 )
 
-#: Risk is required on `CLEAR` and on nothing else. Whether it is *allowed* on other
-#: outcomes is D5 — open — so the service neither requires nor refuses it there.
+#: Risk is required on `CLEAR` and refused everywhere else (contract §7): it is
+#: compliance's rating at the moment of clearing, and a rating on any other move would
+#: become what the reader reports as the company's risk. The database refuses it too
+#: (`ck_background_check_decision_risk_only_on_clear`).
 _RISK_REQUIRED: frozenset[_State] = frozenset({_State.CLEAR})
 
 #: Which act each move is, for the history row's ``source``. The route takes a
@@ -413,6 +418,7 @@ class BackgroundCheckService:
         risk: BackgroundCheckRisk | None,
         actor_id: str,
         actor_role: UserRole,
+        seen_value: _State | None = None,
     ) -> BackgroundCheckDecisionView:
         """Record a move by naming where it goes. One entry point for the route.
 
@@ -426,6 +432,13 @@ class BackgroundCheckService:
         company sitting somewhere else is still refused with
         ``BACKGROUND_CHECK_MOVE_NOT_ALLOWED`` rather than being carried along by
         whichever move happens to fit.
+
+        ``seen_value`` is the value the caller was looking at when it chose the move.
+        Because four acts share the destination ``IN_REVIEW``, a request made from a
+        stale screen could otherwise become a different act — a reassessment of a
+        ``FLAGGED`` company arriving after someone cleared it would reopen the
+        clearance. When given, it must equal the current value under the row lock or
+        the move is refused with ``BACKGROUND_CHECK_STATE_CHANGED``.
 
         The named methods (``start_review``, ``clear``, ``reopen`` …) remain the
         internal vocabulary and are what other server code should call: they say what
@@ -446,6 +459,7 @@ class BackgroundCheckService:
             actor_role=actor_role,
             reason=reason,
             risk=risk,
+            seen_value=seen_value,
         )
 
     # ── Reads ────────────────────────────────────────────────────────────────
@@ -486,6 +500,7 @@ class BackgroundCheckService:
         reason: str | None,
         risk: BackgroundCheckRisk | None,
         method: str | None = None,
+        seen_value: _State | None = None,
     ) -> BackgroundCheckDecisionView:
         """Contract §9's eight steps. Every public move is this function.
 
@@ -499,7 +514,10 @@ class BackgroundCheckService:
         profile = await self._lock_profile(company_id)
         current = profile.background_check
 
-        # 2 — the move, the role and the text. Nothing is assigned yet.
+        # 2 — the caller's premise, the move, the role, the text and the risk. Nothing
+        #     is assigned yet.
+        if seen_value is not None and current is not seen_value:
+            raise BackgroundCheckStateChangedError(company_id, seen_value, current)
         if current not in expected_from or (current, to_value) not in _MOVES:
             raise BackgroundCheckMoveNotAllowedError(company_id, current, to_value)
         if actor_role not in _MOVES[(current, to_value)]:
@@ -514,6 +532,8 @@ class BackgroundCheckService:
             raise BackgroundCheckReasonRequiredError(current, to_value)
         if to_value in _RISK_REQUIRED and risk is None:
             raise BackgroundCheckRiskRequiredError(company_id)
+        if to_value not in _RISK_REQUIRED and risk is not None:
+            raise BackgroundCheckRiskNotAllowedError(current, to_value)
 
         # 3 — the inputs, through the seam, in this session and under this lock.
         inputs = await self._reader.company_inputs(company_id)

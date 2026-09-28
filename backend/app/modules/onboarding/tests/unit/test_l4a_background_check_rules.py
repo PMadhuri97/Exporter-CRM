@@ -15,6 +15,7 @@ failing test.
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
 from datetime import UTC, datetime
 
@@ -440,6 +441,9 @@ class TestClearPrerequisites:
         assert "FAILED" not in CLEAR_POLICY.answered_screening_statuses
         # D4: a cleared company must rest on something recorded.
         assert CLEAR_POLICY.evidence_required is True
+        # D2, clarified in the PR review: an ACCEPTED or REJECTED review finishes a
+        # REVIEW result; an ESCALATED one does not.
+        assert CLEAR_POLICY.concluding_review_statuses == {"ACCEPTED", "REJECTED"}
 
     def test_the_rule_reads_nothing_but_its_arguments(self):
         """Pure: the same arguments give the same answer, with no session in sight."""
@@ -447,6 +451,67 @@ class TestClearPrerequisites:
         first = self._evaluate(inputs)
         second = self._evaluate(inputs)
         assert first == second
+
+
+# ── D2: a review finishes a REVIEW result ────────────────────────────────────
+
+
+def _reviewed(status: str, review_status: str | None, *, placeholder: bool = False):
+    return dataclasses.replace(
+        _verification(status=status, is_placeholder=placeholder),
+        latest_review_status=review_status,
+    )
+
+
+def _settled_unmet(*checks: VerificationInput) -> tuple[str, ...]:
+    inputs = _inputs(verifications=checks)
+    return evaluate_clear_prerequisites(
+        inputs,
+        risk=BackgroundCheckRisk.LOW,
+        evidence=select_evidence(inputs),
+        policy=CLEAR_POLICY,
+    ).unmet
+
+
+class TestAReviewFinishesAReviewResult:
+    """`VerificationService.review` records `review_status` and never changes
+    `status`, so a `REVIEW` result stays `REVIEW` after compliance has dealt with it.
+    Read as pending for ever, it would make the company impossible to clear."""
+
+    @pytest.mark.parametrize("review_status", ["ACCEPTED", "REJECTED"])
+    def test_a_finished_review_concludes_a_review_result(self, review_status):
+        assert _settled_unmet(_reviewed("REVIEW", review_status)) == ()
+
+    @pytest.mark.parametrize("review_status", [None, "ESCALATED"])
+    def test_an_unreviewed_or_escalated_review_result_is_still_pending(self, review_status):
+        assert _settled_unmet(_reviewed("REVIEW", review_status)) == (CLEAR_NO_CHECKS_PENDING,)
+
+    def test_an_unreviewed_pending_result_is_still_pending(self):
+        """`PENDING` cannot be reviewed (the service refuses), so it waits for the
+        provider exactly as before."""
+        assert _settled_unmet(_reviewed("PENDING", None)) == (CLEAR_NO_CHECKS_PENDING,)
+
+    def test_a_reviewed_placeholder_is_still_pending(self):
+        """A placeholder never ran; accepting it does not make it a result."""
+        assert _settled_unmet(_reviewed("PASSED", "ACCEPTED", placeholder=True)) == (
+            CLEAR_NO_CHECKS_PENDING,
+        )
+
+    def test_the_default_policy_field_is_the_strict_reading(self):
+        """A policy that does not name concluding reviews treats none as concluding."""
+        inputs = _inputs(verifications=(_reviewed("REVIEW", "ACCEPTED"),))
+        strict = evaluate_clear_prerequisites(
+            inputs,
+            risk=BackgroundCheckRisk.LOW,
+            evidence=select_evidence(inputs),
+            policy=ClearPolicy(
+                pending_verification_statuses=frozenset({"PENDING", "REVIEW"}),
+                placeholder_counts_as_pending=True,
+                answered_screening_statuses=frozenset({"PASSED", "EXEMPT"}),
+                evidence_required=True,
+            ),
+        )
+        assert strict.unmet == (CLEAR_NO_CHECKS_PENDING,)
 
 
 # ── The evidence view kinds line up with the entity's check constraint ───────

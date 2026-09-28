@@ -1,8 +1,8 @@
 """Request/response schemas for the background check — **owner: Developer 4A**
 (L4-03, L4-13; ``docs/contracts/background-check.md``).
 
-**What a client may not send.** The move request carries a destination, a reason and
-a risk rating, and nothing else. It may not name the actor, the source, the
+**What a client may not send.** The move request carries a destination, a reason, a
+risk rating and the value the client was looking at, and nothing else. It may not name the actor, the source, the
 decided-by kind or the evidence: every one of those is the server's, and a client
 that could choose them could forge who decided, claim a decision came from RXIL, or
 pin a decision to evidence it never rested on. ``extra="forbid"`` makes the attempt a
@@ -15,9 +15,9 @@ and ids; it embeds no PAN, GSTIN or buyer contact detail, so there is nothing fo
 Developer 1's helpers exactly as ``deal.py`` does — it does not get special-cased
 here.
 
-The reason *is* free text a person typed, and whether DEVELOPER may read it is
-**D8, open**. The default until D8 is answered is no widening: DEVELOPER does not
-reach these routes at all, so the question does not arise in this schema.
+The reason *is* free text a person typed, which is why DEVELOPER may not read it
+(**D8**, settled 28 September 2026): DEVELOPER does not reach these routes at all, so
+the question does not arise in this schema.
 """
 
 from __future__ import annotations
@@ -122,10 +122,10 @@ class BackgroundCheckResponse(BaseModel):
     risk_rating: BackgroundCheckRisk | None = Field(
         default=None,
         description=(
-            "The risk of the most recent decision that set one. Read `value` before "
-            "trusting it: a company cleared at LOW and then reopened still reports "
-            "LOW while it sits at IN_REVIEW. What a reopened company should show is "
-            "an open decision (D6)."
+            "The risk of the most recent CLEAR decision (only CLEAR carries one). "
+            "Read `value` before trusting it: a company cleared at LOW and then "
+            "reopened still reports LOW while it sits at IN_REVIEW — the last "
+            "recorded risk, to be labelled as such (D6)."
         ),
     )
     latest_decision_id: uuid.UUID | None = None
@@ -158,7 +158,7 @@ class BackgroundCheckResponse(BaseModel):
 class RecordBackgroundCheckDecisionRequest(BaseModel):
     """A move, as a client may ask for it.
 
-    Three fields, and `extra="forbid"`. The actor comes from the login session, the
+    Four fields, and `extra="forbid"`. The actor comes from the login session, the
     source and decided-by kind are the server's, and the evidence snapshot is
     assembled by the server from the 4A ↔ 4B seam and Developer 3B's documents. A
     request naming any of them is refused (422) rather than quietly ignored.
@@ -178,7 +178,20 @@ class RecordBackgroundCheckDecisionRequest(BaseModel):
     )
     risk_rating: BackgroundCheckRisk | None = Field(
         default=None,
-        description="LOW, MEDIUM, HIGH or CRITICAL. Required on CLEAR.",
+        description=(
+            "LOW, MEDIUM, HIGH or CRITICAL. Required on CLEAR and refused (422 "
+            "`BACKGROUND_CHECK_RISK_NOT_ALLOWED`) on every other move."
+        ),
+    )
+    from_value: BackgroundCheckState | None = Field(
+        default=None,
+        description=(
+            "The value the client was looking at when it chose this move. If the check "
+            "has moved since, the request is refused (409 "
+            "`BACKGROUND_CHECK_STATE_CHANGED`) instead of becoming a different act — "
+            "four moves share the destination IN_REVIEW. Optional, but a screen "
+            "should always send it."
+        ),
     )
 
 
