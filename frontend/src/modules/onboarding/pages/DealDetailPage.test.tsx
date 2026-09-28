@@ -12,6 +12,7 @@ import {
   getExporterProfileDetail,
   listDealDocuments,
   listDealHistory,
+  listVerificationResults,
   setDealBuyer,
 } from '../api';
 import type { CrmDocument, Deal } from '../types';
@@ -35,6 +36,8 @@ vi.mock('../api', () => ({
   // The page names the company in its back link, and shows the deal's history.
   getExporterProfileDetail: vi.fn(),
   listDealHistory: vi.fn(),
+  // Staff see the buyer's checks under the buyer.
+  listVerificationResults: vi.fn(),
 }));
 
 const DEAL_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -62,7 +65,7 @@ function deal(overrides: Partial<Deal> = {}): Deal {
     },
     allowed_stage_moves: [{ to_stage: 'WITHDRAWN', reason_required: true }],
     handover_blocked_reason:
-      'the background check is not recorded yet — Developer 4’s migration 0015 has not landed, so no company has one',
+      'the company is PROSPECT, not CUSTOMER; the background check is FLAGGED, not CLEAR',
     ...overrides,
   };
 }
@@ -119,6 +122,13 @@ beforeEach(() => {
     name: 'Acme Exports Pvt Ltd',
   } as Awaited<ReturnType<typeof getExporterProfileDetail>>);
   vi.mocked(listDealHistory).mockResolvedValue({ entries: [], total: 0, limit: 25, offset: 0 });
+  vi.mocked(listVerificationResults).mockResolvedValue({
+    entity_type: 'BUYER',
+    entity_reference: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    results: [],
+    total: 0,
+    capabilities: { can_record_result: false, can_review: false },
+  });
   vi.mocked(listDealDocuments).mockResolvedValue({
     documents: [document_()],
     total: 1,
@@ -143,8 +153,9 @@ describe('DealDetailPage — the server decides what may happen next', () => {
     renderPage();
 
     expect(await screen.findByText(/Not ready to hand over/)).toBeInTheDocument();
+    // Every unmet condition, as the server names them.
     expect(
-      screen.getByText(/background check is not recorded yet/),
+      screen.getByText(/not CUSTOMER; the background check is FLAGGED, not CLEAR/),
     ).toBeInTheDocument();
   });
 
@@ -194,6 +205,35 @@ describe('DealDetailPage — the server decides what may happen next', () => {
     expect(await screen.findByText('Handed over')).toBeInTheDocument();
     // What the lending team was given must not be editable afterwards.
     expect(screen.queryByRole('button', { name: 'Edit buyer' })).not.toBeInTheDocument();
+  });
+});
+
+describe('DealDetailPage — buyer checks', () => {
+  it('shows staff the checks on the buyer, read through the buyer id', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'Buyer checks' })).toBeInTheDocument();
+    expect(listVerificationResults).toHaveBeenCalledWith(
+      'BUYER',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    );
+  });
+
+  it('does not render them for a DEVELOPER, whom the server refuses (D8)', async () => {
+    signedInAs('DEVELOPER');
+    renderPage();
+
+    expect(await screen.findByText('Rotterdam shipment, March')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Buyer checks' })).not.toBeInTheDocument();
+    expect(listVerificationResults).not.toHaveBeenCalled();
+  });
+
+  it('has nothing to show before a buyer is recorded', async () => {
+    vi.mocked(getDeal).mockResolvedValue(deal({ buyer: null }));
+    renderPage();
+
+    expect(await screen.findByText(/No buyer recorded yet/)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Buyer checks' })).not.toBeInTheDocument();
   });
 });
 

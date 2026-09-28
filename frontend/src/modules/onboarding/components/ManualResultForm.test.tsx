@@ -13,7 +13,7 @@ import {
   DOCUMENT_ID,
   renderWithClient,
   verificationResult,
-} from './verification-test-fixtures';
+} from '../testing/verification-fixtures';
 
 vi.mock('../api', () => ({
   listCompanyDocuments: vi.fn(),

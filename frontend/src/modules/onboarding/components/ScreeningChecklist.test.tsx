@@ -10,7 +10,7 @@ import {
   renderWithClient,
   screeningItem,
   screeningList,
-} from './verification-test-fixtures';
+} from '../testing/verification-fixtures';
 
 vi.mock('../api', () => ({
   getScreeningReview: vi.fn(),

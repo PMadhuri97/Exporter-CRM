@@ -107,7 +107,8 @@ hand.
 ```bash
 cd backend
 python -m alembic heads                                   # exactly one
-python -m pytest -q --no-cov -p no:cacheprovider          # ~15 minutes
+python -m alembic check                                   # no model/database drift
+python -m pytest -q --no-cov -p no:cacheprovider          # 15–30 minutes
 ruff check .
 lint-imports --config importlinter.ini                    # the --config flag is required
 
@@ -121,6 +122,13 @@ pnpm build
 - `--no-cov` and `-p no:cacheprovider` keep a run from writing `htmlcov/`, `.coverage`
   and `.pytest_cache` into the tree; a baseline is about pass/fail.
 - `lint-imports` without `--config importlinter.ini` finds no configuration and fails.
+- `alembic check` compares every model with the database it points at, so run it
+  against a database at head. Tables a migration creates with no model behind them are
+  listed in `migrations/env.py` (`UNMODELLED_TABLES`).
+- Tests that cannot pass in this checkout are marked as **expected failures** in
+  `backend/conftest.py` (`_NEEDS_UNMOUNTED_PAYMENT_ROUTES`) — never by editing the
+  module they belong to. The marks are strict: one that starts passing fails the run
+  until it is taken off the list.
 - **Do not run Prettier over existing files**: there is no Prettier configuration, and
   the code is hand-formatted (single quotes, ~100 columns).
 - The contract tests in `backend/tests/contract/` guard the repository itself: every
@@ -205,8 +213,9 @@ Rules (details in [`../backend/migrations/README.md`](../backend/migrations/READ
 |---|---|
 | [`architecture.md`](architecture.md) | The CRM: model, state machines, roles, ownership, decisions, limitations |
 | [`demo.md`](demo.md) | How to demonstrate it |
+| [`open-items.md`](open-items.md) | Everything still open: decisions for the lead, and engineering items |
 | [`contracts/`](contracts/) | What each part promises the others |
 | [`module-rule-exceptions.md`](module-rule-exceptions.md) | The one recorded exception to the module rule |
 | [`Exporter-CRM-Architecture-and-Plan.pdf`](Exporter-CRM-Architecture-and-Plan.pdf) | The design the CRM was built from (v1.0) |
-| [`dev4/`](dev4/) | Developer 4's task documents — the only record of some of 4B's decisions |
+| [`dev4/`](dev4/) | Developer 4's task documents, complete — kept as the record of decisions D1–D17 |
 | [`../RUNNING.md`](../RUNNING.md) | Why this checkout contains more than the CRM, and what was pruned |

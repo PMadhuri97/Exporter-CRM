@@ -13,7 +13,7 @@ import {
   renderWithClient,
   review,
   verificationResult,
-} from './verification-test-fixtures';
+} from '../testing/verification-fixtures';
 
 vi.mock('../api', () => ({
   reviewVerification: vi.fn(),

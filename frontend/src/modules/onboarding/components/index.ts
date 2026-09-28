@@ -1,6 +1,8 @@
 export { JourneyChip, MarkerBadge, QualificationChip } from './CompanyChips';
 export { MarkerControl } from './MarkerControl';
 export { VerificationSection } from './VerificationSection';
+// Developer 4B: checks on a deal's buyer, mounted on the deal page.
+export { BuyerChecks } from './BuyerChecks';
 // Developer 3A: the conversation gauge's move control, and the READY_NOW prompt
 // (seam S2), which opens a deal through Developer 3B's `OpenDealForm`.
 export { ConversationGaugeControl } from './ConversationGaugeControl';

@@ -64,8 +64,10 @@ module).
 
 - *Append-only by the database, not by discipline.* Decisions, reviews, history rows,
   activities and follow-up completions are protected by triggers that refuse `UPDATE`
-  and `DELETE` (`public.prevent_mutation()`); every such rule has a test that tries the
-  violation in raw SQL.
+  and `DELETE` (`public.prevent_mutation()`). Documents and verification results are
+  never deleted, a document's identity is fixed once set, and a `HANDED_OVER` or
+  `WITHDRAWN` deal no longer changes (migration 0022). Every such rule has a test that
+  tries the violation in raw SQL.
 - *Ports owned by the consumer.* Verification adapters, storage and the scanner are
   `Protocol`s defined where they are used; implementations satisfy them structurally.
 - *One transaction per operation.* A service validates everything before it assigns
@@ -193,7 +195,8 @@ commit, announces `company.became_customer`. It is idempotent: a customer that i
 reopened and cleared again is not promoted or announced twice.
 
 **The handover guard** (assumption A5): a deal may be handed over only when its company
-is a `CUSTOMER` **and** its background check is `CLEAR`. The guard share-locks the
+is a `CUSTOMER` **and** its background check is `CLEAR`; until then the deal says why,
+naming every unmet condition. The guard share-locks the
 company row while the handover commits (D10), so a concurrent flag or reopen waits. The
 handover snapshots the deal's buyer and document ids, writes the history row, and after
 the commit announces `deal.handed_over` to the lending team.
@@ -281,8 +284,10 @@ contact emails and phones, and a deal buyer's identifiers and contact details, a
 masked the same way; a profile-history row stores identifiers already masked. An exact
 search by PAN, GSTIN or IEC is refused to those roles, because a match alone would say
 which company holds the identifier. DEVELOPER does not receive `background_check`,
-`verification` or `screening` history rows, since D8 refuses it that data on those
-gauges' own routes.
+`verification` or `screening` history rows, nor the risk rating and clearing decision
+recorded on the `CUSTOMER` journey row, since D8 refuses it that data on those gauges'
+own routes; for the same reason a deal response gives DEVELOPER no stage moves and no
+handover-blocked reason.
 
 **Design principle:** a role that cannot reveal a value gets no reveal control at all,
 not a disabled one — a disabled eye icon would still leak "this data exists, you're
@@ -336,7 +341,8 @@ Developer 2's promotion (`promote_to_customer_if_ready`).
 - **Implemented on the audit's recommendation, awaiting the lead's confirmation:**
   U4 (the move to `CUSTOMER` is one transaction) and the rule that only a `PROSPECT` or
   `CUSTOMER` may open a deal; also the D2 clarification and D5 amendment made in the
-  Developer 4A review, and Developer 4B's side of D4.
+  Developer 4A review, and Developer 4B's side of D4. These, and every decision still
+  open, are listed in [`open-items.md`](open-items.md).
 
 ## 12. Known, intentional limitations
 
@@ -357,16 +363,15 @@ The prototype is built to be honest about what is not real yet.
 - **Open items the lead may change:** the `CLEAR` evidence rule is satisfied by the
   eight screening answers alone, so a company can be cleared with no document and no
   verification result; placeholder verification rows can never stop blocking `CLEAR`;
-  the handover snapshot includes deal documents whatever their scan status; the deal's
-  `allowed_stage_moves` is not filtered by role (the screen hides moves from DEVELOPER);
-  masked roles learn which company already holds a PAN from the duplicate refusal;
-  changing a `NOT_NOW` check-back date takes two moves; there are no cross-company deal
-  or document lists; documents cannot be deleted (seven-year retention argues against
-  it); the buyer-checks component exists but is not mounted on the deal page; there is
-  no CI.
+  the handover snapshot includes deal documents whatever their scan status; masked roles
+  learn which company already holds a PAN from the duplicate refusal; changing a
+  `NOT_NOW` check-back date takes two moves; there are no cross-company deal or document
+  lists; documents cannot be deleted (seven-year retention argues against it, and the
+  database refuses it); there is no CI. [`open-items.md`](open-items.md) tracks each.
 
 ## 13. Further reading
 
+- What is still open, and who decides: [`open-items.md`](open-items.md).
 - The contracts: [`contracts/`](contracts/) — company record, criterion results,
   engagement, deal and buyer, storage and documents, background check, history row,
   event envelope, migration register.

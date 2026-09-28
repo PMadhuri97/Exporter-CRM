@@ -319,8 +319,8 @@ dimension uses the contract's derived names (`marker_transition`,
 `profile_transition`, ...). Since L2-04 every journey row — the `LEAD` row at
 creation, the `LEAD` -> `PROSPECT` move a `QUALIFIED` outcome makes, and an
 RXIL intake's rows — uses these two names, and carries `terminal` in its
-details: `false` for `LEAD` and `PROSPECT`; `true` is reserved for the move to
-`CUSTOMER` (L2-11, not built). Rows written before L2-04 for the ten old
+details: `false` for `LEAD` and `PROSPECT`; `true` for the move to `CUSTOMER`
+(L2-11, §3.2). Rows written before L2-04 for the ten old
 statuses are kept as they were.
 
 **Allowed moves are served, not copied.** Each company response carries

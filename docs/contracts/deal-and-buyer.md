@@ -114,6 +114,11 @@ buyer; a deal falling through is `WITHDRAWN` with a reason on the deal. **Neithe
 touches the company's record.** There is no "has a bad deal" or "buyer risk" field on
 `exporter_profile`, and adding one would be a contract change, not a detail.
 
+The deal page shows the buyer's checks to staff (`BuyerChecks`), read and recorded by
+`deal_buyer.id`. Once the deal is `HANDED_OVER` or `WITHDRAWN`, no new check may be
+recorded (D17, 409 `DEAL_CLOSED`), and the verifications list stops offering
+`can_record_result` for that buyer; existing checks stay readable and reviewable.
+
 ---
 
 ## 4. Who may do what
@@ -137,10 +142,10 @@ instead of offering a button that 409s.
 caller may open a deal on the company now — a staff role and a `PROSPECT` or
 `CUSTOMER` company (§2). The screen offers "Open a deal" from it.
 
-`allowed_stage_moves` is the stage graph from the deal's current stage and is **not**
-filtered by role: DEVELOPER is served moves the route would refuse it with 403. The
-screen hides them for DEVELOPER. (Open item — a role-aware list would match the
-background check's `allowed_moves`.)
+`allowed_stage_moves` and `handover_blocked_reason` are served only to a role that may
+move a deal (OPERATIONS, COMPLIANCE, ADMIN). DEVELOPER is served no moves and no
+reason: it could act on neither, and the reason names the company's background check,
+which decision D8 keeps from DEVELOPER.
 
 ---
 
@@ -176,8 +181,9 @@ check (`company-record.md` §3.2), and the check is read through Developer 4A's
 published helper (`background-check.md` §10) — this service never creates or writes
 that column (`company-record.md` §2.4). A company never checked reads `NOT_STARTED`,
 and "not `CLEAR`" is never treated as "clear". While either condition is unmet,
-`allowed_stage_moves` omits the move and `handover_blocked_reason` names the unmet
-condition (journey first). The guard share-locks the company row on the move (D10),
+`allowed_stage_moves` omits the move and `handover_blocked_reason` names **every** unmet
+condition, journey first, joined with `"; "` — for example `the company is PROSPECT, not
+CUSTOMER; the background check is FLAGGED, not CLEAR`. The guard share-locks the company row on the move (D10),
 so a concurrent flag or reopen waits for the handover to commit.
 
 On handover: write the history row first, then announce

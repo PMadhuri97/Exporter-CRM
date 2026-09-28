@@ -13,8 +13,9 @@
  * `ReviewDialog` as the company workspace: the buyer's evidence documents are its
  * deal's.
  *
- * **Not mounted, and not exported from `components/index.ts`.** Developer 3 mounts it
- * on the deal page after the merge (one import, one element).
+ * Mounted on the deal page, for staff, once the deal has a buyer. On a closed deal
+ * the server stops offering `can_record_result` (D17); existing checks stay
+ * reviewable.
  */
 
 import { ShieldCheck } from 'lucide-react';

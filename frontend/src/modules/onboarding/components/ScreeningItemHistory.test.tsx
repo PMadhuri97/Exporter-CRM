@@ -10,7 +10,7 @@ import {
   historyPage,
   renderWithClient,
   screeningItem,
-} from './verification-test-fixtures';
+} from '../testing/verification-fixtures';
 
 vi.mock('../api', () => ({
   getScreeningItemHistory: vi.fn(),

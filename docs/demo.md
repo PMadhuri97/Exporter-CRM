@@ -54,8 +54,10 @@ exporter's documents — see §6.
    handed-over deal and its history; open the company's History tab to show the whole
    story in one place, including the journey's move to `CUSTOMER`.
 2. **Company C — Coastal Seafood Exports.** A **prospect** whose check is **`FLAGGED`**
-   (a failed screening item for suspicious bank indicators). Its Dubai deal cannot be
-   handed over, and the deal page says why.
+   (a failed screening item for suspicious bank indicators). Its Dubai deal is gathering
+   paperwork with its buyer recorded, but is **not ready to hand over**, and the deal page
+   names both reasons: the company is a `PROSPECT`, not a `CUSTOMER`, and its check is
+   `FLAGGED`, not `CLEAR`.
 3. **Company A — Aarav Textiles.** A prospect who said **"not now"**: the conversation is
    `NOT_NOW` with a check-back date, which shows on Home and the Follow-ups screen.
 4. **D** (not qualified, and **paused**), **E** (**ended** — hidden from the default list,
@@ -90,6 +92,10 @@ As **OPERATIONS** unless noted.
    but only one uploaded to the company's own Documents tab — deal paperwork belongs to
    the deal). The `CLEAR` move lists any prerequisite still unmet until they are all
    met.
+
+   On the deal page, COMPLIANCE can also record a **buyer check** (for example a
+   `FAILED` credit check with a note): it is recorded against the buyer and never
+   changes the company's background check (decision 9).
 9. **Record `CLEAR`** with a reason and a risk rating. The company becomes a
    **`CUSTOMER`** in the same step — show the journey on the company header — and
    "became customer" is announced to the customers team's event (nobody receives it
@@ -137,6 +143,5 @@ Avoid:
 - uploading real exporter documents;
 - presenting role and permission editing in Settings as controlling CRM access — the CRM
   still checks the five built-in roles;
-- promising buyer checks on the deal page — the component exists but is not mounted yet;
 - relying on the order of two history rows made in the same step — both are there, but
   the log does not order them between themselves.

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBankActivity } from '../api';
 
 import { BankActivityPanel } from './BankActivityPanel';
-import { bankActivity, COMPANY_ID, renderWithClient } from './verification-test-fixtures';
+import { bankActivity, COMPANY_ID, renderWithClient } from '../testing/verification-fixtures';
 
 vi.mock('../api', () => ({
   getBankActivity: vi.fn(),

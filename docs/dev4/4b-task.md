@@ -1,5 +1,13 @@
 # Dev4B — Verification / Screening Integrity
 
+> **Status, 29 September 2026: complete**, except 4B-8 (RXIL results intake), which waits on
+> RXIL's package contract (D12). Everything else here is built and merged. This file is kept as the record of Developer 4's decisions D1–D17 (§13), which code
+> cites; the rest is the task text as it was written, so passages that say "blocked",
+> "undecided" or "not built yet" describe the state at that time. What is still open is in
+> [`../open-items.md`](../open-items.md); the per-developer notes this file cites
+> (`dev1-`/`dev2-`/`dev3b-remaining-work.md`, `4b-remaining-work.md`) were retired into it
+> (its §4 says where their content went).
+
 > Companion document: **`docs/dev4/4a-task.md`** (Dev4A — Background Check / Compliance Core).
 > The two documents describe one split of Developer 4's work (architecture §9.4) into two
 > parallel pull requests. Sections 6 and 9 are identical in both files, and sections 10, 16 and
@@ -667,12 +675,10 @@ existing rule):
 
 **Open, for other owners (found in the PR audit; Dev4B changes nothing here):**
 
-- **D8 and the history route — Developer 1 / lead.** D9 and §5.1 put screening comments and
-  review notes into the shared history's `reason`. `history_router.py` admits DEVELOPER, so
-  DEVELOPER can read there what D8 keeps from them on `/verifications` and
-  `/screening-review`. It is the same inconsistency Developer 4A recorded for background-check
-  reasons (`background-check.md`, D8); the history route and its `reason` policy are Developer
-  1's.
+- ~~**D8 and the history route — Developer 1 / lead.**~~ **Resolved 29 Sep 2026:** the history
+  routes serve DEVELOPER no `background_check`, `verification` or `screening` rows, and strip
+  `risk_rating` and `clearing_decision_id` from the `CUSTOMER` journey row
+  (`history_router.py`, `history-row.md` §9).
 - **Placeholders can never stop blocking `CLEAR` — lead / Developer 4A.** A placeholder is
   `PENDING`, a `PENDING` result cannot be reviewed (422), and D2 counts a placeholder as pending,
   so a company with one can never be cleared; §5.9 says placeholders are flagged, never deleted,

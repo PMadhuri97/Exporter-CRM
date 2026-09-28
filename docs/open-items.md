@@ -1,0 +1,88 @@
+# Open items
+
+Everything still open about the Exporter CRM, in one place, as of 29 September 2026.
+It replaces the per-developer "remaining work" and progress notes, which recorded work
+that is now done; §4 says where their still-useful content went.
+
+What is deliberately not built is in [`architecture.md`](architecture.md) §12. Each
+contract also keeps its own open-items table (for example `company-record.md` §10);
+this page lists what needs a decision or a change, and links there for detail.
+
+---
+
+## 1. Decisions for the programme lead
+
+### 1.1 Implemented on a recommendation, awaiting written confirmation
+
+| Decision | What was built | Where it is described |
+|---|---|---|
+| **U4 / D11** — the move to `CUSTOMER` commits in the same transaction as the `CLEAR` or `QUALIFIED` that completes it | `promote_to_customer_if_ready`, called by both; announced after the commit | architecture §5, `background-check.md` §11.3 |
+| Only a `PROSPECT` or `CUSTOMER` may have a deal opened (`DEAL_COMPANY_NOT_READY`) | `DealService.open_deal`, `can_open_deal` | `deal-and-buyer.md` §2 |
+| **D2** clarification — a `REVIEW` result with an `ACCEPTED` or `REJECTED` review no longer blocks `CLEAR` | `CLEAR_POLICY` | `background-check.md` §14.1 |
+| **D5** amendment — risk is refused on every move except `CLEAR` | service and `ck_background_check_decision_risk_only_on_clear` | `dev4/4a-task.md` §13 |
+| **D4, Developer 4B's side** — which documents may be evidence for a verification (the company's own; for a buyer, its deal's or its company's), and only `AVAILABLE` ones | `verification_service._check_evidence_documents` | `dev4/4b-task.md` §13 |
+
+### 1.2 Undecided
+
+| Item | Why it matters | Detail |
+|---|---|---|
+| **Placeholder results can never stop blocking `CLEAR`.** D2 counts a placeholder as pending, and a `PENDING` result cannot be reviewed, so a company holding one can never be cleared | Production should hold none (the generator was dev-only), but any environment that has one is stuck. Needs a D2 amendment or a recorded data step | `dev4/4b-task.md` §13 |
+| **The `CLEAR` evidence rule** is satisfied by the eight screening answers alone, so a company can be cleared with no document and no verification result | Whether that is enough for a financier | architecture §12, `background-check.md` §14 |
+| **D12 — RXIL's package and results contract** | Blocks RXIL results intake (4B-8) and the automatic start of a check when RXIL results arrive. `StubRxilAdapter` stays a labelled stub until then | `dev4/4b-task.md` §4B-8 |
+| **RXIL's service identity** | RXIL company intake is ADMIN-only because a person pastes the package. A direct integration needs a machine identity — never `API_USER`, which public sign-up grants | — |
+| **O2 — `CUSTOMER` replaces `ONBOARDED`** for the ANER-4.2-S1T2 consumer, which watched journey rows marked `terminal` | That consumer sees completions only if `CUSTOMER` is confirmed as the replacement | `company-record.md` §10 |
+| **Identifier disclosure to masked roles.** OPERATIONS cannot search by PAN, but learns which company holds one from the duplicate refusal (`existing_customer_id`), GSTIN warnings and import candidates | Keep (decision 4's data-entry benefit) or omit the ids for roles that may not reveal identifiers | architecture §12 |
+| **Re-dating a `NOT_NOW` check-back** takes two moves, because a move to the value already held is refused | One step would need `NOT_NOW → NOT_NOW` with a new date in the contract | `engagement.md` §1.1 |
+| **Retire `GET /exporters/activities/pending`** | Superseded by `GET /follow-ups`, and it still lists completed follow-ups. The screens no longer call it | `engagement.md` §5.6 |
+| **Cross-company Deals and Documents lists** | Deals and paperwork are reached from a company. Sidebar rows would need two new paged routes first | architecture §12 |
+| **Gate §7.6 — a real scanner, and S3 with Object Lock, KMS and retention** | Until both exist, no real exporter document may be uploaded. Each is one new implementation of an existing port (`ScannerPort`, `StoragePort`) | architecture §7, §12; `storage-and-documents.md` |
+| **`app/integrations/object_storage`** | Recommended: keep it as the home of the future S3 vendor implementation (the port lives in `onboarding/domain/storage.py`) | — |
+| **CI (U6)** | There is none, so every gate is run by hand (`development.md` §7) | — |
+
+## 2. Engineering items (no decision needed)
+
+| Item | Detail |
+|---|---|
+| IEC has no `CHECK` constraint, unlike PAN, GSTIN and CIN | The service checks it; the database does not. Needs migration 0023 |
+| `POST /exporters` without `name` or `country` still creates a company | Remove the unnamed create path once nothing calls it, then make both columns `NOT NULL` |
+| CSV imports stop at 1,000 rows | Only if the business needs more: a background job with a pollable report, not a longer request |
+| `bank_activity_finding` has no foreign key to the company | Decide whether it should when a bank feed is connected |
+| The OpenAPI comparison includes `info.title`, which comes from `APP_NAME` | Regenerating with another app name fails the test for everyone. Pin the title in code or leave it out of the comparison |
+| The suite inside the `aner-app` container | `test_openapi_artifact_is_current.py` needs `./frontend` mounted, which compose does not do |
+| `test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index` sometimes fails | It asserts a query plan, which depends on the size of the database |
+| The shared test database accumulates thousands of test rows | Harmless to correctness; demo on a separate database (`demo.md` §1) |
+| No documents in the sample data | Worth adding once there is a scanner worth running |
+| The company search returns no `total` | Home and the Companies list cannot show exact counts |
+| History and decisions show actor ids, not names | Needs a user lookup every staff role may read; `/auth/users` is gated to user management |
+| No screen or route for managing reason codes | `criterion-result.md`, open item Q5 |
+| Routes outside the CRM still commit only in `get_db`'s teardown, which FastAPI runs after the response is sent | Fixed for the auth and role routes (they commit before returning, `test_commit_before_response.py`); the CRM's services always did. Still open: the legacy onboarding routes (`/cases`, `/register`, the Sumsub webhook) and the `compliance` routes, which the module rule keeps closed. A client acting on their response at once can miss the write |
+| Legacy case path: `CaseService._actor_type_for` records a user's transition as `API_CLIENT` | Out of scope (the legacy onboarding path); the actor id itself is recorded correctly |
+| Contract acknowledgement tables still read "pending" (for example `engagement.md` §10) | A step from the multi-developer plan; nothing to do unless more developers join |
+
+## 3. Decision records
+
+Decisions are recorded where their rule lives, not here:
+
+- The twelve prototype decisions and planning assumptions: the design PDF §6, summarised
+  in architecture §11.
+- Developer 4's D1–D17: `contracts/background-check.md` §14 and `dev4/4b-task.md` §13.
+- Each contract's own decisions, for example: follow-up completions write no history row
+  (`engagement.md` §5.7); the reschedule path has its own error codes rather than reusing
+  the conversation's (`engagement.md` §7.1); downloads fetch the bytes with the caller's
+  token rather than trusting a signed URL alone (`storage-and-documents.md` §6.1).
+- The one module-rule exception: [`module-rule-exceptions.md`](module-rule-exceptions.md).
+
+## 4. Where the retired notes went
+
+Removed on 29 September 2026, after the final release audit. Git history keeps them.
+
+| Removed | Its still-open content is now |
+|---|---|
+| `dev1-remaining-work.md`, `dev1-pr1-readiness.md` | U4 and U6 above; the allowed-moves question (U1) was settled in practice (`company-record.md` §10, O6) |
+| `dev2-remaining-work.md` | §1.2 and §2 above |
+| `dev3a-remaining-work.md`, `dev3a-phase1-progress.md`, `dev3a-phase2-progress.md` | §1.2 above; the decisions are in `engagement.md` |
+| `dev3b-remaining-work.md`, `dev3b-progress.md` | §1.2 and §2 above; the decisions are in `deal-and-buyer.md` and `storage-and-documents.md` |
+| `dev4/4b-remaining-work.md` | §1 above |
+| `exporter-crm-tickets.md`, `exporter-crm-frontend-tickets.md` | The original EXP-* build tickets, superseded by the design PDF |
+| `frontend-refresh.md` | The 28 September frontend refresh; its remaining items are in §1.2 and §2 above |
+| `../E9-NOTES.md`, `../TEST-BASELINE.md` | Superseded by the contracts and by `development.md` §9 |

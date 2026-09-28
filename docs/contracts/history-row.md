@@ -213,7 +213,7 @@ Stated separately so nobody reads this contract as a description of the code.
 | The table, its columns and its indexes | **implemented** (0013) |
 | Append-only trigger and repository | **implemented** (0011) |
 | The shared writer, `HistoryService.record` (flushes, never commits) | **implemented** (L1-11) |
-| The read routes, `GET /exporters/{id}/history` and `GET /deals/{id}/history` | **implemented** (L1-11); DEVELOPER does not receive `background_check`, `verification` or `screening` rows (D8) |
+| The read routes, `GET /exporters/{id}/history` and `GET /deals/{id}/history` | **implemented** (L1-11); DEVELOPER does not receive `background_check`, `verification` or `screening` rows, nor a row's `risk_rating` or `clearing_decision_id` details — the `CUSTOMER` journey row carries both (D8) |
 | Every dimension in §2 | **implemented** by its owner's service |
 | The move to `CUSTOMER`, with `terminal: true` | **implemented** (L2-11) |
 | The company foreign key | **implemented** (0014), declared on the model |

@@ -1,5 +1,13 @@
 # Dev4A — Background Check / Compliance Core
 
+> **Status, 29 September 2026: complete**, except 4B-8 (RXIL results intake), which waits on
+> RXIL's package contract (D12). Everything else here is built and merged. This file is kept as the record of Developer 4's decisions D1–D17 (§13), which code
+> cites; the rest is the task text as it was written, so passages that say "blocked",
+> "undecided" or "not built yet" describe the state at that time. What is still open is in
+> [`../open-items.md`](../open-items.md); the per-developer notes this file cites
+> (`dev1-`/`dev2-`/`dev3b-remaining-work.md`, `4b-remaining-work.md`) were retired into it
+> (its §4 says where their content went).
+
 > Companion document: **`docs/dev4/4b-task.md`** (Dev4B — Verification / Screening Integrity).
 > The two documents describe one split of Developer 4's work (architecture §9.4) into two
 > parallel pull requests. Sections 6 and 9 are identical in both files, and sections 10, 16 and
@@ -596,7 +604,7 @@ Numbering is shared with `4b-task.md`. Only the ones that affect Dev4A are liste
 | D6 | **Risk after reopening** — does the company keep showing the last CLEAR's risk while `IN_REVIEW`? cleared? | **Settled 28 Sep 2026:** keep the last recorded risk, explicitly labelled on screen | nothing |
 | D8 | **DEVELOPER visibility** — may DEVELOPER read the gauge value, the decision reasons, the evidence ids? (history route already admits DEVELOPER) | **Settled 28 Sep 2026:** no — refused on all three routes, reads included | nothing |
 | D10 | **Company row lock during handover** — must Dev3's guard lock/share-lock the company row? | **Settled 28 Sep 2026:** yes, `FOR SHARE`, on the move only. Built; needs Dev3 review | nothing |
-| D11 | **U4 / O3 transaction boundary** — S1-style flush-only seam, shared session, or retry-safe separate commits; and who publishes `company.became_customer` after the commit | Undecided | all of §5.9 (BLOCKED) |
+| D11 | **U4 / O3 transaction boundary** — S1-style flush-only seam, shared session, or retry-safe separate commits; and who publishes `company.became_customer` after the commit | **Implemented 29 Sep 2026 as one transaction** (the audit's recommendation; the programme lead to confirm): `promote_to_customer_if_ready` flushes inside the `CLEAR` or `QUALIFIED` transaction, and the caller announces after its commit | nothing |
 | D12 | **RXIL package / results contract**, including the actor of the automatic `NOT_STARTED → IN_REVIEW` move | Undecided | the automatic start only |
 | D13 | **Risk database type** — reuse `onboarding.verification_risk_level_enum` (Dev4B's) or a Dev4A-owned type | **Settled 28 Sep 2026 (Dev4 lead):** a Dev4A-owned enum type with exactly `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`, created in `onboarding_0015_bg_check`. Dev4B's enum is not reused, keeping the two migrations independently owned with no schema dependency between them. It is the CRM background-check risk vocabulary (decision 6 fixes the values, not the type) and changes no legacy, customer or onboarding risk type | nothing (was: migration) |
 | D14 | **History contract gap** — `history-row.md` §4 omits the `MORE_INFO → IN_REVIEW` note and the `CLEAR` reason the architecture requires | Dev1's contract | nothing in code (Dev4A enforces the architecture); contract text before final merge |

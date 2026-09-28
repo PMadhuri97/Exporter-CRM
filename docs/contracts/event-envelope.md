@@ -70,7 +70,7 @@ class EventEnvelope(BaseModel):
 
 ## 3. The two CRM events
 
-Both are **planned, not built** — see §6.
+Both are **implemented** and published after the commit that made them true — see §6.
 
 ### `company.became_customer`
 

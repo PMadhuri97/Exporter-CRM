@@ -336,9 +336,9 @@ Every refusal below has a test (plan §7.7). Phase 2 reuses the three marked
 | `EXPORTER_PROFILE_NOT_FOUND` | 404 | No company with that id. Developer 1's existing exception, not a new one. | **reuse** |
 | `CONVERSATION_NOT_AVAILABLE` | 409 | A move on a `LEAD` — the gauge applies from `PROSPECT` (§2.2). | |
 | `INVALID_CONVERSATION_TRANSITION` | 409 | A move to the value the gauge already has (§1.1). | |
-| `CONVERSATION_CHECK_BACK_REQUIRED` | 422 | A move to `NOT_NOW` with no check-back date (§4). | **reuse** — Phase 2's reschedule path refuses the same way |
+| `CONVERSATION_CHECK_BACK_REQUIRED` | 422 | A move to `NOT_NOW` with no check-back date (§4). | reserved for the reschedule path, then **not reused** there (§7.1) |
 | `CONVERSATION_CHECK_BACK_NOT_ALLOWED` | 422 | A check-back date on a move that is not to `NOT_NOW` (§4). | |
-| `CONVERSATION_CHECK_BACK_IN_PAST` | 422 | A check-back date before today (§4). | **reuse** |
+| `CONVERSATION_CHECK_BACK_IN_PAST` | 422 | A check-back date before today (§4). | reserved for the reschedule path, then **not reused** there (§7.1) |
 | `VALIDATION_ERROR` | 422 | A move to `NOT_NOW` with no reason (§4) — the shared `ValidationError`, as `set_marker` uses for the marker's reason. | |
 
 Phase 2 defines its own codes for completion and appends them below. It redefines no

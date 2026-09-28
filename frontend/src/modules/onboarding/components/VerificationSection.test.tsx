@@ -20,7 +20,7 @@ import {
   screeningItem,
   screeningList,
   verificationResult,
-} from './verification-test-fixtures';
+} from '../testing/verification-fixtures';
 import { VerificationSection } from './VerificationSection';
 
 vi.mock('../api', () => ({

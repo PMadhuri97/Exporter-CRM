@@ -36,7 +36,13 @@ import { formatDateTime, humanize } from '@/lib/format';
 import { isStaffRole, useCurrentUser } from '@/platform/auth';
 import { canReveal } from '@/platform/mask';
 
-import { DealHistory, DealStageChip, DocumentList, DocumentUpload } from '../components';
+import {
+  BuyerChecks,
+  DealHistory,
+  DealStageChip,
+  DocumentList,
+  DocumentUpload,
+} from '../components';
 import {
   useDeal,
   useDealDocuments,
@@ -395,6 +401,12 @@ export function DealDetailPage() {
               )
             )}
           </Panel>
+
+          {/* Checks on the buyer (decision 9: they attach to the buyer, never the
+              company). Staff only: DEVELOPER is refused the verification routes (D8).
+              Whether recording is offered is the server's `capabilities` — closed on
+              a HANDED_OVER or WITHDRAWN deal (D17). */}
+          {isStaff && deal.buyer && <BuyerChecks dealId={deal.id} dealBuyerId={deal.buyer.id} />}
 
           <Panel
             title="Paperwork"

@@ -155,6 +155,22 @@ and a row with both.
 `storage_key` is unique: two rows pointing at one object would make `delete`
 ambiguous.
 
+### 5.2.1 A document row is kept, and what it is does not change
+
+Migration `onboarding_0022_integrity`, each rule tested in raw SQL
+(`test_crm_integrity_guards_0022.py`):
+
+- **No row is deleted** (`trg_crm_document_no_delete`). Documents are kept for the
+  retention period, and a background-check decision may have pinned one as evidence.
+- **Its identity is fixed once set** (`trg_crm_document_identity_immutability`): owner,
+  category, type, source, file name, content type, size, uploader, upload time and
+  storage key.
+- **The scan verdict stays writable** — `scan_status` and `scanner_name` — because a
+  real scanner reports after the upload.
+
+`StorageService.delete` removes an *object* the service itself just stored when the row
+insert fails (§4); it never removes a recorded document.
+
 ### 5.3 Categories are fixed and server-checked; types are settings
 
 Ten categories, each belonging to a company, a deal, or both (architecture §3.4):

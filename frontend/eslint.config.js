@@ -42,13 +42,13 @@ export default tseslint.config(
         typescript: { project: './tsconfig.app.json' },
       },
       'boundaries/elements': [
+        // Each matches a whole folder — the plugin's default, so no `mode`.
         {
           type: 'module',
           pattern: 'src/modules/*',
-          mode: 'folder',
           capture: ['moduleName'],
         },
-        { type: 'platform', pattern: 'src/platform/*', mode: 'folder' },
+        { type: 'platform', pattern: 'src/platform/*' },
         // `components` joined this list when ExporterDetailPage was split into
         // per-owner panels: the generic pieces it shared (DetailRow, EmptySection,
         // FormPanel) moved to src/components/, and a path matching no element type
@@ -70,7 +70,7 @@ export default tseslint.config(
       // its own index.ts — same discipline as the backend's per-module
       // `-internals-are-private` import-linter contracts. `default: 'allow'`
       // on purpose: only `module`-type targets get an entry-point
-      // restriction at all (two rules below); `app`/`platform` stay
+      // restriction at all (two policies below); `app`/`platform` stay
       // unrestricted, since nothing in the ticket doc calls for gating
       // them too. (A stricter "no module may import another module's
       // index.ts either" rule was considered and dropped — not specced,
@@ -84,13 +84,28 @@ export default tseslint.config(
       // with `default: 'disallow'` also silently allowed every `app`/
       // `platform` import, since no rule's `target` matched them) were in
       // place. Re-run that check after touching this config.
-      'boundaries/entry-point': [
+      //
+      // Written in eslint-plugin-boundaries v7's `dependencies` form (the old
+      // `entry-point` rule, its `rules` option and string selectors are
+      // deprecated). Imports within one module are not checked
+      // (`checkInternals` defaults to false), exactly as `entry-point` behaved.
+      // `'**'` rather than the old `'*'`: `'*'` matched only a module's top-level
+      // files, so `modules/onboarding/components/X` slipped through. Checked with
+      // `eslint --stdin --stdin-filename src/routes/_probe.tsx`: a top-level and a
+      // nested internal import both error, the module's index does not.
+      'boundaries/dependencies': [
         'error',
         {
           default: 'allow',
-          rules: [
-            { target: 'module', disallow: '*' },
-            { target: 'module', allow: 'index.ts' },
+          policies: [
+            {
+              to: { element: { type: 'module' } },
+              disallow: { to: { element: { fileInternalPath: '**' } } },
+            },
+            {
+              to: { element: { type: 'module' } },
+              allow: { to: { element: { fileInternalPath: 'index.ts' } } },
+            },
           ],
         },
       ],

@@ -1,6 +1,9 @@
 /**
  * Builders for Developer 4B's verification-workspace tests. Values are shaped like
  * the server's responses (the generated types), never hand-simplified.
+ *
+ * Test-only: imported by `*.test.tsx` files, never by the app — which is why it
+ * lives in `testing/` rather than beside the components.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
