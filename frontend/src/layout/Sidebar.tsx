@@ -1,4 +1,11 @@
-import { Home, Kanban, ListChecks, SlidersHorizontal, Building2 } from 'lucide-react';
+import {
+  Building2,
+  Home,
+  Kanban,
+  ListChecks,
+  Settings,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 
 import type { UserRole } from '@/lib/api/types';
@@ -23,6 +30,13 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Pipeline', path: '/pipeline', icon: Kanban },
 ];
 
+/**
+ * Settings, for **every** role. The page always has a profile tab; the Users
+ * and Roles tabs appear inside it only for ADMIN, decided by the server rather
+ * than by hiding the row here.
+ */
+const SETTINGS_ITEM: NavItem = { label: 'Settings', path: '/settings', icon: Settings };
+
 /** Rows only ADMIN sees — the server refuses these screens to anyone else. */
 const ADMIN_ITEMS: NavItem[] = [
   { label: 'Qualification criteria', path: '/settings/qualification-criteria', icon: SlidersHorizontal },
@@ -39,6 +53,9 @@ function matches(path: string, pathname: string): boolean {
  * The one row to highlight: the **most specific** row that matches. Plain
  * `NavLink` matching lights every prefix; the longest match is the page the
  * user is actually on.
+ *
+ * This is what keeps `/settings` and `/settings/qualification-criteria` apart:
+ * on the criteria page only the criteria row lights, not both.
  */
 function activePath(items: NavItem[], pathname: string): string | undefined {
   return items
@@ -95,8 +112,9 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const { pathname } = useLocation();
-  const adminItems = isAdminRole(role) ? ADMIN_ITEMS : [];
-  const active = activePath([...NAV_ITEMS, ...adminItems], pathname);
+  // Settings itself is for everyone; the criteria screen is not.
+  const settingsItems = [SETTINGS_ITEM, ...(isAdminRole(role) ? ADMIN_ITEMS : [])];
+  const active = activePath([...NAV_ITEMS, ...settingsItems], pathname);
 
   return (
     <nav
@@ -130,29 +148,32 @@ export function Sidebar({
         ))}
       </ul>
 
-      {adminItems.length > 0 && (
-        <div className="mt-6">
-          <p
-            className={cn(
-              'mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint',
-              collapsed && 'sr-only',
-            )}
-          >
-            Settings
-          </p>
-          <ul className="flex flex-col gap-0.5">
-            {adminItems.map((item) => (
-              <NavRow
-                key={item.path}
-                item={item}
-                active={item.path === active}
-                collapsed={collapsed}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* `mt-auto` pins this group to the foot of the rail. Settings is where
+          you go to stop working, not another stage of the work, so it sits
+          apart from the workflow rows rather than below them in the same list.
+          The nav is `h-full` and a flex column, which is what makes the push
+          work at any viewport height. */}
+      <div className="mt-auto border-t border-border pt-4">
+        <p
+          className={cn(
+            'mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-faint',
+            collapsed && 'sr-only',
+          )}
+        >
+          Settings
+        </p>
+        <ul className="flex flex-col gap-0.5">
+          {settingsItems.map((item) => (
+            <NavRow
+              key={item.path}
+              item={item}
+              active={item.path === active}
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </ul>
+      </div>
     </nav>
   );
 }
