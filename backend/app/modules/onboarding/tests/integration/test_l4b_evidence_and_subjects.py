@@ -29,7 +29,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
 from app.modules.onboarding.domain.verification_evidence import EvidenceRef, VerificationEvidence
 from app.modules.onboarding.exceptions import ExporterProfileNotFoundError
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
 from app.modules.onboarding.tests.integration._l4b_support import (
     BASE,
     deal_buyer,
@@ -111,7 +111,7 @@ async def test_another_companys_document_is_refused():
 
 async def test_a_document_on_one_of_the_companys_deals_is_not_the_companys():
     """For an EXPORTER subject the document must be the company's own (§5.3)."""
-    company_id = await make_company()
+    company_id = await make_prospect()  # a deal needs a prospect
     deal_id = await open_deal(company_id)
     with pg() as cur:
         on_deal = insert_document(cur, deal_id=deal_id)

@@ -1,5 +1,11 @@
 # Running this checkout
 
+> **For day-to-day setup, tests and the current baseline, use
+> [`docs/development.md`](docs/development.md).** This document stays for what only it
+> records: which platform modules this checkout keeps, which it prunes to schema only,
+> and why. Its verification numbers below are from when the checkout was first made to
+> run (22–25 September 2026).
+
 This repo went from "read-only reference snapshot that cannot run" (see the
 history of `README.md`'s old "⚠️ This does not run" banner) to an actually
 bootable, testable FastAPI application. This document explains how to run it,

@@ -26,20 +26,19 @@ History rows it writes carry ``actor_id = None`` — the platform acting on its
 own, per the history contract. Activities need a named actor, so they carry
 ``SAMPLE_DATA_ACTOR``.
 
-**What it covers, and what it cannot yet.** Architecture §3.9 describes three
-companies by journey, qualification, conversation, background check and
-deals. The company record, identifiers, markers, contacts, activities,
-qualification and the three-stage journey it moves exist today: A, B and C are
-qualified and so PROSPECTs, and D is NOT_QUALIFIED. Conversation (Dev 3),
-background check (Dev 4), deals (Dev 3) and the move to CUSTOMER (L2-11) do not
-exist yet, so B is a PROSPECT here although §3.9 makes it a CUSTOMER. Each
-company carries its §3.9 target in ``SampleCompany.target``.
+**What it covers.** Architecture §3.9 describes three companies by journey,
+qualification, conversation, background check and deals, and this reaches all of
+it: A, B and C are qualified, so PROSPECTs; A's conversation is NOT_NOW; B's check
+is CLEAR, which makes it a CUSTOMER, and one of its two deals is handed over; C's
+check is FLAGGED and its deal stays open. D is NOT_QUALIFIED. Each company carries
+its §3.9 target in ``SampleCompany.target``.
 
-**How the missing pieces arrive.** Not by editing this file: section 9.3's seam
-commit added one call site each for ``sample_data_engagement`` (the conversation
-gauge, Developer 3A Phase 1), ``sample_data_follow_ups`` (Phase 2) and
-``sample_data_deals`` (Developer 3B), and each owner fills in its own hook. Every
-one is a no-op until then, so a run today reports the same zeros it always did.
+**Each owner seeds its own part.** Not by editing each other's code: this file
+calls one hook per owner — ``sample_data_engagement`` (the conversation gauge,
+Developer 3A), ``sample_data_follow_ups`` (Developer 3A), ``sample_data_background_check``
+(Developer 4A, with 4B's screening inputs) and ``sample_data_deals`` (Developer 3B)
+— after every company exists, in the order their rules need: B's check must be
+CLEAR before its deal can be handed over.
 """
 
 from __future__ import annotations
@@ -78,7 +77,13 @@ from app.modules.onboarding.domain.qualification_views import ResultEntry
 # Each is a hook in its owner's own file, called once below. Adding them here in
 # one commit is what keeps this file — Developer 2's — closed to Developer 3
 # afterwards: nobody edits it again, in either of 3A's phases or in 3B's work.
-from app.modules.onboarding.sample_data_deals import load_deal_sample_data
+from app.modules.onboarding.sample_data_background_check import (
+    load_background_check_sample_data,
+)
+from app.modules.onboarding.sample_data_deals import (
+    hand_over_sample_deals,
+    load_deal_sample_data,
+)
 from app.modules.onboarding.sample_data_engagement import load_conversation_sample_data
 from app.modules.onboarding.sample_data_follow_ups import load_follow_up_sample_data
 from app.platform.database import services as db_services
@@ -133,8 +138,9 @@ class SampleCompany:
     #: revenue for `NOT_QUALIFIED`. `None` leaves it `NOT_YET_REVIEWED`.
     qualification: QualificationOutcomeValue | None = None
     reason_codes: tuple[str, ...] = ()
-    #: Architecture §3.9's target state for this company, for the pieces that
-    #: do not exist yet. Documentation, not data: nothing reads it.
+    #: Architecture §3.9's target state for this company. Documentation, not
+    #: data: the owners' seeders bring each gauge there, and the sample-data tests
+    #: check that they did.
     target: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -406,14 +412,17 @@ async def load_sample_data() -> dict[str, dict[str, int | bool]]:
             "activities_added": await _ensure_activities(company),
             "qualification_recorded": await _ensure_qualification(company),
         }
-    # Section 9.3's seeders, after every company exists — each of them moves a
-    # gauge or hangs a record off a company, so none of them can run first.
-    # They are no-ops until their owner fills them in, and each converges the
-    # same way the steps above do, so a repeat run reports zeros.
+    # The owners' seeders, after every company exists — each of them moves a
+    # gauge or hangs a record off a company, so none of them can run first. The
+    # background check comes before the handover: B must be a CLEAR customer
+    # before its deal can be handed over (assumption A5). Each converges the same
+    # way the steps above do, so a repeat run reports zeros.
     report[SECTION_9_3_SLUG] = {
         "conversation_moved": await load_conversation_sample_data(),
         "follow_ups_completed": await load_follow_up_sample_data(),
+        "background_checks_decided": await load_background_check_sample_data(),
         "deals_created": await load_deal_sample_data(),
+        "deals_handed_over": await hand_over_sample_deals(),
     }
     return report
 

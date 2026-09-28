@@ -39,11 +39,22 @@ router = APIRouter(tags=["Exporter CRM"])
 # no. Same gate as the other CRM reads.
 #
 # A history row carries an actor id and a free-text reason but no tax
-# identifier, so there is nothing here for the masking rules to apply to — this
-# route returns the same bytes to every role that may call it.
+# identifier, so there is nothing here for the masking rules to apply to.
 _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )
+
+#: Dimensions DEVELOPER does not see here. Decision D8 (settled 28 September 2026)
+#: refuses DEVELOPER the background-check gauge, its decision reasons and evidence
+#: ids, and the verification and screening routes (`background-check.md` §14,
+#: `4b-task.md` §13). Their history rows carry the same values, reasons, review notes
+#: and screening comments, so serving them here would hand DEVELOPER exactly what
+#: those routes refuse it. Every other dimension stays readable.
+_HIDDEN_FROM_DEVELOPER = frozenset({"background_check", "verification", "screening"})
+
+
+def _hidden_for(user: User) -> frozenset[str]:
+    return _HIDDEN_FROM_DEVELOPER if user.role == UserRole.DEVELOPER else frozenset()
 
 _ORDERING = (
     "Newest first. `created_at` defaults to the transaction clock, so rows written "
@@ -59,7 +70,8 @@ _ORDERING = (
     description=(
         "Every recorded change to this company: its journey, each of its three "
         "gauges, its marker and its deals, interleaved. Filter to one with "
-        "`dimension`. " + _ORDERING
+        "`dimension`. DEVELOPER does not receive `background_check`, "
+        "`verification` or `screening` rows (decision D8). " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},
@@ -76,7 +88,7 @@ async def list_company_history(
         max_length=32,
         description=(
             "Restrict to one dimension: journey, qualification, conversation, "
-            "background_check, deal, marker, profile or verification."
+            "background_check, deal, marker, profile, verification or screening."
         ),
     ),
     limit: int = Query(default=50, ge=1, le=200),
@@ -90,7 +102,11 @@ async def list_company_history(
     would also turn it into a way to probe which company ids exist.
     """
     entries, total = await HistoryService(db).list_for_company(
-        customer_id, dimension=dimension, limit=limit, offset=offset
+        customer_id,
+        dimension=dimension,
+        exclude_dimensions=_hidden_for(current_user),
+        limit=limit,
+        offset=offset,
     )
     return HistoryListResponse(
         entries=[HistoryEntryResponse.from_row(row) for row in entries],
@@ -105,8 +121,10 @@ async def list_company_history(
     response_model=HistoryListResponse,
     summary="A deal's history",
     description=(
-        "Every recorded change to one deal. Empty until deals exist "
-        "(migration 0018). " + _ORDERING
+        "Every recorded change to one deal, including the changes it caused "
+        "elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does "
+        "not receive `background_check`, `verification` or `screening` rows "
+        "(decision D8). " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},
@@ -121,15 +139,12 @@ async def list_deal_history(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> HistoryListResponse:
-    """Returns an empty page today, and that is the right answer.
+    """An unknown deal is an empty page, like a deal with no history yet.
 
-    Deals arrive in migration 0018 (Developer 3). The route ships now so the
-    shape is settled before anything depends on it, and so Developer 3 has a
-    working read the moment the first deal row is written. There is no
-    `dimension` filter: everything about a deal is the deal.
+    There is no `dimension` filter: everything about a deal is the deal.
     """
     entries, total = await HistoryService(db).list_for_deal(
-        deal_id, limit=limit, offset=offset
+        deal_id, exclude_dimensions=_hidden_for(current_user), limit=limit, offset=offset
     )
     return HistoryListResponse(
         entries=[HistoryEntryResponse.from_row(row) for row in entries],

@@ -25,6 +25,7 @@ from alembic.script import ScriptDirectory
 from httpx import AsyncClient
 from sqlalchemy import func, select
 
+from app.modules.onboarding.application.deal_service import DealService
 from app.modules.onboarding.application.exporter_profile_service import (
     HISTORY_DIMENSION_MARKER,
     ExporterProfileService,
@@ -711,13 +712,15 @@ async def test_sample_data_is_deterministic_and_safe_to_run_again():
         for changes in per_company.values()
     ), per_company
     assert set(per_company) == {c.slug for c in COMPANIES}
-    # Converges too: every §9.3 seeder reports nothing changed on a second run.
-    # They report zero on a *first* run as well while their owners have not filled
-    # them in, which is why this asserts the keys are present and not merely zero.
+    # Converges too: every owner's seeder reports nothing changed on a second run.
+    # The keys are asserted, not merely the zeros, so a seeder that silently stops
+    # being called fails here.
     assert second[SECTION_9_3_SLUG] == {
         "conversation_moved": 0,
         "follow_ups_completed": 0,
+        "background_checks_decided": 0,
         "deals_created": 0,
+        "deals_handed_over": 0,
     }, second[SECTION_9_3_SLUG]
     assert all(c.customer_id == uuid.uuid5(SAMPLE_NAMESPACE, c.slug) for c in COMPANIES)
 
@@ -739,9 +742,38 @@ async def test_sample_data_covers_the_states_this_phase_introduces():
     assert len(by_slug["company-b"].gstins) == 2
     assert by_slug["company-f-new-lead"].pan is None
     assert by_slug["company-g-possible-duplicate"].gstin_warnings  # shares B's GSTIN
-    assert by_slug["company-b"].journey is ExporterJourney.PROSPECT  # CUSTOMER waits for L2-11
     assert all(d.name for d in by_slug.values())
     assert legacy_rows == 0  # nothing fake written to the legacy onboarding tables
+
+
+async def test_sample_data_reaches_the_three_example_companies():
+    """Architecture §3.9, reached through the services rather than written: B is a
+    CUSTOMER because its check is CLEAR, with one of its two deals handed over; C is
+    a PROSPECT whose check is FLAGGED and whose deal is still open; A is untouched by
+    both. And the rule behind B's journey holds — a CUSTOMER's history shows a
+    CLEAR check (company-record §8, invariant 2)."""
+    await load_sample_data()
+    slugs = {company.slug: company.customer_id for company in COMPANIES}
+    async with db_services.AsyncSessionLocal() as db:
+        profiles = {
+            slug: await db.scalar(
+                select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
+            )
+            for slug, company_id in slugs.items()
+        }
+        b_deals, _ = await DealService(db).list_for_company(slugs["company-b"])
+        c_deals, _ = await DealService(db).list_for_company(slugs["company-c"])
+        b_checks, _ = await HistoryService(db).list_for_company(
+            slugs["company-b"], dimension="background_check"
+        )
+
+    b, c, a = profiles["company-b"], profiles["company-c"], profiles["company-a"]
+    assert (b.journey, b.background_check.value) == (ExporterJourney.CUSTOMER, "CLEAR")
+    assert (c.journey, c.background_check.value) == (ExporterJourney.PROSPECT, "FLAGGED")
+    assert a.background_check.value == "NOT_STARTED"
+    assert sorted(d.stage.value for d in b_deals) == ["GATHERING_PAPERWORK", "HANDED_OVER"]
+    assert [d.stage.value for d in c_deals] == ["OPEN"]
+    assert "CLEAR" in {row.to_status for row in b_checks}
 
 
 # ── Concurrent writes, GSTINs without a PAN, search ──────────────────────────

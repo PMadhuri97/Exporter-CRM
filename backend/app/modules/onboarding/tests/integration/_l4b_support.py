@@ -23,7 +23,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
 )
 from app.modules.onboarding.domain.entities.verification_result import VerificationResult
 from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import make_prospect
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
 
@@ -58,8 +58,10 @@ async def set_buyer(deal_id: uuid.UUID, **fields: Any) -> uuid.UUID:
 
 
 async def deal_buyer(**fields: Any) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
-    """A fresh company, a deal on it and its buyer: ``(company_id, deal_id, buyer_id)``."""
-    company_id = await make_company()
+    """A fresh prospect, a deal on it and its buyer: ``(company_id, deal_id, buyer_id)``.
+
+    A prospect, because a deal cannot be opened on a ``LEAD``."""
+    company_id = await make_prospect()
     deal_id = await open_deal(company_id)
     buyer_id = await set_buyer(deal_id, **fields)
     return company_id, deal_id, buyer_id

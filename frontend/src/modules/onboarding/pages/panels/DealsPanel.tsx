@@ -53,6 +53,9 @@ export function DealsPanel({
   const [opening, setOpening] = useState(false);
   const { data, isLoading, isError } = useCompanyDeals(customerId);
   const deals = data?.deals ?? [];
+  // The server says whether this viewer may open a deal here (§7.5): a staff role,
+  // and a company that is a PROSPECT or CUSTOMER — a LEAD is refused.
+  const canOpen = data?.can_open_deal ?? false;
 
   return (
     <Panel
@@ -64,8 +67,9 @@ export function DealsPanel({
             <FileText size={14} />
             Company documents
           </Link>
-          {/* DEVELOPER reads the CRM and writes nothing, so it gets no action. */}
-          {isStaff && !opening && (
+          {/* Offered only where the server would accept it: never to DEVELOPER, and
+              never on a LEAD. */}
+          {canOpen && !opening && (
             <Button size="sm" variant="primary" onClick={() => setOpening(true)}>
               <Plus size={14} /> Open a deal
             </Button>
@@ -87,7 +91,8 @@ export function DealsPanel({
       {!isLoading && !isError && deals.length === 0 && (
         <EmptySection>
           No deals yet.
-          {isStaff ? ' Open one when this company has something to finance.' : ''}
+          {canOpen ? ' Open one when this company has something to finance.' : ''}
+          {isStaff && !canOpen ? ' A deal can be opened once the company has been qualified.' : ''}
         </EmptySection>
       )}
 

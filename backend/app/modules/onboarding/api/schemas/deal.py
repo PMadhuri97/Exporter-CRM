@@ -224,6 +224,15 @@ class DealListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+    can_open_deal: bool = Field(
+        default=False,
+        description=(
+            "Whether **this** caller may open a deal on this company now: a staff role, "
+            "and the company is a `PROSPECT` or `CUSTOMER` (a `LEAD` is refused with "
+            "409 `DEAL_COMPANY_NOT_READY`). The screen offers the action from this "
+            "rather than keeping its own copy of the rule (§7.5)."
+        ),
+    )
 
 
 __all__ = [

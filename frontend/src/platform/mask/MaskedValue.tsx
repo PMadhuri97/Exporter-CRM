@@ -14,7 +14,7 @@ interface MaskedValueProps {
  * Renders `value`, masked or not per the role capability matrix. The reveal
  * eye icon is only rendered at all when this user could ever reveal this
  * value — a role that can't reveal gets no icon, not a disabled one, per
- * the design principle in `docs/exporter-crm-frontend-tickets.md`
+ * the design principle in `docs/architecture.md`, "Roles and masking"
  * ("a disabled eye icon would still leak 'this data exists, you're just not
  * allowed'").
  */

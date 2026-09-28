@@ -27,6 +27,7 @@ from app.modules.onboarding.domain.entities.exporter_profile import ExporterProf
 from app.modules.onboarding.exceptions import (
     DealBuyerRequiredError,
     DealCompanyNotFoundError,
+    DealCompanyNotReadyError,
     DealNotFoundError,
     DealTerminalError,
     DealTransitionNotAllowedError,
@@ -318,6 +319,32 @@ async def test_a_deal_needs_a_reference():
         await _open(company_id, "   ")
 
 
+async def test_a_deal_cannot_be_opened_on_a_lead():
+    """A deal follows a sales conversation, which applies from ``PROSPECT`` onward
+    (assumption A4). Seam S1 would otherwise set a lead's conversation to
+    ``READY_NOW``, so the refusal comes before anything is written: no deal, no
+    history row of any dimension, no gauge move."""
+    company_id = await _company(ExporterJourney.LEAD)
+
+    with pytest.raises(DealCompanyNotReadyError) as caught:
+        await _open(company_id)
+    assert caught.value.error_code == "DEAL_COMPANY_NOT_READY"
+
+    async with db_services.AsyncSessionLocal() as db:
+        _views, total = await DealService(db).list_for_company(company_id)
+        rows, _ = await HistoryService(db).list_for_company(company_id)
+    assert total == 0
+    assert list(rows) == []
+    assert (await _profile(company_id)).conversation is ExporterConversation.NOT_CONTACTED
+
+
+async def test_a_deal_can_be_opened_on_a_customer():
+    """An existing customer with a new need opens another deal (architecture §4.2)."""
+    company_id = await _company(ExporterJourney.CUSTOMER)
+    deal = await _open(company_id)
+    assert deal.stage is DealStage.OPEN
+
+
 # ── Stage moves ──────────────────────────────────────────────────────────────
 
 
@@ -485,15 +512,11 @@ async def test_handover_needs_a_buyer_before_anything_else():
         await _transition(deal.id, DealStage.HANDED_OVER)
 
 
-async def test_handover_is_blocked_because_no_background_check_exists_yet():
+async def test_handover_is_blocked_while_the_check_has_not_started():
     """Assumption A5's second half: a company's background check starts at
     ``NOT_STARTED`` (migration 0015, Developer 4A), and anything but ``CLEAR``
-    refuses the handover — "not started" is never treated as "clear".
-
-    Until 0015 this asserted "the background check is not recorded yet"; with the
-    column in place the true reason is the value itself (Developer 4A, 4A-2, as
-    ``docs/dev4/4a-task.md`` §5.8 sanctions). Wiring Developer 4's read helper in is
-    still 4A-6.
+    refuses the handover — "not started" is never treated as "clear". The guard
+    reads it through Developer 4A's published helper.
     """
     company_id = await _company(ExporterJourney.CUSTOMER)
     deal = await _open(company_id)
@@ -512,7 +535,7 @@ async def test_handover_is_blocked_because_no_background_check_exists_yet():
 
 
 async def test_a_prospect_is_blocked_for_the_journey_reason():
-    """A5's first half, which *can* be evaluated today."""
+    """A5's first half: a deal of a company that is not yet a CUSTOMER."""
     company_id = await _company(ExporterJourney.PROSPECT)
     deal = await _open(company_id)
     await _set_buyer(deal.id)
@@ -632,6 +655,39 @@ async def test_a_developer_may_read_a_deal_but_not_open_one(client: AsyncClient)
         headers=auth_header(developer),
     )
     assert refused.status_code == 403, refused.text
+
+
+async def test_the_api_refuses_a_deal_on_a_lead_with_its_code(client: AsyncClient):
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    company_id = await _company(ExporterJourney.LEAD)
+
+    resp = await client.post(
+        f"{BASE}/exporters/{company_id}/deals",
+        json={"reference": "too early"},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error_code"] == "DEAL_COMPANY_NOT_READY"
+
+
+async def test_the_deal_list_says_whether_this_caller_may_open_a_deal(client: AsyncClient):
+    """The rule as data (§7.5): the screen offers "Open a deal" from
+    `can_open_deal` rather than keeping its own copy of who and when."""
+    staff = await token_with_role(client, UserRole.OPERATIONS)
+    developer = await token_with_role(client, UserRole.DEVELOPER)
+    lead = await _company(ExporterJourney.LEAD)
+    prospect = await _company(ExporterJourney.PROSPECT)
+
+    async def can_open(company_id: uuid.UUID, token: str) -> bool:
+        resp = await client.get(
+            f"{BASE}/exporters/{company_id}/deals", headers=auth_header(token)
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()["can_open_deal"]
+
+    assert await can_open(prospect, staff) is True
+    assert await can_open(lead, staff) is False
+    assert await can_open(prospect, developer) is False
 
 
 # ── The buyer's identifiers and contact details are masked ───────────────────

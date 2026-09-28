@@ -208,7 +208,13 @@ describe('ExporterDetailPage — E9', () => {
       limit: 20,
       offset: 0,
     });
-    vi.mocked(listCompanyDeals).mockResolvedValue({ deals: [], total: 0, limit: 50, offset: 0 });
+    vi.mocked(listCompanyDeals).mockResolvedValue({
+      deals: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+      can_open_deal: false,
+    });
     vi.mocked(listCompanyHistory).mockResolvedValue({ entries: [], total: 0, limit: 25, offset: 0 });
   });
 
@@ -311,6 +317,28 @@ describe('ExporterDetailPage — E9', () => {
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
     // PAN, GSTIN and IEC in the profile, plus PAN and GSTIN in the header strip.
     expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(5);
+  });
+
+  it('links an http(s) website, and shows any other stored value as text, never as a link', async () => {
+    mockUser('COMPLIANCE', 'someone-else');
+    const { unmount } = renderPage();
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    expect(screen.getByRole('link', { name: /https:\/\/example\.com/ })).toHaveAttribute(
+      'href',
+      'https://example.com',
+    );
+    unmount();
+
+    // A value stored before the server refused it: React 18 would render a
+    // `javascript:` href as written, so it must stay text.
+    vi.mocked(getExporterProfileDetail).mockResolvedValue({
+      ...DETAIL,
+      website: 'javascript:alert(document.cookie)',
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    expect(screen.getByText('javascript:alert(document.cookie)')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /javascript:/ })).not.toBeInTheDocument();
   });
 
   it('shows the journey, qualification and marker separately, with no journey control', async () => {

@@ -1,49 +1,44 @@
-"""``ExporterLifecycleHistory`` — one recorded move of an exporter's
-``lifecycle_status``, append-only.
+"""``ExporterLifecycleHistory`` — the shared CRM history log: one row per change to a
+company's journey, any of its gauges, its marker, its profile or one of its deals,
+append-only (``docs/contracts/history-row.md``). The table began as the log of the
+retired ten-status ``lifecycle_status`` (migration 0020), which is where its name and
+its ``lifecycle_*`` event types come from; migration 0013 generalised it.
 
 Same base and enforcement pattern as ``ExporterActivity`` and
 ``OnboardingEvent``: ``trg_exporter_lifecycle_history_append_only`` (migration
 ``onboarding_0011_e9_audit``) rejects UPDATE and DELETE at the database, reusing
 the shared ``public.prevent_mutation()`` function both of those already rely on.
 
-``customer_id`` is a bare, indexed UUID with no formal FK, for the same reason
-``ExporterActivity.customer_id`` and ``ExporterContact.customer_id`` are bare —
-see those modules' docstrings.
+``customer_id`` is a real foreign key to ``exporter_profile.customer_id``
+(``ON DELETE RESTRICT``), added by migration 0014 once the company record existed;
+0013 deliberately left it bare (decision U3).
 
 **Why this is not an ``onboarding_event`` row.** That was the first choice, and
 ``ExporterProfileService`` already holds a repository for it.
 ``onboarding_event.onboarding_request_id`` is NOT NULL with an FK to
-``onboarding_request``, and an exporter profile does not require one:
-``create_or_get_profile`` — the path behind ``POST /onboarding/exporters`` —
-creates a profile and no request. Only ``create_lead`` creates both. Most
-profiles in practice have no request, so lifecycle transitions written to
-``onboarding_event`` would fail outright or be silently skipped for exactly the
-sales-entered exporters whose provenance is least otherwise recorded. The
-migration docstring has the measured numbers.
+``onboarding_request``, and a CRM company does not have one: the legacy request
+path is out of scope for the CRM. Rows written to ``onboarding_event`` would fail
+outright or be silently skipped for exactly the companies whose provenance is
+least otherwise recorded. The migration docstring has the measured numbers.
 
-``from_status``/``to_status`` are plain strings rather than the
-``ExporterLifecycleStatus`` enum on purpose: a history table must be able to
-record a status that has just been added to the enum without needing its own
-migration first, and it must be able to keep recording one that was later
-removed. ``ExporterProfileService.transition_lifecycle_status`` validates the
-edge before writing, so the values are enum members at the time they are stored.
+``from_status``/``to_status`` are plain strings rather than an enum on purpose: the
+log records every dimension's values, it must accept a value just added to one
+without a migration of its own, and it must keep the rows for values since retired —
+the ten lifecycle statuses migration 0020 retired are still here. Each writer
+validates the move before writing, so the values were legal when they were stored.
 
-**Every way a profile gets a status is recorded, not only transitions.**
-``create_or_get_profile`` accepts a ``lifecycle_status`` from the caller, so a
-profile can be born at any status — including ``ONBOARDED``. Recording only
-``transition_lifecycle_status`` would leave exactly that case with no row: no
-record of who put the exporter there, and nothing for the ANER-4.2-S1T2 hook to
-see. Creation therefore writes a ``lifecycle_initial`` row with
-``from_status = NULL``. ``from_status`` and ``actor_id`` are nullable for that
-reason, matching ``onboarding_event``: ``NULL`` from means "entered at
-creation", ``NULL`` actor means an internal caller that supplied none.
+**A company's journey starts with a row.** Creation writes a ``lifecycle_initial``
+journey row with ``from_status = NULL``, so every company's journey timeline starts
+at its creation. ``from_status`` and ``actor_id`` are nullable for that reason,
+matching ``onboarding_event``: ``NULL`` from means "entered at creation", ``NULL``
+actor means an internal caller that supplied none.
 """
 
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Index, String, Text, text
+from sqlalchemy import ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -51,9 +46,9 @@ from app.platform.database.models import AppendOnlyModel
 
 SCHEMA = "onboarding"
 
-#: ``event_type`` for a row written by ``transition_lifecycle_status``. A column
-#: rather than an implied constant so a later writer (a bulk migration, an
-#: automated re-KYC sweep) can be told apart from a person clicking a button.
+#: ``event_type`` for a journey move (the name is kept from the lifecycle log this
+#: table began as). A column rather than an implied constant so a later writer (a
+#: bulk migration, an automated re-KYC sweep) can be told apart from a person.
 LIFECYCLE_TRANSITION_EVENT = "lifecycle_transition"
 
 #: ``event_type`` for the row written when a profile is created at a status
@@ -61,7 +56,7 @@ LIFECYCLE_TRANSITION_EVENT = "lifecycle_transition"
 LIFECYCLE_INITIAL_EVENT = "lifecycle_initial"
 
 #: ``dimension`` for the company's main journey (LEAD -> PROSPECT -> CUSTOMER,
-#: and the ten-status lifecycle it replaces). The only dimension written today.
+#: and the ten-status lifecycle it replaced).
 #:
 #: The full list is owned by ``docs/contracts/history-row.md``, not by this
 #: module: the gauges belong to Developers 2, 3 and 4, and each adds its own
@@ -80,8 +75,9 @@ class ExporterLifecycleHistory(AppendOnlyModel):
             text("created_at DESC"),
             text("id DESC"),
         ),
-        # Serves the ANER-4.2-S1T2 completion hook — a consumer watching for
-        # COMPLIANCE_REVIEW -> ONBOARDED.
+        # Serves the ANER-4.2-S1T2 completion hook — a consumer watching for a
+        # company's terminal journey move (to CUSTOMER since migration 0020; it was
+        # COMPLIANCE_REVIEW -> ONBOARDED before — company-record contract, O2).
         Index(
             "ix_exporter_lifecycle_history_to_status",
             "to_status",
@@ -107,7 +103,17 @@ class ExporterLifecycleHistory(AppendOnlyModel):
         {"schema": SCHEMA},
     )
 
-    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        # Migration 0014 (`_LINKED`). Declared so autogenerate does not propose
+        # dropping it, and so a flush orders a new company before its first row.
+        ForeignKey(
+            f"{SCHEMA}.exporter_profile.customer_id",
+            name="fk_exporter_lifecycle_history_customer_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
 
     #: Which row of the model changed — see ``HISTORY_DIMENSION_JOURNEY`` and
     #: ``docs/contracts/history-row.md``. No server default: the column had one

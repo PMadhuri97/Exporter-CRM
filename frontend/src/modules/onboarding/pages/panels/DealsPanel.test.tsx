@@ -46,6 +46,7 @@ beforeEach(() => {
     total: 1,
     limit: 50,
     offset: 0,
+    can_open_deal: true,
   });
 });
 
@@ -66,6 +67,7 @@ describe('DealsPanel', () => {
       total: 0,
       limit: 50,
       offset: 0,
+      can_open_deal: true,
     });
     renderPanel();
 
@@ -73,6 +75,22 @@ describe('DealsPanel', () => {
     expect(
       screen.getByText(/Open one when this company has something to finance/),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Open a deal/ })).toBeInTheDocument();
+  });
+
+  it('offers staff no deal on a company the server says is not ready — a LEAD', async () => {
+    vi.mocked(listCompanyDeals).mockResolvedValue({
+      deals: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+      can_open_deal: false,
+    });
+    renderPanel(true);
+
+    expect(await screen.findByText(/No deals yet/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open a deal/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/once the company has been qualified/)).toBeInTheDocument();
   });
 
   it('gives a non-staff viewer no action and no invitation', async () => {
@@ -81,6 +99,7 @@ describe('DealsPanel', () => {
       total: 0,
       limit: 50,
       offset: 0,
+      can_open_deal: false,
     });
     renderPanel(false);
 

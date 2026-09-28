@@ -1,25 +1,36 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0013_shared_history`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0021_verif_review`
 
-Seven migrations land in the prototype, from four developers, into one chain.
-This is the running order and the rules. Dev 1 keeps it current.
+The prototype's migrations, from four developers and one platform change, in one
+chain. This is the running order and the rules. Dev 1 keeps it current.
 
 ---
 
 ## 1. The register
 
-| No. | Owner | Change | Parent | State |
-|---|---|---|---|---|
-| **0013** | Dev 1 | Generalise the history table: `dimension`, `deal_id`, `reason`, two indexes | `onboarding_0012_risk_critical` | **merged** |
-| 0014 | Dev 2 | Fresh company record: name, country, identifiers, journey (3 values), marker, current gauge fields, PAN unique; real links from contacts, activities, screening items **and history** | `0013` | not started |
-| 0015 | Dev 4 | Background-check decisions (locked, superseding); superseding reviews on verification results; risk scale | `0014` | not started |
-| 0016 | Dev 3 | Follow-up completion (locked) | `0014` | not started |
-| 0017 | Dev 2 | Qualification criteria and results | `0014` | not started |
-| 0018 | Dev 3 | Deal and buyer | `0014` | not started |
-| 0019 | Dev 3 | Documents | `0018` | not started |
+Numbers are labels, not order (§2): the **Parent** column is the order. Every row is
+merged.
 
-**Next free onboarding number: 0014.**
+| No. | Owner | Change | Parent |
+|---|---|---|---|
+| 0013 | Dev 1 | Generalise the history table: `dimension`, `deal_id`, `reason`, two indexes | `onboarding_0012_risk_critical` |
+| 0014 | Dev 2 | Fresh company record: name, country, identifiers, marker, PAN unique, several GSTINs; real links from contacts, activities, screening items **and history**. Refuses to empty CRM tables that hold rows unless `E9_ALLOW_CRM_RESET=1` | `onboarding_0013_shared_history` |
+| 0017 | Dev 2 | Qualification criteria, results and outcomes; the `journey` (3 values) and `qualification` columns | `onboarding_0014_company_record` |
+| 0020 | Dev 2 | Retire the ten-status `lifecycle_status` (L2-04) | `onboarding_0017_qualification` |
+| 0016 | Dev 3A | The conversation gauge and its check-back date; follow-up completion (locked) | `onboarding_0020_retire_lifecycle` |
+| 0018 | Dev 3B | Deal and buyer | `onboarding_0016_engagement` |
+| 0019 | Dev 3B | Documents | `onboarding_0018_deal_buyer` |
+| 0015 | Dev 4A | The background-check gauge, locked superseding decisions, evidence snapshots, the CRM risk type | `onboarding_0019_documents` |
+| `auth_0003` | Platform (user management) | User administration | `onboarding_0015_bg_check` |
+| `auth_0004` | Platform (user management) | Roles and permissions as data (RBAC) | `auth_0003_user_admin` |
+| 0021 | Dev 4B | Superseding verification reviews, the outcome freeze, evidence and subject snapshots | `auth_0004_rbac` |
+
+**Next free onboarding number: 0022.**
+
+The two `auth_*` revisions belong to the platform's user-management work, not to the
+CRM; they sit in this chain because there is only one chain (§2), so a CRM migration
+written after them parents on them like on any other.
 
 ### 0014 also adds the history foreign key
 
@@ -114,9 +125,14 @@ alembic upgrade head          # the round trip must be clean
 python -m pytest -q --no-cov -p no:cacheprovider
 ```
 
-Baseline as of 0013: **22 failed, 2965 passed, 6 skipped, 5 errors**. The 27 red
-items are all payments/FX/compliance-screening tests hitting routes this
+Compare the suite against the current baseline in `docs/development.md` — the
+known failures are payments/FX/compliance-screening tests hitting routes this
 checkout does not mount. Any other failure is new and blocks the merge.
+
+`backend/tests/contract/test_orm_matches_the_onboarding_schema.py` also fails when a
+migration adds an index or constraint in the `onboarding` schema without the model
+declaring it (or the other way round), so `alembic revision --autogenerate` never
+proposes dropping one.
 
 ---
 

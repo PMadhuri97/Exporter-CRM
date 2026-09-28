@@ -59,6 +59,13 @@ refused with `DEAL_TRANSITION_NOT_ALLOWED` (422) and leaves the row untouched.
 (`ON DELETE RESTRICT`: a company with deals is not deletable). No uniqueness — a
 company has any number of deals over time, open ones included. Architecture §3.3.
 
+**Only a `PROSPECT` or a `CUSTOMER` may have a deal opened.** A deal follows a sales
+conversation, which applies from `PROSPECT` onward (assumption A4), and opening one
+sets the conversation to `READY_NOW` (§5) — so `DealService.open_deal` refuses a
+`LEAD` with 409 `DEAL_COMPANY_NOT_READY` before anything is written. (Implemented 29
+September 2026 on the audit's recommendation; the programme lead to confirm. Seam
+S1 checks no journey by design, so the check belongs here, where the deal is opened.)
+
 Deleting a deal is not an operation. `WITHDRAWN` is how a deal ends.
 
 ---
@@ -87,6 +94,14 @@ without pretending it is a company.
 **One buyer per deal.** A deal with two buyers is two deals: the buyer is who the
 exporter is selling to, and financing one shipment for two buyers is not a thing the
 prototype models.
+
+**The buyer's identifiers and contact details are masked** for OPERATIONS and
+DEVELOPER, like an exporter's PAN and GSTIN (`api/schemas/masking.py`, decision
+12): `registration_number`, `tax_id`, `contact_email` and `contact_phone` reach them
+masked on every deal route, a masked value is refused on `PUT .../buyer`, and a masked
+field left out of that request keeps its stored value. COMPLIANCE and ADMIN see them
+in full. (Changed 28 September 2026 in the frontend refresh, at the lead's call; it
+reverses this contract's first design, which left the two identifiers visible.)
 
 **The buyer is optional at `OPEN` and required to leave `GATHERING_PAPERWORK`.** A
 deal often starts before the buyer is known; a handover without a buyer is not a
@@ -118,6 +133,15 @@ A move that is legal but blocked by the §6 guard is **not** in the list, and th
 response says why through `handover_blocked_reason`, so the screen can explain
 instead of offering a button that 409s.
 
+`GET /onboarding/exporters/{company_id}/deals` carries `can_open_deal`: whether this
+caller may open a deal on the company now — a staff role and a `PROSPECT` or
+`CUSTOMER` company (§2). The screen offers "Open a deal" from it.
+
+`allowed_stage_moves` is the stage graph from the deal's current stage and is **not**
+filtered by role: DEVELOPER is served moves the route would refuse it with 403. The
+screen hides them for DEVELOPER. (Open item — a role-aware list would match the
+background check's `allowed_moves`.)
+
 ---
 
 ## 5. Seam S1 — opening a deal sets `READY_NOW`
@@ -140,28 +164,28 @@ written directly.
 
 ---
 
-## 6. Handover — built, and blocked on Developer 4
+## 6. Handover
 
 `GATHERING_PAPERWORK → HANDED_OVER` requires, per assumption A5:
 
 1. the company's journey is `CUSTOMER`, **and**
 2. the company's background check is `CLEAR`.
 
-**Condition 2 cannot be evaluated today.** `exporter_profile.background_check` is
-Developer 4's column in migration 0015, which has not landed. Until it does:
-
-- this service does **not** create that column and does **not** write it
-  (`company-record.md` §2.4);
-- it reads it through whatever read helper Developer 4 publishes in the
-  background-check contract (L4-01), not by querying the column directly;
-- the handover move stays unavailable, `allowed_stage_moves` omits it, and
-  `handover_blocked_reason` says which condition is unmet — including "the background
-  check is not recorded yet", which is the honest answer while 0015 is missing.
+Both are real: a company becomes a `CUSTOMER` when it is a `PROSPECT` with a `CLEAR`
+check (`company-record.md` §3.2), and the check is read through Developer 4A's
+published helper (`background-check.md` §10) — this service never creates or writes
+that column (`company-record.md` §2.4). A company never checked reads `NOT_STARTED`,
+and "not `CLEAR`" is never treated as "clear". While either condition is unmet,
+`allowed_stage_moves` omits the move and `handover_blocked_reason` names the unmet
+condition (journey first). The guard share-locks the company row on the move (D10),
+so a concurrent flag or reopen waits for the handover to commit.
 
 On handover: write the history row first, then announce
-`OnboardingEventPublisher.deal_handed_over(...)` — history is the source of truth and
-the announcement is best effort (architecture §3.6). `document_ids` is the snapshot of
-what the handover rested on.
+`OnboardingEventPublisher.deal_handed_over(...)` after the commit — history is the
+source of truth and the announcement is best effort (architecture §3.6).
+`document_ids` is the snapshot of every document on the deal when it was handed
+over, whatever its scan status (open item: whether to refuse a handover while a deal
+document is not `AVAILABLE`).
 
 ---
 
@@ -196,8 +220,9 @@ which is Developer 1's.
 | `DEAL_TERMINAL` | 409 | A move out of `HANDED_OVER` or `WITHDRAWN`. |
 | `DEAL_WITHDRAWAL_REASON_REQUIRED` | 422 | `WITHDRAWN` without a reason (A7). |
 | `DEAL_BUYER_REQUIRED` | 422 | Leaving `GATHERING_PAPERWORK` with no buyer. |
-| `DEAL_HANDOVER_BLOCKED` | 409 | The §6 guard is unmet — today, always. |
+| `DEAL_HANDOVER_BLOCKED` | 409 | The §6 guard is unmet: the company is not a `CUSTOMER`, or its check is not `CLEAR`. |
 | `DEAL_COMPANY_NOT_FOUND` | 404 | Opening a deal for a company that does not exist. |
+| `DEAL_COMPANY_NOT_READY` | 409 | Opening a deal for a company that is still a `LEAD` (§2). |
 
 ---
 

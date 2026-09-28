@@ -61,12 +61,19 @@ architecture.
 | `profile` | Edits to company fields that are not a gauge | Dev 2 |
 | `conversation` | `NOT_CONTACTED` … `READY_NOW` | Dev 3 |
 | `deal` | `OPEN` / `GATHERING_PAPERWORK` / `HANDED_OVER` / `WITHDRAWN` | Dev 3 |
-| `background_check` | `NOT_STARTED` / `IN_REVIEW` / `MORE_INFO` / `CLEAR` / `FLAGGED` / `ON_HOLD` | Dev 4 |
-| `verification` | A verification result's status or review changing | Dev 4 |
+| `background_check` | `NOT_STARTED` / `IN_REVIEW` / `MORE_INFO` / `CLEAR` / `FLAGGED` / `ON_HOLD` | Dev 4A |
+| `verification` | A verification result's status or review changing | Dev 4B |
+| `screening` | A screening checklist item's decision (`screening_initial` / `screening_transition`; decision D9) | Dev 4B |
 
 Adding a dimension needs no migration — add the string here and start writing
 it. Adding one **without** adding it here is the thing this table exists to
 prevent, because nothing else records what the value means.
+
+**Who reads what.** The history routes serve every dimension to OPERATIONS,
+COMPLIANCE and ADMIN. DEVELOPER does not receive `background_check`,
+`verification` or `screening` rows — from the page or the total — because decision
+D8 refuses DEVELOPER the same values, reasons, review notes and screening comments
+on those gauges' own routes (`api/history_router.py`).
 
 `deal_id` is set exactly when `dimension = "deal"`, or when another dimension's
 change is about a specific deal. It is `NULL` otherwise.
@@ -75,8 +82,9 @@ change is about a specific deal. It is `NULL` otherwise.
 
 ## 3. `event_type` and `source`
 
-`event_type` says why the row exists; today two values are in use, both on the
-journey dimension:
+`event_type` says why the row exists. The journey dimension uses these two (the
+names are kept from the lifecycle log the table began as); other dimensions follow
+the pattern below:
 
 | `event_type` | Meaning |
 |---|---|
@@ -87,12 +95,15 @@ A new dimension follows the same pair: `<dimension>_initial` where a default is
 recorded at creation, `<dimension>_transition` for a move.
 
 `event_metadata.source` names the code path that wrote the row, as a dotted
-string (`exporter_profile_service.transition_lifecycle_status`). It is a column
-of `event_metadata` rather than its own column because it is for a human reading
-the trail, not something anything queries.
+string (`qualification_service.record_outcome`). It is a key of `event_metadata`
+rather than its own column because it is for a human reading the trail, not
+something anything queries.
 
 `event_metadata` also carries whatever else the writer wants a reader to have
-without a second query. The journey dimension writes `terminal: bool`.
+without a second query. The journey dimension writes `terminal: bool` — `true` only
+on the move to `CUSTOMER` — and, on that move, `cause`
+(`background_check_clear` or `qualification_outcome`), `clearing_decision_id` and
+`risk_rating`.
 
 ---
 
@@ -107,9 +118,15 @@ enforces it; the column stays nullable because most moves do not need one and a
 | `marker` | setting `PAUSED` or `ENDED` | required |
 | `deal` | → `WITHDRAWN` | required |
 | `background_check` | → `MORE_INFO`, `FLAGGED`, `ON_HOLD` | required |
+| `background_check` | `IN_REVIEW` → `CLEAR` | required (architecture §4.1 step 9; D14) |
+| `background_check` | `MORE_INFO` → `IN_REVIEW` (what arrived) | required (architecture §3.3; D14) |
 | `background_check` | `CLEAR` → `IN_REVIEW` (reopen) | required |
 | `background_check` | `FLAGGED`/`ON_HOLD` → `IN_REVIEW` (reassess) | required |
 | `qualification` | → `NOT_QUALIFIED` | reason **codes** required, note optional |
+
+In short, every background-check move except the start (`NOT_STARTED` →
+`IN_REVIEW`) carries text; the database refuses the decision row otherwise
+(`ck_background_check_decision_reason`).
 
 ---
 
@@ -146,21 +163,14 @@ Two consequences worth stating, because both have bitten this repository:
 
 ---
 
-## 6. No foreign key yet
+## 6. The company foreign key
 
-`customer_id` is a bare indexed `uuid`. There is no foreign key to the company,
-and migration 0013 does not add one.
-
-Not an oversight: migration **0014 (Dev 2)** recreates the CRM's own tables and
-already owns adding the real links for contacts, activities and screening items.
-Adding the company link in 0013 would mean 0014 had to drop the constraint
-before recreating `exporter_profile` and re-add it afterwards — a hand-off that
-buys nothing, because both migrations land in the same week.
-
-**0014 adds `exporter_lifecycle_history.customer_id → exporter_profile` along
-with the others.** Until it does, this table has the referential integrity it
-has today, which is none. There are currently 1,498 history rows and zero
-orphans, so the constraint will apply cleanly when it is added.
+`customer_id` references `exporter_profile.customer_id` (`ON DELETE RESTRICT`):
+`fk_exporter_lifecycle_history_customer_id`, added by migration **0014 (Dev 2)**
+together with the links from contacts, activities and screening items, and
+declared on the model. Migration 0013 deliberately left it bare (decision U3):
+adding it there would have forced 0014 to drop and re-add it around recreating
+`exporter_profile`.
 
 ---
 
@@ -202,12 +212,12 @@ Stated separately so nobody reads this contract as a description of the code.
 |---|---|
 | The table, its columns and its indexes | **implemented** (0013) |
 | Append-only trigger and repository | **implemented** (0011) |
-| Journey `lifecycle_initial` / `lifecycle_transition` rows | **implemented** |
-| Flush-not-commit, on the journey writer | **implemented** |
-| A shared writer other services call | **not built** — L1-11 part 2 |
-| A read route (`GET .../history`) | **not built** — L1-11 part 2 |
-| Every dimension other than `journey` | **not built** — Dev 2/3/4 |
-| The company foreign key | **not built** — 0014, Dev 2 |
+| The shared writer, `HistoryService.record` (flushes, never commits) | **implemented** (L1-11) |
+| The read routes, `GET /exporters/{id}/history` and `GET /deals/{id}/history` | **implemented** (L1-11); DEVELOPER does not receive `background_check`, `verification` or `screening` rows (D8) |
+| Every dimension in §2 | **implemented** by its owner's service |
+| The move to `CUSTOMER`, with `terminal: true` | **implemented** (L2-11) |
+| The company foreign key | **implemented** (0014), declared on the model |
 
-Until the shared writer exists, `ExporterProfileService._record_lifecycle` is the
-only writer, and it writes `dimension = "journey"` only.
+Rows written in one transaction share `created_at` (§8), so the read routes do not
+order them chronologically between themselves; each row's `from`/`to` says what it
+was.

@@ -1,0 +1,376 @@
+# Exporter CRM — architecture
+
+What the CRM is, how it is put together, the rules each part enforces, and who owns
+what. It describes the code as it stands; the design it was built from is
+[`Exporter-CRM-Architecture-and-Plan.pdf`](Exporter-CRM-Architecture-and-Plan.pdf)
+(v1.0, 25 September 2026), and the exact shapes each part promises the others are
+the contracts in [`contracts/`](contracts/). Where this page says "§x.y" it means a
+section of that PDF.
+
+---
+
+## 1. What the CRM is, and is not
+
+An internal CRM for exporters combined with a verification and compliance record.
+Staff create companies, qualify them, run the sales conversation, record background
+checks, open deals, gather their paperwork, and hand deals to the lending team.
+
+Companies come from two kinds of source (§2.1):
+
+- **RXIL**, a partner that sends exporters it has already filtered, with its own
+  results. They arrive already qualified (decision 7) and RXIL's results are stored as
+  given, never recomputed.
+- **Everyone else** — found by staff, entered by hand or imported from a CSV file. For
+  these the CRM does the qualification and the checks itself.
+
+It does **not** decide whether to lend, keep money records, run the internal logic of
+compliance checks, or process transactions (§2.3). It records outcomes; other teams own
+their decisions.
+
+**Principles that apply everywhere** (§2.6): history is never lost (a correction is a
+new record pointing at the one it replaces); nothing but the history is permanent;
+every decision records who or what made it and on what evidence; a problem stays where
+it happened (a buyer's problem never touches the company); the server is the authority
+(allowed moves, roles, masking and validation are enforced server-side, and the
+frontend asks rather than keeping copies); anything not yet real is labelled as such.
+
+## 2. Where it lives and how it is built
+
+- **Backend:** FastAPI, SQLAlchemy (async), PostgreSQL, Alembic. The CRM is
+  `backend/app/modules/onboarding` (its `exporter_profile` family of tables, services
+  and routes under `/api/v1/onboarding`). The same module also holds a **legacy**
+  onboarding path — `onboarding_request`, an 18-state machine and a Temporal
+  workflow — which is out of scope and not built on (§2.4).
+- **Frontend:** Vite, React 18, TypeScript, TanStack Query, Tailwind. The CRM screens
+  are `frontend/src/modules/onboarding`.
+- **The generated API contract.** `frontend/openapi.json` and
+  `frontend/src/lib/api/schema.ts` are generated from the backend and committed;
+  `backend/tests/contract/test_openapi_artifact_is_current.py` fails when they drift.
+- **This checkout contains more than the CRM.** It began as a pruned copy of a wider
+  platform; `ledger`, `settlement`, `rails`, `fx`, `reconciliation`, `payments`,
+  `reporting` and `orchestration` are schema only. [`../RUNNING.md`](../RUNNING.md)
+  explains what was kept and why.
+
+**The module rule, and its one exception** (§2.5). All connecting code lives in the
+`onboarding` module. No file in `kyb`, `cases`, `customers` or `compliance` is edited;
+`onboarding` may use them and nothing may use `onboarding`. The single exception —
+role checks on two compliance read routes — is recorded in
+[`module-rule-exceptions.md`](module-rule-exceptions.md) (EX-001), and no other
+exception is allowed without the same written record. Module boundaries are enforced
+by import-linter (`backend/importlinter.ini`, one private-internals contract per
+module).
+
+**Platform patterns the CRM relies on:**
+
+- *Append-only by the database, not by discipline.* Decisions, reviews, history rows,
+  activities and follow-up completions are protected by triggers that refuse `UPDATE`
+  and `DELETE` (`public.prevent_mutation()`); every such rule has a test that tries the
+  violation in raw SQL.
+- *Ports owned by the consumer.* Verification adapters, storage and the scanner are
+  `Protocol`s defined where they are used; implementations satisfy them structurally.
+- *One transaction per operation.* A service validates everything before it assigns
+  anything, writes the history row through the shared writer (which flushes and never
+  commits), and commits once.
+
+## 3. The model
+
+Every company has **one record** (`exporter_profile`, keyed by `customer_id`). On it
+sit the **journey**, a **marker**, and the current value of each of **three gauges**;
+**deals** hang off the company. Every change to any of them writes a row to **one
+shared history log**, so the full story of a company is one query (§3.1). Each gauge
+moves independently of the others — only the rules below connect them.
+
+| Part | Values | Owner |
+|---|---|---|
+| Journey | `LEAD` → `PROSPECT` → `CUSTOMER` | Developer 2 |
+| Marker | `NONE`, `PAUSED`, `ENDED` | Developer 2 |
+| Qualification gauge | `NOT_YET_REVIEWED`, `QUALIFIED`, `NOT_QUALIFIED` | Developer 2 |
+| Conversation gauge | `NOT_CONTACTED`, `REACHING_OUT`, `SPOKE_TO_THEM`, `INTERESTED`, `NOT_NOW`, `READY_NOW` | Developer 3A |
+| Background-check gauge | `NOT_STARTED`, `IN_REVIEW`, `MORE_INFO`, `CLEAR`, `FLAGGED`, `ON_HOLD` | Developer 4A |
+| Deal (per deal) | `OPEN`, `GATHERING_PAPERWORK`, `HANDED_OVER`, `WITHDRAWN` | Developer 3B |
+
+Every child record has a real foreign key to its company (`ON DELETE RESTRICT`). PAN
+is unique across companies; a company may hold several GSTINs, and a GSTIN held by
+another company is a warning, not a refusal (decision 4). Contract:
+[`contracts/company-record.md`](contracts/company-record.md).
+
+## 4. The state machines
+
+Each is enforced by its owner's service, and the allowed next moves are served to the
+screen by the server rather than copied into the frontend.
+
+### Journey — forward only, never by hand
+
+- `LEAD` → `PROSPECT`: when a qualification outcome is recorded as `QUALIFIED`
+  (including an RXIL delivery, decision 7).
+- `PROSPECT` → `CUSTOMER`: when the company is a `PROSPECT` **and** its background
+  check is `CLEAR`, whichever becomes true second (decision 2). See §5.
+- The journey never moves backwards. A reopened, flagged or held check leaves a
+  customer a customer (assumption A5). Leaving or pausing a relationship uses the
+  marker.
+
+### Marker — commercial pauses and endings, not compliance
+
+`NONE` → `PAUSED` or `ENDED`, `PAUSED` → `ENDED` (reason required), and either back to
+`NONE`. `ENDED` companies are hidden from default lists but stay searchable. A
+compliance concern is recorded on the background check, never as a marker.
+
+### Qualification gauge — did they meet our requirements?
+
+Criteria are settings (versioned rows ADMIN manages), not code. Staff record a result
+per criterion with evidence; the server suggests an outcome, and a person records it.
+`NOT_QUALIFIED` needs at least one reason code and stays a `LEAD`; it can be
+re-reviewed. `QUALIFIED` is final in the prototype (assumption A2). Contract:
+[`contracts/criterion-result.md`](contracts/criterion-result.md).
+
+### Conversation gauge — how is the sales relationship going?
+
+Applies from `PROSPECT` onward (assumption A4). Any value may follow any other except
+itself (it is a judgement); `NOT_NOW` needs a check-back date that is not in the past
+(compared with the UTC date). Opening a deal sets `READY_NOW` in the same transaction
+(seam S1). Follow-ups are activities with a due date; completing one adds a locked
+completion record, and the Follow-ups screen shows every due and overdue one to the
+whole team. Contract: [`contracts/engagement.md`](contracts/engagement.md).
+
+### Background-check gauge — is it safe and lawful to work with them?
+
+Every move is a new, locked decision record that supersedes the previous one; nothing
+is edited. The nine moves (§3.3), enforced both by the service and by the database
+(`ck_background_check_decision_move`):
+
+| From | To | Who | Needs |
+|---|---|---|---|
+| `NOT_STARTED` | `IN_REVIEW` | OPERATIONS, COMPLIANCE, ADMIN | — |
+| `IN_REVIEW` | `CLEAR` | COMPLIANCE, ADMIN | a reason, a risk rating, and the `CLEAR` prerequisites (§6) |
+| `IN_REVIEW` | `MORE_INFO` | COMPLIANCE, ADMIN | a note of what is needed |
+| `MORE_INFO` | `IN_REVIEW` | OPERATIONS, COMPLIANCE, ADMIN | a note of what arrived |
+| `IN_REVIEW` | `FLAGGED` | COMPLIANCE, ADMIN | a reason |
+| `FLAGGED` | `ON_HOLD` | COMPLIANCE, ADMIN | a reason |
+| `FLAGGED` or `ON_HOLD` | `IN_REVIEW` | COMPLIANCE, ADMIN | a reason (reassessment) |
+| `CLEAR` | `IN_REVIEW` | COMPLIANCE, ADMIN | a reason (reopen, decision 5) |
+
+There is no `CLEAR` → `FLAGGED`: new information about a cleared company is acted on
+by reopening it first. **Risk** (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`, decision 6) is
+required on `CLEAR` and refused on every other move; the screen keeps showing the last
+recorded risk, labelled as such, after a reopen (D6). Each move locks the company row,
+pins an evidence snapshot (the verification results, screening rows and the company's
+own `AVAILABLE` documents it rested on), writes one history row and commits once. A
+screen that sends the value it was looking at gets a 409 if the gauge moved meanwhile.
+Contract: [`contracts/background-check.md`](contracts/background-check.md).
+
+### Deal — is there a real, current need?
+
+| From | To | Needs |
+|---|---|---|
+| `OPEN` | `GATHERING_PAPERWORK` | — |
+| `OPEN` or `GATHERING_PAPERWORK` | `WITHDRAWN` | a reason |
+| `GATHERING_PAPERWORK` | `HANDED_OVER` | a buyer, and the handover guard (§5) |
+
+`HANDED_OVER` and `WITHDRAWN` are terminal: a terminal deal's buyer cannot be changed
+and it takes no more documents. A company may have any number of deals, but **only a
+`PROSPECT` or a `CUSTOMER` may have one opened** — a `LEAD` is refused with
+`DEAL_COMPANY_NOT_READY` — because opening a deal moves the conversation, which does
+not apply to leads. Each deal has at most one buyer (its own row, `deal_buyer`), and
+checks about a buyer attach to the buyer, never to the company (decision 9). Contract:
+[`contracts/deal-and-buyer.md`](contracts/deal-and-buyer.md).
+
+## 5. The move to CUSTOMER, and the handover
+
+**The move to `CUSTOMER` is one transaction** with the move that completes its
+condition (decision U4, implemented as the audit recommended; awaiting the programme
+lead's written confirmation). `ExporterProfileService.promote_to_customer_if_ready`
+flushes and never commits; it is called:
+
+- by `BackgroundCheckService` when it records `CLEAR` (qualified first, cleared
+  second), and
+- by `QualificationService` when a `QUALIFIED` outcome moves a `LEAD` to `PROSPECT`
+  whose check is already `CLEAR` (cleared first, qualified second).
+
+Both callers lock the company row first, so a `CLEAR` and a `QUALIFIED` landing at the
+same moment make the move exactly once, and no committed state is ever `PROSPECT` and
+`CLEAR` at once. The move writes a journey row with `terminal: true` and, after the
+commit, announces `company.became_customer`. It is idempotent: a customer that is
+reopened and cleared again is not promoted or announced twice.
+
+**The handover guard** (assumption A5): a deal may be handed over only when its company
+is a `CUSTOMER` **and** its background check is `CLEAR`. The guard share-locks the
+company row while the handover commits (D10), so a concurrent flag or reopen waits. The
+handover snapshots the deal's buyer and document ids, writes the history row, and after
+the commit announces `deal.handed_over` to the lending team.
+
+## 6. Checks behind the background check — verification and screening
+
+The background check does not run checks; it records a decision **on inputs** owned by
+Developer 4B, read through one read-only seam (`domain/compliance_inputs.py`, the
+4A ↔ 4B contract):
+
+- **Verification results** (`verification_result`). Recorded through adapters; in the
+  prototype the route accepts `provider="manual"` only (D7) and an RXIL stub exists for
+  the future intake. A manual `PASSED` needs a note or at least one evidence reference
+  (D16); a manual `PENDING` is refused. Evidence references are documents (which must
+  exist, belong to the subject and be `AVAILABLE`) or `http(s)` links. Reviews form an
+  append-only chain: a later review must name the current one and give a note, or it is
+  refused as stale (409). A reviewed result can never be changed by polling a provider
+  (service rule and database trigger). Subjects are a company (`EXPORTER`) or a deal's
+  buyer (`BUYER`, by `deal_buyer.id`); a new check on a buyer of a closed deal is
+  refused (D17). Each result says where it came from (`MANUAL`, `STUB`, `PROVIDER`) and
+  whether it is a placeholder.
+- **The screening checklist** — eight items served by the server
+  (`SCREENING_CATALOGUE`), each decision `PASSED`, `FAILED`, `EXEMPT` or
+  `NEEDS_REVIEW`, recorded as a new row with its own history (D9). COMPLIANCE and ADMIN
+  decide.
+- **Bank activity** — the panel is honest: no provider feed is connected
+  (`NOT_CONNECTED`), and no findings are invented.
+
+**What `CLEAR` requires** (A3, as settled in D1–D4 on 28 September 2026 and carried by
+`CLEAR_POLICY`): a risk rating; no check still pending (`PENDING`; `REVIEW` without an
+`ACCEPTED` or `REJECTED` review; any placeholder); all eight screening items `PASSED`
+or `EXEMPT` (a `FAILED` item means `FLAGGED`, not `CLEAR`); and at least one pinned
+evidence id. A `FAILED` verification does not block `CLEAR` by itself — compliance
+weighs it. The details are in `contracts/background-check.md` §14 and
+`dev4/4b-task.md` §13 (Developer 4B's decisions).
+
+## 7. Documents and storage
+
+A document belongs to exactly one company or one deal. Categories are a fixed list the
+server checks; document types within them are settings
+(`deployments/gitops/reference-data/crm/documents/document-types.yaml`). Only a
+relative storage key is stored, never a cloud address. Every upload lands
+`PENDING_SCAN` and cannot be opened; a clean scan makes it `AVAILABLE`, an infected or
+failed scan makes it `QUARANTINED` or `SCAN_FAILED`, never served. Downloads use signed,
+expiring links and the caller's role. In the prototype the storage is local disk and
+the scanner is a clearly labelled pass-through. Contract:
+[`contracts/storage-and-documents.md`](contracts/storage-and-documents.md).
+
+## 8. History and events
+
+- **History** — one append-only table, `exporter_lifecycle_history`, with a
+  `dimension` per part of the model (`journey`, `qualification`, `marker`, `profile`,
+  `conversation`, `deal`, `background_check`, `verification`, `screening`). Every state
+  change writes its row in the same transaction, with the actor from the login session.
+  Rows written in one transaction share a timestamp, so their order between themselves
+  is not chronological. Read through `GET /exporters/{id}/history` and
+  `GET /deals/{id}/history`. Contract: [`contracts/history-row.md`](contracts/history-row.md).
+- **Events** — two announcements, each published after the commit that made it true
+  and best effort (the history row is the source of truth): `company.became_customer`
+  and `deal.handed_over`. The default bus is in memory and no receiver is built yet
+  (decision 10). Contract: [`contracts/event-envelope.md`](contracts/event-envelope.md).
+
+## 9. Roles and masking
+
+Five roles (§3.7). Staff are OPERATIONS, COMPLIANCE and ADMIN; DEVELOPER is read-only;
+`API_USER` — what public sign-up grants — reaches nothing in the CRM (asserted by
+`test_api_user_reaches_nothing_in_the_crm`).
+
+| Can… | OPERATIONS | COMPLIANCE | ADMIN | DEVELOPER |
+|---|---|---|---|---|
+| See companies, contacts, deals, documents, history | yes | yes | yes | read, masked |
+| See full PAN / GSTIN / IEC / CIN; search by them | no (masked) | yes | yes | no (masked) |
+| Create and edit companies, contacts, activities; set the marker | yes | yes | yes | no |
+| Record qualification results and outcomes; import a CSV | yes | yes | yes | no |
+| Manage qualification criteria; RXIL company intake | no | no | yes | no |
+| Set the conversation; open and move deals; record buyers; upload documents | yes | yes | yes | no |
+| Start a background check; answer `MORE_INFO` | yes | yes | yes | no |
+| Other background-check moves; screening decisions; record and review verification results | no | yes | yes | no |
+| Read the background check, verifications and screening | yes | yes | yes | **no** (D8) |
+
+**Masking is done by the server** (`api/schemas/masking.py`), never only by the
+browser: a caller reading the JSON directly must not get what the matrix hides. Tax
+identifiers show only their last four characters to roles that may not reveal them;
+contact emails and phones, and a deal buyer's identifiers and contact details, are
+masked the same way; a profile-history row stores identifiers already masked. An exact
+search by PAN, GSTIN or IEC is refused to those roles, because a match alone would say
+which company holds the identifier. DEVELOPER does not receive `background_check`,
+`verification` or `screening` history rows, since D8 refuses it that data on those
+gauges' own routes.
+
+**Design principle:** a role that cannot reveal a value gets no reveal control at all,
+not a disabled one — a disabled eye icon would still leak "this data exists, you're
+just not allowed".
+
+**Roles as data.** User and role management (`/api/v1/auth/users`,
+`/api/v1/auth/roles`, the Settings screen) is gated by permissions, and built-in roles
+are editable. The CRM routes, however, still check the five built-in roles; the
+permission catalogue marks the CRM permissions as not enforced, so editing them changes
+no CRM access today.
+
+Accounts: `python -m app.platform.authentication.cli bootstrap` creates the first ADMIN
+and COMPLIANCE user; `... cli promote <email> <ROLE>` changes a role
+([`development.md`](development.md)).
+
+## 10. Ownership
+
+Architecture §8–9 assigns each part to one developer; the contract for a part is
+changed only with the agreement of its owner and its users, and a shared file changes
+only through a review by its owner.
+
+| Owner | Owns |
+|---|---|
+| Developer 1 | Security and shared foundations: route role gates, the history log and its routes, the event envelope and publisher, the migration register, the generated API types, and the shared files (`exceptions.py`, the entity and repository indexes, `alembic.ini`, `importlinter.ini`, the route-authorisation tests, `frontend/src/lib/api`, auth, routes, sidebar) |
+| Developer 2 | The company record: identity, identifiers, journey, marker, qualification, the move to `CUSTOMER`, CSV import, RXIL company intake, sample data, the company page shell and lists |
+| Developer 3A | Contacts and activities, the conversation gauge, follow-ups |
+| Developer 3B | Deals, buyers, storage, documents, the handover |
+| Developer 4A | The background-check gauge, its decisions, evidence snapshot, risk and read helper |
+| Developer 4B | Verification results and reviews, the screening checklist, buyer checks, the 4A ↔ 4B seam, the verification workspace |
+
+Where one owner's code calls another's, it goes through a published seam: seam S1
+(`ConversationService.mark_ready_now_for_opened_deal`), the background-check read helper
+(`background_check_reader.py`), the 4A ↔ 4B inputs reader (`compliance_inputs.py`), and
+Developer 2's promotion (`promote_to_customer_if_ready`).
+
+## 11. Decisions
+
+- **The twelve prototype decisions** (§6.1), cited as "decision 1" … "decision 12":
+  start fresh with sample data; a company becomes a customer when its check is `CLEAR`;
+  ended/paused is a marker; block a duplicate PAN, warn on a duplicate GSTIN; one
+  COMPLIANCE/ADMIN user may reopen a cleared check with a reason; the risk scale is
+  `LOW`/`MEDIUM`/`HIGH`/`CRITICAL`; RXIL exporters arrive as qualified prospects; a
+  rejected lead may be re-qualified; buyers live on deals and lending owns
+  transactions; other teams are told by events only; the compliance route exception;
+  only COMPLIANCE and ADMIN see full tax IDs.
+- **Planning assumptions** A1–A14 (§6.3) — for example A5, the handover guard.
+- **Developer 4's decisions D1–D17** are recorded in `contracts/background-check.md`
+  §14 and `dev4/4b-task.md` §13. The PDF's §6.2 also lists an *earlier* plan's
+  decisions under the same labels (for example its D8 is "storage: local disk first,
+  relative keys only"); a code comment citing "D8" beside storage means that one.
+- **Implemented on the audit's recommendation, awaiting the lead's confirmation:**
+  U4 (the move to `CUSTOMER` is one transaction) and the rule that only a `PROSPECT` or
+  `CUSTOMER` may open a deal; also the D2 clarification and D5 amendment made in the
+  Developer 4A review, and Developer 4B's side of D4.
+
+## 12. Known, intentional limitations
+
+The prototype is built to be honest about what is not real yet.
+
+- **Not for real documents or data** (§7.6): the scanner is a pass-through and storage is
+  local disk (no S3, Object Lock, KMS or retention lock); tax identifiers have no
+  field-level encryption.
+- **Providers:** Middesk, Trulioo and Sumsub stay disconnected (A13); results are
+  recorded manually. RXIL results intake — and the automatic start of a check when they
+  arrive — waits for RXIL's package contract (D12). No bank feed is connected.
+- **Events** reach no receiver yet, and a publish lost between the commit and the
+  announcement is not retried (no outbox).
+- **Legacy and out-of-scope code:** the legacy onboarding workflow is not started
+  (`TEMPORAL_ENABLED=true` is unsupported), the case engine is not connected to
+  background-check decisions (A6), and several modules are schema only
+  ([`../RUNNING.md`](../RUNNING.md)).
+- **Open items the lead may change:** the `CLEAR` evidence rule is satisfied by the
+  eight screening answers alone, so a company can be cleared with no document and no
+  verification result; placeholder verification rows can never stop blocking `CLEAR`;
+  the handover snapshot includes deal documents whatever their scan status; the deal's
+  `allowed_stage_moves` is not filtered by role (the screen hides moves from DEVELOPER);
+  masked roles learn which company already holds a PAN from the duplicate refusal;
+  changing a `NOT_NOW` check-back date takes two moves; there are no cross-company deal
+  or document lists; documents cannot be deleted (seven-year retention argues against
+  it); the buyer-checks component exists but is not mounted on the deal page; there is
+  no CI.
+
+## 13. Further reading
+
+- The contracts: [`contracts/`](contracts/) — company record, criterion results,
+  engagement, deal and buyer, storage and documents, background check, history row,
+  event envelope, migration register.
+- The developer task documents for the background check and its inputs:
+  [`dev4/4a-task.md`](dev4/4a-task.md), [`dev4/4b-task.md`](dev4/4b-task.md).
+- Running, testing and migrating: [`development.md`](development.md). The demo walk-through:
+  [`demo.md`](demo.md).

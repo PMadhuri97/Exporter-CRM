@@ -58,7 +58,7 @@ router = APIRouter(prefix="/exporters", tags=["Exporter CRM"])
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 # Masked CRM reads. DEVELOPER may read the CRM but never sees a raw
 # identifier (`can_reveal_identifiers` is always False for it), per the role
-# capability matrix in docs/exporter-crm-frontend-tickets.md.
+# matrix in docs/architecture.md, "Roles and masking" (architecture §3.7).
 _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )

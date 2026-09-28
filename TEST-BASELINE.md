@@ -1,5 +1,9 @@
 # Backend test baseline
 
+> **Superseded — the current baseline is [`docs/development.md`](docs/development.md) §9.**
+> The numbers below are the 23 September 2026 baseline, kept for the record; the
+> "Cause B" stale assertion they list has since been fixed.
+
 The reference point for "was this already red?". Established 2026-09-23 against a
 clean `alembic upgrade head`. Anyone who sees a failure not listed here has
 introduced it.

@@ -18,14 +18,17 @@ suggestion. Both are stored, side by side, on the outcome.
 **One transaction per operation.** Every write here goes through the session
 the service was given; the shared ``HistoryService`` flushes and never
 commits; each public method commits once at its end. Recording an outcome
-locks the company row first, so two reviewers cannot fork the outcome chain.
-Nothing here crosses into another developer's service, so decision U4 does not
-arise.
+locks the company row first, so two reviewers cannot fork the outcome chain —
+and a ``CLEAR`` landing at the same moment waits on the same lock, so the move to
+``CUSTOMER`` below happens exactly once.
 
 **The journey.** A ``QUALIFIED`` outcome on a ``LEAD`` moves the journey to
-``PROSPECT`` in the same transaction. It never makes a company a ``CUSTOMER``:
-that needs a ``CLEAR`` background check, which is L2-11's hand-off with
-Developer 4.
+``PROSPECT`` in the same transaction. If the company's background check is
+already ``CLEAR`` — cleared first, qualified second — the same transaction goes on
+to ``CUSTOMER`` through ``ExporterProfileService.promote_to_customer_if_ready``
+(L2-11; decision 2, company-record §3.2), and ``company.became_customer`` is
+announced after the commit. The other order is Developer 4A's ``CLEAR``, which
+calls the same method.
 """
 
 from __future__ import annotations
@@ -39,6 +42,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.application.exporter_profile_service import (
+    ExporterProfileService,
+    announce_became_customer,
+)
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.company_intake import PartnerQualification
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
@@ -60,6 +67,7 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
     QualificationSource,
     QualificationState,
 )
+from app.modules.onboarding.domain.exporter_profile_views import CustomerAnnouncement
 from app.modules.onboarding.domain.qualification_views import (
     CriterionDefinition,
     CriterionStanding,
@@ -235,7 +243,8 @@ class QualificationService:
 
         Writes a `qualification` history row (from the previous gauge value
         to the outcome, with the note as its reason) and, when the journey
-        moves, a `journey` history row. Never makes a company a `CUSTOMER`.
+        moves, a `journey` history row — two, if a `CLEAR` background check makes
+        the new `PROSPECT` a `CUSTOMER` straight away (announced after the commit).
         """
         profile = await self._lock_profile(customer_id)
         if profile.qualification is QualificationState.QUALIFIED:
@@ -245,7 +254,7 @@ class QualificationService:
         await self._check_reason_codes(outcome, codes, cleaned_note)
         suggested, result_ids = await self._suggestion(customer_id)
 
-        row = await self._write_outcome(
+        row, announcement = await self._write_outcome(
             profile,
             outcome,
             reason_codes=codes,
@@ -259,6 +268,7 @@ class QualificationService:
         )
         await self._db.commit()
         await self._db.refresh(row)
+        await announce_became_customer(announcement)  # after the commit, best effort
         return row
 
     # ── A partner's decision (RXIL intake) ──────────────────────────────────
@@ -304,7 +314,7 @@ class QualificationService:
             source=source,
             decided_by_kind=qualification.decided_by_kind,
         ) if qualification.results else []
-        row = await self._write_outcome(
+        row, announcement = await self._write_outcome(
             profile,
             qualification.outcome,
             reason_codes=[],
@@ -319,6 +329,7 @@ class QualificationService:
         )
         await self._db.commit()
         await self._db.refresh(row)
+        await announce_became_customer(announcement)  # after the commit, best effort
         return row
 
     async def check_partner_decision(
@@ -424,7 +435,12 @@ class QualificationService:
         decided_by: str | None,
         actor_id: str | None,
         extra_details: dict | None = None,
-    ) -> QualificationOutcome:
+    ) -> tuple[QualificationOutcome, CustomerAnnouncement | None]:
+        """Write the outcome, its history, and whatever journey move it causes.
+
+        Returns the outcome and, when the move made the company a ``CUSTOMER``, the
+        announcement the caller publishes **after** its commit.
+        """
         customer_id = profile.customer_id
         from_state = profile.qualification
         previous = await self._repo.latest_outcome(customer_id)
@@ -464,6 +480,7 @@ class QualificationService:
             },
         )
 
+        announcement: CustomerAnnouncement | None = None
         if outcome is QualificationOutcomeValue.QUALIFIED and profile.journey is ExporterJourney.LEAD:
             profile.journey = ExporterJourney.PROSPECT
             await self._history.record(
@@ -477,8 +494,18 @@ class QualificationService:
                 details={
                     "cause": "qualification_outcome",
                     "outcome_id": str(row.id),
-                    "terminal": False,  # CUSTOMER is the terminal value; never from here
+                    "terminal": False,  # CUSTOMER is the terminal value; not this move
                 },
+            )
+            # Cleared first, qualified second (company-record §3.2): the check is
+            # already CLEAR, so this outcome completes the condition and the company
+            # moves straight through to CUSTOMER, in this transaction (U4). A no-op
+            # unless the check is CLEAR.
+            announcement = await ExporterProfileService(self._db).promote_to_customer_if_ready(
+                profile,
+                actor_id=actor_id,
+                cause="qualification_outcome",
+                source="qualification_service.record_outcome",
             )
 
         logger.info(
@@ -490,7 +517,7 @@ class QualificationService:
             re_review=previous is not None,
             actor_id=actor_id,
         )
-        return row
+        return row, announcement
 
     # ── Read ────────────────────────────────────────────────────────────────
 

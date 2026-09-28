@@ -220,8 +220,8 @@ class TestSelectEvidence:
         assert selection.verifications == ((check.verification_result_id, review_id),)
 
     def test_a_result_with_no_review_pins_a_null_review_id(self):
-        # The seam reports `latest_review_id = None` until Dev4B's 4B-2 lands
-        # (contract §6.1), and the column is nullable for exactly that reason.
+        # The seam reports `latest_review_id = None` for a result nobody has
+        # reviewed yet (contract §6.1), and the column is nullable for that reason.
         check = _verification(review_id=None)
         selection = select_evidence(_inputs(verifications=(check,)))
         assert selection.verifications == ((check.verification_result_id, None),)

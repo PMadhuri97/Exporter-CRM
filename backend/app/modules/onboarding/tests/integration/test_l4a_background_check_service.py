@@ -80,7 +80,11 @@ CATALOGUE = (
     "regulatory",
 )
 
-#: Explicit, because D1–D4 are unanswered: no test may depend on the placeholder.
+#: A policy of these tests' own, so they pin the move mechanism rather than the
+#: settled D1–D4 answers — those are `CLEAR_POLICY`, exercised through `_settled`
+#: below and, end to end with nothing substituted, by `test_customer_promotion.py`
+#: and `test_crm_end_to_end.py`. It is deliberately more lenient than the shipped
+#: policy (`REVIEW` and placeholders do not block).
 TEST_POLICY = ClearPolicy(
     pending_verification_statuses=frozenset({"PENDING"}),
     placeholder_counts_as_pending=False,

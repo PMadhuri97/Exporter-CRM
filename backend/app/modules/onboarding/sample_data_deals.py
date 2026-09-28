@@ -1,30 +1,22 @@
 """Sample data for deals, buyers and documents — **owner: Developer 3B**
 (L3-05 … L3-10).
 
-Called from ``sample_data.py``'s hook, after every sample company exists: a deal
-hangs off a company, so this can never run first.
+Called from ``sample_data.py``'s hooks, after every sample company exists (a deal
+hangs off a company) and after the background-check hook (company B must be a
+``CUSTOMER`` with a ``CLEAR`` check before its deal can be handed over).
 
 Architecture §3.9 gives company B two deals, one handed over, and company C one
 open deal that cannot be handed over because its background check is flagged —
 each sample company's target is recorded on ``SampleCompany.target``.
 
-**Two of those three states cannot be reached yet, and this does not fake them.**
-
-* *Handed over* needs assumption A5's guard: the company a ``CUSTOMER`` with a
-  ``CLEAR`` background check. ``exporter_profile.background_check`` is Developer
-  4's column in migration 0015, which has not landed, so no deal can legitimately
-  reach ``HANDED_OVER``. Writing the stage directly would put a row in the
-  database that the service would never have produced, with no history row behind
-  it — sample data that lies about what the system can do.
-* *Cannot be handed over because the check is flagged* is the same column. What
-  company C gets instead is a deal that cannot be handed over for the reason that
-  is true today: no background check exists.
-
-So this seeder brings each company's deals to the closest **honest** state, and
-``docs/dev3b-progress.md`` records the gap. Phase 4 finishes it when 0015 lands.
+**Every state is reached through the service, never written.** B's deal is handed
+over by ``DealService.transition_stage``, so assumption A5's guard really passes (B
+is a ``CUSTOMER`` and ``CLEAR``) and the handover writes its history row and its
+announcement like any other. C's deal stays ``OPEN``; the guard would refuse it.
 
 Converges like every other seeder: it looks at what is there, adds only what is
-missing, and reports zero on a repeat run.
+missing, moves a deal forward only when it is behind its target, and reports zero on
+a repeat run.
 """
 
 from __future__ import annotations
@@ -62,8 +54,7 @@ class _SampleDeal:
 #: Keyed by the sample company's slug, from ``sample_data.COMPANIES``.
 SAMPLE_DEALS: dict[str, tuple[_SampleDeal, ...]] = {
     # §3.9 company B: two deals. The second is the one §3.9 calls "handed over";
-    # it stops at GATHERING_PAPERWORK with its buyer recorded, which is as far as
-    # the guard allows today — see the module docstring.
+    # the first is still gathering its paperwork.
     "company-b": (
         _SampleDeal(
             reference="Rotterdam shipment, March",
@@ -77,7 +68,7 @@ SAMPLE_DEALS: dict[str, tuple[_SampleDeal, ...]] = {
             buyer_name="Hanseatic Industrie GmbH",
             buyer_country="DE",
             buyer_registration_number="HRB-77321",
-            stage=DealStage.GATHERING_PAPERWORK,
+            stage=DealStage.HANDED_OVER,
         ),
     ),
     # §3.9 company C: one open deal that cannot be handed over.
@@ -136,20 +127,65 @@ async def _ensure_deal(company_id: uuid.UUID, sample: _SampleDeal) -> bool:
             registration_number=sample.buyer_registration_number,
             actor_id=None,
         )
-    if sample.stage is not DealStage.OPEN:
+    # One stage at a time, as a person would: a deal bound for HANDED_OVER stops at
+    # GATHERING_PAPERWORK here, and `hand_over_sample_deals` makes the last move.
+    stage = (
+        DealStage.GATHERING_PAPERWORK if sample.stage is DealStage.HANDED_OVER else sample.stage
+    )
+    if stage is not DealStage.OPEN:
         async with db_services.AsyncSessionLocal() as db:
-            await DealService(db).transition_stage(
-                view.id, sample.stage, actor_id=None
-            )
+            await DealService(db).transition_stage(view.id, stage, actor_id=None)
 
     logger.info(
         "sample_deals.created",
         company_id=str(company_id),
         deal_id=str(view.id),
         reference=sample.reference,
-        stage=sample.stage.value,
+        stage=stage.value,
     )
     return True
 
 
-__all__ = ["load_deal_sample_data"]
+async def hand_over_sample_deals() -> int:
+    """Hand over every sample deal whose target is ``HANDED_OVER`` and that is ready
+    for it — through ``DealService``, so assumption A5's guard decides.
+
+    Returns the number of deals handed over by this run — ``0`` on a repeat run. A
+    deal the guard refuses (its company not yet a ``CUSTOMER`` with a ``CLEAR`` check)
+    is left where it is and logged; nothing is forced.
+    """
+    from app.modules.onboarding.exceptions import DealHandoverBlockedError
+    from app.modules.onboarding.sample_data import COMPANIES
+
+    slugs = {company.slug: company.customer_id for company in COMPANIES}
+    handed_over = 0
+    for slug, deals in SAMPLE_DEALS.items():
+        company_id = slugs.get(slug)
+        if company_id is None:  # pragma: no cover - a renamed sample company
+            continue
+        async with db_services.AsyncSessionLocal() as db:
+            existing, _ = await DealService(db).list_for_company(company_id, limit=200)
+        by_reference = {view.reference: view for view in existing}
+        for sample in deals:
+            view = by_reference.get(sample.reference)
+            if (
+                sample.stage is not DealStage.HANDED_OVER
+                or view is None
+                or view.stage is not DealStage.GATHERING_PAPERWORK
+            ):
+                continue
+            try:
+                async with db_services.AsyncSessionLocal() as db:
+                    await DealService(db).transition_stage(
+                        view.id, DealStage.HANDED_OVER, actor_id=None
+                    )
+            except DealHandoverBlockedError as blocked:
+                logger.warning(
+                    "sample_deals.handover_blocked", deal_id=str(view.id), reason=blocked.detail
+                )
+                continue
+            handed_over += 1
+    return handed_over
+
+
+__all__ = ["hand_over_sample_deals", "load_deal_sample_data"]

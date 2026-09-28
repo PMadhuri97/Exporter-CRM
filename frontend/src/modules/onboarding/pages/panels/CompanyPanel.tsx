@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 
 import { Button, DetailRow, Input, LINK_CLASSES, Panel } from '@/components';
 import { formatDate, humanize } from '@/lib/format';
+import { isWebLink } from '@/lib/links';
 import { useCurrentUser } from '@/platform/auth';
 import { MaskedValue, canReveal } from '@/platform/mask';
 
@@ -244,11 +245,14 @@ export function CompanyPanel({
               <DetailRow label="Industry">{profile.industry ?? '—'}</DetailRow>
               <DetailRow label="Established">{profile.year_established ?? '—'}</DetailRow>
               <DetailRow label="Website">
-                {profile.website ? (
+                {/* A link only for an http(s) URL: React 18 renders a `javascript:`
+                    href as written, and a value stored before the server refused
+                    one must still never become a link. */}
+                {profile.website && isWebLink(profile.website) ? (
                   <a href={profile.website} target="_blank" rel="noreferrer" className={`inline-flex max-w-full items-center gap-1 ${LINK_CLASSES}`}>
                     <span className="truncate">{profile.website}</span><ExternalLink size={13} className="shrink-0" />
                   </a>
-                ) : '—'}
+                ) : (profile.website ?? '—')}
               </DetailRow>
             </dl>
           )}

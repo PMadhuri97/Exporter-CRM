@@ -162,11 +162,13 @@ apart.
 | `EventBus`, in-memory and Kafka backends, topic routing | **implemented** |
 | `actor_id` / `deal_id` on the envelope and `build_envelope` | **implemented** (this contract) |
 | Best-effort publish that never raises to the caller | **implemented** |
-| `EventType.COMPANY_BECAME_CUSTOMER` / `DEAL_HANDED_OVER` | **not built** — L1-12 |
-| A CRM event helper any service can call | **not built** — L1-12 |
-| Any CRM service publishing anything | **not built** — the CRM publishes nothing today |
-| A receiver for either event | **not built** — other teams, later |
+| `EventType.COMPANY_BECAME_CUSTOMER` / `DEAL_HANDED_OVER` | **implemented** (L1-12) |
+| A CRM event helper any service can call | **implemented** — `OnboardingEventPublisher.company_became_customer` / `.deal_handed_over` (L1-12) |
+| `company.became_customer` published | **implemented** — after the commit of the `CLEAR` or `QUALIFIED` that made the company a `CUSTOMER` (`exporter_profile_service.announce_became_customer`, L2-11) |
+| `deal.handed_over` published | **implemented** — after the handover commits (`DealService.transition_stage`, L3-10) |
+| A receiver for either event | **not built** — other teams, later (decision 10) |
 
-The only producers on the bus today are the legacy `onboarding_service` and the
-Sumsub `webhook_service`, both emitting `customer.*` events. No Exporter CRM
-code path publishes.
+Both are best effort: the history row is the source of truth, a publish failure is
+logged and swallowed, and there is no outbox — an announcement lost to a crash
+between the commit and the publish is not retried. The in-memory bus is the default
+(`KAFKA_ENABLED=false`), so with no receiver built an announcement reaches nobody yet.

@@ -50,7 +50,7 @@ from app.modules.onboarding.exceptions import (
     VerificationResultNotReviewableError,
     VerificationReviewStaleError,
 )
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
 from app.platform.database import services as db_services
 from app.shared.contracts.kyb import VendorHealthStatus
 from app.shared.enums.kyb import KYBVendorProcessingMode, VendorHealthStatusEnum
@@ -65,7 +65,7 @@ _NOTE = VerificationEvidence(note="Checked against the source document.")
 
 
 async def _deal_buyer() -> uuid.UUID:
-    company_id = await make_company()
+    company_id = await make_prospect()  # a deal needs a prospect
     async with db_services.AsyncSessionLocal() as db:
         deal = await DealService(db).open_deal(company_id, reference="EXP-2", actor_id="t")
     async with db_services.AsyncSessionLocal() as db:

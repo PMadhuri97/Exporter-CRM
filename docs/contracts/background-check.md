@@ -376,17 +376,20 @@ guard and the handover are Developer 3's. Dev4A's part is the read helper (§10)
   Proved by a two-session test (`test_l4a_background_check_reader.py::TestTheHandoverLock`) that
   fails if the lock is removed.
 
-### 11.3 Customer transition (Developer 2) — **BLOCKED: U4 / O3**
+### 11.3 Customer transition (Developer 2)
 
 `PROSPECT → CUSTOMER` happens when the company is `PROSPECT` and its check is `CLEAR`, whichever
 becomes true second (A1). Developer 2 makes the move (L2-11) and it announces
 `company.became_customer`, whose payload carries `risk_rating` and `clearing_decision_id`
-(`event-envelope.md` §3) — both readable from `BackgroundCheckReader.standing`.
+(`event-envelope.md` §3) — both read from `BackgroundCheckReader.standing`.
 
-**Whether Dev4A's `CLEAR` and Developer 2's move commit together, and who publishes the event after
-the commit, is undecided (U4, D11).** Until it is, Dev4A builds no customer move, calls no
-Developer 2 code and publishes no `company.became_customer`. Dev4A acknowledges `event-envelope.md`
-§3 as the payload it owes.
+**One transaction (U4 / D11, implemented 29 September 2026 on the audit's recommendation; the
+programme lead to confirm).** When a move reaches `CLEAR`, `_move` calls Developer 2's
+`ExporterProfileService.promote_to_customer_if_ready` at step 7b — after the history row, before the
+single commit, under the row lock already held — and publishes the announcement after the commit.
+The other order (cleared first, qualified second) is Developer 2's `QualificationService`, calling
+the same method. Dev4A still never writes `journey`; a reopen, flag or hold never demotes a
+customer. See `company-record.md` §3.2.
 
 ---
 
@@ -446,9 +449,9 @@ Every answer is recorded here, with its date and who decided. Nothing below is g
 | D4 | **Evidence snapshot scope** — which documents; what counts as "evidence recorded" | **Settled 28 Sep 2026 (programme lead):** the company's own documents with `scan_status = AVAILABLE`; and `CLEAR` requires at least one pinned id | programme lead | — |
 | D5 | **Risk on the company record; risk on non-CLEAR outcomes** | **Settled 28 Sep 2026 (programme lead):** **no company risk column.** Risk stays on the decision record and is read through `BackgroundCheckReader.standing` — no second copy to drift, no migration, and Developer 2's list filters through the reader. **Risk on non-`CLEAR` outcomes: refused** (Dev4A PR review, 28 Sep 2026, at the user's instruction). The first answer left it "neither required nor refused", which let any move — an OPERATIONS start included — record a rating the reader then reported as the company's (§7) | Dev4 (A+B) with the lead | nothing |
 | D6 | **Risk shown after a reopen** | **Settled 28 Sep 2026 (programme lead):** keep **the last recorded risk, explicitly labelled**. `standing.risk_rating` is the risk of the most recent decision that set one, and the panel prints "from the most recent decision that set one" beside it whenever the company is not `CLEAR`. It is the best information available; the label is what stops it reading as a current verdict. A consumer must still read `value`, which is what `standing.is_clear` is for | Dev4A with the lead | nothing |
-| D8 | **DEVELOPER visibility** of the gauge, reasons and evidence ids | **Settled 28 Sep 2026 (programme lead):** **no.** DEVELOPER is refused on all three routes, reads included — a decision's reason is free text a compliance officer wrote about a real company. Enforced by `_STAFF` in the router, with rows in both authorisation tables and an API test. **One inconsistency is left open deliberately:** `history_router.py` already admits DEVELOPER and serves `background_check` transition rows including their `reason`. That route is Developer 1's, so closing the gap is their call | lead with Developer 1 | the history route's `reason` policy (Developer 1) |
+| D8 | **DEVELOPER visibility** of the gauge, reasons and evidence ids | **Settled 28 Sep 2026 (programme lead):** **no.** DEVELOPER is refused on all three routes, reads included — a decision's reason is free text a compliance officer wrote about a real company. Enforced by `_STAFF` in the router, with rows in both authorisation tables and an API test. The history routes now apply it too: DEVELOPER does not receive `background_check` (or `verification`/`screening`) rows there (29 Sep 2026, `history_router.py`, `history-row.md` §2) | lead with Developer 1 | nothing |
 | D10 | **Company row lock during handover** | **Settled 28 Sep 2026 (programme lead):** **yes — `FOR SHARE`**, taken on the move and not on the read. Built in Developer 3's guard; **needs Dev3 review**. See §11.2 | Developer 3 with the lead | nothing |
-| D11 / U4 / O3 | **Transaction boundary and announcement for the customer move** | **Blocked** | lead, Developer 2, Dev4A | all of §11.3 |
+| D11 / U4 / O3 | **Transaction boundary and announcement for the customer move** | **Implemented 29 Sep 2026 as one transaction** (the audit's recommendation; **the programme lead to confirm in writing**): the completing move calls Developer 2's flush-only promotion before its commit and announces after it (§11.3) | lead, Developer 2, Dev4A | nothing |
 | D12 | **RXIL package / results contract**, including the actor of the automatic start | **Blocked** | RXIL, lead, Developer 2 | the automatic `NOT_STARTED → IN_REVIEW` only |
 | D13 | **Risk database type** | **Settled 28 Sep 2026 (Dev4 lead):** a Dev4A-owned `background_check_risk_enum` | — | nothing |
 | D14 | **`history-row.md` §4 omits two required texts** (`MORE_INFO → IN_REVIEW`, `CLEAR`) | **Open** — Dev4A enforces the architecture meanwhile | Developer 1 | the contract's text, before final merge |
@@ -495,13 +498,17 @@ at least one pinned id.**
   `SCAN_FAILED` document is never served (`storage-and-documents.md` §4), so pinning one
   would name evidence nobody can open.
 - **"Evidence recorded":** at least one pinned id of any kind — document, verification
-  result or screening row. In practice the eight answered screening items already supply
-  ids, so this mostly guards against a decision resting on nothing at all.
+  result or screening row. **Note:** because `CLEAR` also requires all eight screening items
+  answered, and each answered item is a pinned id, this prerequisite can never be the only
+  one unmet — a company can be cleared on its eight screening answers alone, with no document
+  and no verification result. Whether "evidence recorded" should demand a document or a
+  verification result is open for the lead (audit, 29 Sep 2026).
 - The rule is applied in `select_evidence`, not in the query, so it is one pure function
   with unit tests rather than a `WHERE` clause nobody re-reads.
 
-D5, D6, D8 and D10 were settled later the same day (table above). Still open: D11/U4/O3, D12
-and D14.
+D5, D6, D8 and D10 were settled later the same day (table above). D11/U4/O3 was implemented as
+one transaction on 29 September (the lead to confirm), and D14's texts are now in
+`history-row.md` §4. Still open: D12.
 
 ---
 
@@ -531,5 +538,5 @@ and D14.
 | API routes (4A-7) | built: the three routes of §5.10, `extra="forbid"` on the request, per-move roles in the service, rows in both authorisation tables, artifacts regenerated |
 | Background-check panel (4A-8) | built: gauge, risk chip, decision trail with evidence counts, a move dialog offering only the server's `allowed_moves`, loading/empty/error states, Developer 4B's `VerificationSection` unchanged below it |
 | PR review fixes (28 Sep 2026) | built: risk refused off `CLEAR` (service + `ck_background_check_decision_risk_only_on_clear`); D2's reviewed-`REVIEW` clarification (`concluding_review_statuses`); optional `from_value` with `BACKGROUND_CHECK_STATE_CHANGED`; `decided_at` on `clock_timestamp()`; plain values in error context; the dialog never sends a hidden risk; readable prerequisites and server error text in the panel; a behavioural D10 test |
-| Customer transition (4A-9) | **blocked** (U4) |
+| Customer transition (4A-9) | built (29 Sep 2026): step 7b of `_move` calls Developer 2's promotion on `CLEAR`, in the same transaction, and announces after the commit (§11.3); both orders tested in `test_customer_promotion.py` and end to end in `test_crm_end_to_end.py` |
 | Automatic start on RXIL results | **blocked** (D12) |

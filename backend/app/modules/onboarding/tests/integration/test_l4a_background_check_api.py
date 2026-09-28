@@ -116,12 +116,11 @@ class TestGetBackgroundCheck:
         company_id = await make_company()
         assert (await client.get(_url(company_id))).status_code == 401
 
-    async def test_developer_is_refused_pending_d8(self, client: AsyncClient):
-        """D8 is unanswered and the default is no widening (`4a-task.md` §13).
+    async def test_developer_is_refused_by_d8(self, client: AsyncClient):
+        """D8 (settled 28 September 2026): DEVELOPER is refused here, reads included.
 
         DEVELOPER reads deals and documents but not this: a decision's reason is free
-        text about a company, and admitting them "for now" would decide D8 by
-        omission.
+        text a compliance officer wrote about a company.
         """
         token = await token_with_role(client, UserRole.DEVELOPER)
         company_id = await make_company()

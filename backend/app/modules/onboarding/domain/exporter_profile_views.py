@@ -112,7 +112,29 @@ class ExporterProfileListItem:
     updated_at: datetime
 
 
+@dataclass(frozen=True)
+class CustomerAnnouncement:
+    """What ``company.became_customer`` will say, captured inside the transaction
+    that made the company a ``CUSTOMER`` and announced only after it commits
+    (``event-envelope.md`` §3; architecture §3.6: the history row is the source of
+    truth, the announcement is best effort).
+
+    Frozen, and built once, so nothing can change between the commit and the
+    announcement.
+    """
+
+    company_id: uuid.UUID
+    name: str | None
+    country: str | None
+    pan: str | None
+    gstins: tuple[str, ...]
+    risk_rating: str
+    clearing_decision_id: uuid.UUID
+    actor_id: str | None
+
+
 __all__ = [
+    "CustomerAnnouncement",
     "DuplicateGstinWarning",
     "ExporterProfileDetail",
     "ExporterProfileListItem",

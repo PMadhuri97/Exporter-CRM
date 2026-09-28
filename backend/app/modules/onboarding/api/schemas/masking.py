@@ -17,7 +17,7 @@ from app.platform.authentication.models import User, UserRole
 # ── Identifier masking ───────────────────────────────────────────────────────
 # Server-side twin of the frontend's `maskIdentifier`/`canReveal`
 # (frontend/src/platform/mask/maskIdentifier.ts), implementing the role
-# capability matrix in docs/exporter-crm-frontend-tickets.md. The API must not
+# matrix in docs/architecture.md, "Roles and masking". The API must not
 # hand a raw PAN/GSTIN/IEC to a caller the matrix says may not see it: browser
 # masking protects nothing from a caller reading the JSON directly.
 #

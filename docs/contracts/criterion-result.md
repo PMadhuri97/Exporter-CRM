@@ -1,6 +1,6 @@
 # Contract — qualification criteria, criterion results and outcomes
 
-**Owner:** Developer 2 · **Implemented by:** L2-09 (criteria), L2-10 (results and outcomes), migration 0017 · **Status:** agreed shape, **not built** — nothing of it exists today
+**Owner:** Developer 2 · **Implemented by:** L2-09 (criteria), L2-10 (results and outcomes), migration 0017 · **Status:** implemented — §9a records the as-built detail and §10 what is still open
 
 Qualification answers one question: *did this company meet our requirements?*
 (architecture §3.3, gauge 1). This contract fixes the shape of the three

@@ -48,7 +48,7 @@ from app.modules.onboarding.exceptions import (
 )
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage, sign_key
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
-from app.modules.onboarding.tests.fixtures.companies import insert_company, make_company
+from app.modules.onboarding.tests.fixtures.companies import insert_company, make_prospect
 from app.platform.authentication.models import UserRole
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
@@ -104,7 +104,8 @@ def _service(db, tmp_path: Path, scanner=None) -> DocumentService:
 
 
 async def _company() -> uuid.UUID:
-    return await make_company()
+    # A prospect, so the same company can also have a deal opened on it.
+    return await make_prospect()
 
 
 async def _deal(company_id: uuid.UUID) -> uuid.UUID:

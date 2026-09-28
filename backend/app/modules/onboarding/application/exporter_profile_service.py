@@ -39,6 +39,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.schemas.masking import mask_identifier
+from app.modules.onboarding.application.background_check_reader import BackgroundCheckReader
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.engagement_views import (
     ExporterActivityView,
@@ -55,10 +56,12 @@ from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     HISTORY_DIMENSION_JOURNEY,
     LIFECYCLE_INITIAL_EVENT,
+    LIFECYCLE_TRANSITION_EVENT,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.modules.onboarding.domain.exporter_profile_views import (
+    CustomerAnnouncement,
     DuplicateGstinWarning,
     ExporterProfileDetail,
     ExporterProfileListItem,
@@ -72,6 +75,8 @@ from app.modules.onboarding.domain.tax_identifiers import (
     normalise_name,
     normalise_pan,
 )
+from app.modules.onboarding.domain.web_links import normalise_website
+from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import (
     DuplicatePanError,
     ExporterProfileNotFoundError,
@@ -273,6 +278,10 @@ class ExporterProfileService:
         pan = normalise_pan(pan)
         cin = normalise_cin(cin)
         iec = normalise_iec(iec)
+        # An http(s) link or nothing: it is rendered to other staff as a link
+        # (`domain/web_links.py`). Checked here, before anything is written, so
+        # manual creation, CSV import and RXIL intake all refuse the same values.
+        website = normalise_website(website)
         gstin_values = normalise_gstins(gstins)
         check_gstins_match_pan(pan, gstin_values)
 
@@ -445,6 +454,8 @@ class ExporterProfileService:
             wanted["cin"] = normalise_cin(wanted["cin"])  # type: ignore[arg-type]
         if "iec" in wanted:
             wanted["iec"] = normalise_iec(wanted["iec"])  # type: ignore[arg-type]
+        if "website" in wanted:
+            wanted["website"] = normalise_website(wanted["website"])  # type: ignore[arg-type]
         if "gstins" in wanted:
             wanted["gstins"] = normalise_gstins(wanted["gstins"]) or None  # type: ignore[arg-type]
         check_gstins_match_pan(
@@ -684,6 +695,90 @@ class ExporterProfileService:
             details={"terminal": False},
         )
 
+    # ── The move to CUSTOMER (L2-11) ─────────────────────────────────────────
+
+    async def promote_to_customer_if_ready(
+        self,
+        profile: ExporterProfile,
+        *,
+        actor_id: str | None,
+        cause: str,
+        source: str,
+    ) -> CustomerAnnouncement | None:
+        """Make the company a ``CUSTOMER`` if it is a ``PROSPECT`` whose background
+        check is ``CLEAR`` — whichever of the two became true second (decision 2,
+        assumption A1, company-record contract §3.2).
+
+        **Called by the move that completes the condition, in that move's
+        transaction** (decision U4, taken as one transaction): Developer 4A's
+        ``CLEAR`` and Developer 2's ``QUALIFIED`` outcome each call this after their
+        own write and before their one commit. So the company can never be seen
+        ``PROSPECT`` and ``CLEAR`` at once, and a failure anywhere rolls the whole
+        move back — there is no half-finished promotion to retry.
+
+        The caller must hold the company row ``FOR UPDATE``: both callers take it
+        before anything else, which is what serialises a ``CLEAR`` and a
+        ``QUALIFIED`` landing on the same company at the same moment — the second
+        one sees the first's result and makes the move exactly once.
+
+        Flushes and never commits, like seam S1. Idempotent: a company already
+        ``CUSTOMER`` (or not yet a ``PROSPECT``, or not ``CLEAR``) is left alone,
+        and ``None`` comes back — no history row, nothing to announce. The
+        background check is read through Developer 4A's published reader, never
+        from their tables.
+
+        Returns what ``company.became_customer`` should carry. The caller publishes
+        it with :func:`announce_became_customer` **after** its commit.
+        """
+        if profile.journey is not ExporterJourney.PROSPECT:
+            return None
+        standing = await BackgroundCheckReader(self._db).standing(profile.customer_id)
+        if not standing.is_clear:
+            return None
+        if standing.clearing_decision_id is None or standing.risk_rating is None:
+            # Impossible by the database's own rules: a CLEAR decision carries a
+            # risk (`ck_background_check_decision_clear_risk`) and is the chain head.
+            # Refusing beats announcing a customer the payload cannot describe.
+            raise RuntimeError(
+                f"company {profile.customer_id} reads CLEAR with no clearing decision or risk"
+            )
+
+        profile.journey = ExporterJourney.CUSTOMER
+        await self._history.record(
+            profile.customer_id,
+            dimension=HISTORY_DIMENSION_JOURNEY,
+            from_value=ExporterJourney.PROSPECT.value,
+            to_value=ExporterJourney.CUSTOMER.value,
+            actor_id=actor_id,
+            source=source,
+            event_type=LIFECYCLE_TRANSITION_EVENT,
+            details={
+                "cause": cause,
+                "clearing_decision_id": str(standing.clearing_decision_id),
+                "risk_rating": standing.risk_rating,
+                # CUSTOMER is the journey's end: the row a completion consumer
+                # (ANER-4.2-S1T2) watches for.
+                "terminal": True,
+            },
+        )
+        logger.info(
+            "exporter_profile.became_customer",
+            customer_id=str(profile.customer_id),
+            cause=cause,
+            clearing_decision_id=str(standing.clearing_decision_id),
+            actor_id=actor_id,
+        )
+        return CustomerAnnouncement(
+            company_id=profile.customer_id,
+            name=profile.name,
+            country=profile.country,
+            pan=profile.pan,
+            gstins=tuple(profile.gstins),
+            risk_rating=standing.risk_rating,
+            clearing_decision_id=standing.clearing_decision_id,
+            actor_id=actor_id,
+        )
+
     # ── Allowed moves (served, never copied by the frontend) ────────────────
 
     @staticmethod
@@ -771,6 +866,30 @@ class ExporterProfileService:
             raise DuplicatePanError(holder.customer_id)
 
 
+async def announce_became_customer(announcement: CustomerAnnouncement | None) -> None:
+    """Announce ``company.became_customer`` — **after** the commit that made it true.
+
+    Best effort, as every CRM announcement is (architecture §3.6): the history row
+    written by :meth:`ExporterProfileService.promote_to_customer_if_ready` is the
+    source of truth, and ``OnboardingEventPublisher`` logs and swallows its own
+    failures, so a dead bus never undoes a committed promotion. Announcing before the
+    commit would risk telling the customers team about a customer that then failed to
+    commit. ``None`` — nothing was promoted — announces nothing.
+    """
+    if announcement is None:
+        return
+    await OnboardingEventPublisher().company_became_customer(
+        company_id=announcement.company_id,
+        name=announcement.name or "",
+        country=announcement.country or "",
+        pan=announcement.pan,
+        gstins=list(announcement.gstins),
+        risk_rating=announcement.risk_rating,
+        clearing_decision_id=announcement.clearing_decision_id,
+        actor_id=announcement.actor_id,
+    )
+
+
 def _normalise_term(value: str | None) -> str | None:
     """An exact-match search term, normalised like the stored value."""
     if value is None:
@@ -826,4 +945,4 @@ def _activity_view(activity: ExporterActivity) -> ExporterActivityView:
     )
 
 
-__all__ = ["ExporterProfileService"]
+__all__ = ["ExporterProfileService", "announce_became_customer"]

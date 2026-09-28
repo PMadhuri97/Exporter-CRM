@@ -34,15 +34,13 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from typing import Literal
-from urllib.parse import urlsplit
 
 from app.modules.onboarding.domain.entities.orchestration_enums import VerificationResultStatus
+from app.modules.onboarding.domain.web_links import URL_SCHEMES, is_web_link
 from app.shared.exceptions import ValidationError
 
 EvidenceRefType = Literal["document", "url"]
 EVIDENCE_REF_TYPES: frozenset[str] = frozenset({"document", "url"})
-#: The only schemes a ``url`` reference may use (module docstring).
-URL_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 
 
 @dataclass(frozen=True)
@@ -85,15 +83,9 @@ class VerificationEvidence:
 
 
 def _is_web_link(value: str) -> bool:
-    """An absolute http(s) link with a host. The stored value is checked as given:
-    ``urlsplit``, like the browser that later renders it, ignores leading spaces and
-    embedded tabs or newlines, so ``" javascript:…"`` and ``"java\\tscript:…"`` are
-    seen as the ``javascript:`` URLs they are."""
-    try:
-        parts = urlsplit(value)
-    except ValueError:
-        return False
-    return parts.scheme.lower() in URL_SCHEMES and bool(parts.netloc)
+    """An absolute http(s) link with a host — the shared rule in ``web_links``, which
+    the company website uses too."""
+    return is_web_link(value)
 
 
 def check_evidence_shape(evidence: VerificationEvidence | None) -> None:

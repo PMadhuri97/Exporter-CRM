@@ -24,7 +24,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,6 +38,13 @@ class ExporterActivity(AppendOnlyModel):
     __tablename__ = "exporter_activity"
     __table_args__ = (
         Index("ix_exporter_activity_customer_id", "customer_id"),
+        # Migration 0008; declared so autogenerate does not propose dropping it.
+        Index(
+            "ix_exporter_activity_actor_due_at_pending",
+            "actor_id",
+            "due_at",
+            postgresql_where=text("due_at IS NOT NULL"),
+        ),
         {"schema": SCHEMA},
     )
 
@@ -58,7 +65,7 @@ class ExporterActivity(AppendOnlyModel):
         nullable=False,
     )
     subject: Mapped[str] = mapped_column(String(500), nullable=False)
-    notes: Mapped[str | None] = mapped_column(String, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # TEXT in the database
     actor_id: Mapped[str] = mapped_column(String(255), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -266,15 +266,88 @@ async def test_a_deal_read_returns_only_that_deals_rows(
 async def test_an_unknown_deal_returns_an_empty_page(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
-    """The correct answer today, when no deal table exists (migration 0018
-    is Developer 3's), and the correct answer afterwards for an id that was
-    never real."""
+    """The same answer as a deal with no history yet: the route does not look the
+    deal up, so it cannot be used to probe which deal ids exist."""
     resp = await client.get(
         f"{BASE}/deals/{uuid.uuid4()}/history",
         headers=auth_header(tokens[UserRole.ADMIN]),
     )
     assert resp.status_code == 200
     assert resp.json() == {"entries": [], "total": 0, "limit": 50, "offset": 0}
+
+
+# ── DEVELOPER and decision D8 ────────────────────────────────────────────────
+
+
+async def _seed_compliance_rows(company_id: uuid.UUID, deal_id: uuid.UUID) -> None:
+    """One row in each dimension D8 keeps from DEVELOPER, and one it does not."""
+    rows = [
+        {
+            "dimension": "background_check",
+            "from_value": "IN_REVIEW",
+            "to_value": "CLEAR",
+            "actor_id": "co-1",
+            "reason": "Nothing adverse found.",
+            "source": "seed",
+            "details": {"risk_rating": "LOW"},
+        },
+        {
+            "dimension": "verification",
+            "to_value": "PASSED",
+            "actor_id": "co-1",
+            "source": "seed",
+            "deal_id": deal_id,
+        },
+        {
+            "dimension": "screening",
+            "to_value": "PASSED",
+            "actor_id": "co-1",
+            "reason": "Website reviewed.",
+            "source": "seed",
+        },
+        {"dimension": "deal", "to_value": "OPEN", "actor_id": "ops-1", "source": "seed",
+         "deal_id": deal_id},
+    ]
+    for row in rows:
+        async with db_services.AsyncSessionLocal() as db:
+            await HistoryService(db).record(company_id, **row)
+            await db.commit()
+
+
+async def test_developer_does_not_get_what_d8_refuses_it_elsewhere(
+    client: AsyncClient, tokens: dict[UserRole, str]
+):
+    """D8 refuses DEVELOPER the background check (value, reasons, evidence) and the
+    verification and screening routes. Their history rows carry the same things, so
+    the history routes leave those dimensions out for DEVELOPER — from the page and
+    from the total — and every other role still gets the full timeline."""
+    company_id, deal_id = await make_company(), uuid.uuid4()
+    await _seed_compliance_rows(company_id, deal_id)
+
+    async def read(path: str, role: UserRole, **params) -> dict:
+        resp = await client.get(path, params=params, headers=auth_header(tokens[role]))
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    company = f"{BASE}/exporters/{company_id}/history"
+    deal = f"{BASE}/deals/{deal_id}/history"
+
+    developer = await read(company, UserRole.DEVELOPER)
+    assert developer["total"] == 1
+    assert {e["dimension"] for e in developer["entries"]} == {"deal"}
+    assert (await read(company, UserRole.COMPLIANCE))["total"] == 4
+    assert (await read(company, UserRole.OPERATIONS))["total"] == 4
+
+    # Asking for a hidden dimension by name is an empty page, not the rows.
+    for dimension in ("background_check", "verification", "screening"):
+        hidden = await read(company, UserRole.DEVELOPER, dimension=dimension)
+        assert hidden["total"] == 0 and hidden["entries"] == []
+
+    # The deal's own history too: its buyer's verification row stays hidden.
+    assert {e["dimension"] for e in (await read(deal, UserRole.DEVELOPER))["entries"]} == {
+        "deal"
+    }
+    assert (await read(deal, UserRole.COMPLIANCE))["total"] == 2
 
 
 # ── Read-only ────────────────────────────────────────────────────────────────

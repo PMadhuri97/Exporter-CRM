@@ -98,7 +98,8 @@ class EvidenceSelection:
 
     verifications: tuple[tuple[uuid.UUID, uuid.UUID | None], ...] = ()
     """``(verification_result_id, latest_review_id)`` pairs. The review id is a bare
-    uuid with no foreign key and is ``None`` until Dev4B's 4B-2 lands (contract §6.1)."""
+    uuid with no foreign key, and ``None`` for a result with no review yet (contract
+    §6.1)."""
 
     screening_items: tuple[uuid.UUID, ...] = ()
     """``screening_review_item.id`` of every catalogue item that has a recorded row.

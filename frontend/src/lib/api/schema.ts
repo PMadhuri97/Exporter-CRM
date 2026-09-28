@@ -1034,7 +1034,7 @@ export interface paths {
         };
         /**
          * A company's history
-         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
+         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification` or `screening` rows (decision D8). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
          */
         get: operations["list_company_history_api_v1_onboarding_exporters__customer_id__history_get"];
         put?: never;
@@ -1054,7 +1054,7 @@ export interface paths {
         };
         /**
          * A deal's history
-         * @description Every recorded change to one deal. Empty until deals exist (migration 0018). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
+         * @description Every recorded change to one deal, including the changes it caused elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does not receive `background_check`, `verification` or `screening` rows (decision D8). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
          */
         get: operations["list_deal_history_api_v1_onboarding_deals__deal_id__history_get"];
         put?: never;
@@ -1115,12 +1115,16 @@ export interface paths {
         /**
          * List a company's deals
          * @description Newest first. `stage` may be repeated to filter to several stages; omitted, every stage is returned, including withdrawn and handed-over deals — a company's deal history is part of its record.
+         *
+         *     `can_open_deal` says whether this caller may open another deal on the company now.
          */
         get: operations["list_company_deals_api_v1_onboarding_exporters__company_id__deals_get"];
         put?: never;
         /**
          * Open a deal on a company
          * @description Opens a deal at `OPEN` and sets the company's conversation to `READY_NOW` in the same transaction (architecture §3.3). A company may have any number of deals.
+         *
+         *     Only a `PROSPECT` or a `CUSTOMER` may have a deal opened: the conversation gauge applies from `PROSPECT` onward (assumption A4), so a `LEAD` is refused with 409 `DEAL_COMPANY_NOT_READY` and nothing is written.
          *
          *     The stage is not a field on this request: a deal always starts at `OPEN`, and accepting one would let a caller skip every stage guard.
          */
@@ -2624,6 +2628,12 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /**
+             * Can Open Deal
+             * @description Whether **this** caller may open a deal on this company now: a staff role, and the company is a `PROSPECT` or `CUSTOMER` (a `LEAD` is refused with 409 `DEAL_COMPANY_NOT_READY`). The screen offers the action from this rather than keeping its own copy of the rule (§7.5).
+             * @default false
+             */
+            can_open_deal: boolean;
         };
         /** DealResponse */
         DealResponse: {
@@ -7867,7 +7877,7 @@ export interface operations {
     list_company_history_api_v1_onboarding_exporters__customer_id__history_get: {
         parameters: {
             query?: {
-                /** @description Restrict to one dimension: journey, qualification, conversation, background_check, deal, marker, profile or verification. */
+                /** @description Restrict to one dimension: journey, qualification, conversation, background_check, deal, marker, profile, verification or screening. */
                 dimension?: string | null;
                 limit?: number;
                 offset?: number;
@@ -8171,6 +8181,13 @@ export interface operations {
             };
             /** @description Company not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The company is still a LEAD (`DEAL_COMPANY_NOT_READY`) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

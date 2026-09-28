@@ -33,7 +33,7 @@ the coupling this module exists to avoid.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -165,6 +165,7 @@ class HistoryService:
         company_id: uuid.UUID,
         *,
         dimension: str | None = None,
+        exclude_dimensions: Collection[str] = (),
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[Sequence[ExporterLifecycleHistory], int]:
@@ -172,26 +173,41 @@ class HistoryService:
 
         Unfiltered this returns the journey, every gauge and every deal
         interleaved — the company timeline. ``dimension`` narrows it to one
-        gauge, which is what a gauge panel asks for.
+        gauge, which is what a gauge panel asks for. ``exclude_dimensions``
+        leaves whole dimensions out of both the page and the total.
         """
         rows = await self._history.list_by_customer(
-            company_id, dimension=dimension, limit=limit, offset=offset
+            company_id,
+            dimension=dimension,
+            exclude_dimensions=exclude_dimensions,
+            limit=limit,
+            offset=offset,
         )
-        total = await self._history.count_by_customer(company_id, dimension=dimension)
+        total = await self._history.count_by_customer(
+            company_id, dimension=dimension, exclude_dimensions=exclude_dimensions
+        )
         return rows, total
 
     async def list_for_deal(
-        self, deal_id: uuid.UUID, *, limit: int = 50, offset: int = 0
+        self,
+        deal_id: uuid.UUID,
+        *,
+        exclude_dimensions: Collection[str] = (),
+        limit: int = 50,
+        offset: int = 0,
     ) -> tuple[Sequence[ExporterLifecycleHistory], int]:
         """One deal's history, newest first, with the total for paging.
 
-        Empty until deals exist (migration 0018, Developer 3). That is the
-        correct answer for a deal with no recorded changes and for a deal id
-        that was never real — this service has no deal table to check against,
-        and inventing a 404 would mean guessing.
+        An empty page is the answer both for a deal with no recorded changes and
+        for a deal id that was never real — this service does not look the deal
+        up, and inventing a 404 would mean guessing.
         """
-        rows = await self._history.list_by_deal(deal_id, limit=limit, offset=offset)
-        total = await self._history.count_by_deal(deal_id)
+        rows = await self._history.list_by_deal(
+            deal_id, exclude_dimensions=exclude_dimensions, limit=limit, offset=offset
+        )
+        total = await self._history.count_by_deal(
+            deal_id, exclude_dimensions=exclude_dimensions
+        )
         return rows, total
 
 

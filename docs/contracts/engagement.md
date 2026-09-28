@@ -312,11 +312,12 @@ also sets this."
 - **It is idempotent.** A company already `READY_NOW` writes no history row and is
   not an error: opening a second deal for a company that is already ready is
   normal.
-- **It does not apply §2.2 or §3.** No `LEAD` check — a deal is only opened for a
-  company that got that far, and refusing the gauge move after the deal row is
-  written would fail the whole transaction over a gauge. No role check either: the
-  *deal* route's roles are Developer 3B's to enforce, and a second gate here would
-  be a second copy of them.
+- **It does not apply §2.2 or §3.** No `LEAD` check here — a deal is only opened for
+  a company that got that far, and `DealService.open_deal` enforces exactly that
+  before anything is written: a `LEAD` is refused with `DEAL_COMPANY_NOT_READY`
+  (`deal-and-buyer.md` §2). So the gauge can never be moved on a `LEAD` through this
+  seam. No role check either: the *deal* route's roles are Developer 3B's to
+  enforce, and a second gate here would be a second copy of them.
 - **Developer 3B never writes the column and never imports `ExporterConversation`
   to compare against it.**
 
@@ -407,9 +408,9 @@ Stated separately so nobody reads this contract as a description of the code.
 | `ConversationService`: the gauge, the rules, history | **implemented** — L3-03, Phase 1 |
 | The `NOT_NOW` check-back rule | **implemented** — L3-04a, Phase 1 |
 | The gauge routes and the allowed-moves route | **implemented** — L3-03, Phase 1 |
-| Seam S1 (`mark_ready_now_for_opened_deal`) | **implemented** — Phase 1. **Not yet called**: Developer 3B calls it in L3-05 |
+| Seam S1 (`mark_ready_now_for_opened_deal`) | **implemented** — Phase 1; called by `DealService.open_deal` (L3-05), which refuses a `LEAD` first |
 | The Conversation panel's gauge control and history | **implemented** — L3-11a-i, Phase 1 |
-| Seam S2's "open a deal" **button** | **not built** — `components/OpenDealPrompt.tsx` renders the `READY_NOW` note with no button until Developer 3B's deal route exists (prompt §4.2) |
+| Seam S2's "open a deal" **button** | **implemented** — `components/OpenDealPrompt.tsx` opens a deal from `READY_NOW` with the shared `OpenDealForm` (frontend refresh, 28 September 2026) |
 | `follow_up_completion` — the table, its FKs, its lock | **implemented** — 0016, Phase 1 |
 | `follow_up_completion` — the entity, repository, service and routes | **implemented** — L3-04b, Phase 2 |
 | The due/overdue read model | **implemented** — L3-04b, Phase 2 |

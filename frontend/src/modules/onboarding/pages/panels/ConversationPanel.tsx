@@ -39,8 +39,8 @@
  * So the contact and activity query calls and the pagination state stay in the
  * shell, exactly where the page already had them, and this panel is presentational
  * **for those two**. The trade is deliberate: identical behaviour now, at the cost
- * of the shell still holding some of Developer 3's state until the two of you decide
- * to move it — see the phase report's note on U1.
+ * of the shell still holding some of Developer 3's state until Developers 2 and 3
+ * decide to move it.
  *
  * The gauge is the exception, and not an inconsistency: the shell was never given
  * that query to hold, and adding it there would mean editing a file Developer 3 does

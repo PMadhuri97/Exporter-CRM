@@ -50,6 +50,7 @@ from app.modules.onboarding.application.company_matching import CompanyMatcher
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
 from app.modules.onboarding.domain.company_intake import MatchKind, Reason, check_identity
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
+from app.modules.onboarding.domain.web_links import is_web_link
 from app.modules.onboarding.exceptions import DuplicatePanError
 from app.shared.exceptions import AnerBaseException, ValidationError
 
@@ -180,6 +181,13 @@ class CompanyImportService:
         for name, limit in (("industry", 255), ("website", 2048)):
             if len(cell(name) or "") > limit:
                 reasons.append(Reason(f"INVALID_{name.upper()}", f"{name} is longer than {limit}"))
+        website = (cell("website") or "").strip()
+        if website and not is_web_link(website):
+            # The same rule `create_or_get_profile` applies; checked here too so
+            # the report names the column instead of rejecting the row late.
+            reasons.append(Reason(
+                "INVALID_WEBSITE", "website must be an absolute http:// or https:// link"
+            ))
         if reasons:
             return RowResult(line, "rejected", reasons=reasons)
         assert identity is not None and source is not None

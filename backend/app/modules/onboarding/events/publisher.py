@@ -118,10 +118,12 @@ class OnboardingEventPublisher:
     # publish failure, so a caller that awaits one of these cannot be made to
     # fail, roll back, or lose its change by anything the bus does.
     #
-    # Neither is called by anything yet. The transitions that should fire them
-    # belong to Developer 2 (a company becoming a CUSTOMER) and Developer 3
-    # (handing a deal over); this is the helper they call when they build them,
-    # so the envelope and payload are settled before two people guess at them.
+    # Their callers: `company_became_customer` through
+    # `exporter_profile_service.announce_became_customer` (Developer 2's move to
+    # CUSTOMER, after the commit of the CLEAR or QUALIFIED that completed it), and
+    # `deal_handed_over` from `DealService.transition_stage` (Developer 3B), after
+    # the handover commits. Both go through here so the envelope and payload are
+    # the event contract's and nobody else's.
 
     async def company_became_customer(
         self,

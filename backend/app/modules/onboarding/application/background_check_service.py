@@ -5,7 +5,9 @@ The gauge answers "is it safe and lawful to work with them?" (architecture §3.3
 is **not** the journey and not the qualification: this service never writes
 ``exporter_profile.journey`` and never touches another gauge's column, so a company
 that is reopened, flagged or put on hold stays exactly as far along its journey as it
-was (company-record §3.1, A5).
+was (company-record §3.1, A5). The journey's one dependency on this gauge — a
+``PROSPECT`` whose check becomes ``CLEAR`` becomes a ``CUSTOMER`` (decision 2) — is
+Developer 2's method, called at step 7b in this move's transaction.
 
 **Every move is one transaction** (contract §9), in this order:
 
@@ -17,11 +19,13 @@ was (company-record §3.1, A5).
 5. insert the decision and its evidence rows;
 6. assign ``exporter_profile.background_check``;
 7. write the history row through Developer 1's service (flush only);
-8. commit once.
+7b. (``CLEAR`` only) Developer 2's ``promote_to_customer_if_ready`` — a ``PROSPECT``
+    becomes a ``CUSTOMER``, with its journey history row (flush only);
+8. commit once, then announce ``company.became_customer`` if 7b promoted.
 
 A refusal at step 2 or 4 leaves nothing behind because nothing has been written; a
-failure after step 5 rolls the value, the decision, its evidence and the history row
-back together, because they are one transaction.
+failure after step 5 rolls the value, the decision, its evidence, the history row and
+any promotion back together, because they are one transaction.
 
 **Roles are enforced per move, not per route** (contract §3). A route-level check
 alone would let an OPERATIONS user flag a company, since the route that serves move 1
@@ -43,6 +47,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.compliance_inputs import ComplianceInputsService
+from app.modules.onboarding.application.exporter_profile_service import (
+    ExporterProfileService,
+    announce_became_customer,
+)
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.background_check_views import (
     CLEAR_POLICY,
@@ -584,6 +592,19 @@ class BackgroundCheckService:
             },
         )
 
+        # 7b — the move to CUSTOMER (decision 2, A1). A PROSPECT whose check has just
+        #      become CLEAR becomes a CUSTOMER in this same transaction (U4, taken as
+        #      one transaction). Developer 2's method writes the journey; this service
+        #      still never does. It flushes only, under the lock taken at step 1.
+        announcement = None
+        if to_value is _State.CLEAR:
+            announcement = await ExporterProfileService(self._db).promote_to_customer_if_ready(
+                profile,
+                actor_id=actor_id,
+                cause="background_check_clear",
+                source=f"background_check_service.{method}",
+            )
+
         # 8 — one commit.
         await self._db.commit()
         logger.info(
@@ -595,6 +616,8 @@ class BackgroundCheckService:
             actor_id=actor_id,
             evidence_count=evidence.count,
         )
+        # After the commit, best effort (architecture §3.6).
+        await announce_became_customer(announcement)
         return self._to_view(decision, evidence)
 
     def _require_clear_prerequisites(

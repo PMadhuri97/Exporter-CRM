@@ -986,6 +986,29 @@ class DealCompanyNotFoundError(AnerBaseException):
         )
 
 
+class DealCompanyNotReadyError(AnerBaseException):
+    """A deal was opened for a company that is still a ``LEAD``.
+
+    A deal follows a sales conversation, and the conversation gauge applies from
+    ``PROSPECT`` onward (assumption A4, ``engagement.md`` §2.2). Opening a deal also
+    sets the conversation to ``READY_NOW`` (seam S1), so without this refusal a lead
+    that was never qualified would end up with a conversation value it may not
+    hold. 409 rather than 422: the request is well formed; the company is not there
+    yet.
+    """
+
+    def __init__(self, company_id: object, journey: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {company_id} is a {journey!s}: a deal can be opened only for a "
+                "PROSPECT or a CUSTOMER. Record its qualification first."
+            ),
+            error_code="DEAL_COMPANY_NOT_READY",
+            status_code=409,
+            extensions={"journey": str(journey)},
+        )
+
+
 class DealTransitionNotAllowedError(AnerBaseException):
     """A stage move that is not in the deal contract's §1.1 table.
 

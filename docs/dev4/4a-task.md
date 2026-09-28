@@ -612,10 +612,10 @@ Record every answer in `docs/contracts/background-check.md` with its date and wh
 > | Item | Status |
 > |---|---|
 > | **4B-0 dependency** (the §6 seam and the §9 anchor blocks) | **CLEARED.** Dev4B Phase 4B-0 is complete (`4b-task.md` §14, 4B-0 status). Dev4A consumes `domain/compliance_inputs.py` and `ComplianceInputsService` exactly as §6 documents, and edits only its own anchor blocks. |
-> | **Dev4A implementation** | **4A-1 … 4A-8 COMPLETE (28 Sep 2026).** **4A-9 remains BLOCKED — U4 / O3 DECISION REQUIRED**: no customer promotion, no Dev2 call, no `company.became_customer`. See the status blocks below. |
+> | **Dev4A implementation** | **4A-1 … 4A-8 COMPLETE (28 Sep 2026). 4A-9 COMPLETE (29 Sep 2026)** — U4 implemented as one transaction on the audit's recommendation (lead to confirm); see 4A-9 below. |
 > | **D13** (risk database type) | **Settled:** a Dev4A-owned enum type (§13). |
 > | **D5** (risk on the company record) | **Settled:** no company risk column; risk refused off `CLEAR` (§13). |
-> | **U4 / D11** (customer transition) | **Blocked:** §5.9 and 4A-9 untouched. |
+> | **U4 / D11** (customer transition) | **Implemented 29 Sep 2026 as one transaction** (`background-check.md` §11.3, §14); the lead to confirm. |
 > | **D1–D4** (CLEAR prerequisites, evidence scope) | **Settled 28 Sep 2026** (programme lead). Recorded in full in `background-check.md` §14.1 and carried in code by one value, `CLEAR_POLICY`. |
 >
 > Two seam facts Dev4A builds on (from the 4B-0 status): company-scoped Dev4B writers already
@@ -1025,9 +1025,13 @@ OpenAPI artifact current. A phase that cannot meet its stop condition stops and 
 >   D14 (Developer 1's contract text); the lead's confirmation of the D2 clarification and the
 >   D5 amendment.
 
-### 4A-9 — Customer transition hand-off — **BLOCKED — U4 / O3 DECISION REQUIRED**
-- Not started until D11 is written down. Then: the agreed seam with Dev2 (L2-11), the announcement
-  path, and invariant 2 of company-record §8 under test.
+### 4A-9 — Customer transition hand-off — **COMPLETE (29 Sep 2026)**
+- D11/U4 implemented as one transaction (the audit's recommendation; the programme lead to confirm):
+  `_move` calls Developer 2's flush-only `ExporterProfileService.promote_to_customer_if_ready` at
+  step 7b when it records `CLEAR`, and announces `company.became_customer` after the commit
+  (`background-check.md` §11.3). The other order is Developer 2's `QualificationService`.
+- Tests: `test_customer_promotion.py` (both orders, idempotence, rollback, a dead bus, a concurrent
+  `CLEAR` and `QUALIFIED`) and `test_crm_end_to_end.py` (invariant 2 of company-record §8 end to end).
 
 ---
 

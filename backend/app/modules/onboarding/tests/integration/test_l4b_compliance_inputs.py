@@ -51,7 +51,7 @@ from app.modules.onboarding.exceptions import (
     ComplianceInputsBuyerNotFoundError,
     ExporterProfileNotFoundError,
 )
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
 
@@ -398,7 +398,7 @@ async def test_checks_on_unlinked_subjects_are_not_company_inputs(entity_type, v
 
 async def test_buyer_checks_never_enter_company_inputs():
     """§6.2 invariant 4, and decision 9: a buyer check is about the buyer."""
-    company_id = await make_company()
+    company_id = await make_prospect()  # a deal needs a prospect
     buyer_id = await _deal_buyer(company_id)
     with _connect() as conn, conn.cursor() as cur:
         on_buyer = _insert_result(
@@ -421,7 +421,7 @@ async def test_buyer_checks_never_enter_company_inputs():
 
 
 async def test_a_buyer_with_no_checks_is_an_empty_tuple():
-    company_id = await make_company()
+    company_id = await make_prospect()
     buyer_id = await _deal_buyer(company_id)
 
     assert await _buyer_checks(buyer_id) == ()
@@ -451,7 +451,7 @@ async def test_a_company_id_is_not_a_buyer_id():
 
 
 async def test_the_reader_does_not_flush_commit_or_touch_pending_work():
-    company_id = await make_company()
+    company_id = await make_prospect()
     buyer_id = await _deal_buyer(company_id)
     async with db_services.AsyncSessionLocal() as db:
         flushes: list[object] = []

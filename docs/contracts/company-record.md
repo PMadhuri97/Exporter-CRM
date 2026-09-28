@@ -1,6 +1,6 @@
 # Contract — the company record
 
-**Owner:** Developer 2 · **Implemented by:** L2-03 (identity), L2-04 (journey), L2-05 (migration 0014), L2-06 (tax IDs), L2-08 (marker) · **Status:** agreed shape, **not built** — see §10
+**Owner:** Developer 2 · **Implemented by:** L2-03 (identity), L2-04 (journey), L2-05 (migration 0014), L2-06 (tax IDs), L2-08 (marker), L2-11 (the move to `CUSTOMER`) · **Status:** implemented — §10 lists what is still open
 
 Every gauge, deal, document and check in the CRM hangs off one company record.
 This is what Developers 1, 3 and 4 build against: what a company is called,
@@ -166,10 +166,23 @@ The move writes a `journey` history row and then announces
 `name`, `country`, `pan` and `gstins` come from §2.1 of this contract;
 `risk_rating` and `clearing_decision_id` come from Developer 4's decision.
 
-**Whether Developer 4's decision and Developer 2's move commit together is not
-settled** (decision U4). Until it is, the signal must be built so the move can
-be retried safely: moving an already-`CUSTOMER` company is a no-op that writes
-no row and announces nothing. See open item O3.
+**They commit together — one transaction** (decision U4, implemented 29 September
+2026 on the audit's recommendation; **awaiting the programme lead's written
+confirmation**). Developer 2's `ExporterProfileService.promote_to_customer_if_ready`
+flushes and never commits, like seam S1, and is called by whichever move completes
+the condition, before that move's single commit:
+
+- `BackgroundCheckService._move` when it records `CLEAR` (Developer 4A);
+- `QualificationService` when a `QUALIFIED` outcome moves a `LEAD` to `PROSPECT`
+  (manual review and RXIL intake alike).
+
+Both callers hold the company row `FOR UPDATE` first, so a `CLEAR` and a `QUALIFIED`
+landing together serialise and the move happens exactly once. No committed state is
+ever `PROSPECT` **and** `CLEAR`; a failure anywhere rolls the whole move back. The
+move is idempotent: an already-`CUSTOMER` company (a reopen then a second `CLEAR`) is
+a no-op that writes no row and announces nothing. `company.became_customer` is
+published **after** the commit, best effort. The journey row carries `terminal: true`,
+`cause`, `clearing_decision_id` and `risk_rating`.
 
 ### 3.3 The marker
 
@@ -382,10 +395,10 @@ Recorded, not decided here. Each names who decides.
 |---|---|---|
 | O1 | Does 0014 rename `customer_id` to `company_id` in the CRM's own tables and routes? Recommendation: **no** in the prototype — all four developers' code and the generated types would move at once for no behavioural gain | Dev 2 with Dev 1 (types) |
 | O2 | The ANER-4.2-S1T2 consumer watches `lifecycle_transition` rows for `ONBOARDED` (the `terminal` flag). That status is gone (L2-04, migration 0020). Journey rows keep the `lifecycle_*` event types and the `terminal` flag, which only `CUSTOMER` will set (L2-11) — confirm that `CUSTOMER` is the replacement | Programme lead, with whoever owns that consumer |
-| O3 | Decision U4: do Developer 4's `CLEAR` and Developer 2's `CUSTOMER` move commit in one transaction? | Programme lead, Dev 2, Dev 4 |
+| O3 | ~~Decision U4: do Developer 4's `CLEAR` and Developer 2's `CUSTOMER` move commit in one transaction?~~ **Implemented as one transaction** (§3.2, 29 September 2026) — the programme lead to confirm in writing | Programme lead, Dev 2, Dev 4 |
 | O4 | Is CIN masked like PAN/GSTIN/IEC? Recommendation: **yes** until decided — widening later is safe, narrowing later is not | Programme lead (decision 12's scope) |
 | O5 | ~~Profile-history rows for tax identifiers: masked in the row, or stored in full and masked on read?~~ **Settled for the prototype: masked in the row** (§6). Revisit only if the history read route gains role-based masking | Dev 2 with Dev 1 — Dev 1 to acknowledge |
-| O6 | Decision U1: who owns the allowed-moves endpoint | Programme lead |
+| O6 | ~~Decision U1: who owns the allowed-moves endpoint~~ **Resolved in practice:** there is no single endpoint — each gauge's owner serves its own allowed moves (`allowed_marker_moves`, qualification's `allowed_outcomes`, the conversation's and background check's `allowed_moves`, the deal's `allowed_stage_moves`, `can_open_deal`), and the frontend keeps no copy | Programme lead |
 | O7 | ~~How a `profile` history row records an empty value.~~ **Settled: values in `event_metadata`, `to_status` names the field** (§6) | Dev 2 with Dev 1 — Dev 1 to acknowledge |
 
 ---
@@ -403,12 +416,14 @@ Stated separately so nobody reads this contract as a description of the code.
 | `name` / `country` / `cin` as columns on the company record | **implemented** (0014). The transitional identity store is deleted; no CRM code reads a company's identity from `onboarding_request` |
 | `onboarding_history` on the company detail | **removed** (L2-03) |
 | Retiring the ten old statuses | **implemented** (L2-04, migration 0020): `lifecycle_status`, its enum, the transition route and the frontend's copy of the graph are gone |
-| The move to `CUSTOMER` | **not built** — L2-11, blocked on U4 (O3) and Developer 4's background-check `CLEAR` |
+| The move to `CUSTOMER` | **implemented** (L2-11) — both orders, in the completing move's transaction, announced after the commit (§3.2) |
 | `allowed_marker_moves` on company responses; `allowed_outcomes` / `can_record_results` on qualification | **implemented** (L2-04, L2-14) |
 | `gstins` (several, `exporter_gstin`), PAN format and uniqueness, GSTIN format and PAN cross-check, duplicate-GSTIN warnings | **implemented** (0014, L2-06) |
 | `marker` and `marker_reason`, the marker route, ENDED off the default list | **implemented** (0014, L2-08) |
 | `journey` (`LEAD`/`PROSPECT`/`CUSTOMER`) and `qualification` columns | **implemented** (0017); the old `lifecycle_status` beside it was dropped in 0020. Qualification moves it `LEAD` -> `PROSPECT` |
-| `conversation`, `background_check` fields | **not built** — Dev 3's and Dev 4's migrations (see §2.4) |
+| `conversation`, `background_check` fields | **implemented** — Dev 3A's 0016 and Dev 4A's 0015 (see §2.4) |
+| The ORM declares every index and constraint 0014/0017 created (PAN unique, the outcome chain) | **implemented** — checked by `test_orm_matches_the_onboarding_schema.py` |
+| `website` | an absolute `http(s)` link or nothing, on every write path (manual, CSV, RXIL); anything else is refused (422) |
 | `profile` history on edits; clearing a field | **implemented** (L2-07) |
 | Real links from contacts, activities, screening items, GSTINs and history | **implemented** (0014, `ON DELETE RESTRICT`); `verification_result.entity_reference` deliberately has none |
 | `name` required by the database | **not built** — waits for the unnamed create path to go |

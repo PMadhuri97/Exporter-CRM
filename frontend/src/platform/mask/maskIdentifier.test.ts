@@ -46,7 +46,7 @@ describe('maskIdentifier', () => {
 });
 
 describe('canReveal', () => {
-  it('matches the capability matrix in docs/exporter-crm-frontend-tickets.md', () => {
+  it('matches the role matrix in docs/architecture.md ("Roles and masking")', () => {
     expect(canReveal('COMPLIANCE')).toBe(true);
     expect(canReveal('ADMIN')).toBe(true);
     expect(canReveal('OPERATIONS')).toBe(false);

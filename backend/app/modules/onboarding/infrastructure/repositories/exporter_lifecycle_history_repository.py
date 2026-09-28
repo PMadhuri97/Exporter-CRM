@@ -15,7 +15,7 @@ completion hook (ANER-4.2-S1T2) asks.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,7 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         customer_id: uuid.UUID,
         *,
         dimension: str | None = None,
+        exclude_dimensions: Collection[str] = (),
         limit: int | None = None,
         offset: int = 0,
     ) -> Sequence[ExporterLifecycleHistory]:
@@ -51,15 +52,22 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         ``created_at`` defaults to ``now()`` — transaction start time — so two
         rows written in one transaction share a timestamp. The ``id`` tie-break
         makes that case deterministic, not chronological (``id`` is a random
-        ``uuid4``). Every write path today commits one row per transaction, so
-        it does not arise; a caller writing several rows in one transaction
-        must not rely on this order between them.
+        ``uuid4``). Several write paths do write more than one row in a
+        transaction — a qualification outcome and the journey move it causes, a
+        deal and seam S1's conversation move, a clearance and the move to
+        ``CUSTOMER`` — so a reader must not rely on the order between rows that
+        share a timestamp; each row's ``from``/``to`` says what it was.
+
+        ``exclude_dimensions`` leaves whole dimensions out — the history route
+        uses it to keep from DEVELOPER what decision D8 keeps from it elsewhere.
         """
         stmt = select(ExporterLifecycleHistory).where(
             ExporterLifecycleHistory.customer_id == customer_id
         )
         if dimension is not None:
             stmt = stmt.where(ExporterLifecycleHistory.dimension == dimension)
+        if exclude_dimensions:
+            stmt = stmt.where(ExporterLifecycleHistory.dimension.not_in(exclude_dimensions))
         stmt = stmt.order_by(
             ExporterLifecycleHistory.created_at.desc(),
             ExporterLifecycleHistory.id.desc(),
@@ -70,7 +78,11 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         return result.scalars().all()
 
     async def count_by_customer(
-        self, customer_id: uuid.UUID, *, dimension: str | None = None
+        self,
+        customer_id: uuid.UUID,
+        *,
+        dimension: str | None = None,
+        exclude_dimensions: Collection[str] = (),
     ) -> int:
         """How many rows the matching `list_by_customer` call would return in
         total, so a paged response can say how much more there is."""
@@ -79,10 +91,17 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         )
         if dimension is not None:
             stmt = stmt.where(ExporterLifecycleHistory.dimension == dimension)
+        if exclude_dimensions:
+            stmt = stmt.where(ExporterLifecycleHistory.dimension.not_in(exclude_dimensions))
         return int(await self.session.scalar(stmt) or 0)
 
     async def list_by_deal(
-        self, deal_id: uuid.UUID, *, limit: int | None = None, offset: int = 0
+        self,
+        deal_id: uuid.UUID,
+        *,
+        exclude_dimensions: Collection[str] = (),
+        limit: int | None = None,
+        offset: int = 0,
     ) -> Sequence[ExporterLifecycleHistory]:
         """One deal's history, newest first.
 
@@ -90,29 +109,31 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         on `deal_id IS NOT NULL` — this query never asks for NULL, so the
         partial index covers it exactly.
 
-        Empty until deals exist (migration 0018). Nothing here checks that the
-        deal is real: there is no deal table to check against, and this
-        repository is not the place to guess.
+        Nothing here checks that the deal is real: an unknown deal is an empty
+        page, the same answer as a deal with no history yet.
         """
-        stmt = (
-            select(ExporterLifecycleHistory)
-            .where(ExporterLifecycleHistory.deal_id == deal_id)
-            .order_by(
-                ExporterLifecycleHistory.created_at.desc(),
-                ExporterLifecycleHistory.id.desc(),
-            )
+        stmt = select(ExporterLifecycleHistory).where(ExporterLifecycleHistory.deal_id == deal_id)
+        if exclude_dimensions:
+            stmt = stmt.where(ExporterLifecycleHistory.dimension.not_in(exclude_dimensions))
+        stmt = stmt.order_by(
+            ExporterLifecycleHistory.created_at.desc(),
+            ExporterLifecycleHistory.id.desc(),
         )
         if limit is not None:
             stmt = stmt.limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def count_by_deal(self, deal_id: uuid.UUID) -> int:
+    async def count_by_deal(
+        self, deal_id: uuid.UUID, *, exclude_dimensions: Collection[str] = ()
+    ) -> int:
         stmt = (
             select(func.count())
             .select_from(ExporterLifecycleHistory)
             .where(ExporterLifecycleHistory.deal_id == deal_id)
         )
+        if exclude_dimensions:
+            stmt = stmt.where(ExporterLifecycleHistory.dimension.not_in(exclude_dimensions))
         return int(await self.session.scalar(stmt) or 0)
 
     async def find_transition(

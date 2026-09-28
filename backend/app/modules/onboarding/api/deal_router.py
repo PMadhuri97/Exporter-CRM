@@ -42,6 +42,8 @@ router = APIRouter(tags=["Exporter CRM"])
 # internal staff (architecture §3.7), the same set `_STAFF` admits in
 # `engagement_router.py`.
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+#: The same three, as data: who `can_open_deal` may say yes to.
+_OPENING_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
 # Reads additionally admit DEVELOPER, which may read the CRM and never writes.
 _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
@@ -57,6 +59,9 @@ _READER = require_role(
         "Opens a deal at `OPEN` and sets the company's conversation to "
         "`READY_NOW` in the same transaction (architecture §3.3). A company may "
         "have any number of deals.\n\n"
+        "Only a `PROSPECT` or a `CUSTOMER` may have a deal opened: the conversation "
+        "gauge applies from `PROSPECT` onward (assumption A4), so a `LEAD` is refused "
+        "with 409 `DEAL_COMPANY_NOT_READY` and nothing is written.\n\n"
         "The stage is not a field on this request: a deal always starts at "
         "`OPEN`, and accepting one would let a caller skip every stage guard."
     ),
@@ -64,6 +69,7 @@ _READER = require_role(
         401: {"description": "Unauthorized"},
         403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
         404: {"description": "Company not found"},
+        409: {"description": "The company is still a LEAD (`DEAL_COMPANY_NOT_READY`)"},
         422: {"description": "Missing or empty reference"},
     },
 )
@@ -86,7 +92,9 @@ async def open_deal(
     description=(
         "Newest first. `stage` may be repeated to filter to several stages; "
         "omitted, every stage is returned, including withdrawn and handed-over "
-        "deals — a company's deal history is part of its record."
+        "deals — a company's deal history is part of its record.\n\n"
+        "`can_open_deal` says whether this caller may open another deal on the "
+        "company now."
     ),
     responses={
         401: {"description": "Unauthorized"},
@@ -101,7 +109,8 @@ async def list_company_deals(
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> DealListResponse:
-    views, total = await DealService(db).list_for_company(
+    service = DealService(db)
+    views, total = await service.list_for_company(
         company_id,
         stages=tuple(stage) if stage else None,
         limit=limit,
@@ -112,6 +121,10 @@ async def list_company_deals(
         total=total,
         limit=limit,
         offset=offset,
+        # The role half is this route's (the same three `_STAFF` admits on open);
+        # the company half is the service's rule.
+        can_open_deal=current_user.role in _OPENING_ROLES
+        and await service.can_open_deal(company_id),
     )
 
 

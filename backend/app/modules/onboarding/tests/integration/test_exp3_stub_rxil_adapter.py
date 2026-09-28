@@ -38,7 +38,7 @@ from app.modules.onboarding.infrastructure.adapters.stub_rxil_adapter import (
     REGISTRY_KEY,
     StubRxilAdapter,
 )
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
 from app.platform.database import services as db_services
 
 pytestmark = pytest.mark.asyncio
@@ -49,7 +49,7 @@ def _actor() -> str:
 
 
 async def _deal_buyer() -> uuid.UUID:
-    company_id = await make_company()
+    company_id = await make_prospect()  # a deal needs a prospect
     async with db_services.AsyncSessionLocal() as db:
         deal = await DealService(db).open_deal(company_id, reference="Batch", actor_id="t")
     async with db_services.AsyncSessionLocal() as db:

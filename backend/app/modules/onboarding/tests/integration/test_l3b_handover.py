@@ -2,17 +2,14 @@
 
 Assumption A5, architecture §3.6.
 
-**Read this before trusting the passing tests.** The guard's second half — the
-company's background check being ``CLEAR`` — cannot be satisfied in this build:
-``exporter_profile.background_check`` is Developer 4's column in migration 0015,
-which has not landed. So the success-path tests below **substitute
-``read_background_check``** to reach the code after the guard: the document
-snapshot, the history row, and the announcement. That code is real and worth
-testing now rather than writing blind; the guard itself is tested unpatched, and
-refuses.
+**These tests isolate the handover from the background check.** The success-path
+tests below put the company at ``CUSTOMER`` directly and **substitute
+``read_background_check``** with "CLEAR", so they exercise exactly the code after the
+guard — the document snapshot, the history row and the announcement — without
+depending on Developer 4's rules. The guard itself is tested unpatched, and refuses.
 
-When 0015 lands, the monkeypatching goes away and
-``read_background_check``'s body becomes a call to Developer 4's helper.
+The whole path with nothing substituted — a real CLEAR decision promoting the company
+to ``CUSTOMER`` and its deal being handed over — is ``test_crm_end_to_end.py``.
 """
 
 from __future__ import annotations
@@ -41,7 +38,7 @@ from app.modules.onboarding.events import publisher as publisher_module
 from app.modules.onboarding.exceptions import DealTerminalError
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 from app.platform.messaging.ports import InMemoryEventBus
@@ -86,7 +83,9 @@ def bus(monkeypatch: pytest.MonkeyPatch) -> InMemoryEventBus:
 
 
 async def _customer() -> uuid.UUID:
-    """A company at ``CUSTOMER`` — assumption A5's first half, which *can* be met."""
+    """A company put at ``CUSTOMER`` directly — assumption A5's first half — so these
+    tests do not depend on the promotion. The real promotion is covered by
+    ``test_customer_promotion.py``."""
     company_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         profile = await db.scalar(
@@ -144,11 +143,10 @@ async def _hand_over(deal_id: uuid.UUID):
 # ── The guard, unpatched: it refuses, and says why ───────────────────────────
 
 
-async def test_the_handover_is_refused_while_no_background_check_exists():
-    """No substitution here. This is what the build actually does today: a customer
-    with a buyer and paperwork still cannot be handed over, because its background
-    check is ``NOT_STARTED`` (migration 0015) — and "not started" is not "clear".
-    Until 0015 the reason read "not recorded yet" (Developer 4A, 4A-2, §5.8)."""
+async def test_the_handover_is_refused_while_the_check_has_not_started():
+    """No substitution here: a customer with a buyer and paperwork still cannot be
+    handed over while its background check is ``NOT_STARTED`` — "not started" is
+    not "clear"."""
     company_id = await _customer()
     deal_id = await _deal_ready_to_hand_over(company_id)
 
@@ -170,7 +168,7 @@ async def test_the_handover_is_refused_while_no_background_check_exists():
 async def test_a_prospect_is_refused_even_with_a_clear_check(clear_background_check):
     """A5 is an **and**: a clear check on a company that is not yet a customer is
     still not a handover."""
-    company_id = await make_company()  # LEAD
+    company_id = await make_prospect()
     deal_id = await _deal_ready_to_hand_over(company_id)
 
     with pytest.raises(Exception) as caught:

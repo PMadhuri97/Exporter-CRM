@@ -42,10 +42,12 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -94,6 +96,20 @@ class ExporterProfile(AnerModel):
             "(conversation = 'NOT_NOW' AND conversation_check_back_on IS NOT NULL)"
             " OR (conversation <> 'NOT_NOW' AND conversation_check_back_on IS NULL)",
             name="ck_exporter_profile_conversation_check_back",
+        ),
+        # Declared so the metadata matches the migrations that created them. Without
+        # these, `alembic revision --autogenerate` proposes dropping them — decision
+        # 4's PAN rule above all (`test_orm_matches_the_onboarding_schema.py`).
+        UniqueConstraint("pan", name="uq_exporter_profile_pan"),  # 0014, decision 4
+        Index("ix_exporter_profile_marker", "marker"),  # 0014
+        Index("ix_exporter_profile_journey", "journey"),  # 0017
+        Index("ix_exporter_profile_qualification", "qualification"),  # 0017
+        Index("ix_exporter_profile_background_check", "background_check"),  # 0015
+        Index("ix_exporter_profile_conversation", "conversation"),  # 0016
+        Index(  # 0016
+            "ix_exporter_profile_conversation_check_back",
+            "conversation_check_back_on",
+            postgresql_where=text("conversation_check_back_on IS NOT NULL"),
         ),
         {"schema": SCHEMA},
     )

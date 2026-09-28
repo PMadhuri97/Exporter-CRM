@@ -30,11 +30,13 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -108,7 +110,16 @@ class QualificationResult(AppendOnlyModel):
     """One criterion, at one version, checked against one company."""
 
     __tablename__ = "qualification_result"
-    __table_args__ = {"schema": SCHEMA}
+    __table_args__ = (
+        # Migration 0017; declared so autogenerate does not propose dropping it.
+        Index(
+            "ix_qualification_result_customer_recent",
+            "customer_id",
+            text("recorded_at DESC"),
+            text("id DESC"),
+        ),
+        {"schema": SCHEMA},
+    )
 
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -148,7 +159,27 @@ class QualificationOutcome(AppendOnlyModel):
     """A reviewer's overall decision, never edited — a re-review supersedes it."""
 
     __tablename__ = "qualification_outcome"
-    __table_args__ = {"schema": SCHEMA}
+    __table_args__ = (
+        # The outcome chain's integrity, from migration 0017: each outcome is
+        # superseded at most once, and a company has exactly one first outcome.
+        # Declared so autogenerate does not propose dropping either.
+        UniqueConstraint(
+            "supersedes_outcome_id", name="uq_qualification_outcome_supersedes_once"
+        ),
+        Index(
+            "uq_qualification_outcome_first_per_company",
+            "customer_id",
+            unique=True,
+            postgresql_where=text("supersedes_outcome_id IS NULL"),
+        ),
+        Index(
+            "ix_qualification_outcome_customer_recent",
+            "customer_id",
+            text("decided_at DESC"),
+            text("id DESC"),
+        ),
+        {"schema": SCHEMA},
+    )
 
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

@@ -13,7 +13,9 @@ anything is assigned, so a refused move leaves nothing behind.
 to ``READY_NOW`` (architecture §3.3) by calling Developer 3A's
 ``ConversationService.mark_ready_now_for_opened_deal`` in this same session and
 transaction. This service never assigns ``exporter_profile.conversation`` and
-never imports 3A's enum to compare against it (``company-record.md`` §2.4).
+never imports 3A's enum to compare against it (``company-record.md`` §2.4). Because
+S1 checks no journey, ``open_deal`` does: only a ``PROSPECT`` or ``CUSTOMER`` may
+have a deal (``_OPENABLE_JOURNEYS``), so a lead is never given a conversation value.
 
 **What it does not decide.** Which roles may open a deal or move a stage is the
 route's, via ``require_role`` in ``deal_router.py``, matching the §3.7 matrix. This
@@ -35,10 +37,11 @@ D10, settled 28 September 2026), so a concurrent flag cannot land between the gu
 and the commit. The read that renders a deal takes no lock — see
 ``_handover_blocked_reason``.
 
-In practice most deals are still refused, because a company only reaches ``CUSTOMER``
-through Developer 2's promotion (L2-11), which does not exist yet. Tests reach the
-path beyond the guard by substituting ``read_background_check``, which is a separate
-function for exactly that reason.
+A company reaches ``CUSTOMER`` through Developer 2's promotion (L2-11): the move that
+makes it both a ``PROSPECT`` and ``CLEAR`` promotes it in the same transaction
+(``ExporterProfileService.promote_to_customer_if_ready``). ``read_background_check``
+stays a separate one-line function so the handover tests can isolate the code after
+the guard; the whole path, unsubstituted, is ``test_crm_end_to_end.py``.
 
 Everything downstream of the guard is real and tested: the document snapshot, the
 history row, and the best-effort ``deal.handed_over`` announcement, in that order
@@ -74,6 +77,7 @@ from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import (
     DealBuyerRequiredError,
     DealCompanyNotFoundError,
+    DealCompanyNotReadyError,
     DealHandoverBlockedError,
     DealNotFoundError,
     DealTerminalError,
@@ -111,6 +115,13 @@ _NEEDS_BUYER = frozenset({DealStage.HANDED_OVER})
 #: by importing Developer 2's enum member, so this file states the rule without
 #: taking a dependency on the shape of their enum.
 _HANDOVER_JOURNEY = "CUSTOMER"
+
+#: The journey values a company must hold before a deal may be opened on it. A deal
+#: follows a sales conversation, which applies from ``PROSPECT`` onward (assumption
+#: A4), and opening one sets the conversation to ``READY_NOW`` (seam S1) — so a
+#: ``LEAD`` is refused before any row is written (``deal-and-buyer.md`` §2). Compared
+#: by name, like ``_HANDOVER_JOURNEY``.
+_OPENABLE_JOURNEYS = frozenset({"PROSPECT", "CUSTOMER"})
 
 
 def read_background_check(company: ExporterProfile) -> str | None:
@@ -164,6 +175,12 @@ class DealService:
     async def get_deal(self, deal_id: uuid.UUID) -> DealView:
         deal = await self._require_deal(deal_id)
         return await self._to_view(deal)
+
+    async def can_open_deal(self, company_id: uuid.UUID) -> bool:
+        """Whether ``open_deal`` would accept this company now — the rule as data, so
+        the screen offers "Open a deal" only where the server would allow it
+        (§7.5). The caller's role is the route's to add."""
+        return await self._company_journey(company_id) in _OPENABLE_JOURNEYS
 
     async def list_for_company(
         self,
@@ -224,14 +241,21 @@ class DealService:
         them happened — which is why 3A's method flushes without committing.
 
         The company is read (not locked): nothing here changes it, and 3A's method
-        locks the row itself before moving the gauge.
+        locks the row itself before moving the gauge. Its journey must be
+        ``PROSPECT`` or ``CUSTOMER`` — a ``LEAD`` is refused before anything is
+        written, because seam S1 would otherwise give a lead a conversation value it
+        may not hold (A4). Reading without a lock is enough: the journey only moves
+        forward, so a company that passes this check cannot fall back behind it.
         """
         cleaned_reference = (reference or "").strip()
         if not cleaned_reference:
             raise ValidationError("a deal needs a reference")
 
-        if not await self._company_exists(company_id):
+        journey = await self._company_journey(company_id)
+        if journey is None:
             raise DealCompanyNotFoundError(company_id)
+        if journey not in _OPENABLE_JOURNEYS:
+            raise DealCompanyNotReadyError(company_id, journey)
 
         deal = Deal(
             company_id=company_id,
@@ -609,14 +633,13 @@ class DealService:
             raise DealNotFoundError(deal_id)
         return deal
 
-    async def _company_exists(self, company_id: uuid.UUID) -> bool:
-        return (
-            await self._db.scalar(
-                select(ExporterProfile.customer_id).where(
-                    ExporterProfile.customer_id == company_id
-                )
-            )
-        ) is not None
+    async def _company_journey(self, company_id: uuid.UUID) -> str | None:
+        """The company's journey as a plain value, or ``None`` if there is no such
+        company."""
+        journey = await self._db.scalar(
+            select(ExporterProfile.journey).where(ExporterProfile.customer_id == company_id)
+        )
+        return None if journey is None else journey.value
 
 
 #: The buyer fields ``set_buyer(keep=...)`` may leave as stored.

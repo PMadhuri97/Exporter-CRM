@@ -90,6 +90,31 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # ── auth: authenticated, but every role acts only on itself ──────────────
     ("POST", f"{V1}/auth/logout"): ALL_ROLES,
     ("GET", f"{V1}/auth/me"): ALL_ROLES,
+    ("PATCH", f"{V1}/auth/me"): ALL_ROLES,
+    ("POST", f"{V1}/auth/me/password"): ALL_ROLES,
+    ("GET", f"{V1}/auth/me/sessions"): ALL_ROLES,
+    ("DELETE", f"{V1}/auth/me/sessions/{{session_id}}"): ALL_ROLES,
+    ("GET", f"{V1}/auth/me/permissions"): ALL_ROLES,
+    # ── auth: user and role management ───────────────────────────────────────
+    #
+    # Gated by a *permission* (`require_permission("users" | "roles", …)`), not
+    # by a role, because roles are data an administrator can edit (migration
+    # `auth_0004_rbac`). ADMIN_ONLY is what the built-in role seeds grant
+    # (`BUILTIN_ROLE_PERMISSIONS`: only ADMIN holds any `users` or `roles`
+    # permission), so it is the enforced answer for the five built-in roles this
+    # table probes. A custom role granted one of these permissions reaches the
+    # route too; that is the design, and `test_role_management.py` covers it.
+    ("GET", f"{V1}/auth/users"): ADMIN_ONLY,
+    ("POST", f"{V1}/auth/users"): ADMIN_ONLY,
+    ("GET", f"{V1}/auth/users/{{user_id}}"): ADMIN_ONLY,
+    ("PATCH", f"{V1}/auth/users/{{user_id}}"): ADMIN_ONLY,
+    ("POST", f"{V1}/auth/users/{{user_id}}/password"): ADMIN_ONLY,
+    ("GET", f"{V1}/auth/roles"): ADMIN_ONLY,
+    ("POST", f"{V1}/auth/roles"): ADMIN_ONLY,
+    ("GET", f"{V1}/auth/roles/catalog"): ADMIN_ONLY,
+    ("GET", f"{V1}/auth/roles/{{role_id}}"): ADMIN_ONLY,
+    ("PATCH", f"{V1}/auth/roles/{{role_id}}"): ADMIN_ONLY,
+    ("DELETE", f"{V1}/auth/roles/{{role_id}}"): ADMIN_ONLY,
     # ── notifications (L1-06) ────────────────────────────────────────────────
     ("GET", f"{V1}/notifications/"): STAFF,
     ("POST", f"{V1}/notifications/process-pending"): STAFF,
