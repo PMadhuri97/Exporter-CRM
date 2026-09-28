@@ -52,9 +52,20 @@ _READER = require_role(
 #: those routes refuse it. Every other dimension stays readable.
 _HIDDEN_FROM_DEVELOPER = frozenset({"background_check", "verification", "screening"})
 
+#: `details` keys DEVELOPER does not see on the rows it does receive. The move to
+#: `CUSTOMER` is a journey row, and it records the clearing decision and its risk
+#: rating — background-check data D8 refuses DEVELOPER on the check's own route. The
+#: row itself stays: the journey is readable, and `CUSTOMER` already says the check
+#: cleared.
+_DETAILS_HIDDEN_FROM_DEVELOPER = frozenset({"risk_rating", "clearing_decision_id"})
+
 
 def _hidden_for(user: User) -> frozenset[str]:
     return _HIDDEN_FROM_DEVELOPER if user.role == UserRole.DEVELOPER else frozenset()
+
+
+def _hidden_details_for(user: User) -> frozenset[str]:
+    return _DETAILS_HIDDEN_FROM_DEVELOPER if user.role == UserRole.DEVELOPER else frozenset()
 
 _ORDERING = (
     "Newest first. `created_at` defaults to the transaction clock, so rows written "
@@ -71,7 +82,8 @@ _ORDERING = (
         "Every recorded change to this company: its journey, each of its three "
         "gauges, its marker and its deals, interleaved. Filter to one with "
         "`dimension`. DEVELOPER does not receive `background_check`, "
-        "`verification` or `screening` rows (decision D8). " + _ORDERING
+        "`verification` or `screening` rows, nor a row's `risk_rating` or "
+        "`clearing_decision_id` details (decision D8). " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},
@@ -109,7 +121,10 @@ async def list_company_history(
         offset=offset,
     )
     return HistoryListResponse(
-        entries=[HistoryEntryResponse.from_row(row) for row in entries],
+        entries=[
+            HistoryEntryResponse.from_row(row, hidden_detail_keys=_hidden_details_for(current_user))
+            for row in entries
+        ],
         total=total,
         limit=limit,
         offset=offset,
@@ -123,8 +138,8 @@ async def list_company_history(
     description=(
         "Every recorded change to one deal, including the changes it caused "
         "elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does "
-        "not receive `background_check`, `verification` or `screening` rows "
-        "(decision D8). " + _ORDERING
+        "not receive `background_check`, `verification` or `screening` rows, nor a "
+        "row's `risk_rating` or `clearing_decision_id` details (decision D8). " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},
@@ -147,7 +162,10 @@ async def list_deal_history(
         deal_id, exclude_dimensions=_hidden_for(current_user), limit=limit, offset=offset
     )
     return HistoryListResponse(
-        entries=[HistoryEntryResponse.from_row(row) for row in entries],
+        entries=[
+            HistoryEntryResponse.from_row(row, hidden_detail_keys=_hidden_details_for(current_user))
+            for row in entries
+        ],
         total=total,
         limit=limit,
         offset=offset,

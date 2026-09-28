@@ -749,9 +749,10 @@ async def test_sample_data_covers_the_states_this_phase_introduces():
 async def test_sample_data_reaches_the_three_example_companies():
     """Architecture §3.9, reached through the services rather than written: B is a
     CUSTOMER because its check is CLEAR, with one of its two deals handed over; C is
-    a PROSPECT whose check is FLAGGED and whose deal is still open; A is untouched by
-    both. And the rule behind B's journey holds — a CUSTOMER's history shows a
-    CLEAR check (company-record §8, invariant 2)."""
+    a PROSPECT whose check is FLAGGED and whose deal is gathering paperwork, its
+    handover refused for both reasons; A is untouched by both. And the rule behind
+    B's journey holds — a CUSTOMER's history shows a CLEAR check (company-record §8,
+    invariant 2)."""
     await load_sample_data()
     slugs = {company.slug: company.customer_id for company in COMPANIES}
     async with db_services.AsyncSessionLocal() as db:
@@ -763,6 +764,7 @@ async def test_sample_data_reaches_the_three_example_companies():
         }
         b_deals, _ = await DealService(db).list_for_company(slugs["company-b"])
         c_deals, _ = await DealService(db).list_for_company(slugs["company-c"])
+        c_deal = await DealService(db).get_deal(c_deals[0].id)
         b_checks, _ = await HistoryService(db).list_for_company(
             slugs["company-b"], dimension="background_check"
         )
@@ -772,7 +774,11 @@ async def test_sample_data_reaches_the_three_example_companies():
     assert (c.journey, c.background_check.value) == (ExporterJourney.PROSPECT, "FLAGGED")
     assert a.background_check.value == "NOT_STARTED"
     assert sorted(d.stage.value for d in b_deals) == ["GATHERING_PAPERWORK", "HANDED_OVER"]
-    assert [d.stage.value for d in c_deals] == ["OPEN"]
+    assert [d.stage.value for d in c_deals] == ["GATHERING_PAPERWORK"]
+    assert "HANDED_OVER" not in {move.to.value for move in c_deal.allowed_stage_moves}
+    assert c_deal.handover_blocked_reason == (
+        "the company is PROSPECT, not CUSTOMER; the background check is FLAGGED, not CLEAR"
+    )
     assert "CLEAR" in {row.to_status for row in b_checks}
 
 

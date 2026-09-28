@@ -366,3 +366,22 @@ async def test_the_api_answers_409_deal_closed(client, tokens):
     )
     assert resp.status_code == 409, resp.text
     assert resp.json()["error_code"] == "DEAL_CLOSED"
+
+
+async def test_the_served_capability_closes_with_the_deal(client, tokens):
+    """The list route says what the write would do: once the deal is closed,
+    COMPLIANCE may no longer record a check on its buyer, but may still review one."""
+    _, deal_id, buyer_id = await deal_buyer()
+
+    async def capabilities() -> dict:
+        resp = await client.get(
+            f"{BASE}/verifications",
+            params={"entity_type": "BUYER", "entity_reference": str(buyer_id)},
+            headers=auth_header(tokens[UserRole.COMPLIANCE]),
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()["capabilities"]
+
+    assert await capabilities() == {"can_record_result": True, "can_review": True}
+    await _withdraw(deal_id)
+    assert await capabilities() == {"can_record_result": False, "can_review": True}

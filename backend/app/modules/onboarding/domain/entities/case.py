@@ -10,7 +10,7 @@ sounds like an exception and is not: it is an opaque route identifier produced b
 the route resolver, not a vendor name, a vendor id, or a vendor field.
 A Sumsub applicant id or a ComplyAdvantage screening id must never appear here —
 those belong in provider metadata or an evidence reference, per §5.3 of
-`docs/project-memory.md`.
+the original platform's project memory (not carried into this repository).
 
 `tenant_id`, `cell_id`, `policy_id` and `product_context` are **opaque** by decision
 D4. Nothing in this module interprets them; the route resolver will match on them

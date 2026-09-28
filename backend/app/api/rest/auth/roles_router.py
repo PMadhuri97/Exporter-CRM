@@ -191,7 +191,9 @@ async def create_role(
         permission_count=len(body.permissions),
         actor_id=str(current_user.id),
     )
-    return _to_response(role, user_count=0)
+    response = _to_response(role, user_count=0)
+    await db.commit()  # before the response is sent — see auth/router.py
+    return response
 
 
 @router.get(
@@ -265,7 +267,9 @@ async def update_role(
         changed=sorted(fields.keys()),
         actor_id=str(current_user.id),
     )
-    return _to_response(role, counts.get(role.id, 0))
+    response = _to_response(role, counts.get(role.id, 0))
+    await db.commit()  # before the response is sent — see auth/router.py
+    return response
 
 
 @router.delete(
@@ -324,6 +328,7 @@ async def delete_role(
         slug=role.slug,
         actor_id=str(current_user.id),
     )
+    await db.commit()  # before the response is sent — see auth/router.py
 
 
 # ── What the signed-in user may do ──────────────────────────────────────────

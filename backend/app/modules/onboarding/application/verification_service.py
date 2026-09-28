@@ -887,6 +887,22 @@ class VerificationService:
         execution = await self._db.execute(stmt)
         return list(execution.scalars().all())
 
+    async def accepts_new_check(
+        self, entity_type: VerificationEntityType, entity_reference: uuid.UUID | str
+    ) -> bool:
+        """Whether a new check may be recorded on this subject now: false for a
+        buyer whose deal is ``HANDED_OVER`` or ``WITHDRAWN`` (D17), so the served
+        ``can_record_result`` agrees with the 409 ``trigger_verification`` would
+        give. Any other subject — including one that does not exist, whose write
+        would be a 404 rather than a closed door — answers true."""
+        if entity_type != VerificationEntityType.BUYER:
+            return True
+        buyer = await DealBuyerRepository(self._db).get(_as_uuid(entity_reference))
+        if buyer is None:
+            return True
+        deal = await DealRepository(self._db).get_by_id(buyer.deal_id)
+        return deal is None or not deal.stage.is_terminal
+
     async def views_for(
         self, results: Sequence[VerificationResult]
     ) -> list[VerificationResultView]:

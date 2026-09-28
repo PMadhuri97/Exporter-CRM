@@ -115,11 +115,13 @@ async def test_a_review_must_name_an_existing_result():
 
 
 async def test_a_reviewed_result_cannot_be_deleted():
-    """ON DELETE RESTRICT: the review keeps the result it is about."""
+    """The review keeps the result it is about. Two guards hold it: the review's
+    ``ON DELETE RESTRICT``, and — firing first — 0022's refusal to delete any
+    verification result at all (``test_crm_integrity_guards_0022.py``)."""
     with pg() as cur:
         result_id = insert_result(cur)
         insert_review(cur, result_id)
-        with pytest.raises(psycopg2.errors.ForeignKeyViolation):
+        with pytest.raises(psycopg2.errors.RaiseException, match="immutable"):
             cur.execute(
                 "DELETE FROM onboarding.verification_result WHERE id = %s", (str(result_id),)
             )

@@ -877,7 +877,7 @@ class FollowUpRescheduleNeedsDateError(AnerBaseException):
     (``engagement.md`` §7). It is not reused: that code names the *conversation*
     gauge's check-back date, on the company record, and this is a follow-up's next due
     moment, on an activity. One code covering both would tell a caller the wrong place
-    to look. Recorded as a decision in ``docs/dev3a-phase2-progress.md``.
+    to look. Recorded as a decision in ``engagement.md`` §7.1.
     """
 
     def __init__(self, activity_id: object) -> None:

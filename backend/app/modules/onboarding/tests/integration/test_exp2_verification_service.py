@@ -14,9 +14,8 @@ name, and remove it again in a `finally` block — the same registry
 the service works with *any* conforming adapter, not just the one this ticket
 ships. `RxilAdapter` doesn't exist until the next ticket, so
 `test_provider_is_never_rewritten` uses exactly this mechanism to prove the
-guarantee ahead of that integration landing (this is the ticket's own
-prescribed approach — see docs/exporter-crm-tickets.md's EXP-2 acceptance
-criteria).
+guarantee ahead of that integration landing (this was the ticket's own
+prescribed approach — the retired EXP-2 ticket's acceptance criteria).
 
 Dev4B (4B-2, 4B-4, 4B-5): EXPORTER and BUYER subjects must exist, so those tests
 create a real company / deal buyer; a manual PASSED carries evidence; and the

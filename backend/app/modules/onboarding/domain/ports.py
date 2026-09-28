@@ -25,8 +25,8 @@ Both branches produce the same :class:`~...dto.NormalizedResult`, which is what 
 acceptance criteria actually test.
 
 .. warning::
-   **This contract is NOT frozen.** Escalation E1 (``docs/project-memory.md``
-   §10.1) is open: Tejasvi owns the screening adapters and must ratify this split
+   **This contract is NOT frozen.** Escalation E1 (the original platform's
+   project memory, §10.1) is open: Tejasvi owns the screening adapters and must ratify this split
    before the version drops its ``-draft`` suffix. The backlog requires freezing
    adapter methods *before* vendor code is written, so no vendor adapter should be
    built against this until E1 closes.

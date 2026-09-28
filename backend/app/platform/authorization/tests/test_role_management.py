@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 
+import psycopg2
 import pytest
 from httpx import AsyncClient
 
@@ -22,10 +23,10 @@ from app.platform.authentication.models import UserRole
 from app.platform.authentication.testing import (
     PASSWORD,
     auth_header,
-    grant_role_sync,
     token_with_role,
     user_with_role,
 )
+from app.platform.configuration.config import get_settings
 
 pytestmark = pytest.mark.asyncio
 
@@ -495,6 +496,51 @@ async def test_can_edit_a_role_you_do_not_hold(client: AsyncClient):
     assert _pairs(resp.json()) == set()
 
 
+def _sync_cursor_dsn() -> str:
+    return get_settings().DATABASE_SYNC_URL.replace("postgresql+psycopg2://", "postgresql://")
+
+
+def _deactivate_other_holders_of_roles_edit(keep_id: str) -> list[str]:
+    """Deactivate every active account other than ``keep_id`` that holds
+    ``roles:edit`` by either route — the query the guard itself counts with
+    (``RoleRepository.count_active_holders_of``). Returns their ids for
+    :func:`_reactivate`.
+
+    All of them, not the first page of ADMINs: a shared test database collects
+    administrators and custom role managers from earlier runs, and a single one left
+    active is enough for the guard to rightly allow the demotion."""
+    conn = psycopg2.connect(_sync_cursor_dsn())
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT u.id::text FROM auth.users u "
+                "JOIN auth.role r ON (u.role_id = r.id "
+                "  OR (u.role_id IS NULL AND u.role = r.builtin_role)) "
+                "JOIN auth.role_permission p ON p.role_id = r.id "
+                "WHERE u.is_active AND p.module = 'roles' AND p.action = 'edit' "
+                "  AND u.id <> %s::uuid",
+                (keep_id,),
+            )
+            ids = [row[0] for row in cur.fetchall()]
+            cur.execute(
+                "UPDATE auth.users SET is_active = false WHERE id = ANY(%s::uuid[])", (ids,)
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return ids
+
+
+def _reactivate(ids: list[str]) -> None:
+    conn = psycopg2.connect(_sync_cursor_dsn())
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE auth.users SET is_active = true WHERE id = ANY(%s::uuid[])", (ids,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 async def test_last_role_manager_cannot_be_demoted_by_a_non_admin_user_editor(
     client: AsyncClient,
 ):
@@ -505,7 +551,8 @@ async def test_last_role_manager_cannot_be_demoted_by_a_non_admin_user_editor(
     after which nobody, including them, could grant it back.
 
     Isolated from the shared built-in roles: both actors get custom roles, and
-    every other ADMIN in the database is parked out of the way and restored.
+    every other active role manager in the database is parked out of the way and
+    restored.
     """
     _, admin_token = await user_with_role(client, UserRole.ADMIN)
 
@@ -561,14 +608,9 @@ async def test_last_role_manager_cannot_be_demoted_by_a_non_admin_user_editor(
     )
     manager_id = manager.json()["id"]
 
-    # Park every other holder of roles:edit — every ADMIN — as OPERATIONS, so the
-    # manager really is the last one, then put them back.
-    admins = await client.get(
-        f"{BASE}/users?role=ADMIN&is_active=true&limit=200", headers=auth_header(admin_token)
-    )
-    parked = [u["email"] for u in admins.json()["users"]]
-    for email in parked:
-        grant_role_sync(email, UserRole.OPERATIONS)
+    # Park every other active holder of roles:edit, so the manager really is the last
+    # one, then put them back.
+    parked = _deactivate_other_holders_of_roles_edit(manager_id)
 
     try:
         refused = await client.patch(
@@ -587,8 +629,7 @@ async def test_last_role_manager_cannot_be_demoted_by_a_non_admin_user_editor(
         assert deactivation.status_code == 409, deactivation.text
         assert deactivation.json()["error_code"] == "LAST_ROLE_MANAGER_PROTECTED"
     finally:
-        for email in parked:
-            grant_role_sync(email, UserRole.ADMIN)
+        _reactivate(parked)
 
     # With administrators back, the same edit is allowed: the guard is about the
     # last holder, not about this account.

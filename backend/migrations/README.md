@@ -8,8 +8,8 @@ Runner, not a store. `env.py` discovers and applies `app/modules/*/migrations/`.
 # Checklist: before you open a PR with a migration in it
 
 Work through this every time. Items 1 and 2 are not hypothetical — both have
-already cost this repo a broken database, and the postmortem for each is at
-`docs/exporter-crm-frontend-tickets.md:350-362`.
+already cost this repo a broken database, and what happened is written under
+each.
 
 ## 1. Is the revision id 32 characters or fewer?
 

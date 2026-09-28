@@ -36,10 +36,11 @@ from app.modules.onboarding.exceptions import ProviderFailureReason
 
 #: Semantic version of the provider contract and its DTOs.
 #:
-#: ``-draft`` means the contract is **not frozen**. Escalation E1 in
-#: ``docs/project-memory.md`` §10.1 is open: Tejasvi must ratify the capability
-#: split before this becomes ``1.0.0``. Vendor adapters (Sumsub, ComplyAdvantage)
-#: must not be written against a draft contract without accepting that it may still move.
+#: ``-draft`` means the contract is **not frozen**. Escalation E1 in the original
+#: platform's project memory (§10.1; not in this repository) is open: Tejasvi must
+#: ratify the capability split before this becomes ``1.0.0``. Vendor adapters (Sumsub,
+#: ComplyAdvantage) must not be written against a draft contract without accepting that
+#: it may still move.
 PROVIDER_CONTRACT_VERSION = "1.0.0-draft"
 
 
@@ -105,7 +106,7 @@ class OverallStatus(str, enum.Enum):
     """
     The normalized verdict of one provider run.
 
-    Proposed by decision D7 (``docs/project-memory.md`` §10.2) and **ratified at
+    Proposed by decision D7 (the original platform's project memory, §10.2) and **ratified at
     the shared gate**, not here. ``CLEAR`` is not "approved" — the
     platform, never a provider, approves a case.
     """

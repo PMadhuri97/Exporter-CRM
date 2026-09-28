@@ -42,7 +42,13 @@ from app.modules.onboarding.domain.deal_views import (
     DealView,
 )
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
-from app.platform.authentication.models import User
+from app.platform.authentication.models import User, UserRole
+
+#: Who may move a deal — the roles `_STAFF` admits on the move routes
+#: (`deal_router.py`). Anyone else is served no moves and no blocked reason: they
+#: could not act on either, and the reason names the company's background check,
+#: which decision D8 keeps from DEVELOPER.
+_MOVING_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
 
 #: The buyer fields a masked role never sees in full, and which a buyer request
 #: may therefore leave out to mean "keep what is stored".
@@ -156,14 +162,16 @@ class DealResponse(BaseModel):
     buyer: DealBuyerResponse | None
     allowed_stage_moves: list[DealStageMoveResponse]
     #: Present when the handover is legal by the stage graph but blocked by
-    #: assumption A5's guard — including "the background check is not recorded
-    #: yet", which is the honest answer while Developer 4's 0015 is missing.
+    #: assumption A5's guard; it names every unmet condition, journey first.
     handover_blocked_reason: str | None
 
     @classmethod
     def from_view(cls, view: DealView, viewer: User) -> DealResponse:
         """``viewer`` decides whether the buyer's identifiers and contact details
-        are shown in full — required, so no route can forget to pass it."""
+        are shown in full, and whether the stage moves and the blocked reason are
+        served at all (only to a role that may move the deal) — required, so no
+        route can forget to pass it."""
+        may_move = viewer.role in _MOVING_ROLES
         return cls(
             id=view.id,
             company_id=view.company_id,
@@ -189,8 +197,10 @@ class DealResponse(BaseModel):
             ),
             allowed_stage_moves=[
                 DealStageMoveResponse.from_view(move) for move in view.allowed_stage_moves
-            ],
-            handover_blocked_reason=view.handover_blocked_reason,
+            ]
+            if may_move
+            else [],
+            handover_blocked_reason=view.handover_blocked_reason if may_move else None,
         )
 
 

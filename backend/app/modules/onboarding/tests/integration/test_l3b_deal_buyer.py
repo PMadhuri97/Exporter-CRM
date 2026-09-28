@@ -657,6 +657,41 @@ async def test_a_developer_may_read_a_deal_but_not_open_one(client: AsyncClient)
     assert refused.status_code == 403, refused.text
 
 
+async def test_a_developer_is_served_no_moves_and_no_blocked_reason(client: AsyncClient):
+    """DEVELOPER cannot move a deal, and the blocked reason names the company's
+    background check, which D8 keeps from it — so it gets neither. Staff get both."""
+    staff = await token_with_role(client, UserRole.OPERATIONS)
+    developer = await token_with_role(client, UserRole.DEVELOPER)
+    view = await _open(await _company())
+    async with db_services.AsyncSessionLocal() as db:
+        await DealService(db).transition_stage(
+            view.id, DealStage.GATHERING_PAPERWORK, actor_id="tester"
+        )
+
+    as_staff = (await client.get(f"{BASE}/deals/{view.id}", headers=auth_header(staff))).json()
+    as_developer = (
+        await client.get(f"{BASE}/deals/{view.id}", headers=auth_header(developer))
+    ).json()
+    assert {move["to_stage"] for move in as_staff["allowed_stage_moves"]} == {"WITHDRAWN"}
+    assert "background check is NOT_STARTED" in as_staff["handover_blocked_reason"]
+    assert as_developer["allowed_stage_moves"] == []
+    assert as_developer["handover_blocked_reason"] is None
+    assert as_developer["stage"] == "GATHERING_PAPERWORK"
+
+
+async def test_the_blocked_reason_names_every_unmet_condition():
+    """A PROSPECT whose check is not CLEAR fails both halves of the guard, and the
+    reason says both, journey first — not only the first one found."""
+    view = await _open(await _company(ExporterJourney.PROSPECT))
+    async with db_services.AsyncSessionLocal() as db:
+        moved = await DealService(db).transition_stage(
+            view.id, DealStage.GATHERING_PAPERWORK, actor_id="tester"
+        )
+    assert moved.handover_blocked_reason == (
+        "the company is PROSPECT, not CUSTOMER; the background check is NOT_STARTED, not CLEAR"
+    )
+
+
 async def test_the_api_refuses_a_deal_on_a_lead_with_its_code(client: AsyncClient):
     token = await token_with_role(client, UserRole.OPERATIONS)
     company_id = await _company(ExporterJourney.LEAD)

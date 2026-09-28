@@ -14,7 +14,7 @@ Three rules live here, and they are the whole of what the backlog asks for:
    as `409 Conflict` — the case is not mutated.
 
 2. **The state machine is the only writer of case state** (design decision 8 in
-   `docs/project-memory.md` §5.7). `CaseRepository.update()` already refuses the
+   the original platform's project memory, §5.7). `CaseRepository.update()` already refuses the
    `state` column. That closes the repository door but leaves the ORM attribute
    itself open: any service holding a `Case` could write `case.state = APPROVED`.
    `permit_state_write()` closes that door too. A `set` listener on `Case.state`

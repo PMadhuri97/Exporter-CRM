@@ -519,6 +519,13 @@ async def test_not_now_without_a_reason_is_refused():
     assert await _history(company_id) == []
 
 
+def _utc_today() -> date:
+    """The day the service compares against. Not ``date.today()``: that is the local
+    date, which runs ahead of UTC between local and UTC midnight (00:00–05:30 in
+    India), when "yesterday" locally is still "today" to the service."""
+    return datetime.now(UTC).date()
+
+
 async def test_a_check_back_date_in_the_past_is_refused():
     """A typo, and a Follow-ups list seeded with dates already overdue on the day
     they were entered is a list nobody trusts."""
@@ -528,7 +535,7 @@ async def test_a_check_back_date_in_the_past_is_refused():
             company_id,
             ExporterConversation.NOT_NOW,
             reason="Not now",
-            check_back_on=date.today() - timedelta(days=1),
+            check_back_on=_utc_today() - timedelta(days=1),
         )
     assert caught.value.error_code == "CONVERSATION_CHECK_BACK_IN_PAST"
 
@@ -541,9 +548,9 @@ async def test_a_check_back_date_of_today_is_accepted():
         company_id,
         ExporterConversation.NOT_NOW,
         reason="Calling back this afternoon",
-        check_back_on=date.today(),
+        check_back_on=_utc_today(),
     )
-    assert (await _read(company_id)).conversation_check_back_on == date.today()
+    assert (await _read(company_id)).conversation_check_back_on == _utc_today()
 
 
 async def test_a_check_back_date_on_any_other_move_is_refused_not_ignored():

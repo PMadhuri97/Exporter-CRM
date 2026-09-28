@@ -350,6 +350,50 @@ async def test_developer_does_not_get_what_d8_refuses_it_elsewhere(
     assert (await read(deal, UserRole.COMPLIANCE))["total"] == 2
 
 
+async def test_developer_gets_the_customer_row_without_the_clearing_details(
+    client: AsyncClient, tokens: dict[UserRole, str]
+):
+    """The move to CUSTOMER is a journey row DEVELOPER may read, but it records the
+    clearing decision and its risk rating — background-check data D8 keeps from
+    DEVELOPER. The row is served without those two keys; every other key stays, and
+    every other role gets them all."""
+    company_id = await make_company()
+    clearing_id = str(uuid.uuid4())
+    async with db_services.AsyncSessionLocal() as db:
+        await HistoryService(db).record(
+            company_id,
+            dimension="journey",
+            from_value="PROSPECT",
+            to_value="CUSTOMER",
+            actor_id="co-1",
+            source="seed",
+            details={
+                "cause": "background_check_clear",
+                "clearing_decision_id": clearing_id,
+                "risk_rating": "LOW",
+                "terminal": True,
+            },
+        )
+        await db.commit()
+
+    async def customer_row(role: UserRole) -> dict:
+        resp = await client.get(
+            f"{BASE}/exporters/{company_id}/history",
+            params={"dimension": "journey"},
+            headers=auth_header(tokens[role]),
+        )
+        assert resp.status_code == 200, resp.text
+        [row] = resp.json()["entries"]
+        return row
+
+    developer = await customer_row(UserRole.DEVELOPER)
+    assert developer["to_value"] == "CUSTOMER"
+    assert developer["details"] == {"cause": "background_check_clear", "terminal": True}
+    for role in (UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN):
+        details = (await customer_row(role))["details"]
+        assert details["risk_rating"] == "LOW" and details["clearing_decision_id"] == clearing_id
+
+
 # ── Read-only ────────────────────────────────────────────────────────────────
 
 

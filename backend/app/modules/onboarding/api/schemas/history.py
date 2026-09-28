@@ -16,6 +16,7 @@ sees the column names.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -63,14 +64,24 @@ class HistoryEntryResponse(BaseModel):
     occurred_at: datetime = Field(description="When, from the database clock.")
 
     @classmethod
-    def from_row(cls, row: ExporterLifecycleHistory) -> HistoryEntryResponse:
+    def from_row(
+        cls, row: ExporterLifecycleHistory, *, hidden_detail_keys: Collection[str] = ()
+    ) -> HistoryEntryResponse:
         """Build the response from a history row.
 
         `source` is lifted out of `event_metadata` and the rest stays in
         `details`, so a caller does not have to know that one of the keys in
         that blob is special. `event_metadata` is nullable, hence the `or {}`.
+
+        `hidden_detail_keys` are left out of `details` — the route passes the
+        keys a role may not see (decision D8 for DEVELOPER), so the row is served
+        without them rather than refused.
         """
-        metadata = dict(row.event_metadata or {})
+        metadata = {
+            key: value
+            for key, value in (row.event_metadata or {}).items()
+            if key not in hidden_detail_keys
+        }
         source = metadata.pop("source", None)
         return cls(
             id=row.id,

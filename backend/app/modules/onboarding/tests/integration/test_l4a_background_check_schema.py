@@ -164,21 +164,27 @@ def _script() -> ScriptDirectory:
     return ScriptDirectory.from_config(cfg)
 
 
-def test_0015_parents_onto_0019_and_the_chain_has_one_head():
-    """One head; a revision id inside the 32-character `version_num`; the parent the
-    task fixes. Developer 4B's 0021 starts from the same head, so whichever merges
-    second re-parents — this test names the parent that must change."""
+def _ancestors(script: ScriptDirectory, revision: str) -> set[str]:
+    """``revision`` and every revision below it."""
+    return {rev.revision for rev in script.walk_revisions(base="base", head=revision)}
+
+
+def test_0015_parents_onto_0019_and_sits_in_the_one_chain():
+    """One head, with 0015 in its chain; a revision id inside the 32-character
+    `version_num`; the parent the task fixes. 0015 stopped being the head when later
+    migrations landed on top of it, so this names where it sits, not what is last."""
     script = _script()
-    heads = script.get_heads()
-    assert heads == [REVISION]
+    [head] = script.get_heads()
+    assert REVISION in _ancestors(script, head)
     assert script.get_revision(REVISION).down_revision == "onboarding_0019_documents"
     assert len(REVISION) <= 32
 
 
-def test_the_database_is_at_0015():
+def test_the_database_has_applied_0015():
     with _connect() as conn, conn.cursor() as cur:
         cur.execute("SELECT version_num FROM alembic_version")
-        assert REVISION in {row[0] for row in cur.fetchall()}
+        [current] = [row[0] for row in cur.fetchall()]
+    assert REVISION in _ancestors(_script(), current)
 
 
 @pytest.mark.parametrize(
@@ -763,12 +769,21 @@ def test_every_foreign_key_on_both_tables_restricts():
 )
 def test_pinned_evidence_cannot_be_deleted_from_under_a_decision(maker, kind, column, table, key):
     """`RESTRICT`: a later clean-up cannot silently change what a decision rested on.
-    (Screening rows are append-only already; their table refuses every delete.)"""
+    (Screening rows are append-only already; their table refuses every delete.)
+
+    Since migration 0022 neither table accepts any delete, and its trigger fires
+    before the foreign key is checked — so the refusal is the trigger's, and the
+    foreign key's `ON DELETE RESTRICT` is read from the catalogue instead."""
     with _connect() as conn, conn.cursor() as cur:
         company_id, start = _started(cur)
         item = maker(cur, company_id)
         _pin(cur, start, kind, **{column: item})
-        with _refused(psycopg2.errors.ForeignKeyViolation):
+        cur.execute(
+            "SELECT confdeltype FROM pg_constraint WHERE conname = %s",
+            (f"fk_background_check_evidence_{column}",),
+        )
+        assert cur.fetchone() == ("r",)  # RESTRICT
+        with _refused(psycopg2.errors.RaiseException):
             cur.execute(f"DELETE FROM {SCHEMA}.{table} WHERE {key} = %s", (str(item),))
 
 

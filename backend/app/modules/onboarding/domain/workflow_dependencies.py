@@ -52,8 +52,8 @@ The one exception to "keyed by the onboarding request" above.
 :class:`VerificationOutcome`, :class:`VerificationCapabilityDeclaration`) are not
 one of the onboarding workflow's own dependencies — nothing here is added to
 :class:`OnboardingWorkflowDependencies` or its ``_DEPENDENCY_PROTOCOLS`` table.
-They live in this file because the ticket that introduced them
-(``docs/exporter-crm-tickets.md``, EXP-2) is explicit: "same file, same
+They live in this file because the ticket that introduced them (EXP-2, since
+retired with the rest of the original build tickets) was explicit: "same file, same
 one-Protocol-per-capability convention as the existing 9 ... do not create a new
 ``ports.py`` for this." The methods are plain ``def``, not ``async def``, and the
 dataclass fields hold real enum members rather than validated value-strings: unlike

@@ -71,13 +71,15 @@ SAMPLE_DEALS: dict[str, tuple[_SampleDeal, ...]] = {
             stage=DealStage.HANDED_OVER,
         ),
     ),
-    # §3.9 company C: one open deal that cannot be handed over.
+    # §3.9 company C: one open deal that cannot be handed over. It is left gathering
+    # its paperwork, with its buyer, so the handover is the next move and the deal
+    # page shows why it is refused: C is a PROSPECT and its check is FLAGGED.
     "company-c": (
         _SampleDeal(
             reference="Dubai seafood order",
             buyer_name="Gulf Fresh Foods LLC",
             buyer_country="AE",
-            stage=DealStage.OPEN,
+            stage=DealStage.GATHERING_PAPERWORK,
         ),
     ),
 }
@@ -109,10 +111,24 @@ async def load_deal_sample_data() -> int:
 
 async def _ensure_deal(company_id: uuid.UUID, sample: _SampleDeal) -> bool:
     """Create one deal, its buyer and its stage, unless a deal with that
-    reference is already there."""
+    reference is already there — in which case an ``OPEN`` one is only moved on to
+    the stage this file now asks for, so a database seeded by an earlier version
+    converges instead of keeping an outdated state. Returns whether it created one."""
     async with db_services.AsyncSessionLocal() as db:
         existing, _ = await DealService(db).list_for_company(company_id, limit=200)
-    if any(view.reference == sample.reference for view in existing):
+    found = next((view for view in existing if view.reference == sample.reference), None)
+    if found is not None:
+        if found.stage is DealStage.OPEN and sample.stage is not DealStage.OPEN:
+            async with db_services.AsyncSessionLocal() as db:
+                await DealService(db).transition_stage(
+                    found.id, DealStage.GATHERING_PAPERWORK, actor_id=None
+                )
+            logger.info(
+                "sample_deals.advanced",
+                company_id=str(company_id),
+                deal_id=str(found.id),
+                reference=sample.reference,
+            )
         return False
 
     async with db_services.AsyncSessionLocal() as db:

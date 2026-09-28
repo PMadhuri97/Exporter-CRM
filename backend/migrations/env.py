@@ -66,6 +66,14 @@ MODULE_SCHEMAS = frozenset({
 })
 
 
+#: Tables a migration creates with no model behind them, which autogenerate would
+#: otherwise propose dropping. `cases.case_reference_sequence` is the per-year
+#: counter `cases_0001_case_management` creates and reads with raw SQL; adding a
+#: model for it would mean editing `cases`, which the module rule forbids
+#: (docs/module-rule-exceptions.md).
+UNMODELLED_TABLES = frozenset({("cases", "case_reference_sequence")})
+
+
 def include_object(obj, name, type_, reflected, compare_to):
     """Keep autogenerate inside the module schemas.
 
@@ -75,6 +83,8 @@ def include_object(obj, name, type_, reflected, compare_to):
     """
     if type_ == "table":
         if name == "alembic_version":
+            return False
+        if (obj.schema, name) in UNMODELLED_TABLES:
             return False
         return (obj.schema or "public") in MODULE_SCHEMAS
     return True

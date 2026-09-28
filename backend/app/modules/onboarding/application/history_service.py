@@ -102,7 +102,7 @@ class HistoryService:
                 from a request body. ``None`` means the platform itself acted —
                 the same meaning ``actor_id`` carries on ``case_state_transition``.
             source: The code path that wrote the row, dotted
-                (``exporter_profile_service.transition_lifecycle_status``). For
+                (``deal_service.transition_stage``). For
                 a human reading the trail; stored inside ``event_metadata``.
             from_value: The previous value. ``None`` means "entered at
                 creation", which is also what selects the ``_initial``

@@ -2,7 +2,7 @@
 `person_profile` — the subject's identity attributes (decision D1).
 
 **This is where PII lives**, and it is the only core case table that holds any. The
-PII-handling rules in `docs/project-memory.md` §5.3 apply to every column below:
+PII-handling rules in the original platform's project memory (§5.3) apply to every column below:
 never log it, never put it in an event payload, never echo it into a traceback.
 
 Per decision **D2**, only `person_profile` is modelled now — it is the sole profile

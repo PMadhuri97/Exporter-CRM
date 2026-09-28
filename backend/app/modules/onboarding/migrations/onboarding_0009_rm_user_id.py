@@ -1,6 +1,6 @@
 """Add `relationship_manager_user_id` to `exporter_profile`
 
-EXP-F2's frontend role model (`docs/exporter-crm-frontend-tickets.md`) needs
+EXP-F2's frontend role model (a build ticket since retired) needs
 to answer "is the logged-in user this exporter's relationship_manager" to
 decide whether an `OPERATIONS`-role user may reveal masked PAN/GSTIN/IEC on
 this record — `relationship_manager` alone (a free display string, EXP-1's

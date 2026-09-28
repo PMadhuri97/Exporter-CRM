@@ -45,6 +45,13 @@ from app.shared.exceptions import AnerBaseException, NotFoundError, Unauthorized
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
+# Committing before the response. Every route here (and in roles_router.py) that
+# writes commits before it returns. `get_db` commits as well, but in its teardown,
+# which FastAPI runs *after* the response has been sent — so a client acting on the
+# response at once (signing in straight after signing up, reloading the user list
+# after creating an account) could reach the database before the write did. The CRM's
+# services already commit before returning, for the same reason.
+
 # Role management and `GET /me/permissions` live in their own module but under
 # this same `/auth` prefix, mirroring how onboarding includes its exporter
 # router: one import surface per area, without a second mount point to keep in
@@ -184,7 +191,9 @@ async def register(
     )
     user = await user_repo.create(user)
     logger.info("user_registered", user_id=str(user.id), role=user.role.value)
-    return UserResponse.model_validate(user)
+    response = UserResponse.model_validate(user)
+    await db.commit()  # before the response is sent — see the note above `router`
+    return response
 
 
 @router.post(
@@ -224,6 +233,7 @@ async def login(
     await user_repo.session.flush()
 
     logger.info("user_login", user_id=str(user.id), role=user.role.value)
+    await db.commit()  # before the response is sent — see the note above `router`
     return TokenResponse(
         access_token=access_token,
         refresh_token=raw_refresh,
@@ -270,6 +280,7 @@ async def refresh(
     await token_repo.create(new_token)
 
     logger.info("token_refreshed", user_id=str(user.id))
+    await db.commit()  # before the response is sent — see the note above `router`
     return TokenResponse(
         access_token=access_token,
         refresh_token=raw_refresh,
@@ -282,6 +293,7 @@ async def refresh(
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
     summary="Revoke the current refresh token",
+    responses={401: {"description": "Unauthorized"}},
     tags=["Auth"],
 )
 async def logout(
@@ -297,12 +309,14 @@ async def logout(
         await token_repo.revoke(db_token)
 
     logger.info("user_logout", user_id=str(current_user.id))
+    await db.commit()  # before the response is sent — see the note above `router`
 
 
 @router.get(
     "/me",
     response_model=UserResponse,
     summary="Get the currently authenticated user",
+    responses={401: {"description": "Unauthorized"}},
     tags=["Auth"],
 )
 async def me(
@@ -335,7 +349,9 @@ async def update_me(
         current_user.full_name = fields["full_name"]
         await db.flush()
         logger.info("user_profile_updated", user_id=str(current_user.id))
-    return UserResponse.model_validate(current_user)
+    response = UserResponse.model_validate(current_user)
+    await db.commit()  # before the response is sent — see the note above `router`
+    return response
 
 
 @router.post(
@@ -369,6 +385,7 @@ async def change_my_password(
     await db.flush()
     await RefreshTokenRepository(db).revoke_all_for_user(current_user.id)
     logger.info("user_password_changed", user_id=str(current_user.id))
+    await db.commit()  # before the response is sent — see the note above `router`
 
 
 @router.get(
@@ -427,6 +444,7 @@ async def revoke_my_session(
     logger.info(
         "user_session_revoked", user_id=str(current_user.id), session_id=str(session_id)
     )
+    await db.commit()  # before the response is sent — see the note above `router`
 
 
 # ── Administrator user management ───────────────────────────────────────────
@@ -520,7 +538,9 @@ async def admin_create_user(
         role=user.role.value,
         created_by=str(current_user.id),
     )
-    return AdminUserResponse.model_validate(user)
+    response = AdminUserResponse.model_validate(user)
+    await db.commit()  # before the response is sent — see the note above `router`
+    return response
 
 
 @router.get(
@@ -656,7 +676,9 @@ async def admin_update_user(
         changed=sorted(fields.keys()),
         updated_by=str(current_user.id),
     )
-    return AdminUserResponse.model_validate(user)
+    response = AdminUserResponse.model_validate(user)
+    await db.commit()  # before the response is sent — see the note above `router`
+    return response
 
 
 @router.post(
@@ -699,3 +721,4 @@ async def admin_reset_password(
         user_id=str(user.id),
         reset_by=str(current_user.id),
     )
+    await db.commit()  # before the response is sent — see the note above `router`

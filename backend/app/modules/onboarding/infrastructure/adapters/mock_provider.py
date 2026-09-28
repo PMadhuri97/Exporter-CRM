@@ -1,7 +1,7 @@
 """
 Credential-free mock adapters.
 
-Decision D9 (``docs/project-memory.md`` §10.2) requires a real mock rather than
+Decision D9 (the original platform's project memory, §10.2) requires a real mock rather than
 testing through the Sumsub setup: the acceptance criterion is that the mock
 "can run through the provider_run lifecycle **without real vendor credentials**",
 and CI must stay credential-free.

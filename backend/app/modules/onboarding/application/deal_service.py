@@ -530,7 +530,8 @@ class DealService:
     # ── The A5 handover guard ────────────────────────────────────────────────
 
     async def _handover_blocked_reason(self, deal: Deal, *, lock: bool = False) -> str | None:
-        """Why this deal may not be handed over, or ``None`` if it may.
+        """Why this deal may not be handed over — every unmet condition, joined with
+        ``"; "`` — or ``None`` if it may.
 
         Assumption A5: the company's journey is ``CUSTOMER`` **and** its background
         check is ``CLEAR``. Both are now real: Developer 4A's migration 0015 landed
@@ -572,13 +573,16 @@ class DealService:
         if company is None:  # pragma: no cover - the FK makes this unreachable
             raise DealCompanyNotFoundError(deal.company_id)
 
+        # Every unmet condition, journey first, so the screen tells the whole story at
+        # once — a PROSPECT whose check is FLAGGED needs both fixed, not one.
+        unmet: list[str] = []
         if company.journey.value != _HANDOVER_JOURNEY:
-            return f"the company is {company.journey.value}, not {_HANDOVER_JOURNEY}"
+            unmet.append(f"the company is {company.journey.value}, not {_HANDOVER_JOURNEY}")
 
         background_check = read_background_check(company)
         if background_check != "CLEAR":
-            return f"the background check is {background_check}, not CLEAR"
-        return None
+            unmet.append(f"the background check is {background_check}, not CLEAR")
+        return "; ".join(unmet) or None
 
     # ── Internals ────────────────────────────────────────────────────────────
 

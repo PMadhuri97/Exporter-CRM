@@ -483,7 +483,8 @@ async def get_verification_result(
     description=(
         "Every check ever run against one exporter/buyer/director/invoice/vessel/shipment, "
         "newest first, each with its review chain; for a buyer, pass the `deal_buyer.id`. "
-        "`capabilities` says whether the caller may record or review a result."
+        "`capabilities` says whether the caller may record or review a result; no new "
+        "result may be recorded on a buyer whose deal is `HANDED_OVER` or `WITHDRAWN`."
     ),
     responses={
         200: {"model": VerificationResultListResponse},
@@ -501,13 +502,16 @@ async def list_verification_results(
     results = await service.list_verification_results(entity_type, entity_reference)
     views = await service.views_for(results)
     may_decide = current_user.role in _VERIFICATION_DECISION_ROLES
+    # D17: no new check on a buyer of a closed deal — served as a capability too, so
+    # the screen never offers a form the server would refuse. Reviews stay open.
+    may_record = may_decide and await service.accepts_new_check(entity_type, entity_reference)
     return VerificationResultListResponse(
         entity_type=entity_type,
         entity_reference=entity_reference,
         results=[VerificationResultResponse.from_view(v, current_user) for v in views],
         total=len(views),
         capabilities=VerificationCapabilities(
-            can_record_result=may_decide, can_review=may_decide
+            can_record_result=may_record, can_review=may_decide
         ),
     )
 

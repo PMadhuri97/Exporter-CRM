@@ -1,6 +1,6 @@
 """Add DEVELOPER to user_role_enum
 
-Frontend PII-masking design (`docs/exporter-crm-frontend-tickets.md`) needs a
+Frontend PII-masking design (the retired EXP-F2 build ticket) needs a
 role distinct from `API_USER` for internal technical staff who must never be
 able to reveal masked PAN/GSTIN/identifier fields, under any circumstance —
 unlike `OPERATIONS` (which can reveal on exporters it owns) or

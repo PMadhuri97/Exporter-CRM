@@ -27,6 +27,8 @@ class User(AnerModel):
     __tablename__ = "users"
     __table_args__ = (
         Index("ix_users_email", "email", unique=True),
+        # The Settings user list: active accounts, filtered by role (auth_0003).
+        Index("ix_users_is_active_role", "is_active", "role"),
         {"schema": SCHEMA},
     )
 

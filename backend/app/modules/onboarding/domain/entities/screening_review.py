@@ -42,7 +42,7 @@ class ScreeningReviewItem(AnerModel):
     ``customer_id`` references the company. The database constraint
     (``fk_screening_review_item_customer_id``) has existed since migration
     0014; declaring it here only makes the model say what the table already
-    enforces, so it needs no migration (``dev2-remaining-work.md`` §5).
+    enforces, so it needs no migration.
     ``status`` is one of ``SCREENING_STATUSES`` at the database too
     (``ck_screening_review_item_status``, migration 0021).
     """

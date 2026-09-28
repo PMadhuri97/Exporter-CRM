@@ -42,6 +42,9 @@ class AuditEvent(AppendOnlyModel):
         # the idempotency violations query. Without it, both sort the whole
         # platform-wide audit log on every page.
         Index("ix_audit_events_event_type_created_at", "event_type", "created_at"),
+        # The sink-sync sweep's lookup (audit_0001_baseline), named for the same
+        # reason as the correlation index above.
+        Index("ix_audit_events_synced_to_sink_at", "synced_to_sink_at"),
         {"schema": SCHEMA},
     )
 
@@ -62,5 +65,5 @@ class AuditEvent(AppendOnlyModel):
     )
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     synced_to_sink_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, index=True
+        DateTime(timezone=True), nullable=True
     )
