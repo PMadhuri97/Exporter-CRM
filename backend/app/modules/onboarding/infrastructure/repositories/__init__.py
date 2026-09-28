@@ -134,7 +134,11 @@ __all__ += ["CrmDocumentRepository"]
 
 # ── Background check — owner: Developer 4A ──
 # (4A appends here; 4B does not.)
-__all__ += []
+from app.modules.onboarding.infrastructure.repositories.background_check_decision_repository import (  # noqa: E402
+    BackgroundCheckDecisionRepository,
+)
+
+__all__ += ["BackgroundCheckDecisionRepository"]
 
 # ── Verification and screening — owner: Developer 4B ──
 # (4B appends here; 4A does not.)

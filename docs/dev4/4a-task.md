@@ -281,7 +281,7 @@ class BackgroundCheckReader:
   `"NOT_STARTED"`, so two assertions whose premise was "the column does not exist" become false:
   `test_l3b_deal_buyer.py::test_handover_is_blocked_because_no_background_check_exists_yet` and
   `test_l3b_handover.py::test_the_handover_is_refused_while_no_background_check_exists`. Dev4A
-  updates only those two assertions (to the new, true blocked reason) in the same phase that adds
+  updates only those two assertions (to the new, true blocked reason) — plus a third with the same premise, found in 4A-2 (see the 4A-2 status) — in the same phase that adds
   the column, with Dev3 review. This is a direct consequence of Dev4A's change, not an unrelated
   test.
 
@@ -613,7 +613,7 @@ Record every answer in `docs/contracts/background-check.md` with its date and wh
 > | Item | Status |
 > |---|---|
 > | **4B-0 dependency** (the §6 seam and the §9 anchor blocks) | **CLEARED.** Dev4B Phase 4B-0 is complete (`4b-task.md` §14, 4B-0 status). Dev4A consumes `domain/compliance_inputs.py` and `ComplianceInputsService` exactly as §6 documents, and edits only its own anchor blocks. |
-> | **Dev4A implementation** | **NOT STARTED.** No contract doc, migration, entity, service, reader, API or panel yet. |
+> | **Dev4A implementation** | **4A-1 and 4A-2 COMPLETE (28 Sep 2026)**; see their status blocks below. **4A-3 onward NOT STARTED**: no service, CLEAR, reopen, reader, Dev3 swap, API or panel. |
 > | **D13** (risk database type) | **Settled:** a Dev4A-owned enum type (§13). |
 > | **D5** (risk on the company record) | **Open, non-blocking:** no company risk column (§13). |
 > | **U4 / D11** (customer transition) | **Blocked:** §5.9 and 4A-9 untouched. |
@@ -638,6 +638,17 @@ OpenAPI artifact current. A phase that cannot meet its stop condition stops and 
 - **Tests:** none.
 - **Stop when:** the doc is written and every open item is listed with an owner.
 
+> **4A-1 STATUS: COMPLETE (28 Sep 2026).** `docs/contracts/background-check.md` is published.
+> It covers the six values; the nine-move table with roles, required text and prerequisites; the
+> reasons (including the two D14 rows); the locked decision record and every database invariant
+> on it; the supersedes chain; the evidence snapshot (ids only, the verification review id bare);
+> risk (D13 settled, D5 open with no company risk column, D6 open); history usage; one
+> transaction per move; the `BackgroundCheckReader` contract (not yet implemented); the planned
+> error codes; the relationships to the journey, to Developer 3's handover and to the blocked
+> customer transition; the 4A ↔ 4B seam by reference; and every open decision (D1–D6, D8,
+> D10–D14) with its owner. Acknowledgements from Developers 1, 2, 3 and 4B are **requested**
+> (contract §15) and are a merge condition (§19), not a 4A-1 output.
+
 ### 4A-2 — Schema, entities and ORM column
 - **Objective:** migration `onboarding_0015_bg_check` and the entities.
 - **Scope:** §10 contents; `ExporterProfile.background_check`; entity/repository registration in
@@ -652,6 +663,47 @@ OpenAPI artifact current. A phase that cannot meet its stop condition stops and 
 - **Tests:** direct-SQL: `UPDATE`/`DELETE` refused on decision and evidence tables; reason and
   risk `CHECK`s; unique supersedes; FK RESTRICT on company and evidence targets; column default.
 - **Stop when:** round trip clean, suite at baseline including the two updated Dev3 assertions.
+
+> **4A-2 STATUS: COMPLETE (28 Sep 2026).**
+>
+> - **Migration:** `onboarding_0015_bg_check`, `down_revision = onboarding_0019_documents` (the
+>   head at branch time). One head. Round trip run against live Postgres:
+>   `upgrade head → downgrade -1 → upgrade head` clean, and the downgrade leaves no
+>   `background_check*` type, table or column behind.
+> - **Schema:** five Dev4A enum types (`background_check_enum`, `background_check_risk_enum`
+>   [D13], `background_check_decided_by_kind_enum`, `background_check_decision_source_enum`,
+>   `background_check_evidence_kind_enum`); `exporter_profile.background_check` `NOT NULL DEFAULT
+>   'NOT_STARTED'` with `ix_exporter_profile_background_check`; `background_check_decision` and
+>   `background_check_evidence`, both locked by `public.prevent_mutation()`. The database
+>   enforces the nine-move table, the text rule (including `CLEAR` and `MORE_INFO → IN_REVIEW`),
+>   risk on `CLEAR`, a named actor on `MANUAL` decisions, one chain per company, no fork, and a
+>   predecessor of the same company ending where the move starts (composite chain FK). Every FK
+>   is `RESTRICT`. Evidence FKs go to `crm_document`, `verification_result` and
+>   `screening_review_item`; `verification_review_id` is a bare uuid. **No company risk column**
+>   (D5 open). Nothing of Developer 4B's is created or altered.
+> - **Entities and repository:** `domain/entities/background_check_enums.py`,
+>   `domain/entities/background_check_decision.py` (`BackgroundCheckDecision`,
+>   `BackgroundCheckEvidence`, `LEGAL_MOVES`),
+>   `infrastructure/repositories/background_check_decision_repository.py` (append-only,
+>   flush-only `record`, chain-head `latest_for_company`, `list_for_company`, `evidence_for`),
+>   `ExporterProfile.background_check` (Developer 2 review). Registered only in the 4A anchor
+>   blocks of `domain/entities/__init__.py` and `infrastructure/repositories/__init__.py`.
+> - **Dev3 assertions (Developer 3 review):** the column's arrival turns the handover's blocked
+>   reason from "not recorded yet" into "the background check is NOT_STARTED, not CLEAR". The two
+>   §5.8 assertions were updated to that reason. **A third assertion with the same premise**,
+>   `test_l3b_handover.py::test_the_api_refuses_the_handover_and_names_the_reason`, was updated
+>   the same way; §5.8 did not list it. Nothing else in Developer 3's tests or code changed:
+>   `deal_service.py` is untouched (the swap is 4A-6) and the `clear_background_check` fixture
+>   stays.
+> - **Tests:** `test_l4a_background_check_schema.py` (137, direct SQL: all 36 from/to pairs,
+>   text, risk, actor, chain, fork, cross-company, continuity, `UPDATE`/`DELETE` refused on both
+>   tables, company and evidence `RESTRICT`, every index and trigger, the enum catalogue, one head
+>   and the parent) and `test_l4a_background_check_repository.py` (15, ORM). The Dev3 deal,
+>   handover and document suites pass (94). **Full suite: 30 failed / 3918 passed / 7 skipped /
+>   22 errors**, the §3 baseline plus the 152 new tests; the 52 failing and erroring test ids are
+>   identical to the 4B-0 run (29 environment + the Dev3A clock test).
+> - **Gates:** ruff 16 (baseline); import-linter 19 kept / 0 broken; `openapi.json` and
+>   `schema.ts` untouched (no route).
 
 ### 4A-3 — Gauge service: forward moves
 - **Objective:** `BackgroundCheckService` for every move except `CLEAR` and the moves out of

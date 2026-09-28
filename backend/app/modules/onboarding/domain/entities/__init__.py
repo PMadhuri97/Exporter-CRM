@@ -189,7 +189,27 @@ __all__ += ["CrmDocument", "DocumentCategory", "DocumentOwnerKind", "DocumentSou
 
 # ── Background check — owner: Developer 4A ──
 # (4A appends here; 4B does not.)
-__all__ += []
+from app.modules.onboarding.domain.entities.background_check_decision import (  # noqa: E402
+    BackgroundCheckDecision,
+    BackgroundCheckEvidence,
+)
+from app.modules.onboarding.domain.entities.background_check_enums import (  # noqa: E402
+    BackgroundCheckDecidedByKind,
+    BackgroundCheckDecisionSource,
+    BackgroundCheckEvidenceKind,
+    BackgroundCheckRisk,
+    BackgroundCheckState,
+)
+
+__all__ += [
+    "BackgroundCheckDecidedByKind",
+    "BackgroundCheckDecision",
+    "BackgroundCheckDecisionSource",
+    "BackgroundCheckEvidence",
+    "BackgroundCheckEvidenceKind",
+    "BackgroundCheckRisk",
+    "BackgroundCheckState",
+]
 
 # ── Verification and screening — owner: Developer 4B ──
 # (4B appends here; 4A does not.)
