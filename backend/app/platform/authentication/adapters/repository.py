@@ -81,6 +81,22 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
         )
         return result.scalar_one_or_none()
 
+    async def get_by_hash_for_update(self, token_hash: str) -> RefreshToken | None:
+        """`get_by_hash`, holding the token's row until the transaction ends.
+
+        Used only by `POST /auth/refresh`, which reads the row, revokes it and issues
+        a successor. Without the lock two exchanges of one token could both read it
+        unrevoked and both succeed; with it the second waits for the first to commit,
+        then finds the row revoked and is refused.
+        """
+        result = await self.session.execute(
+            select(RefreshToken)
+            .where(RefreshToken.token_hash == token_hash)
+            .options(selectinload(RefreshToken.user))
+            .with_for_update(of=RefreshToken)
+        )
+        return result.scalar_one_or_none()
+
     async def get_for_user(
         self, token_id: uuid.UUID, user_id: uuid.UUID
     ) -> RefreshToken | None:

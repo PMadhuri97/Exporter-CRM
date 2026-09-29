@@ -8,6 +8,13 @@
  * Values are shown as the server recorded them. A profile edit's before and
  * after come from the row's `details`, already masked on the server for roles
  * that may not see tax identifiers; nothing here unmasks or re-derives them.
+ *
+ * Each row says what changed, not only the value it reached. Where a row is about
+ * one thing of several — a buyer's details, one screening item, one criterion, one
+ * check — its `details` name it, with the keys the contracts guarantee
+ * (`history-row.md` §3): the item's and criterion's labels come from the same
+ * server-served catalogue and criteria the Background check and Qualification tabs
+ * use, falling back to the key. Who acted is shown by name (`actor_name`).
  */
 
 import {
@@ -15,20 +22,24 @@ import {
   Briefcase,
   Flag,
   History as HistoryIcon,
+  ListChecks,
   MessageSquare,
   PencilLine,
   Route,
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Button, EmptySection, ErrorState, Skeleton } from '@/components';
 import { cn } from '@/lib/cn';
 import { formatDateTime, humanize } from '@/lib/format';
 
-import { useCompanyHistory, useDealHistory } from '../hooks';
+import { useCompanyHistory, useDealHistory, useQualification, useScreeningReview } from '../hooks';
 import type { HistoryDimension, HistoryEntry, HistoryList } from '../types';
+
+import { actorLabel } from './actor-label';
+import { verificationTypeLabel } from './verification-labels';
 
 const PAGE_SIZE = 25;
 
@@ -41,6 +52,7 @@ const DIMENSION_LOOK: Record<string, { label: string; icon: LucideIcon; tone: st
   marker: { label: 'Relationship', icon: Flag, tone: 'text-marker-paused bg-marker-paused/10' },
   profile: { label: 'Profile', icon: PencilLine, tone: 'text-ink-muted bg-surface-sunken' },
   verification: { label: 'Verification', icon: ShieldCheck, tone: 'text-ink-muted bg-surface-sunken' },
+  screening: { label: 'Screening', icon: ListChecks, tone: 'text-ink-muted bg-surface-sunken' },
 };
 
 const FALLBACK_LOOK = { label: 'Change', icon: HistoryIcon, tone: 'text-ink-muted bg-surface-sunken' };
@@ -62,8 +74,81 @@ function text(value: unknown): string | null {
   return String(value);
 }
 
+/** Labels for the keys a row's `details` name, from what the server serves. */
+interface HistoryLabels {
+  screeningItem: (key: string) => string;
+  criterion: (key: string) => string;
+}
+
+const KEY_LABELS: HistoryLabels = { screeningItem: humanize, criterion: humanize };
+
+const BUYER_FIELD_LABEL: Record<string, string> = {
+  name: 'name',
+  country: 'country',
+  registration_number: 'registration number',
+  tax_id: 'tax ID',
+  contact_email: 'contact email',
+  contact_phone: 'contact phone',
+};
+
+/** `from → to`, or just `to` for a value set at creation. */
+function Move({ entry }: { entry: HistoryEntry }) {
+  return (
+    <>
+      {entry.from_value ? (
+        <span className="text-ink-muted">{humanize(entry.from_value)} → </span>
+      ) : null}
+      <span className="font-medium">{humanize(entry.to_value)}</span>
+    </>
+  );
+}
+
+/** What a buyer change did: the deal's stage does not move, so `from → to` says nothing. */
+function BuyerSummary({ entry }: { entry: HistoryEntry }) {
+  const buyer = text(entry.details?.buyer_name);
+  const changed = Array.isArray(entry.details?.changed) ? (entry.details.changed as string[]) : [];
+  const fields = changed.map((field) => BUYER_FIELD_LABEL[field] ?? humanize(field).toLowerCase());
+  if (entry.details?.created === true) {
+    return (
+      <p className="text-sm text-ink">
+        <span className="font-medium">Buyer recorded</span>
+        {buyer && <span className="text-ink-muted">: {buyer}</span>}
+      </p>
+    );
+  }
+  return (
+    <p className="text-sm text-ink">
+      <span className="font-medium">Buyer updated</span>
+      <span className="text-ink-muted">
+        {fields.length > 0 ? `: ${fields.join(', ')}` : ' — nothing changed'}
+        {buyer && ` (${buyer})`}
+      </span>
+    </p>
+  );
+}
+
+/** The thing a row is about, when it is one of several: an item, a criterion, a check. */
+function subjectOf(entry: HistoryEntry, labels: HistoryLabels): string | null {
+  const details = entry.details ?? {};
+  if (entry.dimension === 'screening' && typeof details.item_key === 'string') {
+    return labels.screeningItem(details.item_key);
+  }
+  if (entry.event_type === 'qualification_result' && typeof details.criterion_key === 'string') {
+    return labels.criterion(details.criterion_key);
+  }
+  if (entry.dimension === 'verification' && typeof details.verification_type === 'string') {
+    const type = details.verification_type;
+    const check = type === 'BUYER' ? 'Buyer check' : `${verificationTypeLabel(type)} check`;
+    const onBuyer = details.entity_type === 'BUYER' && type !== 'BUYER';
+    const subject = onBuyer ? `Buyer ${check.charAt(0).toLowerCase()}${check.slice(1)}` : check;
+    return entry.event_type === 'verification_reviewed' ? `${subject} reviewed` : subject;
+  }
+  return null;
+}
+
 /** What changed, in one line. */
-function Summary({ entry }: { entry: HistoryEntry }) {
+function Summary({ entry, labels }: { entry: HistoryEntry; labels: HistoryLabels }) {
+  if (entry.event_type === 'deal_buyer_changed') return <BuyerSummary entry={entry} />;
   if (entry.dimension === 'profile') {
     const field = text(entry.details?.field) ?? entry.to_value;
     const before = text(entry.details?.from);
@@ -77,17 +162,18 @@ function Summary({ entry }: { entry: HistoryEntry }) {
       </p>
     );
   }
+  const subject = subjectOf(entry, labels);
+  // Screening items are questions: "Has the website been reviewed? Passed", not "?:".
+  const separator = subject?.endsWith('?') ? ' ' : ': ';
   return (
     <p className="text-sm text-ink">
-      {entry.from_value ? (
-        <span className="text-ink-muted">{humanize(entry.from_value)} → </span>
-      ) : null}
-      <span className="font-medium">{humanize(entry.to_value)}</span>
+      {subject && `${subject}${separator}`}
+      <Move entry={entry} />
     </p>
   );
 }
 
-function HistoryRow({ entry }: { entry: HistoryEntry }) {
+function HistoryRow({ entry, labels }: { entry: HistoryEntry; labels: HistoryLabels }) {
   const look = DIMENSION_LOOK[entry.dimension] ?? FALLBACK_LOOK;
   const Icon = look.icon;
   const checkBack = text(entry.details?.check_back_on);
@@ -110,15 +196,34 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
             {formatDateTime(entry.occurred_at)}
           </time>
         </div>
-        <Summary entry={entry} />
+        <Summary entry={entry} labels={labels} />
         {checkBack && <p className="text-xs text-status-review">Check back {checkBack}</p>}
         {entry.reason && <p className="mt-1 text-sm text-ink-muted">“{entry.reason}”</p>}
-        <p className="mt-1 text-xs text-ink-faint">
-          {entry.actor_id ? `By ${entry.actor_id}` : 'By the platform'}
-        </p>
+        <p className="mt-1 text-xs text-ink-faint">By {actorLabel(entry.actor_name, entry.actor_id)}</p>
       </div>
     </li>
   );
+}
+
+/**
+ * The screening catalogue's and the criteria's labels, fetched only when the page
+ * holds a row that needs them — and usually already cached by the tab that shows them.
+ */
+function useHistoryLabels(customerId: string, entries: HistoryEntry[]): HistoryLabels {
+  const needsScreening = entries.some((entry) => entry.dimension === 'screening');
+  const needsCriteria = entries.some((entry) => entry.event_type === 'qualification_result');
+  const screening = useScreeningReview(needsScreening ? customerId : undefined);
+  const qualification = useQualification(needsCriteria ? customerId : undefined);
+  return useMemo(() => {
+    const items = new Map((screening.data?.catalogue ?? []).map((item) => [item.key, item.label]));
+    const criteria = new Map(
+      (qualification.data?.standings ?? []).map(({ criterion }) => [criterion.key, criterion.label]),
+    );
+    return {
+      screeningItem: (key) => items.get(key) ?? humanize(key),
+      criterion: (key) => criteria.get(key) ?? humanize(key),
+    };
+  }, [screening.data, qualification.data]);
 }
 
 function HistoryBody({
@@ -126,11 +231,13 @@ function HistoryBody({
   offset,
   onOffsetChange,
   emptyText,
+  labels = KEY_LABELS,
 }: {
   query: { data?: HistoryList; isLoading: boolean; isError: boolean; isFetching: boolean; refetch: () => unknown };
   offset: number;
   onOffsetChange: (offset: number) => void;
   emptyText: string;
+  labels?: HistoryLabels;
 }) {
   if (query.isLoading) {
     return (
@@ -155,7 +262,7 @@ function HistoryBody({
     <>
       <ol className={cn(query.isFetching && 'opacity-60 transition-opacity')}>
         {entries.map((entry) => (
-          <HistoryRow key={entry.id} entry={entry} />
+          <HistoryRow key={entry.id} entry={entry} labels={labels} />
         ))}
       </ol>
       {total > PAGE_SIZE && (
@@ -186,6 +293,7 @@ export function CompanyHistory({ customerId }: { customerId: string }) {
   const [dimension, setDimension] = useState<HistoryDimension | undefined>(undefined);
   const [offset, setOffset] = useState(0);
   const query = useCompanyHistory(customerId, { dimension, limit: PAGE_SIZE, offset });
+  const labels = useHistoryLabels(customerId, query.data?.entries ?? []);
 
   const choose = (next: HistoryDimension | undefined) => {
     setDimension(next);
@@ -220,6 +328,7 @@ export function CompanyHistory({ customerId }: { customerId: string }) {
         offset={offset}
         onOffsetChange={setOffset}
         emptyText={dimension ? 'Nothing recorded for this yet.' : 'Nothing has been recorded for this company yet.'}
+        labels={labels}
       />
     </div>
   );

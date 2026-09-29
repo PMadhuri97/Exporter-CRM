@@ -423,10 +423,12 @@ class DealService:
         ``uq_deal_buyer_deal_id`` enforces and what keeps "the buyer" on the
         handover payload unambiguous.
 
-        Writes a ``deal`` history row with ``event_type="deal_buyer_changed"`` and
-        the changed field names in ``details``: a buyer's details are part of a
-        deal's story, and a separate ``buyer`` dimension would need a change to
-        ``history-row.md`` §2, which is Developer 1's.
+        Writes a ``deal`` history row with ``event_type="deal_buyer_changed"`` and,
+        in ``details``, the changed field names (``changed``), the buyer's name
+        (``buyer_name``) and whether this recorded the deal's first buyer
+        (``created``): a buyer's details are part of a deal's story, and a separate
+        ``buyer`` dimension would need a change to ``history-row.md`` §2, which is
+        Developer 1's.
         """
         deal = await self._lock_deal(deal_id)
         if deal.stage.is_terminal:
@@ -457,6 +459,7 @@ class DealService:
             raise ValueError(f"not an optional buyer field: {sorted(unknown)}")
 
         buyer = await self._buyers.get_for_deal(deal_id)
+        created = buyer is None
         for key in keep:
             fields[key] = getattr(buyer, key) if buyer is not None else None
         if buyer is None:
@@ -480,7 +483,7 @@ class DealService:
             source="deal_service.set_buyer",
             deal_id=deal.id,
             event_type="deal_buyer_changed",
-            details={"buyer_name": cleaned_name, "changed": changed},
+            details={"buyer_name": cleaned_name, "changed": changed, "created": created},
         )
         await self._db.commit()
         await self._db.refresh(deal)

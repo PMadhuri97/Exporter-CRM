@@ -68,9 +68,6 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
               </p>
             )}
           </div>
-          <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-            Persisted
-          </span>
         </div>
         <p className="mt-3 rounded-md bg-surface-subtle px-3 py-2 text-xs leading-5 text-ink-faint">
           Decisions and comments are stored with reviewer and timestamp; every earlier

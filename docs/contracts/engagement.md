@@ -272,6 +272,13 @@ counting the same set. The Follow-ups screen's Overdue tab uses it, so a company
 parked until next quarter is not listed beside work that is late; the All tab still
 shows every parked company.
 
+**Who logged it, by name.** An activity (`GET`/`POST …/activities`, and the company
+detail's `recent_activities`) and a follow-up row (`GET /onboarding/follow-ups`) carry
+`actor_name` beside `actor_id`: the account's full name, or its email when it has none —
+DEVELOPER is given the full name only. Resolved when read through the platform's auth
+facade (`api/actor_names.py`), never stored; `null` when no account with a name matches.
+The pending route above is not changed.
+
 ### 5.7 A completion writes no history row
 
 *Appended by Phase 2, 27 September 2026. A clarification, not a change: §5 was silent

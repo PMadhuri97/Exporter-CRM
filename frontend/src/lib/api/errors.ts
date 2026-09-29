@@ -17,24 +17,33 @@ interface AnerErrorBody {
   detail?: string | FieldError[];
   human_readable_message?: string;
   correlation_id?: string | null;
+  error_context?: Record<string, unknown>;
 }
 
 export class ApiError extends Error {
   readonly status: number;
   readonly errorCode: string | null;
   readonly correlationId: string | null;
+  /**
+   * The refusal's structured details (`error_context`), for a screen that says
+   * more than the message — the duplicate-PAN refusal's `existing_customer_id`,
+   * shown as a link. Additive; `null` when the server sent none.
+   */
+  readonly context: Record<string, unknown> | null;
 
   constructor(
     status: number,
     message: string,
     errorCode: string | null = null,
     correlationId: string | null = null,
+    context: Record<string, unknown> | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.errorCode = errorCode;
     this.correlationId = correlationId;
+    this.context = context;
   }
 }
 
@@ -70,5 +79,6 @@ export async function parseErrorResponse(
     message,
     body.error_code ?? null,
     body.correlation_id ?? null,
+    body.error_context ?? null,
   );
 }

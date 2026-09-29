@@ -9,7 +9,7 @@
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { Button, Card, Field, FormError, Input, PageHeader, Select } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 
+import { DuplicatePanMessage, duplicatePanHolder } from '../components';
 import { useCreateExporterLead } from '../hooks';
 import { paths } from '../paths';
 
@@ -70,7 +71,7 @@ function emptyToUndefined(value: string | undefined): string | undefined {
 export function AddExporterPage() {
   const navigate = useNavigate();
   const createLead = useCreateExporterLead();
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<ReactNode>(null);
 
   const {
     register,
@@ -100,8 +101,16 @@ export function AddExporterPage() {
       toast.success(`${values.name} added as a lead`);
       navigate(paths.company(profile.customer_id));
     } catch (error) {
+      // A duplicate PAN names the holder by id; link to it rather than print the id.
+      const panHolder = duplicatePanHolder(error);
       setServerError(
-        error instanceof ApiError ? error.message : 'Unable to create this company. Try again.',
+        panHolder ? (
+          <DuplicatePanMessage holderId={panHolder} />
+        ) : error instanceof ApiError ? (
+          error.message
+        ) : (
+          'Unable to create this company. Try again.'
+        ),
       );
     }
   };

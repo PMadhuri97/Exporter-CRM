@@ -26,6 +26,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.engagement import (
     AddExporterContactRequest,
     ConversationMoveListResponse,
@@ -162,7 +163,8 @@ async def log_exporter_activity(
         due_at=body.due_at,
         actor_id=str(current_user.id),
     )
-    return ExporterActivityResponse.model_validate(activity)
+    names = await actor_names(db, current_user, [activity.actor_id])
+    return ExporterActivityResponse.model_validate(activity).named(names)
 
 
 @router.get(
@@ -187,9 +189,10 @@ async def list_exporter_activities(
     activities = await ExporterContactActivityService(db).list_activities(
         customer_id, activity_type=activity_type, limit=limit, offset=offset
     )
+    names = await actor_names(db, current_user, (a.actor_id for a in activities))
     return ExporterActivityListResponse(
         customer_id=customer_id,
-        activities=[ExporterActivityResponse.model_validate(a) for a in activities],
+        activities=[ExporterActivityResponse.model_validate(a).named(names) for a in activities],
     )
 
 

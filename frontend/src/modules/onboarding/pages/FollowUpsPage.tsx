@@ -50,6 +50,7 @@ import {
 import { formatDate, formatDateTime, humanize } from '@/lib/format';
 import { isStaffRole, useCurrentUser } from '@/platform/auth';
 
+import { actorLabel } from '../components';
 import { useCompleteFollowUp, useFollowUps } from '../hooks';
 import { paths } from '../paths';
 import type { CheckBack, FollowUp, FollowUpOutcome, FollowUpState } from '../types';
@@ -228,7 +229,7 @@ function FollowUpRow({ row, isStaff }: { row: FollowUp; isStaff: boolean }) {
           >
             <CalendarClock size={12} /> Due {formatDateTime(row.due_at)}
           </p>
-          <p className="mt-1">Logged by {row.actor_id}</p>
+          <p className="mt-1">Logged by {actorLabel(row.actor_name, row.actor_id)}</p>
         </div>
       </div>
 

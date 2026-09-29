@@ -254,6 +254,17 @@ the scanner is a clearly labelled pass-through. Contract:
   Rows written in one transaction share a timestamp, so their order between themselves
   is not chronological. Read through `GET /exporters/{id}/history` and
   `GET /deals/{id}/history`. Contract: [`contracts/history-row.md`](contracts/history-row.md).
+  The History tab says what changed, not only the value reached: a buyer change reads
+  "Buyer recorded" or "Buyer updated: …", and a screening, criterion or check row names
+  its item, criterion or check type — from the details keys the contract guarantees
+  (§3) and the labels the server serves.
+- **Who acted, by name.** Records store the actor as a user id. Every response a person
+  reads it from — history rows, background-check decisions, activities, follow-ups,
+  screening decisions and verification reviews — also carries the name (`actor_name`,
+  `decided_by_name`, `reviewed_by_name`), resolved when read through the platform's auth
+  facade (`display_names`, called from `api/actor_names.py`) rather than by giving staff
+  the user list. OPERATIONS, COMPLIANCE and ADMIN get the account's full name or, failing
+  that, its email; DEVELOPER gets the full name only. No actor reads "By the platform".
 - **Events** — two announcements, each published after the commit that made it true
   and best effort (the history row is the source of truth): `company.became_customer`
   and `deal.handed_over`. The default bus is in memory and no receiver is built yet
@@ -301,7 +312,24 @@ no CRM access today.
 
 Accounts: `python -m app.platform.authentication.cli bootstrap` creates the first ADMIN
 and COMPLIANCE user; `... cli promote <email> <ROLE>` changes a role
-([`development.md`](development.md)).
+([`development.md`](development.md)). Both validate the address as the sign-in form does
+(`EmailStr`), so neither makes an account that could never sign in.
+
+**Sessions.** Sign-in returns a short-lived access token, held in the tab's memory, and a
+refresh token, kept in `localStorage` and so shared by every tab. `POST /auth/refresh`
+**rotates** the refresh token on every use: the one presented is revoked and a successor
+issued, so a second exchange of the same token is refused. The server reads the token's
+row `FOR UPDATE`, so two exchanges at once serialise — one succeeds, one gets 401 —
+rather than both succeeding. The browser has one refresh function (`refreshSession` in
+`lib/api/client.ts`) for the page load, an expiring token and a 401: callers in one tab
+share a refresh in flight (so StrictMode's double effect costs one call), and tabs take
+turns through the Web Locks API, each reading the stored token only once it holds the
+lock. Only the server refusing the token (401) ends a session — a network error, such
+as the aborted fetch of a page being reloaded, leaves the token alone — and only if the
+stored token is still the one refused; if another tab has stored a newer one, it retries
+once with that. On the server, a refresh whose caller has already disconnected when it
+is about to commit is rolled back (`499`), so a page reloaded mid-refresh keeps a token
+that still works. The window this leaves is in [`open-items.md`](open-items.md) §1.2.
 
 ## 10. Ownership
 

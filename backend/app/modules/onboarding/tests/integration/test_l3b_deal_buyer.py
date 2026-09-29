@@ -432,6 +432,8 @@ async def test_a_buyer_is_recorded_and_returned_with_the_deal():
     rows = await _deal_history(company_id)
     assert rows[-1].event_type == "deal_buyer_changed"
     assert rows[-1].event_metadata["buyer_name"] == "Rotterdam Trading BV"
+    # The history screen says "Buyer recorded" for the first, "Buyer updated" after.
+    assert rows[-1].event_metadata["created"] is True
 
 
 async def test_setting_the_buyer_twice_replaces_the_same_row():
@@ -451,6 +453,7 @@ async def test_setting_the_buyer_twice_replaces_the_same_row():
     rows = await _deal_history(company_id)
     changed = rows[-1].event_metadata["changed"]
     assert "name" in changed and "country" in changed
+    assert rows[-1].event_metadata["created"] is False
 
 
 async def test_a_buyer_country_is_upper_cased_rather_than_refused():

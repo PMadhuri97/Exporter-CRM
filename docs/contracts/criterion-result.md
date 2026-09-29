@@ -318,7 +318,9 @@ OPERATIONS, COMPLIANCE and ADMIN until the company is `QUALIFIED`, none after
 or for other roles) and `can_record_results`.
 
 **Reason codes** are seeded by 0017 and checked by the server; there is no
-route to manage them yet (open item Q5).
+route to manage them yet (open item Q5). The screen offers reason codes only
+for `NOT_QUALIFIED`: every seeded code is a rejection reason, so on `QUALIFIED`
+it asks for the note alone (the API still accepts codes there, as §5 says).
 
 ## 10. What is implemented today
 

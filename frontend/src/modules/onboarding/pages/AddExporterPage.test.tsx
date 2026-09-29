@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '@/lib/api/errors';
+
 import { createExporterLead } from '../api';
 
 import { AddExporterPage } from './AddExporterPage';
@@ -55,5 +57,30 @@ describe('AddExporterPage — the company identity (L2-03)', () => {
     // The journey starts at LEAD on the server; the retired lifecycle is not sent.
     expect(payload).not.toHaveProperty('lifecycle_status');
     expect(payload).not.toHaveProperty('journey');
+  });
+
+  it('links to the company holding a duplicate PAN instead of printing its id', async () => {
+    const holder = '597cb275-0000-4000-8000-000000000001';
+    vi.mocked(createExporterLead).mockRejectedValue(
+      new ApiError(
+        409,
+        `This PAN is already held by company ${holder}; a PAN belongs to one company only`,
+        'DUPLICATE_PAN',
+        null,
+        { existing_customer_id: holder },
+      ),
+    );
+    renderPage();
+    fireEvent.change(screen.getByLabelText(/company name/i), { target: { value: 'Acme' } });
+    fireEvent.change(screen.getByLabelText(/country/i), { target: { value: 'IN' } });
+    fireEvent.submit(screen.getByLabelText(/company name/i).closest('form')!);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('This PAN is already held by another company — open it.');
+    expect(alert).not.toHaveTextContent(holder);
+    expect(screen.getByRole('link', { name: 'open it' })).toHaveAttribute(
+      'href',
+      `/companies/${holder}`,
+    );
   });
 });

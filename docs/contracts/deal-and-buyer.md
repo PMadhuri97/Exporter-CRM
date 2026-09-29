@@ -210,10 +210,14 @@ in the same transaction as the change (architecture §3.8).
 | `actor_id` | from the login session, never the request body (§7.5) |
 | `reason` | required for `WITHDRAWN` (assumption A7) |
 
-Buyer edits write `dimension="deal"` with `event_type="deal_buyer_changed"` and the
-changed field names in `details` — a buyer's details are part of a deal's story, and
-the alternative (a `buyer` dimension) would need a change to `history-row.md` §2,
-which is Developer 1's.
+Buyer edits write `dimension="deal"` with `event_type="deal_buyer_changed"` — a buyer's
+details are part of a deal's story, and the alternative (a `buyer` dimension) would need
+a change to `history-row.md` §2, which is Developer 1's. `from_value` and `to_value` are
+both the deal's unchanged stage, so the row's `details` say what happened: `changed`
+(the field names that changed, sorted), `buyer_name` and `created` (`true` when this
+recorded the deal's first buyer). The history screen shows "Buyer recorded" or "Buyer
+updated: …" from them. Rows written before `created` was added lack it and read as
+updates.
 
 ---
 

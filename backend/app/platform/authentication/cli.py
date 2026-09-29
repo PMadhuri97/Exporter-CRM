@@ -33,6 +33,7 @@ import sys
 import uuid
 
 import psycopg2
+from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from app.platform.authentication.models import UserRole
 from app.platform.authentication.services import hash_password
@@ -46,6 +47,29 @@ EXIT_INVALID = 2
 
 class BootstrapError(Exception):
     """A refusal the operator can act on. Printed without a traceback."""
+
+
+#: The validator `POST /auth/login` applies to its `email` (`EmailStr`). An account
+#: whose address it refuses — a special-use domain such as `.local`, `.test` or
+#: `localhost` — could be created here but could never sign in.
+_SIGN_IN_EMAIL = TypeAdapter(EmailStr)
+
+
+def _sign_in_email(label: str, email: str) -> str:
+    """`email` as the sign-in form will send it, or a refusal naming `label`.
+
+    Returned normalised the way the API normalises it (the domain lower-cased), so
+    the stored address is the one the login looks up.
+    """
+    try:
+        return _SIGN_IN_EMAIL.validate_python(email.strip())
+    except ValidationError as exc:
+        reason = exc.errors()[0]["msg"]
+        raise BootstrapError(
+            f"{label} {email.strip()!r} is not an address the sign-in form accepts "
+            f"({reason}), so that account could never sign in. Use an address on a "
+            f"real domain, not .local, .test or localhost."
+        ) from None
 
 
 def _dsn() -> str:
@@ -100,10 +124,15 @@ def bootstrap() -> int:
         settings.FIRST_COMPLIANCE_PASSWORD,
     )
 
+    # Both checked before anything is written.
     wanted = [
-        (settings.FIRST_ADMIN_EMAIL.strip(), settings.FIRST_ADMIN_PASSWORD, UserRole.ADMIN),
         (
-            settings.FIRST_COMPLIANCE_EMAIL.strip(),
+            _sign_in_email("FIRST_ADMIN_EMAIL", settings.FIRST_ADMIN_EMAIL),
+            settings.FIRST_ADMIN_PASSWORD,
+            UserRole.ADMIN,
+        ),
+        (
+            _sign_in_email("FIRST_COMPLIANCE_EMAIL", settings.FIRST_COMPLIANCE_EMAIL),
             settings.FIRST_COMPLIANCE_PASSWORD,
             UserRole.COMPLIANCE,
         ),
@@ -139,6 +168,7 @@ def promote(email: str, role_name: str) -> int:
     except ValueError:
         valid = ", ".join(r.value for r in UserRole)
         raise BootstrapError(f"Unknown role {role_name!r}. One of: {valid}") from None
+    email = _sign_in_email("The address", email)
 
     conn = psycopg2.connect(_dsn())
     try:

@@ -25,17 +25,25 @@ export function registerRefreshFailureHandler(handler: () => void): void {
   onRefreshFailed = handler;
 }
 
-async function ensureFreshAccessToken(): Promise<string | null> {
-  const token = getRefreshToken();
-  if (token === null) return getAccessToken();
+// The refresh token lives in localStorage, shared by every tab, and the
+// backend rotates it on every use: a second exchange of the same token is
+// refused. So a refresh holds this lock across tabs, and reads the stored
+// token only once it holds it — by then any tab that went first has stored
+// its successor. Where the Web Locks API is missing, tabs are not
+// coordinated, and the failure handling in `rotate` is what keeps one tab
+// from signing out the others.
+const REFRESH_LOCK = 'aner-refresh';
 
-  if (!isAccessTokenExpiringSoon()) return getAccessToken();
+async function withRefreshLock(task: () => Promise<void>): Promise<void> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  if (!locks) return task();
+  await locks.request(REFRESH_LOCK, task);
+}
 
-  // Single-flight: concurrent requests that all notice an expiring token at
-  // once share one refresh call rather than racing the rotation endpoint
-  // (the backend revokes the old refresh token on every use — a second,
-  // parallel call with the now-stale token would fail).
-  refreshInFlight ??= (async () => {
+async function rotate(): Promise<void> {
+  let token = getRefreshToken();
+  if (token === null) throw new ApiError(401, 'Not signed in.');
+  for (let attempt = 0; ; attempt += 1) {
     try {
       const result = await refreshTokens(token);
       setTokens({
@@ -43,16 +51,51 @@ async function ensureFreshAccessToken(): Promise<string | null> {
         refreshToken: result.refresh_token,
         expiresInSeconds: result.expires_in,
       });
+      return;
     } catch (error) {
-      clearTokens();
-      onRefreshFailed?.();
+      // Only the server refusing the token ends a session. A network error —
+      // above all the aborted fetch of a page being reloaded or closed — says
+      // nothing about the token, and clearing it here signed out the next load.
+      if (!(error instanceof ApiError) || error.status !== 401) throw error;
+      const stored = getRefreshToken();
+      // Another tab stored a newer token while this call was out: retry
+      // once with it rather than give up a session that is still alive.
+      if (attempt === 0 && stored !== null && stored !== token) {
+        token = stored;
+        continue;
+      }
+      // End the session only if the token that failed is still the stored
+      // one. Clearing a newer token would sign out the tab that stored it.
+      if (stored === null || stored === token) {
+        clearTokens();
+        onRefreshFailed?.();
+      }
       throw error;
-    } finally {
-      refreshInFlight = null;
     }
-  })();
+  }
+}
 
-  await refreshInFlight;
+/**
+ * Exchange the stored refresh token for a new pair — the one refresh
+ * function for the whole app (the page load's, and an expiring token's).
+ *
+ * Single-flight within the tab: callers that arrive while a refresh is out
+ * (concurrent requests, React StrictMode running the boot effect twice)
+ * share its result instead of spending the same token twice. Across tabs,
+ * the lock above serialises them. Rejects when the session cannot be
+ * renewed; the tokens are cleared then only if they were this call's.
+ */
+export function refreshSession(): Promise<void> {
+  refreshInFlight ??= withRefreshLock(rotate).finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+async function ensureFreshAccessToken(): Promise<string | null> {
+  if (getRefreshToken() === null) return getAccessToken();
+  if (!isAccessTokenExpiringSoon()) return getAccessToken();
+  await refreshSession();
   return getAccessToken();
 }
 

@@ -356,6 +356,28 @@ describe('BackgroundCheckPanel — the decision trail', () => {
     expect(screen.getByText('a director matched')).toBeInTheDocument();
   });
 
+  it('says who decided by name, and when in the app’s one date format', async () => {
+    vi.mocked(listBackgroundCheckDecisions).mockResolvedValue({
+      decisions: [
+        decision({
+          decided_by: 'cc56991e-0000-4000-8000-000000000001',
+          decided_by_name: 'Meera Compliance',
+          decided_at: '2026-09-28T10:00:00Z',
+        }),
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    });
+    renderPanel();
+
+    const row = await screen.findByTestId('decision-row');
+    expect(row).toHaveTextContent('Meera Compliance');
+    expect(row).not.toHaveTextContent('cc56991e');
+    // `formatDateTime` ("28 Sep 2026, …"), not the browser's `toLocaleString`.
+    expect(row).toHaveTextContent(/28 Sep 2026, \d\d:\d\d/);
+  });
+
   it('summarises the evidence snapshot as counts, never contents', async () => {
     vi.mocked(listBackgroundCheckDecisions).mockResolvedValue({
       decisions: [

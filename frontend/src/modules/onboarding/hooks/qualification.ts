@@ -22,7 +22,7 @@ import type {
   RecordResultsRequest,
 } from '../types';
 
-import { invalidateCompany } from './profile';
+import { invalidateJourney } from './profile';
 
 export function useQualification(customerId: string | undefined) {
   return useQuery({
@@ -58,7 +58,9 @@ export function useRecordQualificationOutcome(customerId: string) {
       recordQualificationOutcome(customerId, request),
     onSuccess: (data) => {
       queryClient.setQueryData(['qualification', customerId], data);
-      invalidateCompany(queryClient, customerId);
+      // QUALIFIED moves a lead to PROSPECT, and straight on to CUSTOMER when its
+      // check is already CLEAR (cleared first, qualified second).
+      invalidateJourney(queryClient, customerId);
     },
   });
 }

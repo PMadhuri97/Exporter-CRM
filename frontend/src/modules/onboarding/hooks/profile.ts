@@ -57,6 +57,25 @@ export function invalidateCompany(
   void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
 }
 
+/**
+ * Invalidate everything a move of the company's journey can show up in.
+ *
+ * A `CLEAR` background-check decision, or a `QUALIFIED` outcome for a lead whose
+ * check is already `CLEAR`, makes the company a `CUSTOMER` in the same request
+ * (architecture §5). Besides the company — its header, journey chip and the lists,
+ * which Home's counts and the Pipeline read too — that changes whether its deals may
+ * be handed over, which the deal list and each deal's page show. A deal's page is
+ * keyed by the deal alone, so every cached one is refreshed.
+ */
+export function invalidateJourney(
+  queryClient: ReturnType<typeof useQueryClient>,
+  customerId: string,
+) {
+  invalidateCompany(queryClient, customerId);
+  void queryClient.invalidateQueries({ queryKey: ['deals', customerId] });
+  void queryClient.invalidateQueries({ queryKey: ['deal'] });
+}
+
 export function useUpdateExporterProfile(customerId: string) {
   const queryClient = useQueryClient();
   return useMutation({

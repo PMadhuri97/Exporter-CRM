@@ -11,8 +11,11 @@
  * a check result here would be showing something the decision did not record.
  */
 
+import { formatDateTime } from '@/lib/format';
+
 import type { BackgroundCheckDecision, BackgroundCheckState } from '../types';
 
+import { actorLabel } from './actor-label';
 import { RiskChip } from './RiskChip';
 
 const LABELS: Record<BackgroundCheckState, string> = {
@@ -98,8 +101,10 @@ export function DecisionHistory({
             <p className="mt-1 text-sm text-slate-700">{decision.reason}</p>
           )}
           <p className="mt-1 text-xs text-slate-500">
-            {new Date(decision.decided_at).toLocaleString()}
-            {decision.decided_by ? ` · ${decision.decided_by}` : ''}
+            {formatDateTime(decision.decided_at)}
+            {decision.decided_by
+              ? ` · ${actorLabel(decision.decided_by_name, decision.decided_by)}`
+              : ''}
           </p>
           <EvidenceSummary decision={decision} />
         </li>

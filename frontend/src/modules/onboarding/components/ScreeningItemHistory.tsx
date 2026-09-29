@@ -74,7 +74,7 @@ export function ScreeningItemHistory({
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <VerificationStatusChip value={entry.status} />
-                      <span className="text-ink-muted">{formatReviewer(entry.reviewed_by)}</span>
+                      <span className="text-ink-muted">{entry.reviewed_by_name ?? formatReviewer(entry.reviewed_by)}</span>
                       <span className="text-ink-faint">
                         {formatDateTime(entry.reviewed_at ?? entry.created_at)}
                       </span>

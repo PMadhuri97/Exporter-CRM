@@ -207,6 +207,61 @@ async def test_main_turns_a_refusal_into_a_nonzero_exit(
     assert "FIRST_ADMIN_PASSWORD is blank" in capsys.readouterr().err
 
 
+# ── addresses the sign-in form refuses ────────────────────────────────────────
+
+
+@pytest.mark.parametrize("field", ["FIRST_ADMIN_EMAIL", "FIRST_COMPLIANCE_EMAIL"])
+async def test_an_address_the_sign_in_form_refuses_is_refused_before_anything_is_written(
+    client: AsyncClient, credentials, field: str
+):
+    """`POST /auth/login` validates with `EmailStr`, which refuses special-use domains
+    such as `.local`. `bootstrap` used to create `admin@demo.local` anyway — an account
+    that could never sign in. Both addresses are checked before either is written."""
+    other = (
+        credentials.FIRST_COMPLIANCE_EMAIL
+        if field == "FIRST_ADMIN_EMAIL"
+        else credentials.FIRST_ADMIN_EMAIL
+    )
+    unusable = f"admin-{uuid.uuid4().hex[:8]}@demo.local"
+    setattr(credentials, field, unusable)
+
+    with pytest.raises(cli.BootstrapError, match=f"{field} .* sign-in form accepts"):
+        cli.bootstrap()
+
+    assert _count(unusable) == 0
+    assert _count(other) == 0
+
+    login = await client.post("/api/v1/auth/login", json={"email": unusable, "password": PASSWORD})
+    assert login.status_code == 422  # the refusal the command now anticipates
+
+
+async def test_main_reports_an_unusable_address_without_a_traceback(
+    client: AsyncClient, credentials, capsys
+):
+    credentials.FIRST_ADMIN_EMAIL = "admin@demo.local"
+
+    assert cli.main(["bootstrap"]) == cli.EXIT_INVALID
+    assert "not an address the sign-in form accepts" in capsys.readouterr().err
+
+
+async def test_the_stored_address_is_the_one_the_sign_in_form_sends(
+    client: AsyncClient, credentials
+):
+    """The API lower-cases an address's domain before it looks the account up, so the
+    command stores it that way too; otherwise `Admin@Example.COM` could never sign in."""
+    suffix = uuid.uuid4().hex[:8]
+    credentials.FIRST_ADMIN_EMAIL = f"Boot-Admin-{suffix}@ANER-Test.COM"
+
+    assert cli.bootstrap() == 0
+
+    assert _count(f"Boot-Admin-{suffix}@aner-test.com") == 1
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": credentials.FIRST_ADMIN_EMAIL, "password": PASSWORD},
+    )
+    assert login.status_code == 200, login.text
+
+
 # ── promote ───────────────────────────────────────────────────────────────────
 
 
@@ -261,3 +316,10 @@ async def test_promote_refuses_an_unknown_role(client: AsyncClient, credentials)
         cli.promote(credentials.FIRST_ADMIN_EMAIL, "SUPERUSER")
 
     assert _row(credentials.FIRST_ADMIN_EMAIL)[1] == UserRole.ADMIN.value
+
+
+async def test_promote_refuses_an_address_the_sign_in_form_refuses(
+    client: AsyncClient, credentials
+):
+    with pytest.raises(cli.BootstrapError, match="sign-in form accepts"):
+        cli.promote("ops@demo.local", "OPERATIONS")

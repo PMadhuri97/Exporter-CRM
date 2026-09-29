@@ -35,6 +35,7 @@ import structlog
 from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.exporter import (
     CreateExporterProfileRequest,
     DuplicateGstinWarningResponse,
@@ -220,6 +221,8 @@ async def get_exporter_profile_detail(
     detail = await ExporterProfileService(db).get_profile_detail(customer_id)
     response = ExporterProfileDetailResponse.from_detail(detail).masked_for(current_user)
     response.allowed_marker_moves = _marker_moves(detail.marker, current_user)
+    names = await actor_names(db, current_user, (a.actor_id for a in response.recent_activities))
+    response.recent_activities = [a.named(names) for a in response.recent_activities]
     return response
 
 

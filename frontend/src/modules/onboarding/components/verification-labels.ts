@@ -74,13 +74,23 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * A reviewer is stored as a user id, and no endpoint resolves another user's id to
- * a name, so an id is shortened and labelled rather than shown raw.
+ * A reviewer is stored as a user id. The response carries the name beside it where
+ * one exists (`reviewed_by_name`; see `actor-label.ts`); without one, the id is
+ * shortened and labelled rather than shown raw.
  */
 export function formatReviewer(value: string | null | undefined): string {
   if (!value) return '—';
   if (UUID_PATTERN.test(value)) return `User ${value.slice(0, 8)}…`;
   return value;
+}
+
+const ACRONYM_CHECK_TYPES = new Set(['KYB', 'GST', 'IEC', 'UBO', 'AML', 'CFT', 'PEP']);
+
+/** A check type for a person: `KYB`, `Sanctions`, `Company registry`, `Adverse media`. */
+export function verificationTypeLabel(type: string): string {
+  if (ACRONYM_CHECK_TYPES.has(type)) return type;
+  const words = type.toLowerCase().replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /**

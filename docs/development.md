@@ -70,7 +70,10 @@ python -m app.platform.authentication.cli promote someone@example.com OPERATIONS
 ```
 
 `bootstrap` is idempotent and refuses a blank password; `promote` refuses an address
-with no account. Roles: `ADMIN`, `COMPLIANCE`, `OPERATIONS`, `DEVELOPER` (read-only) and
+with no account. Both refuse, before writing anything, an address the sign-in form
+would refuse (`EmailStr`): a special-use domain such as `.local`, `.test` or
+`localhost` would make an account that can never sign in, so use a real-looking
+domain (`admin@example.com`). Roles: `ADMIN`, `COMPLIANCE`, `OPERATIONS`, `DEVELOPER` (read-only) and
 `API_USER`. Once an ADMIN exists, further users can be created from the Settings screen.
 
 ## 5. Sample data
@@ -162,25 +165,28 @@ users; change the contract in the same pull request as the code.
 
 ## 9. Baseline
 
-Measured 29 September 2026:
+Measured 29 September 2026, after the UAT-readiness fixes:
 
 | Gate | Baseline |
 |---|---|
-| Backend suite | **26 failed, 4,523 passed, 7 skipped, 5 errors** — every failure listed below |
+| Backend suite | **4,570 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (18 minutes) |
+| Temporal workflow tests (`test_onboarding_workflow*.py`, part of the suite) | 143 passed, 1 skipped (the opt-in restart suite, `RUN_RESILIENCE_TESTS=1`). They download the Temporal test server, so they need internet access |
 | `ruff check .` | 16 findings, all pre-existing: two auto-generated Alembic merge revisions and two package index files |
 | `lint-imports` | 19 contracts kept, 0 broken |
-| `alembic heads` | one: `onboarding_0021_verif_review` |
-| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 27 files, 270 tests; build passes with a >500 kB chunk warning |
+| `alembic heads` | one: `onboarding_0022_integrity` |
+| `alembic check` | no new upgrade operations |
+| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 32 files, 294 tests; build passes with a >500 kB chunk warning |
 
-The known backend failures — anything else is new:
+The 27 expected failures are the tests in `compliance/tests/integration/test_compliance.py`,
+`test_screening_uses_rule_registry.py` and `audit/tests/integration/test_audit.py` that
+create a payment or an FX quote first: those routers are deliberately not mounted in this
+checkout ([`../RUNNING.md`](../RUNNING.md)), so the request gets 404. They are strict
+expected failures in `backend/conftest.py` (§7); one that starts passing fails the run.
+Any failure is new.
 
-| Failing | Cause |
-|---|---|
-| 22 tests in `compliance/tests/integration/test_compliance.py`, `test_screening_uses_rule_registry.py` and `audit/tests/integration/test_audit.py`, and 5 errors in `test_compliance.py` | They create a payment or an FX quote first, and those routers are deliberately not mounted in this checkout ([`../RUNNING.md`](../RUNNING.md)), so the request gets 404 |
-| `onboarding/.../test_l4a_background_check_schema.py::test_0015_parents_onto_0019_and_the_chain_has_one_head` and `::test_the_database_is_at_0015` | Stale: they pin migration 0015 as the head, which it stopped being when later migrations landed |
-| `onboarding/.../test_l3a_conversation_gauge.py::test_a_check_back_date_in_the_past_is_refused` | Time-zone dependent: the test takes the local date, the service the UTC date, so it fails between local midnight and UTC midnight (00:00–05:30 in India) |
-| `platform/authorization/tests/test_role_management.py::test_last_role_manager_cannot_be_demoted_by_a_non_admin_user_editor` | Environment: the test sets aside only the first 200 active ADMIN accounts, so on a database holding more (left by earlier runs) other role managers remain and the guard rightly allows the demotion |
-| `platform/idempotency/tests/test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index` — **sometimes** | It asserts a query plan, which depends on the size and statistics of the database |
+One test can still fail on some databases:
+`platform/idempotency/tests/test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index`
+asserts a query plan, which depends on the size and statistics of the database.
 
 Two environment traps turn a clean run red: without `google-cloud-logging` and
 `google-cloud-storage` (both in `requirements.txt`) collection stops with two

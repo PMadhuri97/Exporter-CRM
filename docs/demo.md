@@ -24,13 +24,27 @@ python -m app.platform.authentication.cli bootstrap           # ADMIN + COMPLIAN
 python -m app.modules.onboarding.sample_data                  # the §3.9 companies
 python -m uvicorn app.main:app
 
-cd ../frontend && pnpm dev                                    # http://localhost:5173
+cd ../frontend && pnpm build && pnpm exec vite preview       # http://localhost:4173
 ```
+
+**Run the production build** (`pnpm build && pnpm exec vite preview`), which proxies
+`/api` to the backend exactly as the dev server does. The dev server (`pnpm dev`,
+`http://localhost:5173`) also works: React's StrictMode runs the sign-in check twice
+there, which used to sign people out on a reload, and no longer does (one refresh is
+shared, and tabs take turns). It is still slower and noisier than the build. Opening
+several tabs at once is safe; reloading several times within a second can still sign
+you out (a reload that lands while a token refresh is answering — `open-items.md`
+§1.2), so reload once and let the page settle.
 
 **Logins.** Have one per role you will show: the ADMIN and COMPLIANCE users from
 `bootstrap`, plus an OPERATIONS user (create it from Settings as ADMIN, or sign up and
 run `python -m app.platform.authentication.cli promote <email> OPERATIONS`). A
-DEVELOPER login is useful to show read-only access and masking.
+DEVELOPER login is useful to show read-only access and masking. **Use real-looking
+addresses** (`ops@example.com`), never a special-use domain such as `.local` or
+`.test`: the sign-in form refuses those, and `bootstrap` and `promote` now refuse them
+too rather than create an account that can never sign in. Give each account a full
+name (Settings → Users; `bootstrap` creates its two without one, and those show by
+email) — History, decisions and activities show who acted by name.
 
 **Have a harmless file ready** to upload (a sample PDF). Never upload a real
 exporter's documents — see §6.
@@ -94,17 +108,27 @@ As **OPERATIONS** unless noted.
    met.
 
    On the deal page, COMPLIANCE can also record a **buyer check** (for example a
-   `FAILED` credit check with a note): it is recorded against the buyer and never
-   changes the company's background check (decision 9).
+   `FAILED` sanctions check with a note; the buyer check types are Buyer, KYB, Company
+   registry, Sanctions, AML, PEP and Adverse media): it is recorded against the buyer
+   and never changes the company's background check (decision 9).
+
+   **Say plainly: a failed buyer check does not block the deal's handover.** The
+   handover guard (assumption A5) looks only at the company — a `CUSTOMER` whose check
+   is `CLEAR` — and buyer checks never touch the company. Whether a `FAILED` sanctions
+   or AML result on the buyer should block handover is an open business question
+   ([`open-items.md`](open-items.md) §1.2).
 9. **Record `CLEAR`** with a reason and a risk rating. The company becomes a
-   **`CUSTOMER`** in the same step — show the journey on the company header — and
+   **`CUSTOMER`** in the same step — show the journey on the company header, which
+   changes without a reload — and
    "became customer" is announced to the customers team's event (nobody receives it
    yet; §6).
 10. **Hand over the deal** (back as OPERATIONS): the move is now offered; confirm it.
     The deal is **`HANDED_OVER`**, its paperwork snapshot is fixed, and "deal handed
     over" is announced for the lending team.
 11. **Show the History tab**: qualification, journey, conversation, deal, screening and
-    background-check rows, each with who and why.
+    background-check rows, each with who (by name) and why. A row about one thing of
+    several names it — "Buyer recorded: …", the screening item's label, the
+    criterion's label, the check type.
 
 ## 5. Other paths (architecture §4.2)
 

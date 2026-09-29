@@ -78,7 +78,7 @@ import {
 } from '@/components';
 import { formatDate, formatDateTime, humanize } from '@/lib/format';
 
-import { ConversationGaugeControl, OpenDealPrompt } from '../../components';
+import { ConversationGaugeControl, OpenDealPrompt, actorLabel } from '../../components';
 import {
   useAddExporterContact,
   useConversationHistory,
@@ -356,7 +356,7 @@ function ActivityRow({ activity }: { activity: ExporterActivity }) {
       </div>
       <div className="text-left text-xs text-ink-faint md:text-right">
         <p>{formatDateTime(activity.occurred_at)}</p>
-        <p className="mt-1">Actor {activity.actor_id}</p>
+        <p className="mt-1">By {actorLabel(activity.actor_name, activity.actor_id)}</p>
       </div>
     </div>
   );

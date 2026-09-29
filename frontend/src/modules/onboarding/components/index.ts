@@ -1,5 +1,7 @@
 export { JourneyChip, MarkerBadge, QualificationChip } from './CompanyChips';
 export { MarkerControl } from './MarkerControl';
+export { DuplicatePanMessage } from './DuplicatePanMessage';
+export { duplicatePanHolder } from './duplicate-pan';
 export { VerificationSection } from './VerificationSection';
 // Developer 4B: checks on a deal's buyer, mounted on the deal page.
 export { BuyerChecks } from './BuyerChecks';
@@ -16,8 +18,9 @@ export { OpenDealForm } from './OpenDealForm';
 export { DocumentList } from './DocumentList';
 export { DocumentUpload } from './DocumentUpload';
 export { ScanStatusBadge } from './ScanStatusBadge';
-// Developer 1: the shared history log.
+// Developer 1: the shared history log, and who acted, by name.
 export { CompanyHistory, DealHistory } from './HistoryTimeline';
+export { actorLabel } from './actor-label';
 
 // ── Background check — owner: Developer 4A ──
 export { BackgroundCheckGauge } from './BackgroundCheckGauge';

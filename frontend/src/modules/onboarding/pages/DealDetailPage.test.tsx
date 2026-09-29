@@ -247,6 +247,15 @@ describe('DealDetailPage — documents', () => {
     expect(screen.getByText('pass-through')).toBeInTheDocument();
   });
 
+  it('says a staff upload of the exporter’s paperwork came from the exporter, via staff', async () => {
+    renderPage();
+
+    expect(
+      await screen.findByText(/From the exporter \(uploaded by staff\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Exporter Upload/)).not.toBeInTheDocument();
+  });
+
   it('offers no download for a document that has not passed the scan step', async () => {
     vi.mocked(listDealDocuments).mockResolvedValue({
       documents: [

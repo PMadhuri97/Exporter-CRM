@@ -1868,6 +1868,11 @@ export interface components {
             to_value: components["schemas"]["BackgroundCheckState"];
             /** Decided By */
             decided_by: string | null;
+            /**
+             * Decided By Name
+             * @description Who decided, by name: the account's full name, or its email when it has none. Null when no account with a name matches `decided_by`. Resolved when read, not stored.
+             */
+            decided_by_name?: string | null;
             /** Decided By Kind */
             decided_by_kind: string;
             /** Source */
@@ -2943,6 +2948,11 @@ export interface components {
             /** Actor Id */
             actor_id: string;
             /**
+             * Actor Name
+             * @description Who logged it, by name: the account's full name, or its email when it has none (DEVELOPER is given the full name only). Null when no account with a name matches `actor_id`. Resolved when read, not stored.
+             */
+            actor_name?: string | null;
+            /**
              * Occurred At
              * Format: date-time
              */
@@ -3371,6 +3381,11 @@ export interface components {
              */
             actor_id: string;
             /**
+             * Actor Name
+             * @description Who logged it, by name: the account's full name, or its email when it has none (DEVELOPER is given the full name only). Null when no account with a name matches `actor_id`.
+             */
+            actor_name?: string | null;
+            /**
              * Occurred At
              * Format: date-time
              */
@@ -3469,7 +3484,7 @@ export interface components {
             deal_id?: string | null;
             /**
              * Dimension
-             * @description Which row of the model changed: journey, qualification, conversation, background_check, deal, marker, profile or verification.
+             * @description Which row of the model changed: journey, qualification, conversation, background_check, deal, marker, profile, verification or screening.
              */
             dimension: string;
             /**
@@ -3492,6 +3507,11 @@ export interface components {
              * @description Who made the change, taken from their login session. Null means the platform itself acted.
              */
             actor_id?: string | null;
+            /**
+             * Actor Name
+             * @description Who made the change, by name: the account's full name, or its email when it has none (DEVELOPER is given the full name only). Null when the platform acted or the id names no account with a name to show. Resolved when read, not stored.
+             */
+            actor_name?: string | null;
             /**
              * Reason
              * @description Why, in the actor's words.
@@ -4217,6 +4237,11 @@ export interface components {
             comment: string | null;
             /** Reviewed By */
             reviewed_by: string | null;
+            /**
+             * Reviewed By Name
+             * @description Who decided, by name: the account's full name, or its email when it has none. Null when no account with a name matches `reviewed_by`.
+             */
+            reviewed_by_name?: string | null;
             /** Reviewed At */
             reviewed_at: string | null;
             /**
@@ -4726,6 +4751,8 @@ export interface components {
             subject_snapshot: components["schemas"]["BuyerSnapshotResponse"] | null;
             /** Reviewed By */
             reviewed_by: string | null;
+            /** Reviewed By Name */
+            reviewed_by_name?: string | null;
             review_status: components["schemas"]["VerificationReviewStatus"] | null;
             /** Latest Review Id */
             latest_review_id: string | null;
@@ -4770,6 +4797,11 @@ export interface components {
             review_status: components["schemas"]["VerificationReviewStatus"];
             /** Reviewed By */
             reviewed_by: string;
+            /**
+             * Reviewed By Name
+             * @description Who reviewed, by name: the account's full name, or its email when it has none. Null when no account with a name matches `reviewed_by`.
+             */
+            reviewed_by_name?: string | null;
             /**
              * Reviewed At
              * Format: date-time

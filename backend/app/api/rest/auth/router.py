@@ -4,8 +4,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
+import anyio
 import structlog
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.rest.auth.roles_router import me_router as roles_me_router
@@ -241,6 +242,24 @@ async def login(
     )
 
 
+async def _client_has_gone(request: Request) -> bool:
+    """Whether the caller has closed its connection.
+
+    Not `request.is_disconnected()`: its zero-length wait is cancelled inside the
+    middleware stack's `receive` wrapper before it can see anything, so it answers
+    `False` even for a caller long gone. Once the body has been read, the only message
+    left for `receive` is the disconnect, so a short bounded wait is exact; a caller
+    still connected costs that wait and nothing else.
+    """
+    with anyio.move_on_after(_DISCONNECT_WAIT_SECONDS):
+        return (await request.receive())["type"] == "http.disconnect"
+    return False
+
+
+#: How long `/refresh` listens for a disconnect before it commits a rotation.
+_DISCONNECT_WAIT_SECONDS = 0.02
+
+
 @router.post(
     "/refresh",
     response_model=TokenResponse,
@@ -249,11 +268,14 @@ async def login(
 )
 async def refresh(
     body: RefreshRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     token_repo = RefreshTokenRepository(db)
     token_hash = hash_refresh_token(body.refresh_token)
-    db_token = await token_repo.get_by_hash(token_hash)
+    # Locked, so two exchanges of one token serialise: the first rotates it, the
+    # second then reads it revoked and gets 401, rather than both succeeding.
+    db_token = await token_repo.get_by_hash_for_update(token_hash)
 
     if db_token is None or db_token.revoked:
         raise UnauthorizedError("Invalid or revoked refresh token")
@@ -278,6 +300,21 @@ async def refresh(
         revoked=False,
     )
     await token_repo.create(new_token)
+
+    # A rotation nobody receives locks its owner out: the token presented is revoked
+    # and its successor is lost with the connection. A page reloaded or closed while
+    # its refresh was out has gone by now, so nothing is committed and the token it
+    # presented still works on its next load. This narrows that window to the commit
+    # itself; rotation is exactly as strict as before.
+    if await _client_has_gone(request):
+        user_id = str(user.id)  # read before the rollback expires it
+        await db.rollback()
+        logger.info("token_refresh_abandoned", user_id=user_id)
+        raise AnerBaseException(
+            detail="The client went away before the refresh completed; nothing was changed",
+            error_code="CLIENT_DISCONNECTED",
+            status_code=499,
+        )
 
     logger.info("token_refreshed", user_id=str(user.id))
     await db.commit()  # before the response is sent — see the note above `router`

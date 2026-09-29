@@ -23,6 +23,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.history import (
     HistoryEntryResponse,
     HistoryListResponse,
@@ -39,7 +40,8 @@ router = APIRouter(tags=["Exporter CRM"])
 # no. Same gate as the other CRM reads.
 #
 # A history row carries an actor id and a free-text reason but no tax
-# identifier, so there is nothing here for the masking rules to apply to.
+# identifier, so there is nothing here for the masking rules to apply to. The
+# actor's name is added for every reader (`api/actor_names.py`).
 _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )
@@ -66,6 +68,22 @@ def _hidden_for(user: User) -> frozenset[str]:
 
 def _hidden_details_for(user: User) -> frozenset[str]:
     return _DETAILS_HIDDEN_FROM_DEVELOPER if user.role == UserRole.DEVELOPER else frozenset()
+
+
+async def _page(
+    db: AsyncSession, user: User, rows, total: int, limit: int, offset: int
+) -> HistoryListResponse:
+    names = await actor_names(db, user, (row.actor_id for row in rows))
+    hidden = _hidden_details_for(user)
+    return HistoryListResponse(
+        entries=[
+            HistoryEntryResponse.from_row(row, hidden_detail_keys=hidden, actor_names=names)
+            for row in rows
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 _ORDERING = (
     "Newest first. `created_at` defaults to the transaction clock, so rows written "
@@ -120,15 +138,7 @@ async def list_company_history(
         limit=limit,
         offset=offset,
     )
-    return HistoryListResponse(
-        entries=[
-            HistoryEntryResponse.from_row(row, hidden_detail_keys=_hidden_details_for(current_user))
-            for row in entries
-        ],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    return await _page(db, current_user, entries, total, limit, offset)
 
 
 @router.get(
@@ -161,12 +171,4 @@ async def list_deal_history(
     entries, total = await HistoryService(db).list_for_deal(
         deal_id, exclude_dimensions=_hidden_for(current_user), limit=limit, offset=offset
     )
-    return HistoryListResponse(
-        entries=[
-            HistoryEntryResponse.from_row(row, hidden_detail_keys=_hidden_details_for(current_user))
-            for row in entries
-        ],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    return await _page(db, current_user, entries, total, limit, offset)

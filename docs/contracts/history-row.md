@@ -105,6 +105,27 @@ on the move to `CUSTOMER` — and, on that move, `cause`
 (`background_check_clear` or `qualification_outcome`), `clearing_decision_id` and
 `risk_rating`.
 
+Where a row is about one thing of several, its details name it, and a reader may rely
+on these keys (the history screen does, to say what changed rather than only the value
+it reached):
+
+| Rows | Keys | Defined in |
+|---|---|---|
+| `qualification`, `event_type = "qualification_result"` | `criterion_key` (with `result_id`, `criterion_version`) | `criterion-result.md` §6.1 |
+| `deal`, `event_type = "deal_buyer_changed"` | `changed`, `buyer_name`, `created` | `deal-and-buyer.md` §7 |
+| `screening` | `item_key`, `screening_review_item_id` | D9 (`dev4/4b-task.md` §13) |
+| `verification` | `verification_type`, `verification_result_id`; `entity_type` on a result's own rows; `review_id` on `verification_reviewed` | `dev4/4b-task.md` |
+
+### 3.1 In the read response
+
+The read routes serve a row with the contract's names (`from_value`, `to_value`,
+`details` — `event_metadata` minus `source`, which is lifted out) and one field that is
+not a column: **`actor_name`**, who acted, by name — the account's full name, or its
+email when it has none; DEVELOPER is given the full name only. It is resolved when the
+row is read, through the platform's auth facade (`api/actor_names.py`), and never
+stored, so a renamed account shows its current name. It is `null` when `actor_id` is
+`NULL` (the platform) or names no account with a name to show.
+
 ---
 
 ## 4. When a reason is required
@@ -214,6 +235,7 @@ Stated separately so nobody reads this contract as a description of the code.
 | Append-only trigger and repository | **implemented** (0011) |
 | The shared writer, `HistoryService.record` (flushes, never commits) | **implemented** (L1-11) |
 | The read routes, `GET /exporters/{id}/history` and `GET /deals/{id}/history` | **implemented** (L1-11); DEVELOPER does not receive `background_check`, `verification` or `screening` rows, nor a row's `risk_rating` or `clearing_decision_id` details — the `CUSTOMER` journey row carries both (D8) |
+| `actor_name` on every row read (§3.1) | **implemented** (29 September 2026) |
 | Every dimension in §2 | **implemented** by its owner's service |
 | The move to `CUSTOMER`, with `terminal: true` | **implemented** (L2-11) |
 | The company foreign key | **implemented** (0014), declared on the model |

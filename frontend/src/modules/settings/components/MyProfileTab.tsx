@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { formatDateTime } from '@/lib/format';
 import { useAuth, useCurrentUser } from '@/platform/auth';
 
 import {
@@ -13,13 +14,6 @@ import { assessPassword } from '../passwordStrength';
 import { ROLE_CHIP_CLASS, ROLE_DESCRIPTION } from '../roles';
 
 import { PasswordField } from './PasswordField';
-
-function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
 
 function Card({
   title,

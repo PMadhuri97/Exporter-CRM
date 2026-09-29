@@ -18,13 +18,19 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { Button, DetailRow, Input, LINK_CLASSES, Panel } from '@/components';
+import { Button, DetailRow, FormError, Input, LINK_CLASSES, Panel } from '@/components';
 import { formatDate, humanize } from '@/lib/format';
 import { isWebLink } from '@/lib/links';
 import { useCurrentUser } from '@/platform/auth';
 import { MaskedValue, canReveal } from '@/platform/mask';
 
-import { JourneyChip, MarkerBadge, QualificationChip } from '../../components';
+import {
+  DuplicatePanMessage,
+  JourneyChip,
+  MarkerBadge,
+  QualificationChip,
+  duplicatePanHolder,
+} from '../../components';
 import { useUpdateExporterProfile } from '../../hooks';
 import { paths } from '../../paths';
 import type { ExporterProfileDetail, UpdateExporterProfileRequest } from '../../types';
@@ -133,6 +139,8 @@ function ProfileEditForm({
   const reveal = canReveal(role);
   const [initial] = useState(() => draftFrom(profile, reveal));
   const [draft, setDraft] = useState(initial);
+  // The company already holding a PAN just typed, shown as a link in the form.
+  const [panHolder, setPanHolder] = useState<string | null>(null);
   const changes = changesBetween(initial, draft);
   const changed = Object.keys(changes).length > 0;
 
@@ -142,15 +150,21 @@ function ProfileEditForm({
       className="mt-3 space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
+        setPanHolder(null);
         mutation.mutate(changes, {
           onSuccess: () => {
             toast.success('Profile updated');
             onDone();
           },
-          onError: (error) => toast.error(error.message),
+          onError: (error) => {
+            const holder = duplicatePanHolder(error);
+            if (holder) setPanHolder(holder);
+            else toast.error(error.message);
+          },
         });
       }}
     >
+      <FormError>{panHolder && <DuplicatePanMessage holderId={panHolder} />}</FormError>
       <div className="grid gap-3 md:grid-cols-2">
         {FIELDS.map(({ key, label }) => (
           <label key={key} className="flex flex-col gap-1 text-sm text-ink-muted">
@@ -173,6 +187,30 @@ function ProfileEditForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * "another company", or "2 other companies: company 1 and company 2" — one link per
+ * company, by id only, as the warning gives them.
+ */
+function OtherCompanies({ ids }: { ids: string[] }) {
+  const link = (id: string, text: string) => (
+    <Link to={paths.company(id)} className="text-brand-600 underline">
+      {text}
+    </Link>
+  );
+  if (ids.length === 1) return link(ids[0]!, 'another company');
+  return (
+    <>
+      {ids.length} other companies:{' '}
+      {ids.map((id, i) => (
+        <span key={id}>
+          {i > 0 && (i === ids.length - 1 ? ' and ' : ', ')}
+          {link(id, `company ${i + 1}`)}
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -200,14 +238,7 @@ export function CompanyPanel({
             {profile.gstin_warnings.map((warning) => (
               <li key={warning.gstin}>
                 <MaskedValue value={warning.gstin} /> — also on{' '}
-                {warning.other_customer_ids.map((id, i) => (
-                  <span key={id}>
-                    {i > 0 && ', '}
-                    <Link to={paths.company(id)} className="text-brand-600 underline">
-                      another company
-                    </Link>
-                  </span>
-                ))}
+                <OtherCompanies ids={warning.other_customer_ids} />
               </li>
             ))}
           </ul>

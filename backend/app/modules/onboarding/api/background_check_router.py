@@ -28,6 +28,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.background_check import (
     BackgroundCheckDecisionListResponse,
     BackgroundCheckDecisionResponse,
@@ -164,7 +165,10 @@ async def record_background_check_decision(
         actor_id=str(user.id),
         actor_role=user.role,
     )
-    return BackgroundCheckDecisionResponse.from_view(view)
+    names = await actor_names(db, user, [view.decided_by])
+    return BackgroundCheckDecisionResponse.from_view(
+        view, decided_by_name=names.get(view.decided_by or "")
+    )
 
 
 @router.get(
@@ -198,6 +202,7 @@ async def list_background_check_decisions(
     repository = BackgroundCheckDecisionRepository(db)
     rows, total = await repository.list_for_company(company_id, limit=limit, offset=offset)
     snapshots = await repository.evidence_for([row.id for row in rows])
+    names = await actor_names(db, user, (row.decided_by for row in rows))
 
     return BackgroundCheckDecisionListResponse(
         decisions=[
@@ -207,6 +212,7 @@ async def list_background_check_decisions(
                 from_value=row.from_value,
                 to_value=row.to_value,
                 decided_by=row.decided_by,
+                decided_by_name=names.get(row.decided_by or ""),
                 decided_by_kind=row.decided_by_kind.value,
                 source=row.source.value,
                 decided_at=row.decided_at,

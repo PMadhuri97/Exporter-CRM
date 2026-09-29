@@ -5,6 +5,7 @@ import structlog
 from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.company_intake_router import router as company_intake_router
 from app.modules.onboarding.api.deal_router import router as deal_router
 from app.modules.onboarding.api.document_router import router as document_router
@@ -33,6 +34,7 @@ from app.modules.onboarding.api.schemas.verification import (
     VerificationCapabilities,
     VerificationResultListResponse,
     VerificationResultResponse,
+    reviewer_ids,
 )
 from app.modules.onboarding.api.screening_router import router as screening_router
 from app.modules.onboarding.application import (
@@ -448,7 +450,8 @@ async def trigger_verification(
         evidence=body.to_evidence(),
     )
     view = await service.get_result_view(result.id)
-    return VerificationResultResponse.from_view(view, current_user)
+    names = await actor_names(db, current_user, reviewer_ids([view]))
+    return VerificationResultResponse.from_view(view, current_user, names)
 
 
 @router.get(
@@ -473,7 +476,8 @@ async def get_verification_result(
         raise VerificationResultNotFoundError(
             f"Verification result '{verification_result_id}' not found"
         ) from None
-    return VerificationResultResponse.from_view(view, current_user)
+    names = await actor_names(db, current_user, reviewer_ids([view]))
+    return VerificationResultResponse.from_view(view, current_user, names)
 
 
 @router.get(
@@ -501,6 +505,7 @@ async def list_verification_results(
     service = VerificationService(db)
     results = await service.list_verification_results(entity_type, entity_reference)
     views = await service.views_for(results)
+    names = await actor_names(db, current_user, reviewer_ids(views))
     may_decide = current_user.role in _VERIFICATION_DECISION_ROLES
     # D17: no new check on a buyer of a closed deal — served as a capability too, so
     # the screen never offers a form the server would refuse. Reviews stay open.
@@ -508,7 +513,7 @@ async def list_verification_results(
     return VerificationResultListResponse(
         entity_type=entity_type,
         entity_reference=entity_reference,
-        results=[VerificationResultResponse.from_view(v, current_user) for v in views],
+        results=[VerificationResultResponse.from_view(v, current_user, names) for v in views],
         total=len(views),
         capabilities=VerificationCapabilities(
             can_record_result=may_record, can_review=may_decide
@@ -558,4 +563,5 @@ async def record_verification_review(
         supersedes_review_id=body.supersedes_review_id,
     )
     view = await service.get_result_view(verification_result_id)
-    return VerificationResultResponse.from_view(view, current_user)
+    names = await actor_names(db, current_user, reviewer_ids([view]))
+    return VerificationResultResponse.from_view(view, current_user, names)

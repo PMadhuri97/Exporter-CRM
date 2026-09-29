@@ -6,7 +6,10 @@
  * component copied into each would let them drift apart in alignment and
  * spacing one edit at a time.
  *
- * Moved verbatim; no markup or class changed.
+ * Moved verbatim; no markup or class changed then. Since: a long unbroken value (a
+ * buyer's contact email) wraps inside its cell instead of running into the field
+ * beside it — `min-w-0` lets the row shrink within a multi-column `<dl>`, and
+ * `overflow-wrap: anywhere` gives the value somewhere to break.
  */
 
 export function DetailRow({
@@ -17,9 +20,9 @@ export function DetailRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[9rem_1fr] gap-4 border-b border-border py-3 last:border-b-0">
+    <div className="grid min-w-0 grid-cols-[9rem_1fr] gap-4 border-b border-border py-3 last:border-b-0">
       <dt className="text-sm text-ink-faint">{label}</dt>
-      <dd className="min-w-0 text-sm text-ink">{children}</dd>
+      <dd className="min-w-0 text-sm text-ink [overflow-wrap:anywhere]">{children}</dd>
     </div>
   );
 }

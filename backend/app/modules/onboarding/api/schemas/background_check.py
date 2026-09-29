@@ -88,6 +88,14 @@ class BackgroundCheckDecisionResponse(BaseModel):
     from_value: BackgroundCheckState
     to_value: BackgroundCheckState
     decided_by: str | None
+    decided_by_name: str | None = Field(
+        default=None,
+        description=(
+            "Who decided, by name: the account's full name, or its email when it has "
+            "none. Null when no account with a name matches `decided_by`. Resolved "
+            "when read, not stored."
+        ),
+    )
     decided_by_kind: str
     source: str
     decided_at: datetime
@@ -97,13 +105,16 @@ class BackgroundCheckDecisionResponse(BaseModel):
     evidence: list[EvidenceItemResponse]
 
     @classmethod
-    def from_view(cls, view: BackgroundCheckDecisionView) -> BackgroundCheckDecisionResponse:
+    def from_view(
+        cls, view: BackgroundCheckDecisionView, *, decided_by_name: str | None = None
+    ) -> BackgroundCheckDecisionResponse:
         return cls(
             id=view.id,
             company_id=view.company_id,
             from_value=view.from_value,
             to_value=view.to_value,
             decided_by=view.decided_by,
+            decided_by_name=decided_by_name,
             decided_by_kind=view.decided_by_kind.value,
             source=view.source.value,
             decided_at=view.decided_at,

@@ -14,6 +14,7 @@ Phase 2 adds **no** class here: its completion shapes live in its own
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import date, datetime
 from typing import Annotated
 
@@ -94,9 +95,21 @@ class ExporterActivityResponse(BaseModel):
     subject: str
     notes: str | None
     actor_id: str
+    actor_name: str | None = Field(
+        default=None,
+        description=(
+            "Who logged it, by name: the account's full name, or its email when it has "
+            "none (DEVELOPER is given the full name only). Null when no account with a "
+            "name matches `actor_id`. Resolved when read, not stored."
+        ),
+    )
     occurred_at: datetime
     due_at: datetime | None
     created_at: datetime
+
+    def named(self, names: Mapping[str, str]) -> ExporterActivityResponse:
+        """This activity with `actor_name` filled from `names` (`api/actor_names.py`)."""
+        return self.model_copy(update={"actor_name": names.get(self.actor_id)})
 
 
 class ExporterActivityListResponse(BaseModel):

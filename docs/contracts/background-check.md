@@ -145,6 +145,11 @@ when, reason, supersedes." Table `onboarding.background_check_decision`, one row
 | `supersedes_decision_id` | `uuid` | yes | The previous decision for the same company. `NULL` only on the company's first decision. |
 | `details` | `jsonb` | no | `DEFAULT '{}'`. Anything a reader needs without a second query. IDs only, never evidence content or PII. |
 
+The decision responses (the move and the decision list) also carry **`decided_by_name`**:
+who decided, by name — the account's full name, or its email when it has none — resolved
+when read through the platform's auth facade (`api/actor_names.py`), never stored. `null`
+when no account with a name matches `decided_by`.
+
 ### 5.2 Locked
 
 A decision is **never updated and never deleted**. `trg_background_check_decision_append_only`

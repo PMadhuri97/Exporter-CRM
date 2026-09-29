@@ -14,6 +14,7 @@ null — see `domain/follow_up_views.py` for the longer version.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import date, datetime
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -110,6 +111,14 @@ class FollowUpResponse(BaseModel):
     subject: str
     notes: str | None
     actor_id: str = Field(description="Who logged the follow-up — not who completed it.")
+    actor_name: str | None = Field(
+        default=None,
+        description=(
+            "Who logged it, by name: the account's full name, or its email when it has "
+            "none (DEVELOPER is given the full name only). Null when no account with a "
+            "name matches `actor_id`."
+        ),
+    )
     occurred_at: datetime
     due_at: datetime
     is_overdue: bool = Field(
@@ -129,7 +138,7 @@ class FollowUpResponse(BaseModel):
     )
 
     @classmethod
-    def from_view(cls, view: FollowUpView) -> FollowUpResponse:
+    def from_view(cls, view: FollowUpView, *, actor_name: str | None = None) -> FollowUpResponse:
         """`state` is a property on the view, so it is passed explicitly rather than
         picked up by `from_attributes` — which reads fields, not properties."""
         return cls(
@@ -140,6 +149,7 @@ class FollowUpResponse(BaseModel):
             subject=view.subject,
             notes=view.notes,
             actor_id=view.actor_id,
+            actor_name=actor_name,
             occurred_at=view.occurred_at,
             due_at=view.due_at,
             is_overdue=view.is_overdue,
@@ -187,9 +197,20 @@ class FollowUpListResponse(BaseModel):
     offset: int
 
     @classmethod
-    def from_view(cls, view: FollowUpListView, *, limit: int, offset: int) -> FollowUpListResponse:
+    def from_view(
+        cls,
+        view: FollowUpListView,
+        *,
+        limit: int,
+        offset: int,
+        actor_names: Mapping[str, str] | None = None,
+    ) -> FollowUpListResponse:
+        names = actor_names or {}
         return cls(
-            follow_ups=[FollowUpResponse.from_view(row) for row in view.follow_ups],
+            follow_ups=[
+                FollowUpResponse.from_view(row, actor_name=names.get(row.actor_id))
+                for row in view.follow_ups
+            ],
             follow_ups_total=view.follow_ups_total,
             check_backs=[
                 CheckBackResponse.model_validate(row) for row in view.check_backs

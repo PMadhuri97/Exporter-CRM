@@ -12,9 +12,8 @@ import {
   fetchCurrentUser,
   login as loginRequest,
   logout as logoutRequest,
-  refresh as refreshRequest,
 } from '@/lib/api/authApi';
-import { registerRefreshFailureHandler } from '@/lib/api/client';
+import { refreshSession, registerRefreshFailureHandler } from '@/lib/api/client';
 import {
   clearTokens,
   getAccessToken,
@@ -59,23 +58,23 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       try {
         // `client.ts`'s own refresh-on-expiry logic only fires once a
         // request is made; on boot there is no request yet, so refresh
-        // explicitly here before asking for the current user.
-        const tokens = await refreshRequest(storedRefreshToken);
-        setTokens({
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          expiresInSeconds: tokens.expires_in,
-        });
-        const currentUser = await fetchCurrentUser(tokens.access_token);
+        // explicitly here before asking for the current user. Through the
+        // same `refreshSession` as every other refresh, so StrictMode's
+        // second run of this effect, a request racing it, and other tabs
+        // booting at the same moment never spend one refresh token twice.
+        await refreshSession();
+        const accessToken = getAccessToken();
+        if (accessToken === null) throw new Error('No access token after refresh');
+        const currentUser = await fetchCurrentUser(accessToken);
         if (!cancelled) {
           setUser(currentUser);
           setStatus('authenticated');
         }
       } catch {
-        if (!cancelled) {
-          clearTokens();
-          forceLoggedOut();
-        }
+        // A failed refresh has already cleared the tokens — if they were
+        // still the ones that failed, and not a newer pair another tab
+        // stored meanwhile.
+        if (!cancelled) forceLoggedOut();
       }
     })();
 

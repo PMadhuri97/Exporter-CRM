@@ -25,6 +25,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.screening import (
     BankActivityFindingResponse,
     BankActivityResponse,
@@ -78,9 +79,10 @@ async def list_screening_review(
     db: AsyncSession = Depends(get_db),
 ) -> ScreeningReviewListResponse:
     items = await ScreeningReviewService(db).list_review_items(customer_id)
+    names = await actor_names(db, current_user, (item.reviewed_by for item in items))
     return ScreeningReviewListResponse(
         customer_id=customer_id,
-        items=[ScreeningReviewItemResponse.model_validate(item) for item in items],
+        items=[ScreeningReviewItemResponse.model_validate(item).named(names) for item in items],
         catalogue=_CATALOGUE,
         capabilities=ScreeningCapabilities(
             can_record_decision=current_user.role in _DECISION_ROLES
@@ -114,10 +116,11 @@ async def list_screening_review_item_history(
     rows, total = await ScreeningReviewService(db).list_item_history(
         customer_id, item_key, limit=limit, offset=offset
     )
+    names = await actor_names(db, current_user, (row.reviewed_by for row in rows))
     return ScreeningItemHistoryResponse(
         customer_id=customer_id,
         item_key=item_key,
-        items=[ScreeningReviewItemResponse.model_validate(row) for row in rows],
+        items=[ScreeningReviewItemResponse.model_validate(row).named(names) for row in rows],
         total=total,
         limit=limit,
         offset=offset,
@@ -149,7 +152,8 @@ async def update_screening_review(
         comment=body.comment,
         actor_id=str(current_user.id),
     )
-    return ScreeningReviewItemResponse.model_validate(item)
+    names = await actor_names(db, current_user, [item.reviewed_by])
+    return ScreeningReviewItemResponse.model_validate(item).named(names)
 
 
 @router.get(

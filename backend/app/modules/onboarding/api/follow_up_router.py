@@ -39,6 +39,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.follow_up import (
     CompleteFollowUpRequest,
     FollowUpCompletionResponse,
@@ -136,7 +137,10 @@ async def list_follow_ups(
         limit=limit,
         offset=offset,
     )
-    return FollowUpListResponse.from_view(view, limit=limit, offset=offset)
+    names = await actor_names(db, current_user, (row.actor_id for row in view.follow_ups))
+    return FollowUpListResponse.from_view(
+        view, limit=limit, offset=offset, actor_names=names
+    )
 
 
 @router.post(

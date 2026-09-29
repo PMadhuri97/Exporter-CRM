@@ -13,6 +13,7 @@ the provider's provenance, or anything about the subject beyond its id.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any, Literal
 
@@ -135,6 +136,13 @@ class VerificationReviewResponse(BaseModel):
     verification_result_id: uuid.UUID
     review_status: VerificationReviewStatus
     reviewed_by: str
+    reviewed_by_name: str | None = Field(
+        default=None,
+        description=(
+            "Who reviewed, by name: the account's full name, or its email when it has "
+            "none. Null when no account with a name matches `reviewed_by`."
+        ),
+    )
     reviewed_at: datetime
     note: str | None
     supersedes_review_id: uuid.UUID | None
@@ -182,6 +190,8 @@ class VerificationResultResponse(BaseModel):
     subject_snapshot: BuyerSnapshotResponse | None
     #: The current review's reviewer and status (the chain head), or `None`.
     reviewed_by: str | None
+    #: The current reviewer by name (`api/actor_names.py`), or `None`.
+    reviewed_by_name: str | None = None
     review_status: VerificationReviewStatus | None
     latest_review_id: uuid.UUID | None
     latest_reviewed_at: datetime | None
@@ -196,7 +206,14 @@ class VerificationResultResponse(BaseModel):
     # that gap is closed.
 
     @classmethod
-    def from_view(cls, view: VerificationResultView, viewer: User) -> VerificationResultResponse:
+    def from_view(
+        cls,
+        view: VerificationResultView,
+        viewer: User,
+        names: Mapping[str, str] | None = None,
+    ) -> VerificationResultResponse:
+        """`names` maps reviewer ids to the names `viewer` may see (`api/actor_names.py`)."""
+        names = names or {}
         result = view.result
         latest: VerificationReview | None = view.latest_review
         if latest is not None:
@@ -225,13 +242,28 @@ class VerificationResultResponse(BaseModel):
             ],
             subject_snapshot=_snapshot_for(result.subject_snapshot, viewer),
             reviewed_by=reviewed_by,
+            reviewed_by_name=names.get(reviewed_by or ""),
             review_status=review_status,
             latest_review_id=latest.id if latest is not None else None,
             latest_reviewed_at=latest.reviewed_at if latest is not None else None,
-            reviews=[VerificationReviewResponse.model_validate(r) for r in view.reviews],
+            reviews=[
+                VerificationReviewResponse.model_validate(r).model_copy(
+                    update={"reviewed_by_name": names.get(r.reviewed_by)}
+                )
+                for r in view.reviews
+            ],
             created_at=result.created_at,
             updated_at=result.updated_at,
         )
+
+
+def reviewer_ids(views: Iterable[VerificationResultView]) -> list[str | None]:
+    """Every reviewer id the responses for `views` will carry, to resolve to names."""
+    ids: list[str | None] = []
+    for view in views:
+        ids.append(view.result.reviewed_by)
+        ids.extend(review.reviewed_by for review in view.reviews)
+    return ids
 
 
 def _snapshot_for(snapshot: dict[str, Any] | None, viewer: User) -> BuyerSnapshotResponse | None:
@@ -279,4 +311,5 @@ __all__ = [
     "VerificationResultListResponse",
     "VerificationResultResponse",
     "VerificationReviewResponse",
+    "reviewer_ids",
 ]

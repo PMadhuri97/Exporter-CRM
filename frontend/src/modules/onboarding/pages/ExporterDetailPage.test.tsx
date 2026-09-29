@@ -480,4 +480,52 @@ describe('ExporterDetailPage — E9', () => {
     );
   });
 
+  it('names each other company holding a shared GSTIN once, one link each', async () => {
+    mockUser('COMPLIANCE', 'someone-else');
+    vi.mocked(getExporterProfileDetail).mockResolvedValue({
+      ...DETAIL,
+      gstin_warnings: [
+        { gstin: '27ABCDE1234F1Z5', other_customer_ids: ['other-1'] },
+        { gstin: '29ABCDE1234F1Z5', other_customer_ids: ['other-2', 'other-3'] },
+      ],
+    });
+    renderPage();
+    const warning = await screen.findByText(/A GSTIN on this company is also on another company/);
+    const list = within(warning.closest('section')!).getAllByRole('listitem');
+    const [one, two] = list as [HTMLElement, HTMLElement];
+    expect(one).toHaveTextContent(/also on another company$/);
+    expect(two).toHaveTextContent(/also on 2 other companies: company 1 and company 2$/);
+    expect(within(two).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual([
+      '/companies/other-2',
+      '/companies/other-3',
+    ]);
+  });
+
+  it('asks only for a note when recording Qualified, never for a rejection reason', async () => {
+    mockUser('OPERATIONS', 'someone-else');
+    vi.mocked(getQualification).mockResolvedValue({
+      ...QUALIFICATION,
+      allowed_outcomes: ['QUALIFIED', 'NOT_QUALIFIED'],
+    });
+    vi.mocked(recordQualificationOutcome).mockResolvedValue({
+      ...QUALIFICATION,
+      state: 'QUALIFIED',
+    });
+    renderPage('qualification');
+    fireEvent.click(await screen.findByRole('button', { name: 'Record: Qualified' }));
+    const form = await screen.findByRole('form', { name: 'Record outcome' });
+    // Every seeded reason code is a reason to reject, so none is offered here.
+    expect(within(form).queryByText('Reasons')).not.toBeInTheDocument();
+    expect(within(form).queryByLabelText('Turnover too low')).not.toBeInTheDocument();
+    fireEvent.change(within(form).getByLabelText('Note'), { target: { value: 'Meets all four' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Confirm' }));
+    await waitFor(() =>
+      expect(recordQualificationOutcome).toHaveBeenCalledWith(DETAIL.customer_id, {
+        outcome: 'QUALIFIED',
+        reason_codes: [],
+        note: 'Meets all four',
+      }),
+    );
+  });
+
 });

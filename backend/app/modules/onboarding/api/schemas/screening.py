@@ -13,6 +13,7 @@ is not qualification, and qualification does not reuse it (architecture §5.5).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Literal
 
@@ -41,9 +42,20 @@ class ScreeningReviewItemResponse(BaseModel):
     status: ScreeningChecklistStatus
     comment: str | None
     reviewed_by: str | None
+    reviewed_by_name: str | None = Field(
+        default=None,
+        description=(
+            "Who decided, by name: the account's full name, or its email when it has "
+            "none. Null when no account with a name matches `reviewed_by`."
+        ),
+    )
     reviewed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    def named(self, names: Mapping[str, str]) -> ScreeningReviewItemResponse:
+        """This decision with `reviewed_by_name` filled from `names`."""
+        return self.model_copy(update={"reviewed_by_name": names.get(self.reviewed_by or "")})
 
 
 class ScreeningCatalogueItemResponse(BaseModel):

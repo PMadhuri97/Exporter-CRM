@@ -56,7 +56,7 @@ export function ReviewChain({ reviews }: { reviews: VerificationReview[] }) {
             >
               <div className="flex flex-wrap items-center gap-2">
                 <VerificationStatusChip value={review.review_status} />
-                <span>{formatReviewer(review.reviewed_by)}</span>
+                <span>{review.reviewed_by_name ?? formatReviewer(review.reviewed_by)}</span>
                 <span>· {formatDateTime(review.reviewed_at)}</span>
                 <span className="font-medium">{current ? 'Current' : 'Superseded'}</span>
               </div>

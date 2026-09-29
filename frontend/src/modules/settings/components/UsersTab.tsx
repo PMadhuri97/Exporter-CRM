@@ -2,6 +2,7 @@ import { KeyRound, Pencil, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { formatDateTime } from '@/lib/format';
 import { useCurrentUser } from '@/platform/auth';
 
 import { useUpdateUser, useUsers } from '../hooks';
@@ -16,12 +17,9 @@ const PAGE_SIZE = 25;
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 
-function formatDateTime(value: string | null): string {
-  if (value === null) return 'Never';
-  return new Date(value).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+/** The app's one date-time format (`@/lib/format`); an account never signed in says so. */
+function formatWhen(value: string | null): string {
+  return value === null ? 'Never' : formatDateTime(value);
 }
 
 function RoleChip({ role }: { role: AdminUser['role'] }) {
@@ -234,7 +232,7 @@ export function UsersTab() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs tabular-nums text-ink-muted">
-                    {formatDateTime(user.last_login_at)}
+                    {formatWhen(user.last_login_at)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">

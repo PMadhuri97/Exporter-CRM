@@ -122,7 +122,8 @@ function ResultsForm({
       {qualification.standings.map(({ criterion }) => {
         const draft = drafts[criterion.key] ?? EMPTY_DRAFT;
         return (
-          <div key={criterion.key} className="grid gap-2 md:grid-cols-[1fr_8rem_1fr_1.5fr]">
+          // The result column is wide enough for "No change" beside the select's arrow.
+          <div key={criterion.key} className="grid gap-2 md:grid-cols-[1fr_10rem_1fr_1.5fr]">
             <span className="self-center text-sm text-ink">{criterion.label}</span>
             <Select
               aria-label={`${criterion.label} result`}
@@ -205,7 +206,13 @@ function OutcomeForm({
     );
   }
 
-  const available = (reasonCodes.data?.reason_codes ?? []).filter((code) => code.active);
+  // Reasons are asked for only on NOT_QUALIFIED, where at least one is required. The
+  // server allows them on QUALIFIED too (`criterion-result.md`), but every seeded code
+  // is a reason to reject, so offering them there would only invite a contradiction.
+  const available =
+    outcome === 'NOT_QUALIFIED'
+      ? (reasonCodes.data?.reason_codes ?? []).filter((code) => code.active)
+      : [];
 
   return (
     <form
@@ -214,7 +221,11 @@ function OutcomeForm({
       onSubmit={(e) => {
         e.preventDefault();
         mutation.mutate(
-          { outcome, reason_codes: codes, note: note.trim() || null },
+          {
+            outcome,
+            reason_codes: outcome === 'NOT_QUALIFIED' ? codes : [],
+            note: note.trim() || null,
+          },
           {
             onSuccess: () => {
               toast.success(`Recorded: ${QUALIFICATION_LABEL[outcome]}`);

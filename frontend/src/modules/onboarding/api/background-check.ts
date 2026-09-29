@@ -43,7 +43,9 @@ export async function recordBackgroundCheckDecision(
 ): Promise<BackgroundCheckDecision> {
   return apiRequest<BackgroundCheckDecision>(
     `/onboarding/exporters/${customerId}/background-check/decisions`,
-    { method: 'POST', body: JSON.stringify(body) },
+    // The object itself: `apiRequest` encodes the body. Stringifying it here too
+    // sent a JSON string, which the server refuses (422).
+    { method: 'POST', body },
   );
 }
 
