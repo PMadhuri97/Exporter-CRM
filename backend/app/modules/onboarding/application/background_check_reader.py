@@ -23,11 +23,12 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.compliance_facts import legacy_clear_expiry
 from app.modules.onboarding.domain.entities.background_check_decision import (
     BackgroundCheckDecision,
 )
@@ -100,15 +101,10 @@ class BackgroundCheckStanding:
         return self.value == BackgroundCheckState.CLEAR.value
 
 
-#: BQ-5: a CLEAR recorded before its expiry was stored is current for one year from
-#: the decision — ``timedelta(days=365)``, the same value
-#: ``compliance_facts.LEGACY_CLEAR_VALIDITY`` and migration 0027's backfill use.
-LEGACY_CLEAR_VALIDITY = timedelta(days=365)
-
-
 def clear_expiry(decided_at: datetime, stored: datetime | None) -> datetime:
-    """A CLEAR decision's expiry: its stored ``expires_at``, else the legacy rule."""
-    return stored if stored is not None else decided_at + LEGACY_CLEAR_VALIDITY
+    """A CLEAR decision's expiry: its stored ``expires_at``, else the legacy rule (BQ-5,
+    ``compliance_facts.legacy_clear_expiry`` — the one place the year is defined)."""
+    return stored if stored is not None else legacy_clear_expiry(decided_at)
 
 
 def current_background_check(company: ExporterProfile) -> str:
@@ -197,7 +193,6 @@ class BackgroundCheckReader:
 
 
 __all__ = [
-    "LEGACY_CLEAR_VALIDITY",
     "clear_expiry",
     "BackgroundCheckReader",
     "BackgroundCheckStanding",

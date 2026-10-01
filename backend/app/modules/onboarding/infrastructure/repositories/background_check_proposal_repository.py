@@ -12,7 +12,6 @@ under that lock: *open* means "no resolution row", which no constraint can see.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -167,25 +166,6 @@ class BackgroundCheckProposalRepository(AppendOnlyRepository[BackgroundCheckProp
             .where(*conditions)
         )
         return [(row[0], row[1], row[2]) for row in rows], int(total or 0)
-
-    async def by_decision_ids(
-        self, decision_ids: Sequence[uuid.UUID]
-    ) -> dict[uuid.UUID, BackgroundCheckProposal]:
-        """The proposal each approved decision came from, keyed by decision id."""
-        ids = [decision_id for decision_id in decision_ids if decision_id is not None]
-        if not ids:
-            return {}
-        rows = (
-            await self.session.execute(
-                select(BackgroundCheckProposalResolution.decision_id, BackgroundCheckProposal)
-                .join(
-                    BackgroundCheckProposal,
-                    BackgroundCheckProposal.id == BackgroundCheckProposalResolution.proposal_id,
-                )
-                .where(BackgroundCheckProposalResolution.decision_id.in_(ids))
-            )
-        ).all()
-        return {row[0]: row[1] for row in rows}
 
 
 __all__ = ["STATUS_OPEN", "BackgroundCheckProposalRepository", "ProposalRow", "QueueRow"]

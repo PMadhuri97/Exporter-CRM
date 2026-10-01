@@ -5,6 +5,10 @@ Everything still open about the Exporter CRM, in one place, as of 29 September 2
 It replaces the per-developer "remaining work" and progress notes, which recorded work
 that is now done; §4 says where their still-useful content went.
 
+Developer 1's (compliance engine) handover to the other lanes — what switches its
+behaviour on, what waits, and the integration contract — is in
+[`dev1-handover.md`](dev1-handover.md).
+
 What is deliberately not built is in [`architecture.md`](architecture.md) §12. Each
 contract also keeps its own open-items table (for example `company-record.md` §10);
 this page lists what needs a decision or a change, and links there for detail.

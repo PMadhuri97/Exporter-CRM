@@ -30,7 +30,10 @@ Both columns are added by DDL. ``ADD COLUMN`` fires no row trigger, so no protec
 row is updated.
 
 Downgrade restores the trigger's previous column list and drops both columns and their
-indexes. Lossless today — nothing writes either column yet.
+indexes. **Lossy** since plan P4-5 and P3-3a write both columns: the subject company
+of every result and every company's current Clear expiry are dropped (both are
+re-derivable: an `EXPORTER` result is about `entity_reference`; the expiry from the
+clearing decision). Before then it was lossless.
 """
 
 from __future__ import annotations

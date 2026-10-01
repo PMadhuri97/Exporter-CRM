@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/api/errors';
 import {
   getBackgroundCheck,
   listBackgroundCheckDecisions,
+  listBackgroundCheckProposals,
   recordBackgroundCheckDecision,
   startCheckCycle,
 } from '../../api';
@@ -17,6 +18,7 @@ import { BackgroundCheckPanel } from './BackgroundCheckPanel';
 vi.mock('../../api', () => ({
   getBackgroundCheck: vi.fn(),
   listBackgroundCheckDecisions: vi.fn(),
+  listBackgroundCheckProposals: vi.fn(),
   recordBackgroundCheckDecision: vi.fn(),
   startCheckCycle: vi.fn(),
 }));
@@ -86,6 +88,12 @@ function renderPanel(isStaff = true) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getBackgroundCheck).mockResolvedValue(standing());
+  vi.mocked(listBackgroundCheckProposals).mockResolvedValue({
+    proposals: [],
+    total: 0,
+    limit: 50,
+    offset: 0,
+  });
   vi.mocked(listBackgroundCheckDecisions).mockResolvedValue({
     decisions: [decision()],
     total: 1,

@@ -177,3 +177,53 @@ def test_the_domain_module_is_pure():
     source = inspect.getsource(compliance_facts)
     for forbidden in ("sqlalchemy", "AsyncSession", "app.modules.onboarding.application"):
         assert forbidden not in source, forbidden
+
+
+# ── The fake for consumers (Developer 2's guard tests, allocation task 2.5) ────
+
+
+@pytest.mark.parametrize(
+    ("method", "parameters"),
+    [("for_company", ["self", "company_id", "now"]), ("for_legacy_buyer", ["self", "deal_buyer_id", "now"])],
+)
+def test_the_fake_reader_has_the_protocol_shape(method, parameters):
+    from app.modules.onboarding.tests.fixtures.compliance import StaticComplianceFactsReader
+
+    fake_method = getattr(StaticComplianceFactsReader, method)
+    assert inspect.iscoroutinefunction(fake_method)
+    assert list(inspect.signature(fake_method).parameters) == parameters
+
+
+async def test_a_consumer_written_against_the_protocol_runs_on_the_fake():
+    """How a consumer — the handover guard — uses the contract: it asks for facts and
+    applies its own rule. Dev 1 publishes the facts, never the rule."""
+    from app.modules.onboarding.exceptions import ExporterProfileNotFoundError
+    from app.modules.onboarding.tests.fixtures.compliance import (
+        StaticComplianceFactsReader,
+        party_facts,
+    )
+
+    async def seller_blocker(reader: ComplianceFactsReader, company_id, now) -> str | None:
+        facts = await reader.for_company(company_id, now)
+        if not facts.is_clear_current:
+            return "the background check is not a current Clear"
+        if "FAILED" in (facts.sanctions, facts.aml):
+            return "a sanctions or AML check failed"
+        return None
+
+    current, expired, failed = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    reader = StaticComplianceFactsReader(
+        companies={
+            current: party_facts(),
+            expired: party_facts(clear_expires_at=T0, is_clear_current=False),
+            failed: party_facts(sanctions="FAILED"),
+        }
+    )
+    assert await seller_blocker(reader, current, T0) is None
+    assert "not a current Clear" in await seller_blocker(reader, expired, T0)
+    assert "failed" in await seller_blocker(reader, failed, T0)
+    with pytest.raises(ExporterProfileNotFoundError):
+        await reader.for_company(uuid.uuid4(), T0)
+    assert [call[0] for call in reader.calls] == ["for_company"] * 4
+    flagged = party_facts("FLAGGED")
+    assert (flagged.is_clear, flagged.is_clear_current) == (False, False)

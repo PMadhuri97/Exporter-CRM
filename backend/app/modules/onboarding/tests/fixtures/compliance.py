@@ -16,7 +16,11 @@ call can take a company there, so tests use these:
   same through the HTTP routes;
 * ``record_required_checks(company_id)`` — rule B (plan P3-2): a ``CLEAR`` needs KYB,
   AML and sanctions each **passed** in the current cycle, so a test that clears a
-  company records them first (manual results, through Developer 4B's service).
+  company records them first (manual results, through Developer 4B's service);
+* ``StaticComplianceFactsReader`` and ``party_facts(...)`` — a fake of the published
+  ``ComplianceFactsReader`` for a **consumer's** tests: Developer 2's handover guard is
+  specified "with a fake reader: each rule blocks with its own message" (allocation
+  task 2.5), and this is that fake, answering exactly the facts a test gives it.
 
 For "now" in tests, use ``app.shared.clock.use_clock(FixedClock(...))``.
 """
@@ -24,13 +28,19 @@ For "now" in tests, use ``app.shared.clock.use_clock(FixedClock(...))``.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 import pytest
 from httpx import AsyncClient
 
 from app.modules.onboarding.domain.background_check_views import BackgroundCheckDecisionView
+from app.modules.onboarding.domain.compliance_facts import (
+    BackgroundCheckValue,
+    CheckState,
+    PartyComplianceFacts,
+)
 from app.modules.onboarding.domain.entities.background_check_enums import (
     BackgroundCheckRisk,
     BackgroundCheckState,
@@ -211,7 +221,65 @@ async def propose_and_approve(
     return approved.json()
 
 
+# ── A fake ComplianceFactsReader, for consumers' tests ────────────────────────
+
+
+def party_facts(
+    background_check: BackgroundCheckValue = "CLEAR",
+    *,
+    clear_expires_at: datetime | None = None,
+    is_clear_current: bool | None = None,
+    sanctions: CheckState = "PASSED",
+    aml: CheckState = "PASSED",
+) -> PartyComplianceFacts:
+    """``PartyComplianceFacts`` for a test. ``is_clear`` follows ``background_check``;
+    ``is_clear_current`` defaults to ``is_clear`` (pass ``False`` for an expired Clear)."""
+    is_clear = background_check == "CLEAR"
+    return PartyComplianceFacts(
+        background_check=background_check,
+        is_clear=is_clear,
+        clear_expires_at=clear_expires_at,
+        is_clear_current=is_clear if is_clear_current is None else is_clear_current,
+        sanctions=sanctions,
+        aml=aml,
+    )
+
+
+@dataclass
+class StaticComplianceFactsReader:
+    """Implements ``ComplianceFactsReader`` from fixed answers, for a consumer's tests.
+
+    An id it was not given raises what the real reader raises for an unknown party
+    (``ExporterProfileNotFoundError`` / ``ComplianceInputsBuyerNotFoundError``), so a
+    consumer's error handling is exercised too. ``calls`` records ``(method, id, now)``.
+    """
+
+    companies: dict[uuid.UUID, PartyComplianceFacts] = field(default_factory=dict)
+    legacy_buyers: dict[uuid.UUID, PartyComplianceFacts] = field(default_factory=dict)
+    calls: list[tuple[str, uuid.UUID, datetime]] = field(default_factory=list)
+
+    async def for_company(self, company_id: uuid.UUID, now: datetime) -> PartyComplianceFacts:
+        from app.modules.onboarding.exceptions import ExporterProfileNotFoundError
+
+        self.calls.append(("for_company", company_id, now))
+        if company_id not in self.companies:
+            raise ExporterProfileNotFoundError(company_id)
+        return self.companies[company_id]
+
+    async def for_legacy_buyer(
+        self, deal_buyer_id: uuid.UUID, now: datetime
+    ) -> PartyComplianceFacts:
+        from app.modules.onboarding.exceptions import ComplianceInputsBuyerNotFoundError
+
+        self.calls.append(("for_legacy_buyer", deal_buyer_id, now))
+        if deal_buyer_id not in self.legacy_buyers:
+            raise ComplianceInputsBuyerNotFoundError(deal_buyer_id)
+        return self.legacy_buyers[deal_buyer_id]
+
+
 __all__ = [
+    "StaticComplianceFactsReader",
+    "party_facts",
     "REQUIRED_CHECK_TYPES",
     "ComplianceUser",
     "approve_as",

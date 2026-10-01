@@ -29,7 +29,8 @@
  * shows as "Awaiting approval" with exactly the actions the server allows this user
  * (approve / reject for a second officer, withdraw for the proposer); rule B's required
  * checks and their state in the current cycle (P3-2); a "Re-KYC due" badge when the
- * Clear has expired or soon will (P3-3c).
+ * Clear has expired or soon will (P3-3c); the proposals already resolved — approved,
+ * rejected with the reason, or withdrawn — so the maker sees how theirs ended.
  */
 
 import { useState } from 'react';
@@ -52,6 +53,7 @@ import {
 import { AwaitingApproval } from '../../components/AwaitingApproval';
 import { CheckCycleActions } from '../../components/CheckCycleActions';
 import { RequiredChecks } from '../../components/ComplianceCheckChip';
+import { ProposalHistory } from '../../components/ProposalHistory';
 import {
   useBackgroundCheck,
   useBackgroundCheckDecisions,
@@ -185,6 +187,10 @@ function GaugeSection({ customerId }: { customerId: string }) {
           />
         </div>
       )}
+
+      <div className="mt-5">
+        <ProposalHistory customerId={customerId} />
+      </div>
 
       <div className="mt-5">
         <h4 className="text-sm font-semibold text-slate-900">Decisions</h4>

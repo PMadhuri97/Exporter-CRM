@@ -18,6 +18,7 @@ import {
   approveBackgroundCheckProposal,
   getBackgroundCheck,
   listBackgroundCheckDecisions,
+  listBackgroundCheckProposals,
   recordBackgroundCheckDecision,
   rejectBackgroundCheckProposal,
   withdrawBackgroundCheckProposal,
@@ -34,6 +35,7 @@ vi.mock('../../api', () => ({
   approveBackgroundCheckProposal: vi.fn(),
   getBackgroundCheck: vi.fn(),
   listBackgroundCheckDecisions: vi.fn(),
+  listBackgroundCheckProposals: vi.fn(),
   recordBackgroundCheckDecision: vi.fn(),
   rejectBackgroundCheckProposal: vi.fn(),
   startCheckCycle: vi.fn(),
@@ -146,6 +148,12 @@ function renderPanel() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getBackgroundCheck).mockResolvedValue(standing());
+  vi.mocked(listBackgroundCheckProposals).mockResolvedValue({
+    proposals: [],
+    total: 0,
+    limit: 50,
+    offset: 0,
+  });
   vi.mocked(listBackgroundCheckDecisions).mockResolvedValue({
     decisions: [],
     total: 0,
@@ -380,5 +388,57 @@ describe('BackgroundCheckPanel — rule B, expiry and the trail', () => {
       'approved by Ravi Checker',
     );
     expect(screen.getByTestId('decision-expires')).toHaveTextContent(/Clear until/);
+  });
+});
+
+describe('BackgroundCheckPanel — how proposals ended', () => {
+  it('shows the maker a rejection with its reason, a withdrawal and an approval', async () => {
+    vi.mocked(listBackgroundCheckProposals).mockResolvedValue({
+      proposals: [
+        proposal({
+          id: 'p3',
+          status: 'APPROVED',
+          resolved_by: 'checker-id',
+          resolved_by_name: 'Ravi Checker',
+          resolved_at: '2026-10-01T11:00:00Z',
+        }),
+        proposal({
+          id: 'p2',
+          status: 'WITHDRAWN',
+          resolved_by: 'maker-id',
+          resolved_by_name: 'Asha Maker',
+          resolved_at: '2026-10-01T10:30:00Z',
+        }),
+        proposal({
+          id: 'p1',
+          status: 'REJECTED',
+          resolved_by: 'checker-id',
+          resolved_by_name: 'Ravi Checker',
+          resolved_at: '2026-10-01T10:00:00Z',
+          resolution_reason: 'AML needs a second look',
+        }),
+        proposal({ id: 'p0', status: 'OPEN' }),
+      ],
+      total: 4,
+      limit: 50,
+      offset: 0,
+    });
+    renderPanel();
+
+    const resolved = await screen.findAllByTestId('resolved-proposal');
+    expect(resolved.map((row) => row.getAttribute('data-status'))).toEqual([
+      'APPROVED',
+      'WITHDRAWN',
+      'REJECTED',
+    ]);
+    expect(resolved[0]).toHaveTextContent('Approved by Ravi Checker');
+    expect(resolved[2]).toHaveTextContent(/Clear proposed by Asha Maker, .* — Rejected by Ravi Checker/);
+    expect(resolved[2]).toHaveTextContent('AML needs a second look');
+  });
+
+  it('shows nothing until a proposal has been resolved', async () => {
+    renderPanel();
+    await screen.findByTestId('background-check-gauge');
+    expect(screen.queryByTestId('proposal-history')).not.toBeInTheDocument();
   });
 });

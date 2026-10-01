@@ -157,7 +157,9 @@ pnpm build
   `app/modules/onboarding/tests/fixtures/compliance.py`: `approve_as(checker, company,
   maker=…)` (services), `propose_and_approve(client, company, maker_token=…,
   checker_token=…)` (HTTP), and `record_required_checks(company)` for rule B's KYB, AML
-  and sanctions. `CRM_BACKGROUND_CHECK_MAKER_CHECKER=false` is accepted only where
+  and sanctions. A test of code that *reads* compliance (the handover guard) can use
+  `StaticComplianceFactsReader` / `party_facts(...)` from the same module, a fake of the
+  published `ComplianceFactsReader`. `CRM_BACKGROUND_CHECK_MAKER_CHECKER=false` is accepted only where
   `ENVIRONMENT` is local, development or test — the server refuses to start with it off
   anywhere else (IQ-17).
 

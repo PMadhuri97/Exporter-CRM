@@ -43,6 +43,7 @@ import { useCompanyHistory, useDealHistory, useQualification, useScreeningReview
 import type { HistoryDimension, HistoryEntry, HistoryList } from '../types';
 
 import { actorLabel } from './actor-label';
+import { cycleKindLabel, proposedMoveLabel } from './background-check-labels';
 import { verificationTypeLabel } from './verification-labels';
 
 const PAGE_SIZE = 25;
@@ -152,6 +153,14 @@ function subjectOf(entry: HistoryEntry, labels: HistoryLabels): string | null {
     const onBuyer = details.entity_type === 'BUYER' && type !== 'BUYER';
     const subject = onBuyer ? `Buyer ${check.charAt(0).toLowerCase()}${check.slice(1)}` : check;
     return entry.event_type === 'verification_reviewed' ? `${subject} reviewed` : subject;
+  }
+  // Developer 1's dimensions: a proposal's status means nothing without the move it
+  // proposes ("Clear proposal: Open → Approved"), and a cycle row names its kind.
+  if (entry.dimension === 'background_check_approval' && typeof details.to_value === 'string') {
+    return `${proposedMoveLabel(details.to_value)} proposal`;
+  }
+  if (entry.dimension === 'check_cycle' && typeof details.kind === 'string') {
+    return `${cycleKindLabel(details.kind)} — check cycle`;
   }
   return null;
 }
