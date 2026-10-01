@@ -18,3 +18,11 @@ export function isStaffRole(role: UserRole): boolean {
 export function isAdminRole(role: UserRole): boolean {
   return role === 'ADMIN';
 }
+
+/**
+ * COMPLIANCE and ADMIN: the background-check decisions, their approval (maker-checker)
+ * and new check cycles. The RM never approves compliance (plan §8).
+ */
+export function isComplianceRole(role: UserRole): boolean {
+  return role === 'COMPLIANCE' || role === 'ADMIN';
+}

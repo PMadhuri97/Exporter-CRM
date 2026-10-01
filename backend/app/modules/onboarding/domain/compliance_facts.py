@@ -20,10 +20,11 @@ is answerable at any moment without sleeping.
 
 What the facts mean today
 -------------------------
-* **Expiry (decision E, BQ-5).** A Clear is current for one year from the decision
-  that made it. Until plan P3-3a stores ``expires_at`` on new Clears, every Clear is
-  read by the legacy rule: the clearing decision's ``decided_at`` +
-  ``LEGACY_CLEAR_VALIDITY``.
+* **Expiry (decision E, BQ-5; plan P3-3a/b).** Each Clear since migration 0027 stores
+  its own ``expires_at`` (``decided_at`` + the validity setting, default 365 days). A
+  Clear recorded before then is read by the legacy rule: its ``decided_at`` +
+  ``LEGACY_CLEAR_VALIDITY``. An expired Clear stays ``is_clear`` — nothing moves the
+  gauge (P3-3b) — but is not ``is_clear_current``.
 * **Sanctions and AML (IQ-2, answered 1 October 2026).** The latest real result of
   that type in the company's current cycle decides:
 
@@ -68,7 +69,8 @@ BackgroundCheckValue = Literal[
 CheckState = Literal["PASSED", "FAILED", "MISSING", "PENDING"]
 
 #: How long a Clear recorded before expiry was stored stays current (BQ-5: one year
-#: from the last Clear). 365 days, the same default plan P3-3a's setting will have.
+#: from the last Clear). 365 days, the same default as the validity setting
+#: (``CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS``).
 LEGACY_CLEAR_VALIDITY = timedelta(days=365)
 
 #: The verification types the facts report on.

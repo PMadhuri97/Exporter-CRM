@@ -31,6 +31,20 @@ class Settings(BaseSettings):
     # if ANER genuinely becomes multi-tenant.
     ANER_TENANT_ID: str = "00000000-0000-0000-0000-000000000001"
 
+    # ── Exporter CRM: compliance engine (Developer 1, plan P3-1b, P3-3) ───────
+    # Maker-checker (decision A, IQ-17): a CLEAR, FLAGGED or ON_HOLD needs a second
+    # COMPLIANCE/ADMIN user to approve it. On by default. It may be turned off only
+    # where ENVIRONMENT is local, development or test; anywhere else the application
+    # refuses to start with it off
+    # (`onboarding.application.compliance_settings.enforce_compliance_settings`).
+    CRM_BACKGROUND_CHECK_MAKER_CHECKER: bool = True
+    # How long a new CLEAR stays current (decision E). Each CLEAR stores its own
+    # `expires_at`, so changing this never re-dates an existing Clear. At least 1.
+    CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS: int = 365
+    # How far ahead "Re-KYC due" looks (the Home card, the gauge badge, and the
+    # default `before` of GET /background-check/due). At least 0.
+    CRM_REKYC_DUE_WINDOW_DAYS: int = 30
+
     # ── Database ─────────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql+asyncpg://aner:aner@localhost:5432/aner_settlement"
     DATABASE_SYNC_URL: str = "postgresql+psycopg2://aner:aner@localhost:5432/aner_settlement"

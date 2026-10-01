@@ -1550,3 +1550,128 @@ class CheckCycleRoleNotAllowedError(AnerBaseException):
             error_code="CHECK_CYCLE_ROLE_NOT_ALLOWED",
             status_code=403,
         )
+
+
+# ── Maker-checker (Developer 1, plan P3-1b, decision A) ──
+
+
+class BackgroundCheckApprovalRequiredError(AnerBaseException):
+    """A move that needs a second approver (IQ-1) was asked to take effect directly.
+
+    With maker-checker on, ``CLEAR``, ``FLAGGED`` and ``ON_HOLD`` are recorded as a
+    proposal and take effect only when a different COMPLIANCE or ADMIN user approves
+    them. This is what stops any path letting one user take a company there. 409.
+    """
+
+    def __init__(self, from_value: object, to_value: object) -> None:
+        super().__init__(
+            detail=(
+                f"{_bc_value(from_value)} → {_bc_value(to_value)} needs a second approver: "
+                "propose it, and another compliance officer approves it"
+            ),
+            error_code="BACKGROUND_CHECK_APPROVAL_REQUIRED",
+            status_code=409,
+            extensions={"from_value": _bc_value(from_value), "to_value": _bc_value(to_value)},
+        )
+
+
+class BackgroundCheckProposalOpenError(AnerBaseException):
+    """The company already has a proposal awaiting approval (one per company, P3-1a).
+
+    While it is open nothing else moves the check — no second proposal, no other move
+    and no new cycle: approve, reject or withdraw it first. 409.
+    """
+
+    def __init__(self, company_id: object, proposal_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"The background check for company {company_id} is awaiting approval of "
+                f"proposal {proposal_id}; approve, reject or withdraw it first"
+            ),
+            error_code="BACKGROUND_CHECK_PROPOSAL_OPEN",
+            status_code=409,
+            extensions={"proposal_id": str(proposal_id)},
+        )
+
+
+class BackgroundCheckProposalNotFoundError(AnerBaseException):
+    """No proposal with this id belongs to this company (404)."""
+
+    def __init__(self, company_id: object, proposal_id: object) -> None:
+        super().__init__(
+            detail=f"No background-check proposal {proposal_id} for company {company_id}",
+            error_code="BACKGROUND_CHECK_PROPOSAL_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class BackgroundCheckProposalResolvedError(AnerBaseException):
+    """The proposal was already approved, rejected or withdrawn (409). Also what the
+    loser of two concurrent approve/reject requests receives."""
+
+    def __init__(self, proposal_id: object, outcome: object) -> None:
+        super().__init__(
+            detail=f"Proposal {proposal_id} is already {_bc_value(outcome).lower()}",
+            error_code="BACKGROUND_CHECK_PROPOSAL_RESOLVED",
+            status_code=409,
+            extensions={"outcome": _bc_value(outcome)},
+        )
+
+
+class BackgroundCheckProposalStaleError(AnerBaseException):
+    """The proposal no longer describes the company: the check has moved since, or its
+    inputs changed (a new result, review, screening answer, document or cycle). The
+    checker would be approving something the maker never saw. 409 — reject or withdraw
+    it, and record the move again."""
+
+    def __init__(self, proposal_id: object, why: str) -> None:
+        super().__init__(
+            detail=(
+                f"Proposal {proposal_id} is out of date ({why}); reject or withdraw it and "
+                "record the decision again"
+            ),
+            error_code="BACKGROUND_CHECK_PROPOSAL_STALE",
+            status_code=409,
+            extensions={"why": why},
+        )
+
+
+class BackgroundCheckSelfApprovalError(AnerBaseException):
+    """The proposer tried to approve or reject their own proposal (maker-checker). 403 —
+    the proposer may only withdraw it."""
+
+    def __init__(self, proposal_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"You proposed {proposal_id}, so another compliance officer must approve or "
+                "reject it; you may withdraw it"
+            ),
+            error_code="BACKGROUND_CHECK_SELF_APPROVAL",
+            status_code=403,
+        )
+
+
+class BackgroundCheckProposalNotYoursError(AnerBaseException):
+    """Only the proposer may withdraw a proposal (403)."""
+
+    def __init__(self, proposal_id: object) -> None:
+        super().__init__(
+            detail=f"Only the officer who proposed {proposal_id} may withdraw it",
+            error_code="BACKGROUND_CHECK_PROPOSAL_NOT_YOURS",
+            status_code=403,
+        )
+
+
+class BackgroundCheckApproverRoleNotAllowedError(AnerBaseException):
+    """Only COMPLIANCE and ADMIN propose, approve or reject — never OPERATIONS (the RM
+    never approves compliance, plan §8). 403."""
+
+    def __init__(self, role: object) -> None:
+        super().__init__(
+            detail=(
+                f"The {_bc_value(role)} role may not propose or resolve a "
+                "background-check decision"
+            ),
+            error_code="BACKGROUND_CHECK_APPROVER_ROLE_NOT_ALLOWED",
+            status_code=403,
+        )

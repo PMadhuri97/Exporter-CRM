@@ -13,41 +13,18 @@
  *
  * DEVELOPER is refused the background check (D8). This component makes no role check
  * of its own: a 403 is shown as "not available to your role", never as an error.
+ *
+ * Tranche 2 (P3-1c, P3-3c): the gauge carries the served "Awaiting approval" and
+ * "Re-KYC due" badges.
  */
 
 import { ApiError } from '@/lib/api/errors';
 import { formatDate } from '@/lib/format';
 
 import { useBackgroundCheck } from '../hooks';
-import type { ComplianceCheckState } from '../types';
 
 import { BackgroundCheckGauge } from './BackgroundCheckGauge';
-
-const CHECK_STYLES: Record<ComplianceCheckState, string> = {
-  PASSED: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  FAILED: 'bg-red-50 text-red-700 ring-red-600/20',
-  PENDING: 'bg-amber-50 text-amber-800 ring-amber-600/20',
-  MISSING: 'bg-slate-100 text-slate-600 ring-slate-500/20',
-};
-
-const CHECK_LABELS: Record<ComplianceCheckState, string> = {
-  PASSED: 'Passed',
-  FAILED: 'Failed',
-  PENDING: 'Pending',
-  MISSING: 'Not checked',
-};
-
-function CheckChip({ label, state }: { label: string; state: ComplianceCheckState }) {
-  return (
-    <span
-      data-testid={`compliance-${label.toLowerCase()}`}
-      data-state={state}
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${CHECK_STYLES[state]}`}
-    >
-      {label}: {CHECK_LABELS[state]}
-    </span>
-  );
-}
+import { ComplianceCheckChip } from './ComplianceCheckChip';
 
 export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
   const check = useBackgroundCheck(companyId);
@@ -74,10 +51,15 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
     );
   }
 
-  const { value, compliance } = check.data;
+  const { value, compliance, awaiting_approval: awaitingApproval, rekyc_due: rekycDue } =
+    check.data;
   return (
     <div data-testid="company-compliance-summary" className="flex flex-col gap-2">
-      <BackgroundCheckGauge value={value} />
+      <BackgroundCheckGauge
+        value={value}
+        awaitingApproval={awaitingApproval}
+        rekycDue={rekycDue}
+      />
       {compliance.is_clear && compliance.clear_expires_at && (
         <p
           data-testid="compliance-expiry"
@@ -89,8 +71,8 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
         </p>
       )}
       <div className="flex flex-wrap gap-1.5">
-        <CheckChip label="Sanctions" state={compliance.sanctions} />
-        <CheckChip label="AML" state={compliance.aml} />
+        <ComplianceCheckChip label="Sanctions" state={compliance.sanctions} />
+        <ComplianceCheckChip label="AML" state={compliance.aml} />
       </div>
     </div>
   );

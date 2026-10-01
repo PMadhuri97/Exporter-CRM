@@ -158,7 +158,14 @@ recorded risk, labelled as such, after a reopen (D6). Each move locks the compan
 pins an evidence snapshot (the verification results, screening rows and the company's
 own `AVAILABLE` documents it rested on), writes one history row and commits once. A
 screen that sends the value it was looking at gets a 409 if the gauge moved meanwhile.
-Contract: [`contracts/background-check.md`](contracts/background-check.md).
+
+**Two people for `CLEAR`, `FLAGGED` and `ON_HOLD`** (maker-checker, decision A, since 1
+October 2026): one COMPLIANCE or ADMIN user proposes the move, the gauge shows "awaiting
+approval" without moving, and a *different* one approves it (or rejects it; the
+proposer may withdraw it). A `CLEAR` also needs KYB, AML and sanctions passed in the
+current check cycle (rule B), and is current for one year (configurable): an expired
+Clear still reads `CLEAR` but no longer promotes a company, and is listed as "Re-KYC
+due". Contract: [`contracts/background-check.md`](contracts/background-check.md) §12.5–§12.7.
 
 ### Deal — is there a real, current need?
 

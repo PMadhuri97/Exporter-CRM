@@ -15,6 +15,10 @@ const CLEAR_PREREQUISITE_LABELS: Record<string, string> = {
   screening_items_answered:
     'every screening item must be passed or exempt (a failed item means flagging the company instead)',
   evidence_recorded: 'at least one document, check or screening item must be on record',
+  // Rule B (plan P3-2): each required check passed in the current cycle.
+  kyb_passed: 'a KYB check must have passed in this cycle',
+  aml_passed: 'an AML check must have passed in this cycle',
+  sanctions_passed: 'a sanctions check must have passed in this cycle',
 };
 
 export function describeClearBlocker(key: string): string {
@@ -33,4 +37,19 @@ const CYCLE_KIND_LABELS: Record<string, string> = {
 /** A check cycle's `kind`, for a person. An unknown kind is shown as it arrived. */
 export function cycleKindLabel(kind: string): string {
   return CYCLE_KIND_LABELS[kind] ?? kind;
+}
+
+// ── Developer 1: maker-checker (P3-1c) ──
+
+const MOVE_NOUNS: Record<string, string> = {
+  CLEAR: 'Clear',
+  FLAGGED: 'Flag',
+  ON_HOLD: 'Put on hold',
+  IN_REVIEW: 'Move to in review',
+  MORE_INFO: 'Ask for more information',
+};
+
+/** A proposed move, for a person: "Clear", "Flag", "Put on hold". */
+export function proposedMoveLabel(toValue: string): string {
+  return MOVE_NOUNS[toValue] ?? toValue;
 }

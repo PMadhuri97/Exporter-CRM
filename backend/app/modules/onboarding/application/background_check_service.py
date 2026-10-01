@@ -45,6 +45,27 @@ only (seam v2). :meth:`start_cycle` begins a new cycle — a Re-KYC or Re-KYB �
 same row lock, and on a ``CLEAR`` company records the reopen in the same transaction
 (IQ-3), because there is no ``CLEAR → CLEAR`` move and the gauge must not read
 ``CLEAR`` while the new cycle's checks are outstanding.
+
+**Maker-checker (Developer 1, plan P3-1b, decision A, IQ-1, IQ-17).** ``CLEAR``,
+``FLAGGED`` and ``ON_HOLD`` need two people. :meth:`propose` records the move as a
+proposal — every rule a move checks, plus ``CLEAR``'s prerequisites, evaluated now —
+and the gauge does not move ("awaiting approval"). :meth:`approve`, by a *different*
+COMPLIANCE or ADMIN user, re-checks that nothing has moved (the chain head, the gauge
+and the inputs' fingerprint) and then writes the decision through the same
+:meth:`_apply_move` every move uses, with ``decided_by`` the proposer and
+``approved_by`` the approver, pins the evidence and promotes, in one transaction.
+:meth:`reject` (with a reason, by someone else) and :meth:`withdraw` (by the proposer)
+close it. While a proposal is open nothing else moves the check. ``_apply_move`` is
+the one place a decision is written, and it refuses an approval-needing move that
+does not come from :meth:`approve` (``BACKGROUND_CHECK_APPROVAL_REQUIRED``) — so no
+path lets one user take a company to ``CLEAR``. The switch
+``CRM_BACKGROUND_CHECK_MAKER_CHECKER`` may be off only in local/development/test
+(``compliance_settings``).
+
+**Expiry (Developer 1, plan P3-3a).** Every ``CLEAR`` stores ``expires_at`` =
+``decided_at`` + the validity setting, both from one server timestamp, and writes the
+company's current ``background_check_expires_at``; any move away from ``CLEAR`` clears
+it. Nothing moves the gauge when a Clear expires (P3-3b): the readers report it.
 """
 
 from __future__ import annotations
@@ -53,10 +74,14 @@ import uuid
 from dataclasses import dataclass
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.compliance_inputs import ComplianceInputsService
+from app.modules.onboarding.application.compliance_settings import (
+    clear_validity,
+    maker_checker_enabled,
+)
 from app.modules.onboarding.application.exporter_profile_service import (
     CustomerAnnouncement,
     ExporterProfileService,
@@ -66,14 +91,19 @@ from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.background_check_views import (
     CLEAR_POLICY,
     CURRENT_CLEAR_RULES,
+    PROPOSAL_OPEN,
     BackgroundCheckCycleAction,
     BackgroundCheckDecisionView,
     BackgroundCheckMove,
+    BackgroundCheckProposalView,
     ClearPolicy,
     DocumentInput,
     EvidenceItemView,
     EvidenceSelection,
+    RequiredCheckState,
     evaluate_clear_prerequisites,
+    inputs_fingerprint,
+    required_check_states,
     select_evidence,
 )
 from app.modules.onboarding.domain.compliance_inputs import (
@@ -91,16 +121,33 @@ from app.modules.onboarding.domain.entities.background_check_enums import (
     BackgroundCheckRisk,
     BackgroundCheckState,
 )
+from app.modules.onboarding.domain.entities.background_check_proposal import (
+    APPROVAL_MOVES,
+    BackgroundCheckProposal,
+    BackgroundCheckProposalResolution,
+    ProposalOutcome,
+)
 from app.modules.onboarding.domain.entities.check_cycle import CheckCycle, CheckCycleKind
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
-from app.modules.onboarding.domain.history_dimensions import CHECK_CYCLE
+from app.modules.onboarding.domain.history_dimensions import (
+    BACKGROUND_CHECK_APPROVAL,
+    CHECK_CYCLE,
+)
 from app.modules.onboarding.exceptions import (
+    BackgroundCheckApprovalRequiredError,
+    BackgroundCheckApproverRoleNotAllowedError,
     BackgroundCheckMoveNotAllowedError,
     BackgroundCheckPrerequisitesUnmetError,
+    BackgroundCheckProposalNotFoundError,
+    BackgroundCheckProposalNotYoursError,
+    BackgroundCheckProposalOpenError,
+    BackgroundCheckProposalResolvedError,
+    BackgroundCheckProposalStaleError,
     BackgroundCheckReasonRequiredError,
     BackgroundCheckRiskNotAllowedError,
     BackgroundCheckRiskRequiredError,
     BackgroundCheckRoleNotAllowedError,
+    BackgroundCheckSelfApprovalError,
     BackgroundCheckStateChangedError,
     CheckCycleEmptyError,
     CheckCycleNotAllowedError,
@@ -109,6 +156,9 @@ from app.modules.onboarding.exceptions import (
 )
 from app.modules.onboarding.infrastructure.repositories.background_check_decision_repository import (  # noqa: E501
     BackgroundCheckDecisionRepository,
+)
+from app.modules.onboarding.infrastructure.repositories.background_check_proposal_repository import (  # noqa: E501
+    BackgroundCheckProposalRepository,
 )
 from app.modules.onboarding.infrastructure.repositories.check_cycle_repository import (
     CheckCycleRepository,
@@ -206,6 +256,63 @@ _CYCLE_LABELS: dict[CheckCycleKind, str] = {
 #: `event_type` of the `check_cycle` history row.
 CYCLE_STARTED_EVENT = "check_cycle_started"
 
+#: Who may propose, approve or reject (decision A): compliance and admin. The RM never
+#: approves compliance (plan §8).
+_APPROVER_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
+
+#: `event_type` of each `background_check_approval` history row. `from_status` /
+#: `to_status` are the proposal's status: `OPEN` on proposing, then its outcome.
+PROPOSED_EVENT = "background_check_proposed"
+RESOLVED_EVENTS: dict[ProposalOutcome, str] = {
+    ProposalOutcome.APPROVED: "background_check_approved",
+    ProposalOutcome.REJECTED: "background_check_rejected",
+    ProposalOutcome.WITHDRAWN: "background_check_withdrawn",
+}
+
+
+@dataclass(frozen=True)
+class _Approval:
+    """The approval :meth:`BackgroundCheckService.approve` carries into ``_apply_move``:
+    the one way an approval-needing move is written while maker-checker is on."""
+
+    proposal: BackgroundCheckProposal
+    approved_by: str
+
+
+@dataclass(frozen=True)
+class ApprovedProposal:
+    """What :meth:`BackgroundCheckService.approve` did: the decision it wrote, and the
+    proposal, now ``APPROVED``."""
+
+    decision: BackgroundCheckDecisionView
+    proposal: BackgroundCheckProposalView
+
+
+def proposal_view(
+    proposal: BackgroundCheckProposal,
+    resolution: BackgroundCheckProposalResolution | None = None,
+) -> BackgroundCheckProposalView:
+    """A proposal row and its resolution (if any), as a reader sees them."""
+    return BackgroundCheckProposalView(
+        id=proposal.id,
+        company_id=proposal.company_id,
+        based_on_decision_id=proposal.based_on_decision_id,
+        from_value=proposal.from_value,
+        to_value=proposal.to_value,
+        risk_rating=proposal.risk_rating,
+        reason=proposal.reason,
+        proposed_by=proposal.created_by,
+        proposed_at=proposal.created_at,
+        cycle_id=proposal.cycle_id,
+        rules_version=proposal.rules_version,
+        evidence_count=proposal.evidence_count,
+        status=resolution.outcome if resolution is not None else PROPOSAL_OPEN,
+        resolved_by=resolution.created_by if resolution is not None else None,
+        resolved_at=resolution.created_at if resolution is not None else None,
+        resolution_reason=resolution.reason if resolution is not None else None,
+        decision_id=resolution.decision_id if resolution is not None else None,
+    )
+
 
 @dataclass(frozen=True)
 class StartedCycle:
@@ -245,8 +352,16 @@ class BackgroundCheckService:
         self._clear_policy = clear_policy or CLEAR_POLICY
         self._documents = CrmDocumentRepository(db)
         self._cycles = CheckCycleRepository(db)
+        self._proposals = BackgroundCheckProposalRepository(db)
 
     # ── The rules as data ────────────────────────────────────────────────────
+
+    @staticmethod
+    def needs_approval(to_value: _State) -> bool:
+        """Whether a move to ``to_value`` is proposed rather than recorded (IQ-1, with
+        maker-checker on). Each of ``CLEAR``, ``FLAGGED`` and ``ON_HOLD`` has one legal
+        origin, so the destination decides."""
+        return maker_checker_enabled() and any(to is to_value for (_, to) in APPROVAL_MOVES)
 
     @staticmethod
     def allowed_moves(current: _State, role: UserRole) -> list[BackgroundCheckMove]:
@@ -257,16 +372,22 @@ class BackgroundCheckService:
         ``DealService.allowed_stage_moves``, so a reader comparing the three finds one
         pattern. Empty for DEVELOPER and API_USER, who make no move.
 
+        ``approval_required`` marks the moves that will be proposed rather than
+        recorded (maker-checker). While a proposal is open the read offers no move at
+        all — the route asks :meth:`open_proposal` first.
+
         This does **not** take ``CLEAR``'s prerequisites into account: whether they are
         met needs the seam and the company row, so a caller that wants an honest
         ``CLEAR`` button asks :meth:`clear_prerequisites`. Keeping the table pure is
         what lets it be unit-tested without a database.
         """
+        approval_on = maker_checker_enabled()
         return [
             BackgroundCheckMove(
                 to=to_value,
                 reason_required=(current, to_value) not in _NO_TEXT_REQUIRED,
                 risk_required=to_value in _RISK_REQUIRED,
+                approval_required=approval_on and (current, to_value) in APPROVAL_MOVES,
             )
             for (from_value, to_value), roles in _MOVES.items()
             if from_value is current and role in roles
@@ -287,7 +408,11 @@ class BackgroundCheckService:
         Re-KYC / Re-KYB buttons appear exactly when :meth:`start_cycle` would accept
         them. Read-only; advisory, like :meth:`clear_prerequisites`."""
         kinds = self.startable_cycle_kinds(current, role)
-        if not kinds or await self._current_cycle_is_empty(company_id):
+        if (
+            not kinds
+            or await self._proposals.open_for_company(company_id) is not None
+            or await self._current_cycle_is_empty(company_id)
+        ):
             return []
         return [
             BackgroundCheckCycleAction(
@@ -607,6 +732,8 @@ class BackgroundCheckService:
         current = profile.background_check
         if current not in _CYCLE_START_STATES:
             raise CheckCycleNotAllowedError(company_id, current)
+        # A new cycle would change the inputs an open proposal rests on (P3-1b).
+        await self._refuse_if_awaiting_approval(company_id)
 
         now = clock.now()
         previous = await self._cycles.current_or_initial(
@@ -697,6 +824,363 @@ class BackgroundCheckService:
         )
         return prerequisites.unmet
 
+    async def required_checks(self, company_id: uuid.UUID) -> tuple[RequiredCheckState, ...]:
+        """Rule B's required types and their state in the current cycle (plan P3-2),
+        for the read — so the screen keeps no list of its own. Read-only."""
+        inputs = await self._reader.company_inputs(company_id)
+        return required_check_states(inputs, self._clear_policy)
+
+    # ── Maker-checker (Developer 1, plan P3-1b) ──────────────────────────────
+
+    async def propose(
+        self,
+        company_id: uuid.UUID,
+        *,
+        to_value: _State,
+        reason: str | None,
+        risk: BackgroundCheckRisk | None,
+        actor_id: str,
+        actor_role: UserRole,
+        seen_value: _State | None = None,
+    ) -> BackgroundCheckProposalView:
+        """Propose ``CLEAR``, ``FLAGGED`` or ``ON_HOLD`` (IQ-1). One transaction:
+
+        1. lock the company ``FOR UPDATE``;
+        2. every rule the move itself checks — premise, legality, role, text, risk —
+           and that it is one of the approval moves;
+        3. refuse if a proposal is already open (one per company);
+        4. read the inputs; for ``CLEAR`` evaluate the prerequisites now, so a proposal
+           that could never be approved is refused here, naming what is missing;
+        5. insert the proposal — the chain head it rests on, the fingerprint of its
+           evidence, the cycle and the rules — and its ``background_check_approval``
+           history row; commit. The gauge does not move.
+
+        Raises:
+            BackgroundCheckProposalOpenError: (409) one is already awaiting approval.
+            BackgroundCheckPrerequisitesUnmetError: (409) ``CLEAR`` with prerequisites
+                outstanding.
+            and every refusal a move raises (403/409/422).
+        """
+        profile = await self._lock_profile(company_id)
+        current = profile.background_check
+        origins = frozenset(origin for (origin, target) in APPROVAL_MOVES if target is to_value)
+        if not origins:
+            raise ValidationError(
+                f"a move to {to_value.value} needs no approval; record it as a decision"
+            )
+        text, _method = self._check_move(
+            profile,
+            to_value=to_value,
+            expected_from=origins,
+            actor_role=actor_role,
+            reason=reason,
+            risk=risk,
+            seen_value=seen_value,
+        )
+        await self._refuse_if_awaiting_approval(company_id)
+
+        inputs = await self._reader.company_inputs(company_id)
+        evidence = select_evidence(inputs, await self._company_documents(company_id))
+        if to_value is _State.CLEAR:
+            self._require_clear_prerequisites(company_id, inputs, risk=risk, evidence=evidence)
+
+        head = await self._decisions.latest_for_company(company_id)
+        if head is None:  # pragma: no cover — IN_REVIEW and FLAGGED always have a decision
+            raise BackgroundCheckMoveNotAllowedError(company_id, current, to_value)
+        cycle = await self._cycles.current_or_initial(
+            company_id,
+            actor_id=actor_id,
+            source_ref="background_check_service.propose",
+            at=clock.now(),
+        )
+        proposal = await self._proposals.add_proposal(
+            BackgroundCheckProposal(
+                id=uuid.uuid4(),
+                company_id=company_id,
+                based_on_decision_id=head.id,
+                from_value=current,
+                to_value=to_value,
+                risk_rating=risk,
+                reason=text,
+                inputs_fingerprint=inputs_fingerprint(inputs, evidence),
+                evidence_count=evidence.count,
+                cycle_id=cycle.id,
+                rules_version=CURRENT_CLEAR_RULES,
+                created_by=actor_id,
+                source="background_check_service.propose",
+                source_ref=None,
+            )
+        )
+        await self._history.record(
+            company_id,
+            dimension=BACKGROUND_CHECK_APPROVAL,
+            from_value=None,
+            to_value=PROPOSAL_OPEN,
+            actor_id=actor_id,
+            source="background_check_service.propose",
+            reason=text,
+            event_type=PROPOSED_EVENT,
+            details={
+                "proposal_id": str(proposal.id),
+                "from_value": current.value,
+                "to_value": to_value.value,
+                "risk_rating": risk.value if risk else None,
+                "based_on_decision_id": str(head.id),
+                "evidence_count": evidence.count,
+                "cycle_id": str(cycle.id),
+                "rules_version": CURRENT_CLEAR_RULES,
+            },
+        )
+        view = proposal_view(proposal)
+        await self._db.commit()
+        logger.info(
+            "background_check.proposed",
+            company_id=str(company_id),
+            proposal_id=str(proposal.id),
+            to_value=to_value.value,
+            actor_id=actor_id,
+        )
+        return view
+
+    async def approve(
+        self,
+        company_id: uuid.UUID,
+        proposal_id: uuid.UUID,
+        *,
+        actor_id: str,
+        actor_role: UserRole,
+    ) -> ApprovedProposal:
+        """Approve a proposal as a **different** COMPLIANCE or ADMIN user. One
+        transaction: lock the company; refuse the proposer, a resolved proposal and a
+        stale one (the gauge, the chain head or the inputs' fingerprint moved); write
+        the decision through ``_apply_move`` — the same rules, ``CLEAR``'s prerequisites
+        re-evaluated, the evidence pinned, the expiry set and the promotion made —
+        with ``decided_by`` the proposer and ``approved_by`` this user; then the
+        ``APPROVED`` resolution and its history row; commit once and announce.
+
+        Raises:
+            BackgroundCheckApproverRoleNotAllowedError: (403) not COMPLIANCE or ADMIN.
+            BackgroundCheckProposalNotFoundError: (404) not this company's.
+            BackgroundCheckProposalResolvedError: (409) already resolved.
+            BackgroundCheckSelfApprovalError: (403) the proposer.
+            BackgroundCheckProposalStaleError: (409) something moved since.
+        """
+        profile = await self._lock_profile(company_id)
+        proposal = await self._open_proposal_to_resolve(company_id, proposal_id, actor_role)
+        if actor_id == proposal.created_by:
+            raise BackgroundCheckSelfApprovalError(proposal_id)
+        why = await self._staleness(profile, proposal)
+        if why is not None:
+            raise BackgroundCheckProposalStaleError(proposal_id, why)
+
+        decision, evidence, announcement = await self._apply_move(
+            profile,
+            to_value=proposal.to_value,
+            expected_from=frozenset({proposal.from_value}),
+            actor_id=proposal.created_by,
+            actor_role=actor_role,
+            reason=proposal.reason,
+            risk=proposal.risk_rating,
+            approval=_Approval(proposal=proposal, approved_by=actor_id),
+        )
+        resolution = await self._resolve(
+            proposal,
+            outcome=ProposalOutcome.APPROVED,
+            actor_id=actor_id,
+            reason=None,
+            decision_id=decision.id,
+            source="background_check_service.approve",
+        )
+        result = ApprovedProposal(
+            decision=self._to_view(decision, evidence),
+            proposal=proposal_view(proposal, resolution),
+        )
+        await self._db.commit()
+        logger.info(
+            "background_check.approved",
+            company_id=str(company_id),
+            proposal_id=str(proposal_id),
+            decision_id=str(decision.id),
+            actor_id=actor_id,
+        )
+        await announce_became_customer(announcement)
+        return result
+
+    async def reject(
+        self,
+        company_id: uuid.UUID,
+        proposal_id: uuid.UUID,
+        *,
+        reason: str | None,
+        actor_id: str,
+        actor_role: UserRole,
+    ) -> BackgroundCheckProposalView:
+        """Reject a proposal, with a reason, as someone other than the proposer. The
+        gauge does not move. A stale proposal can still be rejected — that is how one
+        is cleared away.
+
+        Raises:
+            ValidationError: (422) no reason.
+            BackgroundCheckSelfApprovalError: (403) the proposer (who may withdraw).
+            and the not-found / resolved / role refusals of :meth:`approve`.
+        """
+        await self._lock_profile(company_id)
+        proposal = await self._open_proposal_to_resolve(company_id, proposal_id, actor_role)
+        if actor_id == proposal.created_by:
+            raise BackgroundCheckSelfApprovalError(proposal_id)
+        text = reason.strip() if reason else None
+        if not text:
+            raise ValidationError("a rejection needs a reason")
+        resolution = await self._resolve(
+            proposal,
+            outcome=ProposalOutcome.REJECTED,
+            actor_id=actor_id,
+            reason=text,
+            decision_id=None,
+            source="background_check_service.reject",
+        )
+        view = proposal_view(proposal, resolution)
+        await self._db.commit()
+        logger.info(
+            "background_check.proposal_rejected",
+            company_id=str(company_id),
+            proposal_id=str(proposal_id),
+            actor_id=actor_id,
+        )
+        return view
+
+    async def withdraw(
+        self,
+        company_id: uuid.UUID,
+        proposal_id: uuid.UUID,
+        *,
+        reason: str | None,
+        actor_id: str,
+        actor_role: UserRole,
+    ) -> BackgroundCheckProposalView:
+        """Withdraw one's own proposal. Proposer only; the reason is optional.
+
+        Raises:
+            BackgroundCheckProposalNotYoursError: (403) not the proposer.
+            and the not-found / resolved / role refusals of :meth:`approve`.
+        """
+        await self._lock_profile(company_id)
+        proposal = await self._open_proposal_to_resolve(company_id, proposal_id, actor_role)
+        if actor_id != proposal.created_by:
+            raise BackgroundCheckProposalNotYoursError(proposal_id)
+        text = reason.strip() if reason else None
+        resolution = await self._resolve(
+            proposal,
+            outcome=ProposalOutcome.WITHDRAWN,
+            actor_id=actor_id,
+            reason=text or None,
+            decision_id=None,
+            source="background_check_service.withdraw",
+        )
+        view = proposal_view(proposal, resolution)
+        await self._db.commit()
+        logger.info(
+            "background_check.proposal_withdrawn",
+            company_id=str(company_id),
+            proposal_id=str(proposal_id),
+            actor_id=actor_id,
+        )
+        return view
+
+    async def open_proposal(
+        self, company_id: uuid.UUID
+    ) -> tuple[BackgroundCheckProposalView, str | None] | None:
+        """The company's proposal awaiting approval, and why it is stale (``None`` while
+        it can still be approved) — or ``None`` when nothing awaits. Read-only and
+        unlocked, like :meth:`clear_prerequisites`: advisory; :meth:`approve` decides
+        again under the lock."""
+        proposal = await self._proposals.open_for_company(company_id)
+        if proposal is None:
+            return None
+        profile = await self._db.scalar(
+            select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
+        )
+        if profile is None:
+            raise ExporterProfileNotFoundError(company_id)
+        return proposal_view(proposal), await self._staleness(profile, proposal)
+
+    async def _refuse_if_awaiting_approval(self, company_id: uuid.UUID) -> None:
+        open_proposal = await self._proposals.open_for_company(company_id)
+        if open_proposal is not None:
+            raise BackgroundCheckProposalOpenError(company_id, open_proposal.id)
+
+    async def _open_proposal_to_resolve(
+        self, company_id: uuid.UUID, proposal_id: uuid.UUID, actor_role: UserRole
+    ) -> BackgroundCheckProposal:
+        if actor_role not in _APPROVER_ROLES:
+            raise BackgroundCheckApproverRoleNotAllowedError(actor_role)
+        found = await self._proposals.get_for_company(company_id, proposal_id)
+        if found is None:
+            raise BackgroundCheckProposalNotFoundError(company_id, proposal_id)
+        proposal, resolution = found
+        if resolution is not None:
+            raise BackgroundCheckProposalResolvedError(proposal_id, resolution.outcome)
+        return proposal
+
+    async def _staleness(
+        self, profile: ExporterProfile, proposal: BackgroundCheckProposal
+    ) -> str | None:
+        """Why ``proposal`` no longer describes the company, or ``None`` if it still
+        does: the gauge, the chain head and the inputs' fingerprint are as proposed."""
+        if profile.background_check is not proposal.from_value:
+            return f"the check is now {profile.background_check.value}"
+        head = await self._decisions.latest_for_company(profile.customer_id)
+        if head is None or head.id != proposal.based_on_decision_id:
+            return "another decision was recorded since"
+        inputs = await self._reader.company_inputs(profile.customer_id)
+        evidence = select_evidence(inputs, await self._company_documents(profile.customer_id))
+        if inputs_fingerprint(inputs, evidence) != proposal.inputs_fingerprint:
+            return "its inputs changed since it was proposed"
+        return None
+
+    async def _resolve(
+        self,
+        proposal: BackgroundCheckProposal,
+        *,
+        outcome: ProposalOutcome,
+        actor_id: str,
+        reason: str | None,
+        decision_id: uuid.UUID | None,
+        source: str,
+    ) -> BackgroundCheckProposalResolution:
+        """The resolution row and its history row. Flushes only."""
+        resolution = await self._proposals.add_resolution(
+            BackgroundCheckProposalResolution(
+                id=uuid.uuid4(),
+                proposal_id=proposal.id,
+                proposed_by=proposal.created_by,
+                outcome=outcome.value,
+                reason=reason,
+                decision_id=decision_id,
+                created_by=actor_id,
+                source=source,
+                source_ref=None,
+            )
+        )
+        await self._history.record(
+            proposal.company_id,
+            dimension=BACKGROUND_CHECK_APPROVAL,
+            from_value=PROPOSAL_OPEN,
+            to_value=outcome.value,
+            actor_id=actor_id,
+            source=source,
+            reason=reason,
+            event_type=RESOLVED_EVENTS[outcome],
+            details={
+                "proposal_id": str(proposal.id),
+                "from_value": proposal.from_value.value,
+                "to_value": proposal.to_value.value,
+                "proposed_by": proposal.created_by,
+                "decision_id": str(decision_id) if decision_id else None,
+            },
+        )
+        return resolution
+
     # ── The one move implementation ──────────────────────────────────────────
 
     async def _move(
@@ -763,13 +1247,18 @@ class BackgroundCheckService:
         seen_value: _State | None = None,
         cycle: CheckCycle | None = None,
         decision_id: uuid.UUID | None = None,
+        approval: _Approval | None = None,
     ) -> tuple[BackgroundCheckDecision, EvidenceSelection, CustomerAnnouncement | None]:
         """Steps 2–7b on a company row the caller has locked. Flushes; never commits.
 
-        Shared by :meth:`_move` and :meth:`start_cycle`, which records a reopen inside
-        its own transaction. ``cycle`` stamps the decision with that cycle instead of
-        the company's current one; ``decision_id`` fixes the new decision's id, so a
-        cycle written first can name it.
+        Shared by :meth:`_move`, :meth:`start_cycle` (which records a reopen inside its
+        own transaction) and :meth:`approve`. ``cycle`` stamps the decision with that
+        cycle instead of the company's current one; ``decision_id`` fixes the new
+        decision's id, so a cycle written first can name it.
+
+        **The maker-checker gate is here**, because every decision is written here: a
+        move that needs approval (IQ-1) is refused unless ``approval`` comes from
+        :meth:`approve`, and while a proposal is open no other move is made.
 
         Returns ``(decision, evidence, announcement)``; the caller commits and then
         announces.
@@ -779,24 +1268,21 @@ class BackgroundCheckService:
 
         # 2 — the caller's premise, the move, the role, the text and the risk. Nothing
         #     is assigned yet.
-        if seen_value is not None and current is not seen_value:
-            raise BackgroundCheckStateChangedError(company_id, seen_value, current)
-        if current not in expected_from or (current, to_value) not in _MOVES:
-            raise BackgroundCheckMoveNotAllowedError(company_id, current, to_value)
-        if actor_role not in _MOVES[(current, to_value)]:
-            raise BackgroundCheckRoleNotAllowedError(current, to_value, actor_role)
-        # Resolved here rather than by the caller: only now is the starting value
-        # known, and a reassessment from `FLAGGED` and one from `ON_HOLD` are the
-        # same act under two different origins.
-        method = method or _METHOD_FOR_MOVE[(current, to_value)]
-
-        text = reason.strip() if reason else None
-        if not text and (current, to_value) not in _NO_TEXT_REQUIRED:
-            raise BackgroundCheckReasonRequiredError(current, to_value)
-        if to_value in _RISK_REQUIRED and risk is None:
-            raise BackgroundCheckRiskRequiredError(company_id)
-        if to_value not in _RISK_REQUIRED and risk is not None:
-            raise BackgroundCheckRiskNotAllowedError(current, to_value)
+        text, method = self._check_move(
+            profile,
+            to_value=to_value,
+            expected_from=expected_from,
+            actor_role=actor_role,
+            reason=reason,
+            risk=risk,
+            seen_value=seen_value,
+            method=method,
+        )
+        # 2b — maker-checker (P3-1b). Only `approve` carries an approval.
+        if approval is None:
+            if maker_checker_enabled() and (current, to_value) in APPROVAL_MOVES:
+                raise BackgroundCheckApprovalRequiredError(current, to_value)
+            await self._refuse_if_awaiting_approval(company_id)
 
         # 3 — the inputs, through the seam, in this session and under this lock. The
         #     seam reads the current cycle's only (v2).
@@ -816,6 +1302,13 @@ class BackgroundCheckService:
             at=clock.now(),
         )
         previous = await self._decisions.latest_for_company(company_id)
+        # One server timestamp for a CLEAR's `decided_at` and `expires_at` (P3-3a), and
+        # for an approval's `approved_at`. Read after the lock, so `decided_at` still
+        # follows the chain; other moves keep the column default.
+        stamp = None
+        if to_value is _State.CLEAR or approval is not None:
+            stamp = await self._db.scalar(select(func.clock_timestamp()))
+        expires_at = stamp + clear_validity() if stamp and to_value is _State.CLEAR else None
         decision = BackgroundCheckDecision(
             id=decision_id or uuid.uuid4(),
             company_id=company_id,
@@ -832,11 +1325,19 @@ class BackgroundCheckService:
             details={},
             rules_version=CURRENT_CLEAR_RULES,
             cycle_id=cycle.id,
+            proposal_id=approval.proposal.id if approval else None,
+            approved_by=approval.approved_by if approval else None,
+            approved_at=stamp if approval else None,
+            expires_at=expires_at,
         )
+        if stamp is not None:
+            decision.decided_at = stamp
         await self._decisions.record(decision, self._evidence_rows(evidence))
 
-        # 6 — the gauge itself.
+        # 6 — the gauge itself, and the current Clear's expiry (set on CLEAR, cleared on
+        #     every move away — P3-3a).
         profile.background_check = to_value
+        profile.background_check_expires_at = expires_at
 
         # 7 — the history row, in the same transaction (history contract §5).
         await self._history.record(
@@ -856,6 +1357,9 @@ class BackgroundCheckService:
                 "evidence_count": evidence.count,
                 "cycle_id": str(cycle.id),
                 "rules_version": CURRENT_CLEAR_RULES,
+                "proposal_id": str(approval.proposal.id) if approval else None,
+                "approved_by": approval.approved_by if approval else None,
+                "expires_at": expires_at.isoformat() if expires_at else None,
             },
         )
 
@@ -872,6 +1376,43 @@ class BackgroundCheckService:
                 source=f"background_check_service.{method}",
             )
         return decision, evidence, announcement
+
+    def _check_move(
+        self,
+        profile: ExporterProfile,
+        *,
+        to_value: _State,
+        expected_from: frozenset[_State],
+        actor_role: UserRole,
+        reason: str | None,
+        risk: BackgroundCheckRisk | None,
+        seen_value: _State | None = None,
+        method: str | None = None,
+    ) -> tuple[str | None, str]:
+        """Step 2: the caller's premise, the move, the role, the text and the risk —
+        for a move and for a proposal alike. Assigns nothing. Returns the stripped text
+        and the act's method name (for the history row's source)."""
+        company_id = profile.customer_id
+        current = profile.background_check
+        if seen_value is not None and current is not seen_value:
+            raise BackgroundCheckStateChangedError(company_id, seen_value, current)
+        if current not in expected_from or (current, to_value) not in _MOVES:
+            raise BackgroundCheckMoveNotAllowedError(company_id, current, to_value)
+        if actor_role not in _MOVES[(current, to_value)]:
+            raise BackgroundCheckRoleNotAllowedError(current, to_value, actor_role)
+        # Resolved here rather than by the caller: only now is the starting value
+        # known, and a reassessment from `FLAGGED` and one from `ON_HOLD` are the
+        # same act under two different origins.
+        method = method or _METHOD_FOR_MOVE[(current, to_value)]
+
+        text = reason.strip() if reason else None
+        if not text and (current, to_value) not in _NO_TEXT_REQUIRED:
+            raise BackgroundCheckReasonRequiredError(current, to_value)
+        if to_value in _RISK_REQUIRED and risk is None:
+            raise BackgroundCheckRiskRequiredError(company_id)
+        if to_value not in _RISK_REQUIRED and risk is not None:
+            raise BackgroundCheckRiskNotAllowedError(current, to_value)
+        return text, method
 
     def _require_clear_prerequisites(
         self,
@@ -989,6 +1530,10 @@ class BackgroundCheckService:
             evidence=tuple(evidence),
             rules_version=decision.rules_version,
             cycle_id=decision.cycle_id,
+            proposal_id=decision.proposal_id,
+            approved_by=decision.approved_by,
+            approved_at=decision.approved_at,
+            expires_at=decision.expires_at,
         )
 
     async def _lock_profile(self, company_id: uuid.UUID) -> ExporterProfile:
@@ -1010,4 +1555,12 @@ class BackgroundCheckService:
         return profile
 
 
-__all__ = ["STARTABLE_CYCLE_KINDS", "BackgroundCheckService", "StartedCycle"]
+__all__ = [
+    "PROPOSED_EVENT",
+    "RESOLVED_EVENTS",
+    "STARTABLE_CYCLE_KINDS",
+    "ApprovedProposal",
+    "BackgroundCheckService",
+    "StartedCycle",
+    "proposal_view",
+]

@@ -444,6 +444,9 @@ class TestClearPrerequisites:
         # D2, clarified in the PR review: an ACCEPTED or REJECTED review finishes a
         # REVIEW result; an ESCALATED one does not.
         assert CLEAR_POLICY.concluding_review_statuses == {"ACCEPTED", "REJECTED"}
+        # Rule B (decision B, plan P3-2, 1 October 2026): KYB, AML and sanctions
+        # passed in the current cycle.
+        assert CLEAR_POLICY.required_passed_types == ("KYB", "AML", "SANCTIONS")
 
     def test_the_rule_reads_nothing_but_its_arguments(self):
         """Pure: the same arguments give the same answer, with no session in sight."""
@@ -464,12 +467,14 @@ def _reviewed(status: str, review_status: str | None, *, placeholder: bool = Fal
 
 
 def _settled_unmet(*checks: VerificationInput) -> tuple[str, ...]:
+    """The shipped D2 reading alone: rule B's required types (plan P3-2, tested in
+    `test_dev1_maker_checker_rules.py`) are left out so these checks isolate D2."""
     inputs = _inputs(verifications=checks)
     return evaluate_clear_prerequisites(
         inputs,
         risk=BackgroundCheckRisk.LOW,
         evidence=select_evidence(inputs),
-        policy=CLEAR_POLICY,
+        policy=dataclasses.replace(CLEAR_POLICY, required_passed_types=()),
     ).unmet
 
 

@@ -65,7 +65,7 @@ architecture.
 | `verification` | A verification result's status or review changing | Dev 4B → Dev 1 |
 | `screening` | A screening checklist item's decision (`screening_initial` / `screening_transition`; decision D9) | Dev 4B → Dev 1 |
 | `check_cycle` | A new background-check cycle started — a Re-KYC or Re-KYB (plan P2-3c). `from_status` / `to_status` are the previous and new cycle **numbers** (`"1"` → `"2"`); `event_type = "check_cycle_started"` | Dev 1 |
-| `background_check_approval` | A maker-checker proposal proposed, approved, rejected or withdrawn (plan P3-1b). **Reserved** — no writer yet | Dev 1 |
+| `background_check_approval` | A maker-checker proposal proposed, approved, rejected or withdrawn (plan P3-1b). `from_status` / `to_status` are the **proposal's** status: `null` → `OPEN` (`event_type = "background_check_proposed"`), then `OPEN` → `APPROVED` / `REJECTED` / `WITHDRAWN` (`background_check_approved` / `_rejected` / `_withdrawn`). `actor_id` is the proposer, then the resolver; `reason` the proposal's reason, then the rejection's or withdrawal's. An approval also writes the usual `background_check` row for the decision, whose actor is the decider (the proposer) | Dev 1 |
 | `gst_registration` | A GST registration added, deactivated, flagged or unflagged (plan P6-2, P6-5). **Reserved** — no writer yet. The GSTIN in `details` must be stored masked, like the profile rows | Dev 3 |
 | `trade` | A trade relationship, invoice or payment outcome recorded (plan P5-3, P5-4). **Reserved** — no writer yet | Dev 3 |
 | `pipeline` | A company entering or leaving the sales pipeline — created as a buyer-only company, or onboarded (plan P4-6, P4-9). **Reserved** — no writer yet | Dev 3 |
@@ -129,8 +129,9 @@ it reached):
 | `deal`, `event_type = "deal_buyer_changed"` | `changed`, `buyer_name`, `created` | `deal-and-buyer.md` §7 |
 | `screening` | `item_key`, `screening_review_item_id`; since 1 October 2026 also `cycle_id` and `evidence_count` | D9 (`dev4/4b-task.md` §13); P2-1b, P2-3a |
 | `verification` | `verification_type`, `verification_result_id`; `entity_type` on a result's own rows; `review_id` on `verification_reviewed`; `cycle_id` on a company-subject result recorded since 1 October 2026 | `dev4/4b-task.md`; P2-3a |
-| `background_check` | `decision_id`, `supersedes_decision_id`, `risk_rating`, `evidence_count`; since 1 October 2026 also `cycle_id` and `rules_version` | `background-check.md` §8 |
+| `background_check` | `decision_id`, `supersedes_decision_id`, `risk_rating`, `evidence_count`; since 1 October 2026 also `cycle_id` and `rules_version`, and (tranche 2) `proposal_id`, `approved_by` (an approved move) and `expires_at` (a `CLEAR`) | `background-check.md` §8 |
 | `check_cycle` | `cycle_id`, `kind`, `previous_cycle_id`, `reopen_decision_id` (set when the start reopened a `CLEAR` company) | `background-check.md` §12.3 |
+| `background_check_approval` | `proposal_id`, `from_value`, `to_value` (the proposed move); on proposing also `risk_rating`, `based_on_decision_id`, `evidence_count`, `cycle_id`, `rules_version`; on resolving also `proposed_by` and `decision_id` (set on approval) | `background-check.md` §12.5 |
 
 ### 3.1 In the read response
 
@@ -251,7 +252,7 @@ Stated separately so nobody reads this contract as a description of the code.
 | Append-only trigger and repository | **implemented** (0011) |
 | The shared writer, `HistoryService.record` (flushes, never commits) | **implemented** (L1-11) |
 | The read routes, `GET /exporters/{id}/history` and `GET /deals/{id}/history` | **implemented** (L1-11); DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details — the `CUSTOMER` journey row carries both (D8) |
-| The five F1 dimensions (§2) | **listed** (1 October 2026): `check_cycle` is written (P2-3c); `background_check_approval`, `gst_registration`, `trade` and `pipeline` are reserved for their lanes' tasks |
+| The five F1 dimensions (§2) | **listed** (1 October 2026): `check_cycle` (P2-3c) and `background_check_approval` (P3-1b) are written; `gst_registration`, `trade` and `pipeline` are reserved for their lanes' tasks |
 | `actor_name` on every row read (§3.1) | **implemented** (29 September 2026) |
 | Every dimension in §2 | **implemented** by its owner's service |
 | The move to `CUSTOMER`, with `terminal: true` | **implemented** (L2-11) |

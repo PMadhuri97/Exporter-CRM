@@ -50,11 +50,10 @@ from app.modules.onboarding.tests.fixtures.compliance import ComplianceUser, app
 from app.modules.onboarding.tests.integration._dev1_support import (
     CHECKER,
     MAKER,
-    answer_screening,
     cleared_company,
     gauge,
+    ready_to_clear,
     start_cycle,
-    start_review,
 )
 from app.modules.onboarding.tests.integration._l4b_support import (
     BASE,
@@ -263,9 +262,7 @@ async def test_qualifying_a_company_whose_clear_has_expired_does_not_promote_it(
 
 
 async def test_clearing_a_prospect_still_promotes_it_in_the_same_move():
-    company_id = await make_prospect()
-    await answer_screening(company_id)
-    await start_review(company_id)
+    company_id = await ready_to_clear(await make_prospect())
     await approve_as(CHECKER, company_id, maker=MAKER)
     assert await _journey(company_id) is ExporterJourney.CUSTOMER
 
@@ -278,12 +275,12 @@ async def test_approve_as_clears_with_two_different_compliance_users(
 ):
     assert compliance_maker.user_id != compliance_checker.user_id
     assert compliance_maker.role is compliance_checker.role is UserRole.COMPLIANCE
-    company_id = await make_company()
-    await answer_screening(company_id)
-    await start_review(company_id)
+    company_id = await ready_to_clear(await make_company())
     view = await approve_as(compliance_checker, company_id, maker=compliance_maker)
     assert view.to_value is BackgroundCheckState.CLEAR
+    # P3-1b: the maker decided, the checker approved — two people on one decision.
     assert view.decided_by == compliance_maker.user_id
+    assert view.approved_by == compliance_checker.user_id
 
 
 async def test_approve_as_refuses_one_user_as_maker_and_checker(

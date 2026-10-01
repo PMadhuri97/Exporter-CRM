@@ -28,6 +28,8 @@ function standing(overrides: Partial<BackgroundCheck> = {}): BackgroundCheck {
       sanctions: 'PASSED',
       aml: 'MISSING',
     },
+    awaiting_approval: false,
+    rekyc_due: false,
     ...overrides,
   };
 }
@@ -91,6 +93,23 @@ describe('CompanyComplianceSummary', () => {
       await screen.findByText('Compliance details are not available to your role.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('carries the served "Awaiting approval" and "Re-KYC due" badges (P3-1c, P3-3c)', async () => {
+    vi.mocked(getBackgroundCheck).mockResolvedValue(
+      standing({ awaiting_approval: true, rekyc_due: true }),
+    );
+    renderWithClient(<CompanyComplianceSummary companyId={COMPANY_ID} />);
+    expect(await screen.findByTestId('awaiting-approval-badge')).toBeInTheDocument();
+    expect(screen.getByTestId('rekyc-due-badge')).toHaveTextContent('Re-KYC due');
+  });
+
+  it('shows neither badge when the server reports neither', async () => {
+    vi.mocked(getBackgroundCheck).mockResolvedValue(standing());
+    renderWithClient(<CompanyComplianceSummary companyId={COMPANY_ID} />);
+    await screen.findByTestId('background-check-gauge');
+    expect(screen.queryByTestId('awaiting-approval-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rekyc-due-badge')).not.toBeInTheDocument();
   });
 
   it('reports any other failure as an error', async () => {

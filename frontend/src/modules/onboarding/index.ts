@@ -9,4 +9,10 @@ export {
 } from './pages';
 export { COMPANY_TABS, paths, type CompanyTab } from './paths';
 // The Home page's cards: domain views composed by `src/pages/HomePage.tsx`.
-export { CheckBacksDueCard, FollowUpsDueCard, PipelineSummaryCard } from './components/home';
+export {
+  CheckBacksDueCard,
+  FollowUpsDueCard,
+  PipelineSummaryCard,
+  ProposalsAwaitingMeCard,
+  ReKycDueCard,
+} from './components/home';

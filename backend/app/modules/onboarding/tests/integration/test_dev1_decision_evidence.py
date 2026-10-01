@@ -25,6 +25,7 @@ from app.modules.onboarding.application.verification_service import Verification
 from app.modules.onboarding.domain.background_check_views import (
     CLEAR_RULES_V1,
     CLEAR_RULES_V2,
+    CLEAR_RULES_V3,
     CURRENT_CLEAR_RULES,
 )
 from app.modules.onboarding.domain.entities.orchestration_enums import (
@@ -34,6 +35,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
 from app.modules.onboarding.domain.verification_evidence import EvidenceRef, VerificationEvidence
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.compliance import record_required_checks
 from app.modules.onboarding.tests.integration._dev1_support import (
     MAKER,
     answer_screening,
@@ -63,8 +65,9 @@ async def tokens(client: AsyncClient) -> dict[UserRole, str]:
 
 
 async def _sample_clear(client: AsyncClient, tokens) -> tuple[str, dict]:
-    """A company with identifiers, a document, a reviewed KYB result and seven PASSED
-    answers (one with document evidence), cleared by a maker and a checker. Returns
+    """A company with identifiers, a document, a reviewed KYB result, AML and sanctions
+    results (rule B) and seven PASSED answers (one with document evidence), cleared by a
+    maker and a checker. Returns
     ``(company_id, clearing decision)``."""
     created = await client.post(
         f"{BASE}/exporters",
@@ -91,6 +94,7 @@ async def _sample_clear(client: AsyncClient, tokens) -> tuple[str, dict]:
         )
     await answer_screening(company_id, keys=SCREENING_CATALOGUE[:1], evidence=evidence)
     await answer_screening(company_id, keys=SCREENING_CATALOGUE[1:])
+    await record_required_checks(company_id, types=("AML", "SANCTIONS"))
     await start_review(company_id)
     decision = await clear(company_id)
     return str(company_id), {
@@ -114,12 +118,12 @@ async def test_every_pinned_id_on_a_clear_resolves(client: AsyncClient, tokens):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["decision_id"] == pinned["id"] and body["to_value"] == "CLEAR"
-    assert body["rules_version"] == CLEAR_RULES_V2
+    assert body["rules_version"] == CLEAR_RULES_V3
     assert body["cycle_number"] == 1
 
     kinds = [item["kind"] for item in body["items"]]
     assert kinds.count("SCREENING_ITEM") == len(SCREENING_CATALOGUE) == 7
-    assert kinds.count("VERIFICATION_RESULT") == 1 and kinds.count("DOCUMENT") == 1
+    assert kinds.count("VERIFICATION_RESULT") == 3 and kinds.count("DOCUMENT") == 1
     # Every pinned id resolved: exactly the detail for its kind, never an empty item.
     for item in body["items"]:
         details = {"VERIFICATION_RESULT": "verification", "SCREENING_ITEM": "screening_item",
@@ -127,7 +131,9 @@ async def test_every_pinned_id_on_a_clear_resolves(client: AsyncClient, tokens):
         for kind, key in details.items():
             assert (item[key] is not None) == (item["kind"] == kind), item
 
-    [verification] = [i["verification"] for i in body["items"] if i["verification"]]
+    verifications = [i["verification"] for i in body["items"] if i["verification"]]
+    assert {v["verification_type"] for v in verifications} == {"KYB", "AML", "SANCTIONS"}
+    [verification] = [v for v in verifications if v["verification_type"] == "KYB"]
     assert verification["verification_result_id"] == pinned["result_id"]
     assert verification["verification_type"] == "KYB"
     assert verification["status"] == "PASSED" and verification["provenance"] == "MANUAL"
@@ -160,7 +166,10 @@ async def test_a_later_review_shows_the_pinned_one_as_superseded(client, tokens)
             supersedes_review_id=uuid.UUID(pinned["review_id"]),
         )
     body = (await _evidence(client, tokens, company_id, pinned["id"])).json()
-    [verification] = [i["verification"] for i in body["items"] if i["verification"]]
+    [verification] = [
+        i["verification"] for i in body["items"]
+        if i["verification"] and i["verification"]["verification_result_id"] == pinned["result_id"]
+    ]
     # What the decision rested on is unchanged; the reader is told it has moved on.
     assert verification["pinned_review"]["id"] == pinned["review_id"]
     assert verification["review_superseded"] is True
@@ -211,7 +220,8 @@ async def test_a_decision_recorded_before_rules_were_versioned_reads_as_v1(clien
 
 
 async def test_new_decisions_record_the_current_rules_and_cycle(client, tokens):
-    assert CURRENT_CLEAR_RULES == CLEAR_RULES_V2 == "clear-2026-10-01-7items"
+    assert CLEAR_RULES_V2 == "clear-2026-10-01-7items"
+    assert CURRENT_CLEAR_RULES == CLEAR_RULES_V3 == "clear-2026-10-01-7items-kyb-aml-sanctions"
     company_id, _ = await _sample_clear(client, tokens)
     listing = await client.get(
         f"{BASE}/exporters/{company_id}/background-check/decisions",
@@ -220,7 +230,7 @@ async def test_new_decisions_record_the_current_rules_and_cycle(client, tokens):
     assert listing.status_code == 200
     decisions = listing.json()["decisions"]
     assert [d["to_value"] for d in decisions] == ["CLEAR", "IN_REVIEW"]
-    assert {d["rules_version"] for d in decisions} == {CLEAR_RULES_V2}
+    assert {d["rules_version"] for d in decisions} == {CLEAR_RULES_V3}
     assert {d["cycle_number"] for d in decisions} == {1}
     assert len({d["cycle_id"] for d in decisions}) == 1
 
@@ -287,5 +297,7 @@ async def test_every_pinned_id_on_the_sample_clear_resolves(client: AsyncClient,
                 "DOCUMENT": item["document"],
             }[item["kind"]]
             assert detail is not None, item
-        expected = CLEAR_RULES_V1 if decision["rules_version"] is None else CLEAR_RULES_V2
+        # V1 by the read rule, or the version stored (V2 before rule B, V3 since).
+        expected = decision["rules_version"] or CLEAR_RULES_V1
+        assert expected in (CLEAR_RULES_V1, CLEAR_RULES_V2, CLEAR_RULES_V3)
         assert body["rules_version"] == expected

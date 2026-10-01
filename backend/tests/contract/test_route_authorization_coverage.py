@@ -286,6 +286,25 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): STAFF,  # P2-3d
     # P2-3c: IQ-3 — compliance and admin start a cycle; the RM does not.
     ("POST", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): COMPLIANCE_OR_ADMIN,
+    # P3-1b/c — maker-checker (decision A). Staff read a company's proposals; only
+    # compliance and admin approve, reject or withdraw, and read the approval queue —
+    # the RM never approves compliance (plan §8).
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/proposals"): STAFF,
+    (
+        "POST",
+        f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/approve",
+    ): COMPLIANCE_OR_ADMIN,
+    (
+        "POST",
+        f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/reject",
+    ): COMPLIANCE_OR_ADMIN,
+    (
+        "POST",
+        f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/withdraw",
+    ): COMPLIANCE_OR_ADMIN,
+    ("GET", f"{CRM}/background-check/proposals"): COMPLIANCE_OR_ADMIN,
+    # P3-3c — the Re-KYC due list: compliance and admin act on it, the RM reads it.
+    ("GET", f"{CRM}/background-check/due"): STAFF,
 }
 
 

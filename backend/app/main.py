@@ -52,6 +52,13 @@ async def lifespan(app: FastAPI):
         temporal_enabled=settings.TEMPORAL_ENABLED,
     )
 
+    # Maker-checker may be off only in local/development/test (IQ-17): a server that
+    # would let one person clear a company must not start at all.
+    from app.modules.onboarding.application.compliance_settings import (
+        enforce_compliance_settings,
+    )
+    enforce_compliance_settings()
+
     # ledger_accounts.precision is a denormalised copy of a versioned registry
     # value and is immutable once set. If they ever diverge, every amount posted
     # against the affected account is silently wrong by a power of ten. This is a

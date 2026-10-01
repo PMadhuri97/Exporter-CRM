@@ -5,9 +5,15 @@
  * carries due check-backs) and the company search. There is no stats endpoint,
  * so the stage counts are the length of one capped search per stage, shown as
  * "200+" when the cap is hit — the same honesty the pipeline's "100+" uses.
+ *
+ * Developer 1 (compliance engine, plans P3-1c and P3-3c) adds two: "Proposals awaiting
+ * me" — background-check decisions proposed by another officer, approvable from here in
+ * two clicks (Approve, then confirm) — and "Re-KYC due", the companies whose Clear has
+ * expired or soon will. Both are server lists (`GET /background-check/proposals`,
+ * `GET /background-check/due`); the page mounts each for the roles the server admits.
  */
 
-import { ArrowRight, CalendarClock, PauseCircle } from 'lucide-react';
+import { ArrowRight, CalendarClock, PauseCircle, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -15,9 +21,22 @@ import { EmptySection, LINK_CLASSES, Panel, Skeleton } from '@/components';
 import { formatDate, formatDateTime } from '@/lib/format';
 
 import { JOURNEY_LABEL, JOURNEY_STAGES } from '../../constants';
-import { useExporterProfiles, useFollowUps } from '../../hooks';
+import {
+  useExporterProfiles,
+  useFollowUps,
+  useProposalsAwaitingMe,
+  useReKycDue,
+} from '../../hooks';
 import { paths } from '../../paths';
-import type { ExporterJourney } from '../../types';
+import type {
+  BackgroundCheckProposal,
+  BackgroundCheckProposalAction,
+  ExporterJourney,
+} from '../../types';
+import { actorLabel } from '../actor-label';
+import { proposedMoveLabel } from '../background-check-labels';
+import { ProposalResolveDialog } from '../ProposalResolveDialog';
+import { RiskChip } from '../RiskChip';
 
 const PREVIEW = 5;
 const COUNT_CAP = 200;
@@ -214,6 +233,180 @@ export function PipelineSummaryCard() {
           <StageCount key={journey} journey={journey} />
         ))}
       </div>
+    </Panel>
+  );
+}
+
+// ── Developer 1: maker-checker (P3-1c) and Re-KYC due (P3-3c) ──────────────
+
+function CountChip({ count, alert, testId }: { count: number; alert: boolean; testId: string }) {
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${
+        alert && count > 0 ? 'bg-status-failed/10 text-status-failed' : 'bg-surface-sunken text-ink-muted'
+      }`}
+      data-testid={testId}
+    >
+      {count}
+    </span>
+  );
+}
+
+function ProposalRow({ proposal }: { proposal: BackgroundCheckProposal }) {
+  const [action, setAction] = useState<BackgroundCheckProposalAction | null>(null);
+  const offered = (proposal.allowed_actions ?? []).filter((a) => a !== 'WITHDRAW');
+
+  return (
+    <li data-testid="proposal-awaiting" className="py-2.5 first:pt-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link
+            to={paths.company(proposal.company_id, 'background-check')}
+            className="truncate text-sm font-medium text-ink hover:text-brand-600"
+          >
+            {proposal.company_name ?? 'Unnamed company'}
+          </Link>
+          <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
+            <span className="font-medium text-ink">{proposedMoveLabel(proposal.to_value)}</span>
+            {proposal.risk_rating && <RiskChip risk={proposal.risk_rating} />}
+            <span>
+              by {actorLabel(proposal.proposed_by_name, proposal.proposed_by)},{' '}
+              {formatDateTime(proposal.proposed_at)}
+            </span>
+          </p>
+        </div>
+        {action === null && offered.length > 0 && (
+          <div className="flex shrink-0 gap-1.5">
+            {offered.map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                onClick={() => setAction(candidate)}
+                className={
+                  candidate === 'APPROVE'
+                    ? 'rounded bg-slate-900 px-2.5 py-1 text-xs text-white'
+                    : 'rounded border border-border px-2.5 py-1 text-xs'
+                }
+              >
+                {candidate === 'APPROVE' ? 'Approve' : 'Reject'}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {action !== null && (
+        <div className="mt-2">
+          <ProposalResolveDialog
+            proposal={proposal}
+            action={action}
+            onDone={() => setAction(null)}
+            onCancel={() => setAction(null)}
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Background-check decisions another officer has proposed and this user may approve —
+ * maker-checker's queue (COMPLIANCE, ADMIN). Approve, then confirm: two clicks.
+ */
+export function ProposalsAwaitingMeCard() {
+  const query = useProposalsAwaitingMe({ limit: PREVIEW });
+  const rows = query.data?.proposals ?? [];
+
+  return (
+    <Panel
+      title={
+        <span className="inline-flex items-center gap-2">
+          <ShieldCheck size={15} className="text-ink-faint" />
+          Proposals awaiting me
+          {query.data && (
+            <CountChip count={query.data.total} alert testId="proposals-awaiting-count" />
+          )}
+        </span>
+      }
+    >
+      {query.isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-10" />
+          <Skeleton className="h-10" />
+        </div>
+      ) : query.isError ? (
+        <p role="alert" className="text-sm text-status-failed">
+          Couldn't load the proposals awaiting approval.
+        </p>
+      ) : rows.length === 0 ? (
+        <EmptySection>No background-check decision is waiting for your approval.</EmptySection>
+      ) : (
+        <ul className="divide-y divide-border">
+          {rows.map((proposal) => (
+            <ProposalRow key={proposal.id} proposal={proposal} />
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * Companies whose Clear has expired or expires within the Re-KYC window (COMPLIANCE
+ * and ADMIN act on it; the RM reads it). An expired Clear still reads Clear — nothing
+ * moves it automatically — but no longer promotes a company or lets its deals be
+ * handed over, so this is where it shows.
+ */
+export function ReKycDueCard() {
+  const query = useReKycDue({ limit: PREVIEW });
+  const rows = query.data?.companies ?? [];
+
+  return (
+    <Panel
+      title={
+        <span className="inline-flex items-center gap-2">
+          <ShieldAlert size={15} className="text-ink-faint" />
+          Re-KYC due
+          {query.data && <CountChip count={query.data.total} alert testId="rekyc-due-count" />}
+        </span>
+      }
+    >
+      {query.isLoading ? (
+        <Skeleton className="h-16" />
+      ) : query.isError ? (
+        <p role="alert" className="text-sm text-status-failed">
+          Couldn't load the companies due for Re-KYC.
+        </p>
+      ) : rows.length === 0 ? (
+        <EmptySection>
+          No Clear has expired or expires before{' '}
+          {query.data ? formatDate(query.data.before) : 'the Re-KYC window ends'}.
+        </EmptySection>
+      ) : (
+        <ul className="divide-y divide-border">
+          {rows.map((row) => (
+            <li
+              key={row.company_id}
+              data-testid="rekyc-due-row"
+              className="flex items-center justify-between gap-3 py-2.5 first:pt-0"
+            >
+              <Link
+                to={paths.company(row.company_id, 'background-check')}
+                className="min-w-0 truncate text-sm font-medium text-ink hover:text-brand-600"
+              >
+                {row.company_name ?? 'Unnamed company'}
+              </Link>
+              <span
+                className={`shrink-0 text-xs font-medium ${
+                  row.is_expired ? 'text-status-failed' : 'text-status-review'
+                }`}
+              >
+                {row.is_expired ? 'Expired ' : 'Expires '}
+                {formatDate(row.expires_at)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </Panel>
   );
 }

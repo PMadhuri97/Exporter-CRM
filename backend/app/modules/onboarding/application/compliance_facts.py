@@ -16,8 +16,10 @@ What it reads, today
 --------------------
 * The gauge and the clearing decision through ``BackgroundCheckReader.standing`` — the
   chain head of a ``CLEAR`` company is its clearing decision.
-* Expiry by the legacy rule (the clearing decision + one year, BQ-5) until plan P3-3a
-  stores an ``expires_at`` on each new Clear.
+* Expiry (plan P3-3b) from the standing: the clearing decision's stored
+  ``expires_at`` (P3-3a), or — for a Clear recorded before migration 0027 — the legacy
+  rule (the decision + one year, BQ-5). An expired Clear is still ``is_clear``; only
+  ``is_clear_current`` turns false. Nothing moves the gauge.
 * Sanctions and AML from the company's **current-cycle** inputs, through the
   compliance-inputs seam (plan P2-3b), by IQ-2's meaning of "passed".
 """
@@ -36,8 +38,6 @@ from app.modules.onboarding.domain.compliance_facts import (
     SANCTIONS,
     PartyComplianceFacts,
     check_state,
-    is_current,
-    legacy_clear_expiry,
 )
 from app.modules.onboarding.domain.compliance_inputs import ComplianceInputsReader
 
@@ -72,16 +72,11 @@ class ComplianceFactsService:
         now = _require_aware(now)
         standing = await BackgroundCheckReader(self._db).standing(company_id)
         inputs = await self._inputs.company_inputs(company_id)
-        expires_at = (
-            legacy_clear_expiry(standing.decided_at)
-            if standing.is_clear and standing.decided_at is not None
-            else None
-        )
         return PartyComplianceFacts(
             background_check=standing.value,  # type: ignore[arg-type]
             is_clear=standing.is_clear,
-            clear_expires_at=expires_at,
-            is_clear_current=standing.is_clear and is_current(expires_at, now),
+            clear_expires_at=standing.expires_at,
+            is_clear_current=standing.is_clear_and_current(now),
             sanctions=check_state(inputs.verifications, SANCTIONS),
             aml=check_state(inputs.verifications, AML),
         )

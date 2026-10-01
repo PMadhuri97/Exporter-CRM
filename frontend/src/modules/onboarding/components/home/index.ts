@@ -1,1 +1,7 @@
-export { CheckBacksDueCard, FollowUpsDueCard, PipelineSummaryCard } from './HomeCards';
+export {
+  CheckBacksDueCard,
+  FollowUpsDueCard,
+  PipelineSummaryCard,
+  ProposalsAwaitingMeCard,
+  ReKycDueCard,
+} from './HomeCards';

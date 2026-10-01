@@ -1374,7 +1374,7 @@ export interface paths {
         get: operations["list_background_check_decisions_api_v1_onboarding_exporters__company_id__background_check_decisions_get"];
         put?: never;
         /**
-         * Record a background-check decision
+         * Record a background-check decision (or propose one for approval)
          * @description Moves the gauge and records why, as one locked decision with the evidence it rested on, in one transaction.
          *
          *     The request names **where the check is going** and nothing about who is deciding: the actor comes from the login session, the source and decided-by kind are the server's, and the evidence snapshot is assembled by the server. A request carrying any of them is refused (422).
@@ -1382,6 +1382,8 @@ export interface paths {
          *     Send `from_value` (the value the screen showed) so that a request made from a stale screen is refused (409) rather than becoming a different act.
          *
          *     Roles are enforced per move, not merely per route: OPERATIONS may start a check and record what arrived, and nothing else.
+         *
+         *     **Maker-checker.** A move to CLEAR, FLAGGED or ON_HOLD is not recorded here: it becomes a **proposal** (202, the proposal in the body) — its rules and, for CLEAR, its prerequisites checked now — and the check does not move until a different COMPLIANCE or ADMIN user approves it. While a proposal is open no other move is accepted (409 `BACKGROUND_CHECK_PROPOSAL_OPEN`).
          */
         post: operations["record_background_check_decision_api_v1_onboarding_exporters__company_id__background_check_decisions_post"];
         delete?: never;
@@ -1434,6 +1436,126 @@ export interface paths {
          *     COMPLIANCE and ADMIN only; the actor comes from the session.
          */
         post: operations["start_check_cycle_api_v1_onboarding_exporters__company_id__background_check_cycles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a company's background-check proposals
+         * @description Every proposed CLEAR, FLAGGED or ON_HOLD on this company, newest first, with how each ended: approved (and the decision it wrote), rejected (and why) or withdrawn. An open one carries what **this caller** may do with it. Proposals and their resolutions are append-only. DEVELOPER is refused (D8).
+         */
+        get: operations["list_background_check_proposals_api_v1_onboarding_exporters__company_id__background_check_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/proposals/{proposal_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a proposed background-check decision
+         * @description The second person in maker-checker. Under the company's lock: refuses the proposer and a proposal that is resolved or stale (the check, its latest decision or its inputs changed since), re-evaluates the Clear rules, then writes the decision — `decided_by` the proposer, `approved_by` you — pins its evidence, sets a CLEAR's expiry and makes a qualified PROSPECT a CUSTOMER, in one transaction. COMPLIANCE or ADMIN; the RM never approves.
+         */
+        post: operations["approve_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a proposed background-check decision
+         * @description Closes the proposal with a reason; the check does not move. Anyone but the proposer, COMPLIANCE or ADMIN. A stale proposal can be rejected.
+         */
+        post: operations["reject_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/proposals/{proposal_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw your own background-check proposal
+         * @description The proposer closes their own proposal (the reason is optional); the check does not move.
+         */
+        post: operations["withdraw_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/background-check/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Background-check proposals across companies (the approval queue)
+         * @description `status=open` (the default) lists every proposal awaiting approval, the longest-waiting first — the Home card "Proposals awaiting me" adds `awaiting=me`, which leaves out the caller's own. `approved`, `rejected` and `withdrawn` list resolved ones, newest first. Each carries the company's name (never an identifier) and what this caller may do with it. COMPLIANCE and ADMIN only: they are the ones who approve.
+         */
+        get: operations["list_proposals_across_companies_api_v1_onboarding_background_check_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/background-check/due": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Companies due for Re-KYC
+         * @description CLEAR companies whose Clear has expired or expires before `before` (default: now + the Re-KYC window, 30 days unless configured) — the expired first, then the soonest. An expired Clear still reads CLEAR (nothing moves the gauge automatically) but no longer promotes the company or lets its deals be handed over. A company whose Re-KYC has started is not listed: starting it reopens the check. Names only, never an identifier. Staff; DEVELOPER is refused (D8).
+         */
+        get: operations["list_rekyc_due_api_v1_onboarding_background_check_due_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1842,6 +1964,11 @@ export interface components {
             /** Approvals */
             approvals: components["schemas"]["ApprovalResult"][];
         };
+        /** ApproveBackgroundCheckProposalResponse */
+        ApproveBackgroundCheckProposalResponse: {
+            decision: components["schemas"]["BackgroundCheckDecisionResponse"];
+            proposal: components["schemas"]["BackgroundCheckProposalResponse"];
+        };
         /**
          * ApproverRole
          * @enum {string}
@@ -1972,6 +2099,25 @@ export interface components {
              * @description That cycle's number: 1, 2, 3 …
              */
             cycle_number?: number | null;
+            /**
+             * Proposal Id
+             * @description Maker-checker: the proposal this decision approved. Null for a decision recorded by one person (a move that needs no approval, or one recorded before maker-checker).
+             */
+            proposal_id?: string | null;
+            /**
+             * Approved By
+             * @description Who approved it (never `decided_by`, who proposed it).
+             */
+            approved_by?: string | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
+            /** Approved At */
+            approved_at?: string | null;
+            /**
+             * Expires At
+             * @description When this CLEAR stops being current. Null on other moves, and on a CLEAR recorded before expiry was stored (it expires one year after `decided_at`).
+             */
+            expires_at?: string | null;
         };
         /**
          * BackgroundCheckMoveResponse
@@ -1987,6 +2133,106 @@ export interface components {
             reason_required: boolean;
             /** Risk Required */
             risk_required: boolean;
+            /**
+             * Approval Required
+             * @description Maker-checker: recording this move creates a proposal that a different COMPLIANCE or ADMIN user must approve before the check moves.
+             * @default false
+             */
+            approval_required: boolean;
+        };
+        /** BackgroundCheckProposalListResponse */
+        BackgroundCheckProposalListResponse: {
+            /** Proposals */
+            proposals: components["schemas"]["BackgroundCheckProposalResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * BackgroundCheckProposalResponse
+         * @description A proposed CLEAR, FLAGGED or ON_HOLD, and how it ended once resolved.
+         */
+        BackgroundCheckProposalResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @description The company's name (no identifier is ever carried).
+             */
+            company_name?: string | null;
+            /**
+             * Based On Decision Id
+             * Format: uuid
+             */
+            based_on_decision_id: string;
+            from_value: components["schemas"]["BackgroundCheckState"];
+            to_value: components["schemas"]["BackgroundCheckState"];
+            risk_rating: components["schemas"]["BackgroundCheckRisk"] | null;
+            /** Reason */
+            reason: string;
+            /** Proposed By */
+            proposed_by: string;
+            /** Proposed By Name */
+            proposed_by_name?: string | null;
+            /**
+             * Proposed At
+             * Format: date-time
+             */
+            proposed_at: string;
+            /**
+             * Cycle Id
+             * Format: uuid
+             */
+            cycle_id: string;
+            /** Cycle Number */
+            cycle_number?: number | null;
+            /** Rules Version */
+            rules_version: string;
+            /**
+             * Evidence Count
+             * @description How many items the proposed decision rests on.
+             */
+            evidence_count: number;
+            /**
+             * Status
+             * @description OPEN while awaiting approval; then APPROVED, REJECTED or WITHDRAWN.
+             * @enum {string}
+             */
+            status: "OPEN" | "APPROVED" | "REJECTED" | "WITHDRAWN";
+            /** Resolved By */
+            resolved_by?: string | null;
+            /** Resolved By Name */
+            resolved_by_name?: string | null;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Resolution Reason */
+            resolution_reason?: string | null;
+            /**
+             * Decision Id
+             * @description The decision an approval wrote.
+             */
+            decision_id?: string | null;
+            /**
+             * Stale Reason
+             * @description Set on an open proposal that can no longer be approved because the check or its inputs moved since; it can only be rejected or withdrawn. Served on the company's own reads, not in the cross-company queue.
+             */
+            stale_reason?: string | null;
+            /**
+             * Allowed Actions
+             * @description What **this caller** may do with it: the proposer may WITHDRAW; another COMPLIANCE or ADMIN user may APPROVE (unless stale) and REJECT.
+             */
+            allowed_actions?: ("APPROVE" | "REJECT" | "WITHDRAW")[];
         };
         /**
          * BackgroundCheckResponse
@@ -2025,9 +2271,27 @@ export interface components {
             current_cycle?: components["schemas"]["CheckCycleResponse"] | null;
             /**
              * Allowed Cycle Actions
-             * @description The new cycles this caller may start now (Re-KYC, Re-KYB). Empty for a role that may not, on a FLAGGED or ON_HOLD company, or while the current cycle has nothing recorded in it.
+             * @description The new cycles this caller may start now (Re-KYC, Re-KYB). Empty for a role that may not, on a FLAGGED or ON_HOLD company, while the current cycle has nothing recorded in it, or while a proposal awaits approval.
              */
             allowed_cycle_actions?: components["schemas"]["BackgroundCheckCycleActionResponse"][];
+            /**
+             * Awaiting Approval
+             * @description A proposed CLEAR, FLAGGED or ON_HOLD awaits a second approver. The gauge has not moved (it reads IN_REVIEW, or FLAGGED for a proposed ON_HOLD), and `allowed_moves` is empty until it is approved, rejected or withdrawn.
+             * @default false
+             */
+            awaiting_approval: boolean;
+            open_proposal?: components["schemas"]["BackgroundCheckProposalResponse"] | null;
+            /**
+             * Required Checks
+             * @description The verification types CLEAR requires (KYB, AML, SANCTIONS — rule B) and the state of each in the current cycle.
+             */
+            required_checks?: components["schemas"]["RequiredCheckResponse"][];
+            /**
+             * Rekyc Due
+             * @description CLEAR, and the Clear has expired or expires within the Re-KYC window. An expired Clear still reads CLEAR — nothing moves the gauge — but no longer promotes the company or lets its deals be handed over.
+             * @default false
+             */
+            rekyc_due: boolean;
         };
         /**
          * BackgroundCheckRisk
@@ -4297,6 +4561,48 @@ export interface components {
          * @enum {string}
          */
         QualificationState: "NOT_YET_REVIEWED" | "QUALIFIED" | "NOT_QUALIFIED";
+        /**
+         * ReKycDueCompanyResponse
+         * @description A CLEAR company whose Clear has expired or expires before `before`.
+         */
+        ReKycDueCompanyResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string | null;
+            /** Journey */
+            journey: string;
+            background_check: components["schemas"]["BackgroundCheckState"];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Is Expired */
+            is_expired: boolean;
+            /** Current Cycle Number */
+            current_cycle_number: number | null;
+        };
+        /** ReKycDueListResponse */
+        ReKycDueListResponse: {
+            /** Companies */
+            companies: components["schemas"]["ReKycDueCompanyResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Before
+             * Format: date-time
+             * @description The cut-off applied: expiring before this.
+             */
+            before: string;
+        };
         /** ReadinessResponse */
         ReadinessResponse: {
             /**
@@ -4425,6 +4731,28 @@ export interface components {
             /** Provider */
             provider: string;
             status: components["schemas"]["OnboardingStatus"];
+        };
+        /**
+         * RejectBackgroundCheckProposalRequest
+         * @description Reject a proposal. The reason is required; who rejects comes from the session.
+         */
+        RejectBackgroundCheckProposalRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * RequiredCheckResponse
+         * @description One verification type CLEAR requires (rule B), and its state in the current cycle.
+         */
+        RequiredCheckResponse: {
+            /** Verification Type */
+            verification_type: string;
+            /**
+             * State
+             * @description PASSED (the latest real result is PASSED, or REVIEW with an ACCEPTED review), FAILED, PENDING, or MISSING.
+             * @enum {string}
+             */
+            state: "PASSED" | "FAILED" | "MISSING" | "PENDING";
         };
         /**
          * ResultRequest
@@ -5245,6 +5573,14 @@ export interface components {
         WebhookAck: {
             /** Status */
             status: string;
+        };
+        /**
+         * WithdrawBackgroundCheckProposalRequest
+         * @description Withdraw one's own proposal. The reason is optional.
+         */
+        WithdrawBackgroundCheckProposalRequest: {
+            /** Reason */
+            reason?: string | null;
         };
         /** WorkflowStatusResponse */
         WorkflowStatusResponse: {
@@ -9369,6 +9705,15 @@ export interface operations {
                     "application/json": components["schemas"]["BackgroundCheckDecisionResponse"];
                 };
             };
+            /** @description CLEAR, FLAGGED or ON_HOLD: proposed, awaiting a second approver */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalResponse"];
+                };
+            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -9390,7 +9735,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the current value; `BACKGROUND_CHECK_STATE_CHANGED` — the check is no longer at `from_value`; or `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR with prerequisites outstanding, naming each */
+            /** @description `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the current value; `BACKGROUND_CHECK_STATE_CHANGED` — the check is no longer at `from_value`; `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR with prerequisites outstanding, naming each; or `BACKGROUND_CHECK_PROPOSAL_OPEN` — a proposal awaits approval */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -9564,6 +9909,340 @@ export interface operations {
                 content?: never;
             };
             /** @description An unknown kind, a missing reason, or an unknown field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_background_check_proposals_api_v1_onboarding_exporters__company_id__background_check_proposals_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApproveBackgroundCheckProposalResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer withdraws */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found, or `BACKGROUND_CHECK_PROPOSAL_NOT_FOUND` */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `BACKGROUND_CHECK_PROPOSAL_RESOLVED` — already approved, rejected or withdrawn; `BACKGROUND_CHECK_PROPOSAL_STALE` — the check or its inputs moved since it was proposed (approve only); `BACKGROUND_CHECK_PREREQUISITES_UNMET` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectBackgroundCheckProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer withdraws */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found, or `BACKGROUND_CHECK_PROPOSAL_NOT_FOUND` */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `BACKGROUND_CHECK_PROPOSAL_RESOLVED` — already approved, rejected or withdrawn; `BACKGROUND_CHECK_PROPOSAL_STALE` — the check or its inputs moved since it was proposed (approve only); `BACKGROUND_CHECK_PREREQUISITES_UNMET` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No reason, or an unknown field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    withdraw_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WithdrawBackgroundCheckProposalRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer withdraws */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found, or `BACKGROUND_CHECK_PROPOSAL_NOT_FOUND` */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `BACKGROUND_CHECK_PROPOSAL_RESOLVED` — already approved, rejected or withdrawn; `BACKGROUND_CHECK_PROPOSAL_STALE` — the check or its inputs moved since it was proposed (approve only); `BACKGROUND_CHECK_PREREQUISITES_UNMET` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An unknown field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_proposals_across_companies_api_v1_onboarding_background_check_proposals_get: {
+        parameters: {
+            query?: {
+                status?: "open" | "approved" | "rejected" | "withdrawn";
+                /** @description `me`: leave out the caller's own proposals (open queue). */
+                awaiting?: "me" | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rekyc_due_api_v1_onboarding_background_check_due_get: {
+        parameters: {
+            query?: {
+                /** @description List Clears expiring before this (ISO 8601, with a time zone). */
+                before?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReKycDueListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `before` is not a date-time with a time zone */
             422: {
                 headers: {
                     [name: string]: unknown;

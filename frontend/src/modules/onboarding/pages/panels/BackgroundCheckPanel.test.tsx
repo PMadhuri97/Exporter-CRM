@@ -38,9 +38,9 @@ function standing(overrides: Partial<BackgroundCheck> = {}): BackgroundCheck {
     clearing_decision_id: null,
     decided_at: '2026-09-28T10:00:00Z',
     allowed_moves: [
-      { to_value: 'CLEAR', reason_required: true, risk_required: true },
-      { to_value: 'MORE_INFO', reason_required: true, risk_required: false },
-      { to_value: 'FLAGGED', reason_required: true, risk_required: false },
+      { to_value: 'CLEAR', reason_required: true, risk_required: true, approval_required: true },
+      { to_value: 'MORE_INFO', reason_required: true, risk_required: false, approval_required: false },
+      { to_value: 'FLAGGED', reason_required: true, risk_required: false, approval_required: true },
     ],
     clear_blocked_reasons: [],
     compliance: {
@@ -50,6 +50,8 @@ function standing(overrides: Partial<BackgroundCheck> = {}): BackgroundCheck {
       sanctions: 'MISSING',
       aml: 'MISSING',
     },
+    awaiting_approval: false,
+    rekyc_due: false,
     ...overrides,
   };
 }
@@ -166,7 +168,7 @@ describe('BackgroundCheckPanel — the move dialog', () => {
   it('offers only the moves the server returned', async () => {
     vi.mocked(getBackgroundCheck).mockResolvedValue(
       standing({
-        allowed_moves: [{ to_value: 'MORE_INFO', reason_required: true, risk_required: false }],
+        allowed_moves: [{ to_value: 'MORE_INFO', reason_required: true, risk_required: false, approval_required: false }],
       }),
     );
     renderPanel();
@@ -194,7 +196,7 @@ describe('BackgroundCheckPanel — the move dialog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Record a decision' }));
     fireEvent.click(screen.getByLabelText(/Flag this company/));
 
-    const submit = screen.getByRole('button', { name: 'Record decision' });
+    const submit = screen.getByRole('button', { name: 'Propose for approval' });
     expect(submit).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText('Reason'), {
@@ -223,7 +225,7 @@ describe('BackgroundCheckPanel — the move dialog', () => {
     fireEvent.change(screen.getByLabelText('Reason'), {
       target: { value: 'adverse media' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Record decision' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Propose for approval' }));
 
     await waitFor(() =>
       expect(recordBackgroundCheckDecision).toHaveBeenCalledWith(COMPANY_ID, {
@@ -247,7 +249,7 @@ describe('BackgroundCheckPanel — the move dialog', () => {
     fireEvent.change(screen.getByLabelText('Risk rating'), { target: { value: 'LOW' } });
     fireEvent.click(screen.getByLabelText(/Flag this company/));
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'sanctions hit' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Record decision' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Propose for approval' }));
 
     await waitFor(() =>
       expect(recordBackgroundCheckDecision).toHaveBeenCalledWith(COMPANY_ID, {
@@ -281,7 +283,7 @@ describe('BackgroundCheckPanel — the move dialog', () => {
     fireEvent.click(screen.getByLabelText(/Clear this company/));
 
     expect(screen.getByText(/cannot be cleared yet/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Record decision' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Propose for approval' })).toBeDisabled();
   });
 
   it('says what each outstanding prerequisite asks for, not its key', async () => {
@@ -314,12 +316,12 @@ describe('BackgroundCheckPanel — the move dialog', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Record a decision' }));
     fireEvent.click(screen.getByLabelText(/Flag this company/));
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'reason' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Record decision' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Propose for approval' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'The decision could not be recorded.',
     );
-    expect(screen.getByRole('button', { name: 'Record decision' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Propose for approval' })).toBeInTheDocument();
   });
 
   it("shows the server's reason for a refusal and reloads the standing", async () => {
@@ -336,7 +338,7 @@ describe('BackgroundCheckPanel — the move dialog', () => {
     const loads = vi.mocked(getBackgroundCheck).mock.calls.length;
     fireEvent.click(screen.getByLabelText(/Flag this company/));
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'reason' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Record decision' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Propose for approval' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/is now CLEAR, not IN_REVIEW/);
     await waitFor(() =>

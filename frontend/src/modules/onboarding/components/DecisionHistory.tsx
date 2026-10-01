@@ -15,11 +15,15 @@
  *
  * With more than one check cycle, the decisions are grouped by cycle, newest first
  * (a Re-KYC / Re-KYB starts a cycle; earlier ones stay readable).
+ *
+ * Maker-checker (Developer 1, P3-1c): a decision taken on a proposal names both people
+ * — who decided (proposed it) and who approved it — so the maker sees who approved. A
+ * CLEAR says until when it is current (P3-3a).
  */
 
 import { useState } from 'react';
 
-import { formatDateTime, humanize } from '@/lib/format';
+import { formatDate, formatDateTime, humanize } from '@/lib/format';
 
 import { useDecisionEvidence } from '../hooks';
 import type {
@@ -47,6 +51,8 @@ const LABELS: Record<BackgroundCheckState, string> = {
 function rulesLabel(version: string | null | undefined): string {
   if (!version || version === 'clear-2026-09-28-8items') return 'eight-item checklist rules';
   if (version === 'clear-2026-10-01-7items') return 'seven-item checklist rules';
+  if (version === 'clear-2026-10-01-7items-kyb-aml-sanctions')
+    return 'seven-item checklist with KYB, AML and sanctions passed';
   return version;
 }
 
@@ -216,7 +222,17 @@ function DecisionRow({
       <p className="mt-1 text-xs text-slate-500">
         {formatDateTime(decision.decided_at)}
         {decision.decided_by ? ` · ${actorLabel(decision.decided_by_name, decision.decided_by)}` : ''}
+        {decision.approved_by && (
+          <span data-testid="decision-approved-by">
+            {` · approved by ${actorLabel(decision.approved_by_name, decision.approved_by)}`}
+          </span>
+        )}
       </p>
+      {decision.to_value === 'CLEAR' && decision.expires_at && (
+        <p data-testid="decision-expires" className="text-xs text-slate-500">
+          Clear until {formatDate(decision.expires_at)}
+        </p>
+      )}
       <EvidenceSummary decision={decision} />
       {customerId && (
         <>

@@ -3,8 +3,9 @@ Not a test module (no ``test_`` prefix).
 
 Real Postgres, no per-test rollback — every helper mints its own company, the
 convention the rest of the onboarding suite follows. Everything goes through the real
-services and the shipped ``CLEAR_POLICY``; ``approve_as`` is the P0-5 helper, so these
-tests keep passing unchanged when maker-checker (P3-1b) lands.
+services and the shipped ``CLEAR_POLICY``; ``approve_as`` is the P0-5 helper, which
+since P3-1b proposes as the maker and approves as the checker. A company is cleared on
+rule B's inputs too (KYB, AML and sanctions passed — ``record_required_checks``).
 """
 
 from __future__ import annotations
@@ -20,7 +21,12 @@ from app.modules.onboarding.application.screening_review_service import (
 from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.check_cycle import CheckCycleKind
 from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
-from app.modules.onboarding.tests.fixtures.compliance import ComplianceUser, approve_as
+from app.modules.onboarding.tests.fixtures.compliance import (
+    ComplianceUser,
+    approve_as,
+    propose_as,
+    record_required_checks,
+)
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -61,6 +67,8 @@ async def start_review(company_id: uuid.UUID) -> None:
 
 
 async def move(company_id: uuid.UUID, to_value: BackgroundCheckState, reason: str = "because"):
+    """Record a move that needs no approval (MORE_INFO, an answer, a reassessment, a
+    reopen); for FLAGGED / ON_HOLD use :func:`flag`."""
     async with db_services.AsyncSessionLocal() as db:
         return await BackgroundCheckService(db).record_decision(
             company_id,
@@ -77,10 +85,31 @@ async def clear(company_id: uuid.UUID):
     return await approve_as(CHECKER, company_id, maker=MAKER)
 
 
-async def cleared_company(company_id: uuid.UUID) -> uuid.UUID:
-    """Answer the checklist, start the check and clear it."""
+async def flag(
+    company_id: uuid.UUID,
+    to_value: BackgroundCheckState = BackgroundCheckState.FLAGGED,
+    reason: str = "a concern",
+):
+    """``FLAGGED`` or ``ON_HOLD`` by a maker and a checker."""
+    return await approve_as(CHECKER, company_id, maker=MAKER, to_value=to_value, reason=reason)
+
+
+async def propose(company_id: uuid.UUID, **kwargs):
+    """A proposal by the maker, left open."""
+    return await propose_as(MAKER, company_id, **kwargs)
+
+
+async def ready_to_clear(company_id: uuid.UUID) -> uuid.UUID:
+    """Answer the checklist, record rule B's checks and start the check."""
     await answer_screening(company_id)
+    await record_required_checks(company_id, actor_id=MAKER.user_id)
     await start_review(company_id)
+    return company_id
+
+
+async def cleared_company(company_id: uuid.UUID) -> uuid.UUID:
+    """Answer the checklist, record rule B's checks, start the check and clear it."""
+    await ready_to_clear(company_id)
     await clear(company_id)
     return company_id
 
@@ -124,9 +153,12 @@ __all__ = [
     "answer_screening",
     "clear",
     "cleared_company",
+    "flag",
     "gauge",
     "inputs",
     "move",
+    "propose",
+    "ready_to_clear",
     "start_cycle",
     "start_review",
 ]

@@ -257,6 +257,8 @@ describe('VerificationSection — check cycles (P2-3d)', () => {
       allowed_moves: [],
       clear_blocked_reasons: [],
       compliance: { is_clear: false, clear_expires_at: null, is_clear_current: false, sanctions: 'MISSING', aml: 'MISSING' },
+      awaiting_approval: false,
+      rekyc_due: false,
       current_cycle: {
         id: 'cycle-2', company_id: COMPANY_ID, number: 2, kind: 'RE_KYC', reason: 'Annual',
         started_at: '2026-10-01T09:00:00Z', started_by: 'x', started_by_name: null,

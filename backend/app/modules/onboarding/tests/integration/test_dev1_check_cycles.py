@@ -43,13 +43,14 @@ from app.modules.onboarding.exceptions import (
 from app.modules.onboarding.migrations import onboarding_0025_dev1_check_cycle as migration
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import insert_company, make_company
-from app.modules.onboarding.tests.fixtures.compliance import approve_as
+from app.modules.onboarding.tests.fixtures.compliance import approve_as, record_required_checks
 from app.modules.onboarding.tests.integration._dev1_support import (
     CHECKER,
     MAKER,
     answer_screening,
     clear,
     cleared_company,
+    flag,
     gauge,
     inputs,
     move,
@@ -322,9 +323,9 @@ async def test_a_flagged_or_held_company_is_reassessed_first(state):
     company_id = await make_company()
     await answer_screening(company_id, keys=("address-physical",))
     await start_review(company_id)
-    await move(company_id, _State.FLAGGED)
+    await flag(company_id)
     if state is _State.ON_HOLD:
-        await move(company_id, _State.ON_HOLD)
+        await flag(company_id, _State.ON_HOLD)
     with pytest.raises(CheckCycleNotAllowedError):
         await start_cycle(company_id)
     with pg() as cursor:
@@ -388,11 +389,16 @@ async def test_a_company_in_cycle_2_with_no_cycle_2_answers_cannot_be_cleared():
 
     with pytest.raises(BackgroundCheckPrerequisitesUnmetError) as caught:
         await clear(company_id)
-    assert CLEAR_SCREENING_ANSWERED in caught.value.extensions["unmet"]
+    # Rule B is scoped to the cycle too: cycle 1's KYB/AML/sanctions do not carry over.
+    assert {
+        CLEAR_SCREENING_ANSWERED, "kyb_passed", "aml_passed", "sanctions_passed"
+    } <= set(caught.value.extensions["unmet"])
 
     # Answer again in cycle 2, and it clears; the earlier cycle's answers are untouched.
     answers = await answer_screening(company_id)
     assert {answer.cycle_id for answer in answers} == {started.cycle.id}
+    checks = await record_required_checks(company_id)
+    assert {check.cycle_id for check in checks} == {started.cycle.id}
     decision = await clear(company_id)
     assert decision.cycle_id == started.cycle.id
     assert await gauge(company_id) is _State.CLEAR
@@ -401,6 +407,7 @@ async def test_a_company_in_cycle_2_with_no_cycle_2_answers_cannot_be_cleared():
 async def test_a_placeholder_left_in_cycle_1_no_longer_blocks_in_cycle_2():
     company_id = await make_company()
     await answer_screening(company_id)
+    await record_required_checks(company_id)
     await start_review(company_id)
     with pg() as cursor:  # a legacy placeholder: no provider ever ran it, no cycle
         insert_result(
@@ -412,6 +419,7 @@ async def test_a_placeholder_left_in_cycle_1_no_longer_blocks_in_cycle_2():
 
     await start_cycle(company_id)
     await answer_screening(company_id)
+    await record_required_checks(company_id)
     await clear(company_id)
     assert await gauge(company_id) is _State.CLEAR
 
@@ -596,12 +604,15 @@ async def test_the_cycle_shapes_carry_no_identifier_for_operations(client, token
 
 
 async def test_approval_helpers_still_clear_across_cycles():
-    """`approve_as` (P0-5) works in any cycle — the helper P3-1b will re-point."""
+    """`approve_as` (P0-5, re-pointed by P3-1b) proposes and approves in any cycle."""
     company_id = await cleared_company(await make_company())
-    await start_cycle(company_id)
+    started = await start_cycle(company_id)
     await answer_screening(company_id)
+    await record_required_checks(company_id)
     view = await approve_as(CHECKER, company_id, maker=MAKER, risk=BackgroundCheckRisk.MEDIUM)
     assert view.to_value is _State.CLEAR
+    assert (view.decided_by, view.approved_by) == (MAKER.user_id, CHECKER.user_id)
+    assert view.cycle_id == started.cycle.id
 
 
 async def test_start_cycle_is_one_transaction():

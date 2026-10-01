@@ -25,6 +25,12 @@ decision's rules version and cycle (P2-4a, P2-3a), and the resolved evidence of 
 decision (P2-1a). **None of them carries an identifier** — no PAN, GSTIN, IEC, CIN,
 buyer tax id or contact detail — so ``masking.py`` still has nothing to do here; the
 masking tests assert that for OPERATIONS, and DEVELOPER is refused (D8).
+
+Developer 1 added, tranche 2 (1 October 2026): maker-checker proposals and their
+approval (P3-1b/c), rule B's required checks (P3-2), each Clear's expiry and the
+"Re-KYC due" list (P3-3). Still no identifier: a proposal carries a move, a reason, a
+risk, user ids and names; the due list a company's **name**, journey and expiry —
+never its PAN, GSTIN, IEC, CIN or contacts.
 """
 
 from __future__ import annotations
@@ -59,6 +65,13 @@ class BackgroundCheckMoveResponse(BaseModel):
     to_value: BackgroundCheckState
     reason_required: bool
     risk_required: bool
+    approval_required: bool = Field(
+        default=False,
+        description=(
+            "Maker-checker: recording this move creates a proposal that a different "
+            "COMPLIANCE or ADMIN user must approve before the check moves."
+        ),
+    )
 
     @classmethod
     def from_view(cls, move: BackgroundCheckMove) -> BackgroundCheckMoveResponse:
@@ -66,6 +79,7 @@ class BackgroundCheckMoveResponse(BaseModel):
             to_value=move.to,
             reason_required=move.reason_required,
             risk_required=move.risk_required,
+            approval_required=move.approval_required,
         )
 
 
@@ -127,6 +141,27 @@ class BackgroundCheckDecisionResponse(BaseModel):
     cycle_number: int | None = Field(
         default=None, description="That cycle's number: 1, 2, 3 …"
     )
+    proposal_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Maker-checker: the proposal this decision approved. Null for a decision "
+            "recorded by one person (a move that needs no approval, or one recorded "
+            "before maker-checker)."
+        ),
+    )
+    approved_by: str | None = Field(
+        default=None,
+        description="Who approved it (never `decided_by`, who proposed it).",
+    )
+    approved_by_name: str | None = None
+    approved_at: datetime | None = None
+    expires_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When this CLEAR stops being current. Null on other moves, and on a CLEAR "
+            "recorded before expiry was stored (it expires one year after `decided_at`)."
+        ),
+    )
 
     @classmethod
     def from_view(
@@ -134,6 +169,7 @@ class BackgroundCheckDecisionResponse(BaseModel):
         view: BackgroundCheckDecisionView,
         *,
         decided_by_name: str | None = None,
+        approved_by_name: str | None = None,
         cycle_id: uuid.UUID | None = None,
         cycle_number: int | None = None,
     ) -> BackgroundCheckDecisionResponse:
@@ -154,6 +190,11 @@ class BackgroundCheckDecisionResponse(BaseModel):
             rules_version=view.rules_version,
             cycle_id=cycle_id or view.cycle_id,
             cycle_number=cycle_number,
+            proposal_id=view.proposal_id,
+            approved_by=view.approved_by,
+            approved_by_name=approved_by_name,
+            approved_at=view.approved_at,
+            expires_at=view.expires_at,
         )
 
 
@@ -249,6 +290,119 @@ class StartCheckCycleResponse(BaseModel):
     )
 
 
+# ── Maker-checker, rule B, expiry (Developer 1, P3-1, P3-2, P3-3) ───────────
+
+ProposalStatusValue = Literal["OPEN", "APPROVED", "REJECTED", "WITHDRAWN"]
+ProposalActionValue = Literal["APPROVE", "REJECT", "WITHDRAW"]
+
+
+class BackgroundCheckProposalResponse(BaseModel):
+    """A proposed CLEAR, FLAGGED or ON_HOLD, and how it ended once resolved."""
+
+    id: uuid.UUID
+    company_id: uuid.UUID
+    company_name: str | None = Field(
+        default=None, description="The company's name (no identifier is ever carried)."
+    )
+    based_on_decision_id: uuid.UUID
+    from_value: BackgroundCheckState
+    to_value: BackgroundCheckState
+    risk_rating: BackgroundCheckRisk | None
+    reason: str
+    proposed_by: str
+    proposed_by_name: str | None = None
+    proposed_at: datetime
+    cycle_id: uuid.UUID
+    cycle_number: int | None = None
+    rules_version: str
+    evidence_count: int = Field(description="How many items the proposed decision rests on.")
+    status: ProposalStatusValue = Field(
+        description="OPEN while awaiting approval; then APPROVED, REJECTED or WITHDRAWN."
+    )
+    resolved_by: str | None = None
+    resolved_by_name: str | None = None
+    resolved_at: datetime | None = None
+    resolution_reason: str | None = None
+    decision_id: uuid.UUID | None = Field(
+        default=None, description="The decision an approval wrote."
+    )
+    stale_reason: str | None = Field(
+        default=None,
+        description=(
+            "Set on an open proposal that can no longer be approved because the check "
+            "or its inputs moved since; it can only be rejected or withdrawn. Served on "
+            "the company's own reads, not in the cross-company queue."
+        ),
+    )
+    allowed_actions: list[ProposalActionValue] = Field(
+        default_factory=list,
+        description=(
+            "What **this caller** may do with it: the proposer may WITHDRAW; another "
+            "COMPLIANCE or ADMIN user may APPROVE (unless stale) and REJECT."
+        ),
+    )
+
+
+class BackgroundCheckProposalListResponse(BaseModel):
+    proposals: list[BackgroundCheckProposalResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class RejectBackgroundCheckProposalRequest(BaseModel):
+    """Reject a proposal. The reason is required; who rejects comes from the session."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[str, Field(min_length=1, max_length=4000)]
+
+
+class WithdrawBackgroundCheckProposalRequest(BaseModel):
+    """Withdraw one's own proposal. The reason is optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[str, Field(min_length=1, max_length=4000)] | None = None
+
+
+class ApproveBackgroundCheckProposalResponse(BaseModel):
+    decision: BackgroundCheckDecisionResponse
+    proposal: BackgroundCheckProposalResponse
+
+
+class RequiredCheckResponse(BaseModel):
+    """One verification type CLEAR requires (rule B), and its state in the current cycle."""
+
+    verification_type: str
+    state: CheckStateValue = Field(
+        description=(
+            "PASSED (the latest real result is PASSED, or REVIEW with an ACCEPTED "
+            "review), FAILED, PENDING, or MISSING."
+        )
+    )
+
+
+class ReKycDueCompanyResponse(BaseModel):
+    """A CLEAR company whose Clear has expired or expires before `before`."""
+
+    company_id: uuid.UUID
+    company_name: str | None
+    journey: str
+    background_check: BackgroundCheckState
+    expires_at: datetime
+    is_expired: bool
+    current_cycle_number: int | None
+
+
+class ReKycDueListResponse(BaseModel):
+    companies: list[ReKycDueCompanyResponse]
+    total: int
+    limit: int
+    offset: int
+    before: datetime = Field(description="The cut-off applied: expiring before this.")
+
+
 class BackgroundCheckResponse(BaseModel):
     """Where a company's check stands, and what this caller may do next."""
 
@@ -297,8 +451,32 @@ class BackgroundCheckResponse(BaseModel):
         default_factory=list,
         description=(
             "The new cycles this caller may start now (Re-KYC, Re-KYB). Empty for a "
-            "role that may not, on a FLAGGED or ON_HOLD company, or while the current "
-            "cycle has nothing recorded in it."
+            "role that may not, on a FLAGGED or ON_HOLD company, while the current "
+            "cycle has nothing recorded in it, or while a proposal awaits approval."
+        ),
+    )
+    awaiting_approval: bool = Field(
+        default=False,
+        description=(
+            "A proposed CLEAR, FLAGGED or ON_HOLD awaits a second approver. The gauge "
+            "has not moved (it reads IN_REVIEW, or FLAGGED for a proposed ON_HOLD), and "
+            "`allowed_moves` is empty until it is approved, rejected or withdrawn."
+        ),
+    )
+    open_proposal: BackgroundCheckProposalResponse | None = None
+    required_checks: list[RequiredCheckResponse] = Field(
+        default_factory=list,
+        description=(
+            "The verification types CLEAR requires (KYB, AML, SANCTIONS — rule B) and "
+            "the state of each in the current cycle."
+        ),
+    )
+    rekyc_due: bool = Field(
+        default=False,
+        description=(
+            "CLEAR, and the Clear has expired or expires within the Re-KYC window. An "
+            "expired Clear still reads CLEAR — nothing moves the gauge — but no longer "
+            "promotes the company or lets its deals be handed over."
         ),
     )
 
@@ -447,6 +625,14 @@ class DecisionEvidenceResponse(BaseModel):
 
 
 __all__ = [
+    "ApproveBackgroundCheckProposalResponse",
+    "BackgroundCheckProposalListResponse",
+    "BackgroundCheckProposalResponse",
+    "ReKycDueCompanyResponse",
+    "ReKycDueListResponse",
+    "RejectBackgroundCheckProposalRequest",
+    "RequiredCheckResponse",
+    "WithdrawBackgroundCheckProposalRequest",
     "BackgroundCheckCycleActionResponse",
     "CheckCycleListResponse",
     "CheckCycleResponse",

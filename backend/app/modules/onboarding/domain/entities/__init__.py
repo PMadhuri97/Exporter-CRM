@@ -227,3 +227,17 @@ from app.modules.onboarding.domain.entities.check_cycle import (  # noqa: E402
 )
 
 __all__ += ["CheckCycle", "CheckCycleKind"]
+
+from app.modules.onboarding.domain.entities.background_check_proposal import (  # noqa: E402
+    APPROVAL_MOVES,
+    BackgroundCheckProposal,
+    BackgroundCheckProposalResolution,
+    ProposalOutcome,
+)
+
+__all__ += [
+    "APPROVAL_MOVES",
+    "BackgroundCheckProposal",
+    "BackgroundCheckProposalResolution",
+    "ProposalOutcome",
+]

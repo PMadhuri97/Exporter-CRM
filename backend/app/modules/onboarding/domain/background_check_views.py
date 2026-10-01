@@ -24,10 +24,13 @@ literals in the rule body, so an answer is one value rather than a scattered edi
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from app.modules.onboarding.domain.compliance_facts import CheckState, check_state
 from app.modules.onboarding.domain.compliance_inputs import CompanyComplianceInputs
 from app.modules.onboarding.domain.entities.background_check_enums import (
     BackgroundCheckDecidedByKind,
@@ -51,8 +54,14 @@ CLEAR_RULES_V1 = "clear-2026-09-28-8items"
 #: decision and on every new cycle.
 CLEAR_RULES_V2 = "clear-2026-10-01-7items"
 
+#: The Clear rules since rule B (plan P3-2, decision B, 1 October 2026): V2's four
+#: prerequisites, plus KYB, AML and sanctions each **passed** in the current cycle
+#: (IQ-2's meaning of "passed": ``compliance_facts.check_state``). Written on every
+#: decision, proposal and cycle since.
+CLEAR_RULES_V3 = "clear-2026-10-01-7items-kyb-aml-sanctions"
+
 #: The version every new decision records.
-CURRENT_CLEAR_RULES = CLEAR_RULES_V2
+CURRENT_CLEAR_RULES = CLEAR_RULES_V3
 
 
 def effective_rules_version(stored: str | None) -> str:
@@ -76,6 +85,9 @@ class BackgroundCheckMove:
     to: BackgroundCheckState
     reason_required: bool
     risk_required: bool
+    #: Maker-checker (P3-1b): this move is recorded as a proposal and takes effect only
+    #: when a different COMPLIANCE or ADMIN user approves it.
+    approval_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -124,6 +136,75 @@ class BackgroundCheckDecisionView:
     rules_version: str | None = None
     #: The check cycle it was taken in (P2-3a); ``None`` = cycle 1 by rule.
     cycle_id: uuid.UUID | None = None
+    #: Maker-checker (P3-1a): the proposal it approved, who approved it and when.
+    proposal_id: uuid.UUID | None = None
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+    #: When a CLEAR stops being current (P3-3a); ``None`` on other moves, and on a
+    #: CLEAR before 0027 (read as ``decided_at`` + one year).
+    expires_at: datetime | None = None
+
+
+# ── Maker-checker (Developer 1, plan P3-1a/b) ────────────────────────────────
+
+#: What a viewer may do with an open proposal — served, like ``allowed_moves``.
+PROPOSAL_APPROVE = "APPROVE"
+PROPOSAL_REJECT = "REJECT"
+PROPOSAL_WITHDRAW = "WITHDRAW"
+
+#: A proposal's status: open until resolved, then its resolution's outcome.
+PROPOSAL_OPEN = "OPEN"
+
+
+@dataclass(frozen=True)
+class BackgroundCheckProposalView:
+    """One proposed move and, once resolved, how it ended."""
+
+    id: uuid.UUID
+    company_id: uuid.UUID
+    based_on_decision_id: uuid.UUID
+    from_value: BackgroundCheckState
+    to_value: BackgroundCheckState
+    risk_rating: BackgroundCheckRisk | None
+    reason: str
+    proposed_by: str
+    proposed_at: datetime
+    cycle_id: uuid.UUID
+    rules_version: str
+    evidence_count: int
+    #: ``OPEN``, or the resolution's outcome (``APPROVED``/``REJECTED``/``WITHDRAWN``).
+    status: str = PROPOSAL_OPEN
+    resolved_by: str | None = None
+    resolved_at: datetime | None = None
+    resolution_reason: str | None = None
+    #: The decision an approval wrote.
+    decision_id: uuid.UUID | None = None
+
+    @property
+    def is_open(self) -> bool:
+        return self.status == PROPOSAL_OPEN
+
+
+def proposal_actions(
+    proposal: BackgroundCheckProposalView,
+    *,
+    viewer_id: str,
+    viewer_may_resolve: bool,
+    is_stale: bool,
+) -> tuple[str, ...]:
+    """What this viewer may do with ``proposal`` — role- **and user**-aware (P3-1b).
+
+    The proposer may only withdraw; any other COMPLIANCE or ADMIN user may approve or
+    reject. A stale proposal (the chain or the inputs moved) can no longer be approved,
+    only rejected or withdrawn. Nothing on a resolved proposal.
+    """
+    if not proposal.is_open:
+        return ()
+    if viewer_id == proposal.proposed_by:
+        return (PROPOSAL_WITHDRAW,)
+    if not viewer_may_resolve:
+        return ()
+    return (PROPOSAL_REJECT,) if is_stale else (PROPOSAL_APPROVE, PROPOSAL_REJECT)
 
 
 # ── The evidence snapshot ────────────────────────────────────────────────────
@@ -208,6 +289,37 @@ def select_evidence(
     )
 
 
+def inputs_fingerprint(inputs: CompanyComplianceInputs, evidence: EvidenceSelection) -> str:
+    """A SHA-256 (hex) of what a decision would rest on (maker-checker, P3-1b).
+
+    Taken when a move is proposed and again when it is approved; approval is refused if
+    they differ, so the checker never approves a decision on inputs the maker did not
+    see. It covers the cycle, each result's status and review head (a review, or a
+    provider result settling, changes it), each screening answer row (append-only, so
+    its id is its content) and the pinned documents. Order-independent.
+    """
+    canonical = {
+        "cycle": str(inputs.current_cycle_id) if inputs.current_cycle_id else None,
+        "verifications": sorted(
+            [
+                str(check.verification_result_id),
+                check.status,
+                str(check.latest_review_id) if check.latest_review_id else "",
+                check.latest_review_status or "",
+            ]
+            for check in inputs.verifications
+        ),
+        "screening": sorted(
+            [item.item_key, str(item.screening_review_item_id), item.status or ""]
+            for item in inputs.screening_items
+            if item.screening_review_item_id is not None
+        ),
+        "documents": sorted(str(document_id) for document_id in evidence.documents),
+    }
+    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 # ── The CLEAR prerequisite rule ──────────────────────────────────────────────
 
 #: The four prerequisite names A3 fixes. Returned verbatim to the caller so a
@@ -216,6 +328,17 @@ CLEAR_RISK_REQUIRED = "risk_rating"
 CLEAR_NO_CHECKS_PENDING = "no_checks_pending"
 CLEAR_SCREENING_ANSWERED = "screening_items_answered"
 CLEAR_EVIDENCE_RECORDED = "evidence_recorded"
+
+
+def passed_prerequisite(verification_type: str) -> str:
+    """Rule B's prerequisite name for one required type: ``kyb_passed`` …"""
+    return f"{verification_type.lower()}_passed"
+
+
+#: Rule B's three, by name (plan P3-2).
+CLEAR_KYB_PASSED = passed_prerequisite("KYB")
+CLEAR_AML_PASSED = passed_prerequisite("AML")
+CLEAR_SANCTIONS_PASSED = passed_prerequisite("SANCTIONS")
 
 
 @dataclass(frozen=True)
@@ -251,6 +374,14 @@ class ClearPolicy:
     permanently. Empty (the default) is the strictest reading: no review concludes
     anything. A placeholder row is never concluded by a review — nothing ran."""
 
+    required_passed_types: tuple[str, ...] = ()
+    """Rule B (decision B, plan P3-2) — the verification types that must each have
+    **passed** in the current cycle, in the order a refusal names them. "Passed" is
+    IQ-2's (``compliance_facts.check_state`` is ``PASSED``): the latest real result of
+    that type is ``PASSED``, or ``REVIEW`` with an ``ACCEPTED`` review; placeholders
+    never count. A set in meaning; a tuple so the refusal's order is stable. Empty (the
+    default) requires none, which is the rule before 1 October 2026."""
+
 
 #: **The settled CLEAR rule — D1, D2, D3 and D4, decided 28 September 2026** (recorded
 #: with the decider in ``docs/contracts/background-check.md`` §14).
@@ -272,6 +403,9 @@ CLEAR_POLICY = ClearPolicy(
     answered_screening_statuses=frozenset({"PASSED", "EXEMPT"}),
     # D4: a cleared company must rest on something recorded.
     evidence_required=True,
+    # Rule B (decision B, plan P3-2, 1 October 2026): KYB, AML and sanctions each
+    # passed in the current cycle (IQ-2).
+    required_passed_types=("KYB", "AML", "SANCTIONS"),
 )
 
 
@@ -336,10 +470,52 @@ def evaluate_clear_prerequisites(
     if policy.evidence_required and evidence.count == 0:
         unmet.append(CLEAR_EVIDENCE_RECORDED)
 
+    # 5. Rule B — each required type passed in the current cycle (the seam is already
+    #    scoped to it), named one by one so the refusal says which is missing.
+    for required in required_check_states(inputs, policy):
+        if required.state != "PASSED":
+            unmet.append(passed_prerequisite(required.verification_type))
+
     return ClearPrerequisites(unmet=tuple(unmet))
 
 
+@dataclass(frozen=True)
+class RequiredCheckState:
+    """One verification type rule B requires, and where it stands in the current cycle
+    — served by the background-check read so the screen keeps no list of its own."""
+
+    verification_type: str
+    state: CheckState
+
+
+def required_check_states(
+    inputs: CompanyComplianceInputs, policy: ClearPolicy = CLEAR_POLICY
+) -> tuple[RequiredCheckState, ...]:
+    """Each of ``policy.required_passed_types`` with its IQ-2 state, in policy order."""
+    return tuple(
+        RequiredCheckState(
+            verification_type=verification_type,
+            state=check_state(inputs.verifications, verification_type),
+        )
+        for verification_type in policy.required_passed_types
+    )
+
+
 __all__ = [
+    "CLEAR_AML_PASSED",
+    "CLEAR_KYB_PASSED",
+    "CLEAR_RULES_V3",
+    "CLEAR_SANCTIONS_PASSED",
+    "PROPOSAL_APPROVE",
+    "PROPOSAL_OPEN",
+    "PROPOSAL_REJECT",
+    "PROPOSAL_WITHDRAW",
+    "BackgroundCheckProposalView",
+    "RequiredCheckState",
+    "inputs_fingerprint",
+    "passed_prerequisite",
+    "proposal_actions",
+    "required_check_states",
     "CLEAR_RULES_V1",
     "CLEAR_RULES_V2",
     "CURRENT_CLEAR_RULES",

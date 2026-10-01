@@ -278,6 +278,29 @@ GATED_ROUTES = [
         {"kind": "RE_KYC", "reason": "Annual re-check"},
         COMPLIANCE_OR_ADMIN,
     ),
+    # Maker-checker (P3-1b/c): compliance and admin resolve proposals and read the
+    # queue; the RM never approves (plan §8). The due list is read by all staff (P3-3c).
+    ("GET", f"{BASE}/exporters/{_ID}/background-check/proposals", None, STAFF),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/background-check/proposals/{_ID}/approve",
+        None,
+        COMPLIANCE_OR_ADMIN,
+    ),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/background-check/proposals/{_ID}/reject",
+        {"reason": "not convinced"},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/background-check/proposals/{_ID}/withdraw",
+        {},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    ("GET", f"{BASE}/background-check/proposals?status=open", None, COMPLIANCE_OR_ADMIN),
+    ("GET", f"{BASE}/background-check/due", None, STAFF),
 ]
 
 REFUSALS = [

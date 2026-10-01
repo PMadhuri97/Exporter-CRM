@@ -24,6 +24,12 @@
  * server offers them (`allowed_cycle_actions`), the Re-KYC / Re-KYB buttons (P2-3c/d);
  * a Clear's expiry is shown (F1); each decision opens to the evidence it rested on
  * (P2-1c) and decisions are grouped by cycle.
+ *
+ * Developer 1, tranche 2: maker-checker (P3-1c) — a proposed CLEAR, FLAGGED or ON_HOLD
+ * shows as "Awaiting approval" with exactly the actions the server allows this user
+ * (approve / reject for a second officer, withdraw for the proposer); rule B's required
+ * checks and their state in the current cycle (P3-2); a "Re-KYC due" badge when the
+ * Clear has expired or soon will (P3-3c).
  */
 
 import { useState } from 'react';
@@ -43,7 +49,9 @@ import {
   cycleKindLabel,
   describeClearBlocker,
 } from '../../components/background-check-labels';
+import { AwaitingApproval } from '../../components/AwaitingApproval';
 import { CheckCycleActions } from '../../components/CheckCycleActions';
+import { RequiredChecks } from '../../components/ComplianceCheckChip';
 import {
   useBackgroundCheck,
   useBackgroundCheckDecisions,
@@ -87,7 +95,11 @@ function GaugeSection({ customerId }: { customerId: string }) {
         <div>
           <h3 className="text-base font-semibold text-slate-900">Background check</h3>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <BackgroundCheckGauge value={standing.value} />
+            <BackgroundCheckGauge
+              value={standing.value}
+              awaitingApproval={standing.awaiting_approval}
+              rekycDue={standing.rekyc_due}
+            />
           </div>
           {cycle && (
             <p data-testid="current-cycle" className="mt-2 text-xs text-slate-600">
@@ -129,6 +141,12 @@ function GaugeSection({ customerId }: { customerId: string }) {
             </span>
           )}
         </div>
+      )}
+
+      {standing.open_proposal && <AwaitingApproval proposal={standing.open_proposal} />}
+
+      {standing.value === 'IN_REVIEW' && (
+        <RequiredChecks checks={standing.required_checks ?? []} />
       )}
 
       {!dialogOpen && (
