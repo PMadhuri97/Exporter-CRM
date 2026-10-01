@@ -173,9 +173,9 @@ Measured 29 September 2026, after the UAT-readiness fixes:
 | Temporal workflow tests (`test_onboarding_workflow*.py`, part of the suite) | 143 passed, 1 skipped (the opt-in restart suite, `RUN_RESILIENCE_TESTS=1`). They download the Temporal test server, so they need internet access |
 | `ruff check .` | 16 findings, all pre-existing: two auto-generated Alembic merge revisions and two package index files |
 | `lint-imports` | 19 contracts kept, 0 broken |
-| `alembic heads` | one: `onboarding_0022_integrity` |
+| `alembic heads` | one: `onboarding_0027_deal_req_docs` |
 | `alembic check` | no new upgrade operations |
-| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 32 files, 294 tests; build passes with a >500 kB chunk warning |
+| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 34 files, 310 tests; build passes with a >500 kB chunk warning |
 
 The 27 expected failures are the tests in `compliance/tests/integration/test_compliance.py`,
 `test_screening_uses_rule_registry.py` and `audit/tests/integration/test_audit.py` that

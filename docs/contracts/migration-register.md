@@ -1,6 +1,6 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0026_deal_snapshot`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0027_deal_req_docs`
 
 The prototype's migrations, from four developers and one platform change, in one
 chain. This is the running order and the rules. Dev 1 keeps it current.
@@ -28,6 +28,10 @@ merged.
 | 0022 | Release audit | Database guards: no document or verification result is deleted, a document's identity is fixed once set, and a `HANDED_OVER` or `WITHDRAWN` deal no longer changes | `onboarding_0021_verif_review` |
 | 0025 | Dev 2 | The deal's new columns: `buyer_company_id` (FK, not the seller), `handover_snapshot`, `seller_gst_registration_id` (FK) | `onboarding_0022_integrity` |
 | 0026 | Dev 2 | Backfill `handover_snapshot` for every already-handed-over deal, then add it to `prevent_terminal_deal_change()` under a **set-once** rule | `onboarding_0025_deal_foundation` |
+| 0027 | Dev 2 | `deal_required_document` (versioned, append-only), seeded with one `PRE_SHIPMENT` requirement. **Changes behaviour**: a deal with no pre-shipment document can no longer be handed over | `onboarding_0026_deal_snapshot` |
+
+0027 reuses `crm_document_category_enum` from 0019 rather than declaring a second
+list of the same ten values, so it creates no enum of its own.
 
 **Numbers reserved for the post-demo foundation PRs.** The work allocation fixes
 the merge order **F1 → F3 → F2** (allocation §6), so the three foundation
@@ -42,8 +46,7 @@ migrations take numbers in that order:
 Numbers are labels, not order (§2). 0025 and 0026 were written against
 `onboarding_0022_integrity` because F1 and F3 had not merged yet; on rebase their
 `down_revision` is re-pointed at whatever `alembic heads` then prints and the
-numbers stay. **Next free onboarding number after the foundations: 0027** (taken by
-Dev 2's `deal_required_document`).
+numbers stay. **Next free onboarding number: 0028.**
 
 The two `auth_*` revisions belong to the platform's user-management work, not to the
 CRM; they sit in this chain because there is only one chain (§2), so a CRM migration

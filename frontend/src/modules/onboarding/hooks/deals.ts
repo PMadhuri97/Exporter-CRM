@@ -14,14 +14,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getDeal,
   listCompanyDeals,
+  listDealRequiredDocuments,
   openDeal,
   setDealBuyer,
+  setDealRequiredDocument,
   transitionDealStage,
 } from '../api';
 import type {
   DealListParams,
   OpenDealRequest,
   SetDealBuyerRequest,
+  SetDealRequiredDocumentRequest,
   TransitionDealStageRequest,
 } from '../types';
 
@@ -116,6 +119,36 @@ export function useSetDealBuyer(dealId: string, customerId?: string) {
         // The list shows the buyer's name per row.
         void queryClient.invalidateQueries({ queryKey: ['deals', customerId] });
       }
+    },
+  });
+}
+
+// ── Which paperwork a handover needs (plan P2-5a) ────────────────────────────
+
+/** The handover rule. Any CRM reader may read it; `can_edit` says who may
+ * change it. */
+export function useDealRequiredDocuments() {
+  return useQuery({
+    queryKey: ['dealRequiredDocuments'],
+    queryFn: listDealRequiredDocuments,
+  });
+}
+
+/**
+ * Require a category before handover, or stop requiring it.
+ *
+ * Invalidates every `['deal', …]` entry as well as the rule itself: changing the
+ * rule changes `handover_blocked_reason` on every open deal, and a page still
+ * showing the old reason would be telling the user something untrue.
+ */
+export function useSetDealRequiredDocument() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetDealRequiredDocumentRequest) => setDealRequiredDocument(body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['dealRequiredDocuments'] });
+      void queryClient.invalidateQueries({ queryKey: ['deal'] });
+      void queryClient.invalidateQueries({ queryKey: ['deals'] });
     },
   });
 }

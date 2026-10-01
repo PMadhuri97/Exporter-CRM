@@ -33,7 +33,7 @@ import {
   Textarea,
 } from '@/components';
 import { formatDateTime, humanize } from '@/lib/format';
-import { isStaffRole, useCurrentUser } from '@/platform/auth';
+import { isAdminRole, isStaffRole, useCurrentUser } from '@/platform/auth';
 import { canReveal } from '@/platform/mask';
 
 import {
@@ -513,6 +513,23 @@ export function DealDetailPage() {
                 {deal.stage === 'HANDED_OVER'
                   ? 'This deal has been handed over. Its paperwork is what the lending team was given, so nothing more can be added.'
                   : 'This deal was withdrawn. Its paperwork is kept as a record and nothing more can be added.'}
+              </p>
+            )}
+
+            {/* Where the handover's paperwork rule lives, for the one role that
+                can change it. The rule itself is served with the refusal reason,
+                so everyone else already sees *what* is missing; only an
+                administrator has anywhere to go from here. */}
+            {isAdminRole(user.role) && !isClosed && (
+              <p className="mb-3 text-xs text-ink-faint">
+                Which categories a handover needs is set in{' '}
+                <Link
+                  to={paths.dealRequiredDocuments}
+                  className="text-brand-600 hover:underline"
+                >
+                  Required documents
+                </Link>
+                .
               </p>
             )}
             <DocumentList

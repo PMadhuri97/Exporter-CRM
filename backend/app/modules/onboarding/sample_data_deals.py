@@ -26,10 +26,25 @@ import uuid
 import structlog
 
 from app.modules.onboarding.application.deal_service import DealService
+from app.modules.onboarding.application.document_service import DocumentService
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.modules.onboarding.domain.entities.document_enums import (
+    DocumentCategory,
+    DocumentSource,
+)
 from app.platform.database import services as db_services
 
 logger = structlog.get_logger(__name__)
+
+#: A one-page stand-in for the proforma invoice a real deal would carry. Small on
+#: purpose: the sample data is about states, not about file content.
+_SAMPLE_PDF = b"%PDF-1.4 sample proforma invoice"
+
+#: The document every deal bound for ``HANDED_OVER`` needs, because migration 0027
+#: requires a ``PRE_SHIPMENT`` document before a handover (plan P2-5b, IQ-10).
+#: Without it ``hand_over_sample_deals`` would log "handover_blocked" and company B
+#: would never reach the §3.9 state the sample data exists to produce.
+_REQUIRED_DOCUMENT_TYPE = "proforma_invoice"
 
 
 class _SampleDeal:
@@ -190,6 +205,10 @@ async def hand_over_sample_deals() -> int:
                 or view.stage is not DealStage.GATHERING_PAPERWORK
             ):
                 continue
+            # The paperwork the handover guard requires, added only for a deal
+            # that is about to be handed over — C's open deal is meant to stay
+            # refused, and giving it the document would hide the reason why.
+            await _ensure_required_document(view.id)
             try:
                 async with db_services.AsyncSessionLocal() as db:
                     await DealService(db).transition_stage(
@@ -202,6 +221,35 @@ async def hand_over_sample_deals() -> int:
                 continue
             handed_over += 1
     return handed_over
+
+
+async def _ensure_required_document(deal_id: uuid.UUID) -> None:
+    """Give the deal one ``PRE_SHIPMENT`` document if it has none.
+
+    Converges like the rest of this file: a repeat run finds the document already
+    there and adds nothing. Uploaded through ``DocumentService`` so it goes past
+    the real scanner seam and lands ``AVAILABLE`` — only ``AVAILABLE`` documents
+    satisfy a requirement (IQ-11), so a row written directly would not count.
+    """
+    async with db_services.AsyncSessionLocal() as db:
+        existing, _ = await DocumentService(db).list_for_deal(
+            deal_id, categories=(DocumentCategory.PRE_SHIPMENT,), limit=1
+        )
+        if existing:
+            return
+
+    async with db_services.AsyncSessionLocal() as db:
+        await DocumentService(db).upload(
+            _SAMPLE_PDF,
+            deal_id=deal_id,
+            category=DocumentCategory.PRE_SHIPMENT,
+            document_type=_REQUIRED_DOCUMENT_TYPE,
+            source=DocumentSource.EXPORTER_UPLOAD,
+            file_name="proforma-invoice.pdf",
+            content_type="application/pdf",
+            actor_id=None,
+        )
+    logger.info("sample_deals.required_document_added", deal_id=str(deal_id))
 
 
 __all__ = ["hand_over_sample_deals", "load_deal_sample_data"]

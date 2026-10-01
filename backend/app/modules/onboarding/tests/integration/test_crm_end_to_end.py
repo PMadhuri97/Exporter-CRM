@@ -92,10 +92,14 @@ class _Crm:
                       json={"name": "Rotterdam Trading BV", "country": "NL"})
         await self.ok("POST", f"/deals/{deal['id']}/transitions", self.ops,
                       json={"to_stage": "GATHERING_PAPERWORK"})
+        # PRE_SHIPMENT, not SHIPPING: migration 0027 requires a pre-shipment
+        # document before a handover (P2-5b, IQ-10), so this is the upload that
+        # makes the guard passable rather than just paperwork on the deal.
         await self.ok("POST", f"/deals/{deal['id']}/documents", self.ops,
-                      data={"category": "SHIPPING", "document_type": "bill_of_lading",
+                      data={"category": "PRE_SHIPMENT",
+                            "document_type": "proforma_invoice",
                             "source": "EXPORTER_UPLOAD"},
-                      files={"file": ("bill_of_lading.pdf", PDF, "application/pdf")})
+                      files={"file": ("proforma_invoice.pdf", PDF, "application/pdf")})
         return company_id, deal["id"]
 
     async def _create(self, pan: str) -> dict:
@@ -156,6 +160,23 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
                  json={"to_stage": "GATHERING_PAPERWORK"})
 
     # 7. Paperwork, scanned before it can be opened.
+    #
+    # The handover needs a PRE_SHIPMENT document (migration 0027, P2-5b), and the
+    # guard says so while it is missing — checked here, before the upload, because
+    # "the rule is configured" and "the rule is enforced" are different claims.
+    missing_paperwork = await crm.deal(deal_id)
+    assert "missing required documents: PRE_SHIPMENT" in (
+        missing_paperwork["handover_blocked_reason"] or ""
+    )
+
+    required = await crm.ok(
+        "POST", f"/deals/{deal_id}/documents", crm.ops,
+        data={"category": "PRE_SHIPMENT", "document_type": "proforma_invoice",
+              "source": "EXPORTER_UPLOAD"},
+        files={"file": ("proforma_invoice.pdf", PDF, "application/pdf")},
+    )
+    assert required["scan_status"] == "AVAILABLE"
+
     document = await crm.ok(
         "POST", f"/deals/{deal_id}/documents", crm.ops,
         data={"category": "SHIPPING", "document_type": "bill_of_lading",
@@ -163,6 +184,11 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
         files={"file": ("bill_of_lading.pdf", PDF, "application/pdf")},
     )
     assert document["scan_status"] == "AVAILABLE"
+    # The paperwork condition is met now, so what still blocks the handover is the
+    # company's standing — which the next steps fix.
+    assert "missing required documents" not in (
+        (await crm.deal(deal_id))["handover_blocked_reason"] or ""
+    )
 
     # 8. The background check: started by staff, its inputs recorded by compliance.
     await crm.decide(company_id, "IN_REVIEW", crm.ops)
@@ -189,7 +215,12 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
                           json={"to_stage": "HANDED_OVER"})
     assert handed["stage"] == "HANDED_OVER"
     [handed_over] = _events(bus, EventType.DEAL_HANDED_OVER)
-    assert handed_over.payload["document_ids"] == [document["id"]]
+    assert set(handed_over.payload["document_ids"]) == {required["id"], document["id"]}
+    # And the handover is a record now, not only an announcement (P2-7).
+    snapshot = handed["handover_snapshot"]
+    assert snapshot["snapshot_source"] == "taken_at_handover"
+    assert snapshot["buyer"]["name"] == "Rotterdam Trading BV"
+    assert set(snapshot["document_ids"]) == {required["id"], document["id"]}
 
     # The whole story is in the one history log.
     history = await crm.ok("GET", f"/exporters/{company_id}/history", crm.compliance,

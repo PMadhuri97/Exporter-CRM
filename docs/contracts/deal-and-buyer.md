@@ -1,17 +1,19 @@
 # Contract — the deal and its buyer
 
 **Owner:** Developer 2 (post-demo allocation; Developer 3B before it) · **Tables:**
-`onboarding.deal`, `onboarding.deal_buyer` · **Migrations:** `onboarding_0018_deal_buyer`,
-`onboarding_0025_deal_foundation`, `onboarding_0026_deal_snapshot`
+`onboarding.deal`, `onboarding.deal_buyer`, `onboarding.deal_required_document` ·
+**Migrations:** `onboarding_0018_deal_buyer`, `onboarding_0025_deal_foundation`,
+`onboarding_0026_deal_snapshot`, `onboarding_0027_deal_req_docs`
 
 **Used by:** Developer 3 (company lists and panels, trade history), Developer 1
 (buyer checks attach to the deal's buyer; the handover guard reads the company's
 background check and compliance facts).
 
 **State.** All of it is built, and §6's handover works end to end. The guard is now
-a list of conditions over injected providers (§6.1): the two assumption-A5 conditions
-decide today, and the other four are inert until the lane that owns each provider
-ships it. The handover is persisted as well as announced (§6.2).
+a list of conditions over injected providers (§6.1): three of the six decide today —
+the two assumption-A5 conditions and the required documents (§6.1.1) — and the other
+three are inert until the lane that owns each provider ships it. The handover is
+persisted as well as announced (§6.2).
 
 Architecture §3.3 ("The deal"), §3.5 and §3.6 are the source.
 
@@ -154,6 +156,13 @@ recorded (D17, 409 `DEAL_CLOSED`), and the verifications list stops offering
 Per architecture §3.7: OPERATIONS, COMPLIANCE and ADMIN open deals, move stages, and
 edit the buyer. DEVELOPER reads. API_USER reaches nothing.
 
+**Which documents a handover needs is a settings change, so ADMIN only** —
+`POST /settings/deal-required-documents` (§6.1.1). Any CRM reader may *read* the
+rule, including DEVELOPER: it carries no identifiers and nothing decision D8
+protects, and the same gate serves `/qualification/criteria`. Changing it changes
+which deals can be handed over, which is why writing it is narrower than moving a
+stage.
+
 ### 4.1 The server serves the allowed moves
 
 `GET /onboarding/deals/{deal_id}` includes `allowed_stage_moves`, the moves **this
@@ -208,14 +217,14 @@ with `"; "` — for example `the company is PROSPECT, not CUSTOMER; the backgrou
 check is FLAGGED, not CLEAR`. While any is unmet, `allowed_stage_moves` omits the
 move, so the screen explains instead of offering a button that 409s (§4.1).
 
-| # | Condition | Provider | Lands with |
+| # | Condition | Provider | State |
 |---|---|---|---|
-| 1 | the company's journey is `CUSTOMER` | — | assumption A5 (live) |
-| 2 | the company's background check is `CLEAR` | — | assumption A5 (live) |
-| 3 | every required document category is present | `RequiredDocumentsPolicy` | P2-5b |
-| 4 | the company's Clear is current, and its own sanctions/AML have not failed | `ComplianceFactsReader` | P3-3b, P4-7 |
-| 5 | the buyer's sanctions **and** AML are `PASSED` | `ComplianceFactsReader` | P3-4, P4-7 |
-| 6 | the invoicing branch is not flagged | `BranchFlagReader` | P6-7 |
+| 1 | the company's journey is `CUSTOMER` | — | **live** (assumption A5) |
+| 2 | the company's background check is `CLEAR` | — | **live** (assumption A5) |
+| 3 | every required document category is present | `RequiredDocumentsPolicy` | **live** (P2-5b) |
+| 4 | the company's Clear is current, and its own sanctions/AML have not failed | `ComplianceFactsReader` | waits for P3-3b, P4-7 |
+| 5 | the buyer's sanctions **and** AML are `PASSED` | `ComplianceFactsReader` | waits for P3-4, P4-7 |
+| 6 | the invoicing branch is not flagged | `BranchFlagReader` | waits for P6-7 |
 
 Conditions 1 and 2 are real: a company becomes a `CUSTOMER` when it is a `PROSPECT`
 with a `CLEAR` check (`company-record.md` §3.2), and the check is read through
@@ -229,6 +238,35 @@ never read as "everything passed": a missing provider cannot let a deal through.
 Condition 5 reads a buyer recorded as a company through `for_company` and a legacy
 `deal_buyer` row through `for_legacy_buyer`, so the same rule decides before and
 after the buyer migration (P4-6).
+
+### 6.1.1 Condition 3 — the required documents
+
+`onboarding.deal_required_document` (migration 0027) is the rule, as data: one row
+per `(category, document_type, version)`, `active` saying whether that version
+requires the document. It is **versioned and append-only**, like
+`qualification_criterion` — adding a requirement writes version *n+1* with
+`active = true`, removing one writes version *n+1* with `active = false`, and
+nothing is ever updated or deleted. A deal handed over last month was judged
+against the rule as it stood then, and that rule is still readable.
+
+`document_type` is `''` for "any document in this category". A sentinel rather than
+`NULL`, because two `NULL`s do not collide in Postgres and the unique constraint on
+`(category, document_type, version)` would then let one requirement be added twice
+at a version. The API maps `''` to `null` both ways, so no caller sees it.
+
+| | |
+|---|---|
+| Seeded | One requirement: category `PRE_SHIPMENT`, any type (IQ-10) |
+| Counts as present | An `AVAILABLE` document on the deal (IQ-11). `PENDING_SCAN` is not evidence yet; `QUARANTINED` and `SCAN_FAILED` never will be |
+| Satisfies a typed requirement | Only a document of that type |
+| Routes | `GET /settings/deal-required-documents` (any CRM reader), `POST` (ADMIN) |
+| Refused | A category a deal cannot hold — `ENTITY_KYC` belongs to a company (§3.4), so requiring it of a deal would be a rule no deal could satisfy. And a change that would leave the rule as it already is |
+| The message | `missing required documents: PRE_SHIPMENT, BANKING` — every missing category at once, the category alone for an any-type requirement and `CATEGORY (type)` for a typed one |
+
+**This changed behaviour deliberately.** Before P2-5b a deal could go to the
+lending team with no paperwork at all. Deals **already** `HANDED_OVER` are
+untouched: the guard runs on the move, so a past handover is never re-judged, and
+turning a new requirement on does not invalidate one.
 
 The guard reads the company row **once** per run, share-locked on the move (D10) and
 unlocked on the read that renders a page, and hands every condition the same
@@ -258,8 +296,9 @@ response masks the buyer inside it by exactly the rule that masks the live buyer
 (§3), so a tax identifier is no more visible inside a snapshot than outside one.
 
 `document_ids` is every document on the deal when it was handed over, whatever its
-scan status. P2-5b changes that for *required* categories only: a missing required
-category becomes condition 3, counting only `AVAILABLE` documents (IQ-11).
+scan status — the snapshot records what was there, not only what satisfied a rule.
+Whether a document *counts towards a requirement* is condition 3's separate
+question, and only `AVAILABLE` documents do (§6.1.1).
 
 ---
 
@@ -299,6 +338,7 @@ updates.
 | `DEAL_WITHDRAWAL_REASON_REQUIRED` | 422 | `WITHDRAWN` without a reason (A7). |
 | `DEAL_BUYER_REQUIRED` | 422 | Leaving `GATHERING_PAPERWORK` with no buyer. |
 | `DEAL_HANDOVER_BLOCKED` | 409 | Any §6.1 condition is unmet. The message names every one of them. |
+| `VALIDATION_ERROR` | 422 | On `POST /settings/deal-required-documents`: a category a deal cannot hold, or a change that changes nothing (§6.1.1). |
 | `DEAL_COMPANY_NOT_FOUND` | 404 | Opening a deal for a company that does not exist. |
 | `DEAL_COMPANY_NOT_READY` | 409 | Opening a deal for a company that is still a `LEAD` (§2). |
 

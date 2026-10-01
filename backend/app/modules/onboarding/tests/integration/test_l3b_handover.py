@@ -97,7 +97,20 @@ async def _customer() -> uuid.UUID:
 
 
 async def _deal_ready_to_hand_over(company_id: uuid.UUID) -> uuid.UUID:
-    """A deal at ``GATHERING_PAPERWORK`` with a buyer — everything but the check."""
+    """A deal at ``GATHERING_PAPERWORK`` with a buyer **and its required
+    paperwork** — everything but the check.
+
+    The pre-shipment document is here because P2-5b made "the required documents
+    are present" a condition of the handover, and migration 0027 seeds one
+    requirement: category ``PRE_SHIPMENT``, any type (IQ-10). Without it the guard
+    refuses, correctly, and these tests would be exercising that refusal instead
+    of what they are about.
+
+    It belongs in this helper rather than in each test because the helper's
+    contract is "everything but the check", and the paperwork is now part of
+    everything. ``test_l4a_background_check_reader.py`` imports this helper for
+    its concurrency tests, so the one change here keeps that lane green too.
+    """
     async with db_services.AsyncSessionLocal() as db:
         view = await DealService(db).open_deal(
             company_id, reference="Rotterdam shipment", actor_id="tester"
@@ -113,6 +126,64 @@ async def _deal_ready_to_hand_over(company_id: uuid.UUID) -> uuid.UUID:
     async with db_services.AsyncSessionLocal() as db:
         await DealService(db).transition_stage(
             view.id, DealStage.GATHERING_PAPERWORK, actor_id="tester"
+        )
+    await _add_required_document(view.id)
+    return view.id
+
+
+async def _deal_with_a_buyer_but_no_paperwork(company_id: uuid.UUID) -> uuid.UUID:
+    """A deal at ``GATHERING_PAPERWORK`` with a buyer and **no documents** — what
+    ``_deal_ready_to_hand_over`` was before P2-5b.
+
+    Only the two tests about the required-document condition use it; everything
+    else wants a deal that can actually be handed over.
+    """
+    async with db_services.AsyncSessionLocal() as db:
+        view = await DealService(db).open_deal(
+            company_id, reference="Rotterdam shipment, no paperwork", actor_id="tester"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        await DealService(db).set_buyer(
+            view.id,
+            name="Rotterdam Trading BV",
+            country="NL",
+            registration_number="NL-8899",
+            actor_id="tester",
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        await DealService(db).transition_stage(
+            view.id, DealStage.GATHERING_PAPERWORK, actor_id="tester"
+        )
+    return view.id
+
+
+async def _add_required_document(deal_id: uuid.UUID) -> uuid.UUID:
+    """One ``AVAILABLE`` ``PRE_SHIPMENT`` document, satisfying migration 0027's
+    seeded requirement.
+
+    Written through ``DocumentService`` with the clean scanner, like every other
+    document in these tests, so the row's ``scan_status`` is ``AVAILABLE`` for the
+    real reason rather than being set by hand — only ``AVAILABLE`` counts (IQ-11).
+
+    Its own ``tmp_path`` is not available here (this helper is called from
+    fixtures without one), so it writes under a per-deal temporary directory.
+    """
+    import tempfile
+
+    storage = StorageService(
+        LocalDiskStorage(root=Path(tempfile.mkdtemp(prefix="required-doc-"))),
+        _CleanScanner(),
+    )
+    async with db_services.AsyncSessionLocal() as db:
+        view = await DocumentService(db, storage=storage).upload(
+            PDF,
+            deal_id=deal_id,
+            category=DocumentCategory.PRE_SHIPMENT,
+            document_type="proforma_invoice",
+            source=DocumentSource.EXPORTER_UPLOAD,
+            file_name="proforma-invoice.pdf",
+            content_type="application/pdf",
+            actor_id="tester",
         )
     return view.id
 
@@ -227,7 +298,11 @@ async def test_the_announcement_carries_the_buyer_and_a_document_snapshot(
     assert payload["company_id"] == str(company_id)
     assert payload["buyer"]["name"] == "Rotterdam Trading BV"
     assert payload["buyer"]["country"] == "NL"
-    assert set(payload["document_ids"]) == {str(first), str(second)}
+    # A superset, not an equality: `_deal_ready_to_hand_over` also uploaded the
+    # PRE_SHIPMENT document migration 0027 requires, and the snapshot is every
+    # document on the deal — so asserting equality here would be asserting the
+    # requirement's absence.
+    assert {str(first), str(second)} <= set(payload["document_ids"])
     # The company is the partition key, so a company's events stay ordered together.
     assert published[0].deal_id == str(deal_id)
 
@@ -252,7 +327,8 @@ async def test_the_document_snapshot_does_not_change_afterwards(
     payload = next(
         e.payload for e in bus.published if e.event_type is EventType.DEAL_HANDED_OVER
     )
-    assert payload["document_ids"] == [str(at_handover)]
+    at_handover_ids = payload["document_ids"]
+    assert str(at_handover) in at_handover_ids
 
     # A later upload is refused, rather than landing outside the snapshot.
     with pytest.raises(DealTerminalError):
@@ -262,24 +338,54 @@ async def test_the_document_snapshot_does_not_change_afterwards(
     # announcement was never received.
     async with db_services.AsyncSessionLocal() as db:
         rows, _ = await HistoryService(db).list_for_company(company_id, dimension="deal")
-    assert rows[0].event_metadata["document_ids"] == [str(at_handover)]
+    assert rows[0].event_metadata["document_ids"] == at_handover_ids
 
 
-async def test_a_handover_with_no_documents_is_allowed_and_says_so(
+async def test_a_handover_with_no_documents_at_all_is_now_refused(
     clear_background_check, bus
 ):
-    """Paperwork is not a condition of the handover (assumption A5 names the
-    customer status and the check, and nothing else), so an empty list is a fact
-    about this deal rather than a refusal."""
+    """**This test used to assert the opposite**, and said so: "paperwork is not a
+    condition of the handover (assumption A5 names the customer status and the
+    check, and nothing else)".
+
+    P2-5b changed that rule deliberately (IQ-10): migration 0027 requires a
+    ``PRE_SHIPMENT`` document, so a deal with no paperwork is refused and the
+    refusal names the category. It is kept here, inverted, rather than deleted —
+    the old behaviour is what a reader of this file would otherwise assume still
+    holds.
+    """
     company_id = await _customer()
-    deal_id = await _deal_ready_to_hand_over(company_id)
+    # Deliberately **not** `_deal_ready_to_hand_over`, which now uploads the
+    # required document: this deal has nothing.
+    deal_id = await _deal_with_a_buyer_but_no_paperwork(company_id)
 
-    await _hand_over(deal_id)
+    async with db_services.AsyncSessionLocal() as db:
+        view = await DealService(db).get_deal(deal_id)
+    assert "missing required documents: PRE_SHIPMENT" in (view.handover_blocked_reason or "")
+    assert DealStage.HANDED_OVER not in {m.to for m in view.allowed_stage_moves}
 
+    with pytest.raises(Exception) as caught:
+        await _hand_over(deal_id)
+    assert getattr(caught.value, "error_code", None) == "DEAL_HANDOVER_BLOCKED"
+    assert not [e for e in bus.published if e.event_type is EventType.DEAL_HANDED_OVER]
+
+
+async def test_a_handover_is_allowed_once_the_required_document_is_there(
+    clear_background_check, bus
+):
+    """The other half: the requirement is satisfied by any ``PRE_SHIPMENT``
+    document, because the seeded rule names no type (IQ-10)."""
+    company_id = await _customer()
+    deal_id = await _deal_with_a_buyer_but_no_paperwork(company_id)
+    required = await _add_required_document(deal_id)
+
+    view = await _hand_over(deal_id)
+
+    assert view.stage is DealStage.HANDED_OVER
     payload = next(
         e.payload for e in bus.published if e.event_type is EventType.DEAL_HANDED_OVER
     )
-    assert payload["document_ids"] == []
+    assert payload["document_ids"] == [str(required)]
 
 
 async def test_a_handed_over_deal_cannot_move_or_be_handed_over_twice(

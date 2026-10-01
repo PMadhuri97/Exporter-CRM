@@ -179,6 +179,13 @@ export type DealStageMove = Schemas['DealStageMoveResponse'];
 /** OPEN -> GATHERING_PAPERWORK -> HANDED_OVER, or WITHDRAWN. Both ends terminal. */
 export type DealStage = Schemas['DealStage'];
 
+/** Which document categories a deal must have before handover (plan P2-5a). */
+export type DealRequiredDocument = Schemas['DealRequiredDocumentResponse'];
+export type DealRequiredDocuments = Schemas['DealRequiredDocumentsResponse'];
+export type SetDealRequiredDocumentRequest = Schemas['SetDealRequiredDocumentRequest'];
+/** The ten fixed document categories — architecture §3.4. */
+export type DocumentCategoryValue = Schemas['DocumentCategory'];
+
 export interface DealListParams {
   /** Repeatable: several stages narrow the list to those stages. */
   stages?: DealStage[];

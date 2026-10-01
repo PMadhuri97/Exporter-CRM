@@ -5,6 +5,7 @@ export {
   DealDetailPage,
   FollowUpsPage,
   PipelinePage,
+  DealRequiredDocumentsPage,
   QualificationCriteriaPage,
 } from './pages';
 export { COMPANY_TABS, paths, type CompanyTab } from './paths';

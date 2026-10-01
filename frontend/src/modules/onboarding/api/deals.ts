@@ -21,8 +21,11 @@ import type {
   Deal,
   DealList,
   DealListParams,
+  DealRequiredDocument,
+  DealRequiredDocuments,
   OpenDealRequest,
   SetDealBuyerRequest,
+  SetDealRequiredDocumentRequest,
   TransitionDealStageRequest,
 } from '../types';
 
@@ -94,4 +97,32 @@ export function setDealBuyer(
     method: 'PUT',
     body,
   });
+}
+
+// ── Which paperwork a handover needs (plan P2-5a) ────────────────────────────
+//
+// A settings rule about every deal, not a property of one, so its path is
+// `/settings/...` like the qualification criteria. Any CRM reader may read it;
+// only ADMIN may change it, which `can_edit` on the response says.
+
+/** The requirements as they stand, and every version ever written. */
+export function listDealRequiredDocuments(): Promise<DealRequiredDocuments> {
+  return apiRequest<DealRequiredDocuments>(
+    '/onboarding/settings/deal-required-documents',
+  );
+}
+
+/**
+ * Require a document category before handover, or stop requiring it.
+ *
+ * There is no delete: the table is append-only, so `active: false` writes a new
+ * version recording that the requirement was removed, by whom and when.
+ */
+export function setDealRequiredDocument(
+  body: SetDealRequiredDocumentRequest,
+): Promise<DealRequiredDocument> {
+  return apiRequest<DealRequiredDocument>(
+    '/onboarding/settings/deal-required-documents',
+    { method: 'POST', body },
+  );
 }

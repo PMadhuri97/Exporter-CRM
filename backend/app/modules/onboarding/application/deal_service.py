@@ -73,6 +73,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.background_check_reader import current_background_check
 from app.modules.onboarding.application.conversation_service import ConversationService
+from app.modules.onboarding.application.deal_required_documents_service import (
+    DealRequiredDocumentsPolicy,
+)
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.deal_views import (
     BuyerCompanyView,
@@ -218,12 +221,21 @@ class DealService:
         # own failures, so a dead bus never undoes a committed handover.
         self._events = OnboardingEventPublisher()
         # The handover guard's providers (`domain/handover_conditions.py`).
-        # Defaulted to the null ones, which answer "nothing unmet", so assumption
-        # A5's two conditions decide exactly what they decided before this was
-        # injectable. P2-5b hands in the real `RequiredDocumentsPolicy`, P4-7
+        #
+        # `RequiredDocumentsPolicy` is **real** since P2-5b: condition 3 now reads
+        # `deal_required_document` and the deal's own paperwork. The other two are
+        # still their null version, which answers "nothing unmet", so assumption
+        # A5's conditions decide exactly what they decided before — P4-7 hands in
         # Developer 1's `ComplianceFactsReader` and P6-7 Developer 3's
-        # `BranchFlagReader` — none of which changes a condition's code.
-        self._providers = providers if providers is not None else HandoverProviders()
+        # `BranchFlagReader`, neither of which changes a condition's code.
+        #
+        # A caller may pass `providers` to substitute any of them; the handover
+        # tests use it to drive a condition from a fake.
+        self._providers = (
+            providers
+            if providers is not None
+            else HandoverProviders(required_documents=DealRequiredDocumentsPolicy(db))
+        )
 
     # ── Read ─────────────────────────────────────────────────────────────────
 

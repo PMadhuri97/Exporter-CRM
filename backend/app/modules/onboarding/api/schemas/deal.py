@@ -43,6 +43,10 @@ from app.modules.onboarding.domain.deal_views import (
     DealView,
 )
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.modules.onboarding.domain.entities.deal_required_document import (
+    DealRequiredDocument,
+)
+from app.modules.onboarding.domain.entities.document_enums import DocumentCategory
 from app.platform.authentication.models import User, UserRole
 
 #: Who may move a deal — the roles `_STAFF` admits on the move routes
@@ -338,6 +342,76 @@ class DealListItemResponse(BaseModel):
         )
 
 
+class SetDealRequiredDocumentRequest(BaseModel):
+    """Add a required document category to a deal's handover rule, or stop
+    requiring it. ADMIN only.
+
+    There is no delete: the table is append-only, so "stop requiring it" is
+    `active: false`, which writes a new version. The record of what was required
+    when is part of the point (plan P2-5a).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: DocumentCategory
+    #: Leave out or send `null` for "any document in this category" — the shape
+    #: the seeded `PRE_SHIPMENT` requirement uses. Name a type to narrow it.
+    document_type: str | None = Field(default=None, max_length=100)
+    active: bool = Field(
+        default=True,
+        description=(
+            "`true` requires the category, `false` stops requiring it. Either way "
+            "a new version is written; nothing is updated or deleted."
+        ),
+    )
+
+
+class DealRequiredDocumentResponse(BaseModel):
+    """One version of one requirement."""
+
+    id: uuid.UUID
+    category: DocumentCategory
+    #: `null` for "any document in this category". The stored sentinel (`''`)
+    #: never reaches a caller.
+    document_type: str | None
+    version: int
+    active: bool
+    created_by: str | None
+    created_at: datetime
+
+    @classmethod
+    def from_entity(cls, row: DealRequiredDocument) -> DealRequiredDocumentResponse:
+        return cls(
+            id=row.id,
+            category=row.category,
+            document_type=row.document_type or None,
+            version=row.version,
+            active=row.active,
+            created_by=row.created_by,
+            created_at=row.created_at,
+        )
+
+
+class DealRequiredDocumentsResponse(BaseModel):
+    """The handover rule as it stands, and how it got there.
+
+    `requirements` is the current version of every key, `active` or not, so a
+    screen can show that something was removed rather than merely not showing it.
+    `history` is every version ever written, newest first per key.
+    """
+
+    requirements: list[DealRequiredDocumentResponse]
+    history: list[DealRequiredDocumentResponse]
+    can_edit: bool = Field(
+        default=False,
+        description=(
+            "Whether **this** caller may change the rule (ADMIN). The screen "
+            "offers the controls from this rather than checking the role itself "
+            "(§7.5)."
+        ),
+    )
+
+
 class DealListResponse(BaseModel):
     """``total`` is the count matching the filter, not the length of this page, so
     a caller can page without a second request."""
@@ -360,11 +434,14 @@ class DealListResponse(BaseModel):
 __all__ = [
     "BuyerCompanyResponse",
     "DealBuyerResponse",
+    "DealRequiredDocumentResponse",
+    "DealRequiredDocumentsResponse",
     "DealListItemResponse",
     "DealListResponse",
     "DealResponse",
     "DealStageMoveResponse",
     "OpenDealRequest",
     "SetDealBuyerRequest",
+    "SetDealRequiredDocumentRequest",
     "TransitionDealStageRequest",
 ]

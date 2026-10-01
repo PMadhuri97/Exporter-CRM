@@ -175,6 +175,13 @@ from app.modules.onboarding.domain.entities.document_enums import (  # noqa: E40
 )
 
 __all__ += ["CrmDocument", "DocumentCategory", "DocumentOwnerKind", "DocumentSource"]
+# Developer 2 (plan P2-5a): which paperwork a deal must have before handover.
+from app.modules.onboarding.domain.entities.deal_required_document import (  # noqa: E402
+    ANY_DOCUMENT_TYPE,
+    DealRequiredDocument,
+)
+
+__all__ += ["ANY_DOCUMENT_TYPE", "DealRequiredDocument"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════

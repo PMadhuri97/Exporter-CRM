@@ -25,10 +25,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.onboarding.api.schemas.deal import (
     DealListItemResponse,
     DealListResponse,
+    DealRequiredDocumentResponse,
+    DealRequiredDocumentsResponse,
     DealResponse,
     OpenDealRequest,
     SetDealBuyerRequest,
+    SetDealRequiredDocumentRequest,
     TransitionDealStageRequest,
+)
+from app.modules.onboarding.application.deal_required_documents_service import (
+    DealRequiredDocumentsService,
 )
 from app.modules.onboarding.application.deal_service import DealService
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
@@ -48,6 +54,11 @@ _OPENING_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.A
 _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )
+# Changing which paperwork a handover needs is a settings change, so ADMIN only —
+# the same gate `/qualification/criteria` writes use (plan P2-5a).
+_SETTINGS_ADMIN = require_role(UserRole.ADMIN)
+#: The same, as data: who `can_edit` may say yes to.
+_SETTINGS_WRITE_ROLES = frozenset({UserRole.ADMIN})
 
 
 @router.post(
@@ -160,11 +171,14 @@ async def get_deal(
         "The only way a deal's stage changes. The move must be one the stage graph "
         "allows (deal contract §1.1); `WITHDRAWN` requires a reason (assumption "
         "A7) and every other stage refuses one.\n\n"
-        "`HANDED_OVER` additionally requires a buyer and assumption A5's guard — "
-        "the company a `CUSTOMER` with a `CLEAR` background check. That check is "
-        "Developer 4's column in migration 0015, which has not landed, so every "
-        "handover is currently refused with `DEAL_HANDOVER_BLOCKED` rather than "
-        "being allowed on the strength of a column that does not exist."
+        "`HANDED_OVER` additionally requires a buyer, and every condition of the "
+        "handover guard (deal contract §6.1). Live today: the company must be a "
+        "`CUSTOMER` with a `CLEAR` background check (assumption A5), and the deal "
+        "must have an `AVAILABLE` document in every category "
+        "`/settings/deal-required-documents` requires.\n\n"
+        "A refusal is 409 `DEAL_HANDOVER_BLOCKED` and names **every** unmet "
+        "condition, not the first — so an operator does not have to fix one to "
+        "discover the next."
     ),
     responses={
         401: {"description": "Unauthorized"},
@@ -245,6 +259,94 @@ async def set_deal_buyer(
         actor_id=str(current_user.id),
     )
     return DealResponse.from_view(view, current_user)
+
+
+# ── Settings: which paperwork a handover needs (plan P2-5a) ──────────────────
+#
+# Under `/settings/...` rather than `/deals/...` because it is a rule about every
+# deal, not a property of one — the same shape `/qualification/criteria` already
+# has. Read by any staff role, because the deal page explains a refusal in these
+# terms; written by ADMIN only.
+
+
+@router.get(
+    "/settings/deal-required-documents",
+    response_model=DealRequiredDocumentsResponse,
+    summary="Which document categories a deal must have before handover",
+    description=(
+        "`requirements` is the current version of every requirement, whether or "
+        "not it is still `active` — a removed requirement is shown as inactive "
+        "rather than hidden, because the table is append-only and the record of "
+        "what was required when is part of the rule.\n\n"
+        "`history` is every version ever written. `can_edit` says whether **this** "
+        "caller may change the rule, so the screen offers the controls from the "
+        "server rather than from the role (§7.5)."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "CRM read role required"},
+    },
+)
+async def list_deal_required_documents(
+    # `_READER`, not `_STAFF`: the plan says "read Staff", but every other
+    # settings read in the CRM admits DEVELOPER (`GET /qualification/criteria`),
+    # which is read-only across the module, and this rule carries no identifiers
+    # and nothing decision D8 protects. One convention beats two.
+    current_user: Annotated[User, Depends(_READER)],
+    db: AsyncSession = Depends(get_db),
+) -> DealRequiredDocumentsResponse:
+    service = DealRequiredDocumentsService(db)
+    return DealRequiredDocumentsResponse(
+        requirements=[
+            DealRequiredDocumentResponse.from_entity(row) for row in await service.current()
+        ],
+        history=[
+            DealRequiredDocumentResponse.from_entity(row) for row in await service.history()
+        ],
+        can_edit=current_user.role in _SETTINGS_WRITE_ROLES,
+    )
+
+
+@router.post(
+    "/settings/deal-required-documents",
+    response_model=DealRequiredDocumentResponse,
+    status_code=201,
+    summary="Require a document category before handover, or stop requiring it",
+    description=(
+        "Writes a **new version** of the requirement. There is no delete: send "
+        "`active: false` to stop requiring a category, which records that it was "
+        "removed, by whom and when.\n\n"
+        "`document_type` is optional — left out, any document in the category "
+        "satisfies the requirement, which is how the seeded `PRE_SHIPMENT` rule "
+        "works.\n\n"
+        "**This changes which deals can be handed over.** A deal with no "
+        "`AVAILABLE` document in a required category is refused with 409 "
+        "`DEAL_HANDOVER_BLOCKED`, naming the category. Deals already handed over "
+        "are unaffected: the guard runs on the move, never retrospectively."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "ADMIN role required"},
+        422: {
+            "description": (
+                "A category a deal cannot hold (it belongs to a company), or a "
+                "change that would leave the rule as it already is"
+            )
+        },
+    },
+)
+async def set_deal_required_document(
+    body: SetDealRequiredDocumentRequest,
+    current_user: Annotated[User, Depends(_SETTINGS_ADMIN)],
+    db: AsyncSession = Depends(get_db),
+) -> DealRequiredDocumentResponse:
+    row = await DealRequiredDocumentsService(db).set_requirement(
+        category=body.category,
+        document_type=body.document_type,
+        active=body.active,
+        actor_id=str(current_user.id),
+    )
+    return DealRequiredDocumentResponse.from_entity(row)
 
 
 __all__ = ["router"]

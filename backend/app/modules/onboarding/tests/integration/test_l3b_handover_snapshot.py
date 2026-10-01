@@ -15,6 +15,7 @@ rule rather than the code that happens to call it (the same method
 
 from __future__ import annotations
 
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -105,17 +106,33 @@ async def _deal_ready_to_hand_over(company_id: uuid.UUID) -> uuid.UUID:
         await DealService(db).transition_stage(
             view.id, DealStage.GATHERING_PAPERWORK, actor_id="tester"
         )
+    # The PRE_SHIPMENT document migration 0027 requires (P2-5b). Without it the
+    # guard refuses and these tests never reach the snapshot they are about.
+    await _add_document(
+        view.id,
+        Path(tempfile.mkdtemp(prefix="required-doc-")),
+        "proforma-invoice.pdf",
+        category=DocumentCategory.PRE_SHIPMENT,
+        document_type="proforma_invoice",
+    )
     return view.id
 
 
-async def _add_document(deal_id: uuid.UUID, tmp_path: Path, name: str) -> uuid.UUID:
+async def _add_document(
+    deal_id: uuid.UUID,
+    tmp_path: Path,
+    name: str,
+    *,
+    category: DocumentCategory = DocumentCategory.SHIPPING,
+    document_type: str = "bill_of_lading",
+) -> uuid.UUID:
     storage = StorageService(LocalDiskStorage(root=tmp_path), _CleanScanner())
     async with db_services.AsyncSessionLocal() as db:
         view = await DocumentService(db, storage=storage).upload(
             PDF,
             deal_id=deal_id,
-            category=DocumentCategory.SHIPPING,
-            document_type="bill_of_lading",
+            category=category,
+            document_type=document_type,
             source=DocumentSource.EXPORTER_UPLOAD,
             file_name=name,
             content_type="application/pdf",
@@ -155,7 +172,10 @@ async def test_a_handover_persists_the_buyer_and_the_documents(
     # The identifiers are stored **unmasked**: the record of what was handed over
     # must not depend on who reads it. Masking happens in the response.
     assert snapshot["buyer"]["tax_id"] == "NL123456789B01"
-    assert snapshot["document_ids"] == [str(document_id)]
+    # The required PRE_SHIPMENT document is on the deal too, so this is a
+    # membership check: the snapshot is every document the handover rested on.
+    assert str(document_id) in snapshot["document_ids"]
+    assert len(snapshot["document_ids"]) == 2
     assert snapshot["snapshot_source"] == SNAPSHOT_TAKEN_AT_HANDOVER
     assert snapshot["snapshot_at"] is not None
     # No company link yet: P4-4 records one, P4-6 backfills it.
