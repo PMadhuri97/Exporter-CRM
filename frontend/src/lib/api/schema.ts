@@ -2074,6 +2074,35 @@ export interface components {
             source: components["schemas"]["DocumentSource"];
         };
         /**
+         * BuyerCompanyResponse
+         * @description The deal's buyer as a company record (plan P4-4), summarised.
+         *
+         *     `pan` and `cin` are masked for OPERATIONS and DEVELOPER by exactly the rule
+         *     the company response uses — the buyer being a company does not make its
+         *     identifiers more visible than the seller's.
+         *
+         *     `pipeline_status` is `null` until Developer 3's F3 column exists. The field is
+         *     in the shape from F2 on purpose: the company screens are built against this
+         *     response, and adding a field to it later would be a contract change.
+         */
+        BuyerCompanyResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            /** Pipeline Status */
+            pipeline_status: string | null;
+            /** Pan */
+            pan: string | null;
+            /** Cin */
+            cin: string | null;
+        };
+        /**
          * BuyerSnapshotResponse
          * @description A BUYER check's subject as it was when the check was recorded. The
          *     registration number and tax id are masked for every role but COMPLIANCE and
@@ -2670,6 +2699,13 @@ export interface components {
              */
             updated_at: string;
             buyer: components["schemas"]["DealBuyerResponse"] | null;
+            buyer_company: components["schemas"]["BuyerCompanyResponse"] | null;
+            /** Handover Snapshot */
+            handover_snapshot: {
+                [key: string]: unknown;
+            } | null;
+            /** Seller Gst Registration Id */
+            seller_gst_registration_id: string | null;
             /** Allowed Stage Moves */
             allowed_stage_moves: components["schemas"]["DealStageMoveResponse"][];
             /** Handover Blocked Reason */

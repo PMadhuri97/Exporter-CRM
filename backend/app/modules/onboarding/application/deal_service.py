@@ -43,9 +43,20 @@ makes it both a ``PROSPECT`` and ``CLEAR`` promotes it in the same transaction
 stays a separate one-line function so the handover tests can isolate the code after
 the guard; the whole path, unsubstituted, is ``test_crm_end_to_end.py``.
 
-Everything downstream of the guard is real and tested: the document snapshot, the
-history row, and the best-effort ``deal.handed_over`` announcement, in that order
-(architecture §3.6 — the history row is the source of truth, the announcement is an
+**The guard's rules now live in ``domain/handover_conditions.py``** (allocation F2):
+an ordered list of condition functions over providers injected into this service.
+A5's two conditions are the first two and decide today; four more — required
+documents, the seller's and the buyer's compliance, the invoicing branch — are in
+the list with their null provider injected, so they report nothing until the lane
+that owns each provider ships it. This service keeps the part only a service can
+do: read the company row once, under the right lock, and hand every condition the
+same snapshot of it.
+
+Everything downstream of the guard is real and tested: the **persisted** handover
+snapshot (``deal.handover_snapshot``, plan P2-7, written in the same ``UPDATE`` as
+the stage move so it lands before the terminal trigger freezes it), the history
+row, and the best-effort ``deal.handed_over`` announcement, in that order
+(architecture §3.6 — the record is the source of truth, the announcement is an
 announcement).
 """
 
@@ -64,6 +75,7 @@ from app.modules.onboarding.application.background_check_reader import current_b
 from app.modules.onboarding.application.conversation_service import ConversationService
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.deal_views import (
+    BuyerCompanyView,
     DealBuyerView,
     DealListItemView,
     DealStageMove,
@@ -73,6 +85,13 @@ from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.handover_conditions import (
+    HANDOVER_JOURNEY,
+    HandoverProviders,
+    HandoverSubject,
+    blocked_reason,
+    state_name,
+)
 from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import (
     DealBuyerRequiredError,
@@ -111,10 +130,12 @@ _NEEDS_REASON = frozenset({DealStage.WITHDRAWN})
 _NEEDS_BUYER = frozenset({DealStage.HANDED_OVER})
 
 #: Architecture §3.3: the journey value a company must have reached before a deal
-#: may be handed over (assumption A5's first half). Compared by *name* rather than
-#: by importing Developer 2's enum member, so this file states the rule without
-#: taking a dependency on the shape of their enum.
-_HANDOVER_JOURNEY = "CUSTOMER"
+#: may be handed over (assumption A5's first half). It now lives with the condition
+#: that reads it (``handover_conditions.HANDOVER_JOURNEY``) and is re-exported here
+#: under its old name, because that is the name the rest of this module and its
+#: tests call it by. Compared by *name* rather than by importing Developer 3's enum
+#: member, so neither file takes a dependency on the shape of their enum.
+_HANDOVER_JOURNEY = HANDOVER_JOURNEY
 
 #: The journey values a company must hold before a deal may be opened on it. A deal
 #: follows a sales conversation, which applies from ``PROSPECT`` onward (assumption
@@ -145,22 +166,49 @@ def read_background_check(company: ExporterProfile) -> str | None:
     return current_background_check(company)
 
 
+#: Marks a snapshot taken inside the handover's own transaction, as against one
+#: reconstructed afterwards by migration 0026
+#: (``"backfilled_from_deal_buyer"``). A reader can always tell the two apart.
+SNAPSHOT_TAKEN_AT_HANDOVER = "taken_at_handover"
+
+
 @dataclass(frozen=True)
 class _Handover:
     """What one handover rests on, captured inside the transaction that made it.
 
     Frozen, and built once: the whole point is that this cannot change between the
     commit and the announcement, nor afterwards.
+
+    Since P2-7 it is also **persisted**, as ``deal.handover_snapshot``: the
+    announcement is best effort and the history row carries only the document ids,
+    so neither was a record of the buyer the lending team was given. A company's
+    details change after a handover; this does not (set-once, by
+    ``trg_deal_terminal_freeze``).
     """
 
     buyer: dict
     document_ids: list[str]
+    buyer_company_id: uuid.UUID | None
+    at: datetime
+
+    def as_snapshot(self) -> dict:
+        """The JSONB value stored on the deal. The same keys migration 0026's
+        backfill writes, so one reader handles both."""
+        return {
+            "buyer": self.buyer or None,
+            "buyer_company_id": (
+                str(self.buyer_company_id) if self.buyer_company_id is not None else None
+            ),
+            "document_ids": list(self.document_ids),
+            "snapshot_source": SNAPSHOT_TAKEN_AT_HANDOVER,
+            "snapshot_at": self.at.isoformat(),
+        }
 
 
 class DealService:
     """Open deals, move their stages, record their buyers, and hand them over."""
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, *, providers: HandoverProviders | None = None) -> None:
         self._db = db
         self._deals = DealRepository(db)
         self._buyers = DealBuyerRepository(db)
@@ -169,6 +217,13 @@ class DealService:
         # Best effort by construction: `deal_handed_over` logs and swallows its
         # own failures, so a dead bus never undoes a committed handover.
         self._events = OnboardingEventPublisher()
+        # The handover guard's providers (`domain/handover_conditions.py`).
+        # Defaulted to the null ones, which answer "nothing unmet", so assumption
+        # A5's two conditions decide exactly what they decided before this was
+        # injectable. P2-5b hands in the real `RequiredDocumentsPolicy`, P4-7
+        # Developer 1's `ComplianceFactsReader` and P6-7 Developer 3's
+        # `BranchFlagReader` — none of which changes a condition's code.
+        self._providers = providers if providers is not None else HandoverProviders()
 
     # ── Read ─────────────────────────────────────────────────────────────────
 
@@ -356,6 +411,11 @@ class DealService:
             # later cannot change what the lending team was given (architecture
             # §3.6). Collected before the commit, announced after it.
             handover = await self._handover_snapshot(deal)
+            # Persisted in the same UPDATE as the stage move (P2-7). The order is
+            # what makes this legal: `trg_deal_terminal_freeze` fires on the OLD
+            # row, whose stage is still `GATHERING_PAPERWORK`, so the column is
+            # written before it is frozen — and set-once from then on.
+            deal.handover_snapshot = handover.as_snapshot()
 
         await self._history.record(
             deal.company_id,
@@ -528,6 +588,11 @@ class DealService:
                 else {}
             ),
             document_ids=[str(document.id) for document in documents],
+            # Recorded alongside the buyer's details, not instead of them: once
+            # P4-4 points deals at company records, the snapshot has to say *which*
+            # company was handed over as well as what it looked like at the time.
+            buyer_company_id=deal.buyer_company_id,
+            at=deal.handed_over_at or datetime.now(tz=UTC),
         )
 
     # ── The A5 handover guard ────────────────────────────────────────────────
@@ -536,11 +601,18 @@ class DealService:
         """Why this deal may not be handed over — every unmet condition, joined with
         ``"; "`` — or ``None`` if it may.
 
-        Assumption A5: the company's journey is ``CUSTOMER`` **and** its background
-        check is ``CLEAR``. Both are now real: Developer 4A's migration 0015 landed
-        and ``read_background_check`` calls their published helper, so a company that
-        has never been checked reads ``NOT_STARTED`` — a fact, not an absence — and
-        "not ``CLEAR``" is never treated as "clear".
+        **The rules themselves are ``domain/handover_conditions.py``'s**, an ordered
+        list of condition functions over the providers injected into this service
+        (allocation F2). This method's job is the part only a service can do: read
+        the seller's row **once**, under the right lock, and hand every condition
+        the same snapshot of it.
+
+        Assumption A5 — the company's journey is ``CUSTOMER`` **and** its background
+        check is ``CLEAR`` — is the first two conditions. Both are real: Developer 4A's
+        migration 0015 landed and ``read_background_check`` calls their published
+        helper, so a company that has never been checked reads ``NOT_STARTED`` — a
+        fact, not an absence — and "not ``CLEAR``" is never treated as "clear". The
+        remaining four conditions are inert until their provider ships.
 
         ``lock`` takes ``FOR SHARE`` on the company row (**decision D10, settled 28
         September 2026**). It is passed only by ``transition_stage``, never by the
@@ -578,14 +650,21 @@ class DealService:
 
         # Every unmet condition, journey first, so the screen tells the whole story at
         # once — a PROSPECT whose check is FLAGGED needs both fixed, not one.
-        unmet: list[str] = []
-        if company.journey.value != _HANDOVER_JOURNEY:
-            unmet.append(f"the company is {company.journey.value}, not {_HANDOVER_JOURNEY}")
-
-        background_check = read_background_check(company)
-        if background_check != "CLEAR":
-            unmet.append(f"the background check is {background_check}, not CLEAR")
-        return "; ".join(unmet) or None
+        subject = HandoverSubject(
+            deal_id=deal.id,
+            seller_company_id=deal.company_id,
+            seller_journey=company.journey.value,
+            # Through the read seam, so Developer 1 owns that one function's body
+            # and the conditions never reach for the column themselves.
+            seller_background_check=read_background_check(company),
+            buyer_company_id=deal.buyer_company_id,
+            legacy_buyer_id=deal.buyer.id if deal.buyer is not None else None,
+            seller_gst_registration_id=deal.seller_gst_registration_id,
+            # One "now" for the whole run, so two conditions cannot disagree about
+            # whether a check had expired.
+            now=datetime.now(tz=UTC),
+        )
+        return await blocked_reason(subject, self._providers)
 
     # ── Internals ────────────────────────────────────────────────────────────
 
@@ -624,8 +703,44 @@ class DealService:
                 if deal.buyer is not None
                 else None
             ),
+            buyer_company=await self._buyer_company(deal),
+            handover_snapshot=deal.handover_snapshot,
+            seller_gst_registration_id=deal.seller_gst_registration_id,
             allowed_stage_moves=tuple(moves),
             handover_blocked_reason=blocked,
+        )
+
+    async def _buyer_company(self, deal: Deal) -> BuyerCompanyView | None:
+        """The buyer as a company record — ``None`` on every deal whose buyer is
+        still a ``deal_buyer`` row (plan P4-4, filled by the migration in P4-6).
+
+        A summary, not the company: a deal page wants enough to recognise the buyer
+        and to click through, and the whole company record is one request away. The
+        identifiers are the ones the company response already carries, so they are
+        masked by the same rule in the same place (``schemas/deal.py``).
+        """
+        if deal.buyer_company_id is None:
+            return None
+        company = await self._db.scalar(
+            select(ExporterProfile).where(
+                ExporterProfile.customer_id == deal.buyer_company_id
+            )
+        )
+        if company is None:  # pragma: no cover - `fk_deal_buyer_company_id` forbids it
+            return None
+        return BuyerCompanyView(
+            company_id=company.customer_id,
+            name=company.name,
+            country=company.country,
+            # Developer 3's F3 column, read by name through `state_name` so an
+            # enum and a string look the same here. The `getattr` is there **only**
+            # until F3 merges: this lane fixed the response shape in F2 so
+            # Developer 3's screens could be built against it, and a hard attribute
+            # read would make this file fail against today's schema. It comes out in
+            # the commit that rebases onto F3.
+            pipeline_status=state_name(getattr(company, "pipeline_status", None)),
+            pan=company.pan,
+            cin=company.cin,
         )
 
     async def _require_deal(self, deal_id: uuid.UUID) -> Deal:

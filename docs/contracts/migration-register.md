@@ -1,6 +1,6 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0022_integrity`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0026_deal_snapshot`
 
 The prototype's migrations, from four developers and one platform change, in one
 chain. This is the running order and the rules. Dev 1 keeps it current.
@@ -26,8 +26,24 @@ merged.
 | `auth_0004` | Platform (user management) | Roles and permissions as data (RBAC) | `auth_0003_user_admin` |
 | 0021 | Dev 4B | Superseding verification reviews, the outcome freeze, evidence and subject snapshots | `auth_0004_rbac` |
 | 0022 | Release audit | Database guards: no document or verification result is deleted, a document's identity is fixed once set, and a `HANDED_OVER` or `WITHDRAWN` deal no longer changes | `onboarding_0021_verif_review` |
+| 0025 | Dev 2 | The deal's new columns: `buyer_company_id` (FK, not the seller), `handover_snapshot`, `seller_gst_registration_id` (FK) | `onboarding_0022_integrity` |
+| 0026 | Dev 2 | Backfill `handover_snapshot` for every already-handed-over deal, then add it to `prevent_terminal_deal_change()` under a **set-once** rule | `onboarding_0025_deal_foundation` |
 
-**Next free onboarding number: 0023.**
+**Numbers reserved for the post-demo foundation PRs.** The work allocation fixes
+the merge order **F1 → F3 → F2** (allocation §6), so the three foundation
+migrations take numbers in that order:
+
+| Number | Lane | Foundation |
+|---|---|---|
+| 0023 | Dev 1 | F1 — compliance (`verification_result.subject_company_id`, `exporter_profile.background_check_expires_at`) |
+| 0024 | Dev 3 | F3 — company (`identity_type`, `registration_number`, `pipeline_status`, `created_via`) |
+| 0025 | Dev 2 | F2 — deal (above) |
+
+Numbers are labels, not order (§2). 0025 and 0026 were written against
+`onboarding_0022_integrity` because F1 and F3 had not merged yet; on rebase their
+`down_revision` is re-pointed at whatever `alembic heads` then prints and the
+numbers stay. **Next free onboarding number after the foundations: 0027** (taken by
+Dev 2's `deal_required_document`).
 
 The two `auth_*` revisions belong to the platform's user-management work, not to the
 CRM; they sit in this chain because there is only one chain (§2), so a CRM migration

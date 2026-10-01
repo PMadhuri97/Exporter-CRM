@@ -25,9 +25,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema
 
 from app.modules.onboarding.api.schemas.masking import (
     NotMasked,
@@ -37,6 +37,7 @@ from app.modules.onboarding.api.schemas.masking import (
     mask_phone,
 )
 from app.modules.onboarding.domain.deal_views import (
+    BuyerCompanyView,
     DealListItemView,
     DealStageMove,
     DealView,
@@ -135,6 +136,86 @@ class DealBuyerResponse(BaseModel):
         )
 
 
+class BuyerCompanyResponse(BaseModel):
+    """The deal's buyer as a company record (plan P4-4), summarised.
+
+    `pan` and `cin` are masked for OPERATIONS and DEVELOPER by exactly the rule
+    the company response uses — the buyer being a company does not make its
+    identifiers more visible than the seller's.
+
+    `pipeline_status` is `null` until Developer 3's F3 column exists. The field is
+    in the shape from F2 on purpose: the company screens are built against this
+    response, and adding a field to it later would be a contract change.
+    """
+
+    company_id: uuid.UUID
+    name: str | None
+    country: str | None
+    pipeline_status: str | None
+    pan: str | None
+    cin: str | None
+
+    @classmethod
+    def from_view(cls, view: BuyerCompanyView, viewer: User) -> BuyerCompanyResponse:
+        reveal = can_reveal_identifiers(viewer)
+        return cls(
+            company_id=view.company_id,
+            name=view.name,
+            country=view.country,
+            pipeline_status=view.pipeline_status,
+            pan=view.pan if reveal else mask_identifier(view.pan),
+            cin=view.cin if reveal else mask_identifier(view.cin),
+        )
+
+
+#: The stored handover snapshot, as the API serves it: an **open** map.
+#:
+#: Pydantic writes a bare ``{"type": "object"}`` for a ``dict``, and
+#: ``openapi-typescript`` renders that as the uninhabited ``Record<string,
+#: never>`` — a generated client that cannot read a single key. Attaching the
+#: schema to the ``dict`` itself (rather than to the field, where it would land
+#: outside the ``anyOf`` branch and be ignored) makes it
+#: ``{ [key: string]: unknown }``, which is what the deal page actually reads.
+HandoverSnapshot = Annotated[
+    dict[str, Any],
+    WithJsonSchema({"type": "object", "additionalProperties": True}),
+]
+
+
+def _masked_snapshot(
+    snapshot: dict[str, Any] | None, viewer: User
+) -> dict[str, Any] | None:
+    """The handover snapshot as this viewer may see it.
+
+    The **stored** snapshot is never masked: it is the record of what the lending
+    team was given, and a record that changed shape with its reader would be
+    useless. Masking happens here, on the way out, over the same fields
+    `DealBuyerResponse` masks and through the same helpers — so a buyer's tax
+    identifiers are no more visible inside a snapshot than outside one.
+
+    Anything in the snapshot this function does not recognise is passed through
+    untouched: `snapshot_source`, `snapshot_at`, `document_ids` and
+    `buyer_company_id` carry no identifiers. A new identifier-bearing key would
+    have to be added here deliberately, which is the point of listing them.
+    """
+    if snapshot is None or can_reveal_identifiers(viewer):
+        return snapshot
+
+    buyer = snapshot.get("buyer")
+    if not isinstance(buyer, dict):
+        return snapshot
+    return {
+        **snapshot,
+        "buyer": {
+            **buyer,
+            "registration_number": mask_identifier(buyer.get("registration_number")),
+            "tax_id": mask_identifier(buyer.get("tax_id")),
+            "contact_email": mask_email(buyer.get("contact_email")),
+            "contact_phone": mask_phone(buyer.get("contact_phone")),
+        },
+    }
+
+
 class DealStageMoveResponse(BaseModel):
     """One move the caller may make from the deal's current stage.
 
@@ -160,6 +241,30 @@ class DealResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     buyer: DealBuyerResponse | None
+    #: The buyer as a company record (P4-4). `null` on every deal whose buyer is
+    #: still a `deal_buyer` row, which is every deal until P4-6 runs.
+    buyer_company: BuyerCompanyResponse | None
+    #: What the lending team was given, frozen at the moment of the handover
+    #: (P2-7): `{buyer, buyer_company_id, document_ids, snapshot_source,
+    #: snapshot_at}`. `null` until the deal is handed over. The buyer's
+    #: identifiers inside it are masked by the same rule as `buyer`'s.
+    #:
+    #: `snapshot_source` is `taken_at_handover` for a snapshot written by the
+    #: handover itself and `backfilled_from_deal_buyer` for one reconstructed by
+    #: migration 0026 from the records that existed — so a reader can tell a
+    #: record from a reconstruction.
+    #:
+    #: An open map rather than a model on purpose: it is served **as stored**, and
+    #: migration 0026's backfill builds its `buyer` from `to_jsonb(deal_buyer)`,
+    #: so a buyer column added later appears in new snapshots. A fixed model would
+    #: silently drop that from the response — hiding part of the very record this
+    #: field exists to preserve.
+    #:
+    #: Typed as `HandoverSnapshot` rather than `dict`: see that alias for why.
+    handover_snapshot: HandoverSnapshot | None
+    #: The seller's GST registration this deal is invoiced from (P6-6). `null` on
+    #: every deal until that task records one.
+    seller_gst_registration_id: uuid.UUID | None
     allowed_stage_moves: list[DealStageMoveResponse]
     #: Present when the handover is legal by the stage graph but blocked by
     #: assumption A5's guard; it names every unmet condition, journey first.
@@ -195,6 +300,13 @@ class DealResponse(BaseModel):
                 if view.buyer is not None
                 else None
             ),
+            buyer_company=(
+                BuyerCompanyResponse.from_view(view.buyer_company, viewer)
+                if view.buyer_company is not None
+                else None
+            ),
+            handover_snapshot=_masked_snapshot(view.handover_snapshot, viewer),
+            seller_gst_registration_id=view.seller_gst_registration_id,
             allowed_stage_moves=[
                 DealStageMoveResponse.from_view(move) for move in view.allowed_stage_moves
             ]
@@ -246,6 +358,7 @@ class DealListResponse(BaseModel):
 
 
 __all__ = [
+    "BuyerCompanyResponse",
     "DealBuyerResponse",
     "DealListItemResponse",
     "DealListResponse",
