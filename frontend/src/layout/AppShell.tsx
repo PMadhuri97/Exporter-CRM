@@ -3,8 +3,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 
 import { Sheet } from '@/components';
-import { humanize } from '@/lib/format';
-import { useAuth, useCurrentUser } from '@/platform/auth';
+import { roleShortLabel, useAuth, useCurrentUser } from '@/platform/auth';
 import { ThemeToggle } from '@/platform/theme';
 
 import { Sidebar } from './Sidebar';
@@ -61,7 +60,7 @@ function TopBar({
         <ThemeToggle />
         <div className="hidden text-right sm:block">
           <p className="text-sm font-medium leading-tight text-ink">{user.full_name ?? user.email}</p>
-          <p className="text-xs text-ink-faint">{humanize(user.role)}</p>
+          <p className="text-xs text-ink-faint">{roleShortLabel(user.role)}</p>
         </div>
         <button type="button" onClick={() => void logout()} aria-label="Sign out" className={ICON_BUTTON}>
           <LogOut size={16} />

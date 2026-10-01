@@ -49,7 +49,7 @@ export function LoginPage() {
           <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-600 text-lg font-bold text-white dark:text-surface">
             A
           </div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">Sign in to ANER</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">Sign in to Aner Labs</h1>
           <p className="mt-1 text-sm text-ink-muted">Exporter CRM</p>
         </div>
 

@@ -18,7 +18,11 @@ import type { AdminUser, PermissionRef, Role } from '../types';
 import { SettingsPage } from './SettingsPage';
 
 // vitest hoists vi.mock above the imports it replaces.
-vi.mock('@/platform/auth', () => ({
+// Partial: only the session is faked. `roleLabel` and the role predicates are pure
+// and stay real, so these tests exercise the label a person actually sees rather than
+// a stub that would pass whatever it was given.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
   useCurrentUser: vi.fn(),
   useAuth: vi.fn(),
 }));

@@ -1,6 +1,6 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0022_integrity`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0023_domestic_first`
 
 The prototype's migrations, from four developers and one platform change, in one
 chain. This is the running order and the rules. Dev 1 keeps it current.
@@ -26,8 +26,9 @@ merged.
 | `auth_0004` | Platform (user management) | Roles and permissions as data (RBAC) | `auth_0003_user_admin` |
 | 0021 | Dev 4B | Superseding verification reviews, the outcome freeze, evidence and subject snapshots | `auth_0004_rbac` |
 | 0022 | Release audit | Database guards: no document or verification result is deleted, a document's identity is fixed once set, and a `HANDED_OVER` or `WITHDRAWN` deal no longer changes | `onboarding_0021_verif_review` |
+| 0023 | Dev 3 | Domestic-first qualification: `export_history` and `export_licence` get a version 2 that is not required, and the three export-only rejection reasons are deactivated | `onboarding_0022_integrity` |
 
-**Next free onboarding number: 0023.**
+**Next free onboarding number: 0024.**
 
 The two `auth_*` revisions belong to the platform's user-management work, not to the
 CRM; they sit in this chain because there is only one chain (§2), so a CRM migration
@@ -48,6 +49,18 @@ constraint applies cleanly whenever 0014 runs.
 ---
 
 ## 2. Rules
+
+**Name a migration `onboarding_00NN_<lane>_<topic>`.** `onboarding` is the module
+whose directory holds it, `NN` the next free number from §1, `<lane>` the area of work
+(`company`, `deal`, `domestic`, `verif`), `<topic>` what it does. The lane matters when
+several people are migrating at once: it is what tells a reviewer whose change this is
+without opening the file. Other modules use their own prefix — `auth_0004_rbac`.
+
+Keep `<lane>_<topic>` short, because of the next rule. The limit is easy to breach:
+`onboarding_0023_domestic_criteria` — the name `plan.md` P1-1 prescribed — is **33
+characters** and failed on the database with `value too long for type character
+varying(32)` after the migration body had already run. It shipped as
+`onboarding_0023_domestic_first` (30).
 
 **One chain, one head.** `alembic heads` must print exactly one revision. If it
 prints two, someone branched: fix it by re-parenting, not by adding a merge
@@ -71,6 +84,23 @@ exists. Add the value in an ordinary transactional migration, as
 updates its own `down_revision` (a one-line change) and whoever does it tells
 Dev 1 to update the table above. Numbers are labels, not order; `down_revision`
 is the order.
+
+The same rule, from the other direction: **before you merge, re-point
+`down_revision` to whatever head is there now and re-run `alembic heads`.** A branch
+that sat for a week was written against a head that has since moved. Reserve numbers
+from §1 in the order the work is expected to merge, and accept that the expectation
+will sometimes be wrong — which costs one line, as long as nobody renumbers instead.
+
+**Take a `pg_dump` before any migration that changes data**, not just schema. A data
+migration that inserts rows into an append-only table cannot be undone by a plain
+`DELETE` — the trigger refuses it — so its downgrade has to lift the trigger
+deliberately, and a dump is what makes that safe to attempt. Each data migration says
+in its docstring how it rolls back and what it changes about existing rows.
+
+**Grow a column in three steps when a table is in use: expand, backfill, contract.**
+Add the new column nullable, fill it, and only then make it `NOT NULL` or drop the old
+one — in separate migrations. One migration that adds a `NOT NULL` column to a
+populated table fails on the row it cannot fill.
 
 **Register a new module migration directory in `alembic.ini`.** `version_locations`
 is explicit, must stay on one line (Alembic splits it on commas and spaces, so a

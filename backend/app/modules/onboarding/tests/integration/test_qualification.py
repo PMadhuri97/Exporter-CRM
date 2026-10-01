@@ -56,7 +56,15 @@ from app.shared.exceptions import ValidationError
 pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
-REQUIRED = ("revenue", "years_in_business", "export_history", "export_licence")
+#: The criteria that are **required** after `onboarding_0023_domestic_first`.
+#: `export_history` and `export_licence` still exist and are still active — they are
+#: simply no longer required, because the first phase of the product is domestic
+#: trade. `test_a_domestic_company_qualifies_without_export_evidence` is what proves
+#: the difference; this tuple is what every other test uses to reach QUALIFIED.
+REQUIRED = ("revenue", "years_in_business")
+#: Active, but not required. Kept separate so a test can be explicit about scoring
+#: one without implying it counts towards the suggestion.
+NOT_REQUIRED = ("export_history", "export_licence")
 Q = QualificationOutcomeValue
 
 
@@ -480,6 +488,110 @@ async def test_results_never_move_the_gauge():
     view = await _view(customer_id)
     assert view.state is QualificationState.NOT_YET_REVIEWED
     assert view.suggested_outcome is Q.QUALIFIED  # suggested, not decided
+
+
+# ── Domestic-first qualification (onboarding_0023_domestic_first) ─────────────
+
+
+def _set_reason_code_active(code: str, active: bool) -> None:
+    """Flip a reason code directly, to stage a company that was decided before the
+    migration retired the code. `qualification_reason_code` has no append-only
+    trigger, which is what makes this a plain UPDATE."""
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE onboarding.qualification_reason_code SET active = %s "
+                "WHERE code = %s",
+                (active, code),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+async def test_a_domestic_company_qualifies_without_export_evidence():
+    """P1-1's acceptance test: the whole point of the domestic-first change.
+
+    A company with nothing recorded against `export_history` or `export_licence` —
+    not a FAIL, no result at all — is suggested QUALIFIED, because neither is
+    required any more. Before the migration this read NOT_QUALIFIED and a domestic
+    exporter could not be taken on.
+    """
+    customer_id = await make_company()
+    await _results(customer_id, [_pass(key) for key in REQUIRED])
+
+    view = await _view(customer_id)
+    assert view.suggested_outcome is Q.QUALIFIED
+
+    # The absence is the point, not an oversight in the fixture.
+    scored = {
+        standing.criterion.key
+        for standing in view.standings
+        if standing.latest_result is not None
+    }
+    assert not (scored & set(NOT_REQUIRED))
+
+
+async def test_the_export_criteria_still_exist_and_can_still_be_scored():
+    """Not required is not retired. Both stay active and recordable, so a company
+    that does export can still evidence it."""
+    customer_id = await make_company()
+    await _results(customer_id, [_pass(key) for key in (*REQUIRED, *NOT_REQUIRED)])
+    assert (await _view(customer_id)).suggested_outcome is Q.QUALIFIED
+
+
+async def test_failing_an_export_criterion_no_longer_blocks_the_suggestion():
+    """The de-count, as behaviour rather than a release note.
+
+    A recorded FAIL on an export criterion used to force NOT_QUALIFIED. It no longer
+    counts towards the suggestion at all — which is exactly what the migration's
+    docstring warns will re-suggest an undecided lead.
+    """
+    customer_id = await make_company()
+    await _results(
+        customer_id,
+        [*[_pass(key) for key in REQUIRED], _fail("export_licence")],
+    )
+    assert (await _view(customer_id)).suggested_outcome is Q.QUALIFIED
+
+
+async def test_a_retired_export_reason_code_is_refused_on_a_new_outcome():
+    """P1-2: no new decision may cite a reason that assumes export (IQ-12)."""
+    customer_id = await make_company()
+    await _results(customer_id, [_fail("revenue")])
+    with pytest.raises(ValidationError):
+        await _outcome(
+            customer_id, Q.NOT_QUALIFIED, reason_codes=["no_export_licence"]
+        )
+
+
+async def test_a_past_outcome_keeps_rendering_its_retired_reason_code():
+    """The other half of P1-2, and why deactivation beats deletion.
+
+    An outcome stores its codes as JSONB **strings**, not foreign keys, so one
+    decided while the code was live reads back unchanged afterwards. Staged the way a
+    real database reached this state: decided through the service while the code was
+    active, then the code retired underneath it.
+    """
+    customer_id = await make_company()
+    await _results(customer_id, [_fail("revenue")])
+
+    _set_reason_code_active("no_export_history", True)
+    try:
+        await _outcome(
+            customer_id,
+            Q.NOT_QUALIFIED,
+            reason_codes=["no_export_history"],
+            note="decided before the code was retired",
+        )
+    finally:
+        # Restored even if the outcome fails, so one bad run cannot leave the code
+        # active and quietly weaken every later test in this file.
+        _set_reason_code_active("no_export_history", False)
+
+    view = await _view(customer_id)
+    assert "no_export_history" in view.outcomes[0].reason_codes
 
 
 # ── Suggestion versus decision ────────────────────────────────────────────────

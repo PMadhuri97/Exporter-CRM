@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { formatDateTime } from '@/lib/format';
-import { useCurrentUser } from '@/platform/auth';
+import { roleLabel, roleShortLabel, useCurrentUser } from '@/platform/auth';
 
 import { useUpdateUser, useUsers } from '../hooks';
 import { ROLE_CHIP_CLASS, ROLE_OPTIONS } from '../roles';
@@ -27,7 +27,7 @@ function RoleChip({ role }: { role: AdminUser['role'] }) {
     <span
       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_CHIP_CLASS[role]}`}
     >
-      {role}
+      {roleShortLabel(role)}
     </span>
   );
 }
@@ -121,7 +121,7 @@ export function UsersTab() {
             <option value="all">All roles</option>
             {ROLE_OPTIONS.map((option) => (
               <option key={option} value={option}>
-                {option}
+                {roleLabel(option)}
               </option>
             ))}
           </select>

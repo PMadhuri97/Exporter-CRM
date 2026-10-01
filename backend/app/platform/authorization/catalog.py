@@ -14,10 +14,11 @@ Two things to be honest about:
   had. Anything reading this catalogue for display must surface that flag —
   presenting an unenforced checkbox as if it gated something would be a lie.
 * **`exporters:view_full_tax_id` is granted to COMPLIANCE and ADMIN only**,
-  matching today's masking rule. OPERATIONS' ability to reveal identifiers is
-  scoped to exporters it owns, which a flat (module, action) grant cannot
-  express — that check stays in `can_reveal_identifiers`. Seeding OPERATIONS
-  here would widen it from "records I own" to "every record".
+  matching today's masking rule: `can_reveal_identifiers` admits exactly those
+  two roles and no other. OPERATIONS is masked on every record, including the
+  ones it is the relationship manager for — architecture decision 12 settled the
+  prototype that way, and ownership-scoped reveal waits until after it. Seeding
+  OPERATIONS here would therefore widen a rule, not describe one.
 """
 
 from __future__ import annotations
@@ -173,8 +174,9 @@ BUILTIN_ROLE_PERMISSIONS: dict[UserRole, frozenset[tuple[str, str]]] = {
         ("exporters", "create"),
         ("exporters", "edit"),
         ("exporters", "transition"),
-        # Masked by default; the owner-scoped reveal stays in code (see module
-        # docstring). Searching by full PAN is permitted outright per 3.7.
+        # Identifiers are masked for this role on every record (decision 12 — there
+        # is no owner-scoped reveal). Searching by a full PAN is a separate
+        # permission and is granted outright per §3.7.
         ("exporters", "search_by_tax_id"),
         ("verifications", "view"),
         ("verifications", "create"),
@@ -202,9 +204,13 @@ BUILTIN_ROLE_METADATA: dict[UserRole, tuple[str, str, str]] = {
         "Compliance decisions, audit trails and unmasked tax identifiers.",
     ),
     UserRole.OPERATIONS: (
+        # The slug stays `operations` and the enum member stays `OPERATIONS`: both
+        # are written into rows already recorded. Only the display name changed
+        # (IQ-13) — the people in this role are relationship managers.
         "operations",
-        "Operations",
-        "Day-to-day CRM work. Tax identifiers are masked unless you own the record.",
+        "RM (Relationship Manager)",
+        "Day-to-day CRM work: companies, contacts, activities and deals. "
+        "Tax identifiers are always masked.",
     ),
     UserRole.DEVELOPER: (
         "developer",

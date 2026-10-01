@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { formatDateTime } from '@/lib/format';
-import { useAuth, useCurrentUser } from '@/platform/auth';
+import { roleLabel, useAuth, useCurrentUser } from '@/platform/auth';
 
 import {
   useChangeOwnPassword,
@@ -120,7 +120,7 @@ export function MyProfileTab() {
             <span
               className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_CHIP_CLASS[user.role]}`}
             >
-              {user.role}
+              {roleLabel(user.role)}
             </span>
             <p className="mt-1.5 text-xs text-ink-faint">
               {ROLE_DESCRIPTION[user.role]} Only an administrator can change this.

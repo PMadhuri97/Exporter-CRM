@@ -1,2 +1,2 @@
 export { AuthProvider, useAuth, useCurrentUser } from './AuthContext';
-export { isAdminRole, isStaffRole } from './roles';
+export { isAdminRole, isStaffRole, roleLabel, roleShortLabel } from './roles';

@@ -130,7 +130,7 @@ export function Sidebar({
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="text-sm font-semibold leading-tight text-ink">ANER</p>
+            <p className="text-sm font-semibold leading-tight text-ink">Aner Labs</p>
             <p className="text-xs text-ink-faint">Exporter CRM</p>
           </div>
         )}
