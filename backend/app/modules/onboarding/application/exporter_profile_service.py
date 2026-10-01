@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.schemas.masking import mask_identifier
 from app.modules.onboarding.application.background_check_reader import BackgroundCheckReader
+from app.modules.onboarding.application.compliance_facts import ComplianceFactsService
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.engagement_views import (
     ExporterActivityView,
@@ -90,6 +91,7 @@ from app.modules.onboarding.infrastructure.repositories import (
 )
 from app.platform.idempotency.models import IdempotencyKeyType, RegistrationResultType
 from app.platform.idempotency.services import complete_key, register_key
+from app.shared import clock
 from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
@@ -724,17 +726,34 @@ class ExporterProfileService:
         Flushes and never commits, like seam S1. Idempotent: a company already
         ``CUSTOMER`` (or not yet a ``PROSPECT``, or not ``CLEAR``) is left alone,
         and ``None`` comes back — no history row, nothing to announce. The
-        background check is read through Developer 4A's published reader, never
-        from their tables.
+        background check is read through the compliance engine's published
+        readers, never from its tables.
+
+        **The Clear must be current** (IQ-18, plan P3-3b; Developer 1's one edit to
+        this method, allocation §2.2): the condition is
+        ``ComplianceFactsReader.for_company(...).is_clear_current`` at the injectable
+        clock's ``now``. A ``PROSPECT`` whose Clear has expired stays a ``PROSPECT``
+        until a new Clear promotes it.
 
         Returns what ``company.became_customer`` should carry. The caller publishes
         it with :func:`announce_became_customer` **after** its commit.
         """
         if profile.journey is not ExporterJourney.PROSPECT:
             return None
-        standing = await BackgroundCheckReader(self._db).standing(profile.customer_id)
-        if not standing.is_clear:
+        facts = await ComplianceFactsService(self._db).for_company(
+            profile.customer_id, clock.now()
+        )
+        if not facts.is_clear_current:
+            if facts.is_clear:
+                logger.info(
+                    "exporter_profile.promotion_refused_expired_clear",
+                    customer_id=str(profile.customer_id),
+                    clear_expires_at=(
+                        facts.clear_expires_at.isoformat() if facts.clear_expires_at else None
+                    ),
+                )
             return None
+        standing = await BackgroundCheckReader(self._db).standing(profile.customer_id)
         if standing.clearing_decision_id is None or standing.risk_rating is None:
             # Impossible by the database's own rules: a CLEAR decision carries a
             # risk (`ck_background_check_decision_clear_risk`) and is the chain head.

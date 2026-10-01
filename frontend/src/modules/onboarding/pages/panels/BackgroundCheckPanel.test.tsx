@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/lib/api/errors';
@@ -8,6 +8,7 @@ import {
   getBackgroundCheck,
   listBackgroundCheckDecisions,
   recordBackgroundCheckDecision,
+  startCheckCycle,
 } from '../../api';
 import type { BackgroundCheck, BackgroundCheckDecision } from '../../types';
 
@@ -17,6 +18,7 @@ vi.mock('../../api', () => ({
   getBackgroundCheck: vi.fn(),
   listBackgroundCheckDecisions: vi.fn(),
   recordBackgroundCheckDecision: vi.fn(),
+  startCheckCycle: vi.fn(),
 }));
 
 // Developer 4B's section. Stubbed so this file tests the gauge, not their 631-line
@@ -41,6 +43,13 @@ function standing(overrides: Partial<BackgroundCheck> = {}): BackgroundCheck {
       { to_value: 'FLAGGED', reason_required: true, risk_required: false },
     ],
     clear_blocked_reasons: [],
+    compliance: {
+      is_clear: false,
+      clear_expires_at: null,
+      is_clear_current: false,
+      sanctions: 'MISSING',
+      aml: 'MISSING',
+    },
     ...overrides,
   };
 }
@@ -430,5 +439,99 @@ describe('BackgroundCheckPanel — the decision trail', () => {
         screen.getByText('The decision history could not be loaded.'),
       ).toBeInTheDocument(),
     );
+  });
+});
+
+describe('BackgroundCheckPanel — check cycles and expiry (Developer 1)', () => {
+  const currentCycle = {
+    id: 'cycle-1',
+    company_id: COMPANY_ID,
+    number: 1,
+    kind: 'INITIAL',
+    reason: null,
+    started_at: '2026-09-01T09:00:00Z',
+    started_by: 'x',
+    started_by_name: null,
+    source: 'MIGRATION',
+    rules_version: null,
+    is_current: true,
+  };
+
+  it('names the current cycle and the Clear expiry', async () => {
+    vi.mocked(getBackgroundCheck).mockResolvedValue(
+      standing({
+        value: 'CLEAR',
+        allowed_moves: [],
+        current_cycle: currentCycle,
+        compliance: {
+          is_clear: true,
+          clear_expires_at: '2027-09-28T10:00:00Z',
+          is_clear_current: true,
+          sanctions: 'PASSED',
+          aml: 'PASSED',
+        },
+      }),
+    );
+    renderPanel();
+    expect(await screen.findByTestId('current-cycle')).toHaveTextContent(
+      'Cycle 1 · Initial check · started 01 Sep 2026',
+    );
+    expect(screen.getByTestId('clear-expiry')).toHaveTextContent('Clear until 28 Sep 2027');
+  });
+
+  it('offers exactly the Re-KYC / Re-KYB the server allows, and none when it allows none', async () => {
+    vi.mocked(getBackgroundCheck).mockResolvedValue(standing({ allowed_cycle_actions: [] }));
+    renderPanel();
+    await screen.findByTestId('background-check-gauge');
+    expect(screen.queryByTestId('check-cycle-actions')).not.toBeInTheDocument();
+  });
+
+  it('starts a Re-KYC with a reason, warning first that a Clear company is reopened', async () => {
+    vi.mocked(getBackgroundCheck).mockResolvedValue(
+      standing({
+        value: 'CLEAR',
+        allowed_moves: [],
+        current_cycle: currentCycle,
+        allowed_cycle_actions: [
+          { kind: 'RE_KYC', reason_required: true, reopens: true },
+          { kind: 'RE_KYB', reason_required: true, reopens: true },
+        ],
+      }),
+    );
+    vi.mocked(startCheckCycle).mockResolvedValue({
+      cycle: { ...currentCycle, id: 'cycle-2', number: 2, kind: 'RE_KYC', reason: 'Annual review' },
+      reopen_decision: null,
+    });
+    renderPanel();
+    expect(await screen.findByRole('button', { name: 'Start Re-KYB' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Start Re-KYC' }));
+    const dialog = screen.getByRole('dialog', { name: 'Start Re-KYC' });
+    expect(dialog).toHaveTextContent('moves the check back to In review');
+    const submit = within(dialog).getByRole('button', { name: 'Start Re-KYC' });
+    expect(submit).toBeDisabled(); // a reason is required
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: ' Annual review ' } });
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(startCheckCycle).toHaveBeenCalledWith(COMPANY_ID, {
+        kind: 'RE_KYC',
+        reason: 'Annual review',
+      }),
+    );
+  });
+
+  it('shows the server’s refusal of a start', async () => {
+    vi.mocked(getBackgroundCheck).mockResolvedValue(
+      standing({ allowed_cycle_actions: [{ kind: 'RE_KYB', reason_required: true, reopens: false }] }),
+    );
+    vi.mocked(startCheckCycle).mockRejectedValue(
+      new ApiError(409, 'Check cycle 1 has nothing recorded in it yet', 'CHECK_CYCLE_EMPTY'),
+    );
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: 'Start Re-KYB' }));
+    const dialog = screen.getByRole('dialog', { name: 'Start Re-KYB' });
+    expect(dialog).not.toHaveTextContent('moves the check back');
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'New owner' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Start Re-KYB' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('nothing recorded');
   });
 });

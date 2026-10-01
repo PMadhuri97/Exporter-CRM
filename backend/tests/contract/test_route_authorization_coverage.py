@@ -275,6 +275,17 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
         "GET",
         f"{CRM}/exporters/{{customer_id}}/screening-review/{{item_key}}/history",
     ): STAFF,
+    #
+    # ── Compliance engine — owner: Developer 1 (allocation §3; lane rows only) ──
+    # DEVELOPER is refused on all three (D8): the evidence carries reasons, comments and
+    # review notes; a cycle carries the reason a Re-KYC was started.
+    (
+        "GET",
+        f"{CRM}/exporters/{{company_id}}/background-check/decisions/{{decision_id}}/evidence",
+    ): STAFF,  # P2-1a
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): STAFF,  # P2-3d
+    # P2-3c: IQ-3 — compliance and admin start a cycle; the RM does not.
+    ("POST", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): COMPLIANCE_OR_ADMIN,
 }
 
 

@@ -22,13 +22,15 @@ this page lists what needs a decision or a change, and links there for detail.
 | **D2** clarification — a `REVIEW` result with an `ACCEPTED` or `REJECTED` review no longer blocks `CLEAR` | `CLEAR_POLICY` | `background-check.md` §14.1 |
 | **D5** amendment — risk is refused on every move except `CLEAR` | service and `ck_background_check_decision_risk_only_on_clear` | `dev4/4a-task.md` §13 |
 | **D4, Developer 4B's side** — which documents may be evidence for a verification (the company's own; for a buyer, its deal's or its company's), and only `AVAILABLE` ones | `verification_service._check_evidence_documents` | `dev4/4b-task.md` §13 |
+| **IQ-2 edge cases** (Developer 1, 1 Oct 2026) — a `REVIEW` sanctions/AML result with a `REJECTED` review reads as `FAILED`; a `PASSED` or `FAILED` result reads as its status whatever its review says (IQ-2's wording) | `domain/compliance_facts.check_state` (feeds the handover guard, P3-4/P4-7) | `background-check.md` §12.4 |
+| **No new cycle while the current one is empty** (Developer 1, P2-3c) — refused 409 `CHECK_CYCLE_EMPTY`; it is what makes two simultaneous starts produce one cycle, and it also means a wrongly chosen kind cannot be replaced until something is recorded | `BackgroundCheckService.start_cycle` | `background-check.md` §12.3 |
 
 ### 1.2 Undecided
 
 | Item | Why it matters | Detail |
 |---|---|---|
 | **Placeholder results can never stop blocking `CLEAR`.** D2 counts a placeholder as pending, and a `PENDING` result cannot be reviewed, so a company holding one can never be cleared | Production should hold none (the generator was dev-only), but any environment that has one is stuck. Needs a D2 amendment or a recorded data step | `dev4/4b-task.md` §13 |
-| **The `CLEAR` evidence rule** is satisfied by the eight screening answers alone, so a company can be cleared with no document and no verification result | Whether that is enough for a financier | architecture §12, `background-check.md` §14 |
+| **The `CLEAR` evidence rule** is satisfied by the screening answers alone (seven since 1 October 2026), so a company can be cleared with no document and no verification result | Whether that is enough for a financier | architecture §12, `background-check.md` §14 |
 | **D12 — RXIL's package and results contract** | Blocks RXIL results intake (4B-8) and the automatic start of a check when RXIL results arrive. `StubRxilAdapter` stays a labelled stub until then | `dev4/4b-task.md` §4B-8 |
 | **RXIL's service identity** | RXIL company intake is ADMIN-only because a person pastes the package. A direct integration needs a machine identity — never `API_USER`, which public sign-up grants | — |
 | **O2 — `CUSTOMER` replaces `ONBOARDED`** for the ANER-4.2-S1T2 consumer, which watched journey rows marked `terminal` | That consumer sees completions only if `CUSTOMER` is confirmed as the replacement | `company-record.md` §10 |

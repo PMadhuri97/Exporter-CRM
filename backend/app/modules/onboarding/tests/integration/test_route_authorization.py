@@ -262,6 +262,22 @@ GATED_ROUTES = [
         None,
         STAFF,
     ),
+    #
+    # ── Compliance engine — owner: Developer 1 (allocation §2.2: rows only, lane block) ──
+    # DEVELOPER refused throughout (D8). The start is COMPLIANCE and ADMIN (IQ-3).
+    (
+        "GET",
+        f"{BASE}/exporters/{_ID}/background-check/decisions/{_ID}/evidence",
+        None,
+        STAFF,
+    ),
+    ("GET", f"{BASE}/exporters/{_ID}/background-check/cycles", None, STAFF),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/background-check/cycles",
+        {"kind": "RE_KYC", "reason": "Annual re-check"},
+        COMPLIANCE_OR_ADMIN,
+    ),
 ]
 
 REFUSALS = [

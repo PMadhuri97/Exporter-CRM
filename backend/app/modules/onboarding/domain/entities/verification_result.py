@@ -38,7 +38,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, Index, String, Text, text
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -115,6 +115,22 @@ class VerificationResult(AnerModel):
     is not dropped under existing rows. ``subject_snapshot`` is a BUYER's
     identity at record time. Evidence and snapshot are frozen once set
     (``trg_verification_result_input_immutability``).
+
+    Subject company and cycle (Developer 1, F1 and P2-3a)
+    -----------------------------------------------------
+    ``subject_company_id`` is the company a result is *about*, whatever role it plays
+    in a deal (seam v2, ``docs/contracts/background-check.md`` §12). Nullable and
+    set once, then frozen — ``NULL`` → value is allowed, any later change is refused
+    by ``trg_verification_result_input_immutability`` (migration
+    ``onboarding_0023_dev1_foundation``) — so the buyer migration (P4-6) can fill it
+    on rows recorded before it existed without being able to re-point a result
+    afterwards. Nothing writes it yet: company-keyed checks are plan P4-5.
+
+    ``cycle_id`` is the check cycle a company-subject result belongs to (P2-3a),
+    stamped by ``VerificationService`` when the result is recorded and frozen by the
+    same trigger. ``NULL`` on rows recorded before cycles existed reads as the
+    company's cycle 1; ``NULL`` on a legacy ``BUYER`` result means "no cycle" (legacy
+    deal buyers have no background check).
     """
 
     __tablename__ = "verification_result"
@@ -132,6 +148,16 @@ class VerificationResult(AnerModel):
         CheckConstraint(
             "jsonb_typeof(evidence_refs) = 'array'",
             name="ck_verification_result_evidence_refs_array",
+        ),
+        Index(  # 0023
+            "ix_verification_result_subject_company_id",
+            "subject_company_id",
+            postgresql_where=text("subject_company_id IS NOT NULL"),
+        ),
+        Index(  # 0025
+            "ix_verification_result_cycle_id",
+            "cycle_id",
+            postgresql_where=text("cycle_id IS NOT NULL"),
         ),
         {"schema": SCHEMA},
     )
@@ -187,6 +213,28 @@ class VerificationResult(AnerModel):
     #: BUYER subjects only: ``{deal_buyer_id, deal_id, name, country,
     #: registration_number, tax_id}`` as they were when the check was recorded.
     subject_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+    #: The company this result is about (seam v2). Set once, then frozen. See the
+    #: class docstring.
+    subject_company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.exporter_profile.customer_id",
+            name="fk_verification_result_subject_company_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    #: The check cycle this result belongs to (P2-3a). Set once, then frozen.
+    cycle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.check_cycle.id",
+            name="fk_verification_result_cycle_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
 
     # Legacy, no longer written — see class docstring. Immutable once set.
     reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)

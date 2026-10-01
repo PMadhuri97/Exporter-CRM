@@ -20,12 +20,16 @@
 import {
   BadgeCheck,
   Briefcase,
+  Compass,
   Flag,
+  Handshake,
   History as HistoryIcon,
+  Landmark,
   ListChecks,
   MessageSquare,
   PencilLine,
   Route,
+  Shield,
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
@@ -53,6 +57,12 @@ const DIMENSION_LOOK: Record<string, { label: string; icon: LucideIcon; tone: st
   profile: { label: 'Profile', icon: PencilLine, tone: 'text-ink-muted bg-surface-sunken' },
   verification: { label: 'Verification', icon: ShieldCheck, tone: 'text-ink-muted bg-surface-sunken' },
   screening: { label: 'Screening', icon: ListChecks, tone: 'text-ink-muted bg-surface-sunken' },
+  // The five F1 dimensions (`history-row.md` §2), added once for every lane.
+  check_cycle: { label: 'Check cycle', icon: ShieldCheck, tone: 'text-status-review bg-status-review/10' },
+  background_check_approval: { label: 'Approval', icon: Shield, tone: 'text-status-review bg-status-review/10' },
+  gst_registration: { label: 'GST registration', icon: Landmark, tone: 'text-ink-muted bg-surface-sunken' },
+  trade: { label: 'Trade', icon: Handshake, tone: 'text-brand-600 bg-brand-50' },
+  pipeline: { label: 'Pipeline', icon: Compass, tone: 'text-ink-muted bg-surface-sunken' },
 };
 
 const FALLBACK_LOOK = { label: 'Change', icon: HistoryIcon, tone: 'text-ink-muted bg-surface-sunken' };

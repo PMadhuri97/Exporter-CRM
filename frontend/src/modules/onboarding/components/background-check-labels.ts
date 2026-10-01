@@ -20,3 +20,17 @@ const CLEAR_PREREQUISITE_LABELS: Record<string, string> = {
 export function describeClearBlocker(key: string): string {
   return CLEAR_PREREQUISITE_LABELS[key] ?? key;
 }
+
+// ── Developer 1 (compliance engine): check cycles (P2-3d) ──
+
+const CYCLE_KIND_LABELS: Record<string, string> = {
+  INITIAL: 'Initial check',
+  RE_KYC: 'Re-KYC',
+  RE_KYB: 'Re-KYB',
+  FULL: 'Full re-check',
+};
+
+/** A check cycle's `kind`, for a person. An unknown kind is shown as it arrived. */
+export function cycleKindLabel(kind: string): string {
+  return CYCLE_KIND_LABELS[kind] ?? kind;
+}

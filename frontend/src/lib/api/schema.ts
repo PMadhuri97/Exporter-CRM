@@ -787,7 +787,7 @@ export interface paths {
         };
         /**
          * List persisted screening-review checklist decisions
-         * @description The current decision on each checklist item that has one, the full checklist catalogue in display order, and whether the caller may record a decision.
+         * @description The decision on each checklist item that has one in a check cycle — the current cycle, or the one named by `cycle_id` — the full checklist catalogue in display order, and whether the caller may record a decision (only ever in the current cycle).
          */
         get: operations["list_screening_review_api_v1_onboarding_exporters__customer_id__screening_review_get"];
         put?: never;
@@ -826,7 +826,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Record or update one screening-review checklist decision */
+        /**
+         * Record or update one screening-review checklist decision
+         * @description Appends a new answer to the item in the company's current check cycle; every earlier answer stays in the item's history. `evidence_refs` is optional: a `document` must be one of the company's own `AVAILABLE` documents, a `url` an http(s) link. A retired item (`website-reviewed`) takes no new answer.
+         */
         put: operations["update_screening_review_api_v1_onboarding_exporters__customer_id__screening_review__item_key__put"];
         post?: never;
         delete?: never;
@@ -1034,7 +1037,7 @@ export interface paths {
         };
         /**
          * A company's history
-         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification` or `screening` rows, nor a row's `risk_rating` or `clearing_decision_id` details (decision D8). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
+         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details (decision D8). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
          */
         get: operations["list_company_history_api_v1_onboarding_exporters__customer_id__history_get"];
         put?: never;
@@ -1381,6 +1384,56 @@ export interface paths {
          *     Roles are enforced per move, not merely per route: OPERATIONS may start a check and record what arrived, and nothing else.
          */
         post: operations["record_background_check_decision_api_v1_onboarding_exporters__company_id__background_check_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/decisions/{decision_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read what one background-check decision rested on
+         * @description Resolves each id the decision pinned into a readable item: a verification result (type, status, provenance, who recorded it and when, its evidence and the review the decision rested on), a screening answer (the item, its status, comment, evidence and who answered it) or a document (name, category, scan status and whether it can be opened).
+         *
+         *     What is shown is what the decision rested on: every pinned row is append-only or frozen. A screening item since retired from the checklist keeps its label (`retired: true`). No identifier (PAN, GSTIN, IEC, CIN, tax id or contact) is carried. DEVELOPER is refused (D8).
+         */
+        get: operations["get_background_check_decision_evidence_api_v1_onboarding_exporters__company_id__background_check_decisions__decision_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a company's check cycles
+         * @description Every KYC/KYB round of this company's background check, cycle 1 first. The check decides on the current cycle (the highest number); earlier cycles stay readable exactly as they were. Inputs and decisions recorded before cycles existed belong to cycle 1. DEVELOPER is refused (D8).
+         */
+        get: operations["list_check_cycles_api_v1_onboarding_exporters__company_id__background_check_cycles_get"];
+        put?: never;
+        /**
+         * Start a new check cycle (Re-KYC or Re-KYB)
+         * @description Starts the next KYC/KYB round. Every checklist item starts unanswered and no result carries over; the previous cycle stays readable.
+         *
+         *     On a CLEAR company the same request also records the reopen (CLEAR → IN_REVIEW, reason "Re-KYC: …"), so handovers pause until the new cycle is cleared. On NOT_STARTED, IN_REVIEW or MORE_INFO the gauge does not move. A FLAGGED or ON_HOLD company is reassessed first (409). A cycle with nothing recorded in it yet cannot be followed by another (409), which is also why two simultaneous starts make one cycle.
+         *
+         *     COMPLIANCE and ADMIN only; the actor comes from the session.
+         */
+        post: operations["start_check_cycle_api_v1_onboarding_exporters__company_id__background_check_cycles_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1836,6 +1889,21 @@ export interface components {
             created_at: string;
         };
         /**
+         * BackgroundCheckCycleActionResponse
+         * @description A new cycle this caller may start now — the Re-KYC / Re-KYB buttons.
+         */
+        BackgroundCheckCycleActionResponse: {
+            /** Kind */
+            kind: string;
+            /** Reason Required */
+            reason_required: boolean;
+            /**
+             * Reopens
+             * @description Starting it also moves this CLEAR company back to IN_REVIEW, in the same request, so handovers pause until the new cycle is cleared.
+             */
+            reopens: boolean;
+        };
+        /**
          * BackgroundCheckDecisionListResponse
          * @description A company's decisions, newest first.
          */
@@ -1889,6 +1957,21 @@ export interface components {
             supersedes_decision_id: string | null;
             /** Evidence */
             evidence: components["schemas"]["EvidenceItemResponse"][];
+            /**
+             * Rules Version
+             * @description The Clear rules in force when the decision was taken. Null on decisions recorded before rules were versioned: those read as `clear-2026-09-28-8items` (the eight-item checklist).
+             */
+            rules_version?: string | null;
+            /**
+             * Cycle Id
+             * @description The check cycle the decision was taken in (a legacy decision reads as cycle 1).
+             */
+            cycle_id?: string | null;
+            /**
+             * Cycle Number
+             * @description That cycle's number: 1, 2, 3 …
+             */
+            cycle_number?: number | null;
         };
         /**
          * BackgroundCheckMoveResponse
@@ -1937,6 +2020,14 @@ export interface components {
              * @description Which of CLEAR's prerequisites are unmet right now, by name, so the screen can say what is outstanding instead of showing a 409 afterwards. Empty when the company is not IN_REVIEW or when nothing is outstanding.
              */
             clear_blocked_reasons?: string[];
+            compliance: components["schemas"]["CompanyComplianceFactsResponse"];
+            /** @description The cycle the check decides on now; null before the company has one. */
+            current_cycle?: components["schemas"]["CheckCycleResponse"] | null;
+            /**
+             * Allowed Cycle Actions
+             * @description The new cycles this caller may start now (Re-KYC, Re-KYB). Empty for a role that may not, on a FLAGGED or ON_HOLD company, or while the current cycle has nothing recorded in it.
+             */
+            allowed_cycle_actions?: components["schemas"]["BackgroundCheckCycleActionResponse"][];
         };
         /**
          * BackgroundCheckRisk
@@ -2275,6 +2366,59 @@ export interface components {
             is_overdue: boolean;
         };
         /**
+         * CheckCycleListResponse
+         * @description Every cycle of one company, cycle 1 first.
+         */
+        CheckCycleListResponse: {
+            /** Cycles */
+            cycles: components["schemas"]["CheckCycleResponse"][];
+            /** Current Cycle Id */
+            current_cycle_id: string | null;
+        };
+        /**
+         * CheckCycleResponse
+         * @description One KYC/KYB round of a company's background check.
+         */
+        CheckCycleResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Number */
+            number: number;
+            /**
+             * Kind
+             * @description INITIAL (cycle 1), RE_KYC, RE_KYB or FULL.
+             */
+            kind: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Started By
+             * @description Who started it (a user id), or the migration or code path that created cycle 1.
+             */
+            started_by: string;
+            /** Started By Name */
+            started_by_name?: string | null;
+            /** Source */
+            source: string;
+            /** Rules Version */
+            rules_version: string | null;
+            /** Is Current */
+            is_current: boolean;
+        };
+        /**
          * CheckType
          * @description A single unit of verification work requested from a provider.
          *
@@ -2285,6 +2429,36 @@ export interface components {
          * @enum {string}
          */
         CheckType: "IDENTITY" | "DOCUMENT" | "LIVENESS" | "SANCTIONS" | "PEP" | "ADVERSE_MEDIA" | "WATCHLIST";
+        /**
+         * CompanyComplianceFactsResponse
+         * @description The company's compliance facts now — ``ComplianceFactsReader.for_company``.
+         */
+        CompanyComplianceFactsResponse: {
+            /** Is Clear */
+            is_clear: boolean;
+            /**
+             * Clear Expires At
+             * @description When the current Clear stops being current (one year from the clearing decision). Null unless the check is CLEAR.
+             */
+            clear_expires_at: string | null;
+            /**
+             * Is Clear Current
+             * @description CLEAR and not yet expired. An expired Clear is due for Re-KYC.
+             */
+            is_clear_current: boolean;
+            /**
+             * Sanctions
+             * @description The latest real sanctions result in the current cycle: PASSED (or REVIEW with an ACCEPTED review), FAILED (or REVIEW with a REJECTED review), PENDING, or MISSING when none has been recorded.
+             * @enum {string}
+             */
+            sanctions: "PASSED" | "FAILED" | "MISSING" | "PENDING";
+            /**
+             * Aml
+             * @description The same, for AML.
+             * @enum {string}
+             */
+            aml: "PASSED" | "FAILED" | "MISSING" | "PENDING";
+        };
         /**
          * CompleteFollowUpRequest
          * @description Record that a follow-up was dealt with.
@@ -2711,6 +2885,185 @@ export interface components {
          * @enum {string}
          */
         DecidedByKind: "MANUAL" | "AUTOMATED";
+        /**
+         * DecisionEvidenceDocument
+         * @description A pinned company document. Open it through the documents routes.
+         */
+        DecisionEvidenceDocument: {
+            /**
+             * Crm Document Id
+             * Format: uuid
+             */
+            crm_document_id: string;
+            /** File Name */
+            file_name: string;
+            /** Category */
+            category: string;
+            /** Document Type */
+            document_type: string;
+            /** Scan Status */
+            scan_status: string;
+            /** Is Downloadable */
+            is_downloadable: boolean;
+            /** Uploaded By */
+            uploaded_by: string | null;
+            /** Uploaded By Name */
+            uploaded_by_name?: string | null;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+        };
+        /**
+         * DecisionEvidenceItemResponse
+         * @description One pinned id, resolved. Exactly the detail for `kind` is set (all three are null
+         *     only for a pinned row that can no longer be found).
+         */
+        DecisionEvidenceItemResponse: {
+            /** Kind */
+            kind: string;
+            verification?: components["schemas"]["DecisionEvidenceVerification"] | null;
+            screening_item?: components["schemas"]["DecisionEvidenceScreeningItem"] | null;
+            document?: components["schemas"]["DecisionEvidenceDocument"] | null;
+        };
+        /** DecisionEvidencePinnedReview */
+        DecisionEvidencePinnedReview: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Review Status */
+            review_status: string;
+            /** Reviewed By */
+            reviewed_by: string;
+            /** Reviewed By Name */
+            reviewed_by_name?: string | null;
+            /**
+             * Reviewed At
+             * Format: date-time
+             */
+            reviewed_at: string;
+            /** Note */
+            note: string | null;
+        };
+        /**
+         * DecisionEvidenceResponse
+         * @description What one decision rested on, readable.
+         */
+        DecisionEvidenceResponse: {
+            /**
+             * Decision Id
+             * Format: uuid
+             */
+            decision_id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            to_value: components["schemas"]["BackgroundCheckState"];
+            /**
+             * Rules Version
+             * @description The Clear rules it was taken under (a legacy decision reads as v1).
+             */
+            rules_version: string;
+            /** Cycle Id */
+            cycle_id: string | null;
+            /** Cycle Number */
+            cycle_number: number | null;
+            /** Items */
+            items: components["schemas"]["DecisionEvidenceItemResponse"][];
+        };
+        /**
+         * DecisionEvidenceScreeningItem
+         * @description The exact screening answer pinned (the checklist keeps every answer).
+         */
+        DecisionEvidenceScreeningItem: {
+            /**
+             * Screening Review Item Id
+             * Format: uuid
+             */
+            screening_review_item_id: string;
+            /** Item Key */
+            item_key: string;
+            /** Label */
+            label: string;
+            /**
+             * Retired
+             * @description The item has since left the checklist (e.g. the website review).
+             */
+            retired: boolean;
+            /** Status */
+            status: string;
+            /** Comment */
+            comment: string | null;
+            /** Evidence Refs */
+            evidence_refs: components["schemas"]["VerificationEvidenceRefOut"][];
+            /** Reviewed By */
+            reviewed_by: string | null;
+            /** Reviewed By Name */
+            reviewed_by_name?: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Cycle Id */
+            cycle_id: string | null;
+        };
+        /**
+         * DecisionEvidenceVerification
+         * @description A pinned verification result, as it stands (its outcome is frozen once reviewed).
+         */
+        DecisionEvidenceVerification: {
+            /**
+             * Verification Result Id
+             * Format: uuid
+             */
+            verification_result_id: string;
+            /** Verification Type */
+            verification_type: string;
+            /** Status */
+            status: string;
+            /** Risk Level */
+            risk_level: string | null;
+            /**
+             * Provider
+             * @description The provider as stored (`manual` for a person).
+             */
+            provider: string;
+            /**
+             * Provenance
+             * @enum {string}
+             */
+            provenance: "MANUAL" | "STUB" | "PROVIDER";
+            /** Is Placeholder */
+            is_placeholder: boolean;
+            /**
+             * Performed At
+             * Format: date-time
+             */
+            performed_at: string;
+            /**
+             * Recorded By
+             * @description Who recorded it (null for a result older than the history log).
+             */
+            recorded_by: string | null;
+            /** Recorded By Name */
+            recorded_by_name?: string | null;
+            /** Evidence Note */
+            evidence_note: string | null;
+            /** Evidence Refs */
+            evidence_refs: components["schemas"]["VerificationEvidenceRefOut"][];
+            /** @description The review the decision rested on; null if it had none yet. */
+            pinned_review: components["schemas"]["DecisionEvidencePinnedReview"] | null;
+            /**
+             * Review Superseded
+             * @description A later review has been recorded since the decision.
+             */
+            review_superseded: boolean;
+            /** Cycle Id */
+            cycle_id: string | null;
+        };
         /** DependencyHealth */
         DependencyHealth: {
             /**
@@ -4254,6 +4607,13 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Evidence Refs */
+            evidence_refs?: components["schemas"]["VerificationEvidenceRefOut"][];
+            /**
+             * Cycle Id
+             * @description The check cycle of this answer (one recorded before cycles reads as cycle 1).
+             */
+            cycle_id?: string | null;
         };
         /** ScreeningReviewListResponse */
         ScreeningReviewListResponse: {
@@ -4267,6 +4627,8 @@ export interface components {
             /** Catalogue */
             catalogue: components["schemas"]["ScreeningCatalogueItemResponse"][];
             capabilities: components["schemas"]["ScreeningCapabilities"];
+            /** @description The check cycle these answers belong to — the current one unless `cycle_id` was asked for; `cycle.is_current` says which. Answers are recorded only in the current cycle; an earlier one is read-only. Null before the company has a cycle. */
+            cycle?: components["schemas"]["CheckCycleResponse"] | null;
         };
         /** ScreeningRunResponse */
         ScreeningRunResponse: {
@@ -4393,6 +4755,25 @@ export interface components {
             marker: components["schemas"]["ExporterMarker"];
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * StartCheckCycleRequest
+         * @description Start a Re-KYC or Re-KYB. Who starts it comes from the session.
+         */
+        StartCheckCycleRequest: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "RE_KYC" | "RE_KYB";
+            /** Reason */
+            reason: string;
+        };
+        /** StartCheckCycleResponse */
+        StartCheckCycleResponse: {
+            cycle: components["schemas"]["CheckCycleResponse"];
+            /** @description The CLEAR → IN_REVIEW decision recorded with it, when the company was CLEAR. */
+            reopen_decision?: components["schemas"]["BackgroundCheckDecisionResponse"] | null;
         };
         /**
          * SubjectType
@@ -4593,6 +4974,11 @@ export interface components {
             status: "NEEDS_REVIEW" | "PASSED" | "FAILED" | "EXEMPT";
             /** Comment */
             comment?: string | null;
+            /**
+             * Evidence Refs
+             * @description Optional (IQ-14). A `document` must be one of the company's own documents and `AVAILABLE` (scanned clean); a `url` must be an http(s) link.
+             */
+            evidence_refs?: components["schemas"]["VerificationEvidenceRefModel"][];
         };
         /**
          * UserListResponse
@@ -4770,6 +5156,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Cycle Id */
+            cycle_id?: string | null;
         };
         /**
          * VerificationResultStatus
@@ -7177,7 +7565,10 @@ export interface operations {
     };
     list_screening_review_api_v1_onboarding_exporters__customer_id__screening_review_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A check cycle of this company. Default: the current one. */
+                cycle_id?: string | null;
+            };
             header?: never;
             path: {
                 customer_id: string;
@@ -7209,7 +7600,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Company not found */
+            /** @description Company not found, or a `cycle_id` that is not this company's */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -7327,7 +7718,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unknown checklist item or status */
+            /** @description Unknown or retired checklist item, unknown status, or evidence that is malformed, foreign or not AVAILABLE */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7923,7 +8314,7 @@ export interface operations {
     list_company_history_api_v1_onboarding_exporters__customer_id__history_get: {
         parameters: {
             query?: {
-                /** @description Restrict to one dimension: journey, qualification, conversation, background_check, deal, marker, profile, verification or screening. */
+                /** @description Restrict to one dimension: journey, qualification, conversation, background_check, deal, marker, profile, verification, screening, check_cycle, background_check_approval, gst_registration, trade or pipeline. */
                 dimension?: string | null;
                 limit?: number;
                 offset?: number;
@@ -9007,6 +9398,172 @@ export interface operations {
                 content?: never;
             };
             /** @description `BACKGROUND_CHECK_REASON_REQUIRED`, `BACKGROUND_CHECK_RISK_REQUIRED`, `BACKGROUND_CHECK_RISK_NOT_ALLOWED`, or an unknown field in the body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_background_check_decision_evidence_api_v1_onboarding_exporters__company_id__background_check_decisions__decision_id__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionEvidenceResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found, or `BACKGROUND_CHECK_DECISION_NOT_FOUND` — no such decision on this company */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_check_cycles_api_v1_onboarding_exporters__company_id__background_check_cycles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckCycleListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_check_cycle_api_v1_onboarding_exporters__company_id__background_check_cycles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartCheckCycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartCheckCycleResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `CHECK_CYCLE_NOT_ALLOWED` — the company is FLAGGED or ON_HOLD; `CHECK_CYCLE_EMPTY` — the current cycle has nothing recorded yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An unknown kind, a missing reason, or an unknown field */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -111,6 +111,11 @@ class ExporterProfile(AnerModel):
             "conversation_check_back_on",
             postgresql_where=text("conversation_check_back_on IS NOT NULL"),
         ),
+        Index(  # 0023 — Developer 1 (F1): the "Re-KYC due" list
+            "ix_exporter_profile_background_check_expires_at",
+            "background_check_expires_at",
+            postgresql_where=text("background_check_expires_at IS NOT NULL"),
+        ),
         {"schema": SCHEMA},
     )
 
@@ -229,6 +234,16 @@ class ExporterProfile(AnerModel):
         nullable=False,
         server_default=BackgroundCheckState.NOT_STARTED.value,
         default=BackgroundCheckState.NOT_STARTED,
+    )
+    #: When the current `CLEAR` stops being current (decision E, one year) — the
+    #: current value, carried here like the gauge so a "Re-KYC due" list needs no join.
+    #: **Developer 1's one column on this table** (allocation §2.2, F1, migration
+    #: `onboarding_0023_dev1_foundation`). `NULL` until plan P3-3a writes it on CLEAR,
+    #: clears it on any move away and backfills the companies already CLEAR (BQ-5);
+    #: until then `ComplianceFactsReader` derives expiry from the legacy rule (the
+    #: clearing decision + one year) and nothing reads this column.
+    background_check_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)

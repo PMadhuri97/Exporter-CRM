@@ -201,10 +201,14 @@ async def test_screening_items_are_one_per_catalogue_key_in_catalogue_order_with
         status="PASSED",
         reviewed_by="b",
         reviewed_at=latest.reviewed_at,
+        # Seam v2: the answer's cycle — the company's cycle 1, created by its first answer.
+        cycle_id=latest.cycle_id,
     )
+    assert latest.cycle_id is not None and latest.cycle_id == inputs.current_cycle_id
     assert by_key["exception-approval"].screening_review_item_id == exempt.id
     assert by_key["exception-approval"].status == "EXEMPT"
-    assert sum(item.status is None for item in inputs.screening_items) == 6
+    # Seven items since plan P2-4a; two answered.
+    assert sum(item.status is None for item in inputs.screening_items) == len(SCREENING_CATALOGUE) - 2
 
 
 async def test_a_row_under_a_key_outside_the_catalogue_is_not_returned():
@@ -216,7 +220,7 @@ async def test_a_row_under_a_key_outside_the_catalogue_is_not_returned():
 
     inputs = await _company_inputs(company_id)
 
-    assert len(inputs.screening_items) == 8
+    assert len(inputs.screening_items) == len(SCREENING_CATALOGUE) == 7
     assert all(item.status is None for item in inputs.screening_items)
 
 
@@ -240,8 +244,11 @@ async def test_verifications_have_the_contract_shape():
             latest_review_status=None,
             latest_reviewed_at=None,
             evidence_document_ids=(),
+            # Seam v2: stamped with the company's current cycle when recorded.
+            cycle_id=result.cycle_id,
         ),
     )
+    assert result.cycle_id is not None and result.cycle_id == inputs.current_cycle_id
 
 
 async def test_a_placeholder_row_is_reported_and_flagged_not_filtered():
@@ -308,10 +315,10 @@ async def test_the_latest_screening_row_on_a_timestamp_tie_is_decided_by_id():
     with _connect() as conn, conn.cursor() as cur:
         for row_id, status in ((high, "FAILED"), (low, "PASSED")):
             _insert_screening_row(
-                cur, company_id, "website-reviewed", status, created_at=at, row_id=row_id
+                cur, company_id, "address-physical", status, created_at=at, row_id=row_id
             )
         _insert_screening_row(
-            cur, company_id, "website-reviewed", "EXEMPT",
+            cur, company_id, "address-physical", "EXEMPT",
             created_at=at - timedelta(minutes=5),
         )
 
@@ -459,7 +466,7 @@ async def test_the_reader_does_not_flush_commit_or_touch_pending_work():
         event.listen(db.sync_session, "after_flush", lambda *a: flushes.append(a))
         event.listen(db.sync_session, "after_commit", lambda *a: commits.append(a))
         pending = ScreeningReviewItem(
-            customer_id=company_id, item_key="website-reviewed", status="PASSED"
+            customer_id=company_id, item_key="address-physical", status="PASSED"
         )
         db.add(pending)
 
@@ -485,7 +492,7 @@ async def test_the_reader_takes_no_lock():
     result = await _manual_exporter_result(company_id)
     async with db_services.AsyncSessionLocal() as db:
         await ScreeningReviewService(db).upsert_review_item(
-            company_id, item_key="website-reviewed", status="PASSED", comment=None, actor_id="a"
+            company_id, item_key="address-physical", status="PASSED", comment=None, actor_id="a"
         )
 
     async with db_services.AsyncSessionLocal() as db:
@@ -551,7 +558,7 @@ async def test_a_screening_decision_waits_behind_the_background_check_lock():
     async def write():
         async with db_services.AsyncSessionLocal() as db:
             await ScreeningReviewService(db).upsert_review_item(
-                company_id, item_key="website-reviewed", status="PASSED", comment=None,
+                company_id, item_key="address-physical", status="PASSED", comment=None,
                 actor_id="a",
             )
 
@@ -566,7 +573,7 @@ async def test_a_screening_decision_takes_share_not_just_the_foreign_keys_key_sh
     async def write():
         async with db_services.AsyncSessionLocal() as db:
             await ScreeningReviewService(db).upsert_review_item(
-                company_id, item_key="website-reviewed", status="PASSED", comment=None,
+                company_id, item_key="address-physical", status="PASSED", comment=None,
                 actor_id="a",
             )
 

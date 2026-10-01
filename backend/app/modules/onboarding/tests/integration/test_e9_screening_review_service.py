@@ -53,7 +53,7 @@ from app.shared.exceptions import ValidationError
 
 pytestmark = pytest.mark.asyncio
 
-ITEM = "website-reviewed"
+ITEM = "business-consistency"
 
 
 # ── Repeat writes preserve history ───────────────────────────────────────────
@@ -253,7 +253,7 @@ async def test_a_rejected_item_key_writes_nothing():
 
 @pytest.mark.parametrize("item_key", sorted(VALID_ITEM_KEYS))
 async def test_every_key_the_frontend_renders_is_accepted(item_key: str):
-    """The eight keys in `VerificationSection.tsx`'s `CHECKLIST_ITEMS`.
+    """The catalogue keys the checklist renders.
 
     Parametrized so that adding a key to `VALID_ITEM_KEYS` without it actually
     being writable fails here, rather than in a reviewer's browser.
@@ -272,16 +272,16 @@ async def test_every_key_the_frontend_renders_is_accepted(item_key: str):
     assert item.item_key == item_key
 
 
-async def test_the_valid_key_set_is_exactly_the_eight_the_ui_declares():
-    """A guard against the two lists drifting apart silently.
+async def test_the_valid_key_set_is_exactly_the_seven_the_ui_declares():
+    """A guard against the list changing silently.
 
-    `VALID_ITEM_KEYS` and `CHECKLIST_ITEMS` in
-    `frontend/src/modules/onboarding/components/VerificationSection.tsx` are the
-    same list. Nothing mechanical keeps them in step, so the count and contents
-    are asserted here where a change has to be deliberate.
+    The frontend renders the catalogue the server serves, so the count and contents
+    are asserted here where a change has to be deliberate. Seven since plan P2-4a
+    retired `website-reviewed` (decision K): its rows are kept, but it takes no new
+    answer.
     """
+    assert "website-reviewed" not in VALID_ITEM_KEYS
     assert VALID_ITEM_KEYS == {
-        "website-reviewed",
         "address-physical",
         "business-consistency",
         "payment-purpose",
@@ -290,7 +290,7 @@ async def test_the_valid_key_set_is_exactly_the_eight_the_ui_declares():
         "exception-approval",
         "exception-evidence",
     }
-    assert len(VALID_ITEM_KEYS) == 8
+    assert len(VALID_ITEM_KEYS) == 7
 
 
 # ── A journey move writes an event ───────────────────────────────────────────

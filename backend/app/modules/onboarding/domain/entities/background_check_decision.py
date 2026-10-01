@@ -128,6 +128,19 @@ class BackgroundCheckDecision(AppendOnlyModel):
             text("decided_at DESC"),
             text("id DESC"),
         ),
+        # 0025 (Developer 1, P2-3a): the cycle a decision was taken in, and a cycle
+        # of the same company.
+        ForeignKeyConstraint(
+            ["cycle_id", "company_id"],
+            [f"{SCHEMA}.check_cycle.id", f"{SCHEMA}.check_cycle.company_id"],
+            name="fk_background_check_decision_cycle",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_background_check_decision_cycle_id",
+            "cycle_id",
+            postgresql_where=text("cycle_id IS NOT NULL"),
+        ),
         {"schema": SCHEMA},
     )
 
@@ -190,6 +203,13 @@ class BackgroundCheckDecision(AppendOnlyModel):
     details: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
+    #: The Clear rules in force when the decision was taken (Developer 1, P2-4a):
+    #: `background_check_views.CLEAR_RULES_V2` on every decision recorded since
+    #: migration 0025. `NULL` on the decisions before it, which the documented read
+    #: rule takes as `CLEAR_RULES_V1` — the eight-item checklist (decision K).
+    rules_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: The check cycle the decision was taken in (P2-3a); `NULL` = cycle 1 by rule.
+    cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
 class BackgroundCheckEvidence(AppendOnlyModel):

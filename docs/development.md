@@ -140,6 +140,13 @@ pnpm build
   and the ORM matches the `onboarding` schema (`test_orm_matches_the_onboarding_schema.py`).
 - `app/modules/onboarding/tests/integration/test_crm_end_to_end.py` walks the whole
   main path through the API, with nothing substituted.
+- **"Now" in new code comes from `app/shared/clock.py`** (`clock.now()`, timezone-aware
+  UTC), never an inline `datetime.now(...)` (allocation §2.2). A test moves time with
+  `with use_clock(FixedClock(at)):` — no sleeping, no patching `datetime`.
+- **Two compliance users.** A test that records a background-check decision uses the
+  maker-checker helpers in `app/modules/onboarding/tests/fixtures/compliance.py`
+  (`compliance_maker`, `compliance_checker`, `approve_as(...)`), so it keeps working when
+  the approval step (plan P3-1b) lands.
 
 ## 8. Changing the API
 

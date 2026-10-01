@@ -55,6 +55,10 @@ Integrity (Developer 4B, 4b-task.md §5)
 * **Company lock** (§6.2 invariant 6). Writers of company-scoped inputs (EXPORTER
   subjects) take `FOR SHARE` on the company after any provider call and before the
   write. Buyer checks are not company inputs and never touch `background_check`.
+* **Cycles** (Developer 1, plan P2-3a). Under that lock, a new EXPORTER result is
+  stamped with the company's current check cycle (cycle 1 is created on the company's
+  first input), so a Re-KYC's results are its own. BUYER results — legacy deal
+  buyers, which have no background check — carry no cycle.
 """
 
 from __future__ import annotations
@@ -77,6 +81,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # `get_adapter("manual")` has something to find.
 import app.modules.onboarding.infrastructure.adapters  # noqa: F401
 from app.modules.onboarding.application.company_input_lock import share_lock_companies
+from app.modules.onboarding.application.evidence_documents import check_evidence_documents
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.orchestration_enums import (
@@ -87,10 +92,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
 )
 from app.modules.onboarding.domain.entities.verification_result import VerificationResult
 from app.modules.onboarding.domain.entities.verification_review import VerificationReview
-from app.modules.onboarding.domain.verification_evidence import (
-    VerificationEvidence,
-    check_evidence_shape,
-)
+from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
 from app.modules.onboarding.domain.workflow_dependencies import (
     BatchVerificationAdapter,
     VerificationOutcome,
@@ -106,8 +108,8 @@ from app.modules.onboarding.exceptions import (
     VerificationResultNotReviewableError,
     VerificationReviewStaleError,
 )
-from app.modules.onboarding.infrastructure.repositories.crm_document_repository import (
-    CrmDocumentRepository,
+from app.modules.onboarding.infrastructure.repositories.check_cycle_repository import (
+    CheckCycleRepository,
 )
 from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository import (
     DealBuyerRepository,
@@ -116,6 +118,7 @@ from app.modules.onboarding.infrastructure.repositories.deal_repository import D
 from app.modules.onboarding.infrastructure.repositories.verification_review_repository import (
     VerificationReviewRepository,
 )
+from app.shared import clock
 from app.shared.exceptions import NotFoundError, ValidationError
 
 logger = structlog.get_logger(__name__)
@@ -455,41 +458,13 @@ class VerificationService:
         never be opened (`storage-and-documents.md` §4), so it cannot be what an
         outcome rests on — the same scan gate as Dev4A's evidence snapshot (D4).
         """
-        check_evidence_shape(evidence)
-        if evidence is None:
-            return
-        document_ids = evidence.document_ids()
-        if not document_ids:
-            return
-        if subject.company_id is None:
-            raise ValidationError(
-                f"document evidence cannot be attached to a {entity_type.value} subject: "
-                "only a company (EXPORTER) or a deal buyer (BUYER) owns documents"
-            )
-        documents = CrmDocumentRepository(self._db)
-        for document_id in document_ids:
-            document = await documents.get_by_id(document_id)
-            if document is None:
-                raise ValidationError(f"evidence document {document_id} does not exist")
-            owned = document.company_id == subject.company_id or (
-                subject.deal_id is not None and document.deal_id == subject.deal_id
-            )
-            if not owned:
-                raise ValidationError(
-                    f"evidence document {document_id} does not belong to this "
-                    f"{entity_type.value} subject"
-                )
-            # Only a document that can be opened can be evidence: PENDING_SCAN,
-            # QUARANTINED and SCAN_FAILED are refused to everyone
-            # (storage-and-documents.md §4), and the evidence is frozen once
-            # written, so a document still being scanned cannot be named now and
-            # "become" evidence later. Checked after ownership, so a foreign
-            # document's scan state is never disclosed.
-            if not document.scan_status.is_servable:
-                raise ValidationError(
-                    f"evidence document {document_id} is {document.scan_status.value}: "
-                    "only an AVAILABLE (scanned clean) document can be evidence"
-                )
+        await check_evidence_documents(
+            self._db,
+            evidence,
+            company_id=subject.company_id,
+            deal_id=subject.deal_id,
+            subject_label=entity_type.value,
+        )
 
     async def _record_history(
         self,
@@ -524,6 +499,16 @@ class VerificationService:
             details=details,
             event_type=event_type,
         )
+
+    async def _stamp_cycle(self, result: VerificationResult, *, actor_id: str, source: str) -> None:
+        """Put a new company-subject result in its company's current cycle. Call with
+        the company row already share-locked (the cycle cannot change under it)."""
+        if result.entity_type != VerificationEntityType.EXPORTER:
+            return
+        cycle = await CheckCycleRepository(self._db).current_or_initial(
+            result.entity_reference, actor_id=actor_id, source_ref=source, at=clock.now()
+        )
+        result.cycle_id = cycle.id
 
     async def _is_reviewed(self, result: VerificationResult) -> bool:
         if result.review_status is not None:  # legacy column, pre-0021 or raw SQL
@@ -607,6 +592,9 @@ class VerificationService:
         )
         # After the provider call, so no lock is held while a provider works.
         await share_lock_companies(self._db, _company_subjects([(entity_type, reference)]))
+        await self._stamp_cycle(
+            result, actor_id=str(actor_id), source="verification_service.trigger_verification"
+        )
         self._db.add(result)
         await self._db.flush()
         await self._record_history(
@@ -716,6 +704,11 @@ class VerificationService:
                 outcome=outcome,
                 evidence=request.evidence,
                 subject_snapshot=subject.snapshot,
+            )
+            await self._stamp_cycle(
+                result,
+                actor_id=str(actor_id),
+                source="verification_service.trigger_verification_batch",
             )
             self._db.add(result)
             await self._db.flush()
@@ -1056,13 +1049,16 @@ class VerificationService:
 
 
 def _result_details(result: VerificationResult) -> dict[str, Any]:
-    return {
+    details = {
         "verification_result_id": str(result.id),
         "verification_type": result.verification_type.value,
         "entity_type": result.entity_type.value,
         "entity_reference": str(result.entity_reference),
         "provider": result.provider,
     }
+    if result.cycle_id is not None:
+        details["cycle_id"] = str(result.cycle_id)
+    return details
 
 
 __all__ = ["VerificationResultView", "VerificationService"]

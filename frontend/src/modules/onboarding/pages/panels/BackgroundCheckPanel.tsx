@@ -19,11 +19,18 @@
  * The one role check that remains is the one the page already applied: DEVELOPER may
  * read the CRM but the background-check routes refuse it (D8, settled 28 September
  * 2026), so the panel is not rendered for it rather than rendered broken.
+ *
+ * Developer 1, 1 October 2026: the panel names the current check cycle and, when the
+ * server offers them (`allowed_cycle_actions`), the Re-KYC / Re-KYB buttons (P2-3c/d);
+ * a Clear's expiry is shown (F1); each decision opens to the evidence it rested on
+ * (P2-1c) and decisions are grouped by cycle.
  */
 
 import { useState } from 'react';
 
 import { ApiError } from '@/lib/api/errors';
+
+import { formatDate } from '@/lib/format';
 
 import {
   BackgroundCheckGauge,
@@ -32,7 +39,11 @@ import {
   RiskChip,
   VerificationSection,
 } from '../../components';
-import { describeClearBlocker } from '../../components/background-check-labels';
+import {
+  cycleKindLabel,
+  describeClearBlocker,
+} from '../../components/background-check-labels';
+import { CheckCycleActions } from '../../components/CheckCycleActions';
 import {
   useBackgroundCheck,
   useBackgroundCheckDecisions,
@@ -67,6 +78,8 @@ function GaugeSection({ customerId }: { customerId: string }) {
   const standing = check.data;
   const moves = standing.allowed_moves ?? [];
   const blocked = standing.clear_blocked_reasons ?? [];
+  const cycle = standing.current_cycle ?? null;
+  const compliance = standing.compliance;
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4">
@@ -76,6 +89,23 @@ function GaugeSection({ customerId }: { customerId: string }) {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <BackgroundCheckGauge value={standing.value} />
           </div>
+          {cycle && (
+            <p data-testid="current-cycle" className="mt-2 text-xs text-slate-600">
+              Cycle {cycle.number} · {cycleKindLabel(cycle.kind)} · started{' '}
+              {formatDate(cycle.started_at)}
+              {cycle.reason && ` — ${cycle.reason}`}
+            </p>
+          )}
+          {compliance?.is_clear && compliance.clear_expires_at && (
+            <p
+              data-testid="clear-expiry"
+              className={`mt-1 text-xs ${compliance.is_clear_current ? 'text-slate-600' : 'font-medium text-red-700'}`}
+            >
+              {compliance.is_clear_current
+                ? `Clear until ${formatDate(compliance.clear_expires_at)}`
+                : `Clear expired on ${formatDate(compliance.clear_expires_at)} — Re-KYC due`}
+            </p>
+          )}
         </div>
         {moves.length > 0 && !dialogOpen && (
           <button
@@ -99,6 +129,13 @@ function GaugeSection({ customerId }: { customerId: string }) {
             </span>
           )}
         </div>
+      )}
+
+      {!dialogOpen && (
+        <CheckCycleActions
+          customerId={customerId}
+          actions={standing.allowed_cycle_actions ?? []}
+        />
       )}
 
       {standing.value === 'IN_REVIEW' && blocked.length > 0 && (
@@ -138,6 +175,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
             decisions={decisions.data?.decisions ?? []}
             isLoading={decisions.isLoading}
             isError={decisions.isError}
+            customerId={customerId}
           />
         </div>
       </div>

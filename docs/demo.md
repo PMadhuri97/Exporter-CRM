@@ -101,7 +101,7 @@ As **OPERATIONS** unless noted.
    opened; the scanner is labelled **pass-through** because it is a placeholder.
 7. **Start the background check** on the company's Background check tab (OPERATIONS
    may start one).
-8. **Switch to COMPLIANCE.** Answer the eight screening items; optionally record a
+8. **Switch to COMPLIANCE.** Answer the seven screening items; optionally record a
    manual verification result with a note as evidence (a document can be evidence too,
    but only one uploaded to the company's own Documents tab — deal paperwork belongs to
    the deal). The `CLEAR` move lists any prerequisite still unmet until they are all

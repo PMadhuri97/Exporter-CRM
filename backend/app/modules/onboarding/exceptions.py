@@ -1468,3 +1468,85 @@ class VerificationLegacyReviewUnchainedError(AnerBaseException):
             status_code=409,
             extensions={"legacy_review_status": legacy_review_status},
         )
+
+
+# ── Compliance engine — owner: Developer 1 (allocation §3) ──
+# (Developer 1 appends here.)
+
+
+class BackgroundCheckDecisionNotFoundError(AnerBaseException):
+    """No background-check decision with this id belongs to this company.
+
+    A decision of another company is the same 404 as one that does not exist, so the
+    evidence route cannot be used to learn which decision ids exist elsewhere.
+    """
+
+    def __init__(self, company_id: object, decision_id: object) -> None:
+        super().__init__(
+            detail=f"No background-check decision {decision_id} for company {company_id}",
+            error_code="BACKGROUND_CHECK_DECISION_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class CheckCycleNotFoundError(AnerBaseException):
+    """No check cycle with this id belongs to this company (404)."""
+
+    def __init__(self, company_id: object, cycle_id: object) -> None:
+        super().__init__(
+            detail=f"No check cycle {cycle_id} for company {company_id}",
+            error_code="CHECK_CYCLE_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class CheckCycleNotAllowedError(AnerBaseException):
+    """A new cycle was asked for from a state that does not allow one (plan P2-3c).
+
+    ``FLAGGED`` and ``ON_HOLD`` companies are reassessed first: a new round of checks
+    is not how a concern already on record is dealt with. 409: the request is
+    well-formed; the company's state forbids it.
+    """
+
+    def __init__(self, company_id: object, current: object) -> None:
+        value = _bc_value(current)
+        super().__init__(
+            detail=(
+                f"A new check cycle cannot be started while the background check for "
+                f"company {company_id} is {value}; reassess it first"
+            ),
+            error_code="CHECK_CYCLE_NOT_ALLOWED",
+            status_code=409,
+            extensions={"current": value},
+        )
+
+
+class CheckCycleEmptyError(AnerBaseException):
+    """The current cycle has nothing recorded in it yet, so a new one would replace an
+    empty round with another empty round (plan P2-3c).
+
+    This is also what makes two simultaneous starts produce **one** cycle: the second
+    finds the first's new cycle still empty and is refused. 409.
+    """
+
+    def __init__(self, company_id: object, cycle_number: int) -> None:
+        super().__init__(
+            detail=(
+                f"Check cycle {cycle_number} of company {company_id} has nothing recorded "
+                "in it yet; record its checks before starting another"
+            ),
+            error_code="CHECK_CYCLE_EMPTY",
+            status_code=409,
+            extensions={"current_cycle_number": cycle_number},
+        )
+
+
+class CheckCycleRoleNotAllowedError(AnerBaseException):
+    """Only COMPLIANCE and ADMIN may start a check cycle (plan P2-3c, IQ-3). 403."""
+
+    def __init__(self, role: object) -> None:
+        super().__init__(
+            detail=f"The {_bc_value(role)} role may not start a check cycle",
+            error_code="CHECK_CYCLE_ROLE_NOT_ALLOWED",
+            status_code=403,
+        )

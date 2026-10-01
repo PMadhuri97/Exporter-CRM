@@ -242,6 +242,8 @@ async def test_recording_a_result_writes_a_verification_history_row():
         "entity_type": "EXPORTER",
         "entity_reference": str(company_id),
         "provider": "manual",
+        # Developer 1 (P2-3a): a company-subject result names its check cycle.
+        "cycle_id": str(result.cycle_id),
     }
 
 

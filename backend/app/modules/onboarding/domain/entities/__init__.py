@@ -218,3 +218,12 @@ from app.modules.onboarding.domain.entities.verification_review import (  # noqa
 )
 
 __all__ += ["VerificationReview"]
+
+# ── Compliance engine — owner: Developer 1 (allocation §3) ──
+# (Developer 1 appends here.)
+from app.modules.onboarding.domain.entities.check_cycle import (  # noqa: E402
+    CheckCycle,
+    CheckCycleKind,
+)
+
+__all__ += ["CheckCycle", "CheckCycleKind"]

@@ -10,12 +10,12 @@ Architecture §3.9: company B's check is ``CLEAR`` — which makes the qualified
 ``ExporterProfileService.promote_to_customer_if_ready``) — and company C's is
 ``FLAGGED``, so its deal cannot be handed over.
 
-**Through the services, nothing written directly.** The eight screening decisions go
-through ``ScreeningReviewService``; every move goes through ``BackgroundCheckService``
-with its default reader and the shipped ``CLEAR_POLICY``. So B is cleared only because
-its inputs really meet A3's prerequisites, and C is flagged the way the architecture
-says a failed screening item leads to (D3): a ``FAILED`` item, then ``FLAGGED`` with a
-reason.
+**Through the services, nothing written directly.** The screening decisions (seven
+items since plan P2-4a) go through ``ScreeningReviewService``; every move goes through
+``BackgroundCheckService`` with its default reader and the shipped ``CLEAR_POLICY``. So B
+is cleared only because its inputs really meet A3's prerequisites, and C is flagged the
+way the architecture says a failed screening item leads to (D3): a ``FAILED`` item, then
+``FLAGGED`` with a reason.
 
 Converges like every other seeder: an item already at its sample answer is not
 answered again, and a company already at its target value records no decision, so a
@@ -67,7 +67,7 @@ SAMPLE_CHECKS: dict[str, _SampleCheck] = {
     # §3.9 company B: cleared at LOW risk, and so a customer.
     "company-b": _SampleCheck(
         target=_State.CLEAR,
-        reason="Sample data: all eight screening items passed; nothing adverse found.",
+        reason="Sample data: every screening item passed; nothing adverse found.",
         risk=BackgroundCheckRisk.LOW,
     ),
     # §3.9 company C: flagged. A failed screening item is what FLAGGED is for (D3).

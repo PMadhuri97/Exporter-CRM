@@ -16,7 +16,11 @@ import type {
   BackgroundCheck,
   BackgroundCheckDecision,
   BackgroundCheckDecisionList,
+  CheckCycleList,
+  DecisionEvidence,
   RecordBackgroundCheckDecisionRequest,
+  StartCheckCycleRequest,
+  StartCheckCycleResponse,
 } from '../types';
 
 /**
@@ -60,5 +64,38 @@ export async function listBackgroundCheckDecisions(
   const suffix = query.toString() ? `?${query}` : '';
   return apiRequest<BackgroundCheckDecisionList>(
     `/onboarding/exporters/${customerId}/background-check/decisions${suffix}`,
+  );
+}
+
+// ── Developer 1 (compliance engine) ────────────────────────────────────────
+
+/** What one decision rested on, each pinned id resolved into a readable item (P2-1a). */
+export async function getDecisionEvidence(
+  customerId: string,
+  decisionId: string,
+): Promise<DecisionEvidence> {
+  return apiRequest<DecisionEvidence>(
+    `/onboarding/exporters/${customerId}/background-check/decisions/${decisionId}/evidence`,
+  );
+}
+
+/** Every check cycle of the company, cycle 1 first (P2-3d). */
+export async function listCheckCycles(customerId: string): Promise<CheckCycleList> {
+  return apiRequest<CheckCycleList>(
+    `/onboarding/exporters/${customerId}/background-check/cycles`,
+  );
+}
+
+/**
+ * Start a Re-KYC or Re-KYB (P2-3c). On a CLEAR company the server also reopens it in
+ * the same request. Offer it only when `allowed_cycle_actions` lists the kind.
+ */
+export async function startCheckCycle(
+  customerId: string,
+  body: StartCheckCycleRequest,
+): Promise<StartCheckCycleResponse> {
+  return apiRequest<StartCheckCycleResponse>(
+    `/onboarding/exporters/${customerId}/background-check/cycles`,
+    { method: 'POST', body },
   );
 }

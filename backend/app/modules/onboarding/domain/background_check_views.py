@@ -37,6 +37,29 @@ from app.modules.onboarding.domain.entities.background_check_enums import (
     BackgroundCheckState,
 )
 
+# ── Rules versions (Developer 1, plan P2-4a, decision K) ──────────────────────
+
+#: The Clear rules before 1 October 2026: A3's four prerequisites over the
+#: **eight**-item screening checklist (``website-reviewed`` first). Never written:
+#: it is what a decision with ``rules_version IS NULL`` means by the documented read
+#: rule (allocation §2.3), because those decisions cannot be updated.
+CLEAR_RULES_V1 = "clear-2026-09-28-8items"
+
+#: The Clear rules since 1 October 2026: the same four prerequisites over the
+#: **seven**-item checklist (``website-reviewed`` retired with the website field, R11),
+#: scoped to the company's current check cycle (plan P2-3b). Written on every new
+#: decision and on every new cycle.
+CLEAR_RULES_V2 = "clear-2026-10-01-7items"
+
+#: The version every new decision records.
+CURRENT_CLEAR_RULES = CLEAR_RULES_V2
+
+
+def effective_rules_version(stored: str | None) -> str:
+    """A decision's rules version with the legacy read rule applied."""
+    return stored or CLEAR_RULES_V1
+
+
 # ── Views ────────────────────────────────────────────────────────────────────
 
 
@@ -53,6 +76,21 @@ class BackgroundCheckMove:
     to: BackgroundCheckState
     reason_required: bool
     risk_required: bool
+
+
+@dataclass(frozen=True)
+class BackgroundCheckCycleAction:
+    """One new check cycle this viewer may start now (plan P2-3c/d).
+
+    Served like ``allowed_moves``, so the Re-KYC / Re-KYB buttons appear exactly when
+    the server would accept them. ``reopens`` says the start also moves a ``CLEAR``
+    company back to ``IN_REVIEW`` in the same transaction (IQ-3), so the screen can say
+    so before anyone presses it.
+    """
+
+    kind: str  # CheckCycleKind value
+    reason_required: bool
+    reopens: bool
 
 
 @dataclass(frozen=True)
@@ -82,6 +120,10 @@ class BackgroundCheckDecisionView:
     risk_rating: BackgroundCheckRisk | None
     supersedes_decision_id: uuid.UUID | None
     evidence: tuple[EvidenceItemView, ...] = ()
+    #: The Clear rules in force when it was taken (P2-4a); ``None`` = v1 by rule.
+    rules_version: str | None = None
+    #: The check cycle it was taken in (P2-3a); ``None`` = cycle 1 by rule.
+    cycle_id: uuid.UUID | None = None
 
 
 # ── The evidence snapshot ────────────────────────────────────────────────────
@@ -298,12 +340,17 @@ def evaluate_clear_prerequisites(
 
 
 __all__ = [
+    "CLEAR_RULES_V1",
+    "CLEAR_RULES_V2",
+    "CURRENT_CLEAR_RULES",
+    "effective_rules_version",
     "CLEAR_EVIDENCE_RECORDED",
     "CLEAR_NO_CHECKS_PENDING",
     "CLEAR_RISK_REQUIRED",
     "CLEAR_SCREENING_ANSWERED",
     "CLEAR_POLICY",
     "SERVABLE_SCAN_STATUS",
+    "BackgroundCheckCycleAction",
     "BackgroundCheckDecisionView",
     "BackgroundCheckMove",
     "ClearPolicy",

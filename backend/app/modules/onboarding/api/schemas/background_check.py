@@ -18,17 +18,26 @@ here.
 The reason *is* free text a person typed, which is why DEVELOPER may not read it
 (**D8**, settled 28 September 2026): DEVELOPER does not reach these routes at all, so
 the question does not arise in this schema.
+
+Developer 1 (compliance engine) added, 1 October 2026: the company's compliance facts
+on the standing (F1), the check cycles and the actions that start one (P2-3c/d), each
+decision's rules version and cycle (P2-4a, P2-3a), and the resolved evidence of one
+decision (P2-1a). **None of them carries an identifier** — no PAN, GSTIN, IEC, CIN,
+buyer tax id or contact detail — so ``masking.py`` still has nothing to do here; the
+masking tests assert that for OPERATIONS, and DEVELOPER is refused (D8).
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.onboarding.api.schemas.verification import VerificationEvidenceRefOut
 from app.modules.onboarding.domain.background_check_views import (
+    BackgroundCheckCycleAction,
     BackgroundCheckDecisionView,
     BackgroundCheckMove,
     EvidenceItemView,
@@ -103,10 +112,30 @@ class BackgroundCheckDecisionResponse(BaseModel):
     risk_rating: BackgroundCheckRisk | None
     supersedes_decision_id: uuid.UUID | None
     evidence: list[EvidenceItemResponse]
+    rules_version: str | None = Field(
+        default=None,
+        description=(
+            "The Clear rules in force when the decision was taken. Null on decisions "
+            "recorded before rules were versioned: those read as "
+            "`clear-2026-09-28-8items` (the eight-item checklist)."
+        ),
+    )
+    cycle_id: uuid.UUID | None = Field(
+        default=None,
+        description="The check cycle the decision was taken in (a legacy decision reads as cycle 1).",
+    )
+    cycle_number: int | None = Field(
+        default=None, description="That cycle's number: 1, 2, 3 …"
+    )
 
     @classmethod
     def from_view(
-        cls, view: BackgroundCheckDecisionView, *, decided_by_name: str | None = None
+        cls,
+        view: BackgroundCheckDecisionView,
+        *,
+        decided_by_name: str | None = None,
+        cycle_id: uuid.UUID | None = None,
+        cycle_number: int | None = None,
     ) -> BackgroundCheckDecisionResponse:
         return cls(
             id=view.id,
@@ -122,7 +151,102 @@ class BackgroundCheckDecisionResponse(BaseModel):
             risk_rating=view.risk_rating,
             supersedes_decision_id=view.supersedes_decision_id,
             evidence=[EvidenceItemResponse.from_view(item) for item in view.evidence],
+            rules_version=view.rules_version,
+            cycle_id=cycle_id or view.cycle_id,
+            cycle_number=cycle_number,
         )
+
+
+# ── Compliance facts, cycles (Developer 1, F1 and P2-3) ─────────────────────
+
+CheckStateValue = Literal["PASSED", "FAILED", "MISSING", "PENDING"]
+
+
+class CompanyComplianceFactsResponse(BaseModel):
+    """The company's compliance facts now — ``ComplianceFactsReader.for_company``."""
+
+    is_clear: bool
+    clear_expires_at: datetime | None = Field(
+        description=(
+            "When the current Clear stops being current (one year from the clearing "
+            "decision). Null unless the check is CLEAR."
+        )
+    )
+    is_clear_current: bool = Field(
+        description="CLEAR and not yet expired. An expired Clear is due for Re-KYC."
+    )
+    sanctions: CheckStateValue = Field(
+        description=(
+            "The latest real sanctions result in the current cycle: PASSED (or REVIEW "
+            "with an ACCEPTED review), FAILED (or REVIEW with a REJECTED review), "
+            "PENDING, or MISSING when none has been recorded."
+        )
+    )
+    aml: CheckStateValue = Field(description="The same, for AML.")
+
+
+class CheckCycleResponse(BaseModel):
+    """One KYC/KYB round of a company's background check."""
+
+    id: uuid.UUID
+    company_id: uuid.UUID
+    number: int
+    kind: str = Field(description="INITIAL (cycle 1), RE_KYC, RE_KYB or FULL.")
+    reason: str | None
+    started_at: datetime
+    started_by: str = Field(
+        description=(
+            "Who started it (a user id), or the migration or code path that created "
+            "cycle 1."
+        )
+    )
+    started_by_name: str | None = None
+    source: str
+    rules_version: str | None
+    is_current: bool
+
+
+class BackgroundCheckCycleActionResponse(BaseModel):
+    """A new cycle this caller may start now — the Re-KYC / Re-KYB buttons."""
+
+    kind: str
+    reason_required: bool
+    reopens: bool = Field(
+        description=(
+            "Starting it also moves this CLEAR company back to IN_REVIEW, in the same "
+            "request, so handovers pause until the new cycle is cleared."
+        )
+    )
+
+    @classmethod
+    def from_view(cls, action: BackgroundCheckCycleAction) -> BackgroundCheckCycleActionResponse:
+        return cls(
+            kind=action.kind, reason_required=action.reason_required, reopens=action.reopens
+        )
+
+
+class CheckCycleListResponse(BaseModel):
+    """Every cycle of one company, cycle 1 first."""
+
+    cycles: list[CheckCycleResponse]
+    current_cycle_id: uuid.UUID | None
+
+
+class StartCheckCycleRequest(BaseModel):
+    """Start a Re-KYC or Re-KYB. Who starts it comes from the session."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["RE_KYC", "RE_KYB"]
+    reason: Annotated[str, Field(min_length=1, max_length=4000)]
+
+
+class StartCheckCycleResponse(BaseModel):
+    cycle: CheckCycleResponse
+    reopen_decision: BackgroundCheckDecisionResponse | None = Field(
+        default=None,
+        description="The CLEAR → IN_REVIEW decision recorded with it, when the company was CLEAR.",
+    )
 
 
 class BackgroundCheckResponse(BaseModel):
@@ -162,6 +286,19 @@ class BackgroundCheckResponse(BaseModel):
             "Which of CLEAR's prerequisites are unmet right now, by name, so the "
             "screen can say what is outstanding instead of showing a 409 afterwards. "
             "Empty when the company is not IN_REVIEW or when nothing is outstanding."
+        ),
+    )
+    compliance: CompanyComplianceFactsResponse
+    current_cycle: CheckCycleResponse | None = Field(
+        default=None,
+        description="The cycle the check decides on now; null before the company has one.",
+    )
+    allowed_cycle_actions: list[BackgroundCheckCycleActionResponse] = Field(
+        default_factory=list,
+        description=(
+            "The new cycles this caller may start now (Re-KYC, Re-KYB). Empty for a "
+            "role that may not, on a FLAGGED or ON_HOLD company, or while the current "
+            "cycle has nothing recorded in it."
         ),
     )
 
@@ -215,7 +352,113 @@ class BackgroundCheckDecisionListResponse(BaseModel):
     offset: int
 
 
+# ── One decision's evidence, resolved (Developer 1, P2-1a) ──────────────────
+
+
+class DecisionEvidencePinnedReview(BaseModel):
+    id: uuid.UUID
+    review_status: str
+    reviewed_by: str
+    reviewed_by_name: str | None = None
+    reviewed_at: datetime
+    note: str | None
+
+
+class DecisionEvidenceVerification(BaseModel):
+    """A pinned verification result, as it stands (its outcome is frozen once reviewed)."""
+
+    verification_result_id: uuid.UUID
+    verification_type: str
+    status: str
+    risk_level: str | None
+    provider: str = Field(description="The provider as stored (`manual` for a person).")
+    provenance: Literal["MANUAL", "STUB", "PROVIDER"]
+    is_placeholder: bool
+    performed_at: datetime
+    recorded_by: str | None = Field(
+        description="Who recorded it (null for a result older than the history log)."
+    )
+    recorded_by_name: str | None = None
+    evidence_note: str | None
+    evidence_refs: list[VerificationEvidenceRefOut]
+    pinned_review: DecisionEvidencePinnedReview | None = Field(
+        description="The review the decision rested on; null if it had none yet."
+    )
+    review_superseded: bool = Field(
+        description="A later review has been recorded since the decision."
+    )
+    cycle_id: uuid.UUID | None
+
+
+class DecisionEvidenceScreeningItem(BaseModel):
+    """The exact screening answer pinned (the checklist keeps every answer)."""
+
+    screening_review_item_id: uuid.UUID
+    item_key: str
+    label: str
+    retired: bool = Field(
+        description="The item has since left the checklist (e.g. the website review)."
+    )
+    status: str
+    comment: str | None
+    evidence_refs: list[VerificationEvidenceRefOut]
+    reviewed_by: str | None
+    reviewed_by_name: str | None = None
+    reviewed_at: datetime | None
+    cycle_id: uuid.UUID | None
+
+
+class DecisionEvidenceDocument(BaseModel):
+    """A pinned company document. Open it through the documents routes."""
+
+    crm_document_id: uuid.UUID
+    file_name: str
+    category: str
+    document_type: str
+    scan_status: str
+    is_downloadable: bool
+    uploaded_by: str | None
+    uploaded_by_name: str | None = None
+    uploaded_at: datetime
+
+
+class DecisionEvidenceItemResponse(BaseModel):
+    """One pinned id, resolved. Exactly the detail for `kind` is set (all three are null
+    only for a pinned row that can no longer be found)."""
+
+    kind: str
+    verification: DecisionEvidenceVerification | None = None
+    screening_item: DecisionEvidenceScreeningItem | None = None
+    document: DecisionEvidenceDocument | None = None
+
+
+class DecisionEvidenceResponse(BaseModel):
+    """What one decision rested on, readable."""
+
+    decision_id: uuid.UUID
+    company_id: uuid.UUID
+    to_value: BackgroundCheckState
+    rules_version: str = Field(
+        description="The Clear rules it was taken under (a legacy decision reads as v1)."
+    )
+    cycle_id: uuid.UUID | None
+    cycle_number: int | None
+    items: list[DecisionEvidenceItemResponse]
+
+
 __all__ = [
+    "BackgroundCheckCycleActionResponse",
+    "CheckCycleListResponse",
+    "CheckCycleResponse",
+    "CompanyComplianceFactsResponse",
+    "DecisionEvidenceDocument",
+    "DecisionEvidenceItemResponse",
+    "DecisionEvidencePinnedReview",
+    "DecisionEvidenceResponse",
+    "DecisionEvidenceScreeningItem",
+    "DecisionEvidenceVerification",
+    "StartCheckCycleRequest",
+    "StartCheckCycleResponse",
     "BackgroundCheckDecisionListResponse",
     "BackgroundCheckDecisionResponse",
     "BackgroundCheckMoveResponse",

@@ -110,9 +110,9 @@ export function crmDocument(overrides: Partial<CrmDocument> = {}): CrmDocument {
   };
 }
 
-/** The server's catalogue (`SCREENING_CATALOGUE_ITEMS`), in its display order. */
+/** The server's catalogue (`SCREENING_CATALOGUE_ITEMS`), in its display order — seven
+ * items since plan P2-4a retired `website-reviewed`. */
 export const CATALOGUE: ScreeningCatalogueItem[] = [
-  { key: 'website-reviewed', label: 'Has the website been reviewed?', section: 'Company checks' },
   { key: 'address-physical', label: 'Is the registered address a physical business address?', section: 'Company checks' },
   { key: 'business-consistency', label: 'Does the declared business activity make sense for the exporter?', section: 'Company checks' },
   { key: 'payment-purpose', label: 'Does expected payment and trading activity fit the business?', section: 'Volume and activity' },
@@ -126,7 +126,7 @@ export function screeningItem(overrides: Partial<ScreeningReviewItem> = {}): Scr
   return {
     id: '44444444-4444-4444-8444-444444444444',
     customer_id: COMPANY_ID,
-    item_key: 'website-reviewed',
+    item_key: 'address-physical',
     status: 'PASSED',
     comment: null,
     reviewed_by: REVIEWER_ID,
@@ -153,7 +153,7 @@ export function historyPage(
   items: ScreeningReviewItem[],
   { total = items.length, limit = 5, offset = 0 } = {},
 ): ScreeningItemHistory {
-  return { customer_id: COMPANY_ID, item_key: 'website-reviewed', items, total, limit, offset };
+  return { customer_id: COMPANY_ID, item_key: 'address-physical', items, total, limit, offset };
 }
 
 export function bankActivity(

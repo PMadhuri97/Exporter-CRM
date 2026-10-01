@@ -26,8 +26,12 @@ merged.
 | `auth_0004` | Platform (user management) | Roles and permissions as data (RBAC) | `auth_0003_user_admin` |
 | 0021 | Dev 4B | Superseding verification reviews, the outcome freeze, evidence and subject snapshots | `auth_0004_rbac` |
 | 0022 | Release audit | Database guards: no document or verification result is deleted, a document's identity is fixed once set, and a `HANDED_OVER` or `WITHDRAWN` deal no longer changes | `onboarding_0021_verif_review` |
+| 0023 | Dev 1 (F1) | `onboarding_0023_dev1_foundation`: `verification_result.subject_company_id` (FK, set once then frozen by `trg_verification_result_input_immutability`); `exporter_profile.background_check_expires_at` (indexed). Lossless downgrade | `onboarding_0022_integrity` |
+| 0024 | Dev 1 (P2-1b) | `onboarding_0024_dev1_evidence`: `screening_review_item.evidence_refs` (`jsonb NOT NULL DEFAULT '[]'`, DDL — no row updated). Lossy downgrade (drops the references) | `onboarding_0023_dev1_foundation` |
+| 0025 | Dev 1 (P2-3a, P2-4a) | `onboarding_0025_dev1_check_cycle`: append-only `check_cycle`; `cycle_id` on results, screening answers and decisions (composite FK on the last two), frozen on results; `background_check_decision.rules_version`; **inserts** one cycle 1 per company with inputs — no existing row updated (`NULL` cycle = cycle 1, `NULL` rules = v1). Lossy downgrade | `onboarding_0024_dev1_evidence` |
 
-**Next free onboarding number: 0023.**
+**Next free onboarding number: 0026.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
+32 characters at most (`docs/developer-allocation.md` §2.2).
 
 The two `auth_*` revisions belong to the platform's user-management work, not to the
 CRM; they sit in this chain because there is only one chain (§2), so a CRM migration

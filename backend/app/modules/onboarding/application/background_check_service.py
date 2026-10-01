@@ -36,11 +36,21 @@ imports ``ComplianceInputsReader``/``ComplianceInputsService`` and nothing else 
 Developer 4B's: no ``screening_review_item``, no ``verification_result``, no review
 tables (``4a-task.md`` §6.4). The reader is injectable so a unit test can pass a fake
 without a database.
+
+**Cycles and rules versions (Developer 1, plans P2-3a–c and P2-4a).** Every decision
+is stamped, at step 5, with the company's current check cycle (cycle 1 is created on
+the company's first decision if no input created it first) and with the Clear rules
+in force (``CURRENT_CLEAR_RULES``). The inputs read at step 3 are the current cycle's
+only (seam v2). :meth:`start_cycle` begins a new cycle — a Re-KYC or Re-KYB — under the
+same row lock, and on a ``CLEAR`` company records the reopen in the same transaction
+(IQ-3), because there is no ``CLEAR → CLEAR`` move and the gauge must not read
+``CLEAR`` while the new cycle's checks are outstanding.
 """
 
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 
 import structlog
 from sqlalchemy import select
@@ -48,12 +58,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.compliance_inputs import ComplianceInputsService
 from app.modules.onboarding.application.exporter_profile_service import (
+    CustomerAnnouncement,
     ExporterProfileService,
     announce_became_customer,
 )
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.background_check_views import (
     CLEAR_POLICY,
+    CURRENT_CLEAR_RULES,
+    BackgroundCheckCycleAction,
     BackgroundCheckDecisionView,
     BackgroundCheckMove,
     ClearPolicy,
@@ -78,7 +91,9 @@ from app.modules.onboarding.domain.entities.background_check_enums import (
     BackgroundCheckRisk,
     BackgroundCheckState,
 )
+from app.modules.onboarding.domain.entities.check_cycle import CheckCycle, CheckCycleKind
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.history_dimensions import CHECK_CYCLE
 from app.modules.onboarding.exceptions import (
     BackgroundCheckMoveNotAllowedError,
     BackgroundCheckPrerequisitesUnmetError,
@@ -87,15 +102,23 @@ from app.modules.onboarding.exceptions import (
     BackgroundCheckRiskRequiredError,
     BackgroundCheckRoleNotAllowedError,
     BackgroundCheckStateChangedError,
+    CheckCycleEmptyError,
+    CheckCycleNotAllowedError,
+    CheckCycleRoleNotAllowedError,
     ExporterProfileNotFoundError,
 )
 from app.modules.onboarding.infrastructure.repositories.background_check_decision_repository import (  # noqa: E501
     BackgroundCheckDecisionRepository,
 )
+from app.modules.onboarding.infrastructure.repositories.check_cycle_repository import (
+    CheckCycleRepository,
+)
 from app.modules.onboarding.infrastructure.repositories.crm_document_repository import (
     CrmDocumentRepository,
 )
 from app.platform.authentication.models import UserRole
+from app.shared import clock
+from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
 
@@ -161,6 +184,39 @@ _METHOD_FOR_MOVE: dict[tuple[_State, _State], str] = {
 }
 
 
+#: Who may start a new check cycle (IQ-3: compliance and admin, not the RM).
+_CYCLE_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
+
+#: The gauge values a new cycle may start from (plan P2-3c). `CLEAR` also reopens;
+#: `FLAGGED` and `ON_HOLD` are reassessed first, so they are absent.
+_CYCLE_START_STATES: frozenset[_State] = frozenset(
+    {_State.NOT_STARTED, _State.IN_REVIEW, _State.MORE_INFO, _State.CLEAR}
+)
+
+#: The kinds the API starts: the Re-KYC and Re-KYB buttons. `FULL` is reserved.
+STARTABLE_CYCLE_KINDS: tuple[CheckCycleKind, ...] = (CheckCycleKind.RE_KYC, CheckCycleKind.RE_KYB)
+
+#: How a kind is named in the reopen decision's reason ("Re-KYC: …", IQ-3).
+_CYCLE_LABELS: dict[CheckCycleKind, str] = {
+    CheckCycleKind.RE_KYC: "Re-KYC",
+    CheckCycleKind.RE_KYB: "Re-KYB",
+    CheckCycleKind.FULL: "Full re-check",
+}
+
+#: `event_type` of the `check_cycle` history row.
+CYCLE_STARTED_EVENT = "check_cycle_started"
+
+
+@dataclass(frozen=True)
+class StartedCycle:
+    """What :meth:`BackgroundCheckService.start_cycle` did: the new cycle, and the
+    reopen decision when the company was ``CLEAR``."""
+
+    cycle: CheckCycle
+    previous_cycle: CheckCycle
+    reopen: BackgroundCheckDecisionView | None
+
+
 class BackgroundCheckService:
     """Moves one company's background-check gauge, and records why.
 
@@ -188,6 +244,7 @@ class BackgroundCheckService:
         self._history = HistoryService(db)
         self._clear_policy = clear_policy or CLEAR_POLICY
         self._documents = CrmDocumentRepository(db)
+        self._cycles = CheckCycleRepository(db)
 
     # ── The rules as data ────────────────────────────────────────────────────
 
@@ -214,6 +271,38 @@ class BackgroundCheckService:
             for (from_value, to_value), roles in _MOVES.items()
             if from_value is current and role in roles
         ]
+
+    @staticmethod
+    def startable_cycle_kinds(current: _State, role: UserRole) -> list[CheckCycleKind]:
+        """The cycle kinds ``role`` may start from ``current``, ignoring whether the
+        current cycle is empty (that needs the database: :meth:`cycle_actions`)."""
+        if role not in _CYCLE_ROLES or current not in _CYCLE_START_STATES:
+            return []
+        return list(STARTABLE_CYCLE_KINDS)
+
+    async def cycle_actions(
+        self, company_id: uuid.UUID, current: _State, role: UserRole
+    ) -> list[BackgroundCheckCycleAction]:
+        """The new cycles this viewer may start now — served to the screen so the
+        Re-KYC / Re-KYB buttons appear exactly when :meth:`start_cycle` would accept
+        them. Read-only; advisory, like :meth:`clear_prerequisites`."""
+        kinds = self.startable_cycle_kinds(current, role)
+        if not kinds or await self._current_cycle_is_empty(company_id):
+            return []
+        return [
+            BackgroundCheckCycleAction(
+                kind=kind.value, reason_required=True, reopens=current is _State.CLEAR
+            )
+            for kind in kinds
+        ]
+
+    async def _current_cycle_is_empty(self, company_id: uuid.UUID) -> bool:
+        """Nothing recorded in the current cycle: no result and no screening answer —
+        read through the seam, which is already scoped to that cycle."""
+        inputs = await self._reader.company_inputs(company_id)
+        return not inputs.verifications and all(
+            item.screening_review_item_id is None for item in inputs.screening_items
+        )
 
     # ── Moves ────────────────────────────────────────────────────────────────
 
@@ -470,6 +559,119 @@ class BackgroundCheckService:
             seen_value=seen_value,
         )
 
+    async def start_cycle(
+        self,
+        company_id: uuid.UUID,
+        *,
+        kind: CheckCycleKind,
+        reason: str | None,
+        actor_id: str,
+        actor_role: UserRole,
+    ) -> StartedCycle:
+        """Start a new check cycle — a Re-KYC or Re-KYB (plan P2-3c, IQ-3).
+
+        One transaction, under the company row lock every move takes:
+
+        1. lock the company ``FOR UPDATE`` — writers of inputs hold ``FOR SHARE``, so no
+           input can land half in the old cycle and half in the new;
+        2. check the role (COMPLIANCE, ADMIN), the kind, the reason and the gauge:
+           ``NOT_STARTED``, ``IN_REVIEW``, ``MORE_INFO`` and ``CLEAR`` may start one;
+           ``FLAGGED`` and ``ON_HOLD`` are reassessed first (409);
+        3. refuse if the current cycle is still empty (409) — which is also why two
+           starts at the same moment make **one** cycle: the second finds the first's
+           new cycle empty;
+        4. insert the next cycle (the seam now reads it, and it is empty);
+        5. write the ``check_cycle`` history row;
+        6. on a ``CLEAR`` company, record the reopen ``CLEAR → IN_REVIEW`` in the new
+           cycle with the reason "Re-KYC: …" — the same move, rules and history row as
+           :meth:`reopen` — so handovers pause until the new cycle is cleared;
+        7. commit once.
+
+        Raises:
+            CheckCycleRoleNotAllowedError: (403) not COMPLIANCE or ADMIN.
+            ValidationError: (422) a kind the API does not start, or no reason.
+            CheckCycleNotAllowedError: (409) the company is ``FLAGGED`` or ``ON_HOLD``.
+            CheckCycleEmptyError: (409) the current cycle has nothing recorded yet.
+        """
+        profile = await self._lock_profile(company_id)
+        if actor_role not in _CYCLE_ROLES:
+            raise CheckCycleRoleNotAllowedError(actor_role)
+        if kind not in STARTABLE_CYCLE_KINDS:
+            raise ValidationError(
+                f"a {kind.value} cycle cannot be started here; start one of: "
+                + ", ".join(k.value for k in STARTABLE_CYCLE_KINDS)
+            )
+        text = reason.strip() if reason else None
+        if not text:
+            raise ValidationError("a new check cycle needs a reason")
+        current = profile.background_check
+        if current not in _CYCLE_START_STATES:
+            raise CheckCycleNotAllowedError(company_id, current)
+
+        now = clock.now()
+        previous = await self._cycles.current_or_initial(
+            company_id, actor_id=actor_id, source_ref="background_check_service.start_cycle", at=now
+        )
+        if await self._current_cycle_is_empty(company_id):
+            raise CheckCycleEmptyError(company_id, previous.number)
+
+        reopen_id = uuid.uuid4() if current is _State.CLEAR else None
+        cycle = await self._cycles.add_next(
+            company_id,
+            previous=previous,
+            kind=kind,
+            reason=text,
+            actor_id=actor_id,
+            source="background_check_service.start_cycle",
+            source_ref=str(reopen_id) if reopen_id is not None else None,
+            rules_version=CURRENT_CLEAR_RULES,
+            at=now,
+        )
+        await self._history.record(
+            company_id,
+            dimension=CHECK_CYCLE,
+            from_value=str(previous.number),
+            to_value=str(cycle.number),
+            actor_id=actor_id,
+            source="background_check_service.start_cycle",
+            reason=text,
+            event_type=CYCLE_STARTED_EVENT,
+            details={
+                "cycle_id": str(cycle.id),
+                "kind": kind.value,
+                "previous_cycle_id": str(previous.id),
+                "reopen_decision_id": str(reopen_id) if reopen_id is not None else None,
+            },
+        )
+
+        reopen_view = None
+        if current is _State.CLEAR:
+            decision, evidence, _ = await self._apply_move(
+                profile,
+                to_value=_State.IN_REVIEW,
+                expected_from=frozenset({_State.CLEAR}),
+                actor_id=actor_id,
+                actor_role=actor_role,
+                reason=f"{_CYCLE_LABELS[kind]}: {text}",
+                risk=None,
+                method="reopen",
+                cycle=cycle,
+                decision_id=reopen_id,
+            )
+            reopen_view = self._to_view(decision, evidence)
+
+        await self._db.commit()
+        logger.info(
+            "background_check.cycle_started",
+            company_id=str(company_id),
+            cycle_id=str(cycle.id),
+            number=cycle.number,
+            kind=kind.value,
+            reopened=reopen_view is not None,
+            actor_id=actor_id,
+        )
+        return StartedCycle(cycle=cycle, previous_cycle=previous, reopen=reopen_view)
+
     # ── Reads ────────────────────────────────────────────────────────────────
 
     async def clear_prerequisites(self, company_id: uuid.UUID) -> tuple[str, ...]:
@@ -520,6 +722,59 @@ class BackgroundCheckService:
         """
         # 1 — the company row, locked for the rest of the transaction.
         profile = await self._lock_profile(company_id)
+        decision, evidence, announcement = await self._apply_move(
+            profile,
+            to_value=to_value,
+            expected_from=expected_from,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            reason=reason,
+            risk=risk,
+            method=method,
+            seen_value=seen_value,
+        )
+
+        # 8 — one commit.
+        await self._db.commit()
+        logger.info(
+            "background_check.moved",
+            company_id=str(company_id),
+            from_value=decision.from_value.value,
+            to_value=to_value.value,
+            decision_id=str(decision.id),
+            actor_id=actor_id,
+            evidence_count=evidence.count,
+        )
+        # After the commit, best effort (architecture §3.6).
+        await announce_became_customer(announcement)
+        return self._to_view(decision, evidence)
+
+    async def _apply_move(
+        self,
+        profile: ExporterProfile,
+        *,
+        to_value: _State,
+        expected_from: frozenset[_State],
+        actor_id: str,
+        actor_role: UserRole,
+        reason: str | None,
+        risk: BackgroundCheckRisk | None,
+        method: str | None = None,
+        seen_value: _State | None = None,
+        cycle: CheckCycle | None = None,
+        decision_id: uuid.UUID | None = None,
+    ) -> tuple[BackgroundCheckDecision, EvidenceSelection, CustomerAnnouncement | None]:
+        """Steps 2–7b on a company row the caller has locked. Flushes; never commits.
+
+        Shared by :meth:`_move` and :meth:`start_cycle`, which records a reopen inside
+        its own transaction. ``cycle`` stamps the decision with that cycle instead of
+        the company's current one; ``decision_id`` fixes the new decision's id, so a
+        cycle written first can name it.
+
+        Returns ``(decision, evidence, announcement)``; the caller commits and then
+        announces.
+        """
+        company_id = profile.customer_id
         current = profile.background_check
 
         # 2 — the caller's premise, the move, the role, the text and the risk. Nothing
@@ -543,7 +798,8 @@ class BackgroundCheckService:
         if to_value not in _RISK_REQUIRED and risk is not None:
             raise BackgroundCheckRiskNotAllowedError(current, to_value)
 
-        # 3 — the inputs, through the seam, in this session and under this lock.
+        # 3 — the inputs, through the seam, in this session and under this lock. The
+        #     seam reads the current cycle's only (v2).
         inputs = await self._reader.company_inputs(company_id)
         evidence = select_evidence(inputs, await self._company_documents(company_id))
 
@@ -551,10 +807,17 @@ class BackgroundCheckService:
         if to_value is _State.CLEAR:
             self._require_clear_prerequisites(company_id, inputs, risk=risk, evidence=evidence)
 
-        # 5 — the decision and its evidence snapshot.
+        # 5 — the decision and its evidence snapshot, in the current cycle and under the
+        #     rules in force (P2-3a, P2-4a).
+        cycle = cycle or await self._cycles.current_or_initial(
+            company_id,
+            actor_id=actor_id,
+            source_ref=f"background_check_service.{method}",
+            at=clock.now(),
+        )
         previous = await self._decisions.latest_for_company(company_id)
         decision = BackgroundCheckDecision(
-            id=uuid.uuid4(),
+            id=decision_id or uuid.uuid4(),
             company_id=company_id,
             from_value=current,
             to_value=to_value,
@@ -567,6 +830,8 @@ class BackgroundCheckService:
             risk_rating=risk,
             supersedes_decision_id=previous.id if previous else None,
             details={},
+            rules_version=CURRENT_CLEAR_RULES,
+            cycle_id=cycle.id,
         )
         await self._decisions.record(decision, self._evidence_rows(evidence))
 
@@ -589,6 +854,8 @@ class BackgroundCheckService:
                 ),
                 "risk_rating": risk.value if risk else None,
                 "evidence_count": evidence.count,
+                "cycle_id": str(cycle.id),
+                "rules_version": CURRENT_CLEAR_RULES,
             },
         )
 
@@ -604,21 +871,7 @@ class BackgroundCheckService:
                 cause="background_check_clear",
                 source=f"background_check_service.{method}",
             )
-
-        # 8 — one commit.
-        await self._db.commit()
-        logger.info(
-            "background_check.moved",
-            company_id=str(company_id),
-            from_value=current.value,
-            to_value=to_value.value,
-            decision_id=str(decision.id),
-            actor_id=actor_id,
-            evidence_count=evidence.count,
-        )
-        # After the commit, best effort (architecture §3.6).
-        await announce_became_customer(announcement)
-        return self._to_view(decision, evidence)
+        return decision, evidence, announcement
 
     def _require_clear_prerequisites(
         self,
@@ -734,6 +987,8 @@ class BackgroundCheckService:
             risk_rating=decision.risk_rating,
             supersedes_decision_id=decision.supersedes_decision_id,
             evidence=tuple(evidence),
+            rules_version=decision.rules_version,
+            cycle_id=decision.cycle_id,
         )
 
     async def _lock_profile(self, company_id: uuid.UUID) -> ExporterProfile:
@@ -755,4 +1010,4 @@ class BackgroundCheckService:
         return profile
 
 
-__all__ = ["BackgroundCheckService"]
+__all__ = ["STARTABLE_CYCLE_KINDS", "BackgroundCheckService", "StartedCycle"]

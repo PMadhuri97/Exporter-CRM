@@ -1,8 +1,10 @@
 # Contract — the background check
 
-**Owner:** Developer 4A · **Task:** L4-01 (`docs/dev4/4a-task.md` §14, phase 4A-1) ·
-**Migration:** `onboarding_0015_bg_check` · **Status:** published 28 Sep 2026; acknowledgement
-requested from Developers 1, 2, 3 and 4B (§15)
+**Owner:** Developer 1 — the compliance engine (`docs/developer-allocation.md` §2.1, from
+1 October 2026); built by Developer 4A · **Task:** L4-01 (`docs/dev4/4a-task.md` §14, phase 4A-1) ·
+**Migrations:** `onboarding_0015_bg_check`; `onboarding_0023_dev1_foundation`,
+`onboarding_0024_dev1_evidence`, `onboarding_0025_dev1_check_cycle` · **Status:** published
+28 Sep 2026; **seam v2** (§12) published 1 October 2026 with F1
 
 The company-level background check: its six values, the only moves between them, who may make
 each move and what it needs, the locked decision record behind every move, the evidence snapshot
@@ -144,6 +146,8 @@ when, reason, supersedes." Table `onboarding.background_check_decision`, one row
 | `risk_rating` | `background_check_risk_enum` | yes | Required on `CLEAR`, refused on every other move (§7). |
 | `supersedes_decision_id` | `uuid` | yes | The previous decision for the same company. `NULL` only on the company's first decision. |
 | `details` | `jsonb` | no | `DEFAULT '{}'`. Anything a reader needs without a second query. IDs only, never evidence content or PII. |
+| `rules_version` | `varchar(64)` | yes | The Clear rules in force when the decision was taken (plan P2-4a, 0025). Every decision since 0025 records `clear-2026-10-01-7items` (`CLEAR_RULES_V2`). **`NULL` = `clear-2026-09-28-8items`** (`CLEAR_RULES_V1`, the eight-item checklist) by the documented read rule: the decisions before 0025 cannot be updated. |
+| `cycle_id` | `uuid` | yes | The check cycle the decision was taken in (§12.3, 0025). Composite FK `(cycle_id, company_id)` → `check_cycle(id, company_id)`, so only a cycle of the same company. **`NULL` = the company's cycle 1** by read rule. |
 
 The decision responses (the move and the decision list) also carry **`decided_by_name`**:
 who decided, by name — the account's full name, or its email when it has none — resolved
@@ -228,6 +232,7 @@ Rules:
   September 2026: the company's own `AVAILABLE` documents, and at least one pinned id of any
   kind for `CLEAR` (§14.1). The shape
   above holds whatever D4 decides.
+- Since seam v2 the snapshot pins the **current cycle's** inputs only (§12).
 
 ### 6.1 Why the review id has no foreign key
 
@@ -237,6 +242,23 @@ Developer 4B's, and the two are deliberately independent (`4a-task.md` §10). Un
 the seam reports `latest_review_id = None` even for a reviewed result, so this column is `NULL`
 for every snapshot taken before then. An FK can be added after both PRs merge, if both developers
 agree (`4a-task.md` §17).
+
+### 6.2 Reading a decision's evidence (plan P2-1a)
+
+`GET /exporters/{company_id}/background-check/decisions/{decision_id}/evidence` resolves each
+pinned id into a readable item (`application/decision_evidence.py`), so a reviewer sees what a
+decision rested on rather than a count:
+
+| Kind | Served |
+|---|---|
+| `VERIFICATION_RESULT` | type, status, risk, provenance (`MANUAL`/`STUB`/`PROVIDER`), placeholder flag, `performed_at`, who recorded it (the actor of its first `verification` history row; `null` for a result older than the log), `evidence_note`, `evidence_refs`, the **pinned** review (status, who, when, note) and `review_superseded` (a later review exists), cycle |
+| `SCREENING_ITEM` | the exact pinned row: key, label, `retired` (the item has since left the checklist — `website-reviewed` keeps its label so an eight-item decision still reads), status, comment, `evidence_refs`, who answered and when, cycle |
+| `DOCUMENT` | file name, category, type, scan status, `is_downloadable`, uploader and time |
+
+The response also names the decision's `rules_version` (legacy rule applied) and cycle. **No
+identifier** is carried — a result's `subject_snapshot`, `raw_result` and `normalized_result` are
+not resolved. Staff only; DEVELOPER is refused (D8); a decision of another company is the same 404
+as one that does not exist (`BACKGROUND_CHECK_DECISION_NOT_FOUND`).
 
 ---
 
@@ -398,27 +420,132 @@ customer. See `company-record.md` §3.2.
 
 ---
 
-## 12. The 4A ↔ 4B seam (by reference)
+## 12. The compliance-inputs seam — v2
 
-The inputs to a decision — the eight screening items and the verification results whose subject
-is the company — are read **only** through Developer 4B's `ComplianceInputsReader`
+The inputs to a decision — the screening items and the verification results whose subject
+is the company — are read **only** through `ComplianceInputsReader`
 (`backend/app/modules/onboarding/domain/compliance_inputs.py`), implemented by
-`ComplianceInputsService` (`application/compliance_inputs.py`). The interface, its invariants,
-its errors and its ownership are `docs/dev4/4a-task.md` §6 / `4b-task.md` §6; they are **not**
-restated here, and their output shape is frozen.
+`ComplianceInputsService` (`application/compliance_inputs.py`). v1 was defined in
+`docs/dev4/4a-task.md` §6 / `4b-task.md` §6 and frozen. **v2 is the one deliberate revision**
+(plan P0-2, allocation F1, 1 October 2026), designed once for cycles (decision E), company-level
+checks (decision D) and the rules version, so the contract does not change three times.
 
-What Dev4A relies on from it:
+### 12.1 Shape
 
-- facts, not judgements — "pending", "answered" and "ready" are Dev4A's rules (D1–D3);
-- company scope is `EXPORTER` + the company id; buyer checks never enter company inputs;
-- the reader never locks; Developer 4B's writers of company-scoped inputs take `FOR SHARE` on the
-  company row, so Dev4A's `FOR UPDATE` serialises a decision against them;
-- until 4B-2, `latest_review_id` and `latest_reviewed_at` are `None` even on a reviewed result;
-  `latest_review_status` says whether a review exists.
+Three fields were **appended**, each with a `None` default, so every v1 construction still builds
+(`unit/test_l4b_compliance_inputs_contract.py` pins the whole shape):
 
-Dev4A imports the seam and nothing else of Developer 4B's.
+```python
+@dataclass(frozen=True)
+class VerificationInput:
+    ...                                   # the twelve v1 fields, unchanged
+    cycle_id: uuid.UUID | None = None     # v2: the result's cycle; a legacy row reports cycle 1's id
 
----
+@dataclass(frozen=True)
+class ScreeningItemInput:
+    ...                                   # the five v1 fields, unchanged
+    cycle_id: uuid.UUID | None = None     # v2: the cycle of the latest row; None with no row this cycle
+
+@dataclass(frozen=True)
+class CompanyComplianceInputs:
+    company_id: uuid.UUID                 # the SUBJECT company
+    screening_catalogue: tuple[str, ...]  # seven keys since P2-4a
+    screening_items: tuple[ScreeningItemInput, ...]
+    verifications: tuple[VerificationInput, ...]
+    current_cycle_id: uuid.UUID | None = None   # v2: the cycle the inputs are scoped to
+
+class ComplianceInputsReader(Protocol):
+    async def company_inputs(self, company_id: uuid.UUID) -> CompanyComplianceInputs: ...
+    async def buyer_checks(self, deal_buyer_id: uuid.UUID) -> tuple[VerificationInput, ...]: ...  # legacy
+```
+
+Still facts, not judgements: no field says "ready", "pending", "answered" or "clear".
+
+### 12.2 What the reads mean
+
+- **`company_inputs(company_id)` is scoped to the current cycle** (plan P2-3b): the results of that
+  cycle and the latest answer per catalogue item **in that cycle**. A new cycle therefore starts
+  with every item unanswered and no results, and a placeholder left in an earlier cycle no longer
+  blocks `CLEAR`. A company with no cycle row yet is read whole, as before cycles existed.
+- **Keyed by the subject company.** `company_id` is the company the checks are *about*. Today that
+  is `entity_type = EXPORTER AND entity_reference = company_id`. When company-keyed checks land
+  (plan P4-5) it becomes `verification_result.subject_company_id = company_id`, with legacy rows
+  still found by `entity_reference` — a change to how the value is read, not to the shape.
+  `subject_company_id` exists since F1 (migration 0023): nullable, FK to
+  `exporter_profile.customer_id`, **set once then frozen** by
+  `trg_verification_result_input_immutability` (a `NULL` may become a value; nothing may change
+  after that, not even back to `NULL`). No code path writes it yet.
+- **`buyer_checks(deal_buyer_id)` is legacy.** It serves deals whose buyer is still a `deal_buyer`
+  row, and is replaced by `company_inputs(buyer_company_id)` once a deal names a buyer company
+  (P4-4/P4-5). Legacy buyers have no background check and no cycles: `cycle_id` is `None`.
+- Read-only in the caller's session; never commits, flushes or locks. Writers of company-scoped
+  inputs take `FOR SHARE` on the company row, so a move under `FOR UPDATE` reads a stable set.
+- `latest_review_id` / `latest_review_status` are the head of the result's review chain.
+
+### 12.3 Check cycles (plan P2-3a–d, decision E, IQ-3)
+
+`onboarding.check_cycle` (migration 0025, **append-only**): `id`, `company_id` (FK, `RESTRICT`),
+`number` (1, 2, 3 … — unique per company; the **current** cycle is the highest), `kind`
+(`INITIAL` = cycle 1 and only cycle 1; `RE_KYC`, `RE_KYB`; `FULL` reserved), `reason` (required
+from cycle 2), `started_at`, `rules_version`, and BQ-7's `created_by`, `created_at`, `source`,
+`source_ref`.
+
+- **`cycle_id`** on `verification_result`, `screening_review_item` and `background_check_decision`
+  (nullable). Every new company-subject result, answer and decision carries it, stamped under the
+  company lock. **`NULL` = the company's cycle 1** by the documented read rule — existing rows are
+  never updated. The migration inserted one cycle-1 row (`source = 'MIGRATION'`) per company that
+  already had an input or decision, dated at the earliest; a company's first input or decision
+  after that creates its cycle 1 (`source = 'FIRST_INPUT'`).
+- **Starting a cycle** — `POST /exporters/{id}/background-check/cycles {kind, reason}`, COMPLIANCE
+  and ADMIN only (`BackgroundCheckService.start_cycle`), one transaction under the company's
+  `FOR UPDATE`:
+
+  | Gauge | Effect |
+  |---|---|
+  | `NOT_STARTED`, `IN_REVIEW`, `MORE_INFO` | the new cycle starts; the gauge does not move |
+  | `CLEAR` | the new cycle starts **and** the reopen `CLEAR → IN_REVIEW` is recorded in it, reason `"Re-KYC: …"` / `"Re-KYB: …"` (IQ-3), so handovers pause until it is cleared |
+  | `FLAGGED`, `ON_HOLD` | refused, 409 `CHECK_CYCLE_NOT_ALLOWED` — reassess first |
+
+  A cycle with nothing recorded in it (no result, no answer) cannot be followed by another: 409
+  `CHECK_CYCLE_EMPTY`. That is also why two simultaneous starts make **one** cycle.
+  History: one `check_cycle` row (`"1"` → `"2"`, `event_type = "check_cycle_started"`), plus the
+  reopen's `background_check` row on a `CLEAR` company.
+- **Reads** — `GET …/background-check/cycles` (staff); the standing serves `current_cycle` and
+  `allowed_cycle_actions` (the Re-KYC / Re-KYB buttons, empty when a start would be refused);
+  decisions, results and screening answers carry their (resolved) `cycle_id`; the checklist is
+  listed per cycle (`?cycle_id=`), earlier cycles read-only.
+
+### 12.4 `ComplianceFactsReader` — the facts other lanes read (F1)
+
+Published in `domain/compliance_facts.py`, implemented by `application/compliance_facts.py`, for
+Developer 2's handover guard and Developer 3's promotion:
+
+```python
+for_company(company_id, now) -> PartyComplianceFacts
+for_legacy_buyer(deal_buyer_id, now) -> PartyComplianceFacts
+
+PartyComplianceFacts:
+    background_check: BackgroundCheckValue   # the gauge ("NOT_STARTED" for a legacy buyer)
+    is_clear: bool                           # background_check == "CLEAR"
+    clear_expires_at: datetime | None        # the clearing decision + 1 year (legacy rule, BQ-5) until P3-3a
+    is_clear_current: bool                   # is_clear and now < clear_expires_at
+    sanctions: CheckState                    # PASSED | FAILED | MISSING | PENDING
+    aml: CheckState
+```
+
+`now` is always the caller's (from `app.shared.clock`). Sanctions and AML are the latest real
+result of that type **in the current cycle** (IQ-2): `PASSED`, or `REVIEW` with an `ACCEPTED`
+review → `PASSED`; `FAILED`, or `REVIEW` with a `REJECTED` review → `FAILED` (*the latter is this
+contract's reading, for the lead to confirm*); unreviewed/`ESCALATED` `REVIEW` or `PENDING` →
+`PENDING`; none, or placeholders only → `MISSING`. The standing route serves the same facts as
+`compliance` for the `CompanyComplianceSummary` component.
+
+`ExporterProfileService.promote_to_customer_if_ready` requires `facts.is_clear_current` (IQ-18):
+a `PROSPECT` whose Clear has expired is not promoted.
+
+`exporter_profile.background_check_expires_at` (nullable, indexed; migration 0023) is the future
+current-value column for the Re-KYC due list; plan P3-3a writes and backfills it. Until then it is
+`NULL` everywhere and nothing reads it.
 
 ## 13. Errors
 
@@ -436,6 +563,11 @@ review of 28 Sep 2026). Each `error_context` carries plain values (`IN_REVIEW`, 
 | A risk rating on any move other than `CLEAR` | 422 | `BACKGROUND_CHECK_RISK_NOT_ALLOWED` |
 | The request's optional `from_value` is not the company's current value (the screen was stale) | 409 | `BACKGROUND_CHECK_STATE_CHANGED`, with `expected` and `current` |
 | `CLEAR` prerequisites unmet (rules per §14.1) | 409 | `BACKGROUND_CHECK_PREREQUISITES_UNMET`, naming each unmet prerequisite |
+| Evidence asked for a decision that is not this company's | 404 | `BACKGROUND_CHECK_DECISION_NOT_FOUND` |
+| A cycle asked for that is not this company's | 404 | `CHECK_CYCLE_NOT_FOUND` |
+| A new cycle on a `FLAGGED` or `ON_HOLD` company | 409 | `CHECK_CYCLE_NOT_ALLOWED` |
+| A new cycle while the current one is empty | 409 | `CHECK_CYCLE_EMPTY` |
+| A new cycle started by a role other than COMPLIANCE or ADMIN (service rule; the route refuses first) | 403 | `CHECK_CYCLE_ROLE_NOT_ALLOWED` |
 | A write that bypasses the service and breaks §5.3 or §6 | — | refused by the database (`CheckViolation`, `ForeignKeyViolation`, `UniqueViolation`, `RaiseException`) |
 
 Blocked items are never stubbed: there is no automatic start and no customer move to fail.
@@ -545,3 +677,7 @@ one transaction on 29 September (the lead to confirm), and D14's texts are now i
 | PR review fixes (28 Sep 2026) | built: risk refused off `CLEAR` (service + `ck_background_check_decision_risk_only_on_clear`); D2's reviewed-`REVIEW` clarification (`concluding_review_statuses`); optional `from_value` with `BACKGROUND_CHECK_STATE_CHANGED`; `decided_at` on `clock_timestamp()`; plain values in error context; the dialog never sends a hidden risk; readable prerequisites and server error text in the panel; a behavioural D10 test |
 | Customer transition (4A-9) | built (29 Sep 2026): step 7b of `_move` calls Developer 2's promotion on `CLEAR`, in the same transaction, and announces after the commit (§11.3); both orders tested in `test_customer_promotion.py` and end to end in `test_crm_end_to_end.py` |
 | Automatic start on RXIL results | **blocked** (D12) |
+| Seam v2 (§12), `subject_company_id` (set once, frozen), `background_check_expires_at`, `ComplianceFactsReader`, promotion on a current Clear only (F1, 1 Oct 2026) | built (0023) |
+| Evidence resolved per decision (§6.2, P2-1a); evidence on screening answers (P2-1b, 0024) | built |
+| Screening 8 → 7 and `rules_version` on decisions (P2-4a) | built (0025): `website-reviewed` retired — kept, readable, refused on write |
+| Check cycles, cycle-scoped inputs, Re-KYC / Re-KYB (§12.3, P2-3a–d) | built (0025) |

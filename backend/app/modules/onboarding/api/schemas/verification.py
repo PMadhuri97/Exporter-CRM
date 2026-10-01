@@ -199,6 +199,9 @@ class VerificationResultResponse(BaseModel):
     reviews: list[VerificationReviewResponse]
     created_at: datetime
     updated_at: datetime
+    #: The check cycle a company-subject result belongs to (Developer 1, P2-3a); one
+    #: recorded before cycles reads as cycle 1. `None` for other subjects.
+    cycle_id: uuid.UUID | None = None
 
     # `raw_result` is deliberately excluded from this response model: it is
     # the documented PII/encryption-at-rest gap (see `VerificationResult`'s
@@ -211,8 +214,10 @@ class VerificationResultResponse(BaseModel):
         view: VerificationResultView,
         viewer: User,
         names: Mapping[str, str] | None = None,
+        cycle_id: uuid.UUID | None = None,
     ) -> VerificationResultResponse:
-        """`names` maps reviewer ids to the names `viewer` may see (`api/actor_names.py`)."""
+        """`names` maps reviewer ids to the names `viewer` may see (`api/actor_names.py`);
+        `cycle_id` is the result's cycle with the legacy rule applied, when known."""
         names = names or {}
         result = view.result
         latest: VerificationReview | None = view.latest_review
@@ -254,6 +259,7 @@ class VerificationResultResponse(BaseModel):
             ],
             created_at=result.created_at,
             updated_at=result.updated_at,
+            cycle_id=cycle_id or result.cycle_id,
         )
 
 

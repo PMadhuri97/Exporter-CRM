@@ -133,7 +133,14 @@ export type HistoryDimension =
   | 'deal'
   | 'marker'
   | 'profile'
-  | 'verification';
+  | 'verification'
+  | 'screening'
+  // The five F1 dimensions (Developer 1, `history-row.md` §2), added once for every lane.
+  | 'check_cycle'
+  | 'background_check_approval'
+  | 'gst_registration'
+  | 'trade'
+  | 'pipeline';
 export interface HistoryListParams {
   dimension?: HistoryDimension;
   limit?: number;
@@ -268,3 +275,27 @@ export type ScreeningCatalogueItem =
   components['schemas']['ScreeningCatalogueItemResponse'];
 export type ScreeningCapabilities = components['schemas']['ScreeningCapabilities'];
 export type ScreeningItemHistory = components['schemas']['ScreeningItemHistoryResponse'];
+
+// ── Compliance engine — owner: Developer 1 (allocation §3) ──
+// (Developer 1 appends here.) Aliases of the generated schema only.
+/** The company's compliance facts now: Clear, its expiry, sanctions and AML (F1). */
+export type CompanyComplianceFacts =
+  components['schemas']['CompanyComplianceFactsResponse'];
+/** PASSED | FAILED | MISSING | PENDING. */
+export type ComplianceCheckState = CompanyComplianceFacts['sanctions'];
+/** One KYC/KYB round of the background check (P2-3). */
+export type CheckCycle = components['schemas']['CheckCycleResponse'];
+export type CheckCycleList = components['schemas']['CheckCycleListResponse'];
+/** A Re-KYC / Re-KYB this viewer may start now, as served. */
+export type BackgroundCheckCycleAction =
+  components['schemas']['BackgroundCheckCycleActionResponse'];
+export type StartCheckCycleRequest = components['schemas']['StartCheckCycleRequest'];
+export type StartCheckCycleResponse = components['schemas']['StartCheckCycleResponse'];
+/** What one decision rested on, resolved (P2-1a). */
+export type DecisionEvidence = components['schemas']['DecisionEvidenceResponse'];
+export type DecisionEvidenceItem = components['schemas']['DecisionEvidenceItemResponse'];
+export type DecisionEvidenceVerification =
+  components['schemas']['DecisionEvidenceVerification'];
+export type DecisionEvidenceScreeningItem =
+  components['schemas']['DecisionEvidenceScreeningItem'];
+export type DecisionEvidenceDocument = components['schemas']['DecisionEvidenceDocument'];
