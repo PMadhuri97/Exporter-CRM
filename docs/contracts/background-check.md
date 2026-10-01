@@ -40,8 +40,11 @@ Five different things in the CRM sound alike. They are kept apart on purpose:
   qualification, and qualification is never an input to the gauge.
 - A **background-check decision never moves the journey.** It is one of the two conditions for
   `PROSPECT → CUSTOMER` (A1), but Developer 2 makes that move (§11.3).
-- A **buyer check is not a company check.** Checks about a deal's buyer are recorded against
-  `deal_buyer.id` (decision 9) and never move this gauge.
+- **Checks are the company's, whatever its role** (decision D, plan P4-5, since 1 October 2026).
+  A buyer company is an ordinary company: its checks are recorded on it and feed its own
+  background check, never the seller's. A legacy check about a deal's buyer is recorded against
+  `deal_buyer.id` (decision 9) and moves no gauge — until the deal-buyer migration (P4-6) maps
+  that buyer to a company, when it becomes one of that company's checks (§12.2).
 
 ---
 
@@ -478,14 +481,20 @@ Still facts, not judgements: no field says "ready", "pending", "answered" or "cl
   cycle and the latest answer per catalogue item **in that cycle**. A new cycle therefore starts
   with every item unanswered and no results, and a placeholder left in an earlier cycle no longer
   blocks `CLEAR`. A company with no cycle row yet is read whole, as before cycles existed.
-- **Keyed by the subject company.** `company_id` is the company the checks are *about*. Today that
-  is `entity_type = EXPORTER AND entity_reference = company_id`. When company-keyed checks land
-  (plan P4-5) it becomes `verification_result.subject_company_id = company_id`, with legacy rows
-  still found by `entity_reference` — a change to how the value is read, not to the shape.
-  `subject_company_id` exists since F1 (migration 0023): nullable, FK to
-  `exporter_profile.customer_id`, **set once then frozen** by
-  `trg_verification_result_input_immutability` (a `NULL` may become a value; nothing may change
-  after that, not even back to `NULL`). No code path writes it yet.
+- **Keyed by the subject company (plan P4-5).** `company_id` is the company the checks are
+  *about*: `verification_result.subject_company_id = company_id`, or — for a row recorded before
+  checks were company-keyed — `subject_company_id IS NULL AND entity_type = EXPORTER AND
+  entity_reference = company_id` (`verification_result.about_company`, served by a `BitmapOr` of
+  `ix_verification_result_subject_company_id` and the entity index). `subject_company_id`
+  (migration 0023: nullable, FK, **set once then frozen** by
+  `trg_verification_result_input_immutability`) is written on **every new company-subject
+  result** — a seller, a buyer-only company, both — and on a legacy deal-buyer result when the
+  deal-buyer migration (P4-6, Developer 2) maps its buyer to a company. Existing rows are never
+  rewritten by this rule. The same rule keys every read: the seam, the facts, the company's
+  `GET /verifications?entity_type=EXPORTER` list (which serves `subject_company_id`), the cycle a
+  result is stamped in and read as, the company lock a writer takes, and the timeline a later
+  review is recorded on (a mapped buyer result's goes to its company, with the deal as context).
+  One set of checks per company, wherever it appears.
 - **`buyer_checks(deal_buyer_id)` is legacy.** It serves deals whose buyer is still a `deal_buyer`
   row, and is replaced by `company_inputs(buyer_company_id)` once a deal names a buyer company
   (P4-4/P4-5). Legacy buyers have no background check and no cycles: `cycle_id` is `None`.
@@ -789,3 +798,6 @@ one transaction on 29 September (the lead to confirm), and D14's texts are now i
 | Maker-checker: proposals, approve / reject / withdraw, the queue, the switch (§12.5, P3-1a–d) | built (0026); the suite and sample data run with it on |
 | Rule B: KYB, AML and sanctions passed, served `required_checks` (§12.6, P3-2) | built (`CLEAR_RULES_V3`) |
 | Clear expiry stored and backfilled; expiry in the standing and the facts; Re-KYC due list and badge (§12.7, P3-3a–c) | built (0027) |
+| Company-keyed checks: `subject_company_id` on every new company-subject result; every read by the subject company; legacy rows by `entity_reference`; `buyer_checks` / `for_legacy_buyer` kept (§12.2, P4-5) | built (no migration; nothing rewritten). Buyer companies themselves (`deal.buyer_company_id`, the migration filling legacy buyer rows) are Developer 2's F2/P4-4/P4-6 |
+| Buyer-only companies (`NOT_IN_PIPELINE`) run the same check — cycles, rule B, maker-checker, expiry — and are never promoted (P4-11) | built: no special-casing; promotion needs a `PROSPECT`, which Developer 3's P4-1 rule keeps such a company from being |
+| `CompanyComplianceSummary` full version (task 1.20): gauge with badges, expiry, sanctions/AML, link to the company's panel | built; `BuyerChecks` stays only for legacy `deal_buyer` deals until P4-10 |

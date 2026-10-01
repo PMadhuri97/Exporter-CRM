@@ -1,15 +1,28 @@
-import { screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/lib/api/errors';
 
 import { getBackgroundCheck } from '../api';
-import { COMPANY_ID, renderWithClient } from '../testing/verification-fixtures';
+import { COMPANY_ID } from '../testing/verification-fixtures';
 import type { BackgroundCheck } from '../types';
 
 import { CompanyComplianceSummary } from './CompanyComplianceSummary';
 
 vi.mock('../api', () => ({ getBackgroundCheck: vi.fn() }));
+
+/** The summary links to the company's panel, so it renders inside a router. */
+function renderWithClient(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
 
 function standing(overrides: Partial<BackgroundCheck> = {}): BackgroundCheck {
   return {
@@ -45,6 +58,36 @@ describe('CompanyComplianceSummary', () => {
     expect(screen.getByTestId('compliance-sanctions')).toHaveAttribute('data-state', 'PASSED');
     expect(screen.getByTestId('compliance-aml')).toHaveTextContent('AML: Not checked');
     expect(getBackgroundCheck).toHaveBeenCalledWith(COMPANY_ID);
+    expect(screen.getByTestId('compliance-panel-link')).toHaveAttribute(
+      'href',
+      `/companies/${COMPANY_ID}?tab=background-check`,
+    );
+  });
+
+  it('renders the same for a buyer-only company: its own check, its own panel (P4-5, P4-11)', async () => {
+    const BUYER_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    vi.mocked(getBackgroundCheck).mockResolvedValue(
+      standing({
+        company_id: BUYER_ID,
+        value: 'IN_REVIEW',
+        awaiting_approval: true,
+        compliance: {
+          is_clear: false,
+          clear_expires_at: null,
+          is_clear_current: false,
+          sanctions: 'PASSED',
+          aml: 'PASSED',
+        },
+      }),
+    );
+    renderWithClient(<CompanyComplianceSummary companyId={BUYER_ID} />);
+    expect(await screen.findByTestId('awaiting-approval-badge')).toBeInTheDocument();
+    expect(getBackgroundCheck).toHaveBeenCalledWith(BUYER_ID);
+    expect(screen.getByTestId('compliance-panel-link')).toHaveAttribute(
+      'href',
+      `/companies/${BUYER_ID}?tab=background-check`,
+    );
+    expect(screen.queryByTestId('compliance-expiry')).not.toBeInTheDocument();
   });
 
   it('says an expired Clear is due for Re-KYC', async () => {
@@ -93,6 +136,7 @@ describe('CompanyComplianceSummary', () => {
       await screen.findByText('Compliance details are not available to your role.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('compliance-panel-link')).not.toBeInTheDocument();
   });
 
   it('carries the served "Awaiting approval" and "Re-KYC due" badges (P3-1c, P3-3c)', async () => {

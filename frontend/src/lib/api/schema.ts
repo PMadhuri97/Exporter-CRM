@@ -5486,6 +5486,8 @@ export interface components {
             updated_at: string;
             /** Cycle Id */
             cycle_id?: string | null;
+            /** Subject Company Id */
+            subject_company_id?: string | null;
         };
         /**
          * VerificationResultStatus

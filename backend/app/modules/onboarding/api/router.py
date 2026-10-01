@@ -406,13 +406,13 @@ _VERIFICATION_DECIDER = require_role(*_VERIFICATION_DECISION_ROLES)
 
 
 async def _initial_cycle_ids(db: AsyncSession, views) -> dict[uuid.UUID, uuid.UUID]:
-    """Each company's cycle-1 id, for the companies among these results' subjects — so
-    a legacy result (no cycle) is served as cycle 1 (Developer 1, P2-3a)."""
+    """Each company's cycle-1 id, for the companies these results are about — so a
+    legacy result (no cycle) is served as cycle 1 (Developer 1, P2-3a; company-keyed
+    since P4-5, so a mapped deal-buyer result reads in its company's cycle 1)."""
     companies = {
-        view.result.entity_reference
+        view.result.subject_company
         for view in views
-        if view.result.entity_type == VerificationEntityType.EXPORTER
-        and view.result.cycle_id is None
+        if view.result.subject_company is not None and view.result.cycle_id is None
     }
     initial: dict[uuid.UUID, uuid.UUID] = {}
     cycles = CheckCycleRepository(db)
@@ -425,8 +425,8 @@ async def _initial_cycle_ids(db: AsyncSession, views) -> dict[uuid.UUID, uuid.UU
 
 def _result_response(view, viewer: User, names, initial: dict[uuid.UUID, uuid.UUID]):
     cycle_id = view.result.cycle_id
-    if cycle_id is None and view.result.entity_type == VerificationEntityType.EXPORTER:
-        cycle_id = initial.get(view.result.entity_reference)
+    if cycle_id is None and view.result.subject_company is not None:
+        cycle_id = initial.get(view.result.subject_company)
     return VerificationResultResponse.from_view(view, viewer, names, cycle_id=cycle_id)
 
 

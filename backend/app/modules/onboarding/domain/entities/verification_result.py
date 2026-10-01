@@ -38,7 +38,19 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, String, Text, text
+from sqlalchemy import (
+    CheckConstraint,
+    ColumnElement,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    and_,
+    or_,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -83,6 +95,22 @@ def is_placeholder_result(normalized_result: Any, provider_reference: str | None
     )
 
 
+def subject_company_of(
+    entity_type: VerificationEntityType,
+    entity_reference: uuid.UUID,
+    subject_company_id: uuid.UUID | None,
+) -> uuid.UUID | None:
+    """The company a result is about (P4-5): its ``subject_company_id``, or — for a row
+    recorded before checks were company-keyed — the ``entity_reference`` of an
+    ``EXPORTER`` result. ``None`` for a subject with no company (a legacy deal buyer
+    not yet mapped, a director, an invoice …)."""
+    if subject_company_id is not None:
+        return subject_company_id
+    if entity_type == VerificationEntityType.EXPORTER:
+        return entity_reference
+    return None
+
+
 class VerificationResult(AnerModel):
     """One verification check's request and outcome.
 
@@ -124,7 +152,16 @@ class VerificationResult(AnerModel):
     by ``trg_verification_result_input_immutability`` (migration
     ``onboarding_0023_dev1_foundation``) — so the buyer migration (P4-6) can fill it
     on rows recorded before it existed without being able to re-point a result
-    afterwards. Nothing writes it yet: company-keyed checks are plan P4-5.
+    afterwards.
+
+    **Company-keyed checks (Developer 1, plan P4-5).** ``VerificationService`` sets it
+    on every new company-subject (``EXPORTER``) result — any company, seller or buyer
+    alike — to the company itself. A legacy ``BUYER`` result (keyed by
+    ``deal_buyer.id``) gets it only when the deal-buyer migration (P4-6) maps its
+    buyer to a company. Which company a result is about is read by one rule,
+    :func:`subject_company_of` / :func:`about_company`: the stored
+    ``subject_company_id``, else — for a legacy row — ``entity_reference`` of an
+    ``EXPORTER`` result. No existing row is rewritten to apply it.
 
     ``cycle_id`` is the check cycle a company-subject result belongs to (P2-3a),
     stamped by ``VerificationService`` when the result is recorded and frozen by the
@@ -250,3 +287,26 @@ class VerificationResult(AnerModel):
     @property
     def provenance(self) -> Provenance:
         return provenance_of(self.provider)
+
+    @property
+    def subject_company(self) -> uuid.UUID | None:
+        """The company this result is about — :func:`subject_company_of`."""
+        return subject_company_of(self.entity_type, self.entity_reference, self.subject_company_id)
+
+
+def about_company(company_id: uuid.UUID) -> ColumnElement[bool]:
+    """SQL for "results about this company" — :func:`subject_company_of` as a query.
+
+    ``subject_company_id = company_id``, or a legacy row (``subject_company_id IS
+    NULL``) whose subject is the company itself (``EXPORTER`` / ``entity_reference``).
+    Served by ``ix_verification_result_subject_company_id`` and
+    ``ix_verification_result_entity``.
+    """
+    return or_(
+        VerificationResult.subject_company_id == company_id,
+        and_(
+            VerificationResult.subject_company_id.is_(None),
+            VerificationResult.entity_type == VerificationEntityType.EXPORTER,
+            VerificationResult.entity_reference == company_id,
+        ),
+    )

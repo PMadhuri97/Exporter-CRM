@@ -50,9 +50,12 @@ from app.modules.onboarding.domain.entities.background_check_enums import (
 )
 from app.modules.onboarding.domain.entities.check_cycle import CheckCycle
 from app.modules.onboarding.domain.entities.crm_document import CrmDocument
+from app.modules.onboarding.domain.entities.deal import Deal
+from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
 )
+from app.modules.onboarding.domain.entities.orchestration_enums import VerificationEntityType
 from app.modules.onboarding.domain.entities.screening_review import ScreeningReviewItem
 from app.modules.onboarding.domain.entities.verification_result import VerificationResult
 from app.modules.onboarding.domain.entities.verification_review import VerificationReview
@@ -240,7 +243,9 @@ class DecisionEvidenceReader:
             .all()
         )
         views = await VerificationService(self._db).views_for(results)
-        recorded_by = await self._recorders(company_id, [result.id for result in results])
+        recorded_by = await self._recorders(
+            await self._timelines(company_id, results), [result.id for result in results]
+        )
         return {
             view.result.id: _VerificationRow(
                 result=view.result,
@@ -251,7 +256,31 @@ class DecisionEvidenceReader:
             for view in views
         }
 
-    async def _recorders(self, company_id: uuid.UUID, result_ids: list[uuid.UUID]) -> dict[str, str]:
+    async def _timelines(
+        self, company_id: uuid.UUID, results: list[VerificationResult]
+    ) -> set[uuid.UUID]:
+        """The timelines the results' "recorded" rows are on: the company's, and — for a
+        legacy deal-buyer result the deal-buyer migration mapped to this company (P4-5)
+        — the seller's, where it was recorded with the deal as context."""
+        buyer_ids = [
+            result.entity_reference
+            for result in results
+            if result.entity_type == VerificationEntityType.BUYER
+        ]
+        if not buyer_ids:
+            return {company_id}
+        sellers = (
+            await self._db.execute(
+                select(Deal.company_id)
+                .join(DealBuyer, DealBuyer.deal_id == Deal.id)
+                .where(DealBuyer.id.in_(buyer_ids))
+            )
+        ).scalars()
+        return {company_id, *sellers}
+
+    async def _recorders(
+        self, company_ids: set[uuid.UUID], result_ids: list[uuid.UUID]
+    ) -> dict[str, str]:
         """Who recorded each result: the actor of its first ``verification`` history row.
 
         ``verification_result`` has no "recorded by" column; the history row written in
@@ -263,7 +292,7 @@ class DecisionEvidenceReader:
         rows = (
             await self._db.execute(
                 select(key, ExporterLifecycleHistory.actor_id).where(
-                    ExporterLifecycleHistory.customer_id == company_id,
+                    ExporterLifecycleHistory.customer_id.in_(company_ids),
                     ExporterLifecycleHistory.dimension == VERIFICATION,
                     ExporterLifecycleHistory.event_type == f"{VERIFICATION}_initial",
                     key.in_([str(result_id) for result_id in result_ids]),

@@ -36,11 +36,12 @@ at the end of its type with a ``None`` default, so every v1 construction still b
 What the reads mean in v2 (plan P2-3b):
 
 * ``company_inputs(company_id)`` returns the inputs of the **current cycle** only. The
-  argument is the *subject company*: the company the checks are about. Today that is
-  ``entity_type = EXPORTER`` and ``entity_reference = company_id``; when company-keyed
-  checks land (plan P4-5) it becomes ``subject_company_id = company_id``, with legacy
-  rows still found by ``entity_reference`` — a change to how the value is read, not to
-  its shape.
+  argument is the *subject company*: the company the checks are about. Since plan P4-5
+  that is ``subject_company_id = company_id`` (set on every company-subject result,
+  and on a deal-buyer result the deal-buyer migration maps to a company), with a row
+  recorded before then still found by ``entity_type = EXPORTER`` and
+  ``entity_reference = company_id`` — a change to how the value is read, not to its
+  shape. One set of checks per company, whatever role it plays in a deal.
 * ``buyer_checks(deal_buyer_id)`` is **legacy**: it serves deals whose buyer is still a
   ``deal_buyer`` row, and is replaced by ``company_inputs(buyer_company_id)`` once a
   deal names a buyer company (P4-4/P4-5). Legacy buyers have no background check and

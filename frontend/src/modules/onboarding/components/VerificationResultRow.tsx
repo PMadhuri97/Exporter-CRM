@@ -62,6 +62,14 @@ export function VerificationResultRow({
             {' · '}
             {formatDateTime(result.performed_at)}
           </p>
+          {result.entity_type === 'BUYER' && (
+            // Company-keyed checks (P4-5): a check recorded on a deal, against that
+            // deal's buyer, before the buyer was a company — now one of its checks.
+            <p data-testid="recorded-as-buyer-check" className="mt-0.5 text-xs text-ink-faint">
+              Recorded on a deal as the buyer&apos;s check
+              {result.subject_snapshot?.name ? ` (${result.subject_snapshot.name})` : ''}
+            </p>
+          )}
         </div>
         <button
           type="button"

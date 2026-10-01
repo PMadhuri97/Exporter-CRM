@@ -292,3 +292,34 @@ describe('VerificationSection — check cycles (P2-3d)', () => {
     expect(within(earlier).queryByRole('button', { name: 'Review' })).not.toBeInTheDocument();
   });
 });
+
+describe('VerificationSection — company-keyed checks (P4-5)', () => {
+  it('lists a deal-buyer check mapped to this company, saying where it was recorded', async () => {
+    vi.mocked(listVerificationResults).mockResolvedValue(
+      resultList([
+        verificationResult(),
+        verificationResult({
+          id: 'aaaaaaaa-0000-4000-8000-000000000002',
+          verification_type: 'SANCTIONS',
+          entity_type: 'BUYER',
+          entity_reference: '44444444-4444-4444-8444-444444444444',
+          subject_company_id: COMPANY_ID,
+          subject_snapshot: {
+            deal_buyer_id: '44444444-4444-4444-8444-444444444444',
+            deal_id: '55555555-5555-4555-8555-555555555555',
+            name: 'Rotterdam Trading BV',
+            country: 'NL',
+            registration_number: null,
+            tax_id: null,
+          },
+        }),
+      ]),
+    );
+    renderSection();
+
+    const label = await screen.findByTestId('recorded-as-buyer-check');
+    expect(label).toHaveTextContent("Recorded on a deal as the buyer's check (Rotterdam Trading BV)");
+    // The company's own check carries no such label.
+    expect(screen.getAllByTestId('recorded-as-buyer-check')).toHaveLength(1);
+  });
+});

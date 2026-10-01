@@ -31,12 +31,17 @@ What each field means today
   ``ScreeningItemInput`` per catalogue key, in catalogue order; a key never
   recorded has ``screening_review_item_id=None`` and ``status=None``. Rows under a
   key outside the catalogue are not returned.
-* **Verifications (company)** — ``entity_type = EXPORTER`` and
-  ``entity_reference = company_id`` only, newest first (``performed_at DESC``, then
-  ``created_at DESC, id DESC`` so ties are deterministic). Results on DIRECTOR,
-  INVOICE, VESSEL or SHIPMENT subjects carry no company link and are **not**
-  returned; whether that is acceptable for "no checks pending" is D2, Dev4A's.
-  BUYER results are never returned here (§6.2 invariant 4).
+* **Verifications (company) — company-keyed (plan P4-5).** The results *about* the
+  company (``verification_result.about_company``): ``subject_company_id =
+  company_id`` — every company-subject result recorded since P4-5, and a legacy
+  deal-buyer result the deal-buyer migration (P4-6) mapped to this company — plus,
+  for a row recorded before checks were company-keyed (``subject_company_id IS
+  NULL``), ``entity_type = EXPORTER AND entity_reference = company_id``. So a company
+  has one set of checks, whether it is a seller, a buyer or both. Newest first
+  (``performed_at DESC``, then ``created_at DESC, id DESC`` so ties are
+  deterministic). Results on DIRECTOR, INVOICE, VESSEL or SHIPMENT subjects carry no
+  company link and are **not** returned. A legacy BUYER result that names no company
+  is never returned here (§6.2 invariant 4 still holds for it).
 * **Latest review** — the head of the result's ``verification_review`` chain: the
   review nothing supersedes (4B-2). The database allows exactly one per reviewed
   result, so it is deterministic. ``latest_review_id``, ``latest_review_status`` and
@@ -84,6 +89,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import Verificat
 from app.modules.onboarding.domain.entities.screening_review import ScreeningReviewItem
 from app.modules.onboarding.domain.entities.verification_result import (
     VerificationResult,
+    about_company,
     is_placeholder_result,
 )
 from app.modules.onboarding.domain.entities.verification_review import VerificationReview
@@ -210,8 +216,8 @@ class ComplianceInputsService:
         )
 
     async def company_inputs(self, company_id: uuid.UUID) -> CompanyComplianceInputs:
-        """The company's screening items and its EXPORTER verification results, in its
-        current check cycle (seam v2).
+        """The company's screening items and the verification results about it
+        (company-keyed, P4-5), in its current check cycle (seam v2).
 
         Raises:
             ExporterProfileNotFoundError: no company has this id.
@@ -264,8 +270,7 @@ class ComplianceInputsService:
                 await self._db.execute(
                     select(*_VERIFICATION_COLUMNS)
                     .where(
-                        VerificationResult.entity_type == VerificationEntityType.EXPORTER,
-                        VerificationResult.entity_reference == company_id,
+                        about_company(company_id),
                         in_cycle(VerificationResult.cycle_id, current),
                     )
                     .order_by(

@@ -1,27 +1,38 @@
 /**
  * One company's compliance at a glance — **owner: Developer 1** (allocation F1; the
- * full version is task 1.20, which replaces `BuyerChecks`).
+ * full version is task 1.20).
  *
- * The props are final: `{ companyId }`. Developer 2 mounts it on the deal page for the
- * seller and, once a deal names one, the buyer company; it works the same for both,
- * because the checks are the company's (decision D).
+ * The props are final: `{ companyId }`. It renders the same for any company — a seller,
+ * a buyer-only company or one that is both — because the checks are the company's
+ * (decision D, plan P4-5): one set of checks per company, wherever it appears. Developer
+ * 2 mounts it on the deal page for the seller and for the buyer company (task 2.4).
  *
- * Everything shown is served: the gauge, whether the Clear is still current and until
- * when, and the state of the sanctions and AML checks (`compliance` on the background-
- * check read — `ComplianceFactsReader` on the server). Nothing is derived here, so the
- * rule for "passed" (IQ-2) lives in one place.
+ * What it shows, all served by the background-check read (nothing is derived here, so
+ * the rule for "passed" — IQ-2 — and for "current" live in one place):
  *
- * DEVELOPER is refused the background check (D8). This component makes no role check
- * of its own: a 403 is shown as "not available to your role", never as an error.
+ * - the gauge, with the "Awaiting approval" (maker-checker) and "Re-KYC due" badges;
+ * - whether the Clear is current and until when, or when it expired;
+ * - the latest sanctions and AML results in the current cycle (`PASSED` / `FAILED` /
+ *   `PENDING` / not checked) — what the handover guard reads (BQ-3, BQ-4);
+ * - a link to the company's own background-check panel, where everything else is.
  *
- * Tranche 2 (P3-1c, P3-3c): the gauge carries the served "Awaiting approval" and
- * "Re-KYC due" badges.
+ * It is the one compliance summary in the app. On a deal whose buyer is still a legacy
+ * `deal_buyer` row (no buyer company yet), `BuyerChecks` remains the place that buyer's
+ * own checks are recorded until the deal-buyer migration and its retirement (P4-6,
+ * P4-10); it is a recording list, not a second summary.
+ *
+ * DEVELOPER is refused the background check (D8). This component makes no role check of
+ * its own: a 403 is shown as "not available to your role", never as an error.
  */
+
+import { ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 import { ApiError } from '@/lib/api/errors';
 import { formatDate } from '@/lib/format';
 
 import { useBackgroundCheck } from '../hooks';
+import { paths } from '../paths';
 
 import { BackgroundCheckGauge } from './BackgroundCheckGauge';
 import { ComplianceCheckChip } from './ComplianceCheckChip';
@@ -51,8 +62,12 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
     );
   }
 
-  const { value, compliance, awaiting_approval: awaitingApproval, rekyc_due: rekycDue } =
-    check.data;
+  const {
+    value,
+    compliance,
+    awaiting_approval: awaitingApproval,
+    rekyc_due: rekycDue,
+  } = check.data;
   return (
     <div data-testid="company-compliance-summary" className="flex flex-col gap-2">
       <BackgroundCheckGauge
@@ -74,6 +89,14 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
         <ComplianceCheckChip label="Sanctions" state={compliance.sanctions} />
         <ComplianceCheckChip label="AML" state={compliance.aml} />
       </div>
+      <Link
+        to={paths.company(companyId, 'background-check')}
+        data-testid="compliance-panel-link"
+        className="inline-flex w-fit items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+      >
+        Open the background check
+        <ArrowRight size={12} />
+      </Link>
     </div>
   );
 }

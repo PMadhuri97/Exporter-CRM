@@ -202,6 +202,10 @@ class VerificationResultResponse(BaseModel):
     #: The check cycle a company-subject result belongs to (Developer 1, P2-3a); one
     #: recorded before cycles reads as cycle 1. `None` for other subjects.
     cycle_id: uuid.UUID | None = None
+    #: The company the result is about (Developer 1, P4-5): set on every company-subject
+    #: result since P4-5, and on a deal-buyer result the deal-buyer migration mapped to a
+    #: company. `None` on a legacy row (an `EXPORTER` one is about `entity_reference`).
+    subject_company_id: uuid.UUID | None = None
 
     # `raw_result` is deliberately excluded from this response model: it is
     # the documented PII/encryption-at-rest gap (see `VerificationResult`'s
@@ -258,6 +262,7 @@ class VerificationResultResponse(BaseModel):
                 for r in view.reviews
             ],
             created_at=result.created_at,
+            subject_company_id=result.subject_company_id,
             updated_at=result.updated_at,
             cycle_id=cycle_id or result.cycle_id,
         )

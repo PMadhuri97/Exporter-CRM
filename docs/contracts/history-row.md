@@ -62,7 +62,7 @@ architecture.
 | `conversation` | `NOT_CONTACTED` … `READY_NOW` | Dev 3 |
 | `deal` | `OPEN` / `GATHERING_PAPERWORK` / `HANDED_OVER` / `WITHDRAWN` | Dev 3 |
 | `background_check` | `NOT_STARTED` / `IN_REVIEW` / `MORE_INFO` / `CLEAR` / `FLAGGED` / `ON_HOLD` | Dev 4A |
-| `verification` | A verification result's status or review changing | Dev 4B → Dev 1 |
+| `verification` | A verification result's status or review changing. On the timeline of the company the result is **about** (plan P4-5): its own company, or — for a legacy deal-buyer result — the seller's with the deal as context, until the deal-buyer migration maps that buyer to a company; later rows then go to the buyer company, still with the deal | Dev 4B → Dev 1 |
 | `screening` | A screening checklist item's decision (`screening_initial` / `screening_transition`; decision D9) | Dev 4B → Dev 1 |
 | `check_cycle` | A new background-check cycle started — a Re-KYC or Re-KYB (plan P2-3c). `from_status` / `to_status` are the previous and new cycle **numbers** (`"1"` → `"2"`); `event_type = "check_cycle_started"` | Dev 1 |
 | `background_check_approval` | A maker-checker proposal proposed, approved, rejected or withdrawn (plan P3-1b). `from_status` / `to_status` are the **proposal's** status: `null` → `OPEN` (`event_type = "background_check_proposed"`), then `OPEN` → `APPROVED` / `REJECTED` / `WITHDRAWN` (`background_check_approved` / `_rejected` / `_withdrawn`). `actor_id` is the proposer, then the resolver; `reason` the proposal's reason, then the rejection's or withdrawal's. An approval also writes the usual `background_check` row for the decision, whose actor is the decider (the proposer) | Dev 1 |

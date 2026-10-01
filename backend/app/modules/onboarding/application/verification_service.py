@@ -90,7 +90,10 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationReviewStatus,
     VerificationType,
 )
-from app.modules.onboarding.domain.entities.verification_result import VerificationResult
+from app.modules.onboarding.domain.entities.verification_result import (
+    VerificationResult,
+    about_company,
+)
 from app.modules.onboarding.domain.entities.verification_review import VerificationReview
 from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
 from app.modules.onboarding.domain.workflow_dependencies import (
@@ -152,17 +155,30 @@ def _company_subjects(
     ]
 
 
+def _subject_companies(result: VerificationResult) -> list[uuid.UUID]:
+    """The company to share-lock before changing an existing result (a poll or a
+    review): the company it is about (P4-5) — for a legacy ``BUYER`` result the
+    deal-buyer migration mapped to a company, that company, whose background check
+    now reads it. None for a subject with no company."""
+    company = result.subject_company
+    return [company] if company is not None else []
+
+
 @dataclass(frozen=True)
 class _Subject:
     """What a result's subject resolves to.
 
     `company_id` / `deal_id` place its history rows; `None` company means the subject
     has no company link (D15). `snapshot` is the BUYER identity to store.
+    `subject_company_id` is the company the result is *about* (P4-5): the company itself
+    for an `EXPORTER` subject; `None` for a legacy deal buyer (its company, if any, is
+    set by the deal-buyer migration, P4-6) and for subjects with no company.
     """
 
     company_id: uuid.UUID | None
     deal_id: uuid.UUID | None = None
     snapshot: dict[str, Any] | None = None
+    subject_company_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -332,6 +348,7 @@ def _result_from_outcome(
     outcome: VerificationOutcome,
     evidence: VerificationEvidence | None = None,
     subject_snapshot: dict[str, Any] | None = None,
+    subject_company_id: uuid.UUID | None = None,
 ) -> VerificationResult:
     """The one place `VerificationOutcome` becomes a `VerificationResult` row.
 
@@ -347,7 +364,8 @@ def _result_from_outcome(
 
     `evidence` and `subject_snapshot` (Dev4B) are facts about the moment of
     recording and are frozen once written. The legacy `evidence_reference`,
-    `reviewed_by` and `review_status` are never written.
+    `reviewed_by` and `review_status` are never written. `subject_company_id` (P4-5)
+    is the company the result is about, frozen once set.
     """
     return VerificationResult(
         verification_type=verification_type,
@@ -364,6 +382,7 @@ def _result_from_outcome(
         evidence_note=evidence.cleaned_note if evidence is not None else None,
         evidence_refs=[ref.as_json() for ref in evidence.refs] if evidence is not None else [],
         subject_snapshot=subject_snapshot,
+        subject_company_id=subject_company_id,
     )
 
 
@@ -403,7 +422,8 @@ class VerificationService:
             )
             if exists is None:
                 raise ExporterProfileNotFoundError(reference)
-            return _Subject(company_id=reference)
+            # Any company — a seller, a buyer-only company, both (P4-5, P4-11).
+            return _Subject(company_id=reference, subject_company_id=reference)
         if entity_type == VerificationEntityType.BUYER:
             buyer = await DealBuyerRepository(self._db).get(reference)
             if buyer is None:
@@ -437,9 +457,15 @@ class VerificationService:
         """Where a later history row for `result` goes. A BUYER whose row has since
         disappeared (or a pre-4B-5 row naming no real buyer) has no target."""
         try:
-            return await self._resolve_subject(result.entity_type, result.entity_reference)
+            subject = await self._resolve_subject(result.entity_type, result.entity_reference)
         except (ExporterProfileNotFoundError, ComplianceInputsBuyerNotFoundError):
-            return _Subject(company_id=None)
+            subject = _Subject(company_id=None)
+        # P4-5: a legacy buyer result the deal-buyer migration mapped to a company is
+        # that company's input now, so what happens to it next goes on that company's
+        # timeline, with the deal as context (history carries no deal-company FK).
+        if result.subject_company_id is not None and subject.company_id != result.subject_company_id:
+            return _Subject(company_id=result.subject_company_id, deal_id=subject.deal_id)
+        return subject
 
     async def _check_evidence_documents(
         self,
@@ -503,10 +529,11 @@ class VerificationService:
     async def _stamp_cycle(self, result: VerificationResult, *, actor_id: str, source: str) -> None:
         """Put a new company-subject result in its company's current cycle. Call with
         the company row already share-locked (the cycle cannot change under it)."""
-        if result.entity_type != VerificationEntityType.EXPORTER:
+        company = result.subject_company
+        if company is None:
             return
         cycle = await CheckCycleRepository(self._db).current_or_initial(
-            result.entity_reference, actor_id=actor_id, source_ref=source, at=clock.now()
+            company, actor_id=actor_id, source_ref=source, at=clock.now()
         )
         result.cycle_id = cycle.id
 
@@ -589,6 +616,7 @@ class VerificationService:
             outcome=outcome,
             evidence=evidence,
             subject_snapshot=subject.snapshot,
+            subject_company_id=subject.subject_company_id,
         )
         # After the provider call, so no lock is held while a provider works.
         await share_lock_companies(self._db, _company_subjects([(entity_type, reference)]))
@@ -704,6 +732,7 @@ class VerificationService:
                 outcome=outcome,
                 evidence=request.evidence,
                 subject_snapshot=subject.snapshot,
+                subject_company_id=subject.subject_company_id,
             )
             await self._stamp_cycle(
                 result,
@@ -828,9 +857,7 @@ class VerificationService:
             return result
 
         previous_status = result.status
-        await share_lock_companies(
-            self._db, _company_subjects([(result.entity_type, result.entity_reference)])
-        )
+        await share_lock_companies(self._db, _subject_companies(result))
         result.status = outcome.status
         result.risk_level = outcome.risk_level
         result.normalized_result = outcome.normalized_result
@@ -863,14 +890,25 @@ class VerificationService:
         self, entity_type: VerificationEntityType, entity_reference: uuid.UUID | str
     ) -> list[VerificationResult]:
         """Every check ever run against one exporter/buyer/director/invoice/
-        vessel/shipment, most recent first (ties broken by `created_at`, `id`)."""
+        vessel/shipment, most recent first (ties broken by `created_at`, `id`).
+
+        A company (`EXPORTER`) is read by the company-keyed rule (P4-5,
+        `about_company`): its own results, and a deal buyer's results the deal-buyer
+        migration mapped to it — one set of checks per company, wherever the company
+        appears. A `BUYER` reference still lists that deal buyer's own results (legacy
+        deals)."""
         reference = _as_uuid(entity_reference)
+        subject_filter = (
+            about_company(reference)
+            if entity_type == VerificationEntityType.EXPORTER
+            else (
+                (VerificationResult.entity_type == entity_type)
+                & (VerificationResult.entity_reference == reference)
+            )
+        )
         stmt = (
             select(VerificationResult)
-            .where(
-                VerificationResult.entity_type == entity_type,
-                VerificationResult.entity_reference == reference,
-            )
+            .where(subject_filter)
             .order_by(
                 VerificationResult.performed_at.desc(),
                 VerificationResult.created_at.desc(),
@@ -990,9 +1028,7 @@ class VerificationService:
         if head is not None and cleaned_note is None:
             raise ValidationError("a review that supersedes another must say why (note)")
 
-        await share_lock_companies(
-            self._db, _company_subjects([(result.entity_type, result.entity_reference)])
-        )
+        await share_lock_companies(self._db, _subject_companies(result))
         review = VerificationReview(
             verification_result_id=result_id,
             review_status=review_status,
