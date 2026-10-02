@@ -1,7 +1,7 @@
 # Developer 3 — what is done, and what is left
 
-**As of 2 October 2026**, after the PR audit of `feature/trade_history` and its merge with
-`main` (Developer 1's F1 + lane, Developer 2's F2 + 2.1–2.3). Lane: the company record,
+**As of 2 October 2026**, after `feature/trade_history` merged (PR #17) on top of Developer 1's
+F1 + lane and Developer 2's F2 + 2.1–2.3. Lane: the company record,
 settings, GST branches and trade history (`developer-allocation.md` §5). Re-check the
 code before trusting a "not built" below — this file says what was true on that date.
 
@@ -110,8 +110,8 @@ on `main`:
 
 **After F3 merges:** re-run Developer 1's `test_dev1_company_keyed.py` — its P4-11 tests set
 `pipeline_status = 'NOT_IN_PIPELINE'` on their buyer-only company automatically once the
-column exists (`dev1-handover.md` §2.2). Tell Developer 1, who may then add
-`pipeline_status` to the Re-KYC due list (`dev1-handover.md` §3, optional). Leave
+column exists (`dev1-remaining-work.md` §2). Tell Developer 1, who may then add
+`pipeline_status` to the Re-KYC due list (`dev1-remaining-work.md` §2, optional). Leave
 `exporter_profile.background_check_expires_at` to Developer 1.
 
 **Done when:** merged; existing companies are `IN_PIPELINE`; ORM drift test green;
@@ -155,6 +155,8 @@ Specs are in allocation §5; this column says what has changed since it was writ
 ---
 
 ## 4. Who is waiting on you
+
+Developer 2's side of each is in `dev2-remaining-work.md` §3–§4.
 
 | Developer 2's task | Needs from you |
 |---|---|

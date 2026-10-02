@@ -1,8 +1,8 @@
 """The 4A ↔ 4B compliance-inputs contract's shape — 4B-0.
 
-``docs/dev4/4b-task.md`` §6.1 fixes the output shape, and §6.2 invariant 7 freezes
-it once the seam lands: a field added, removed, renamed, reordered or retyped is a
-contract change that needs both developers' written agreement first (§6.4). These
+``docs/contracts/background-check.md`` §12.1 fixes the output shape, and its invariant 7
+lets it only grow: a field removed, renamed, reordered or retyped — or one added
+without a default — is a contract change that needs the seam owner's agreement first. These
 tests are the tripwire. If one fails, the fix is the agreement, not the test.
 
 **Seam v2** (plan P0-2, allocation F1, 1 October 2026) is that agreement, made once:

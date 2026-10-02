@@ -1,6 +1,6 @@
 """Superseding verification reviews, the reviewed-outcome freeze, evidence and
 subject snapshots on verification results, and the screening status check —
-**owner: Developer 4B** (``docs/dev4/4b-task.md`` §10).
+**owner: Developer 4B** (``docs/contracts/verification-and-screening.md``).
 
 Revision ID: onboarding_0021_verif_review
 Revises: auth_0004_rbac
@@ -42,9 +42,9 @@ What it adds, all in the ``onboarding`` schema
   ``status``, ``risk_level``, ``normalized_result`` or ``valid_until`` is refused.
   ``prevent_field_mutation_when_set()`` does not fit — these columns are set from the
   start; what freezes them is a row in another table — hence a new function.
-* Evidence (§5.3): ``evidence_note`` and ``evidence_refs`` (a JSON array of
+* Evidence (contract §3): ``evidence_note`` and ``evidence_refs`` (a JSON array of
   ``{type, ref}``, the qualification contract's shape) on ``verification_result``.
-* Subject snapshot (§5.7): ``subject_snapshot`` — a buyer's identity as it was when the
+* Subject snapshot (contract §6): ``subject_snapshot`` — a buyer's identity as it was when the
   check was recorded.
 * ``trg_verification_result_input_immutability`` — the evidence and the snapshot are
   facts about the moment of recording, frozen once set, through the existing
@@ -85,7 +85,7 @@ revision: str = "onboarding_0021_verif_review"
 # Re-parented when `main` was merged in. Written against `onboarding_0019_documents`,
 # which Dev4A's `onboarding_0015_bg_check` took as its parent first, followed on `main`
 # by `auth_0003_user_admin` and `auth_0004_rbac`; this merged second, so it moves onto
-# the head (4b-task.md §10). Nothing here depends on the background check or auth
+# the head (`migration-register.md` §2). Nothing here depends on the background check or auth
 # schema — the parent only fixes where it sits in the order.
 down_revision: str | None = "auth_0004_rbac"
 branch_labels: str | Sequence[str] | None = None
@@ -245,7 +245,7 @@ def upgrade() -> None:
         """
     )
 
-    # ── Reviewed outcome freeze (§5.2) ───────────────────────────────────────
+    # ── Reviewed outcome freeze (contract §2) ───────────────────────────────────────
     op.execute(
         f"""
         CREATE OR REPLACE FUNCTION {SCHEMA}.prevent_reviewed_verification_outcome_change()
@@ -292,7 +292,7 @@ def upgrade() -> None:
         """
     )
 
-    # ── Screening status (§5.5) ──────────────────────────────────────────────
+    # ── Screening status (contract §5) ──────────────────────────────────────────────
     op.create_check_constraint(
         "ck_screening_review_item_status",
         SCREENING,

@@ -255,5 +255,5 @@ Rules (details in [`../backend/migrations/README.md`](../backend/migrations/READ
 | [`contracts/`](contracts/) | What each part promises the others |
 | [`module-rule-exceptions.md`](module-rule-exceptions.md) | The one recorded exception to the module rule |
 | [`Exporter-CRM-Architecture-and-Plan.pdf`](Exporter-CRM-Architecture-and-Plan.pdf) | The design the CRM was built from (v1.0) |
-| [`dev4/`](dev4/) | Developer 4's task documents, complete — kept as the record of decisions D1–D17 |
+| [`dev1-remaining-work.md`](dev1-remaining-work.md), [`dev2-remaining-work.md`](dev2-remaining-work.md), [`dev3-remaining-work.md`](dev3-remaining-work.md) | What each post-demo developer still has to do — the only per-developer documents |
 | [`../RUNNING.md`](../RUNNING.md) | Why this checkout contains more than the CRM, and what was pruned |

@@ -127,8 +127,8 @@ it reached):
 |---|---|---|
 | `qualification`, `event_type = "qualification_result"` | `criterion_key` (with `result_id`, `criterion_version`) | `criterion-result.md` §6.1 |
 | `deal`, `event_type = "deal_buyer_changed"` | `changed`, `buyer_name`, `created` | `deal-and-buyer.md` §7 |
-| `screening` | `item_key`, `screening_review_item_id`; since 1 October 2026 also `cycle_id` and `evidence_count` | D9 (`dev4/4b-task.md` §13); P2-1b, P2-3a |
-| `verification` | `verification_type`, `verification_result_id`; `entity_type` on a result's own rows; `review_id` on `verification_reviewed`; `cycle_id` on a company-subject result recorded since 1 October 2026 | `dev4/4b-task.md`; P2-3a |
+| `screening` | `item_key`, `screening_review_item_id`; since 1 October 2026 also `cycle_id` and `evidence_count` | D9 (`verification-and-screening.md` §5, §11); P2-1b, P2-3a |
+| `verification` | `verification_type`, `verification_result_id`; `entity_type` on a result's own rows; `review_id` on `verification_reviewed`; `cycle_id` on a company-subject result recorded since 1 October 2026 | `verification-and-screening.md` §1; P2-3a |
 | `background_check` | `decision_id`, `supersedes_decision_id`, `risk_rating`, `evidence_count`; since 1 October 2026 also `cycle_id` and `rules_version`, and (tranche 2) `proposal_id`, `approved_by` (an approved move) and `expires_at` (a `CLEAR`) | `background-check.md` §8 |
 | `check_cycle` | `cycle_id`, `kind`, `previous_cycle_id`, `reopen_decision_id` (set when the start reopened a `CLEAR` company) | `background-check.md` §12.3 |
 | `background_check_approval` | `proposal_id`, `from_value`, `to_value` (the proposed move); on proposing also `risk_rating`, `based_on_decision_id`, `evidence_count`, `cycle_id`, `rules_version`; on resolving also `proposed_by` and `decision_id` (set on approval) | `background-check.md` §12.5 |

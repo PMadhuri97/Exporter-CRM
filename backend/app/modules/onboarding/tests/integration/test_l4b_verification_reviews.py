@@ -1,5 +1,5 @@
 """Superseding verification reviews — **owner: Developer 4B** (4B-2;
-``docs/dev4/4b-task.md`` §5.1).
+``docs/contracts/verification-and-screening.md`` §1).
 
 A reviewer changes a verdict only by adding a record:
 

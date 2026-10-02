@@ -1,6 +1,6 @@
 /**
- * The compliance screening checklist — **owner: Developer 4B** (4b-task.md §5.5, §5.6,
- * §5.10; 4B-7); evidence and cycles by **Developer 1** (plans P2-1b/c, P2-3d).
+ * The compliance screening checklist — **owner: Developer 4B** (verification-and-screening.md §5,
+ * §9; 4B-7); evidence and cycles by **Developer 1** (plans P2-1b/c, P2-3d).
  *
  * Rendered from the server: the items, their labels, sections and order come from
  * `catalogue` (the one backend catalogue, `SCREENING_CATALOGUE_ITEMS`), and whether

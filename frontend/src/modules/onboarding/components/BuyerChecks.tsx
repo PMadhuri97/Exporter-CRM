@@ -1,5 +1,5 @@
 /**
- * Checks on a deal's buyer — **owner: Developer 4B** (4b-task.md §5.7, phase 4B-5).
+ * Checks on a deal's buyer — **owner: Developer 4B** (verification-and-screening.md §6, phase 4B-5).
  *
  * A buyer check is recorded against the buyer (`deal_buyer.id`), never the company,
  * and never moves the company's background check (architecture §3.5, decision 9).

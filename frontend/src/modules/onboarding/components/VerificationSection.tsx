@@ -1,5 +1,5 @@
 /**
- * The company's verification workspace — **owner: Developer 4B** (4b-task.md §5.10;
+ * The company's verification workspace — **owner: Developer 4B** (verification-and-screening.md §9;
  * 4B-7). Rendered by Developer 4A's `BackgroundCheckPanel`, so its export and props,
  * `VerificationSection({ customerId })`, stay as they are.
  *

@@ -155,7 +155,7 @@ class BankActivityFindingResponse(BaseModel):
 
 
 class BankActivityResponse(BaseModel):
-    """The bank panel, stated honestly (4b-task.md §5.9): no bank-monitoring
+    """The bank panel, stated honestly (verification-and-screening.md §8): no bank-monitoring
     provider feed is connected, so `provider_feed_connected` is `false` and
     `connected_accounts` is `0` because nothing is connected — not because
     accounts were checked and none found. No finding is ever fabricated."""

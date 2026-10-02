@@ -243,7 +243,7 @@ GATED_ROUTES = [
         None,
         READERS,
     ),
-    # ══ Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9) ══
+    # ══ Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0) ══
     #
     # The same cut as the §9.3 blocks above: each Dev4 owner adds rows only inside its
     # own block, and `REFUSALS` derives the 403 tests. Dev4B may also edit the existing

@@ -1,6 +1,6 @@
 /**
- * What a verification result rests on — **owner: Developer 4B** (4b-task.md §5.3,
- * §5.10; 4B-7).
+ * What a verification result rests on — **owner: Developer 4B** (verification-and-screening.md §3,
+ * §9; 4B-7).
  *
  * Shows `evidence_note` and `evidence_refs` exactly as the server stored them. The
  * retired `evidence_reference` column is never shown: nothing writes it.

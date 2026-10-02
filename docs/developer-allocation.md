@@ -73,7 +73,7 @@ These change *how* some tasks are built, not *what* the plan delivers.
 
 **Owns:** background check, verification, screening, check cycles, maker-checker, Clear rules, expiry, company-keyed checks, and the compliance facts used by the handover guard.
 
-**Progress:** F1 and the lane are merged; what remains and what waits on other lanes is in [`dev1-handover.md`](dev1-handover.md).
+**Progress:** F1 and the lane are merged; what remains and what waits on other lanes is in [`dev1-remaining-work.md`](dev1-remaining-work.md).
 
 ### F1 — Compliance foundation PR (days 1–2, merge first) · M
 
@@ -135,7 +135,7 @@ These change *how* some tasks are built, not *what* the plan delivers.
 
 **Owns:** the deal and its buyer, the handover snapshot, the handover guard (every condition), required documents, the deal-buyer → company migration, the invoicing branch on the deal, and retiring `deal_buyer`.
 
-**Progress (2 October 2026):** F2, 2.1–2.3 merged; 2.4–2.12 open. Task-by-task state, the gaps to fix in 2.5, and what waits on Developer 3: [`dev2-handover.md`](dev2-handover.md).
+**Progress (2 October 2026):** F2, 2.1–2.3 merged; 2.4–2.12 open. Task-by-task state, the gaps to fix in 2.5, and what waits on Developer 3: [`dev2-remaining-work.md`](dev2-remaining-work.md).
 
 ### F2 — Deal foundation PR (days 3–4, merge last; uses F1 and F3 interfaces) · M
 
@@ -248,7 +248,7 @@ These change *how* some tasks are built, not *what* the plan delivers.
 | 2–3 | Dev 3 merges **F3** (rebased on F1) |
 | 3–4 | Dev 2 merges **F2** (rebased on F1 and F3; consumes their interfaces) |
 
-**As it happened:** F1 → **F2 → F3**. F2 merged before F3, declaring `BranchFlagReader` itself and stubbing around the rest, so F3 must fit what F2 put on `main` and Developer 2's 2.4, 2.6, 2.8, 2.9 and 2.11 wait on F3 (or on 3.12). See `dev2-handover.md` §4 and `dev3-remaining-work.md` §2.
+**As it happened:** F1 → **F2 → F3**. F2 merged before F3, declaring `BranchFlagReader` itself and stubbing around the rest, so F3 must fit what F2 put on `main` and Developer 2's 2.4, 2.6, 2.8, 2.9 and 2.11 wait on F3 (or on 3.12). See `dev2-remaining-work.md` §4 and `dev3-remaining-work.md` §2.
 | From day 1 | Everyone starts lane tasks on their own branches (Dev 3's 3.1–3.6 and Dev 1's 1.1–1.4 don't need any foundation) |
 
 ### After foundation week

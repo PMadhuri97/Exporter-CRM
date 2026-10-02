@@ -50,7 +50,7 @@ _READER = require_role(
 #: Dimensions DEVELOPER does not see here. Decision D8 (settled 28 September 2026)
 #: refuses DEVELOPER the background-check gauge, its decision reasons and evidence
 #: ids, and the verification and screening routes (`background-check.md` §14,
-#: `4b-task.md` §13). Their history rows carry the same values, reasons, review notes
+#: `verification-and-screening.md` §11). Their history rows carry the same values, reasons, review notes
 #: and screening comments, so serving them here would hand DEVELOPER exactly what
 #: those routes refuse it. Every other dimension stays readable. F1 added the
 #: background check's own new dimensions, `check_cycle` and

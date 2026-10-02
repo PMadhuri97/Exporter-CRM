@@ -1,4 +1,4 @@
-"""Dev4B's pure rules — no database (``docs/dev4/4b-task.md`` §5).
+"""Dev4B's pure rules — no database (``docs/contracts/verification-and-screening.md``).
 
 * the manual-outcome evidence rule lives in one function (D16, decided by the lead);
 * evidence references are shaped like the qualification contract's;
@@ -149,7 +149,7 @@ def test_no_reviews_is_an_empty_chain():
     assert order_chain([]) == ()
 
 
-# ── Provenance and placeholders (§5.4, §5.9) ────────────────────────────────
+# ── Provenance and placeholders (contract §4, §8) ────────────────────────────────
 
 
 def test_the_stub_provider_is_lower_case_and_labelled_stub():
@@ -181,7 +181,7 @@ def test_placeholder_rule(normalized_result, provider_reference, expected):
     assert is_placeholder_result(normalized_result, provider_reference) is expected
 
 
-# ── Screening catalogue (§5.5) ───────────────────────────────────────────────
+# ── Screening catalogue (contract §5) ───────────────────────────────────────────────
 
 
 def test_the_catalogue_is_one_ordered_list_every_other_copy_derives_from():

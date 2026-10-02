@@ -11,7 +11,7 @@ Two things live here, and both are here for the same reason:
 - **The ``CLEAR`` prerequisite rule**, as one pure function over
   ``CompanyComplianceInputs`` plus the decision's own inputs. The task requires the
   rule to be one function rather than conditions spread through repository queries
-  (``4a-task.md`` §5.6), so that when D1–D3 are answered exactly one function and its
+  (``background-check.md`` §14.1), so that when D1–D3 are answered exactly one function and its
   unit tests change.
 
 **The prerequisite rule is parameterised.** A3 fixes *which* four prerequisites
@@ -432,7 +432,7 @@ def evaluate_clear_prerequisites(
     Pure over ``CompanyComplianceInputs`` plus the decision's own inputs (the risk the
     actor gave and the evidence about to be pinned), so it is unit-testable with no
     database and no session — which is the point of the seam returning facts rather
-    than judgements (§6.2 invariant 1).
+    than judgements (``background-check.md`` §12.1 invariant 1).
 
     **The prerequisites are A3's; their precise meaning is D1–D4**, settled 28
     September 2026 and carried by ``policy``. Returns every unmet prerequisite rather

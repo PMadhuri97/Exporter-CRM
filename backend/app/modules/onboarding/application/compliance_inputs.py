@@ -2,17 +2,17 @@
 **Owner: Developer 1** (compliance engine, allocation §2.1; built by Developer 4B).
 
 Implements ``domain/compliance_inputs.py::ComplianceInputsReader``
-(``docs/dev4/4b-task.md`` §6). Developer 4A reads the inputs to a background-check
+(``docs/contracts/background-check.md`` §12). Developer 4A reads the inputs to a background-check
 decision through this and nothing else; it never queries Dev4B's tables itself.
 
 Reads the tables honestly. 4B-0 read today's tables; 4B-2 switched the latest review
 to the superseding-review table and 4B-4 filled the evidence ids — the shape returned
-never changed (§6.2 invariant 7).
+never changed (§12.1 invariant 7).
 
 Read-only in the caller's session
 ---------------------------------
 Dev4A calls this inside its own transaction, holding the company row
-``FOR UPDATE``. So this never commits, never flushes and never locks (§6.2
+``FOR UPDATE``. So this never commits, never flushes and never locks (§12.1
 invariant 2):
 
 * every query runs under ``no_autoflush``, so objects the caller has added or
@@ -41,7 +41,7 @@ What each field means today
   (``performed_at DESC``, then ``created_at DESC, id DESC`` so ties are
   deterministic). Results on DIRECTOR, INVOICE, VESSEL or SHIPMENT subjects carry no
   company link and are **not** returned. A legacy BUYER result that names no company
-  is never returned here (§6.2 invariant 4 still holds for it).
+  is never returned here (§12.1 invariant 3 still holds for it).
 * **Latest review** — the head of the result's ``verification_review`` chain: the
   review nothing supersedes (4B-2). The database allows exactly one per reviewed
   result, so it is deterministic. ``latest_review_id``, ``latest_review_status`` and
@@ -301,7 +301,7 @@ class ComplianceInputsService:
         and is replaced by ``company_inputs(buyer_company_id)`` once a deal names a buyer
         company (plan P4-4/P4-5). Unscoped by cycle — legacy buyers have none.
 
-        Keyed by the buyer id only, never the deal or the company (§6.2 invariant 4).
+        Keyed by the buyer id only, never the deal or the company (§12.1 invariant 3).
         Nothing returned here is ever part of ``company_inputs``.
 
         Raises:

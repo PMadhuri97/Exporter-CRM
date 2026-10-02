@@ -5,7 +5,7 @@ integration mechanism**.
 
 This is explicitly a stub to de-risk the architecture, not a real vendor
 integration — **RXIL results intake is BLOCKED until the RXIL package/results
-contract exists (D12, 4b-task.md §14 4B-8)**; nothing here pretends otherwise. As of this writing, how RXIL actually hands over a batch of
+contract exists (D12, verification-and-screening.md §11)**; nothing here pretends otherwise. As of this writing, how RXIL actually hands over a batch of
 checks — a synchronous API call, a file drop, an event stream — is genuinely
 unknown; nothing below guesses at one. `verify_batch` accepts plain
 `VerificationRequest`s whose `payload` already carries the check's outcome
@@ -54,7 +54,7 @@ from app.shared.enums.kyb import KYBVendorProcessingMode, VendorHealthStatusEnum
 #: single-result case; `test_stub_rxil_adapter.py`'s
 #: `test_batch_provider_is_never_rewritten` extends it to the batch case).
 #:
-#: **Lower-case and says "stub"** (Dev4B 4B-6, 4b-task.md §5.4): providers are
+#: **Lower-case and says "stub"** (Dev4B 4B-6, verification-and-screening.md §4): providers are
 #: stored lower-case (decision D4 of the earlier plan), and a row this stub wrote
 #: must never be mistaken for RXIL's own answer once a real RXIL adapter exists
 #: and reports `"rxil"`. Rows written before 4B-6 carry `"RXIL"`; they are not
@@ -151,8 +151,8 @@ def _outcome_from_payload(request: VerificationRequest) -> VerificationOutcome:
 
     if status is VerificationResultStatus.PENDING:
         # Nothing can ever poll this stub (`get_verification_status` raises), so a
-        # PENDING row from it would be pending forever — the placeholder 4b-task.md
-        # §5.9 retires. It records reported outcomes only.
+        # PENDING row from it would be pending forever — the placeholder
+        # verification-and-screening.md §8 retires. It records reported outcomes only.
         raise InvalidProviderPayloadError(
             "the RXIL stub records reported outcomes only (PASSED, FAILED or REVIEW); "
             "a PENDING stub result could never resolve",

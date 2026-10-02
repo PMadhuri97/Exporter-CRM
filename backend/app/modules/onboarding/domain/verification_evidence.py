@@ -1,5 +1,5 @@
 """Evidence on a verification result, and the rule for a manual result —
-**owner: Developer 4B** (``docs/dev4/4b-task.md`` §5.3, §5.9; L4-07).
+**owner: Developer 4B** (``docs/contracts/verification-and-screening.md`` §3, §8; L4-07).
 
 Pure: no I/O. The shape mirrors the qualification contract's evidence
 (``criterion-result.md``): a note and/or references ``{type, ref}``. A verification
@@ -24,7 +24,7 @@ A manual ``PENDING``
 --------------------
 A manual entry is synchronous: the operator's input *is* the outcome, and nothing will
 ever poll it. A manual ``PENDING`` is therefore a row nothing can resolve — the
-"pending-forever" placeholder §5.9 retires — so it is refused. Whether any pending
+"pending-forever" placeholder the contract's §8 retires — so it is refused. Whether any pending
 check counts toward ``CLEAR`` is Dev4A's D2; if D2 ever needs a pending manual entry,
 that exception goes here.
 """
@@ -117,7 +117,7 @@ def check_manual_outcome(
     """
     check_evidence_shape(evidence)
     if status is VerificationResultStatus.PENDING:
-        # Nothing would ever resolve it (4b-task.md §5.9).
+        # Nothing would ever resolve it (verification-and-screening.md §8).
         raise ValidationError(
             "a manual verification result is recorded with its real outcome "
             "(PASSED, FAILED or REVIEW); a manual PENDING result could never resolve"

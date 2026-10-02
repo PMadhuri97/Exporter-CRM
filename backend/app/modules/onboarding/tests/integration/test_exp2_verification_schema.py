@@ -175,7 +175,7 @@ def test_reviewed_by_and_review_status_are_immutable_once_set(verification_resul
 
 
 def test_a_legacy_review_freezes_the_outcome_but_not_other_columns(verification_result_id):
-    """Rewritten for Dev4B 4B-3 (4b-task.md §5.2). This used to prove the
+    """Rewritten for Dev4B 4B-3 (verification-and-screening.md §2). This used to prove the
     opposite — that polling could still rewrite a reviewed result's outcome.
     Now `trg_verification_result_outcome_freeze` refuses status, risk_level,
     normalized_result and valid_until once a result is reviewed, including a

@@ -2,7 +2,7 @@
 
 No database and no session: the move table, the evidence selection and A3's `CLEAR`
 prerequisites are pure functions, which is the point of the 4A ↔ 4B seam returning
-facts rather than judgements (`4a/4b-task.md` §6.2 invariant 1). The service's use of
+facts rather than judgements (`background-check.md` §12.1 invariant 1). The service's use of
 them, under a row lock and in one transaction, is proved in the integration files.
 
 Most prerequisite tests drive the mechanism through an **explicit policy** rather than
@@ -96,7 +96,7 @@ def _inputs(
     verifications: tuple[VerificationInput, ...] = (),
     company_id: uuid.UUID | None = None,
 ) -> CompanyComplianceInputs:
-    """Inputs with every catalogue key present, as the seam guarantees (§6.3)."""
+    """Inputs with every catalogue key present, as the seam guarantees (background-check.md §12.1)."""
     answers = screening or dict.fromkeys(CATALOGUE, "PASSED")
     return CompanyComplianceInputs(
         company_id=company_id or uuid.uuid4(),

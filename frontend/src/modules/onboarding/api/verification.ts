@@ -4,13 +4,13 @@
  *
  * Everything the background-check gauge reads or writes (architecture §9.4).
  * The screening checklist here is the eight-item *compliance* list, not the
- * sales qualification gauge — a distinction §5.5 calls out precisely because
+ * sales qualification gauge — a distinction verification-and-screening.md §5 calls out precisely because
  * the two are easy to confuse and must never share a table.
  *
  * Split out of the single `api/index.ts`; the barrel re-exports everything, so
  * no caller changed. Mechanical move — every function below is byte-identical
  * to the one it replaced, except `getScreeningItemHistory`, which Developer 4B
- * added for the checklist's per-item history (4b-task.md §5.6, 4B-7).
+ * added for the checklist's per-item history (verification-and-screening.md §5, 4B-7).
  */
 
 import { apiRequest } from '@/lib/api/client';

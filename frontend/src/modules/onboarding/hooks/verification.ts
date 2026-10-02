@@ -34,7 +34,7 @@ import type {
  * What a verification or screening write changes beyond its own list (Developer 4B).
  *
  * A company's results and screening decisions are the inputs to its background
- * check (4b-task.md §6), and Developer 4A's panel shows what still blocks `CLEAR` —
+ * check (background-check.md §12), and Developer 4A's panel shows what still blocks `CLEAR` —
  * and disables `CLEAR` — from the `['backgroundCheck', id]` query. Without this, a
  * finished checklist or an accepted review left `CLEAR` disabled until the page was
  * reloaded. Each write also adds a history row: on the company for an `EXPORTER`

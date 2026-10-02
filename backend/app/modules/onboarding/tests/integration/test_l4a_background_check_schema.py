@@ -7,7 +7,7 @@ bypassing the ORM, so each test proves the **database** refuses the write
 What is deliberately **not** here: the ``upgrade -> downgrade -> upgrade`` round trip.
 Running Alembic inside the suite would drop the tables out from under every other test,
 the reason ``test_0013_shared_history_schema.py`` gives. It is run as a command at the
-phase gate and recorded in ``docs/dev4/4a-task.md``.
+phase gate (``docs/contracts/migration-register.md`` §2).
 """
 
 from __future__ import annotations

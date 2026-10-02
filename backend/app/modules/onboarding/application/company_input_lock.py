@@ -1,6 +1,6 @@
 """The company share lock for writers of compliance inputs — **owner: Developer 4B**.
 
-``docs/dev4/4b-task.md`` §6.2 invariant 6: Developer 4A decides the background
+``docs/contracts/background-check.md`` §12.1 invariant 5: Developer 4A decides the background
 check under a ``SELECT … FOR UPDATE`` on the company row and reads the inputs
 through ``ComplianceInputsService`` while it holds that lock. Every Dev4B write of
 a company-scoped input — a screening decision; a verification result, a status
@@ -13,7 +13,7 @@ Dev4B's writers never wait on one another because of it.
 A separate module rather than a function in ``compliance_inputs.py``: the reader
 there imports the screening catalogue from ``screening_review_service.py``, and the
 screening service needs this lock, so housing it with the reader would be an import
-cycle. It is also not the reader's — the reader never locks (§6.2 invariant 2).
+cycle. It is also not the reader's — the reader never locks (invariant 2).
 
 A company id that matches no row locks nothing and is not an error here: whether a
 write for an unknown company is refused, and how, is the writer's own rule. The ids

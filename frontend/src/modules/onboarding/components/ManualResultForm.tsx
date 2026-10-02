@@ -1,13 +1,13 @@
 /**
- * Record a manual verification result — **owner: Developer 4B** (4b-task.md §5.3,
- * §5.10; L4-07; 4B-7).
+ * Record a manual verification result — **owner: Developer 4B** (verification-and-screening.md §3,
+ * §9; L4-07; 4B-7).
  *
  * A person records what they checked, with its real outcome and what it rests on:
  *
  * - `provider` is always `manual`. The route accepts nothing else (D7), and the form
  *   offers no choice, so nobody can record a result as RXIL's.
  * - Outcomes are `PASSED`, `FAILED` and `REVIEW`. `PENDING` is never offered: nothing
- *   would ever resolve a manual pending result (§5.9).
+ *   would ever resolve a manual pending result (§8).
  * - A `PASSED` needs evidence — a note, a document or a link (D16). Checked here to
  *   save a round trip; the server checks it too, and its refusal is shown as worded.
  * - Only documents the subject owns and that are `AVAILABLE` are offered: nothing

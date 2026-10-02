@@ -633,7 +633,7 @@ class TestOneTransaction:
         assert len(await _history(company_id)) == 1
 
     async def test_a_reader_failure_propagates_and_writes_nothing(self):
-        # The seam never swallows, and neither does this service (§6.3).
+        # The seam never swallows, and neither does this service (background-check.md §12.1).
         company_id = await _started()
         reader = FakeReader(raises=ReaderFailedError("provider down"))
         async with db_services.AsyncSessionLocal() as db:
@@ -1132,7 +1132,7 @@ class TestAgainstTheRealReader:
         assert await _state(company_id) is State.IN_REVIEW
 
     async def test_a_fresh_company_has_eight_unanswered_screening_items(self):
-        """The seam's empty value (§6.3), and what it means for CLEAR."""
+        """The seam's empty value (background-check.md §12.1), and what it means for CLEAR."""
         company_id = await _started()
         async with db_services.AsyncSessionLocal() as db:
             service = BackgroundCheckService(

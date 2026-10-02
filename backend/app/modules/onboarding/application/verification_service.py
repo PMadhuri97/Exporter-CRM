@@ -25,24 +25,24 @@ the caller passed as `provider=` (which need not be the same string; see
 `ManualEntryAdapter`'s module docstring for why they happen to coincide for
 that one adapter) or to anything else.
 
-Integrity (Developer 4B, 4b-task.md §5)
+Integrity (Developer 4B, verification-and-screening.md)
 ---------------------------------------
-* **Subjects are real** (§5.3, §5.7). An `EXPORTER` reference must be a company
+* **Subjects are real** (§3, §6). An `EXPORTER` reference must be a company
   (404, `ExporterProfileNotFoundError`); a `BUYER` reference must be a
   `deal_buyer.id` (404, `ComplianceInputsBuyerNotFoundError`) — never a company id
   or a deal id. DIRECTOR, INVOICE, VESSEL and SHIPMENT have no table to check.
-* **Buyer snapshot** (§5.7). A BUYER result stores the buyer's identity as it was
+* **Buyer snapshot** (§6). A BUYER result stores the buyer's identity as it was
   when the check was recorded (`subject_snapshot`), because `DealService.set_buyer`
   rewrites the buyer row in place under the same id.
-* **Evidence** (§5.3). `evidence_note` / `evidence_refs` are stored on the result.
+* **Evidence** (§3). `evidence_note` / `evidence_refs` are stored on the result.
   `document` references must exist, belong to the subject (the company for
   EXPORTER; the buyer's deal or its company for BUYER) and be `AVAILABLE` (scanned
   clean), read through Developer 3B's `CrmDocumentRepository`. What a *manual* outcome must carry is
   `domain.verification_evidence.check_manual_outcome` (D16, decided: a note or at
   least one reference), applied by `ManualEntryAdapter`.
-* **Reviews supersede** (§5.1). `record_review` appends a `verification_review`
+* **Reviews supersede** (§1). `record_review` appends a `verification_review`
   that must name the current review; nothing is edited.
-* **A reviewed result's outcome is frozen** (§5.2). `get_verification_status`
+* **A reviewed result's outcome is frozen** (§2). `get_verification_status`
   ignores and logs a later provider answer for it; the database refuses it too.
 * **History** (history-row contract §2, dimension `verification`). Recording a
   result, a polled status change and every review write one row, in the same
@@ -52,7 +52,7 @@ Integrity (Developer 4B, 4b-task.md §5)
   for them, and that is logged.
 * **Terminal deals** (D17, lead, 28 Sep 2026). A new BUYER check on a HANDED_OVER
   or WITHDRAWN deal is refused (409, `DEAL_CLOSED`).
-* **Company lock** (§6.2 invariant 6). Writers of company-scoped inputs (EXPORTER
+* **Company lock** (background-check.md §12.1 invariant 5). Writers of company-scoped inputs (EXPORTER
   subjects) take `FOR SHARE` on the company after any provider call and before the
   write. Buyer checks are not company inputs and never touch `background_check`.
 * **Cycles** (Developer 1, plan P2-3a). Under that lock, a new EXPORTER result is
@@ -144,7 +144,7 @@ def _company_subjects(
 
     A result whose subject is the company (`EXPORTER`) is an input to Developer 4A's
     background-check decision, so its writer takes `FOR SHARE` on the company row
-    first (4b-task.md §6.2 invariant 6; `company_input_lock.py`). Other subjects —
+    first (background-check.md §12.1 invariant 5; `company_input_lock.py`). Other subjects —
     BUYER, DIRECTOR, INVOICE, VESSEL, SHIPMENT — are not company-scoped inputs and
     take no company lock.
     """
@@ -477,7 +477,7 @@ class VerificationService:
         `AVAILABLE`.
 
         EXPORTER: a document of that company. BUYER: a document of the buyer's deal
-        or of the deal's company (4b-task.md §5.3; which of those Dev4A's evidence
+        or of the deal's company (verification-and-screening.md §3; which of those Dev4A's evidence
         snapshot may use is its D4). Subjects with no company link cannot own a
         document, so a document reference on one is refused. A document that is not
         `AVAILABLE` (`PENDING_SCAN`, `QUARANTINED`, `SCAN_FAILED`) is refused: it can
@@ -779,7 +779,7 @@ class VerificationService:
         `.verify()` — its `get_verification_status` raises rather than being
         reached here for a normal caller.
 
-        **A reviewed result is never changed** (4b-task.md §5.2, L4-02): once it
+        **A reviewed result is never changed** (verification-and-screening.md §2, L4-02): once it
         has any review, a different provider answer is logged
         (`verification.status_polled.ignored_reviewed`, with the provider's new
         values) and the row is returned untouched. The provider is asked first,

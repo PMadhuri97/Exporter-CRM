@@ -10,14 +10,14 @@ Developer 4A reads the inputs to a background-check decision through this and
 nothing else: the eight screening items and the verification results whose
 subject is the company. Dev4A imports this module and the service; it never
 reads or imports Dev4B's tables, repositories or services directly
-(``docs/dev4/4b-task.md`` §6.4).
+(``docs/contracts/background-check.md`` §12.1 invariant 6).
 
 **Facts, not judgements.** Every field is a stored fact: a status, an id, a
 timestamp. There is deliberately no ``is_clear_ready``, no "pending" verdict and
 no "answered" verdict — what those mean is Dev4A's rule and decision gates D1–D3.
 A judgement field here would be a contract change.
 
-**The output shape is frozen** (§6.2 invariant 7). The reader may change how the
+**The output shape is frozen** (§12.1 invariant 7). The reader may change how the
 values are read; it may not add, remove, rename or retype a field without the
 agreement of the seam's owner and its consumers.
 
@@ -105,7 +105,7 @@ class CompanyComplianceInputs:
 class ComplianceInputsReader(Protocol):
     """Read-only, in the caller's session: never commits, flushes, locks or writes.
 
-    Errors (§6.3): an unknown company raises ``ExporterProfileNotFoundError``; an
+    Errors (§12.1): an unknown company raises ``ExporterProfileNotFoundError``; an
     unknown ``deal_buyer_id`` raises ``ComplianceInputsBuyerNotFoundError`` (404);
     a company with no inputs is a valid empty value; database errors propagate.
     """

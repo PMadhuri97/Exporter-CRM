@@ -109,7 +109,7 @@ router.include_router(deal_router)
 # because documents hang off deals as well as companies.
 router.include_router(document_router)
 
-# ── Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9) ──
+# ── Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0) ──
 #
 # Developer 4A mounts exactly one router, and does it here: its import and its
 # `router.include_router(background_check_router)` both go in the 4A block below,
@@ -394,7 +394,7 @@ async def sumsub_webhook(
 # `domain.workflow_dependencies.VerificationAdapter` and
 # `application.verification_service.VerificationService`.
 #
-# Owner: Developer 4B (4b-task.md §5.8, §9). Roles unchanged: writes COMPLIANCE/ADMIN,
+# Owner: Developer 4B (verification-and-screening.md §7). Roles unchanged: writes COMPLIANCE/ADMIN,
 # reads OPERATIONS/COMPLIANCE/ADMIN; DEVELOPER is refused (D8, lead: no widening). The
 # actor and reviewer always come from the session, never the body.
 

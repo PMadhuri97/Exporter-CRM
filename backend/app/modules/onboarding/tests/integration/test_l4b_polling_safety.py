@@ -1,4 +1,4 @@
-"""Polling safety — **owner: Developer 4B** (4B-3; ``docs/dev4/4b-task.md`` §5.2, L4-02).
+"""Polling safety — **owner: Developer 4B** (4B-3; ``docs/contracts/verification-and-screening.md`` §2, L4-02).
 
 Invariant: a reviewed result is never silently changed by a later provider answer.
 

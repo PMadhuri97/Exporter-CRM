@@ -1,5 +1,5 @@
 /**
- * Bank-linked activity, stated honestly — **owner: Developer 4B** (4b-task.md §5.9;
+ * Bank-linked activity, stated honestly — **owner: Developer 4B** (verification-and-screening.md §8;
  * architecture §7.6's "honest bank panel"; 4B-7).
  *
  * No bank-monitoring provider feed is connected. The server says so

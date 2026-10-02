@@ -1,6 +1,6 @@
 /**
  * One company verification result in the workspace — **owner: Developer 4B**
- * (4b-task.md §5.4, §5.9, §5.10; 4B-7).
+ * (verification-and-screening.md §4, §8, §9; 4B-7).
  *
  * Provenance and placeholder status are the server's (`provenance`, `is_placeholder`)
  * and are never inferred here: a stub is labelled as the RXIL stub, not RXIL, and a

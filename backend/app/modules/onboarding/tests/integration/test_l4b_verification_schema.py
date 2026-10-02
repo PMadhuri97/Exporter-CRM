@@ -1,6 +1,6 @@
 """Direct-SQL proof of every constraint and trigger ``onboarding_0021_verif_review``
-adds — **owner: Developer 4B** (``docs/dev4/4b-task.md`` §10: "every new constraint
-and trigger gets a direct-SQL violation test").
+adds — **owner: Developer 4B** (``docs/contracts/migration-register.md`` §2: "every new constraint
+gets a direct-SQL violation test").
 
 Nothing here goes through the ORM or the service: each test writes the violating
 statement itself, so what is proved is the database's own guarantee.
@@ -134,7 +134,7 @@ async def test_the_review_status_uses_the_existing_enum():
             insert_review(cur, result_id, status="MAYBE")
 
 
-# ── verification_result: reviewed outcome freeze (§5.2) ─────────────────────
+# ── verification_result: reviewed outcome freeze (contract §2) ─────────────────────
 
 
 @pytest.mark.parametrize(
@@ -189,7 +189,7 @@ async def test_the_legacy_review_trigger_is_still_in_place():
             )
 
 
-# ── verification_result: evidence and snapshot (§5.3, §5.7) ─────────────────
+# ── verification_result: evidence and snapshot (contract §3, §6) ─────────────────
 
 
 @pytest.mark.parametrize(
@@ -247,7 +247,7 @@ async def test_evidence_refs_defaults_to_an_empty_array_and_must_be_one():
             )
 
 
-# ── screening_review_item: status CHECK (§5.5) ──────────────────────────────
+# ── screening_review_item: status CHECK (contract §5) ──────────────────────────────
 
 
 async def test_a_screening_status_outside_the_four_is_refused():

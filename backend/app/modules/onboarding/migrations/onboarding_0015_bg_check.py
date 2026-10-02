@@ -15,7 +15,7 @@ change) and tells Developer 1 the register row to add. Never a merge revision.
 limit on ``alembic_version.version_num``.
 
 What it adds, all in the ``onboarding`` schema, and nothing else
-(``docs/dev4/4a-task.md`` §10; ``docs/contracts/background-check.md``):
+(``docs/contracts/background-check.md``):
 
 * Five enum types, all Developer 4A's:
   ``background_check_enum`` (the six gauge values), ``background_check_risk_enum``

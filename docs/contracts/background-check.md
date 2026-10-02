@@ -1,7 +1,8 @@
 # Contract — the background check
 
 **Owner:** Developer 1 — the compliance engine (`docs/developer-allocation.md` §2.1, from
-1 October 2026); built by Developer 4A · **Task:** L4-01 (`docs/dev4/4a-task.md` §14, phase 4A-1) ·
+1 October 2026); built by Developer 4A (task L4-01; Developer 4A's task document was removed on
+2 October 2026 — this contract and git history hold it) ·
 **Migrations:** `onboarding_0015_bg_check`; `onboarding_0023_dev1_foundation`,
 `onboarding_0024_dev1_evidence`, `onboarding_0025_dev1_check_cycle`,
 `onboarding_0026_dev1_approval`, `onboarding_0027_dev1_expiry` · **Status:** published
@@ -250,12 +251,11 @@ Rules:
 
 ### 6.1 Why the review id has no foreign key
 
-Developer 4B's superseding-review table does not exist yet (4B-2, migration
-`onboarding_0021_verif_review`). A foreign key to it would make Dev4A's migration depend on
-Developer 4B's, and the two are deliberately independent (`4a-task.md` §10). Until 4B-2 lands,
-the seam reports `latest_review_id = None` even for a reviewed result, so this column is `NULL`
-for every snapshot taken before then. An FK can be added after both PRs merge, if both developers
-agree (`4a-task.md` §17).
+The superseding-review table (`verification_review`) arrived in `onboarding_0021_verif_review`,
+written in parallel with this contract's `onboarding_0015_bg_check`; a foreign key would have made
+one migration depend on the other, and they were kept independent on purpose. Snapshots taken
+before 0021 merged hold `NULL` here even for a reviewed result, because the seam reported
+`latest_review_id = None` until then. A foreign key could be added now; nobody has needed it.
 
 ### 6.2 Reading a decision's evidence (plan P2-1a)
 
@@ -439,25 +439,41 @@ customer. See `company-record.md` §3.2.
 The inputs to a decision — the screening items and the verification results whose subject
 is the company — are read **only** through `ComplianceInputsReader`
 (`backend/app/modules/onboarding/domain/compliance_inputs.py`), implemented by
-`ComplianceInputsService` (`application/compliance_inputs.py`). v1 was defined in
-`docs/dev4/4a-task.md` §6 / `4b-task.md` §6 and frozen. **v2 is the one deliberate revision**
+`ComplianceInputsService` (`application/compliance_inputs.py`). v1 was agreed between
+Developers 4A and 4B on 28 September 2026 and frozen. **v2 is the one deliberate revision**
 (plan P0-2, allocation F1, 1 October 2026), designed once for cycles (decision E), company-level
-checks (decision D) and the rules version, so the contract does not change three times.
+checks (decision D) and the rules version, so the contract does not change three times. The
+verification and screening rules behind the inputs are `verification-and-screening.md`.
 
 ### 12.1 Shape
 
-Three fields were **appended**, each with a `None` default, so every v1 construction still builds
-(`unit/test_l4b_compliance_inputs_contract.py` pins the whole shape):
+The v1 fields, then three fields **appended** in v2, each with a `None` default so every v1
+construction still builds (`unit/test_l4b_compliance_inputs_contract.py` pins the whole shape):
 
 ```python
 @dataclass(frozen=True)
 class VerificationInput:
-    ...                                   # the twelve v1 fields, unchanged
+    verification_result_id: uuid.UUID
+    verification_type: str                # VerificationType value
+    entity_type: str                      # "EXPORTER" in company_inputs; "BUYER" in buyer_checks
+    provider: str                         # stored provider, verbatim
+    status: str                           # PENDING | PASSED | FAILED | REVIEW
+    risk_level: str | None
+    performed_at: datetime
+    is_placeholder: bool                  # created without a provider (normalized_result.stub)
+    latest_review_id: uuid.UUID | None    # the head of the review chain
+    latest_review_status: str | None      # ACCEPTED | REJECTED | ESCALATED
+    latest_reviewed_at: datetime | None
+    evidence_document_ids: tuple[uuid.UUID, ...]
     cycle_id: uuid.UUID | None = None     # v2: the result's cycle; a legacy row reports cycle 1's id
 
 @dataclass(frozen=True)
 class ScreeningItemInput:
-    ...                                   # the five v1 fields, unchanged
+    item_key: str
+    screening_review_item_id: uuid.UUID | None   # the latest row; None if never recorded
+    status: str | None                           # NEEDS_REVIEW | PASSED | FAILED | EXEMPT | None
+    reviewed_by: str | None
+    reviewed_at: datetime | None
     cycle_id: uuid.UUID | None = None     # v2: the cycle of the latest row; None with no row this cycle
 
 @dataclass(frozen=True)
@@ -474,6 +490,29 @@ class ComplianceInputsReader(Protocol):
 ```
 
 Still facts, not judgements: no field says "ready", "pending", "answered" or "clear".
+
+**Invariants** (unchanged since v1):
+
+1. **Facts, not judgements.** "Pending", "answered" and "ready to clear" are this contract's
+   rules (D1–D3, §14.1), applied by the background check; adding a judgement field to the seam is
+   a contract change.
+2. **Read-only** in the caller's session (§12.2).
+3. **Buyer isolation.** Nothing `buyer_checks` returns is ever part of `company_inputs`, and the
+   background check never reads it (architecture §3.5, decision 9).
+4. **Stable latest.** "Latest review" and "latest screening row" are deterministic
+   (`created_at DESC, id DESC`).
+5. **Serialisation.** The background check reads under its company `FOR UPDATE`; every writer
+   of a company-scoped input takes `FOR SHARE` on the company row first, so a `CLEAR` and a new
+   pending input cannot interleave.
+6. **One way in.** The background-check code reads inputs only through the reader — it never
+   imports the verification or screening repositories or reads their tables directly.
+7. **The shape only grows.** A change appends a field with a default (as v2 did); nothing is
+   removed or retyped.
+
+**Errors:** an unknown company raises `ExporterProfileNotFoundError` (404); an unknown
+`deal_buyer_id`, `ComplianceInputsBuyerNotFoundError` (404); a company with no inputs is a valid
+empty value (every catalogue item with `status = None`, no verifications); a database error
+propagates.
 
 ### 12.2 What the reads mean
 
@@ -567,6 +606,31 @@ a `PROSPECT` whose Clear has expired is not promoted.
 rule only for a Clear recorded before migration 0027. `exporter_profile.background_check_expires_at`
 (nullable, indexed; 0023) is written on every `CLEAR`, cleared on every move away, and was
 backfilled by 0027 for the companies already `CLEAR`; the Re-KYC due list reads it.
+
+The reader is read-only and never locks (the caller locks); `now` must be timezone-aware.
+
+| State | `background_check` | `is_clear` | `is_clear_current` |
+|---|---|---|---|
+| Never checked | `NOT_STARTED` | false | false |
+| A CLEAR awaiting approval (the gauge does not move) | `IN_REVIEW` | false | false |
+| The CLEAR proposal rejected | `IN_REVIEW` | false | false |
+| Approved, within validity | `CLEAR` | true | **true** |
+| Approved, past `clear_expires_at` (no automatic gauge move) | `CLEAR` | true | false |
+| Re-KYC started (a new cycle reopens the Clear) | `IN_REVIEW` | false | false |
+| Flagged / on hold | `FLAGGED` / `ON_HOLD` | false | false |
+
+`for_legacy_buyer` reads the `deal_buyer`'s own results, without cycles. A consumer tests
+against the fake, never against Developer 1's code:
+
+```python
+from app.modules.onboarding.tests.fixtures.compliance import StaticComplianceFactsReader, party_facts
+
+reader = StaticComplianceFactsReader(
+    companies={seller: party_facts(), buyer: party_facts("NOT_STARTED", sanctions="FAILED")},
+    legacy_buyers={deal_buyer_id: party_facts("NOT_STARTED", aml="MISSING")},
+)
+expired = party_facts(clear_expires_at=at, is_clear_current=False)   # an expired Clear
+```
 
 ### 12.5 Maker-checker (plan P3-1, decision A, IQ-1, IQ-17)
 

@@ -1,4 +1,4 @@
-"""Buyer verification — **owner: Developer 4B** (4B-5; ``docs/dev4/4b-task.md`` §5.7,
+"""Buyer verification — **owner: Developer 4B** (4B-5; ``docs/contracts/verification-and-screening.md`` §6,
 architecture §3.5 and decision 9).
 
 * a BUYER check names a ``deal_buyer.id`` — a company id or a deal id is refused;

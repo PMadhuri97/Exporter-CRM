@@ -76,7 +76,7 @@ class ScreeningCatalogueItem:
 
 #: **The one screening catalogue** — the seven checklist items, in display order,
 #: with the label and section the workspace shows. Served to the frontend in the
-#: list response (4b-task.md §5.5, Dev4B 4B-1), so `VerificationSection.tsx` needs
+#: list response (verification-and-screening.md §5, Dev4B 4B-1), so `VerificationSection.tsx` needs
 #: no copy of its own; everything else in the backend derives from this tuple.
 #:
 #: Checked here rather than in the router because the router takes `item_key` as a
@@ -137,7 +137,7 @@ RETIRED_SCREENING_ITEMS: tuple[ScreeningCatalogueItem, ...] = (
 )
 
 #: The catalogue's keys in display order — what the compliance-inputs contract
-#: serves (4b-task.md §6.1). Derived, so there is still one backend copy.
+#: serves (background-check.md §12.1). Derived, so there is still one backend copy.
 SCREENING_CATALOGUE: tuple[str, ...] = tuple(item.key for item in SCREENING_CATALOGUE_ITEMS)
 #: The keys a new answer may be recorded under.
 VALID_ITEM_KEYS: frozenset[str] = frozenset(SCREENING_CATALOGUE)
@@ -266,7 +266,7 @@ class ScreeningReviewService:
         own; a retired item's history stays readable.
 
         The append-only table *is* the full history the architecture asks for
-        (4b-task.md §5.6); nothing is copied anywhere. Same order as the latest-row
+        (verification-and-screening.md §5); nothing is copied anywhere. Same order as the latest-row
         rule (`created_at DESC, id DESC`), so the first row of the first page is
         always the item's most recent answer.
 
@@ -317,8 +317,8 @@ class ScreeningReviewService:
         and `ExporterProfileNotFoundError` (404) for an unknown company — not a
         foreign-key error.
 
-        Takes `FOR SHARE` on the company row before the insert (4b-task.md §6.2
-        invariant 6), so a decision cannot land in the middle of a background-check
+        Takes `FOR SHARE` on the company row before the insert (background-check.md §12.1
+        invariant 5), so a decision cannot land in the middle of a background-check
         decision or the start of a new cycle, which hold that row `FOR UPDATE`. Under
         that lock the answer is stamped with the company's current cycle (created as
         cycle 1 if the company has none yet).
@@ -392,7 +392,7 @@ class ScreeningReviewService:
 
     async def list_bank_findings(self, customer_id: uuid.UUID) -> list[BankActivityFinding]:
         """Stored findings, newest first. Nothing writes this table today: no
-        bank-monitoring provider feed is connected, and none is faked (§5.9)."""
+        bank-monitoring provider feed is connected, and none is faked (verification-and-screening.md §8)."""
         result = await self._db.execute(
             select(BankActivityFinding)
             .where(BankActivityFinding.customer_id == customer_id)

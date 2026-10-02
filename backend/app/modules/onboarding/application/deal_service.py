@@ -159,7 +159,7 @@ def read_background_check(company: ExporterProfile) -> str | None:
     It stays a separate one-line function rather than being inlined at the call site,
     because that is what makes the seam visible: everything downstream of the guard
     reads the gauge through this one place, and Dev4A owns only this body
-    (``4a-task.md`` §7).
+    (``background-check.md`` §10).
 
     The return type keeps ``| None`` for the callers that still handle it, but the
     column is ``NOT NULL DEFAULT 'NOT_STARTED'``, so in practice a value always comes

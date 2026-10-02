@@ -9,7 +9,7 @@ Revises: onboarding_0027_dev1_expiry
 **Numbered 0028, after Developer 1's 0023–0027.** This was first written as 0025
 on ``onboarding_0022_integrity``, before Developer 1's compliance PR merged with
 0023–0027 of its own. Merged as it was, the chain had two heads and two files
-labelled 0025, 0026 and 0027, so ``dev1-handover.md`` §6 had the next lane to
+labelled 0025, 0026 and 0027, so Developer 1's handover had the next lane to
 merge renumber from 0028 and parent on the head at that moment,
 ``onboarding_0027_dev1_expiry``. 0029 and 0030 follow it.
 

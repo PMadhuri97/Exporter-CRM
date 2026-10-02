@@ -60,7 +60,7 @@ async def _deal_buyer() -> uuid.UUID:
 
 
 async def test_the_stub_reports_a_lower_case_provider_that_says_stub():
-    """4b-task.md §5.4: stored lower-case, and never mistakable for RXIL itself."""
+    """verification-and-screening.md §4: stored lower-case, and never mistakable for RXIL itself."""
     assert PROVIDER_NAME == "rxil_stub"
     assert PROVIDER_NAME != REGISTRY_KEY
 
@@ -251,7 +251,7 @@ async def test_stub_rxil_adapter_single_check_via_trigger_verification():
 
 async def test_the_stub_refuses_a_pending_result_it_could_never_resolve():
     """Nothing can poll the stub, so a PENDING row from it would be pending forever
-    (4b-task.md §5.9). Refused before anything is written."""
+    (verification-and-screening.md §8). Refused before anything is written."""
     director_id = uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
         svc = VerificationService(db)

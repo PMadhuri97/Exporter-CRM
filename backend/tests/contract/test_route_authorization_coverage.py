@@ -257,7 +257,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/deals/{{deal_id}}/documents"): READERS,
     ("GET", f"{CRM}/documents/{{document_id}}"): READERS,
     ("POST", f"{CRM}/documents/{{document_id}}/download-link"): READERS,
-    # ══ Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9) ══
+    # ══ Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0) ══
     #
     # The same cut as the §9.3 blocks above, for the two Dev4 pull requests that run
     # in parallel: each owner adds rows only inside its own block. Dev4B may also
@@ -269,8 +269,8 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     #
     # `STAFF`, not `READERS`: DEVELOPER is deliberately **not** admitted to any of
     # these, including the two reads. Whether DEVELOPER may see the gauge, the
-    # decision reasons and the evidence ids is D8 (`4a-task.md` §13) and is
-    # unanswered; the recorded default is no widening. A decision's reason is free
+    # decision reasons and the evidence ids is D8 (`background-check.md` §14),
+    # settled on 28 September 2026: no widening. A decision's reason is free
     # text a compliance officer wrote about a company, so admitting DEVELOPER "for
     # now" would be deciding D8 by omission.
     ("GET", f"{CRM}/exporters/{{company_id}}/background-check"): STAFF,

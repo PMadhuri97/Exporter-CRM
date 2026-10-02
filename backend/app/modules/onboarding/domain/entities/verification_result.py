@@ -76,7 +76,7 @@ Provenance = Literal["MANUAL", "STUB", "PROVIDER"]
 
 
 def provenance_of(provider: str) -> Provenance:
-    """An honest label for a stored ``provider`` (4b-task.md §5.4)."""
+    """An honest label for a stored ``provider`` (verification-and-screening.md §4)."""
     if provider in MANUAL_PROVIDERS:
         return "MANUAL"
     if provider in STUB_PROVIDERS:
@@ -87,7 +87,7 @@ def provenance_of(provider: str) -> Provenance:
 def is_placeholder_result(normalized_result: Any, provider_reference: str | None) -> bool:
     """A placeholder row: ``normalized_result.stub`` is ``true`` and no provider
     reference — what the retired dev generator created. Flagged, never deleted
-    (4b-task.md §5.9); whether it counts as pending is Dev4A's D2."""
+    (verification-and-screening.md §8); whether it counts as pending is Dev4A's D2."""
     return (
         isinstance(normalized_result, dict)
         and normalized_result.get("stub") is True

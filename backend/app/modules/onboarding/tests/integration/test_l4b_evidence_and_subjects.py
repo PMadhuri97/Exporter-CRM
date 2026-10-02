@@ -1,5 +1,5 @@
 """Manual evidence and subject validation — **owner: Developer 4B** (4B-4;
-``docs/dev4/4b-task.md`` §5.3, L4-07).
+``docs/contracts/verification-and-screening.md`` §3, L4-07).
 
 * a manual PASSED without evidence is 422 — service and API (D16, lead, 28 Sep 2026:
   a note or at least one reference);
@@ -110,7 +110,7 @@ async def test_another_companys_document_is_refused():
 
 
 async def test_a_document_on_one_of_the_companys_deals_is_not_the_companys():
-    """For an EXPORTER subject the document must be the company's own (§5.3)."""
+    """For an EXPORTER subject the document must be the company's own (verification-and-screening.md §3)."""
     company_id = await make_prospect()  # a deal needs a prospect
     deal_id = await open_deal(company_id)
     with pg() as cur:

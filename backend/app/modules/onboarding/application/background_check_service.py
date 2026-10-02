@@ -34,7 +34,7 @@ is the route that serves move 5.
 **The 4A ↔ 4B seam is the only way in to screening and verification.** This module
 imports ``ComplianceInputsReader``/``ComplianceInputsService`` and nothing else of
 Developer 4B's: no ``screening_review_item``, no ``verification_result``, no review
-tables (``4a-task.md`` §6.4). The reader is injectable so a unit test can pass a fake
+tables (``background-check.md`` §12.1 invariant 6). The reader is injectable so a unit test can pass a fake
 without a database.
 
 **Cycles and rules versions (Developer 1, plans P2-3a–c and P2-4a).** Every decision
@@ -1436,7 +1436,7 @@ class BackgroundCheckService:
 
         Developer 3B's ``crm_document`` — there is no second document system
         (contract §6). Read through their repository's ``list_for_owner``, which is the
-        only thing Dev4A may call on it (``4a-task.md`` §8).
+        only thing this service calls on it.
 
         **Paged to exhaustion, not to the first page.** ``list_for_owner`` defaults to
         50 and returns the true total; a company with more than that would otherwise

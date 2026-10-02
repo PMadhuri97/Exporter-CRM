@@ -1,6 +1,6 @@
 """``ComplianceInputsService`` against real rows — the 4A ↔ 4B seam (4B-0).
 
-``docs/dev4/4b-task.md`` §6. What is proved here:
+``docs/contracts/background-check.md`` §12. What is proved here:
 
 * the empty value, the screening and verification shapes, and their ordering;
 * "latest" is deterministic, including on a timestamp tie;
@@ -308,7 +308,7 @@ async def test_verifications_are_newest_first_and_ties_are_deterministic():
 
 
 async def test_the_latest_screening_row_on_a_timestamp_tie_is_decided_by_id():
-    """§6.2 invariant 5: `created_at DESC, id DESC`, every time."""
+    """background-check.md §12.1 invariant 4: `created_at DESC, id DESC`, every time."""
     company_id = await make_company()
     at = datetime.now(UTC)
     low, high = sorted([uuid.uuid4(), uuid.uuid4()])
@@ -392,7 +392,7 @@ async def test_a_legacy_review_column_without_a_review_row_is_still_reported():
     ],
 )
 async def test_checks_on_unlinked_subjects_are_not_company_inputs(entity_type, verification_type):
-    """§6.2 invariant 3 — even when their reference happens to equal the company id."""
+    """background-check.md §12.2 (company scope) — even when their reference happens to equal the company id."""
     company_id = await make_company()
     with _connect() as conn, conn.cursor() as cur:
         _insert_result(
@@ -404,7 +404,7 @@ async def test_checks_on_unlinked_subjects_are_not_company_inputs(entity_type, v
 
 
 async def test_buyer_checks_never_enter_company_inputs():
-    """§6.2 invariant 4, and decision 9: a buyer check is about the buyer."""
+    """background-check.md §12.1 invariant 3, and decision 9: a buyer check is about the buyer."""
     company_id = await make_prospect()  # a deal needs a prospect
     buyer_id = await _deal_buyer(company_id)
     with _connect() as conn, conn.cursor() as cur:
@@ -517,7 +517,7 @@ async def test_the_reader_takes_no_lock():
         await db.rollback()
 
 
-# ── Writers take FOR SHARE on the company (§6.2 invariant 6) ─────────────────
+# ── Writers take FOR SHARE on the company (background-check.md §12.1 invariant 5) ─────────────────
 
 
 async def _waits_while_company_is_locked(company_id: uuid.UUID, mode: str, write) -> None:

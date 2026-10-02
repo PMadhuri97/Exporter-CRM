@@ -447,7 +447,7 @@ async def test_record_review_adds_the_first_review():
 
 
 async def test_record_review_supersedes_the_current_review_instead_of_overwriting_it():
-    """Rewritten for 4B-2 (4b-task.md §5.1). The old rule — a second review is
+    """Rewritten for 4B-2 (verification-and-screening.md §1). The old rule — a second review is
     refused outright — is replaced by superseding reviews: a later review must name
     the current review, and a stale or missing name is refused (409) rather than
     silently overwriting. The earlier review is never edited."""

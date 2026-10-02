@@ -1,5 +1,5 @@
-"""Screening integrity — **owner: Developer 4B** (4B-1; ``docs/dev4/4b-task.md`` §5.5,
-§5.6).
+"""Screening integrity — **owner: Developer 4B** (4B-1; ``docs/contracts/verification-and-screening.md``
+§5).
 
 * the one catalogue is served by the backend, in order, with labels and sections;
 * capabilities are served, so the UI keeps no role list;

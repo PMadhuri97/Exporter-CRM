@@ -245,7 +245,7 @@ catalogue (seven since 1 October 2026; eight before — a decision's `rules_vers
 which) `PASSED` or `EXEMPT` (a `FAILED` item means `FLAGGED`, not `CLEAR`); and at least
 one pinned evidence id — all read from the company's **current check cycle**. A `FAILED` verification does not block `CLEAR` by itself — compliance
 weighs it. The details are in `contracts/background-check.md` §14 and
-`dev4/4b-task.md` §13 (Developer 4B's decisions).
+`contracts/verification-and-screening.md` §11 (Developer 4B's decisions).
 
 ## 7. Documents and storage
 
@@ -377,7 +377,7 @@ Developer 2's promotion (`promote_to_customer_if_ready`).
   only COMPLIANCE and ADMIN see full tax IDs.
 - **Planning assumptions** A1–A14 (§6.3) — for example A5, the handover guard.
 - **Developer 4's decisions D1–D17** are recorded in `contracts/background-check.md`
-  §14 and `dev4/4b-task.md` §13. The PDF's §6.2 also lists an *earlier* plan's
+  §14 and `contracts/verification-and-screening.md` §11. The PDF's §6.2 also lists an *earlier* plan's
   decisions under the same labels (for example its D8 is "storage: local disk first,
   relative keys only"); a code comment citing "D8" beside storage means that one.
 - **Implemented on the audit's recommendation, awaiting the lead's confirmation:**
@@ -415,9 +415,9 @@ The prototype is built to be honest about what is not real yet.
 
 - What is still open, and who decides: [`open-items.md`](open-items.md).
 - The contracts: [`contracts/`](contracts/) — company record, criterion results,
-  engagement, deal and buyer, storage and documents, background check, history row,
+  engagement, deal and buyer, storage and documents, background check, verification and
+  screening, history row,
   event envelope, migration register.
-- The developer task documents for the background check and its inputs:
-  [`dev4/4a-task.md`](dev4/4a-task.md), [`dev4/4b-task.md`](dev4/4b-task.md).
+- What each post-demo developer still has to do: [`dev1-remaining-work.md`](dev1-remaining-work.md) (compliance engine), [`dev2-remaining-work.md`](dev2-remaining-work.md) (deals, handover, buyer migration) and [`dev3-remaining-work.md`](dev3-remaining-work.md) (company record, settings, GST, trade history).
 - Running, testing and migrating: [`development.md`](development.md). The demo walk-through:
   [`demo.md`](demo.md).

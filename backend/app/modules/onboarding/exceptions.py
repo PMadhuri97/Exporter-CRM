@@ -332,7 +332,7 @@ class VerificationResultNotFoundError(AnerBaseException):
 class VerificationReviewStaleError(AnerBaseException):
     """A review did not name the result's **current** review as the one it supersedes.
 
-    Replaces the one-review-only rule (Dev4B 4B-2, 4b-task.md §5.1): a verdict now
+    Replaces the one-review-only rule (Dev4B 4B-2, verification-and-screening.md §1): a verdict now
     changes by adding a review that supersedes the current one, never by editing
     one. The caller must name the chain head it saw — like a compare-and-set — so a
     reviewer who acted on a stale view gets 409 instead of silently overruling a
@@ -373,7 +373,7 @@ class VerificationResultNotReviewableError(AnerBaseException):
     decision about nothing on the record — and placeholder rows created without
     a provider stay `PENDING` forever. The UI hides the review controls for
     these rows; this is the server-side rule, so an API client cannot do it
-    either. 422 (4b-task.md §5.1): the request is well-formed but the result is
+    either. 422 (verification-and-screening.md §1): the request is well-formed but the result is
     not in a reviewable state.
     """
 
@@ -1239,7 +1239,7 @@ class DealRequiredDocumentChangedError(AnerBaseException):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9)
+# Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0)
 #
 # Same reason as the §9.3 blocks above: two people append exceptions here in
 # parallel pull requests, and one shared append point is one conflicting hunk
@@ -1417,9 +1417,9 @@ class BackgroundCheckPrerequisitesUnmetError(AnerBaseException):
 class ComplianceInputsBuyerNotFoundError(AnerBaseException):
     """No ``deal_buyer`` row exists for the ``deal_buyer_id`` a buyer check named.
 
-    Raised by ``ComplianceInputsService.buyer_checks`` (4a/4b-task.md §6.3), and by
+    Raised by ``ComplianceInputsService.buyer_checks`` (background-check.md §12.1), and by
     ``VerificationService`` when a ``BUYER`` result's ``entity_reference`` is not a
-    ``deal_buyer.id`` (§5.7). Buyer checks are keyed by ``deal_buyer.id`` only —
+    ``deal_buyer.id`` (verification-and-screening.md §6). Buyer checks are keyed by ``deal_buyer.id`` only —
     never the deal id, never the company id — so an id that is not a buyer is a 404,
     not an empty list and not a check on something else.
     """
@@ -1467,7 +1467,7 @@ class VerificationLegacyReviewUnchainedError(AnerBaseException):
     since, so this state exists only if those columns were set outside the service
     afterwards (raw SQL). A new review would have nothing to supersede: recording it
     as a "first" review would overrule the legacy verdict with no supersede link and
-    no stated reason — the silent overwrite 4b-task.md §5.1 forbids. So it is refused
+    no stated reason — the silent overwrite verification-and-screening.md §1 forbids. So it is refused
     (409) until the legacy verdict is copied into ``verification_review`` the way the
     migration did; retrying does not help, unlike ``VerificationReviewStaleError``.
     """

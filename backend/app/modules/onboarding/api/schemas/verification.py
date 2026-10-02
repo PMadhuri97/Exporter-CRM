@@ -1,6 +1,6 @@
 """Request/response schemas for the EXP-2 verification API — **owner: Developer 4B**.
 
-Changes since EXP-2 are additive (4b-task.md §11): `VerificationResultResponse` keeps
+Changes since EXP-2 are additive: `VerificationResultResponse` keeps
 every field it had and gains evidence, the buyer snapshot, provenance, the
 placeholder flag and the review chain. `reviewed_by` / `review_status` now report the
 **current** review (the chain head) rather than the legacy columns, which are no
@@ -296,7 +296,7 @@ def _snapshot_for(snapshot: dict[str, Any] | None, viewer: User) -> BuyerSnapsho
 
 
 class VerificationCapabilities(BaseModel):
-    """What the caller may do here, so the UI keeps no role list (§5.10)."""
+    """What the caller may do here, so the UI keeps no role list (verification-and-screening.md §9)."""
 
     can_record_result: bool
     can_review: bool

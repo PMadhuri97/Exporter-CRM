@@ -183,7 +183,7 @@ async def test_a_legacy_buyer_result_names_no_company_and_stays_a_legacy_read():
     seller, _deal, buyer_id = await deal_buyer(tax_id=BUYER_TAX_ID)
     result = await _buyer_result(buyer_id)
     assert result.subject_company_id is None and result.cycle_id is None
-    # Not an input of the seller's check (§6.2 invariant 4) …
+    # Not an input of the seller's check (background-check.md §12.1 invariant 3) …
     assert result.id not in {v.verification_result_id for v in (await inputs(seller)).verifications}
     # … and still the legacy buyer's, through both legacy reads.
     assert result.id in {v.verification_result_id for v in await _buyer_checks(buyer_id)}

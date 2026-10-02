@@ -2,7 +2,7 @@
  * Words, colours and option lists for verification results — **owner: Developer 4B**.
  *
  * Nothing here decides what a user may do. Who may record or review a result comes
- * from the server's `capabilities`, never from a role comparison (4b-task.md §5.10).
+ * from the server's `capabilities`, never from a role comparison (verification-and-screening.md §9).
  * `humanize` and `formatDateTime` are the app's own (`@/lib/format`).
  */
 
@@ -44,7 +44,7 @@ export const BUYER_CHECK_TYPES: VerificationType[] = [
   'ADVERSE_MEDIA',
 ];
 
-/** A manual result is recorded with its real outcome; `PENDING` is refused (§5.9). */
+/** A manual result is recorded with its real outcome; `PENDING` is refused (verification-and-screening.md §8). */
 export const MANUAL_OUTCOMES: VerificationResultStatus[] = ['PASSED', 'FAILED', 'REVIEW'];
 export const RISK_LEVELS: VerificationRiskLevel[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 export const REVIEW_OUTCOMES: VerificationReviewStatus[] = ['ACCEPTED', 'REJECTED', 'ESCALATED'];

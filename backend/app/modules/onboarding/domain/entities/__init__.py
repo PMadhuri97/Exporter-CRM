@@ -185,7 +185,7 @@ __all__ += ["ANY_DOCUMENT_TYPE", "DealRequiredDocument"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0; 4a/4b-task.md §9)
+# Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0)
 #
 # The same cut as the §9.3 blocks above, for the two Dev4 pull requests that run
 # in parallel: each owner's import **and** its `__all__` entry go inside its own

@@ -1,5 +1,5 @@
 """Honest placeholders and provenance — **owner: Developer 4B** (4B-6;
-``docs/dev4/4b-task.md`` §5.4, §5.9, architecture §7.6's gate).
+``docs/contracts/verification-and-screening.md`` §4, §8, architecture §7.6's gate).
 
 * the bank response says no provider feed is connected, and carries no findings;
 * existing placeholder rows are flagged (``is_placeholder``), never deleted;
