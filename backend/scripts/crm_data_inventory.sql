@@ -38,7 +38,9 @@
 --      3.16, which is explicitly "only if the report shows it is worth doing").
 --   5  CLEAR companies and when they were cleared — the input to re-KYC cycles and
 --      Clear expiry.
---   6  Screening rows on `website-reviewed`, which task 2.3 retires.
+--   6  Screening rows on `website-reviewed`, retired from the checklist by Developer 1's
+--      task 1.5 (0025; eight-item decisions keep reading it), and the website field
+--      that task 3.7 removes.
 --   7  Documents per category on deals — the size of the per-deal evidence rule.
 
 \echo ''
@@ -165,7 +167,7 @@ ORDER BY companies DESC;
 -- ── 6. The website screening item ────────────────────────────────────────────
 
 \echo ''
-\echo '-- 6. Screening rows on website-reviewed (task 2.3 retires this item) ----'
+\echo '-- 6. Screening rows on website-reviewed (retired in 0025, task 1.5) -----'
 SELECT status, count(*) AS rows_recorded
 FROM onboarding.screening_review_item
 WHERE item_key = 'website-reviewed'

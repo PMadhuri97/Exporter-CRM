@@ -1,30 +1,23 @@
 # Developer 3 — what is done, and what is left
 
-**As of 1 October 2026.** Lane: the company record, settings, GST branches and trade
-history (`developer-allocation.md` §5).
-
-Six of the twenty-five tasks are merged. The rest are **blocked, not unstarted** — the
-lane's foundation PR cannot be written until Developer 1's lands, and §6 of the
-allocation says so by design. This file says exactly what is waiting on what, so the
-next person re-checks in a minute rather than re-deriving it.
-
-> **Update, 2 October 2026 (PR audit).** F1 (Dev 1) and F2 (Dev 2) have both merged,
-> so §2's "F1 has not merged" table and the "Blocked on" rows below are out of date:
-> F3 is unblocked. The merge order was **F1 → F2 → F3**, not F1 → F3 → F2, so F3 now
-> builds on what F2 already put on `main`: `BranchFlagReader` (a `Protocol` with the
-> null `NoBranchFlags`) lives in `domain/handover_conditions.py` — implement that one,
-> don't declare a second — and `DealResponse.pipeline_status` is already wired to read
-> `exporter_profile.pipeline_status` once the column exists. This lane's migration was
-> renumbered to **`onboarding_0031_domestic_first`** on `onboarding_0030_deal_req_docs`,
-> and `auth_0005_rm_role_name` carries 3.6's rename into the `auth.role` row the
-> product actually shows. Next free onboarding number: **0032**.
+**As of 2 October 2026**, after the PR audit of `feature/trade_history` and its merge with
+`main` (Developer 1's F1 + lane, Developer 2's F2 + 2.1–2.3). Lane: the company record,
+settings, GST branches and trade history (`developer-allocation.md` §5). Re-check the
+code before trusting a "not built" below — this file says what was true on that date.
 
 | | |
 |---|---|
-| **Done** | F-prerequisites aside: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6 |
-| **Blocked on Dev 1 (F1)** | F3, and everything downstream of it |
-| **Blocked on Dev 2 (F2)** | 3.9's deal list, 3.23's backfill |
-| **Ready the day F3 lands** | 3.18 – 3.22 (trade history), 3.24 |
+| **Done (merged)** | 3.1, 3.3, 3.4, 3.5, 3.6 — and 3.2's script |
+| **Still owed on a done task** | 3.2's per-environment **reports**; the 0031 **release note** (§1) |
+| **Next, and on the critical path** | **F3** — Developer 2 is now waiting on it (§3) |
+| **Not started** | 3.7 – 3.24 |
+| **Next free migration number** | **0032**, parent `auth_0005_rm_role_name` (`contracts/migration-register.md` §1) |
+
+**The merge order changed.** The allocation planned F1 → F3 → F2. What happened was
+**F1 → F2 → F3**: Developer 2's foundation merged before yours, so it declared the one
+interface of yours it needed (`BranchFlagReader`) itself and left hooks for the rest. F3 no
+longer defines everything from scratch — part of what it was meant to publish is already on
+`main`, and F3 must fit it (§2).
 
 ---
 
@@ -32,202 +25,186 @@ next person re-checks in a minute rather than re-deriving it.
 
 ### 3.3 + 3.4 — Domestic-first qualification (P1-1, P1-2)
 
-One migration, `onboarding_0031_domestic_first` (written as 0023, renumbered at merge):
+`onboarding_0031_domestic_first` (written as 0023, renumbered at merge — the number had
+been taken by Developer 1):
 
-- the next version of `export_history` and `export_licence` (copied from the current
-  one, so an ADMIN's earlier version is built on, not collided with), `required =
-  false`, `created_by` = `migration:onboarding_0031_domestic_first`;
-- `no_export_history`, `no_export_licence` and `geography_not_supported` deactivated.
+- the **next** version of `export_history` and `export_licence`, copied from the current
+  one with `required = false` (`created_by = migration:onboarding_0031_domestic_first`).
+  The version is read from the table, not assumed to be 2: an ADMIN may already have
+  versioned a criterion on a live database, and the first draft failed there with
+  `UniqueViolation`;
+- `no_export_history`, `no_export_licence`, `geography_not_supported` deactivated.
 
-`revenue` and `deal_size` untouched — thresholds stay in USD (BQ-1).
-`sample_data.py`'s `_REQUIRED_KEYS` narrowed to `("revenue", "years_in_business")`, so
-the sample companies now *demonstrate* qualifying with no export evidence.
+`revenue` and `deal_size` untouched — thresholds stay in USD (BQ-1). `sample_data.py`'s
+`_REQUIRED_KEYS` is `("revenue", "years_in_business")`. Contract: `criterion-result.md`
+§2 and §5.2. Rollback: `pg_dump`; the downgrade deletes only its own rows and is refused
+once any result points at them.
 
-**Proof:** `pytest app/modules/onboarding/tests/integration/test_qualification.py`
-— 57 passed, including five new tests, chief among them
-`test_a_domestic_company_qualifies_without_export_evidence`.
+**Proof:** `test_qualification.py` — `test_a_domestic_company_qualifies_without_export_evidence`
+and four more, plus `test_the_migration_builds_on_whatever_version_an_admin_left`, which
+runs the migration's own SQL in a rolled-back transaction.
 
-> ### Release note — the de-count
->
-> After this migration, existing `export_history` and `export_licence` results **stop
-> counting towards the qualification suggestion**, because `_suggest()` considers only
-> criteria that are active *and required*.
->
-> * A company already `QUALIFIED` is **unaffected** — qualification is final (A2) and
->   nothing recalculates it.
-> * An **undecided lead re-suggests**, and may now read `QUALIFIED` where it read
->   `NOT_QUALIFIED`. That is the point of the change, but it will look like data moved
->   on its own if nobody is told.
->
-> Old outcomes still render their retired reason codes: an outcome stores codes as
-> JSONB strings, not foreign keys. New outcomes citing one are refused (422).
+> **Release note still owed — the de-count.** After 0031, `export_history` and
+> `export_licence` results stop counting towards the suggestion. A company already
+> `QUALIFIED` is unaffected (A2); an **undecided lead re-suggests** and may now read
+> `QUALIFIED`. Tell users before it ships, or it will look like data moved on its own.
 
 ### 3.5 — "Aner Labs" (P1-4)
 
-Four user-visible strings in `index.html`, `Sidebar.tsx` and `LoginPage.tsx`. Backend
-`APP_NAME` untouched, so `openapi.json` did not move.
+`index.html`, `Sidebar.tsx`, `LoginPage.tsx`. Backend `APP_NAME` unchanged, so
+`openapi.json` did not move. Storage keys containing "aner" were deliberately left
+(`aner.theme`, `aner.refreshToken`, `aner.sidebar.collapsed`, the `aner-refresh` Web
+Lock, `@aner/...`): renaming them signs users out without changing a visible word.
 
-Storage keys containing "aner" were **deliberately left alone** — `aner.theme`,
-`aner.refreshToken`, `aner.sidebar.collapsed`, the `aner-refresh` Web Lock and the
-`@aner/...` package name. Renaming any of them signs users out or loses their theme
-without changing a single visible word.
+### 3.6 — "RM (Relationship Manager)" (P1-5, IQ-13)
 
-**Proof:** `grep -r ANER dist/` → 0.
-
-### 3.6 — `roleLabel()` and "RM (Relationship Manager)" (P1-5)
-
-`roleLabel()` and `roleShortLabel()` added to `platform/auth/roles.ts` and exported
-from the barrel, then used at all seven sites that render a role: the app header,
-`HomePage`, the Users table chip and filter, the user form's Role select and its
-"Default for …" option, and the My Profile chip.
-
-**The enum is not renamed**, per §2.3. `OPERATIONS` is written into history rows
-already recorded and into both route-authorisation tables; renaming it would make the
-past read as a role that never existed.
-
-Three things worth knowing:
-
-- **`HomePage` lowercased the label** (`humanize(role).toLowerCase()`), which would
-  have rendered "rm (relationship manager)". The `.toLowerCase()` is gone.
-- **The header uses the short form** ("RM"), because the full label does not fit a
-  right-aligned `text-xs` line. That is what `roleShortLabel()` is for.
-- **`ROLE_DESCRIPTION.COMPLIANCE` hard-coded the word** — it opened "Everything
-  Operations can do". Now "Everything an RM can do". Easy to miss, and it would have
-  left the retired word in the product after every other site had moved.
-
-Backend: `catalog.py`'s OPERATIONS description said identifiers are "masked unless you
-own the record". **That ownership exception no longer exists** (decision 12 —
-`can_reveal_identifiers` admits COMPLIANCE and ADMIN only), so the description, the
-module docstring and an inline comment were all corrected. `BUILTIN_ROLE_METADATA` has
-no runtime consumer, so this is documentation.
-
-**Proof:** `grep -r Operations dist/` → 0; 294 frontend tests pass.
+- `roleLabel()` / `roleShortLabel()` in `platform/auth/roles.ts`, used at every site that
+  renders a role: header (short form), Home, Users chip and filter, user form Role select
+  and "Default for …", My Profile chip. `ROLE_DESCRIPTION.COMPLIANCE` no longer says
+  "Operations". Test: `platform/auth/roles.test.ts`.
+- **`auth_0005_rm_role_name`** renames the built-in OPERATIONS row in `auth.role` (and
+  drops its "unless you own the record" description, decision 12) unless an ADMIN already
+  changed it. That row — not `catalog.py`'s `BUILTIN_ROLE_METADATA`, which nothing reads at
+  runtime — is what the Roles tab, the user form's role picker and "Signed in as …" show.
+- `GET /me/permissions`'s `role_name` falls back to the **built-in row** for an account with
+  no `role_id` (it used to title-case the enum into "Operations").
+  Test: `test_role_management.py::test_the_operations_role_reads_rm_everywhere_it_is_named`.
+- **The enum is not renamed** (§2.3): `OPERATIONS` is in every history row and both
+  route-authorisation tables.
 
 ### 3.1 — Conventions (P0-4)
 
-Most of P0-4 was **already written down** — the gate list in `development.md` §7, one
-head and the 32-character limit in both files, re-parenting in the register §2. Adding
-it again would have created two places to keep in step, so only the genuine gaps went
-in:
+`development.md` §7 and `migration-register.md` §2: the `onboarding_00NN_<lane>_<topic>`
+pattern with the 33-character example, re-point `down_revision` before merging (and take
+the next free number if yours was used meanwhile), `pg_dump` before a data migration,
+expand → backfill → contract.
 
-- the naming pattern `onboarding_00NN_<lane>_<topic>`, in both files;
-- re-point `down_revision` before merging (folded into the existing re-parent rule);
-- `pg_dump` before any data migration;
-- expand → backfill → contract.
+### 3.2 — Data inventory (P0-3) — script done, **reports not**
 
-The naming rule carries a real example: **`onboarding_0023_domestic_criteria`, the name
-`plan.md` P1-1 prescribes, is 33 characters and fails on the database** after the
-migration body has run. It shipped as `onboarding_0031_domestic_first` (30); `plan.md`
-P1-1 now names it.
-
-Register updated: rows for 0031 and `auth_0005`, head now `auth_0005_rm_role_name`,
-next free number 0032.
-
-### 3.2 — Data inventory (P0-3)
-
-`backend/scripts/crm_data_inventory.sql` — read-only, every statement a `SELECT`, runs
-against any environment with `psql`. Covers all seven of P0-3's questions.
-
-**The script is the deliverable; the reports are not.** P0-3 asks for a report *per
-live database* (`crm_uat_walk`, `crm_release_audit`, demo, shared test), attached to
-the migration tickets. Those need someone with access to those environments. Numbers
-from a development database must not be attached as findings — it carries sample data
-and whatever the suite last left behind.
+`backend/scripts/crm_data_inventory.sql` — read-only, every statement a `SELECT`; parses
+and runs on the schema at 0030. **The task is the reports**: run it on every live
+database (`crm_uat_walk`, `crm_release_audit`, demo, shared test) and attach the output to
+the migration tickets. Developer 2's P4-6 (task 2.6) and your 3.16 are sized from them.
+Numbers from a development database must not be attached — it carries sample data and
+whatever the suite last left behind.
 
 ---
 
-## 2. F3 — blocked on Developer 1's F1
+## 2. F3 — Company foundation (next)
 
-F3 must be rebased on F1 (`developer-allocation.md` §6: merge order **F1 → F3 → F2**).
-**F1 has not merged.** Checked today:
+Spec: allocation §5 "F3". Build it as specified, with these adjustments for what is already
+on `main`:
 
-| F1 marker | Present? |
-|---|---|
-| `backend/app/shared/clock.py` | no |
-| `ComplianceFactsReader` | no |
-| `exporter_profile.background_check_expires_at` | no |
-| History dimensions `check_cycle`, `gst_registration`, `trade`, `pipeline` | no |
-
-Re-run those four checks before assuming this is still true.
-
-When it lands, F3 is: the migration adding `identity_type`, `registration_number`,
-`pipeline_status`, `created_via` and `created_via_deal_id`; the `ExporterSource.DEAL_BUYER`
-enum value; the `CompanyDirectory` and `BranchFlagReader` interfaces with working stubs;
-and the `CompanyPicker` / `TradeHistoryPanel` component stubs with their final props.
-
-**Dev 2's F2 consumes those interfaces**, so F3 blocks their foundation too.
-
----
-
-## 3. Blocked on F3
-
-| # | Task | Needs |
+| F3 item | State on `main` | What F3 does |
 |---|---|---|
-| 3.7 | Remove website from forms, schemas and CSV (IQ-16) | — in principle startable, but it moves request schemas and so `openapi.json`; cleaner after F3 to avoid two artifact regenerations |
-| 3.8 | Service create paths set `identity_type` / `created_via`; foreign registration number required (IQ-7); mask `registration_number`; refuse `NOT_IN_PIPELINE` | F3's columns |
-| 3.9 | `search_profiles` excludes `NOT_IN_PIPELINE`; "Not in pipeline" on the company page; mount `CompanyDealsList` | F3's columns **and Dev 2's F2** for the deal list |
-| 3.10 | `POST /companies/match` (BQ-2), `CompanyPicker` full version | F3 |
-| 3.11 | `POST /exporters/{id}/pipeline` | F3 |
-| 3.12 | Evolve `exporter_gstin` in place: state, status, address, flag, soft deactivation | F3 |
-| 3.13 | GST registration add/deactivate routes; `GstRegistrationsSection.tsx` | 3.12 |
-| 3.14 | Flag / unflag a GST registration; real `BranchFlagReader` | 3.12 |
-| 3.15 | Warn-only consequences of a flagged GSTIN held by two companies (IQ-9) | 3.14 |
-| 3.16 | Derive a PAN for PAN-less companies — **only if 3.2's report says it is worth it** | 3.2 reports |
-| 3.17 | "Verify GSTIN" link for COMPLIANCE and ADMIN | 3.12 |
+| `exporter_profile.identity_type`, `registration_number` (+ partial unique index on `(country, normalised registration_number)`), `pipeline_status` (`NOT NULL DEFAULT 'IN_PIPELINE'`, `NOT_IN_PIPELINE ⇒` LEAD / NOT_YET_REVIEWED / NOT_CONTACTED), `created_via`, `created_via_deal_id`; `identity_type = 'IN_PAN'` where `pan` is set | absent | Migration **0032**. Re-point `down_revision` to the head at merge time |
+| `ExporterSource.DEAL_BUYER` (IQ-6) | absent | Add the enum value in an **ordinary transactional** migration — never `ALTER TYPE … ADD VALUE` in an autocommit block (`migration-register.md` §2) |
+| `CompanyDirectory` (`create_buyer_company`, `match`) | absent | Publish it with working stubs (`match` = exact PAN only; `create_buyer_company` fully working). Developer 2's 2.6 needs `create_buyer_company` |
+| `BranchFlagReader` | **declared by Developer 2** as a `Protocol` in `domain/handover_conditions.py`, with the null `NoBranchFlags` injected into `DealService` | **Do not declare a second one.** Provide your stub class satisfying that Protocol (`is_flagged(gst_registration_id) -> (bool, state_name \| None)`); the real reader is 3.14. Injecting it into `DealService` is Developer 2's 2.9 |
+| `CompanyPicker.tsx` `{ onSelect(companyId) }`, `TradeHistoryPanel.tsx` `{ sellerId, buyerId, dealId? }` | absent | Frontend stubs with final props. Developer 2's 2.4 and 2.11 mount them |
+| History dimensions `gst_registration`, `trade`, `pipeline` | **present** (Developer 1's F1, `domain/history_dimensions.py`) — no writers yet | Nothing; your tasks write them |
+| `app/shared/clock.py` | present | Use it for "now" in new code |
+| `deal.buyer_company_id`, `deal.seller_gst_registration_id` (FK → `exporter_gstin.id`, `RESTRICT`) | present (Developer 2's `onboarding_0028_deal_foundation`) | Nothing — but see 3.12 |
+| `DealResponse.buyer_company.pipeline_status` | present, always `null` — reads `getattr(company, "pipeline_status", None)` | Lights up by itself once your column exists |
+| `CompanyDealsList` `{ companyId, as }` | present (Developer 2's F2 stub; `as="buyer"` says "not available yet" until 2.7) | Mount it in 3.9 |
+
+**After F3 merges:** re-run Developer 1's `test_dev1_company_keyed.py` — its P4-11 tests set
+`pipeline_status = 'NOT_IN_PIPELINE'` on their buyer-only company automatically once the
+column exists (`dev1-handover.md` §2.2). Tell Developer 1, who may then add
+`pipeline_status` to the Re-KYC due list (`dev1-handover.md` §3, optional). Leave
+`exporter_profile.background_check_expires_at` to Developer 1.
+
+**Done when:** merged; existing companies are `IN_PIPELINE`; ORM drift test green;
+Developer 2 can import `CompanyDirectory` and use your `BranchFlagReader` stub.
 
 ---
 
-## 4. Needs Developer 2
+## 3. Lane tasks after F3
 
-- **3.9's `CompanyDealsList`** (as seller / as buyer) is Dev 2's component, delivered in
-  F2.
-- **3.23, the relationship backfill**, runs **after** Dev 2's buyer migration P4-6 has
-  been applied to an environment. That is operational order, not a coding dependency —
-  the code can be written first.
+Specs are in allocation §5; this column says what has changed since it was written.
+
+| # | Task | Needs | Notes as of 2 October |
+|---|---|---|---|
+| 3.7 | Remove website from forms, request schemas, CSV template; CSV accepts old and new headers; RXIL ignores `website`; stored values kept and hidden (IQ-16) | — | **The open question is settled**: Developer 1 retired the `website-reviewed` screening item in 0025 with `rules_version`, so decisions taken under the eight-item checklist keep reading. 3.7 is only the company field. Moves request schemas → regenerate `openapi.json` + `schema.ts` |
+| 3.8 | Create paths set `identity_type` / `created_via`; foreign registration number required (IQ-7) except migrated buyers; mask `registration_number` like CIN; backfill `created_via` from the first history row; qualification and conversation refuse `NOT_IN_PIPELINE` | F3 | Masking: add new functions to `api/schemas/masking.py` only (§2.2). The refusal is what keeps a buyer-only company from ever being promoted (Developer 1's P4-11 relies on it) |
+| 3.9 | `search_profiles` excludes `NOT_IN_PIPELINE`; "Not in pipeline" / "Not needed" on the company page; mount `CompanyDealsList` (as seller / as buyer) | F3 | `as="buyer"` shows "not available yet" until Developer 2's 2.7 — mount it anyway |
+| 3.10 | `POST /companies/match` (BQ-2: a full PAN/GSTIN names the company, identifiers masked, no partial search, every lookup audited); GSTIN on two companies returns both (IQ-9); name similarity; `CompanyPicker` full version | F3 | Open lead decision in `open-items.md` §1 ("Identifier disclosure to masked roles") applies to what the match response may name |
+| 3.11 | `POST /exporters/{id}/pipeline`: `NOT_IN_PIPELINE → IN_PIPELINE`, journey history starts at LEAD | F3 | Writes the `pipeline` history dimension |
+| 3.12 | Evolve `exporter_gstin` in place (state, status, address, flag, `active`, soft deactivation); remove `delete-orphan`; trigger refuses DELETE | F3 | **Must land before Developer 2's 2.8.** Today a company edit that drops a GSTIN *deletes* its row (`exporter_profile_service.py`, `cascade="all, delete-orphan"`); once 2.8 records a deal's invoicing branch, that delete hits 0028's `RESTRICT` FK and fails |
+| 3.13 | `POST /exporters/{id}/gst-registrations`, `POST …/{gstin}/deactivate`; PATCH stops accepting `gstins`; `GstRegistrationsSection.tsx` replaces the GSTIN block in `CompanyPanel` | 3.12 | Writes `gst_registration` history. Moves request schemas → regenerate artifacts |
+| 3.14 | Flag / unflag (COMPLIANCE, ADMIN, reason required); company warning chip; **real `BranchFlagReader`** | 3.12 | Developer 2's 2.9 swaps it in |
+| 3.15 | Warn-only consequences of a flagged GSTIN held by two companies (IQ-9) | 3.14 | — |
+| 3.16 | Optional: PAN from GSTIN for PAN-less companies, with an audit table for rollback | 3.2 reports | **Only if the reports say it is worth doing** |
+| 3.17 | "Verify GSTIN" link (GST portal) for COMPLIANCE and ADMIN; no reveal for masked roles | 3.12 | — |
+| 3.18 | `trade_relationship(seller_company_id, buyer_company_id)`, unique pair, seller ≠ buyer, `get_or_create` | F3 | Found by the pair `(deal.company_id, deal.buyer_company_id)` — **no column on `deal`** (allocation §1, adjustment 1) |
+| 3.19 | `trade_invoice` (identity frozen), `trade_invoice_outcome` (append-only chain); currency stored, never converted (IQ-4) | 3.18 | Every new table: `created_by`, `created_at`, `source`, `source_ref` (BQ-7); direct-SQL append-only tests |
+| 3.20 | Read routes (as seller / as buyer / one relationship) and write routes; RM, Compliance, Admin write; Developer reads masked (IQ-19); `trade` history rows | 3.19 | Route-authorisation rows in your lane's block; D8 handling |
+| 3.21 | Outcome after handover (creates the invoice if absent); claimed past trade with `deal_id NULL`, `proof_status = CLAIMED` | 3.20 | — |
+| 3.22 | `TradeHistoryPanel` full version; company-page panel | 3.20 | Developer 2's 2.11 mounts it on the deal page |
+| 3.23 | Relationship backfill for every deal with `buyer_company_id` | 3.18 | Code can be written any time; **run** it only after Developer 2's P4-6 has been applied (§5) |
+| 3.24 | Masking sweep: every CRM read as OPERATIONS and DEVELOPER, no unmasked PAN, GSTIN, IEC, CIN, registration number or contact | everything | Final integration (allocation §6) |
+
+### Inherited items in this lane (from `open-items.md` §2)
+
+- **IEC has no `CHECK` constraint**, unlike PAN, GSTIN and CIN — the service checks it, the
+  database does not. A migration (next free number) with a direct-SQL violation test.
+- **`POST /exporters` without `name` or `country` still creates a company** — remove the
+  unnamed path once nothing calls it, then make both columns `NOT NULL` (expand → backfill →
+  contract). Fits naturally beside 3.8.
 
 ---
 
-## 5. Ready as soon as F3 lands
+## 4. Who is waiting on you
 
-Trade history (P5) needs nothing from Dev 1 or Dev 2 beyond `deal.buyer_company_id`,
-which arrives in F2:
-
-| # | Task |
+| Developer 2's task | Needs from you |
 |---|---|
-| 3.18 | `trade_relationship(seller_company_id, buyer_company_id)`, unique pair, seller ≠ buyer, `get_or_create` |
-| 3.19 | `trade_invoice` (identity frozen) and `trade_invoice_outcome` (append-only chain); currency stored, never converted (IQ-4) |
-| 3.20 | Read and write routes, roles and masking (IQ-19), `trade` history rows |
-| 3.21 | Record an outcome after handover; claimed past trade with `proof_status = CLAIMED` |
-| 3.22 | `TradeHistoryPanel` full version |
-| 3.24 | Masking sweep: every CRM read as OPERATIONS and DEVELOPER, asserting no unmasked PAN, GSTIN, IEC, CIN, registration number or contact |
-
-Note the design adjustment in §1 of the allocation: **the relationship is found by the
-pair `(deal.company_id, deal.buyer_company_id)` — there is no `relationship_id` column
-on `deal`.** That is deliberate, and it keeps this lane out of the deal table and its
-terminal-deal trigger.
+| 2.4 buyer company on the deal | `CompanyPicker` (F3 stub, 3.10 full) |
+| 2.6 buyer migration (P4-6) | `CompanyDirectory.create_buyer_company` (F3), and **3.2's reports** |
+| 2.8 invoicing branch on the deal | **3.12** first (see the 3.12 note) |
+| 2.9 "invoicing branch is flagged" | `BranchFlagReader` stub (F3), real one (3.14) |
+| 2.11 trade history on the deal page | `TradeHistoryPanel` (F3 stub, 3.22 full) |
+| 2.12 main end-to-end ("… → payment outcome") | 3.21 |
 
 ---
 
-## 6. Operational order — do not reorder
+## 5. Operational order on live databases — do not reorder
 
-From `developer-allocation.md` §6. Not a coding dependency; it is the order things run
-on a live database.
+From allocation §6. Not a coding dependency; the order things run on a live database.
 
 1. `pg_dump`.
-2. Dev 2's buyer migration **P4-6**, after their task 2.4 merges. Dry run first,
-   Compliance reviews the name-only duplicates (IQ-8), then apply, then the validation
-   queries.
-3. Dev 3's relationship backfill **P5-5** (task 3.23).
-4. Dev 2's **P4-10** (retire `deal_buyer` writes), only once *every* environment has
+2. Developer 2's buyer migration **P4-6** (after their 2.4 merges): dry run, Compliance
+   reviews the name-only duplicates (IQ-8), apply, validation queries.
+3. Your relationship backfill **P5-5** (3.23).
+4. Developer 2's **P4-10** (retire `deal_buyer` writes), only once every environment has
    passed step 2.
+
+---
+
+## 6. Before every PR
+
+- `alembic heads` prints one; your migration's `down_revision` is the head **at merge
+  time**; take the next free number from the register (and update its §1); id ≤ 32
+  characters.
+- A data migration: `pg_dump` first, a dry run, read the current state rather than assume
+  it (the 0031 lesson), and say in the docstring how it rolls back.
+- Request or response schema changed → regenerate `frontend/openapi.json` and
+  `frontend/src/lib/api/schema.ts`; never hand-merge them.
+- New route → a row in your block of `test_route_authorization.py`, D8 (DEVELOPER)
+  handling, and a masking test for OPERATIONS and DEVELOPER on any new response shape.
+- A label is not renamed until every place it is **stored** says the new thing (the
+  `auth.role` lesson from 3.6).
+- Gates (`development.md` §7). Baseline on 2 October 2026: backend 4,932 passed, 7
+  skipped, 27 xfailed; the one failure,
+  `idempotency/test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index`, also fails on
+  `main` (query-planner choice as the ledger table grows) — not yours to chase. Frontend 39
+  files / 372 tests; ruff 16; import-linter 19 kept / 0 broken.
+- Name the PR after what it contains.
 
 ---
 
 ## 7. Open questions this lane will hit
 
-- **3.16** is explicitly conditional on what 3.2's reports show. Do not build it first.
-- **3.7** needs a decision on companies already cleared when the website screening item
-  retires: their decision pinned the eight items as they stood. The safe answer is that
-  they stay cleared — but it should be decided, not inherited.
-- **`plan.md` P1-1 prescribes a migration id that cannot work** (33 characters). Worth
-  correcting at the source.
+- **3.16** is conditional on 3.2's reports. Do not build it first.
+- **Identifier disclosure to masked roles** (`open-items.md` §1) — a lead decision that
+  bounds what 3.10's match response and 3.15's warnings may name.
+- The 0031 release note (§1) — someone has to send it.
