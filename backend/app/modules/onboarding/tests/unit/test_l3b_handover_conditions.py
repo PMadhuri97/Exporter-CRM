@@ -13,7 +13,6 @@ real one on with no code change" the allocation asks for (§1.2).
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import pytest
@@ -30,6 +29,7 @@ from app.modules.onboarding.domain.handover_conditions import (
     seller_is_a_customer,
     state_name,
 )
+from app.modules.onboarding.tests.fixtures.compliance import party_facts
 
 pytestmark = pytest.mark.asyncio
 
@@ -57,20 +57,16 @@ def subject(**overrides) -> HandoverSubject:
     return HandoverSubject(**{**fields, **overrides})
 
 
-@dataclass(frozen=True)
-class _Facts:
-    """Developer 1's ``PartyComplianceFacts``, as the guard reads it."""
-
-    is_clear: bool = True
-    is_clear_current: bool = True
-    sanctions: str = "PASSED"
-    aml: str = "PASSED"
+# Facts come from Developer 1's own `party_facts(...)` fixture rather than a local
+# stand-in: if their dataclass gains a field the guard should read, these tests move
+# with it instead of silently testing a shape nobody ships.
+_EXPIRY = datetime(2026, 9, 1, tzinfo=UTC)
 
 
 class _Compliance:
     """A fake ``ComplianceFactsReader``, keyed by whatever it is asked about."""
 
-    def __init__(self, *, company: _Facts | None = None, legacy: _Facts | None = None) -> None:
+    def __init__(self, *, company=None, legacy=None) -> None:
         self._company = company
         self._legacy = legacy
 
@@ -164,18 +160,34 @@ async def test_missing_required_documents_are_all_named(
     )
 
 
-async def test_an_expired_seller_check_blocks():
-    providers = HandoverProviders(compliance=_Compliance(company=_Facts(is_clear_current=False)))
+async def test_an_expired_seller_clear_blocks_and_names_the_date():
+    """P3-3b asked for the date: "expired" with no date leaves the operator to go
+    looking for when."""
+    providers = HandoverProviders(
+        compliance=_Compliance(
+            company=party_facts(is_clear_current=False, clear_expires_at=_EXPIRY)
+        )
+    )
     assert (
         await seller_compliance_is_current(subject(), providers)
-        == "the company's background check has expired"
+        == "the background check expired on 2026-09-01"
     )
+
+
+async def test_a_seller_that_was_never_clear_is_not_reported_as_expired():
+    """A company that is not CLEAR has no current Clear either, and condition 2
+    already names that by value. Saying "expired" as well would tell an operator to
+    renew a check that was never passed."""
+    providers = HandoverProviders(
+        compliance=_Compliance(company=party_facts(background_check="FLAGGED"))
+    )
+    assert await seller_compliance_is_current(subject(), providers) is None
 
 
 async def test_a_failed_seller_sanctions_or_aml_blocks():
     """Plan BQ-3: the seller's own failed screening stops its deals."""
     providers = HandoverProviders(
-        compliance=_Compliance(company=_Facts(sanctions="FAILED", aml="FAILED"))
+        compliance=_Compliance(company=party_facts(sanctions="FAILED", aml="FAILED"))
     )
     reason = await seller_compliance_is_current(subject(), providers)
     assert reason == (
@@ -187,7 +199,7 @@ async def test_the_buyer_must_have_passed_both_checks():
     """Plan BQ-4: ``PASSED``, not "not failed" — "we have not checked" and "clean"
     must not collapse into one outcome."""
     providers = HandoverProviders(
-        compliance=_Compliance(legacy=_Facts(sanctions="MISSING", aml="PENDING"))
+        compliance=_Compliance(legacy=party_facts(sanctions="MISSING", aml="PENDING"))
     )
     reason = await buyer_compliance_passes(subject(), providers)
     assert reason == (
@@ -200,11 +212,11 @@ async def test_a_buyer_company_is_read_as_a_company_and_a_legacy_buyer_as_a_buye
     """The one rule that makes P4-6 a data migration rather than a behaviour
     change: whichever way the buyer is recorded, the same condition decides."""
     # A legacy deal: its facts come from `for_legacy_buyer`.
-    legacy_only = _Compliance(company=_Facts(sanctions="FAILED"), legacy=_Facts())
+    legacy_only = _Compliance(company=party_facts(sanctions="FAILED"), legacy=party_facts())
     assert await buyer_compliance_passes(subject(), HandoverProviders(compliance=legacy_only)) is None
 
     # The same deal after the migration: its facts come from `for_company`.
-    company_only = _Compliance(company=_Facts(sanctions="FAILED"), legacy=_Facts())
+    company_only = _Compliance(company=party_facts(sanctions="FAILED"), legacy=party_facts())
     reason = await buyer_compliance_passes(
         subject(buyer_company_id=_BUYER_COMPANY), HandoverProviders(compliance=company_only)
     )
@@ -234,7 +246,10 @@ async def test_the_guard_reports_every_unmet_condition_in_order():
     """The screen tells the whole story at once (contract §4.1): an operator must
     not have to fix one thing to discover the next."""
     providers = HandoverProviders(
-        compliance=_Compliance(company=_Facts(is_clear_current=False), legacy=_Facts(aml="FAILED")),
+        compliance=_Compliance(
+            company=party_facts(is_clear_current=False, clear_expires_at=_EXPIRY),
+            legacy=party_facts(aml="FAILED"),
+        ),
         required_documents=_Requirements("PRE_SHIPMENT"),
         branch_flags=_Flags(True, "Gujarat"),
     )
@@ -250,7 +265,7 @@ async def test_the_guard_reports_every_unmet_condition_in_order():
         "the company is PROSPECT, not CUSTOMER; "
         "the background check is FLAGGED, not CLEAR; "
         "missing required documents: PRE_SHIPMENT; "
-        "the company's background check has expired; "
+        "the background check expired on 2026-09-01; "
         "the buyer's AML check is FAILED, not PASSED; "
         "the invoicing branch Gujarat is flagged"
     )
@@ -260,8 +275,9 @@ async def test_the_guard_reports_every_unmet_condition_in_order():
 
 
 async def test_state_name_reads_a_str_and_an_enum_the_same():
-    """A provider may hand back either; the conditions must not care, which is
-    what lets this file avoid importing Developer 1's ``CheckState``.
+    """Kept for `pipeline_status`, which really is an enum across the F3 seam —
+    `CheckState` is a `Literal` of plain strings, so the compliance conditions
+    compare values directly.
 
     ``async`` only because ``pytestmark`` marks this module; it awaits nothing.
     """

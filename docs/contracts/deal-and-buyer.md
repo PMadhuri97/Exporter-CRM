@@ -222,8 +222,8 @@ move, so the screen explains instead of offering a button that 409s (§4.1).
 | 1 | the company's journey is `CUSTOMER` | — | **live** (assumption A5) |
 | 2 | the company's background check is `CLEAR` | — | **live** (assumption A5) |
 | 3 | every required document category is present | `RequiredDocumentsPolicy` | **live** (P2-5b) |
-| 4 | the company's Clear is current, and its own sanctions/AML have not failed | `ComplianceFactsReader` | waits for P3-3b, P4-7 |
-| 5 | the buyer's sanctions **and** AML are `PASSED` | `ComplianceFactsReader` | waits for P3-4, P4-7 |
+| 4 | the company's Clear is current, and its own sanctions/AML have not failed | `ComplianceFactsReader` | **live** (P3-3b, P4-7) |
+| 5 | the buyer's sanctions **and** AML are `PASSED` | `ComplianceFactsReader` | **live** (P3-4, P4-7) |
 | 6 | the invoicing branch is not flagged | `BranchFlagReader` | waits for P6-7 |
 
 Conditions 1 and 2 are real: a company becomes a `CUSTOMER` when it is a `PROSPECT`
@@ -232,12 +232,27 @@ Developer 4A's published helper (`background-check.md` §10) — this service ne
 creates or writes that column (`company-record.md` §2.4). A company never checked
 reads `NOT_STARTED`, and "not `CLEAR`" is never treated as "clear".
 
-Conditions 3–6 ask an **injected provider**. Until the lane that owns one ships it,
-its null provider is injected and the condition reports nothing. "No facts" is
-never read as "everything passed": a missing provider cannot let a deal through.
-Condition 5 reads a buyer recorded as a company through `for_company` and a legacy
-`deal_buyer` row through `for_legacy_buyer`, so the same rule decides before and
-after the buyer migration (P4-6).
+Conditions 3–6 ask an **injected provider**. Only condition 6 is still waiting: its
+null provider is injected and it reports nothing until Developer 3's real
+`BranchFlagReader` lands (P6-7). "No facts" is never read as "everything passed": a
+missing provider cannot let a deal through.
+
+Conditions 4 and 5 read Developer 1's published `ComplianceFactsReader`
+(`domain/compliance_facts.py`, implemented by `application/compliance_facts.py`), in
+the guard's own session. Condition 5 reads a buyer recorded as a company through
+`for_company` and a legacy `deal_buyer` row through `for_legacy_buyer`, so the same
+rule decides before and after the buyer migration (P4-6).
+
+**Condition 4 names the date.** It reports an expiry only when the company *is*
+`CLEAR` but no longer currently so — a company that was never `CLEAR` is condition 2's
+to report, and saying "expired" as well would tell an operator to renew a check that
+was never passed. The message is "the background check expired on `YYYY-MM-DD`".
+
+**Condition 5 requires `PASSED`, not "not `FAILED`".** An unscreened buyer reads
+`MISSING` and blocks (BQ-4): "we have not checked" and "the check came back clean"
+must not collapse into one outcome. So a deal whose buyer has no sanctions and AML
+results cannot be handed over, whether that buyer is a company or a legacy
+`deal_buyer` row.
 
 ### 6.1.1 Condition 3 — the required documents
 
@@ -271,9 +286,15 @@ open deal without an `AVAILABLE` pre-shipment document is blocked from handover 
 moment `onboarding_0030_deal_req_docs` runs, until one is uploaded — tell the
 operations team before deploying it.
 
-The guard reads the company row **once** per run, share-locked on the move (D10) and
-unlocked on the read that renders a page, and hands every condition the same
-snapshot — so no condition can see a different company than the lock was taken on.
+The guard reads **both parties'** rows once per run — share-locked on the move (D10)
+and unlocked on the read that renders a page — and hands every condition the same
+snapshot, so no condition can see a different company than the lock was taken on.
+
+The locking read is one statement, `WHERE customer_id IN (…) ORDER BY customer_id …
+FOR SHARE`. The ordering is the deadlock rule, not tidiness: Postgres takes row locks
+in the order the query returns them, so two handovers that share a pair of companies —
+A selling to B while B sells to A — queue in one order instead of each holding what
+the other wants (P4-7).
 
 ### 6.2 The handover is recorded, not only announced
 

@@ -98,6 +98,25 @@ class _Crm:
                                 "payload": {"status": "PASSED"},
                                 "evidence_note": f"{check} checked manually."})
 
+    async def screen_the_buyer(self, deal_id: str) -> None:
+        """PASSED sanctions and AML on the deal's buyer (plan BQ-4).
+
+        Live since task 2.5 wired Developer 1's `ComplianceFactsReader`: the handover
+        requires the **buyer's** sanctions and AML to be `PASSED`, and a buyer nobody
+        has screened reads `MISSING` — "we have not checked" is not "clean".
+
+        Keyed to the `deal_buyer` row, which is where `for_legacy_buyer` reads them.
+        Once task 2.4 records buyer *companies*, this moves to the company.
+        """
+        deal = await self.deal(deal_id)
+        buyer_id = deal["buyer"]["id"]
+        for check in ("SANCTIONS", "AML"):
+            await self.ok("POST", "/verifications", self.compliance,
+                          json={"verification_type": check, "entity_type": "BUYER",
+                                "entity_reference": buyer_id,
+                                "payload": {"status": "PASSED"},
+                                "evidence_note": f"Buyer {check} checked manually."})
+
     async def new_prospect_with_a_deal_ready_to_hand_over(self) -> tuple[str, str]:
         """Steps 1–7 of §4.1: a qualified company, a deal, its buyer and paperwork."""
         created = await self._create(_pan())
@@ -118,6 +137,7 @@ class _Crm:
                             "document_type": "proforma_invoice",
                             "source": "EXPORTER_UPLOAD"},
                       files={"file": ("proforma_invoice.pdf", PDF, "application/pdf")})
+        await self.screen_the_buyer(deal["id"])
         return company_id, deal["id"]
 
     async def _create(self, pan: str) -> dict:
@@ -208,6 +228,14 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     assert "missing required documents" not in (
         (await crm.deal(deal_id))["handover_blocked_reason"] or ""
     )
+
+    # 7b. The buyer is screened too (BQ-4, live since task 2.5). Checked before and
+    # after, because this is the condition most easily satisfied by accident.
+    assert "the buyer's sanctions check is MISSING" in (
+        (await crm.deal(deal_id))["handover_blocked_reason"] or ""
+    )
+    await crm.screen_the_buyer(deal_id)
+    assert "buyer's" not in ((await crm.deal(deal_id))["handover_blocked_reason"] or "")
 
     # 8. The background check: started by staff, its inputs recorded by compliance.
     await crm.decide(company_id, "IN_REVIEW", crm.ops)

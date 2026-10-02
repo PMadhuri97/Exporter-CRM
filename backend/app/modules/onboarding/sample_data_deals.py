@@ -205,10 +205,11 @@ async def hand_over_sample_deals() -> int:
                 or view.stage is not DealStage.GATHERING_PAPERWORK
             ):
                 continue
-            # The paperwork the handover guard requires, added only for a deal
-            # that is about to be handed over — C's open deal is meant to stay
-            # refused, and giving it the document would hide the reason why.
+            # What the handover guard requires, added only for a deal that is about
+            # to be handed over — C's open deal is meant to stay refused, and
+            # satisfying its conditions would hide the reason why.
             await _ensure_required_document(view.id)
+            await _ensure_buyer_screened(view.id)
             try:
                 async with db_services.AsyncSessionLocal() as db:
                     await DealService(db).transition_stage(
@@ -250,6 +251,60 @@ async def _ensure_required_document(deal_id: uuid.UUID) -> None:
             actor_id=None,
         )
     logger.info("sample_deals.required_document_added", deal_id=str(deal_id))
+
+
+async def _ensure_buyer_screened(deal_id: uuid.UUID) -> None:
+    """PASSED sanctions and AML on the deal's buyer, if they are not there already.
+
+    Required since task 2.5 wired Developer 1's reader: BQ-4 wants the buyer's
+    sanctions **and** AML ``PASSED``, and an unscreened buyer reads ``MISSING``. Without
+    this, company B could never reach the ``HANDED_OVER`` state architecture §3.9 gives
+    it, and `hand_over_sample_deals` would log "handover_blocked" instead.
+
+    Converges like the rest of this file: it looks at what is recorded and adds only
+    what is missing.
+    """
+    from app.modules.onboarding.application.verification_service import VerificationService
+    from app.modules.onboarding.domain.entities.orchestration_enums import (
+        VerificationEntityType,
+        VerificationType,
+    )
+    from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
+    from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository import (
+        DealBuyerRepository,
+    )
+
+    async with db_services.AsyncSessionLocal() as db:
+        buyer = await DealBuyerRepository(db).get_for_deal(deal_id)
+        if buyer is None:  # pragma: no cover - every sample deal has a buyer
+            return
+        buyer_id = buyer.id
+
+    for verification_type in (VerificationType.SANCTIONS, VerificationType.AML):
+        async with db_services.AsyncSessionLocal() as db:
+            service = VerificationService(db)
+            existing = await service.list_verification_results(
+                VerificationEntityType.BUYER, buyer_id
+            )
+            if any(
+                result.verification_type is verification_type
+                and result.status.value == "PASSED"
+                for result in existing
+            ):
+                continue
+        async with db_services.AsyncSessionLocal() as db:
+            await VerificationService(db).trigger_verification(
+                verification_type,
+                VerificationEntityType.BUYER,
+                buyer_id,
+                provider="manual",
+                payload={"status": "PASSED"},
+                actor_id=None,
+                evidence=VerificationEvidence(
+                    note="Sample data: buyer screened, nothing adverse."
+                ),
+            )
+    logger.info("sample_deals.buyer_screened", deal_id=str(deal_id))
 
 
 __all__ = ["hand_over_sample_deals", "load_deal_sample_data"]

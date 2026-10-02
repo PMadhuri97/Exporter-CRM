@@ -34,19 +34,23 @@ what they decided before, and the other four are inert until the lane that owns
 their provider ships the real one. No condition is edited at that point — only
 which provider ``DealService`` hands in.
 
-The providers are ``Protocol``s, not base classes
--------------------------------------------------
-Structural typing, the same choice ``domain/ports.py`` made and for the same
-reason: Developer 1's published ``ComplianceFactsReader`` and Developer 3's
-``BranchFlagReader`` satisfy these without importing this module, so neither lane
-takes a dependency on the deal lane to be usable by it. If Developer 1's reader
-turns out to be synchronous, the adapter is a three-line class in
-``application/handover_providers.py`` and nothing here changes.
+Where each interface is declared
+-------------------------------
+``ComplianceFactsReader`` and ``PartyComplianceFacts`` are **Developer 1's**, imported
+from ``domain/compliance_facts.py``. This module declared its own structural copies
+while F1 was unmerged; they are gone, so the two cannot drift (``dev2-remaining-work.md``
+§2 item 2). ``CheckState`` is a ``Literal`` of plain strings there, so the conditions
+compare the values directly.
 
-Enum-valued facts are compared **by name**, through :func:`state_name`, exactly as
-``_HANDOVER_JOURNEY`` compares the journey by name rather than importing another
-lane's enum member. A provider may hand back a ``str`` or an enum; both read the
-same here.
+``RequiredDocumentsPolicy`` and ``BranchFlagReader`` stay ``Protocol``s declared here:
+the first is this lane's own, and the second is satisfied by Developer 3's stub and
+later their real reader without either lane importing the other (the same structural
+choice ``domain/ports.py`` made).
+
+:func:`state_name` remains for the one value that really is an enum on the other side
+of a seam — ``exporter_profile.pipeline_status``, read by ``DealService`` for the
+buyer-company summary — and compares it by name rather than importing Developer 3's
+enum, exactly as ``_HANDOVER_JOURNEY`` compares the journey.
 """
 
 from __future__ import annotations
@@ -57,9 +61,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
+from app.modules.onboarding.domain.compliance_facts import (
+    ComplianceFactsReader,
+    PartyComplianceFacts,
+)
+
 __all__ = [
     "BranchFlagReader",
-    "ComplianceFactsReader",
     "HANDOVER_CONDITIONS",
     "HandoverProviders",
     "HandoverSubject",
@@ -136,39 +144,6 @@ class HandoverSubject:
 
 
 @runtime_checkable
-class PartyComplianceFacts(Protocol):
-    """One party's compliance, as Developer 1's F1 interface publishes it.
-
-    Only the fields the guard reads are named. ``sanctions`` and ``aml`` are
-    ``CheckState`` members there and are read here through :func:`state_name`, so
-    this module never imports that enum.
-    """
-
-    is_clear: bool
-    is_clear_current: bool
-    sanctions: Any
-    aml: Any
-
-
-@runtime_checkable
-class ComplianceFactsReader(Protocol):
-    """Developer 1's F1 interface, as the deal lane consumes it.
-
-    ``for_legacy_buyer`` is what keeps deals written before the buyer migration
-    (P4-6) working: their buyer is a ``deal_buyer`` row, not a company, and its
-    checks are keyed by ``entity_reference``.
-    """
-
-    async def for_company(
-        self, company_id: uuid.UUID, now: datetime
-    ) -> PartyComplianceFacts: ...
-
-    async def for_legacy_buyer(
-        self, deal_buyer_id: uuid.UUID, now: datetime
-    ) -> PartyComplianceFacts: ...
-
-
-@runtime_checkable
 class RequiredDocumentsPolicy(Protocol):
     """Which document categories a deal must have before handover (P2-5a).
 
@@ -207,6 +182,11 @@ class NoComplianceFacts:
         self, deal_buyer_id: uuid.UUID, now: datetime
     ) -> PartyComplianceFacts | None:
         return None
+
+    # Deliberately **not** a `ComplianceFactsReader`: that Protocol returns
+    # `PartyComplianceFacts`, never `None`. The `| None` here is what the conditions
+    # test for to decide "no provider, so this condition has nothing to say", and
+    # typing it honestly keeps anyone from mistaking this for a real reader.
 
 
 class NoRequiredDocuments:
@@ -289,6 +269,13 @@ async def seller_compliance_is_current(
     """Plan P3-3b and P4-7: the seller's Clear must not have expired, and a
     ``FAILED`` sanctions or AML result on the seller blocks (BQ-3).
 
+    The expiry clause is gated on ``is_clear and not is_clear_current``, not on
+    ``not is_clear_current`` alone. A seller that is not ``CLEAR`` at all also has no
+    current Clear, and condition 2 already says so by name — reporting "expired" as
+    well would tell an operator to renew a check that was never passed. It names the
+    date, as P3-3b asks, because "expired" without a date leaves the reader to go
+    looking for when.
+
     Inert while :class:`NoComplianceFacts` is injected — "no facts" is not
     "everything passed".
     """
@@ -297,12 +284,22 @@ async def seller_compliance_is_current(
         return None
 
     unmet: list[str] = []
-    if not facts.is_clear_current:
-        unmet.append("the company's background check has expired")
+    if facts.is_clear and not facts.is_clear_current:
+        unmet.append(f"the background check expired on {_on(facts.clear_expires_at)}")
     for label, value in (("sanctions", facts.sanctions), ("AML", facts.aml)):
-        if state_name(value) == FAILED:
+        if value == FAILED:
             unmet.append(f"the company's {label} check has failed")
     return "; ".join(unmet) or None
+
+
+def _on(moment: datetime | None) -> str:
+    """A date an operator can act on, or an honest stand-in.
+
+    ``clear_expires_at`` is set on every Clear the facts report as expired, so the
+    fallback is unreachable in practice; it is here so a provider that omits the date
+    produces a readable message rather than the word ``None``.
+    """
+    return moment.date().isoformat() if moment is not None else "an unrecorded date"
 
 
 async def buyer_compliance_passes(
@@ -331,9 +328,9 @@ async def buyer_compliance_passes(
         return None
 
     unmet = [
-        f"the buyer's {label} check is {state_name(value) or 'not recorded'}, not {PASSED}"
+        f"the buyer's {label} check is {value}, not {PASSED}"
         for label, value in (("sanctions", facts.sanctions), ("AML", facts.aml))
-        if state_name(value) != PASSED
+        if value != PASSED
     ]
     return "; ".join(unmet) or None
 

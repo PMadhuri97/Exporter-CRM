@@ -32,6 +32,14 @@ export { RiskChip } from './RiskChip';
 export { BackgroundCheckMoveDialog } from './BackgroundCheckMoveDialog';
 export { DecisionHistory } from './DecisionHistory';
 
+// ── Company record, GST branches, trade history — owner: Developer 3 ──
+// Mounted by other lanes: Developer 2 on the deal page (the buyer picker in 2.4, the
+// trade history in 2.11). Both are F3 stubs with final props; 3.10 and 3.22 fill them.
+export { CompanyPicker } from './CompanyPicker';
+export type { CompanyPickerProps } from './CompanyPicker';
+export { TradeHistoryPanel } from './TradeHistoryPanel';
+export type { TradeHistoryPanelProps } from './TradeHistoryPanel';
+
 // ── Compliance engine — owner: Developer 1 ──
 // Mounted by other lanes: Developer 2 on the deal page (seller and buyer company).
 export { CompanyComplianceSummary } from './CompanyComplianceSummary';

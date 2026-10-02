@@ -1,6 +1,6 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `auth_0005_rm_role_name`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0032_company_identity`
 
 The prototype's migrations, from four developers and one platform change, in one
 chain. This is the running order and the rules. Dev 1 keeps it current.
@@ -36,8 +36,9 @@ merged.
 | 0030 | Dev 2 (P2-5a) | `onboarding_0030_deal_req_docs`: `deal_required_document` (versioned, append-only, reuses 0019's `crm_document_category_enum`), **seeded with one `PRE_SHIPMENT` requirement. Changes behaviour:** from this revision a deal with no `AVAILABLE` pre-shipment document cannot be handed over, so open deals on a live database need one uploaded first; deals already handed over are not re-judged. Lossy downgrade (drops the record of what was required when) | `onboarding_0029_deal_snapshot` |
 | 0031 | Dev 3 (P1-1, P1-2) | `onboarding_0031_domestic_first`: **data:** the next version of `export_history` and `export_licence`, copied from the current one with `required = false` (none where the current version is already not required; `created_by = migration:onboarding_0031_domestic_first`), and `no_export_history`, `no_export_licence`, `geography_not_supported` deactivated. **Changes behaviour:** export results stop counting towards the suggestion, so an undecided lead may now read QUALIFIED; decided companies are not re-judged. `pg_dump` first. Downgrade deletes only its own rows and is refused once a result has been recorded against them (restore the dump instead) | `onboarding_0030_deal_req_docs` |
 | `auth_0005` | Dev 3 (P1-5) | `auth_0005_rm_role_name`: **data:** the built-in OPERATIONS row in `auth.role` is named "RM (Relationship Manager)" and loses the "unless you own the record" description (IQ-13, decision 12) — only where an administrator has not already changed them. Slug and enum unchanged. Downgrade restores both | `onboarding_0031_domestic_first` |
+| 0032 | Dev 3 | Company identity and pipeline status (F3): `identity_type`, `registration_number`, `pipeline_status`, `created_via`, `created_via_deal_id`; `ExporterSource.DEAL_BUYER` (IQ-6); the not-in-pipeline check and the normalised registration-number unique index | `auth_0005_rm_role_name` |
 
-**Next free onboarding number: 0032.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
+**Next free onboarding number: 0033.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
 32 characters at most (`docs/developer-allocation.md` §2.2, and §2 below).
 
 `auth_0003` and `auth_0004` belong to the platform's user-management work, not to the

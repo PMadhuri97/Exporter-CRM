@@ -46,6 +46,9 @@ from app.modules.onboarding.exceptions import DealRequiredDocumentChangedError
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.integration.test_l3b_handover import (
+    record_legacy_buyer_checks,
+)
 from app.platform.authentication.models import UserRole
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
@@ -132,8 +135,15 @@ async def _customer() -> uuid.UUID:
     return company_id
 
 
-async def _deal_with_a_buyer(company_id: uuid.UUID) -> uuid.UUID:
-    """At ``GATHERING_PAPERWORK``, with a buyer and no documents."""
+async def _deal_with_a_buyer(
+    company_id: uuid.UUID, *, screen_the_buyer: bool = True
+) -> uuid.UUID:
+    """At ``GATHERING_PAPERWORK``, with a buyer and no documents.
+
+    The buyer is screened by default (BQ-4, live since task 2.5), so a test about the
+    *documents* condition is not drowned out by the buyer's two clauses. The one test
+    that wants every condition at once passes ``screen_the_buyer=False``.
+    """
     async with db_services.AsyncSessionLocal() as db:
         view = await DealService(db).open_deal(
             company_id, reference=f"Required docs {uuid.uuid4().hex[:8]}", actor_id="t"
@@ -146,6 +156,8 @@ async def _deal_with_a_buyer(company_id: uuid.UUID) -> uuid.UUID:
         await DealService(db).transition_stage(
             view.id, DealStage.GATHERING_PAPERWORK, actor_id="t"
         )
+    if screen_the_buyer:
+        await record_legacy_buyer_checks(view.id)
     return view.id
 
 
@@ -488,7 +500,7 @@ async def test_every_unmet_condition_is_named_at_once(client: AsyncClient):
         )
         profile.journey = ExporterJourney.PROSPECT
         await db.commit()
-    deal_id = await _deal_with_a_buyer(company_id)
+    deal_id = await _deal_with_a_buyer(company_id, screen_the_buyer=False)
 
     reason = (
         await client.get(f"{BASE}/deals/{deal_id}", headers=auth_header(token))
@@ -496,7 +508,9 @@ async def test_every_unmet_condition_is_named_at_once(client: AsyncClient):
     assert reason == (
         "the company is PROSPECT, not CUSTOMER; "
         "the background check is NOT_STARTED, not CLEAR; "
-        "missing required documents: PRE_SHIPMENT"
+        "missing required documents: PRE_SHIPMENT; "
+        "the buyer's sanctions check is MISSING, not PASSED; "
+        "the buyer's AML check is MISSING, not PASSED"
     )
 
 

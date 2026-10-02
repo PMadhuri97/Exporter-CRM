@@ -65,13 +65,14 @@ from __future__ import annotations
 import uuid
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.background_check_reader import current_background_check
+from app.modules.onboarding.application.compliance_facts import ComplianceFactsService
 from app.modules.onboarding.application.conversation_service import ConversationService
 from app.modules.onboarding.application.deal_required_documents_service import (
     DealRequiredDocumentsPolicy,
@@ -113,6 +114,7 @@ from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository im
     DealBuyerRepository,
 )
 from app.modules.onboarding.infrastructure.repositories.deal_repository import DealRepository
+from app.shared import clock
 from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
@@ -222,19 +224,24 @@ class DealService:
         self._events = OnboardingEventPublisher()
         # The handover guard's providers (`domain/handover_conditions.py`).
         #
-        # `RequiredDocumentsPolicy` is **real** since P2-5b: condition 3 now reads
-        # `deal_required_document` and the deal's own paperwork. The other two are
-        # still their null version, which answers "nothing unmet", so assumption
-        # A5's conditions decide exactly what they decided before — P4-7 hands in
-        # Developer 1's `ComplianceFactsReader` and P6-7 Developer 3's
-        # `BranchFlagReader`, neither of which changes a condition's code.
+        # Five of the six conditions are live: assumption A5's two, the required
+        # documents (P2-5b), and — since P4-7 — the seller's and the buyer's
+        # compliance, through Developer 1's published reader. Only the invoicing
+        # branch is still inert, waiting on Developer 3's real `BranchFlagReader`
+        # (task 2.9 swaps `NoBranchFlags` for it and changes no condition's code).
         #
-        # A caller may pass `providers` to substitute any of them; the handover
-        # tests use it to drive a condition from a fake.
+        # `ComplianceFactsService` reads in this same session and never writes, so the
+        # facts a condition sees are the ones this transaction's locks cover.
+        #
+        # A caller may pass `providers` to substitute any of them; the handover tests
+        # drive conditions from `StaticComplianceFactsReader`.
         self._providers = (
             providers
             if providers is not None
-            else HandoverProviders(required_documents=DealRequiredDocumentsPolicy(db))
+            else HandoverProviders(
+                compliance=ComplianceFactsService(db),
+                required_documents=DealRequiredDocumentsPolicy(db),
+            )
         )
 
     # ── Read ─────────────────────────────────────────────────────────────────
@@ -417,7 +424,9 @@ class DealService:
         deal.withdrawal_reason = cleaned_reason
         handover: _Handover | None = None
         if to_stage is DealStage.HANDED_OVER:
-            deal.handed_over_at = datetime.now(tz=UTC)
+            # The shared clock here too, so the time the handover is recorded at and
+            # the `now` its guard just ran against are the same moment.
+            deal.handed_over_at = clock.now()
             # The snapshot is taken **now**, inside the transaction, so it is the
             # list the handover actually rested on: a document uploaded a minute
             # later cannot change what the lending team was given (architecture
@@ -604,7 +613,7 @@ class DealService:
             # P4-4 points deals at company records, the snapshot has to say *which*
             # company was handed over as well as what it looked like at the time.
             buyer_company_id=deal.buyer_company_id,
-            at=deal.handed_over_at or datetime.now(tz=UTC),
+            at=deal.handed_over_at or clock.now(),
         )
 
     # ── The A5 handover guard ────────────────────────────────────────────────
@@ -645,20 +654,39 @@ class DealService:
         writers, which is the point, while two handovers of different deals on the
         same company still proceed in parallel.
         """
+        # **Both** parties, in one statement ordered by `customer_id` (P4-7). The
+        # seller alone was enough while only its own standing was read; condition 5
+        # now reads the buyer's, so a flag landing on the buyer between this guard and
+        # the commit would be the same race D10 closed for the seller.
+        #
+        # `ORDER BY customer_id` is the deadlock rule, not a tidiness one: Postgres
+        # takes row locks in the order the query returns them, so two handovers that
+        # share a pair of companies — A selling to B while B sells to A — queue in one
+        # order instead of each holding what the other wants. Sorted on the database
+        # rather than in Python, so the lock order is the one the SQL actually used.
+        #
         # By `customer_id`, not `db.get`: `customer_id` is the company's business
         # key and the target of `fk_deal_company_id`, while the table's primary key
         # is the inherited `id`. `db.get` would look up the wrong column and find
         # nothing for every company.
-        statement = select(ExporterProfile).where(
-            ExporterProfile.customer_id == deal.company_id
-        )
+        wanted = {deal.company_id}
+        if deal.buyer_company_id is not None:
+            # `ck_deal_buyer_is_not_the_seller` rules out the two being equal, so this
+            # is two rows whenever a buyer company is recorded.
+            wanted.add(deal.buyer_company_id)
+        statement = select(ExporterProfile).where(ExporterProfile.customer_id.in_(wanted))
         if lock:
-            statement = statement.with_for_update(read=True).execution_options(
-                populate_existing=True
-            )
-        company = await self._db.scalar(statement)
+            statement = statement.order_by(ExporterProfile.customer_id).with_for_update(
+                read=True
+            ).execution_options(populate_existing=True)
+        rows = {row.customer_id: row for row in await self._db.scalars(statement)}
+
+        company = rows.get(deal.company_id)
         if company is None:  # pragma: no cover - the FK makes this unreachable
             raise DealCompanyNotFoundError(deal.company_id)
+        if deal.buyer_company_id is not None and deal.buyer_company_id not in rows:
+            # pragma: no cover - `fk_deal_buyer_company_id` makes this unreachable
+            raise DealCompanyNotFoundError(deal.buyer_company_id)
 
         # Every unmet condition, journey first, so the screen tells the whole story at
         # once — a PROSPECT whose check is FLAGGED needs both fixed, not one.
@@ -673,8 +701,10 @@ class DealService:
             legacy_buyer_id=deal.buyer.id if deal.buyer is not None else None,
             seller_gst_registration_id=deal.seller_gst_registration_id,
             # One "now" for the whole run, so two conditions cannot disagree about
-            # whether a check had expired.
-            now=datetime.now(tz=UTC),
+            # whether a check had expired — and taken from the shared clock
+            # (allocation §2.2), so a test can move past a Clear's expiry instead of
+            # rewriting a decision the database refuses to change anyway.
+            now=clock.now(),
         )
         return await blocked_reason(subject, self._providers)
 

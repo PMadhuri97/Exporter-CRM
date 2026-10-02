@@ -3980,7 +3980,7 @@ export interface components {
          *     reasoning ``ComplianceCase.resolved_by`` is guarded for.
          * @enum {string}
          */
-        ExporterSource: "MANUAL" | "SALES" | "REFERRAL" | "RXIL" | "PARTNER" | "API" | "BROKER" | "EVENT" | "EXISTING_CUSTOMER";
+        ExporterSource: "MANUAL" | "SALES" | "REFERRAL" | "RXIL" | "PARTNER" | "API" | "BROKER" | "EVENT" | "EXISTING_CUSTOMER" | "DEAL_BUYER";
         /**
          * FollowUpCompletionResponse
          * @description A completion, as recorded. Every field comes from the completion row and none

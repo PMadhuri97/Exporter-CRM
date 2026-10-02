@@ -786,11 +786,16 @@ async def test_sample_data_reaches_the_three_example_companies():
     assert sorted(d.stage.value for d in b_deals) == ["GATHERING_PAPERWORK", "HANDED_OVER"]
     assert [d.stage.value for d in c_deals] == ["GATHERING_PAPERWORK"]
     assert "HANDED_OVER" not in {move.to.value for move in c_deal.allowed_stage_moves}
-    # And no pre-shipment document: `sample_data_deals` adds the one migration 0030
-    # requires only to deals it is about to hand over, so C's refusal names that too.
+    # Five clauses. C is a PROSPECT, its check is FLAGGED, its deal has no
+    # pre-shipment document, and its buyer is unscreened — `sample_data_deals`
+    # satisfies the paperwork and the buyer's screening only for deals it is about to
+    # hand over, so C keeps showing every reason it cannot go. The buyer's two are
+    # BQ-4, live since task 2.5 wired Developer 1's reader.
     assert c_deal.handover_blocked_reason == (
         "the company is PROSPECT, not CUSTOMER; the background check is FLAGGED, not CLEAR; "
-        "missing required documents: PRE_SHIPMENT"
+        "missing required documents: PRE_SHIPMENT; "
+        "the buyer's sanctions check is MISSING, not PASSED; "
+        "the buyer's AML check is MISSING, not PASSED"
     )
     assert "CLEAR" in {row.to_status for row in b_checks}
 

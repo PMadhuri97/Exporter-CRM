@@ -35,6 +35,10 @@ class ExporterSource(str, enum.Enum):
     BROKER = "BROKER"
     EVENT = "EVENT"
     EXISTING_CUSTOMER = "EXISTING_CUSTOMER"
+    #: Created by the buyer migration, or by an RM recording a deal's buyer (IQ-6,
+    #: allocation F3). Says the relationship began as somebody else's counterparty
+    #: rather than as a lead we went looking for.
+    DEAL_BUYER = "DEAL_BUYER"
 
 
 class ExporterMarker(str, enum.Enum):
@@ -59,3 +63,41 @@ class ExporterJourney(str, enum.Enum):
     LEAD = "LEAD"
     PROSPECT = "PROSPECT"
     CUSTOMER = "CUSTOMER"
+
+
+class CompanyIdentityType(str, enum.Enum):
+    """Which kind of registration identifies this company — **owner: Developer 3**
+    (allocation F3, plan P4-1).
+
+    An Indian company is identified by its PAN; a foreign one by whatever its own
+    jurisdiction issues, which ``registration_number`` carries. The distinction has to
+    be a column rather than "has a PAN?", because a buyer company created by the
+    migration may have neither yet (IQ-7 excuses migrated buyers from the requirement)
+    and "we do not know which" must not read as "foreign".
+
+    Nullable on ``exporter_profile``: every company created before F3 predates the
+    question. Migration 0032 sets ``IN_PAN`` wherever a PAN is already stored, which is
+    the only case it can infer safely.
+    """
+
+    IN_PAN = "IN_PAN"
+    FOREIGN_REG = "FOREIGN_REG"
+
+
+class CompanyPipelineStatus(str, enum.Enum):
+    """Whether this company is in the sales pipeline at all — **owner: Developer 3**
+    (allocation F3, plan P4-1, P4-2).
+
+    A company that exists only because it was somebody's buyer is not a lead, and must
+    not appear in pipeline counts or be chased by sales (plan §8: buyers become leads
+    only when someone onboards them). It is still a full company record: it can be
+    screened, cleared and have checks recorded against it (Developer 1's P4-11).
+
+    ``NOT_IN_PIPELINE`` implies the journey has not started — `LEAD`, with
+    qualification `NOT_YET_REVIEWED` and conversation `NOT_CONTACTED` — and migration
+    0032 enforces that with a check constraint. `POST /exporters/{id}/pipeline`
+    (task 3.11) is the one way out, and it starts the journey properly.
+    """
+
+    IN_PIPELINE = "IN_PIPELINE"
+    NOT_IN_PIPELINE = "NOT_IN_PIPELINE"
