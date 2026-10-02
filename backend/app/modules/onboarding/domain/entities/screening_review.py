@@ -5,8 +5,17 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    String,
+    Text,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.platform.database.models import AnerModel
@@ -45,6 +54,17 @@ class ScreeningReviewItem(AnerModel):
     enforces, so it needs no migration.
     ``status`` is one of ``SCREENING_STATUSES`` at the database too
     (``ck_screening_review_item_status``, migration 0021).
+
+    ``evidence_refs`` (Developer 1, plan P2-1b) is what an answer rests on, in the
+    verification result's ``{type, ref}`` shape — ``document`` (a ``crm_document.id``
+    of the company) or ``url`` (http(s)). Optional (IQ-14). Added by migration
+    ``onboarding_0024_dev1_screen_evid`` as ``NOT NULL DEFAULT '[]'``: the DDL filled
+    the existing rows without firing the append-only trigger, so no row was updated.
+
+    ``cycle_id`` (P2-3a) is the check cycle the answer belongs to, stamped by
+    ``ScreeningReviewService``. ``NULL`` on rows written before cycles existed reads as
+    the company's cycle 1. The composite foreign key ``fk_screening_review_item_cycle``
+    ties it to a cycle **of the same company**.
     """
 
     __tablename__ = "screening_review_item"
@@ -63,6 +83,21 @@ class ScreeningReviewItem(AnerModel):
             "status IN (" + ", ".join(f"'{s}'" for s in SCREENING_STATUSES) + ")",
             name="ck_screening_review_item_status",
         ),
+        CheckConstraint(  # 0024
+            "jsonb_typeof(evidence_refs) = 'array'",
+            name="ck_screening_review_item_evidence_refs_array",
+        ),
+        ForeignKeyConstraint(  # 0025
+            ["cycle_id", "customer_id"],
+            [f"{SCHEMA}.check_cycle.id", f"{SCHEMA}.check_cycle.company_id"],
+            name="fk_screening_review_item_cycle",
+            ondelete="RESTRICT",
+        ),
+        Index(  # 0025
+            "ix_screening_review_item_cycle_id",
+            "cycle_id",
+            postgresql_where=text("cycle_id IS NOT NULL"),
+        ),
         {"schema": SCHEMA},
     )
 
@@ -80,6 +115,12 @@ class ScreeningReviewItem(AnerModel):
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: ``[{"type": "document" | "url", "ref": str}, ...]`` — optional (IQ-14).
+    evidence_refs: Mapped[list[dict[str, str]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    #: The check cycle this answer belongs to; ``NULL`` = the company's cycle 1.
+    cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
 class BankActivityFinding(AnerModel):

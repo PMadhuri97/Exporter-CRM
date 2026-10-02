@@ -20,6 +20,7 @@ from httpx import AsyncClient
 from app.modules.onboarding.domain.storage import DocumentScanStatus
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.compliance import make_compliance_user
 from app.modules.onboarding.tests.integration.test_l4a_background_check_service import (
     _document,
     _service,
@@ -331,8 +332,14 @@ class TestRecordDecision:
             headers=auth_header(token),
         )
 
-        assert response.status_code == 201, response.text
-        assert response.json()["from_value"] == "IN_REVIEW"
+        # FLAGGED needs a second approver (maker-checker, IQ-1): proposed, not moved.
+        assert response.status_code == 202, response.text
+        body = response.json()
+        assert (body["from_value"], body["to_value"], body["status"]) == (
+            "IN_REVIEW",
+            "FLAGGED",
+            "OPEN",
+        )
 
     async def test_an_invalid_risk_value_is_422(self, client: AsyncClient):
         token = await token_with_role(client, UserRole.COMPLIANCE)
@@ -375,9 +382,11 @@ class TestRecordDecision:
         assert response.status_code == 401
 
     async def test_a_full_journey_through_the_api(self, client: AsyncClient):
-        """Start, ask for more, record what arrived, clear — all through HTTP."""
+        """Start, ask for more, record what arrived, flag, hold, reassess — all through
+        HTTP; the flag and the hold proposed by one officer and approved by another."""
         ops = await token_with_role(client, UserRole.OPERATIONS)
         compliance = await token_with_role(client, UserRole.COMPLIANCE)
+        checker = (await make_compliance_user(client, label="api-checker")).token
         company_id = await make_company()
         await _document(company_id, DocumentScanStatus.AVAILABLE)
 
@@ -386,6 +395,16 @@ class TestRecordDecision:
                 f"{_url(company_id)}/decisions", json=body, headers=auth_header(token)
             )
 
+        async def two_person(**body) -> int:
+            """Proposed by `compliance` (202), approved by `checker` (200)."""
+            proposed = await move(compliance, **body)
+            assert proposed.status_code == 202, proposed.text
+            approved = await client.post(
+                f"{_url(company_id)}/proposals/{proposed.json()['id']}/approve",
+                headers=auth_header(checker),
+            )
+            return approved.status_code
+
         assert (await move(ops, to_value="IN_REVIEW")).status_code == 201
         assert (
             await move(compliance, to_value="MORE_INFO", reason="need the accounts")
@@ -393,12 +412,8 @@ class TestRecordDecision:
         assert (
             await move(ops, to_value="IN_REVIEW", reason="accounts received")
         ).status_code == 201
-        assert (
-            await move(compliance, to_value="FLAGGED", reason="a director matched")
-        ).status_code == 201
-        assert (
-            await move(compliance, to_value="ON_HOLD", reason="awaiting the regulator")
-        ).status_code == 201
+        assert await two_person(to_value="FLAGGED", reason="a director matched") == 200
+        assert await two_person(to_value="ON_HOLD", reason="awaiting the regulator") == 200
         assert (
             await move(compliance, to_value="IN_REVIEW", reason="the regulator replied")
         ).status_code == 201

@@ -250,15 +250,24 @@ async def test_a_company_with_children_cannot_be_deleted():
 
 async def test_verification_results_deliberately_have_no_company_link():
     """`entity_reference` names several kinds of subject (company, person,
-    buyer), so it cannot point at one table."""
+    buyer), so it cannot point at one table.
+
+    Since F1 (0023) and P2-3a (0025) the table has two foreign keys of its own — the
+    set-once `subject_company_id` and `cycle_id` — and neither is on
+    `entity_reference`, which still has none."""
     conn = _connect()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT count(*) FROM pg_constraint "
+                "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
                 "WHERE conrelid = 'onboarding.verification_result'::regclass AND contype = 'f'"
             )
-            assert cur.fetchone()[0] == 0
+            foreign_keys = dict(cur.fetchall())
+            assert set(foreign_keys) == {
+                "fk_verification_result_subject_company_id",
+                "fk_verification_result_cycle_id",
+            }
+            assert not any("entity_reference" in d for d in foreign_keys.values())
     finally:
         conn.close()
 
@@ -750,7 +759,8 @@ async def test_sample_data_reaches_the_three_example_companies():
     """Architecture §3.9, reached through the services rather than written: B is a
     CUSTOMER because its check is CLEAR, with one of its two deals handed over; C is
     a PROSPECT whose check is FLAGGED and whose deal is gathering paperwork, its
-    handover refused for both reasons; A is untouched by both. And the rule behind
+    handover refused for both reasons and for its missing pre-shipment document; A is
+    untouched by both. And the rule behind
     B's journey holds — a CUSTOMER's history shows a CLEAR check (company-record §8,
     invariant 2)."""
     await load_sample_data()
@@ -776,8 +786,11 @@ async def test_sample_data_reaches_the_three_example_companies():
     assert sorted(d.stage.value for d in b_deals) == ["GATHERING_PAPERWORK", "HANDED_OVER"]
     assert [d.stage.value for d in c_deals] == ["GATHERING_PAPERWORK"]
     assert "HANDED_OVER" not in {move.to.value for move in c_deal.allowed_stage_moves}
+    # And no pre-shipment document: `sample_data_deals` adds the one migration 0030
+    # requires only to deals it is about to hand over, so C's refusal names that too.
     assert c_deal.handover_blocked_reason == (
-        "the company is PROSPECT, not CUSTOMER; the background check is FLAGGED, not CLEAR"
+        "the company is PROSPECT, not CUSTOMER; the background check is FLAGGED, not CLEAR; "
+        "missing required documents: PRE_SHIPMENT"
     )
     assert "CLEAR" in {row.to_status for row in b_checks}
 

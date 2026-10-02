@@ -181,9 +181,9 @@ async def test_rxil_results_are_kept_exactly_as_supplied():
 
 
 async def test_rxil_qualification_is_not_recomputed_locally():
-    """Revenue of 12 USD fails the CRM's own threshold, and two required
-    criteria have no result at all — the local suggestion would be
-    NOT_QUALIFIED. RXIL said QUALIFIED; QUALIFIED it stays, and the outcome
+    """Revenue of 12 USD fails the CRM's own threshold, and a required
+    criterion (`years_in_business`) has no result at all — the local suggestion
+    would be NOT_QUALIFIED. RXIL said QUALIFIED; QUALIFIED it stays, and the outcome
     rests on RXIL's results only."""
     result = await _ingest(_package())
     async with db_services.AsyncSessionLocal() as db:

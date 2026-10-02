@@ -5,6 +5,10 @@
  * Built from routes that already exist (follow-ups, company search); there is
  * no statistics endpoint, and this page does not pretend there is one. The
  * cards are the onboarding module's, reached through its public facade.
+ *
+ * Compliance (Developer 1, plans P3-1c, P3-3c): "Proposals awaiting me" for COMPLIANCE
+ * and ADMIN — the officers who approve — and "Re-KYC due" for all staff (the RM reads
+ * it). Neither is shown to DEVELOPER, whom the background-check routes refuse (D8).
  */
 
 import { Plus } from 'lucide-react';
@@ -16,8 +20,10 @@ import {
   FollowUpsDueCard,
   paths,
   PipelineSummaryCard,
+  ProposalsAwaitingMeCard,
+  ReKycDueCard,
 } from '@/modules/onboarding';
-import { isStaffRole, roleLabel, useCurrentUser } from '@/platform/auth';
+import { isComplianceRole, isStaffRole, roleLabel, useCurrentUser } from '@/platform/auth';
 
 function greeting(now: Date): string {
   const hour = now.getHours();
@@ -46,6 +52,8 @@ export function HomePage() {
       />
 
       <div className="grid gap-5 lg:grid-cols-2">
+        {isComplianceRole(user.role) && <ProposalsAwaitingMeCard />}
+        {isStaffRole(user.role) && <ReKycDueCard />}
         <FollowUpsDueCard userId={String(user.id)} />
         <CheckBacksDueCard />
         <div className="lg:col-span-2">

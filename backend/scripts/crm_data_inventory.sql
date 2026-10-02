@@ -126,8 +126,9 @@ FROM (
 ) AS pan_less;
 
 -- ── 5. CLEAR companies and when they were cleared ────────────────────────────
--- The chain head is the decision nothing supersedes; `expires_at` does not exist
--- yet (it arrives with Dev 1's F1), so age is computed from the decision date.
+-- The chain head is the decision nothing supersedes. Age is computed from the
+-- decision date rather than `expires_at` (Dev 1's `onboarding_0027_dev1_expiry`), so
+-- this also runs on a database that has not reached that revision.
 
 \echo ''
 \echo '-- 5. Companies currently CLEAR, by age of the clearing decision ---------'

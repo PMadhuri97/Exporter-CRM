@@ -236,6 +236,14 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("POST", f"{CRM}/deals/{{deal_id}}/transitions"): STAFF,
     ("PUT", f"{CRM}/deals/{{deal_id}}/buyer"): STAFF,
     #
+    # Which paperwork a handover needs (plan P2-5a). A settings rule about every
+    # deal rather than a property of one, so it sits under `/settings/` and is
+    # gated like `/qualification/criteria`: any CRM reader may see the rule — it
+    # carries no identifiers and nothing decision D8 protects — and only ADMIN may
+    # change it, because changing it changes which deals can be handed over.
+    ("GET", f"{CRM}/settings/deal-required-documents"): READERS,
+    ("POST", f"{CRM}/settings/deal-required-documents"): ADMIN_ONLY,
+    #
     # Documents (L3-09). Uploading is a staff write; reading, the catalogue and
     # minting a download link are reader routes. `GET /documents/content` is a
     # reader route **and** needs a valid signature over the key and the expiry, and
@@ -275,6 +283,36 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
         "GET",
         f"{CRM}/exporters/{{customer_id}}/screening-review/{{item_key}}/history",
     ): STAFF,
+    #
+    # ── Compliance engine — owner: Developer 1 (allocation §3; lane rows only) ──
+    # DEVELOPER is refused on all three (D8): the evidence carries reasons, comments and
+    # review notes; a cycle carries the reason a Re-KYC was started.
+    (
+        "GET",
+        f"{CRM}/exporters/{{company_id}}/background-check/decisions/{{decision_id}}/evidence",
+    ): STAFF,  # P2-1a
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): STAFF,  # P2-3d
+    # P2-3c: IQ-3 — compliance and admin start a cycle; the RM does not.
+    ("POST", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): COMPLIANCE_OR_ADMIN,
+    # P3-1b/c — maker-checker (decision A). Staff read a company's proposals; only
+    # compliance and admin approve, reject or withdraw, and read the approval queue —
+    # the RM never approves compliance (plan §8).
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/proposals"): STAFF,
+    (
+        "POST",
+        f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/approve",
+    ): COMPLIANCE_OR_ADMIN,
+    (
+        "POST",
+        f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/reject",
+    ): COMPLIANCE_OR_ADMIN,
+    (
+        "POST",
+        f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/withdraw",
+    ): COMPLIANCE_OR_ADMIN,
+    ("GET", f"{CRM}/background-check/proposals"): COMPLIANCE_OR_ADMIN,
+    # P3-3c — the Re-KYC due list: compliance and admin act on it, the RM reads it.
+    ("GET", f"{CRM}/background-check/due"): STAFF,
 }
 
 

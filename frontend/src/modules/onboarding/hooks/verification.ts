@@ -27,6 +27,7 @@ import type {
   ScreeningChecklistStatus,
   TriggerVerificationRequest,
   VerificationEntityType,
+  VerificationEvidenceRef,
 } from '../types';
 
 /**
@@ -112,10 +113,11 @@ export function useReviewVerification(
   });
 }
 
-export function useScreeningReview(customerId: string | undefined) {
+/** The checklist in the current check cycle, or in `cycleId` (read-only; P2-3d). */
+export function useScreeningReview(customerId: string | undefined, cycleId?: string) {
   return useQuery({
-    queryKey: ['screeningReview', customerId],
-    queryFn: () => getScreeningReview(customerId!),
+    queryKey: ['screeningReview', customerId, cycleId ?? 'current'],
+    queryFn: () => getScreeningReview(customerId!, cycleId),
     enabled: Boolean(customerId),
   });
 }
@@ -127,11 +129,19 @@ export function useUpdateScreeningReviewItem(customerId: string) {
       itemKey,
       status,
       comment,
+      evidenceRefs = [],
     }: {
       itemKey: string;
       status: ScreeningChecklistStatus;
       comment: string | null;
-    }) => updateScreeningReviewItem(customerId, itemKey, { status, comment }),
+      /** Optional evidence (P2-1b, IQ-14). */
+      evidenceRefs?: VerificationEvidenceRef[];
+    }) =>
+      updateScreeningReviewItem(customerId, itemKey, {
+        status,
+        comment,
+        ...(evidenceRefs.length > 0 ? { evidence_refs: evidenceRefs } : {}),
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['screeningReview', customerId] });
       void queryClient.invalidateQueries({ queryKey: ['screeningItemHistory', customerId] });

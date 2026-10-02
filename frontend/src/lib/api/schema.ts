@@ -787,7 +787,7 @@ export interface paths {
         };
         /**
          * List persisted screening-review checklist decisions
-         * @description The current decision on each checklist item that has one, the full checklist catalogue in display order, and whether the caller may record a decision.
+         * @description The decision on each checklist item that has one in a check cycle — the current cycle, or the one named by `cycle_id` — the full checklist catalogue in display order, and whether the caller may record a decision (only ever in the current cycle).
          */
         get: operations["list_screening_review_api_v1_onboarding_exporters__customer_id__screening_review_get"];
         put?: never;
@@ -826,7 +826,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Record or update one screening-review checklist decision */
+        /**
+         * Record or update one screening-review checklist decision
+         * @description Appends a new answer to the item in the company's current check cycle; every earlier answer stays in the item's history. `evidence_refs` is optional: a `document` must be one of the company's own `AVAILABLE` documents, a `url` an http(s) link. A retired item (`website-reviewed`) takes no new answer.
+         */
         put: operations["update_screening_review_api_v1_onboarding_exporters__customer_id__screening_review__item_key__put"];
         post?: never;
         delete?: never;
@@ -1034,7 +1037,7 @@ export interface paths {
         };
         /**
          * A company's history
-         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification` or `screening` rows, nor a row's `risk_rating` or `clearing_decision_id` details (decision D8). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
+         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details (decision D8). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
          */
         get: operations["list_company_history_api_v1_onboarding_exporters__customer_id__history_get"];
         put?: never;
@@ -1168,7 +1171,9 @@ export interface paths {
          * Move a deal to another stage
          * @description The only way a deal's stage changes. The move must be one the stage graph allows (deal contract §1.1); `WITHDRAWN` requires a reason (assumption A7) and every other stage refuses one.
          *
-         *     `HANDED_OVER` additionally requires a buyer and assumption A5's guard — the company a `CUSTOMER` with a `CLEAR` background check. That check is Developer 4's column in migration 0015, which has not landed, so every handover is currently refused with `DEAL_HANDOVER_BLOCKED` rather than being allowed on the strength of a column that does not exist.
+         *     `HANDED_OVER` additionally requires a buyer, and every condition of the handover guard (deal contract §6.1). Live today: the company must be a `CUSTOMER` with a `CLEAR` background check (assumption A5), and the deal must have an `AVAILABLE` document in every category `/settings/deal-required-documents` requires.
+         *
+         *     A refusal is 409 `DEAL_HANDOVER_BLOCKED` and names **every** unmet condition, not the first — so an operator does not have to fix one to discover the next.
          */
         post: operations["transition_deal_stage_api_v1_onboarding_deals__deal_id__transitions_post"];
         delete?: never;
@@ -1195,6 +1200,36 @@ export interface paths {
          */
         put: operations["set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/settings/deal-required-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which document categories a deal must have before handover
+         * @description `requirements` is the current version of every requirement, whether or not it is still `active` — a removed requirement is shown as inactive rather than hidden, because the table is append-only and the record of what was required when is part of the rule.
+         *
+         *     `history` is every version ever written. `can_edit` says whether **this** caller may change the rule, so the screen offers the controls from the server rather than from the role (§7.5).
+         */
+        get: operations["list_deal_required_documents_api_v1_onboarding_settings_deal_required_documents_get"];
+        put?: never;
+        /**
+         * Require a document category before handover, or stop requiring it
+         * @description Writes a **new version** of the requirement. There is no delete: send `active: false` to stop requiring a category, which records that it was removed, by whom and when.
+         *
+         *     `document_type` is optional — left out, any document in the category satisfies the requirement, which is how the seeded `PRE_SHIPMENT` rule works. Named, it must be a type the document settings configure under that category (the same list the upload route accepts), or no deal could ever meet it.
+         *
+         *     **This changes which deals can be handed over.** A deal with no `AVAILABLE` document in a required category is refused with 409 `DEAL_HANDOVER_BLOCKED`, naming the category. Deals already handed over are unaffected: the guard runs on the move, never retrospectively.
+         */
+        post: operations["set_deal_required_document_api_v1_onboarding_settings_deal_required_documents_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1371,7 +1406,7 @@ export interface paths {
         get: operations["list_background_check_decisions_api_v1_onboarding_exporters__company_id__background_check_decisions_get"];
         put?: never;
         /**
-         * Record a background-check decision
+         * Record a background-check decision (or propose one for approval)
          * @description Moves the gauge and records why, as one locked decision with the evidence it rested on, in one transaction.
          *
          *     The request names **where the check is going** and nothing about who is deciding: the actor comes from the login session, the source and decided-by kind are the server's, and the evidence snapshot is assembled by the server. A request carrying any of them is refused (422).
@@ -1379,8 +1414,180 @@ export interface paths {
          *     Send `from_value` (the value the screen showed) so that a request made from a stale screen is refused (409) rather than becoming a different act.
          *
          *     Roles are enforced per move, not merely per route: OPERATIONS may start a check and record what arrived, and nothing else.
+         *
+         *     **Maker-checker.** A move to CLEAR, FLAGGED or ON_HOLD is not recorded here: it becomes a **proposal** (202, the proposal in the body) — its rules and, for CLEAR, its prerequisites checked now — and the check does not move until a different COMPLIANCE or ADMIN user approves it. While a proposal is open no other move is accepted (409 `BACKGROUND_CHECK_PROPOSAL_OPEN`).
          */
         post: operations["record_background_check_decision_api_v1_onboarding_exporters__company_id__background_check_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/decisions/{decision_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read what one background-check decision rested on
+         * @description Resolves each id the decision pinned into a readable item: a verification result (type, status, provenance, who recorded it and when, its evidence and the review the decision rested on), a screening answer (the item, its status, comment, evidence and who answered it) or a document (name, category, scan status and whether it can be opened).
+         *
+         *     What is shown is what the decision rested on: every pinned row is append-only or frozen. A screening item since retired from the checklist keeps its label (`retired: true`). No identifier (PAN, GSTIN, IEC, CIN, tax id or contact) is carried. DEVELOPER is refused (D8).
+         */
+        get: operations["get_background_check_decision_evidence_api_v1_onboarding_exporters__company_id__background_check_decisions__decision_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a company's check cycles
+         * @description Every KYC/KYB round of this company's background check, cycle 1 first. The check decides on the current cycle (the highest number); earlier cycles stay readable exactly as they were. Inputs and decisions recorded before cycles existed belong to cycle 1. DEVELOPER is refused (D8).
+         */
+        get: operations["list_check_cycles_api_v1_onboarding_exporters__company_id__background_check_cycles_get"];
+        put?: never;
+        /**
+         * Start a new check cycle (Re-KYC or Re-KYB)
+         * @description Starts the next KYC/KYB round. Every checklist item starts unanswered and no result carries over; the previous cycle stays readable.
+         *
+         *     On a CLEAR company the same request also records the reopen (CLEAR → IN_REVIEW, reason "Re-KYC: …"), so handovers pause until the new cycle is cleared. On NOT_STARTED, IN_REVIEW or MORE_INFO the gauge does not move. A FLAGGED or ON_HOLD company is reassessed first (409). A cycle with nothing recorded in it yet cannot be followed by another (409), which is also why two simultaneous starts make one cycle.
+         *
+         *     COMPLIANCE and ADMIN only; the actor comes from the session.
+         */
+        post: operations["start_check_cycle_api_v1_onboarding_exporters__company_id__background_check_cycles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a company's background-check proposals
+         * @description Every proposed CLEAR, FLAGGED or ON_HOLD on this company, newest first, with how each ended: approved (and the decision it wrote), rejected (and why) or withdrawn. An open one carries what **this caller** may do with it. Proposals and their resolutions are append-only. DEVELOPER is refused (D8).
+         */
+        get: operations["list_background_check_proposals_api_v1_onboarding_exporters__company_id__background_check_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/proposals/{proposal_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a proposed background-check decision
+         * @description The second person in maker-checker. Under the company's lock: refuses the proposer and a proposal that is resolved or stale (the check, its latest decision or its inputs changed since), re-evaluates the Clear rules, then writes the decision — `decided_by` the proposer, `approved_by` you — pins its evidence, sets a CLEAR's expiry and makes a qualified PROSPECT a CUSTOMER, in one transaction. COMPLIANCE or ADMIN; the RM never approves.
+         */
+        post: operations["approve_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a proposed background-check decision
+         * @description Closes the proposal with a reason; the check does not move. Anyone but the proposer, COMPLIANCE or ADMIN. A stale proposal can be rejected.
+         */
+        post: operations["reject_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/proposals/{proposal_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw your own background-check proposal
+         * @description The proposer closes their own proposal (the reason is optional); the check does not move.
+         */
+        post: operations["withdraw_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/background-check/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Background-check proposals across companies (the approval queue)
+         * @description `status=open` (the default) lists every proposal awaiting approval, the longest-waiting first — the Home card "Proposals awaiting me" adds `awaiting=me`, which leaves out the caller's own. `approved`, `rejected` and `withdrawn` list resolved ones, newest first. Each carries the company's name (never an identifier) and what this caller may do with it. COMPLIANCE and ADMIN only: they are the ones who approve.
+         */
+        get: operations["list_proposals_across_companies_api_v1_onboarding_background_check_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/background-check/due": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Companies due for Re-KYC
+         * @description CLEAR companies whose Clear has expired or expires before `before` (default: now + the Re-KYC window, 30 days unless configured) — the expired first, then the soonest. An expired Clear still reads CLEAR (nothing moves the gauge automatically) but no longer promotes the company or lets its deals be handed over. A company whose Re-KYC has started is not listed: starting it reopens the check. Names only, never an identifier. Staff; DEVELOPER is refused (D8).
+         */
+        get: operations["list_rekyc_due_api_v1_onboarding_background_check_due_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1789,6 +1996,11 @@ export interface components {
             /** Approvals */
             approvals: components["schemas"]["ApprovalResult"][];
         };
+        /** ApproveBackgroundCheckProposalResponse */
+        ApproveBackgroundCheckProposalResponse: {
+            decision: components["schemas"]["BackgroundCheckDecisionResponse"];
+            proposal: components["schemas"]["BackgroundCheckProposalResponse"];
+        };
         /**
          * ApproverRole
          * @enum {string}
@@ -1834,6 +2046,21 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * BackgroundCheckCycleActionResponse
+         * @description A new cycle this caller may start now — the Re-KYC / Re-KYB buttons.
+         */
+        BackgroundCheckCycleActionResponse: {
+            /** Kind */
+            kind: string;
+            /** Reason Required */
+            reason_required: boolean;
+            /**
+             * Reopens
+             * @description Starting it also moves this CLEAR company back to IN_REVIEW, in the same request, so handovers pause until the new cycle is cleared.
+             */
+            reopens: boolean;
         };
         /**
          * BackgroundCheckDecisionListResponse
@@ -1889,6 +2116,40 @@ export interface components {
             supersedes_decision_id: string | null;
             /** Evidence */
             evidence: components["schemas"]["EvidenceItemResponse"][];
+            /**
+             * Rules Version
+             * @description The Clear rules in force when the decision was taken. Null on decisions recorded before rules were versioned: those read as `clear-2026-09-28-8items` (the eight-item checklist).
+             */
+            rules_version?: string | null;
+            /**
+             * Cycle Id
+             * @description The check cycle the decision was taken in (a legacy decision reads as cycle 1).
+             */
+            cycle_id?: string | null;
+            /**
+             * Cycle Number
+             * @description That cycle's number: 1, 2, 3 …
+             */
+            cycle_number?: number | null;
+            /**
+             * Proposal Id
+             * @description Maker-checker: the proposal this decision approved. Null for a decision recorded by one person (a move that needs no approval, or one recorded before maker-checker).
+             */
+            proposal_id?: string | null;
+            /**
+             * Approved By
+             * @description Who approved it (never `decided_by`, who proposed it).
+             */
+            approved_by?: string | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
+            /** Approved At */
+            approved_at?: string | null;
+            /**
+             * Expires At
+             * @description When this CLEAR stops being current. Null on other moves, and on a CLEAR recorded before expiry was stored (it expires one year after `decided_at`).
+             */
+            expires_at?: string | null;
         };
         /**
          * BackgroundCheckMoveResponse
@@ -1904,6 +2165,106 @@ export interface components {
             reason_required: boolean;
             /** Risk Required */
             risk_required: boolean;
+            /**
+             * Approval Required
+             * @description Maker-checker: recording this move creates a proposal that a different COMPLIANCE or ADMIN user must approve before the check moves.
+             * @default false
+             */
+            approval_required: boolean;
+        };
+        /** BackgroundCheckProposalListResponse */
+        BackgroundCheckProposalListResponse: {
+            /** Proposals */
+            proposals: components["schemas"]["BackgroundCheckProposalResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * BackgroundCheckProposalResponse
+         * @description A proposed CLEAR, FLAGGED or ON_HOLD, and how it ended once resolved.
+         */
+        BackgroundCheckProposalResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @description The company's name (no identifier is ever carried).
+             */
+            company_name?: string | null;
+            /**
+             * Based On Decision Id
+             * Format: uuid
+             */
+            based_on_decision_id: string;
+            from_value: components["schemas"]["BackgroundCheckState"];
+            to_value: components["schemas"]["BackgroundCheckState"];
+            risk_rating: components["schemas"]["BackgroundCheckRisk"] | null;
+            /** Reason */
+            reason: string;
+            /** Proposed By */
+            proposed_by: string;
+            /** Proposed By Name */
+            proposed_by_name?: string | null;
+            /**
+             * Proposed At
+             * Format: date-time
+             */
+            proposed_at: string;
+            /**
+             * Cycle Id
+             * Format: uuid
+             */
+            cycle_id: string;
+            /** Cycle Number */
+            cycle_number?: number | null;
+            /** Rules Version */
+            rules_version: string;
+            /**
+             * Evidence Count
+             * @description How many items the proposed decision rests on.
+             */
+            evidence_count: number;
+            /**
+             * Status
+             * @description OPEN while awaiting approval; then APPROVED, REJECTED or WITHDRAWN.
+             * @enum {string}
+             */
+            status: "OPEN" | "APPROVED" | "REJECTED" | "WITHDRAWN";
+            /** Resolved By */
+            resolved_by?: string | null;
+            /** Resolved By Name */
+            resolved_by_name?: string | null;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Resolution Reason */
+            resolution_reason?: string | null;
+            /**
+             * Decision Id
+             * @description The decision an approval wrote.
+             */
+            decision_id?: string | null;
+            /**
+             * Stale Reason
+             * @description Set on an open proposal that can no longer be approved because the check or its inputs moved since; it can only be rejected or withdrawn. Served on the company's own reads, not in the cross-company queue.
+             */
+            stale_reason?: string | null;
+            /**
+             * Allowed Actions
+             * @description What **this caller** may do with it: the proposer may WITHDRAW; another COMPLIANCE or ADMIN user may APPROVE (unless stale) and REJECT.
+             */
+            allowed_actions?: ("APPROVE" | "REJECT" | "WITHDRAW")[];
         };
         /**
          * BackgroundCheckResponse
@@ -1937,6 +2298,32 @@ export interface components {
              * @description Which of CLEAR's prerequisites are unmet right now, by name, so the screen can say what is outstanding instead of showing a 409 afterwards. Empty when the company is not IN_REVIEW or when nothing is outstanding.
              */
             clear_blocked_reasons?: string[];
+            compliance: components["schemas"]["CompanyComplianceFactsResponse"];
+            /** @description The cycle the check decides on now; null before the company has one. */
+            current_cycle?: components["schemas"]["CheckCycleResponse"] | null;
+            /**
+             * Allowed Cycle Actions
+             * @description The new cycles this caller may start now (Re-KYC, Re-KYB). Empty for a role that may not, on a FLAGGED or ON_HOLD company, while the current cycle has nothing recorded in it, or while a proposal awaits approval.
+             */
+            allowed_cycle_actions?: components["schemas"]["BackgroundCheckCycleActionResponse"][];
+            /**
+             * Awaiting Approval
+             * @description A proposed CLEAR, FLAGGED or ON_HOLD awaits a second approver. The gauge has not moved (it reads IN_REVIEW, or FLAGGED for a proposed ON_HOLD), and `allowed_moves` is empty until it is approved, rejected or withdrawn.
+             * @default false
+             */
+            awaiting_approval: boolean;
+            open_proposal?: components["schemas"]["BackgroundCheckProposalResponse"] | null;
+            /**
+             * Required Checks
+             * @description The verification types CLEAR requires (KYB, AML, SANCTIONS — rule B) and the state of each in the current cycle.
+             */
+            required_checks?: components["schemas"]["RequiredCheckResponse"][];
+            /**
+             * Rekyc Due
+             * @description CLEAR, and the Clear has expired or expires within the Re-KYC window. An expired Clear still reads CLEAR — nothing moves the gauge — but no longer promotes the company or lets its deals be handed over.
+             * @default false
+             */
+            rekyc_due: boolean;
         };
         /**
          * BackgroundCheckRisk
@@ -2072,6 +2459,35 @@ export interface components {
             document_type: string;
             /** @default EXPORTER_UPLOAD */
             source: components["schemas"]["DocumentSource"];
+        };
+        /**
+         * BuyerCompanyResponse
+         * @description The deal's buyer as a company record (plan P4-4), summarised.
+         *
+         *     `pan` and `cin` are masked for OPERATIONS and DEVELOPER by exactly the rule
+         *     the company response uses — the buyer being a company does not make its
+         *     identifiers more visible than the seller's.
+         *
+         *     `pipeline_status` is `null` until Developer 3's F3 column exists. The field is
+         *     in the shape from F2 on purpose: the company screens are built against this
+         *     response, and adding a field to it later would be a contract change.
+         */
+        BuyerCompanyResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            /** Pipeline Status */
+            pipeline_status: string | null;
+            /** Pan */
+            pan: string | null;
+            /** Cin */
+            cin: string | null;
         };
         /**
          * BuyerSnapshotResponse
@@ -2275,6 +2691,59 @@ export interface components {
             is_overdue: boolean;
         };
         /**
+         * CheckCycleListResponse
+         * @description Every cycle of one company, cycle 1 first.
+         */
+        CheckCycleListResponse: {
+            /** Cycles */
+            cycles: components["schemas"]["CheckCycleResponse"][];
+            /** Current Cycle Id */
+            current_cycle_id: string | null;
+        };
+        /**
+         * CheckCycleResponse
+         * @description One KYC/KYB round of a company's background check.
+         */
+        CheckCycleResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Number */
+            number: number;
+            /**
+             * Kind
+             * @description INITIAL (cycle 1), RE_KYC, RE_KYB or FULL.
+             */
+            kind: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Started By
+             * @description Who started it (a user id), or the migration or code path that created cycle 1.
+             */
+            started_by: string;
+            /** Started By Name */
+            started_by_name?: string | null;
+            /** Source */
+            source: string;
+            /** Rules Version */
+            rules_version: string | null;
+            /** Is Current */
+            is_current: boolean;
+        };
+        /**
          * CheckType
          * @description A single unit of verification work requested from a provider.
          *
@@ -2285,6 +2754,36 @@ export interface components {
          * @enum {string}
          */
         CheckType: "IDENTITY" | "DOCUMENT" | "LIVENESS" | "SANCTIONS" | "PEP" | "ADVERSE_MEDIA" | "WATCHLIST";
+        /**
+         * CompanyComplianceFactsResponse
+         * @description The company's compliance facts now — ``ComplianceFactsReader.for_company``.
+         */
+        CompanyComplianceFactsResponse: {
+            /** Is Clear */
+            is_clear: boolean;
+            /**
+             * Clear Expires At
+             * @description When the current Clear stops being current (one year from the clearing decision). Null unless the check is CLEAR.
+             */
+            clear_expires_at: string | null;
+            /**
+             * Is Clear Current
+             * @description CLEAR and not yet expired. An expired Clear is due for Re-KYC.
+             */
+            is_clear_current: boolean;
+            /**
+             * Sanctions
+             * @description The latest real sanctions result in the current cycle: PASSED (or REVIEW with an ACCEPTED review), FAILED (or REVIEW with a REJECTED review), PENDING, or MISSING when none has been recorded.
+             * @enum {string}
+             */
+            sanctions: "PASSED" | "FAILED" | "MISSING" | "PENDING";
+            /**
+             * Aml
+             * @description The same, for AML.
+             * @enum {string}
+             */
+            aml: "PASSED" | "FAILED" | "MISSING" | "PENDING";
+        };
         /**
          * CompleteFollowUpRequest
          * @description Record that a follow-up was dealt with.
@@ -2640,6 +3139,51 @@ export interface components {
              */
             can_open_deal: boolean;
         };
+        /**
+         * DealRequiredDocumentResponse
+         * @description One version of one requirement.
+         */
+        DealRequiredDocumentResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            category: components["schemas"]["DocumentCategory"];
+            /** Document Type */
+            document_type: string | null;
+            /** Version */
+            version: number;
+            /** Active */
+            active: boolean;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * DealRequiredDocumentsResponse
+         * @description The handover rule as it stands, and how it got there.
+         *
+         *     `requirements` is the current version of every key, `active` or not, so a
+         *     screen can show that something was removed rather than merely not showing it.
+         *     `history` is every version ever written, newest first per key.
+         */
+        DealRequiredDocumentsResponse: {
+            /** Requirements */
+            requirements: components["schemas"]["DealRequiredDocumentResponse"][];
+            /** History */
+            history: components["schemas"]["DealRequiredDocumentResponse"][];
+            /**
+             * Can Edit
+             * @description Whether **this** caller may change the rule (ADMIN). The screen offers the controls from this rather than checking the role itself (§7.5).
+             * @default false
+             */
+            can_edit: boolean;
+        };
         /** DealResponse */
         DealResponse: {
             /**
@@ -2670,6 +3214,13 @@ export interface components {
              */
             updated_at: string;
             buyer: components["schemas"]["DealBuyerResponse"] | null;
+            buyer_company: components["schemas"]["BuyerCompanyResponse"] | null;
+            /** Handover Snapshot */
+            handover_snapshot: {
+                [key: string]: unknown;
+            } | null;
+            /** Seller Gst Registration Id */
+            seller_gst_registration_id: string | null;
             /** Allowed Stage Moves */
             allowed_stage_moves: components["schemas"]["DealStageMoveResponse"][];
             /** Handover Blocked Reason */
@@ -2711,6 +3262,185 @@ export interface components {
          * @enum {string}
          */
         DecidedByKind: "MANUAL" | "AUTOMATED";
+        /**
+         * DecisionEvidenceDocument
+         * @description A pinned company document. Open it through the documents routes.
+         */
+        DecisionEvidenceDocument: {
+            /**
+             * Crm Document Id
+             * Format: uuid
+             */
+            crm_document_id: string;
+            /** File Name */
+            file_name: string;
+            /** Category */
+            category: string;
+            /** Document Type */
+            document_type: string;
+            /** Scan Status */
+            scan_status: string;
+            /** Is Downloadable */
+            is_downloadable: boolean;
+            /** Uploaded By */
+            uploaded_by: string | null;
+            /** Uploaded By Name */
+            uploaded_by_name?: string | null;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+        };
+        /**
+         * DecisionEvidenceItemResponse
+         * @description One pinned id, resolved. Exactly the detail for `kind` is set (all three are null
+         *     only for a pinned row that can no longer be found).
+         */
+        DecisionEvidenceItemResponse: {
+            /** Kind */
+            kind: string;
+            verification?: components["schemas"]["DecisionEvidenceVerification"] | null;
+            screening_item?: components["schemas"]["DecisionEvidenceScreeningItem"] | null;
+            document?: components["schemas"]["DecisionEvidenceDocument"] | null;
+        };
+        /** DecisionEvidencePinnedReview */
+        DecisionEvidencePinnedReview: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Review Status */
+            review_status: string;
+            /** Reviewed By */
+            reviewed_by: string;
+            /** Reviewed By Name */
+            reviewed_by_name?: string | null;
+            /**
+             * Reviewed At
+             * Format: date-time
+             */
+            reviewed_at: string;
+            /** Note */
+            note: string | null;
+        };
+        /**
+         * DecisionEvidenceResponse
+         * @description What one decision rested on, readable.
+         */
+        DecisionEvidenceResponse: {
+            /**
+             * Decision Id
+             * Format: uuid
+             */
+            decision_id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            to_value: components["schemas"]["BackgroundCheckState"];
+            /**
+             * Rules Version
+             * @description The Clear rules it was taken under (a legacy decision reads as v1).
+             */
+            rules_version: string;
+            /** Cycle Id */
+            cycle_id: string | null;
+            /** Cycle Number */
+            cycle_number: number | null;
+            /** Items */
+            items: components["schemas"]["DecisionEvidenceItemResponse"][];
+        };
+        /**
+         * DecisionEvidenceScreeningItem
+         * @description The exact screening answer pinned (the checklist keeps every answer).
+         */
+        DecisionEvidenceScreeningItem: {
+            /**
+             * Screening Review Item Id
+             * Format: uuid
+             */
+            screening_review_item_id: string;
+            /** Item Key */
+            item_key: string;
+            /** Label */
+            label: string;
+            /**
+             * Retired
+             * @description The item has since left the checklist (e.g. the website review).
+             */
+            retired: boolean;
+            /** Status */
+            status: string;
+            /** Comment */
+            comment: string | null;
+            /** Evidence Refs */
+            evidence_refs: components["schemas"]["VerificationEvidenceRefOut"][];
+            /** Reviewed By */
+            reviewed_by: string | null;
+            /** Reviewed By Name */
+            reviewed_by_name?: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Cycle Id */
+            cycle_id: string | null;
+        };
+        /**
+         * DecisionEvidenceVerification
+         * @description A pinned verification result, as it stands (its outcome is frozen once reviewed).
+         */
+        DecisionEvidenceVerification: {
+            /**
+             * Verification Result Id
+             * Format: uuid
+             */
+            verification_result_id: string;
+            /** Verification Type */
+            verification_type: string;
+            /** Status */
+            status: string;
+            /** Risk Level */
+            risk_level: string | null;
+            /**
+             * Provider
+             * @description The provider as stored (`manual` for a person).
+             */
+            provider: string;
+            /**
+             * Provenance
+             * @enum {string}
+             */
+            provenance: "MANUAL" | "STUB" | "PROVIDER";
+            /** Is Placeholder */
+            is_placeholder: boolean;
+            /**
+             * Performed At
+             * Format: date-time
+             */
+            performed_at: string;
+            /**
+             * Recorded By
+             * @description Who recorded it (null for a result older than the history log).
+             */
+            recorded_by: string | null;
+            /** Recorded By Name */
+            recorded_by_name?: string | null;
+            /** Evidence Note */
+            evidence_note: string | null;
+            /** Evidence Refs */
+            evidence_refs: components["schemas"]["VerificationEvidenceRefOut"][];
+            /** @description The review the decision rested on; null if it had none yet. */
+            pinned_review: components["schemas"]["DecisionEvidencePinnedReview"] | null;
+            /**
+             * Review Superseded
+             * @description A later review has been recorded since the decision.
+             */
+            review_superseded: boolean;
+            /** Cycle Id */
+            cycle_id: string | null;
+        };
         /** DependencyHealth */
         DependencyHealth: {
             /**
@@ -3944,6 +4674,48 @@ export interface components {
          * @enum {string}
          */
         QualificationState: "NOT_YET_REVIEWED" | "QUALIFIED" | "NOT_QUALIFIED";
+        /**
+         * ReKycDueCompanyResponse
+         * @description A CLEAR company whose Clear has expired or expires before `before`.
+         */
+        ReKycDueCompanyResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string | null;
+            /** Journey */
+            journey: string;
+            background_check: components["schemas"]["BackgroundCheckState"];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Is Expired */
+            is_expired: boolean;
+            /** Current Cycle Number */
+            current_cycle_number: number | null;
+        };
+        /** ReKycDueListResponse */
+        ReKycDueListResponse: {
+            /** Companies */
+            companies: components["schemas"]["ReKycDueCompanyResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Before
+             * Format: date-time
+             * @description The cut-off applied: expiring before this.
+             */
+            before: string;
+        };
         /** ReadinessResponse */
         ReadinessResponse: {
             /**
@@ -4072,6 +4844,28 @@ export interface components {
             /** Provider */
             provider: string;
             status: components["schemas"]["OnboardingStatus"];
+        };
+        /**
+         * RejectBackgroundCheckProposalRequest
+         * @description Reject a proposal. The reason is required; who rejects comes from the session.
+         */
+        RejectBackgroundCheckProposalRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * RequiredCheckResponse
+         * @description One verification type CLEAR requires (rule B), and its state in the current cycle.
+         */
+        RequiredCheckResponse: {
+            /** Verification Type */
+            verification_type: string;
+            /**
+             * State
+             * @description PASSED (the latest real result is PASSED, or REVIEW with an ACCEPTED review), FAILED, PENDING, or MISSING.
+             * @enum {string}
+             */
+            state: "PASSED" | "FAILED" | "MISSING" | "PENDING";
         };
         /**
          * ResultRequest
@@ -4254,6 +5048,13 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Evidence Refs */
+            evidence_refs?: components["schemas"]["VerificationEvidenceRefOut"][];
+            /**
+             * Cycle Id
+             * @description The check cycle of this answer (one recorded before cycles reads as cycle 1).
+             */
+            cycle_id?: string | null;
         };
         /** ScreeningReviewListResponse */
         ScreeningReviewListResponse: {
@@ -4267,6 +5068,8 @@ export interface components {
             /** Catalogue */
             catalogue: components["schemas"]["ScreeningCatalogueItemResponse"][];
             capabilities: components["schemas"]["ScreeningCapabilities"];
+            /** @description The check cycle these answers belong to — the current one unless `cycle_id` was asked for; `cycle.is_current` says which. Answers are recorded only in the current cycle; an earlier one is read-only. Null before the company has a cycle. */
+            cycle?: components["schemas"]["CheckCycleResponse"] | null;
         };
         /** ScreeningRunResponse */
         ScreeningRunResponse: {
@@ -4384,6 +5187,26 @@ export interface components {
             contact_phone?: string | null;
         };
         /**
+         * SetDealRequiredDocumentRequest
+         * @description Add a required document category to a deal's handover rule, or stop
+         *     requiring it. ADMIN only.
+         *
+         *     There is no delete: the table is append-only, so "stop requiring it" is
+         *     `active: false`, which writes a new version. The record of what was required
+         *     when is part of the point (plan P2-5a).
+         */
+        SetDealRequiredDocumentRequest: {
+            category: components["schemas"]["DocumentCategory"];
+            /** Document Type */
+            document_type?: string | null;
+            /**
+             * Active
+             * @description `true` requires the category, `false` stops requiring it. Either way a new version is written; nothing is updated or deleted.
+             * @default true
+             */
+            active: boolean;
+        };
+        /**
          * SetMarkerRequest
          * @description Set or clear the company's commercial marker (company-record contract
          *     §3.3). `reason` is required for `PAUSED` and `ENDED`, optional when
@@ -4393,6 +5216,25 @@ export interface components {
             marker: components["schemas"]["ExporterMarker"];
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * StartCheckCycleRequest
+         * @description Start a Re-KYC or Re-KYB. Who starts it comes from the session.
+         */
+        StartCheckCycleRequest: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "RE_KYC" | "RE_KYB";
+            /** Reason */
+            reason: string;
+        };
+        /** StartCheckCycleResponse */
+        StartCheckCycleResponse: {
+            cycle: components["schemas"]["CheckCycleResponse"];
+            /** @description The CLEAR → IN_REVIEW decision recorded with it, when the company was CLEAR. */
+            reopen_decision?: components["schemas"]["BackgroundCheckDecisionResponse"] | null;
         };
         /**
          * SubjectType
@@ -4593,6 +5435,11 @@ export interface components {
             status: "NEEDS_REVIEW" | "PASSED" | "FAILED" | "EXEMPT";
             /** Comment */
             comment?: string | null;
+            /**
+             * Evidence Refs
+             * @description Optional (IQ-14). A `document` must be one of the company's own documents and `AVAILABLE` (scanned clean); a `url` must be an http(s) link.
+             */
+            evidence_refs?: components["schemas"]["VerificationEvidenceRefModel"][];
         };
         /**
          * UserListResponse
@@ -4770,6 +5617,10 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Cycle Id */
+            cycle_id?: string | null;
+            /** Subject Company Id */
+            subject_company_id?: string | null;
         };
         /**
          * VerificationResultStatus
@@ -4857,6 +5708,14 @@ export interface components {
         WebhookAck: {
             /** Status */
             status: string;
+        };
+        /**
+         * WithdrawBackgroundCheckProposalRequest
+         * @description Withdraw one's own proposal. The reason is optional.
+         */
+        WithdrawBackgroundCheckProposalRequest: {
+            /** Reason */
+            reason?: string | null;
         };
         /** WorkflowStatusResponse */
         WorkflowStatusResponse: {
@@ -7177,7 +8036,10 @@ export interface operations {
     };
     list_screening_review_api_v1_onboarding_exporters__customer_id__screening_review_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A check cycle of this company. Default: the current one. */
+                cycle_id?: string | null;
+            };
             header?: never;
             path: {
                 customer_id: string;
@@ -7209,7 +8071,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Company not found */
+            /** @description Company not found, or a `cycle_id` that is not this company's */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -7327,7 +8189,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unknown checklist item or status */
+            /** @description Unknown or retired checklist item, unknown status, or evidence that is malformed, foreign or not AVAILABLE */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7923,7 +8785,7 @@ export interface operations {
     list_company_history_api_v1_onboarding_exporters__customer_id__history_get: {
         parameters: {
             query?: {
-                /** @description Restrict to one dimension: journey, qualification, conversation, background_check, deal, marker, profile, verification or screening. */
+                /** @description Restrict to one dimension: journey, qualification, conversation, background_check, deal, marker, profile, verification, screening, check_cycle, background_check_approval, gst_registration, trade or pipeline. */
                 dimension?: string | null;
                 limit?: number;
                 offset?: number;
@@ -8414,6 +9276,92 @@ export interface operations {
                 content?: never;
             };
             /** @description Missing name, a country that is not ISO-3166-1 alpha-2, or a masked value sent back */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_deal_required_documents_api_v1_onboarding_settings_deal_required_documents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealRequiredDocumentsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_deal_required_document_api_v1_onboarding_settings_deal_required_documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDealRequiredDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealRequiredDocumentResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `DEAL_REQUIRED_DOCUMENT_CHANGED`: another administrator changed the same requirement first; nothing was saved */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A category a deal cannot hold (it belongs to a company), a `document_type` not configured under the category (`DOCUMENT_TYPE_NOT_ALLOWED`), or a change that would leave the rule as it already is */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -8978,6 +9926,15 @@ export interface operations {
                     "application/json": components["schemas"]["BackgroundCheckDecisionResponse"];
                 };
             };
+            /** @description CLEAR, FLAGGED or ON_HOLD: proposed, awaiting a second approver */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalResponse"];
+                };
+            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -8999,7 +9956,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the current value; `BACKGROUND_CHECK_STATE_CHANGED` — the check is no longer at `from_value`; or `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR with prerequisites outstanding, naming each */
+            /** @description `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the current value; `BACKGROUND_CHECK_STATE_CHANGED` — the check is no longer at `from_value`; `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR with prerequisites outstanding, naming each; or `BACKGROUND_CHECK_PROPOSAL_OPEN` — a proposal awaits approval */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -9007,6 +9964,506 @@ export interface operations {
                 content?: never;
             };
             /** @description `BACKGROUND_CHECK_REASON_REQUIRED`, `BACKGROUND_CHECK_RISK_REQUIRED`, `BACKGROUND_CHECK_RISK_NOT_ALLOWED`, or an unknown field in the body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_background_check_decision_evidence_api_v1_onboarding_exporters__company_id__background_check_decisions__decision_id__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionEvidenceResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found, or `BACKGROUND_CHECK_DECISION_NOT_FOUND` — no such decision on this company */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_check_cycles_api_v1_onboarding_exporters__company_id__background_check_cycles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckCycleListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_check_cycle_api_v1_onboarding_exporters__company_id__background_check_cycles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartCheckCycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartCheckCycleResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `CHECK_CYCLE_NOT_ALLOWED` — the company is FLAGGED or ON_HOLD; `CHECK_CYCLE_EMPTY` — the current cycle has nothing recorded yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An unknown kind, a missing reason, or an unknown field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_background_check_proposals_api_v1_onboarding_exporters__company_id__background_check_proposals_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApproveBackgroundCheckProposalResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer withdraws */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found, or `BACKGROUND_CHECK_PROPOSAL_NOT_FOUND` */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `BACKGROUND_CHECK_PROPOSAL_RESOLVED` — already approved, rejected or withdrawn; `BACKGROUND_CHECK_PROPOSAL_STALE` — the check or its inputs moved since it was proposed (approve only); `BACKGROUND_CHECK_PREREQUISITES_UNMET` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectBackgroundCheckProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer withdraws */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found, or `BACKGROUND_CHECK_PROPOSAL_NOT_FOUND` */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `BACKGROUND_CHECK_PROPOSAL_RESOLVED` — already approved, rejected or withdrawn; `BACKGROUND_CHECK_PROPOSAL_STALE` — the check or its inputs moved since it was proposed (approve only); `BACKGROUND_CHECK_PREREQUISITES_UNMET` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No reason, or an unknown field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    withdraw_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WithdrawBackgroundCheckProposalRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer withdraws */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found, or `BACKGROUND_CHECK_PROPOSAL_NOT_FOUND` */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `BACKGROUND_CHECK_PROPOSAL_RESOLVED` — already approved, rejected or withdrawn; `BACKGROUND_CHECK_PROPOSAL_STALE` — the check or its inputs moved since it was proposed (approve only); `BACKGROUND_CHECK_PREREQUISITES_UNMET` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An unknown field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_proposals_across_companies_api_v1_onboarding_background_check_proposals_get: {
+        parameters: {
+            query?: {
+                status?: "open" | "approved" | "rejected" | "withdrawn";
+                /** @description `me`: leave out the caller's own proposals (open queue). */
+                awaiting?: "me" | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rekyc_due_api_v1_onboarding_background_check_due_get: {
+        parameters: {
+            query?: {
+                /** @description List Clears expiring before this (ISO 8601, with a time zone). */
+                before?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReKycDueListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `before` is not a date-time with a time zone */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -1,4 +1,5 @@
-"""``ComplianceInputsService`` — the 4A ↔ 4B seam's implementation. **Owner: Developer 4B.**
+"""``ComplianceInputsService`` — the compliance-inputs seam's implementation.
+**Owner: Developer 1** (compliance engine, allocation §2.1; built by Developer 4B).
 
 Implements ``domain/compliance_inputs.py::ComplianceInputsReader``
 (``docs/dev4/4b-task.md`` §6). Developer 4A reads the inputs to a background-check
@@ -30,12 +31,17 @@ What each field means today
   ``ScreeningItemInput`` per catalogue key, in catalogue order; a key never
   recorded has ``screening_review_item_id=None`` and ``status=None``. Rows under a
   key outside the catalogue are not returned.
-* **Verifications (company)** — ``entity_type = EXPORTER`` and
-  ``entity_reference = company_id`` only, newest first (``performed_at DESC``, then
-  ``created_at DESC, id DESC`` so ties are deterministic). Results on DIRECTOR,
-  INVOICE, VESSEL or SHIPMENT subjects carry no company link and are **not**
-  returned; whether that is acceptable for "no checks pending" is D2, Dev4A's.
-  BUYER results are never returned here (§6.2 invariant 4).
+* **Verifications (company) — company-keyed (plan P4-5).** The results *about* the
+  company (``verification_result.about_company``): ``subject_company_id =
+  company_id`` — every company-subject result recorded since P4-5, and a legacy
+  deal-buyer result the deal-buyer migration (P4-6) mapped to this company — plus,
+  for a row recorded before checks were company-keyed (``subject_company_id IS
+  NULL``), ``entity_type = EXPORTER AND entity_reference = company_id``. So a company
+  has one set of checks, whether it is a seller, a buyer or both. Newest first
+  (``performed_at DESC``, then ``created_at DESC, id DESC`` so ties are
+  deterministic). Results on DIRECTOR, INVOICE, VESSEL or SHIPMENT subjects carry no
+  company link and are **not** returned. A legacy BUYER result that names no company
+  is never returned here (§6.2 invariant 4 still holds for it).
 * **Latest review** — the head of the result's ``verification_review`` chain: the
   review nothing supersedes (4B-2). The database allows exactly one per reviewed
   result, so it is deterministic. ``latest_review_id``, ``latest_review_status`` and
@@ -51,6 +57,14 @@ What each field means today
   result's ``evidence_refs``, in the order recorded (4B-4). ``url`` references are
   not documents and are not reported. The retired ``evidence_reference`` column is
   not read.
+* **Cycles (seam v2, plan P2-3b)** — ``company_inputs`` is scoped to the company's
+  **current** check cycle (its highest ``check_cycle.number``): the results and the
+  latest answer per item *of that cycle*. A row with ``cycle_id IS NULL`` belongs to
+  cycle 1 by the legacy rule (``check_cycle_repository.in_cycle``), and is reported
+  with cycle 1's id. So a Re-KYC starts with every item unanswered and no results,
+  and a placeholder left in an earlier cycle no longer blocks ``CLEAR``. A company
+  with no cycle row yet is read whole, exactly as before cycles existed.
+  ``buyer_checks`` is unscoped: legacy deal buyers have no cycles.
 """
 
 from __future__ import annotations
@@ -68,18 +82,24 @@ from app.modules.onboarding.domain.compliance_inputs import (
     ScreeningItemInput,
     VerificationInput,
 )
+from app.modules.onboarding.domain.entities.check_cycle import CheckCycle
 from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.orchestration_enums import VerificationEntityType
 from app.modules.onboarding.domain.entities.screening_review import ScreeningReviewItem
 from app.modules.onboarding.domain.entities.verification_result import (
     VerificationResult,
+    about_company,
     is_placeholder_result,
 )
 from app.modules.onboarding.domain.entities.verification_review import VerificationReview
 from app.modules.onboarding.exceptions import (
     ComplianceInputsBuyerNotFoundError,
     ExporterProfileNotFoundError,
+)
+from app.modules.onboarding.infrastructure.repositories.check_cycle_repository import (
+    in_cycle,
+    resolved_cycle_id,
 )
 
 _VERIFICATION_COLUMNS = (
@@ -94,6 +114,7 @@ _VERIFICATION_COLUMNS = (
     VerificationResult.normalized_result,
     VerificationResult.review_status,
     VerificationResult.evidence_refs,
+    VerificationResult.cycle_id,
 )
 
 
@@ -108,7 +129,9 @@ def _document_ids(evidence_refs: Any) -> tuple[uuid.UUID, ...]:
     return tuple(ids)
 
 
-def _verification_input(row: Any, head: Any | None) -> VerificationInput:
+def _verification_input(
+    row: Any, head: Any | None, cycle_id: uuid.UUID | None = None
+) -> VerificationInput:
     if head is not None:
         latest_id, latest_status, latest_at = head.id, head.review_status.value, head.reviewed_at
     else:
@@ -127,10 +150,13 @@ def _verification_input(row: Any, head: Any | None) -> VerificationInput:
         latest_review_status=latest_status,
         latest_reviewed_at=latest_at,
         evidence_document_ids=_document_ids(row.evidence_refs),
+        cycle_id=cycle_id,
     )
 
 
-def _screening_item(item_key: str, row: Any | None) -> ScreeningItemInput:
+def _screening_item(
+    item_key: str, row: Any | None, initial: Any | None = None
+) -> ScreeningItemInput:
     if row is None:
         return ScreeningItemInput(
             item_key=item_key,
@@ -145,6 +171,7 @@ def _screening_item(item_key: str, row: Any | None) -> ScreeningItemInput:
         status=row.status,
         reviewed_by=row.reviewed_by,
         reviewed_at=row.reviewed_at,
+        cycle_id=resolved_cycle_id(row.cycle_id, initial),
     )
 
 
@@ -154,9 +181,12 @@ class ComplianceInputsService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def _verification_inputs(self, rows: list[Any]) -> tuple[VerificationInput, ...]:
+    async def _verification_inputs(
+        self, rows: list[Any], initial: Any | None = None
+    ) -> tuple[VerificationInput, ...]:
         """Attach each row's chain head — the review nothing supersedes. Call inside
-        ``no_autoflush``; selects columns only."""
+        ``no_autoflush``; selects columns only. ``initial`` is the company's cycle 1
+        (``None`` for legacy buyer checks, which have no cycle)."""
         if not rows:
             return ()
         later = aliased(VerificationReview)
@@ -176,10 +206,18 @@ class ComplianceInputsService:
             )
         ).all()
         head_by_result = {head.verification_result_id: head for head in heads}
-        return tuple(_verification_input(row, head_by_result.get(row.id)) for row in rows)
+        return tuple(
+            _verification_input(
+                row,
+                head_by_result.get(row.id),
+                resolved_cycle_id(row.cycle_id, initial) if initial is not None else row.cycle_id,
+            )
+            for row in rows
+        )
 
     async def company_inputs(self, company_id: uuid.UUID) -> CompanyComplianceInputs:
-        """The company's eight screening items and its EXPORTER verification results.
+        """The company's screening items and the verification results about it
+        (company-keyed, P4-5), in its current check cycle (seam v2).
 
         Raises:
             ExporterProfileNotFoundError: no company has this id.
@@ -193,6 +231,18 @@ class ComplianceInputsService:
             if exists is None:
                 raise ExporterProfileNotFoundError(company_id)
 
+            # The company's cycles, oldest first: the current one scopes the read, and
+            # cycle 1 is what a legacy (NULL) row belongs to.
+            cycles = (
+                await self._db.execute(
+                    select(CheckCycle.id, CheckCycle.number)
+                    .where(CheckCycle.company_id == company_id)
+                    .order_by(CheckCycle.number.asc())
+                )
+            ).all()
+            current = cycles[-1] if cycles else None
+            initial = cycles[0] if cycles else None
+
             latest_rows = (
                 await self._db.execute(
                     select(
@@ -201,8 +251,12 @@ class ComplianceInputsService:
                         ScreeningReviewItem.status,
                         ScreeningReviewItem.reviewed_by,
                         ScreeningReviewItem.reviewed_at,
+                        ScreeningReviewItem.cycle_id,
                     )
-                    .where(ScreeningReviewItem.customer_id == company_id)
+                    .where(
+                        ScreeningReviewItem.customer_id == company_id,
+                        in_cycle(ScreeningReviewItem.cycle_id, current),
+                    )
                     .distinct(ScreeningReviewItem.item_key)
                     .order_by(
                         ScreeningReviewItem.item_key.asc(),
@@ -216,8 +270,8 @@ class ComplianceInputsService:
                 await self._db.execute(
                     select(*_VERIFICATION_COLUMNS)
                     .where(
-                        VerificationResult.entity_type == VerificationEntityType.EXPORTER,
-                        VerificationResult.entity_reference == company_id,
+                        about_company(company_id),
+                        in_cycle(VerificationResult.cycle_id, current),
                     )
                     .order_by(
                         VerificationResult.performed_at.desc(),
@@ -226,21 +280,26 @@ class ComplianceInputsService:
                     )
                 )
             ).all()
-            verifications = await self._verification_inputs(list(verification_rows))
+            verifications = await self._verification_inputs(list(verification_rows), initial)
 
         latest = {row.item_key: row for row in latest_rows}
         screening_items = tuple(
-            _screening_item(key, latest.get(key)) for key in SCREENING_CATALOGUE
+            _screening_item(key, latest.get(key), initial) for key in SCREENING_CATALOGUE
         )
         return CompanyComplianceInputs(
             company_id=company_id,
             screening_catalogue=SCREENING_CATALOGUE,
             screening_items=screening_items,
             verifications=verifications,
+            current_cycle_id=current.id if current is not None else None,
         )
 
     async def buyer_checks(self, deal_buyer_id: uuid.UUID) -> tuple[VerificationInput, ...]:
         """The BUYER verification results recorded against one ``deal_buyer.id``, newest first.
+
+        **Legacy** in seam v2: it serves deals whose buyer is still a ``deal_buyer`` row
+        and is replaced by ``company_inputs(buyer_company_id)`` once a deal names a buyer
+        company (plan P4-4/P4-5). Unscoped by cycle — legacy buyers have none.
 
         Keyed by the buyer id only, never the deal or the company (§6.2 invariant 4).
         Nothing returned here is ever part of ``company_inputs``.

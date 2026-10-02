@@ -175,6 +175,13 @@ from app.modules.onboarding.domain.entities.document_enums import (  # noqa: E40
 )
 
 __all__ += ["CrmDocument", "DocumentCategory", "DocumentOwnerKind", "DocumentSource"]
+# Developer 2 (plan P2-5a): which paperwork a deal must have before handover.
+from app.modules.onboarding.domain.entities.deal_required_document import (  # noqa: E402
+    ANY_DOCUMENT_TYPE,
+    DealRequiredDocument,
+)
+
+__all__ += ["ANY_DOCUMENT_TYPE", "DealRequiredDocument"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -218,3 +225,26 @@ from app.modules.onboarding.domain.entities.verification_review import (  # noqa
 )
 
 __all__ += ["VerificationReview"]
+
+# ── Compliance engine — owner: Developer 1 (allocation §3) ──
+# (Developer 1 appends here.)
+from app.modules.onboarding.domain.entities.check_cycle import (  # noqa: E402
+    CheckCycle,
+    CheckCycleKind,
+)
+
+__all__ += ["CheckCycle", "CheckCycleKind"]
+
+from app.modules.onboarding.domain.entities.background_check_proposal import (  # noqa: E402
+    APPROVAL_MOVES,
+    BackgroundCheckProposal,
+    BackgroundCheckProposalResolution,
+    ProposalOutcome,
+)
+
+__all__ += [
+    "APPROVAL_MOVES",
+    "BackgroundCheckProposal",
+    "BackgroundCheckProposalResolution",
+    "ProposalOutcome",
+]

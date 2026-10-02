@@ -9,9 +9,16 @@ qualify. Two criteria stand in the way today, both seeded by
 
 **Criteria are versioned, never edited.** ``qualification_criterion`` is append-only
 (``trg_qualification_criterion_append_only``) and keyed ``(key, version)``, so this
-inserts **version 2** of each with ``required = false`` and changes nothing else.
-Results already recorded keep pointing at version 1, which is the whole reason the
-table works this way.
+inserts **the next version** of each — a copy of the current one with
+``required = false`` and nothing else changed. Results already recorded keep pointing
+at the version they were judged against, which is the whole reason the table works
+this way.
+
+The next version is read from the table, not assumed to be 2: an ADMIN can version a
+criterion from the criteria screen, so a live database may already hold a version 2
+(the insert would then fail on ``uq_qualification_criterion_key_version``), and
+copying the current row keeps whatever label or ``active`` flag that ADMIN chose. A
+criterion whose current version is already not required gets no new row.
 
 ``revenue`` and ``deal_size`` are deliberately untouched. Their thresholds stay in
 USD (BQ-1, answered 1 October), so their existing results keep counting.
@@ -32,33 +39,33 @@ no append-only trigger, and an outcome stores its codes as JSONB **strings** rat
 than foreign keys, so deactivating them leaves every past outcome rendering unchanged
 while ``QualificationService`` refuses them on new ones. They can be reactivated if
 export returns (decision F).
+
+**Rollback.** ``pg_dump`` first. The downgrade removes only the rows this migration
+inserted, and is refused (foreign key) once any result has been recorded against
+them — after first use, rolling back means restoring the dump.
 """
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "onboarding_0023_domestic_first"
-down_revision: str | None = "onboarding_0022_integrity"
+revision: str = "onboarding_0031_domestic_first"
+down_revision: str | None = "onboarding_0030_deal_req_docs"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 SCHEMA = "onboarding"
 
 #: Recognisable in `created_by` so these rows are never mistaken for an
-#: administrator's edit in the criteria screen's version history.
-MIGRATION_ACTOR = "migration:onboarding_0023_domestic_first"
+#: administrator's edit in the criteria screen's version history — and so the
+#: downgrade removes exactly these rows and nothing an ADMIN added.
+MIGRATION_ACTOR = "migration:onboarding_0031_domestic_first"
 
-#: The two criteria that stop being required, with the v1 values copied forward.
-#: Both are `YES_NO`, so comparison, threshold, unit and allowed_values stay NULL.
-_RELAXED = (
-    ("export_history", "Has an export track record"),
-    ("export_licence", "Holds an export licence (IEC)"),
-)
+#: The two criteria that stop being required.
+_RELAXED = ("export_history", "export_licence")
 
 #: Rejection reasons that assume export (IQ-12). Deactivated, not deleted: a past
 #: outcome's JSONB still names them, and they can come back with decision F.
@@ -70,38 +77,35 @@ _RETIRED_REASON_CODES = (
 
 _APPEND_ONLY_TRIGGER = "trg_qualification_criterion_append_only"
 
+#: The next version of each relaxed criterion, copied from its current version with
+#: `required` off; nothing for a criterion that is already not required. Inserted
+#: rather than updated — the table is append-only by design. Module-level so the
+#: test runs this exact statement.
+INSERT_NEXT_VERSIONS = sa.text(
+    f"""
+    INSERT INTO {SCHEMA}.qualification_criterion
+        (id, key, version, label, kind, comparison, threshold, unit,
+         allowed_values, required, active, created_by)
+    SELECT gen_random_uuid(), c.key, c.version + 1, c.label, c.kind,
+           c.comparison, c.threshold, c.unit, c.allowed_values,
+           false, c.active, :actor
+    FROM {SCHEMA}.qualification_criterion AS c
+    WHERE c.key = ANY(:keys)
+      AND c.required
+      AND c.version = (
+          SELECT max(latest.version)
+          FROM {SCHEMA}.qualification_criterion AS latest
+          WHERE latest.key = c.key
+      )
+    """
+).bindparams(
+    sa.bindparam("keys", value=list(_RELAXED)),
+    sa.bindparam("actor", value=MIGRATION_ACTOR),
+)
+
 
 def upgrade() -> None:
-    criterion = sa.table(
-        "qualification_criterion",
-        sa.column("id", sa.dialects.postgresql.UUID(as_uuid=True)),
-        sa.column("key"),
-        sa.column("version"),
-        sa.column("label"),
-        sa.column("kind"),
-        sa.column("required"),
-        sa.column("active"),
-        sa.column("created_by"),
-        schema=SCHEMA,
-    )
-    # Version 2 of each: identical to version 1 but no longer required. Inserted
-    # rather than updated — the table is append-only by design.
-    op.bulk_insert(
-        criterion,
-        [
-            {
-                "id": uuid.uuid4(),
-                "key": key,
-                "version": 2,
-                "label": label,
-                "kind": "YES_NO",
-                "required": False,
-                "active": True,
-                "created_by": MIGRATION_ACTOR,
-            }
-            for key, label in _RELAXED
-        ],
-    )
+    op.execute(INSERT_NEXT_VERSIONS)
 
     op.execute(
         sa.text(
@@ -113,36 +117,34 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Remove the version-2 rows and bring the three reason codes back.
+    """Remove the rows this migration inserted and bring the three reason codes back.
 
     The append-only trigger refuses ``DELETE`` — that is its job, and nothing in the
     application can reach past it. A migration is the one place where undoing a data
     change is legitimate, so the trigger is lifted for exactly that statement and
-    restored immediately. Alembic runs this inside a transaction, so a failure
-    anywhere leaves the table protected.
+    restored immediately. Alembic runs this inside one transaction, so a failure
+    rolls the trigger change back with everything else and the table stays protected.
 
-    Deleting version 2 is safe: a result recorded against it would hold a foreign key
-    and the delete would be refused, which is the outcome we want rather than silent
-    data loss.
+    A result recorded against one of these rows holds a foreign key to it, so the
+    delete is refused rather than losing data — restore the ``pg_dump`` instead.
     """
     op.execute(
         f"ALTER TABLE {SCHEMA}.qualification_criterion "
         f"DISABLE TRIGGER {_APPEND_ONLY_TRIGGER}"
     )
-    try:
-        op.execute(
-            sa.text(
-                f"DELETE FROM {SCHEMA}.qualification_criterion "
-                "WHERE version = 2 AND key = ANY(:keys)"
-            ).bindparams(
-                sa.bindparam("keys", value=[key for key, _ in _RELAXED])
-            )
+    op.execute(
+        sa.text(
+            f"DELETE FROM {SCHEMA}.qualification_criterion "
+            "WHERE created_by = :actor AND key = ANY(:keys)"
+        ).bindparams(
+            sa.bindparam("actor", value=MIGRATION_ACTOR),
+            sa.bindparam("keys", value=list(_RELAXED)),
         )
-    finally:
-        op.execute(
-            f"ALTER TABLE {SCHEMA}.qualification_criterion "
-            f"ENABLE TRIGGER {_APPEND_ONLY_TRIGGER}"
-        )
+    )
+    op.execute(
+        f"ALTER TABLE {SCHEMA}.qualification_criterion "
+        f"ENABLE TRIGGER {_APPEND_ONLY_TRIGGER}"
+    )
 
     op.execute(
         sa.text(

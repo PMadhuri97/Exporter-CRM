@@ -1,21 +1,34 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getScreeningReview, updateScreeningReviewItem } from '../api';
+import {
+  getScreeningReview,
+  listCheckCycles,
+  listCompanyDocuments,
+  updateScreeningReviewItem,
+} from '../api';
 
 import { ScreeningChecklist } from './ScreeningChecklist';
 import {
   CATALOGUE,
   COMPANY_ID,
+  crmDocument,
+  DOCUMENT_ID,
   renderWithClient,
   screeningItem,
   screeningList,
 } from '../testing/verification-fixtures';
+import type { CheckCycle } from '../types';
 
 vi.mock('../api', () => ({
   getScreeningReview: vi.fn(),
   getScreeningItemHistory: vi.fn(),
   updateScreeningReviewItem: vi.fn(),
+  listCompanyDocuments: vi.fn(),
+  listCheckCycles: vi.fn(),
+  getDocument: vi.fn(),
+  createDownloadLink: vi.fn(),
+  fetchDocumentBlob: vi.fn(),
 }));
 
 function renderChecklist() {
@@ -70,10 +83,11 @@ describe('ScreeningChecklist — rendered from the server’s catalogue', () => 
 
   it('counts progress against the catalogue', async () => {
     vi.mocked(getScreeningReview).mockResolvedValue(
-      screeningList({ items: [screeningItem({ item_key: 'website-reviewed', status: 'PASSED' })] }),
+      screeningList({ items: [screeningItem({ item_key: 'address-physical', status: 'PASSED' })] }),
     );
     renderChecklist();
-    expect(await screen.findByText(/1\/8 items reviewed/)).toBeInTheDocument();
+    // Seven items since plan P2-4a retired `website-reviewed`.
+    expect(await screen.findByText(/1\/7 items reviewed/)).toBeInTheDocument();
   });
 
   it('shows a saved decision on its item', async () => {
@@ -83,9 +97,10 @@ describe('ScreeningChecklist — rendered from the server’s catalogue', () => 
       }),
     );
     renderChecklist();
-    const select = await screen.findByLabelText(`${CATALOGUE[3]!.label} status`);
+    const label = CATALOGUE.find((item) => item.key === 'payment-purpose')!.label;
+    const select = await screen.findByLabelText(`${label} status`);
     expect(select).toHaveValue('FAILED');
-    expect(screen.getByLabelText(`${CATALOGUE[3]!.label} comment`)).toHaveValue('Volumes too high');
+    expect(screen.getByLabelText(`${label} comment`)).toHaveValue('Volumes too high');
   });
 
   it('never hides a decision stored under a key the catalogue does not define', async () => {
@@ -119,7 +134,7 @@ describe('ScreeningChecklist — the served capability decides', () => {
     fireEvent.click(within(card).getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
-      expect(updateScreeningReviewItem).toHaveBeenCalledWith(COMPANY_ID, 'website-reviewed', {
+      expect(updateScreeningReviewItem).toHaveBeenCalledWith(COMPANY_ID, 'address-physical', {
         status: 'PASSED',
         comment: 'Site live and consistent',
       }),
@@ -150,5 +165,126 @@ describe('ScreeningChecklist — loading and errors', () => {
     vi.mocked(getScreeningReview).mockRejectedValue(new Error('boom'));
     renderChecklist();
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not load checklist.');
+  });
+});
+
+function cycle(overrides: Partial<CheckCycle> = {}): CheckCycle {
+  return {
+    id: 'cycle-2',
+    company_id: COMPANY_ID,
+    number: 2,
+    kind: 'RE_KYC',
+    reason: 'Annual review',
+    started_at: '2026-10-01T09:00:00Z',
+    started_by: 'officer-1',
+    started_by_name: null,
+    source: 'background_check_service.start_cycle',
+    rules_version: 'clear-2026-10-01-7items',
+    is_current: true,
+    ...overrides,
+  };
+}
+
+describe('ScreeningChecklist — evidence on an answer (P2-1b/c)', () => {
+  it('shows the evidence a saved answer was given', async () => {
+    vi.mocked(getScreeningReview).mockResolvedValue(
+      screeningList({
+        items: [
+          screeningItem({
+            item_key: 'address-physical',
+            evidence_refs: [{ type: 'url', ref: 'https://maps.example.com/site' }],
+          }),
+        ],
+      }),
+    );
+    renderChecklist();
+    const card = (await screen.findAllByTestId('screening-item'))[0]!;
+    expect(within(card).getByTestId('evidence')).toBeInTheDocument();
+    expect(within(card).getByRole('link', { name: 'https://maps.example.com/site' })).toBeInTheDocument();
+  });
+
+  it('records an answer with a document and a link as evidence', async () => {
+    vi.mocked(listCompanyDocuments).mockResolvedValue({
+      documents: [crmDocument(), crmDocument({ id: 'quarantined', scan_status: 'QUARANTINED', file_name: 'bad.pdf' })],
+      total: 2,
+      limit: 50,
+      offset: 0,
+    });
+    renderChecklist();
+    const label = CATALOGUE[0]!.label;
+    const select = await screen.findByLabelText(`${label} status`);
+    const card = select.closest('[data-testid="screening-item"]') as HTMLElement;
+    fireEvent.change(select, { target: { value: 'PASSED' } });
+    fireEvent.click(within(card).getByRole('button', { name: 'Attach evidence (optional)' }));
+    // Only a scanned-clean document is offered.
+    fireEvent.click(await within(card).findByRole('checkbox', { name: 'registry-extract.pdf' }));
+    expect(within(card).queryByText('bad.pdf')).not.toBeInTheDocument();
+    fireEvent.change(within(card).getByLabelText('Evidence link'), {
+      target: { value: 'https://registry.example.com/extract' },
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Add link' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(updateScreeningReviewItem).toHaveBeenCalledWith(COMPANY_ID, 'address-physical', {
+        status: 'PASSED',
+        comment: null,
+        evidence_refs: [
+          { type: 'document', ref: DOCUMENT_ID },
+          { type: 'url', ref: 'https://registry.example.com/extract' },
+        ],
+      }),
+    );
+  });
+
+  it('refuses a link that is not http(s) before sending anything', async () => {
+    vi.mocked(listCompanyDocuments).mockResolvedValue({ documents: [], total: 0, limit: 50, offset: 0 });
+    renderChecklist();
+    const card = (await screen.findAllByTestId('screening-item'))[0]!;
+    fireEvent.click(within(card).getByRole('button', { name: 'Attach evidence (optional)' }));
+    fireEvent.change(within(card).getByLabelText('Evidence link'), {
+      target: { value: 'javascript:alert(1)' },
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Add link' }));
+    expect(within(card).getByRole('alert')).toHaveTextContent('http:// or https://');
+    expect(updateScreeningReviewItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('ScreeningChecklist — check cycles (P2-3d)', () => {
+  it('names the cycle it shows', async () => {
+    vi.mocked(getScreeningReview).mockResolvedValue(screeningList({ cycle: cycle({ number: 1, kind: 'INITIAL', id: 'cycle-1' }) }));
+    renderChecklist();
+    expect(await screen.findByTestId('screening-cycle')).toHaveTextContent(
+      'Cycle 1 · Initial check · started 01 Oct 2026',
+    );
+    // Cycle 1 has no earlier cycle to choose, so the cycles are not even fetched.
+    expect(listCheckCycles).not.toHaveBeenCalled();
+  });
+
+  it('lets an earlier cycle be read, and the server makes it read-only', async () => {
+    vi.mocked(getScreeningReview).mockImplementation(async (_customerId, cycleId) =>
+      cycleId === 'cycle-1'
+        ? screeningList({
+            cycle: cycle({ id: 'cycle-1', number: 1, kind: 'INITIAL', is_current: false }),
+            items: [screeningItem({ item_key: 'address-physical', cycle_id: 'cycle-1' })],
+            capabilities: { can_record_decision: false },
+          })
+        : screeningList({ cycle: cycle() }),
+    );
+    vi.mocked(listCheckCycles).mockResolvedValue({
+      cycles: [cycle({ id: 'cycle-1', number: 1, kind: 'INITIAL', is_current: false }), cycle()],
+      current_cycle_id: 'cycle-2',
+    });
+    renderChecklist();
+    const picker = await screen.findByLabelText('Check cycle');
+    expect(screen.getByTestId('screening-cycle')).toHaveTextContent('Cycle 2 · Re-KYC');
+    fireEvent.change(picker, { target: { value: 'cycle-1' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('screening-cycle')).toHaveTextContent('earlier cycle, read-only'),
+    );
+    expect(getScreeningReview).toHaveBeenLastCalledWith(COMPANY_ID, 'cycle-1');
+    const selects = await screen.findAllByRole('combobox', { name: /status$/ });
+    for (const select of selects) expect(select).toBeDisabled();
   });
 });

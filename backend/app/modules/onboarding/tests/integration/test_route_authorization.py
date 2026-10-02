@@ -217,6 +217,16 @@ GATED_ROUTES = [
         {"name": "Rotterdam Trading BV", "country": "NL"},
         STAFF,
     ),
+    # Required document categories — owner: Developer 2 (plan P2-5a). A settings
+    # rule about every deal, so the read is `READERS` like `/qualification/criteria`
+    # and the write is ADMIN only.
+    ("GET", f"{BASE}/settings/deal-required-documents", None, READERS),
+    (
+        "POST",
+        f"{BASE}/settings/deal-required-documents",
+        {"category": "BUYER"},
+        ADMIN_ONLY,
+    ),
     # Documents (L3-09). The two uploads are multipart, so they are covered by their
     # own refusal tests in `test_l3b_documents.py` rather than here — this table
     # sends a JSON body, and a multipart route refuses a JSON one at parsing with a
@@ -262,6 +272,45 @@ GATED_ROUTES = [
         None,
         STAFF,
     ),
+    #
+    # ── Compliance engine — owner: Developer 1 (allocation §2.2: rows only, lane block) ──
+    # DEVELOPER refused throughout (D8). The start is COMPLIANCE and ADMIN (IQ-3).
+    (
+        "GET",
+        f"{BASE}/exporters/{_ID}/background-check/decisions/{_ID}/evidence",
+        None,
+        STAFF,
+    ),
+    ("GET", f"{BASE}/exporters/{_ID}/background-check/cycles", None, STAFF),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/background-check/cycles",
+        {"kind": "RE_KYC", "reason": "Annual re-check"},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    # Maker-checker (P3-1b/c): compliance and admin resolve proposals and read the
+    # queue; the RM never approves (plan §8). The due list is read by all staff (P3-3c).
+    ("GET", f"{BASE}/exporters/{_ID}/background-check/proposals", None, STAFF),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/background-check/proposals/{_ID}/approve",
+        None,
+        COMPLIANCE_OR_ADMIN,
+    ),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/background-check/proposals/{_ID}/reject",
+        {"reason": "not convinced"},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/background-check/proposals/{_ID}/withdraw",
+        {},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    ("GET", f"{BASE}/background-check/proposals?status=open", None, COMPLIANCE_OR_ADMIN),
+    ("GET", f"{BASE}/background-check/due", None, STAFF),
 ]
 
 REFUSALS = [

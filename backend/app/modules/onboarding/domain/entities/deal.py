@@ -30,7 +30,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
@@ -53,8 +53,17 @@ class Deal(AnerModel):
             " OR (stage <> 'WITHDRAWN' AND withdrawal_reason IS NULL)",
             name="ck_deal_withdrawal_reason",
         ),
+        # A company does not sell to itself (migration 0028). NULL-tolerant,
+        # because every deal written before the buyer migration (P4-6) has its
+        # buyer in `deal_buyer` and this column empty.
+        CheckConstraint(
+            "buyer_company_id IS NULL OR buyer_company_id <> company_id",
+            name="ck_deal_buyer_is_not_the_seller",
+        ),
         # One company's deals, newest first — what the Deals panel asks for.
         Index("ix_deal_company_recent", "company_id", "created_at"),
+        # The mirror of it: the deals a company is the *buyer* on (P4-8).
+        Index("ix_deal_buyer_company_recent", "buyer_company_id", "created_at"),
         # The open-work views filter by stage across companies.
         Index("ix_deal_stage", "stage"),
         {"schema": SCHEMA},
@@ -84,6 +93,54 @@ class Deal(AnerModel):
     #: NULL forever on a deal that was withdrawn instead.
     handed_over_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # ── The buyer as a company (migration 0028, plan P4-4) ───────────────────
+    #: The buyer, once buyers are ordinary company records. Nullable, and NULL on
+    #: every deal written before the buyer migration (P4-6) — such a deal's buyer
+    #: is still its `deal_buyer` row. Until P4-4 the handover still requires that
+    #: row (`_NEEDS_BUYER` reads `deal.buyer`); P4-4 makes it accept either. A real
+    #: FK to `exporter_profile.customer_id` with `RESTRICT`, the same rule the
+    #: seller's FK has and for the same reason.
+    #:
+    #: **Not frozen by the terminal trigger yet.** P4-4 adds it there under the
+    #: set-once rule; until then the buyer migration has to be able to fill it on
+    #: deals that are already handed over.
+    buyer_company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.exporter_profile.customer_id",
+            name="fk_deal_buyer_company_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+
+    # ── What the lending team was given (migration 0029, plan P2-7) ──────────
+    #: ``{buyer, buyer_company_id, document_ids, snapshot_source, snapshot_at}``,
+    #: written inside the transaction that hands the deal over. **Set once**:
+    #: ``trg_deal_terminal_freeze`` lets it go from NULL to a value on a terminal
+    #: deal (so a pre-snapshot handover can be backfilled) and refuses every
+    #: change after that.
+    #:
+    #: A column rather than a live query on purpose: a company's details change
+    #: after a handover, and the record of what was handed over must not.
+    handover_snapshot: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+
+    # ── The invoicing branch (migration 0028, plan P6-6) ─────────────────────
+    #: Which of the seller's GST registrations this deal is invoiced from. NULL on
+    #: every legacy deal, and set at most once before handover — the service rule
+    #: and the trigger entry both arrive with P6-6.
+    seller_gst_registration_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.exporter_gstin.id",
+            name="fk_deal_seller_gst_registration_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
     )
 
     buyer: Mapped[DealBuyer | None] = relationship(

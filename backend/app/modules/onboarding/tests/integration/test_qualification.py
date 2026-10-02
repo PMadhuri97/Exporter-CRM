@@ -17,6 +17,7 @@ from decimal import Decimal
 import psycopg2
 import psycopg2.errors
 import pytest
+import sqlalchemy as sa
 from httpx import AsyncClient
 
 from app.modules.onboarding.application.history_service import HistoryService
@@ -46,6 +47,9 @@ from app.modules.onboarding.exceptions import (
 from app.modules.onboarding.infrastructure.repositories.qualification_repository import (
     QualificationRepository,
 )
+from app.modules.onboarding.migrations import (
+    onboarding_0031_domestic_first as domestic_first_migration,
+)
 from app.modules.onboarding.tests.fixtures.auth import auth_header, user_with_role
 from app.modules.onboarding.tests.fixtures.companies import insert_company, make_company
 from app.platform.authentication.models import UserRole
@@ -56,7 +60,7 @@ from app.shared.exceptions import ValidationError
 pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
-#: The criteria that are **required** after `onboarding_0023_domestic_first`.
+#: The criteria that are **required** after `onboarding_0031_domestic_first`.
 #: `export_history` and `export_licence` still exist and are still active — they are
 #: simply no longer required, because the first phase of the product is domestic
 #: trade. `test_a_domestic_company_qualifies_without_export_evidence` is what proves
@@ -490,7 +494,7 @@ async def test_results_never_move_the_gauge():
     assert view.suggested_outcome is Q.QUALIFIED  # suggested, not decided
 
 
-# ── Domestic-first qualification (onboarding_0023_domestic_first) ─────────────
+# ── Domestic-first qualification (onboarding_0031_domestic_first) ─────────────
 
 
 def _set_reason_code_active(code: str, active: bool) -> None:
@@ -592,6 +596,66 @@ async def test_a_past_outcome_keeps_rendering_its_retired_reason_code():
 
     view = await _view(customer_id)
     assert "no_export_history" in view.outcomes[0].reason_codes
+
+
+async def test_the_migration_builds_on_whatever_version_an_admin_left():
+    """Migration 0031's own insert, run for real inside a transaction that is rolled
+    back. On a live database an ADMIN may already have versioned `export_history`
+    from the criteria screen, so the next version is not necessarily 2: the insert
+    must number past it and keep that ADMIN's label, and must add nothing for a
+    criterion whose current version is already not required (`export_licence`
+    here, because this database has run the migration)."""
+    engine = sa.create_engine(get_settings().DATABASE_SYNC_URL)
+    try:
+        with engine.connect() as conn:
+            tx = conn.begin()
+            try:
+                latest = {
+                    key: version
+                    for key, version in conn.execute(
+                        sa.text(
+                            "SELECT key, max(version) FROM onboarding.qualification_criterion "
+                            "WHERE key IN ('export_history', 'export_licence') GROUP BY key"
+                        )
+                    )
+                }
+                conn.execute(
+                    sa.text(
+                        "INSERT INTO onboarding.qualification_criterion "
+                        "(id, key, version, label, kind, required, active, created_by) "
+                        "VALUES (gen_random_uuid(), 'export_history', :v, "
+                        "'Exports, per the ADMIN', 'YES_NO', true, true, 'an-admin')"
+                    ),
+                    {"v": latest["export_history"] + 1},
+                )
+
+                conn.execute(domestic_first_migration.INSERT_NEXT_VERSIONS)
+
+                rows = conn.execute(
+                    sa.text(
+                        "SELECT key, version, label, required, created_by "
+                        "FROM onboarding.qualification_criterion "
+                        "WHERE key IN ('export_history', 'export_licence') "
+                        "AND version > :floor ORDER BY key, version"
+                    ),
+                    {"floor": min(latest.values())},
+                ).all()
+                history = [r for r in rows if r.key == "export_history"]
+                assert [(r.version, r.required) for r in history][-2:] == [
+                    (latest["export_history"] + 1, True),
+                    (latest["export_history"] + 2, False),
+                ]
+                assert history[-1].label == "Exports, per the ADMIN"
+                assert history[-1].created_by == domestic_first_migration.MIGRATION_ACTOR
+                assert all(
+                    r.version <= latest["export_licence"]
+                    for r in rows
+                    if r.key == "export_licence"
+                )
+            finally:
+                tx.rollback()
+    finally:
+        engine.dispose()
 
 
 # ── Suggestion versus decision ────────────────────────────────────────────────

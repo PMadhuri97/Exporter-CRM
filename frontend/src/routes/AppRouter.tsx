@@ -5,6 +5,7 @@ import { AppShell } from '@/layout/AppShell';
 import {
   CompanyRoutes,
   DealDetailPage,
+  DealRequiredDocumentsPage,
   FollowUpsPage,
   LegacyExporterRoutes,
   PipelinePage,
@@ -32,6 +33,10 @@ export function AppRouter() {
                 `/settings/*` a splat, so React Router's ranking picks the
                 specific one first whatever order they appear in here. */}
             <Route path="/settings/qualification-criteria" element={<QualificationCriteriaPage />} />
+            <Route
+              path="/settings/deal-required-documents"
+              element={<DealRequiredDocumentsPage />}
+            />
             <Route path="/settings/*" element={<SettingsRoutes />} />
             <Route path="/exporters/*" element={<LegacyExporterRoutes />} />
             <Route path="*" element={<NotFound />} />

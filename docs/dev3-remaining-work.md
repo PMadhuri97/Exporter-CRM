@@ -8,6 +8,17 @@ lane's foundation PR cannot be written until Developer 1's lands, and §6 of the
 allocation says so by design. This file says exactly what is waiting on what, so the
 next person re-checks in a minute rather than re-deriving it.
 
+> **Update, 2 October 2026 (PR audit).** F1 (Dev 1) and F2 (Dev 2) have both merged,
+> so §2's "F1 has not merged" table and the "Blocked on" rows below are out of date:
+> F3 is unblocked. The merge order was **F1 → F2 → F3**, not F1 → F3 → F2, so F3 now
+> builds on what F2 already put on `main`: `BranchFlagReader` (a `Protocol` with the
+> null `NoBranchFlags`) lives in `domain/handover_conditions.py` — implement that one,
+> don't declare a second — and `DealResponse.pipeline_status` is already wired to read
+> `exporter_profile.pipeline_status` once the column exists. This lane's migration was
+> renumbered to **`onboarding_0031_domestic_first`** on `onboarding_0030_deal_req_docs`,
+> and `auth_0005_rm_role_name` carries 3.6's rename into the `auth.role` row the
+> product actually shows. Next free onboarding number: **0032**.
+
 | | |
 |---|---|
 | **Done** | F-prerequisites aside: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6 |
@@ -21,10 +32,11 @@ next person re-checks in a minute rather than re-deriving it.
 
 ### 3.3 + 3.4 — Domestic-first qualification (P1-1, P1-2)
 
-One migration, `onboarding_0023_domestic_first`:
+One migration, `onboarding_0031_domestic_first` (written as 0023, renumbered at merge):
 
-- version 2 of `export_history` and `export_licence`, `required = false`, `created_by`
-  = `migration:onboarding_0023_domestic_first`;
+- the next version of `export_history` and `export_licence` (copied from the current
+  one, so an ADMIN's earlier version is built on, not collided with), `required =
+  false`, `created_by` = `migration:onboarding_0031_domestic_first`;
 - `no_export_history`, `no_export_licence` and `geography_not_supported` deactivated.
 
 `revenue` and `deal_size` untouched — thresholds stay in USD (BQ-1).
@@ -105,11 +117,11 @@ in:
 
 The naming rule carries a real example: **`onboarding_0023_domestic_criteria`, the name
 `plan.md` P1-1 prescribes, is 33 characters and fails on the database** after the
-migration body has run. It shipped as `onboarding_0023_domestic_first` (30). Worth
-fixing in `plan.md` so the next person does not copy it.
+migration body has run. It shipped as `onboarding_0031_domestic_first` (30); `plan.md`
+P1-1 now names it.
 
-Register updated: row for 0023, head now `onboarding_0023_domestic_first`, next free
-number 0024.
+Register updated: rows for 0031 and `auth_0005`, head now `auth_0005_rm_role_name`,
+next free number 0032.
 
 ### 3.2 — Data inventory (P0-3)
 

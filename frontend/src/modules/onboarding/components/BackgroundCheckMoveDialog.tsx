@@ -15,6 +15,11 @@
  * would ride along on, say, a `FLAGGED` decision — which is append-only — and become
  * the company's displayed risk. The server refuses that too
  * (`BACKGROUND_CHECK_RISK_NOT_ALLOWED`); this keeps the screen from ever trying.
+ *
+ * **Maker-checker (Developer 1, P3-1c).** A move the server marks `approval_required`
+ * (CLEAR, FLAGGED, ON_HOLD) is proposed, not recorded: the dialog says so and the
+ * button reads "Propose for approval". The check moves only when a second compliance
+ * officer approves it.
  */
 
 import { useState } from 'react';
@@ -119,6 +124,13 @@ export function BackgroundCheckMoveDialog({
         </label>
       )}
 
+      {move?.approval_required && (
+        <p data-testid="approval-required-note" className="mt-3 rounded bg-violet-50 p-2 text-xs text-violet-800">
+          This needs a second compliance officer: it is recorded as a proposal, and the
+          check moves only when someone else approves it.
+        </p>
+      )}
+
       {move && (
         <label className="mt-3 block text-sm">
           <span className="text-xs font-medium text-slate-600">
@@ -154,7 +166,13 @@ export function BackgroundCheckMoveDialog({
           }
           className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-40"
         >
-          {isPending ? 'Recording…' : 'Record decision'}
+          {isPending
+            ? move?.approval_required
+              ? 'Proposing…'
+              : 'Recording…'
+            : move?.approval_required
+              ? 'Propose for approval'
+              : 'Record decision'}
         </button>
         <button
           type="button"

@@ -28,6 +28,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.compliance_facts import legacy_clear_expiry
 from app.modules.onboarding.domain.entities.background_check_decision import (
     BackgroundCheckDecision,
 )
@@ -76,6 +77,19 @@ class BackgroundCheckStanding:
     decided_at: datetime | None
     """When the latest decision was made. ``None`` with no decisions."""
 
+    expires_at: datetime | None = None
+    """When the current ``CLEAR`` stops being current (Developer 1, plan P3-3b): the
+    clearing decision's stored ``expires_at``, or — for a ``CLEAR`` recorded before
+    migration 0027 — its ``decided_at`` + one year (BQ-5, the documented read rule).
+    ``None`` unless ``value == "CLEAR"``. Expiry never moves the gauge: an expired
+    Clear still reads ``CLEAR`` here, and :meth:`is_clear_and_current` says whether it
+    is still current."""
+
+    def is_clear_and_current(self, now: datetime) -> bool:
+        """``CLEAR`` **and** not yet expired at ``now`` (P3-3b). ``is_clear`` is kept
+        as it is for consumers that ask only about the gauge."""
+        return self.is_clear and self.expires_at is not None and now < self.expires_at
+
     @property
     def is_clear(self) -> bool:
         """Whether the company is cleared **right now**.
@@ -85,6 +99,12 @@ class BackgroundCheckStanding:
         ``!= "FLAGGED"`` and treat ``MORE_INFO`` as good enough.
         """
         return self.value == BackgroundCheckState.CLEAR.value
+
+
+def clear_expiry(decided_at: datetime, stored: datetime | None) -> datetime:
+    """A CLEAR decision's expiry: its stored ``expires_at``, else the legacy rule (BQ-5,
+    ``compliance_facts.legacy_clear_expiry`` — the one place the year is defined)."""
+    return stored if stored is not None else legacy_clear_expiry(decided_at)
 
 
 def current_background_check(company: ExporterProfile) -> str:
@@ -128,17 +148,25 @@ class BackgroundCheckReader:
         latest = await self._decisions.latest_for_company(company_id)
         current = str(getattr(value, "value", value))
 
+        # The chain head *is* the clearing decision when the company is CLEAR: every
+        # move writes a decision, so nothing can have happened since.
+        clearing = (
+            latest
+            if latest is not None
+            and current == BackgroundCheckState.CLEAR.value
+            and latest.to_value is BackgroundCheckState.CLEAR
+            else None
+        )
         return BackgroundCheckStanding(
             company_id=company_id,
             value=current,
             risk_rating=await self._latest_risk(company_id),
             latest_decision_id=latest.id if latest else None,
-            # The chain head *is* the clearing decision when the company is CLEAR:
-            # every move writes a decision, so nothing can have happened since.
-            clearing_decision_id=(
-                latest.id if latest and current == BackgroundCheckState.CLEAR.value else None
-            ),
+            clearing_decision_id=clearing.id if clearing else None,
             decided_at=latest.decided_at if latest else None,
+            expires_at=(
+                clear_expiry(clearing.decided_at, clearing.expires_at) if clearing else None
+            ),
         )
 
     async def _latest_risk(self, company_id: uuid.UUID) -> str | None:
@@ -165,6 +193,7 @@ class BackgroundCheckReader:
 
 
 __all__ = [
+    "clear_expiry",
     "BackgroundCheckReader",
     "BackgroundCheckStanding",
     "current_background_check",

@@ -20,6 +20,14 @@ export function isAdminRole(role: UserRole): boolean {
 }
 
 /**
+ * COMPLIANCE and ADMIN: the background-check decisions, their approval (maker-checker)
+ * and new check cycles. The RM never approves compliance (plan §8).
+ */
+export function isComplianceRole(role: UserRole): boolean {
+  return role === 'COMPLIANCE' || role === 'ADMIN';
+}
+
+/**
  * What a role is called on screen.
  *
  * `OPERATIONS` reads **"RM (Relationship Manager)"** (IQ-13): the people in that role

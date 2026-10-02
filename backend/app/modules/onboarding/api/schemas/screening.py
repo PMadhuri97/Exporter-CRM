@@ -8,6 +8,10 @@ exactly as they were; Dev4B's changes (4B-1, 4B-6) only add fields and shapes.
 
 The screening checklist is a compliance list inside the background check. It
 is not qualification, and qualification does not reuse it (architecture §5.5).
+
+Developer 1 (1 October 2026) added fields only: an answer's ``evidence_refs`` (plan
+P2-1b; accepted on the ``PUT``, optional per IQ-14) and its ``cycle_id``, and the
+check cycle a list is about (P2-3d). No identifier is carried by any of them.
 """
 
 from __future__ import annotations
@@ -18,6 +22,16 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.modules.onboarding.api.schemas.background_check import CheckCycleResponse
+from app.modules.onboarding.api.schemas.verification import (
+    VerificationEvidenceRefModel,
+    VerificationEvidenceRefOut,
+)
+from app.modules.onboarding.domain.verification_evidence import (
+    EvidenceRef,
+    VerificationEvidence,
+)
 
 # ── E9 screening review workspace ──────────────────────────────────────────
 
@@ -31,6 +45,21 @@ class UpdateScreeningReviewItemRequest(BaseModel):
 
     status: ScreeningChecklistStatus
     comment: str | None = Field(default=None, max_length=4000)
+    evidence_refs: list[VerificationEvidenceRefModel] = Field(
+        default_factory=list,
+        max_length=50,
+        description=(
+            "Optional (IQ-14). A `document` must be one of the company's own documents "
+            "and `AVAILABLE` (scanned clean); a `url` must be an http(s) link."
+        ),
+    )
+
+    def to_evidence(self) -> VerificationEvidence | None:
+        if not self.evidence_refs:
+            return None
+        return VerificationEvidence(
+            refs=tuple(EvidenceRef(type=ref.type, ref=ref.ref) for ref in self.evidence_refs)
+        )
 
 
 class ScreeningReviewItemResponse(BaseModel):
@@ -52,6 +81,11 @@ class ScreeningReviewItemResponse(BaseModel):
     reviewed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    evidence_refs: list[VerificationEvidenceRefOut] = Field(default_factory=list)
+    cycle_id: uuid.UUID | None = Field(
+        default=None,
+        description="The check cycle of this answer (one recorded before cycles reads as cycle 1).",
+    )
 
     def named(self, names: Mapping[str, str]) -> ScreeningReviewItemResponse:
         """This decision with `reviewed_by_name` filled from `names`."""
@@ -77,11 +111,20 @@ class ScreeningCapabilities(BaseModel):
 
 class ScreeningReviewListResponse(BaseModel):
     customer_id: uuid.UUID
-    #: The current decision per item that has one (latest row per key).
+    #: The decision per item that has one in this cycle (latest row per key).
     items: list[ScreeningReviewItemResponse]
     #: Every checklist item, in display order.
     catalogue: list[ScreeningCatalogueItemResponse]
     capabilities: ScreeningCapabilities
+    cycle: CheckCycleResponse | None = Field(
+        default=None,
+        description=(
+            "The check cycle these answers belong to — the current one unless "
+            "`cycle_id` was asked for; `cycle.is_current` says which. Answers are "
+            "recorded only in the current cycle; an earlier one is read-only. Null "
+            "before the company has a cycle."
+        ),
+    )
 
 
 class ScreeningItemHistoryResponse(BaseModel):

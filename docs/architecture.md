@@ -158,7 +158,14 @@ recorded risk, labelled as such, after a reopen (D6). Each move locks the compan
 pins an evidence snapshot (the verification results, screening rows and the company's
 own `AVAILABLE` documents it rested on), writes one history row and commits once. A
 screen that sends the value it was looking at gets a 409 if the gauge moved meanwhile.
-Contract: [`contracts/background-check.md`](contracts/background-check.md).
+
+**Two people for `CLEAR`, `FLAGGED` and `ON_HOLD`** (maker-checker, decision A, since 1
+October 2026): one COMPLIANCE or ADMIN user proposes the move, the gauge shows "awaiting
+approval" without moving, and a *different* one approves it (or rejects it; the
+proposer may withdraw it). A `CLEAR` also needs KYB, AML and sanctions passed in the
+current check cycle (rule B), and is current for one year (configurable): an expired
+Clear still reads `CLEAR` but no longer promotes a company, and is listed as "Re-KYC
+due". Contract: [`contracts/background-check.md`](contracts/background-check.md) §12.5–§12.7.
 
 ### Deal — is there a real, current need?
 
@@ -218,18 +225,25 @@ Developer 4B, read through one read-only seam (`domain/compliance_inputs.py`, th
   buyer (`BUYER`, by `deal_buyer.id`); a new check on a buyer of a closed deal is
   refused (D17). Each result says where it came from (`MANUAL`, `STUB`, `PROVIDER`) and
   whether it is a placeholder.
-- **The screening checklist** — eight items served by the server
-  (`SCREENING_CATALOGUE`), each decision `PASSED`, `FAILED`, `EXEMPT` or
-  `NEEDS_REVIEW`, recorded as a new row with its own history (D9). COMPLIANCE and ADMIN
-  decide.
+- **The screening checklist** — seven items served by the server
+  (`SCREENING_CATALOGUE`; `website-reviewed` was retired on 1 October 2026, plan P2-4a:
+  its rows are kept and readable, a new answer to it is refused), each decision
+  `PASSED`, `FAILED`, `EXEMPT` or `NEEDS_REVIEW`, recorded as a new row with its own
+  history (D9) and optional `{type, ref}` evidence (P2-1b). COMPLIANCE and ADMIN decide.
+- **Check cycles** (1 October 2026, plan P2-3) — every result, answer and decision
+  belongs to a KYC/KYB round (`check_cycle`); the check decides on the current one only.
+  A Re-KYC / Re-KYB starts the next cycle (COMPLIANCE, ADMIN) and, on a `CLEAR` company,
+  reopens it in the same transaction. Rows recorded before cycles read as cycle 1
+  (`contracts/background-check.md` §12.3).
 - **Bank activity** — the panel is honest: no provider feed is connected
   (`NOT_CONNECTED`), and no findings are invented.
 
 **What `CLEAR` requires** (A3, as settled in D1–D4 on 28 September 2026 and carried by
 `CLEAR_POLICY`): a risk rating; no check still pending (`PENDING`; `REVIEW` without an
-`ACCEPTED` or `REJECTED` review; any placeholder); all eight screening items `PASSED`
-or `EXEMPT` (a `FAILED` item means `FLAGGED`, not `CLEAR`); and at least one pinned
-evidence id. A `FAILED` verification does not block `CLEAR` by itself — compliance
+`ACCEPTED` or `REJECTED` review; any placeholder); every screening item of the
+catalogue (seven since 1 October 2026; eight before — a decision's `rules_version` says
+which) `PASSED` or `EXEMPT` (a `FAILED` item means `FLAGGED`, not `CLEAR`); and at least
+one pinned evidence id — all read from the company's **current check cycle**. A `FAILED` verification does not block `CLEAR` by itself — compliance
 weighs it. The details are in `contracts/background-check.md` §14 and
 `dev4/4b-task.md` §13 (Developer 4B's decisions).
 
@@ -389,7 +403,7 @@ The prototype is built to be honest about what is not real yet.
   background-check decisions (A6), and several modules are schema only
   ([`../RUNNING.md`](../RUNNING.md)).
 - **Open items the lead may change:** the `CLEAR` evidence rule is satisfied by the
-  eight screening answers alone, so a company can be cleared with no document and no
+  screening answers alone, so a company can be cleared with no document and no
   verification result; placeholder verification rows can never stop blocking `CLEAR`;
   the handover snapshot includes deal documents whatever their scan status; masked roles
   learn which company already holds a PAN from the duplicate refusal; changing a

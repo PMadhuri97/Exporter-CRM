@@ -355,7 +355,7 @@ async def _ensure_activities(company: SampleCompany) -> int:
 
 
 #: The criteria every sample review records a result for — the ones that are
-#: **required** after `onboarding_0023_domestic_first`.
+#: **required** after `onboarding_0031_domestic_first`.
 #:
 #: `export_history` and `export_licence` are deliberately absent. The first phase is
 #: domestic trade, so they are no longer required, and leaving them here would make

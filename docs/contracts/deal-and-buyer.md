@@ -1,14 +1,19 @@
 # Contract — the deal and its buyer
 
-**Owner:** Developer 3B · **Tables:** `onboarding.deal`, `onboarding.deal_buyer` · **Migration:** `onboarding_0018_deal_buyer`
+**Owner:** Developer 2 (post-demo allocation; Developer 3B before it) · **Tables:**
+`onboarding.deal`, `onboarding.deal_buyer`, `onboarding.deal_required_document` ·
+**Migrations:** `onboarding_0018_deal_buyer`, `onboarding_0028_deal_foundation`,
+`onboarding_0029_deal_snapshot`, `onboarding_0030_deal_req_docs`
 
-**Used by:** Developer 2 (company lists and panels), Developer 4 (buyer checks attach
-to the deal's buyer; the handover guard reads the company's background check),
-Developer 3A (the `READY_NOW` prompt that opens a deal — seam S2).
+**Used by:** Developer 3 (company lists and panels, trade history), Developer 1
+(buyer checks attach to the deal's buyer; the handover guard reads the company's
+background check and compliance facts).
 
-**State.** All of it is built. §6's handover works end to end **except that its guard
-can never pass** in this build: it needs a column Developer 4 has not shipped, so every
-handover is refused and says why. §6 has the detail.
+**State.** All of it is built, and §6's handover works end to end. The guard is now
+a list of conditions over injected providers (§6.1): three of the six decide today —
+the two assumption-A5 conditions and the required documents (§6.1.1) — and the other
+three are inert until the lane that owns each provider ships it. The handover is
+persisted as well as announced (§6.2).
 
 Architecture §3.3 ("The deal"), §3.5 and §3.6 are the source.
 
@@ -107,6 +112,31 @@ reverses this contract's first design, which left the two identifiers visible.)
 deal often starts before the buyer is known; a handover without a buyer is not a
 handover, since the payload carries buyer details (§6).
 
+### 3.0 The buyer is becoming a company record
+
+Plan P4-4. `deal.buyer_company_id` (migration 0028) is a nullable FK to
+`exporter_profile.customer_id`, `ON DELETE RESTRICT`, with
+`ck_deal_buyer_is_not_the_seller` refusing a deal a company sells to itself on. The
+deal response carries `buyer_company` — `{company_id, name, country,
+pipeline_status, pan, cin}`, with the identifiers masked by the rule below.
+
+The two coexist on purpose, and for a while:
+
+| A deal | Has | The guard reads |
+|---|---|---|
+| written before P4-6 | `deal_buyer` only | `for_legacy_buyer(deal_buyer.id)` |
+| written after P4-4 | `buyer_company_id` | `for_company(buyer_company_id)` |
+| mid-migration | both | the **company**, which is the authority |
+
+So the buyer migration (P4-6) is a data migration, not a behaviour change: §6.1
+condition 5 decides the same thing either way. `deal_buyer` writes are retired in
+P4-10, after every environment has migrated; the table itself is kept.
+
+The whole column is `NULL` on every deal today, and `buyer_company` is `null` in
+every response. The field is in the shape from the deal foundation PR anyway,
+because the company screens are built against it and adding a field later would be
+a contract change.
+
 ### 3.1 A buyer's problems stay on the buyer
 
 Architecture §3.5 and decision 9. A buyer failing a check is recorded against the
@@ -125,6 +155,13 @@ recorded (D17, 409 `DEAL_CLOSED`), and the verifications list stops offering
 
 Per architecture §3.7: OPERATIONS, COMPLIANCE and ADMIN open deals, move stages, and
 edit the buyer. DEVELOPER reads. API_USER reaches nothing.
+
+**Which documents a handover needs is a settings change, so ADMIN only** —
+`POST /settings/deal-required-documents` (§6.1.1). Any CRM reader may *read* the
+rule, including DEVELOPER: it carries no identifiers and nothing decision D8
+protects, and the same gate serves `/qualification/criteria`. Changing it changes
+which deals can be handed over, which is why writing it is narrower than moving a
+stage.
 
 ### 4.1 The server serves the allowed moves
 
@@ -171,27 +208,103 @@ written directly.
 
 ## 6. Handover
 
-`GATHERING_PAPERWORK → HANDED_OVER` requires, per assumption A5:
+### 6.1 The guard is a list of conditions
 
-1. the company's journey is `CUSTOMER`, **and**
-2. the company's background check is `CLEAR`.
+`GATHERING_PAPERWORK → HANDED_OVER` is decided by an **ordered list of conditions**
+(`domain/handover_conditions.py`), each returning one unmet-condition string or
+nothing. Every condition runs, and `handover_blocked_reason` is all of them joined
+with `"; "` — for example `the company is PROSPECT, not CUSTOMER; the background
+check is FLAGGED, not CLEAR`. While any is unmet, `allowed_stage_moves` omits the
+move, so the screen explains instead of offering a button that 409s (§4.1).
 
-Both are real: a company becomes a `CUSTOMER` when it is a `PROSPECT` with a `CLEAR`
-check (`company-record.md` §3.2), and the check is read through Developer 4A's
-published helper (`background-check.md` §10) — this service never creates or writes
-that column (`company-record.md` §2.4). A company never checked reads `NOT_STARTED`,
-and "not `CLEAR`" is never treated as "clear". While either condition is unmet,
-`allowed_stage_moves` omits the move and `handover_blocked_reason` names **every** unmet
-condition, journey first, joined with `"; "` — for example `the company is PROSPECT, not
-CUSTOMER; the background check is FLAGGED, not CLEAR`. The guard share-locks the company row on the move (D10),
-so a concurrent flag or reopen waits for the handover to commit.
+| # | Condition | Provider | State |
+|---|---|---|---|
+| 1 | the company's journey is `CUSTOMER` | — | **live** (assumption A5) |
+| 2 | the company's background check is `CLEAR` | — | **live** (assumption A5) |
+| 3 | every required document category is present | `RequiredDocumentsPolicy` | **live** (P2-5b) |
+| 4 | the company's Clear is current, and its own sanctions/AML have not failed | `ComplianceFactsReader` | waits for P3-3b, P4-7 |
+| 5 | the buyer's sanctions **and** AML are `PASSED` | `ComplianceFactsReader` | waits for P3-4, P4-7 |
+| 6 | the invoicing branch is not flagged | `BranchFlagReader` | waits for P6-7 |
 
-On handover: write the history row first, then announce
-`OnboardingEventPublisher.deal_handed_over(...)` after the commit — history is the
-source of truth and the announcement is best effort (architecture §3.6).
-`document_ids` is the snapshot of every document on the deal when it was handed
-over, whatever its scan status (open item: whether to refuse a handover while a deal
-document is not `AVAILABLE`).
+Conditions 1 and 2 are real: a company becomes a `CUSTOMER` when it is a `PROSPECT`
+with a `CLEAR` check (`company-record.md` §3.2), and the check is read through
+Developer 4A's published helper (`background-check.md` §10) — this service never
+creates or writes that column (`company-record.md` §2.4). A company never checked
+reads `NOT_STARTED`, and "not `CLEAR`" is never treated as "clear".
+
+Conditions 3–6 ask an **injected provider**. Until the lane that owns one ships it,
+its null provider is injected and the condition reports nothing. "No facts" is
+never read as "everything passed": a missing provider cannot let a deal through.
+Condition 5 reads a buyer recorded as a company through `for_company` and a legacy
+`deal_buyer` row through `for_legacy_buyer`, so the same rule decides before and
+after the buyer migration (P4-6).
+
+### 6.1.1 Condition 3 — the required documents
+
+`onboarding.deal_required_document` (migration 0030) is the rule, as data: one row
+per `(category, document_type, version)`, `active` saying whether that version
+requires the document. It is **versioned and append-only**, like
+`qualification_criterion` — adding a requirement writes version *n+1* with
+`active = true`, removing one writes version *n+1* with `active = false`, and
+nothing is ever updated or deleted. A deal handed over last month was judged
+against the rule as it stood then, and that rule is still readable.
+
+`document_type` is `''` for "any document in this category". A sentinel rather than
+`NULL`, because two `NULL`s do not collide in Postgres and the unique constraint on
+`(category, document_type, version)` would then let one requirement be added twice
+at a version. The API maps `''` to `null` both ways, so no caller sees it.
+
+| | |
+|---|---|
+| Seeded | One requirement: category `PRE_SHIPMENT`, any type (IQ-10) |
+| Counts as present | An `AVAILABLE` document on the deal (IQ-11). `PENDING_SCAN` is not evidence yet; `QUARANTINED` and `SCAN_FAILED` never will be |
+| Satisfies a typed requirement | Only a document of that type |
+| Routes | `GET /settings/deal-required-documents` (any CRM reader), `POST` (ADMIN) |
+| Refused | A category a deal cannot hold — `ENTITY_KYC` belongs to a company (§3.4), so requiring it of a deal would be a rule no deal could satisfy. A `document_type` the document settings do not configure under the category (422 `DOCUMENT_TYPE_NOT_ALLOWED`, the upload route's own refusal), checked when a requirement is added and not when one is stopped. A change that would leave the rule as it already is — including stopping a key nobody ever required. Two administrators changing one key at once: the second gets 409 `DEAL_REQUIRED_DOCUMENT_CHANGED` and nothing is saved |
+| The message | `missing required documents: PRE_SHIPMENT, BANKING` — every missing category at once, the category alone for an any-type requirement and `CATEGORY (type)` for a typed one |
+
+**This changed behaviour deliberately.** Before P2-5b a deal could go to the
+lending team with no paperwork at all. Deals **already** `HANDED_OVER` are
+untouched: the guard runs on the move, so a past handover is never re-judged, and
+turning a new requirement on does not invalidate one. **On a live database**, every
+open deal without an `AVAILABLE` pre-shipment document is blocked from handover the
+moment `onboarding_0030_deal_req_docs` runs, until one is uploaded — tell the
+operations team before deploying it.
+
+The guard reads the company row **once** per run, share-locked on the move (D10) and
+unlocked on the read that renders a page, and hands every condition the same
+snapshot — so no condition can see a different company than the lock was taken on.
+
+### 6.2 The handover is recorded, not only announced
+
+On handover, in this order:
+
+1. `deal.handover_snapshot` is written **in the same `UPDATE` as the stage move**:
+   `{buyer, buyer_company_id, document_ids, snapshot_source, snapshot_at}`. The
+   order matters — `trg_deal_terminal_freeze` fires on the old row, whose stage is
+   still `GATHERING_PAPERWORK`, so the column is written before it is frozen.
+2. The history row, in the same transaction (§7).
+3. `OnboardingEventPublisher.deal_handed_over(...)`, after the commit — history is
+   the source of truth and the announcement is best effort (architecture §3.6).
+
+The snapshot is **set once**: the trigger lets it go from `NULL` to a value on a
+terminal deal, so a deal handed over before snapshots existed can be filled in by a
+migration, and refuses every change after that. `snapshot_source` says which it is —
+`taken_at_handover` for a record, `backfilled_from_deal_buyer` for migration 0029's
+reconstruction from the `deal_buyer` row and the handover history row.
+
+The stored snapshot is never masked: it is the record of what the lending team was
+given, and a record that changed shape with its reader would be useless. The deal
+response masks the buyer inside it by exactly the rule that masks the live buyer
+(§3), so a tax identifier is no more visible inside a snapshot than outside one.
+
+`document_ids` is every document on the deal when it was handed over, whatever its
+scan status — the snapshot records what was there, not only what satisfied a rule.
+In a backfilled snapshot it is `null` when no handover history row recorded the
+paperwork, just as `buyer` is `null` when the buyer row is gone: "not recorded",
+never `[]`, which would say the deal went over with no paperwork.
+Whether a document *counts towards a requirement* is condition 3's separate
+question, and only `AVAILABLE` documents do (§6.1.1).
 
 ---
 
@@ -230,7 +343,10 @@ updates.
 | `DEAL_TERMINAL` | 409 | A move out of `HANDED_OVER` or `WITHDRAWN`. |
 | `DEAL_WITHDRAWAL_REASON_REQUIRED` | 422 | `WITHDRAWN` without a reason (A7). |
 | `DEAL_BUYER_REQUIRED` | 422 | Leaving `GATHERING_PAPERWORK` with no buyer. |
-| `DEAL_HANDOVER_BLOCKED` | 409 | The §6 guard is unmet: the company is not a `CUSTOMER`, or its check is not `CLEAR`. |
+| `DEAL_HANDOVER_BLOCKED` | 409 | Any §6.1 condition is unmet. The message names every one of them. |
+| `VALIDATION_ERROR` | 422 | On `POST /settings/deal-required-documents`: a category a deal cannot hold, or a change that changes nothing (§6.1.1). |
+| `DOCUMENT_TYPE_NOT_ALLOWED` | 422 | On `POST /settings/deal-required-documents`: a `document_type` not configured under the category (§6.1.1). |
+| `DEAL_REQUIRED_DOCUMENT_CHANGED` | 409 | On `POST /settings/deal-required-documents`: another administrator changed the same requirement first; nothing was saved (§6.1.1). |
 | `DEAL_COMPANY_NOT_FOUND` | 404 | Opening a deal for a company that does not exist. |
 | `DEAL_COMPANY_NOT_READY` | 409 | Opening a deal for a company that is still a `LEAD` (§2). |
 

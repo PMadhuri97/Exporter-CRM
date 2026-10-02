@@ -63,6 +63,13 @@ function deal(overrides: Partial<Deal> = {}): Deal {
       contact_email: null,
       contact_phone: null,
     },
+    // The three fields allocation F2 added. Every deal in the database today has
+    // them null: the buyer is still a `deal_buyer` row (P4-6 fills the company
+    // link), nothing has been handed over in this fixture, and the invoicing
+    // branch arrives with P6-6.
+    buyer_company: null,
+    handover_snapshot: null,
+    seller_gst_registration_id: null,
     allowed_stage_moves: [{ to_stage: 'WITHDRAWN', reason_required: true }],
     handover_blocked_reason:
       'the company is PROSPECT, not CUSTOMER; the background check is FLAGGED, not CLEAR',
@@ -465,5 +472,130 @@ describe('DealDetailPage — editing a buyer whose details are masked', () => {
       contact_email: null,
       contact_phone: null,
     });
+  });
+});
+
+// ── What was handed over (plan P2-7) ─────────────────────────────────────────
+
+describe('the handover snapshot', () => {
+  const SNAPSHOT = {
+    buyer: {
+      name: 'Rotterdam Trading BV',
+      country: 'NL',
+      registration_number: '•••8899',
+      tax_id: null,
+      contact_email: null,
+      contact_phone: null,
+    },
+    buyer_company_id: null,
+    document_ids: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+    snapshot_source: 'taken_at_handover',
+    snapshot_at: '2026-03-10T09:00:00Z',
+  };
+
+  it('is absent before the deal is handed over', async () => {
+    renderPage();
+    await screen.findByText('Rotterdam shipment, March');
+    expect(screen.queryByText('What was handed over')).not.toBeInTheDocument();
+  });
+
+  it('shows the buyer and the paperwork count once it exists, read-only', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        stage: 'HANDED_OVER',
+        handed_over_at: '2026-03-10T09:00:00Z',
+        allowed_stage_moves: [],
+        handover_blocked_reason: null,
+        handover_snapshot: SNAPSHOT,
+      }),
+    );
+    renderPage();
+
+    // Scoped to the panel's own `<section>`: the live buyer carries the same
+    // name, and a page-wide query would not say which of the two it found.
+    await screen.findByRole('heading', { name: 'What was handed over' });
+    const panel = screen
+      .getByRole('heading', { name: 'What was handed over' })
+      .closest('section') as HTMLElement;
+    expect(within(panel).getByText('Rotterdam Trading BV')).toBeInTheDocument();
+    expect(within(panel).getByText('•••8899')).toBeInTheDocument();
+    expect(within(panel).getByText(/1 document was included/)).toBeInTheDocument();
+    expect(
+      within(panel).getByText(/Recorded at the moment of the handover/),
+    ).toBeInTheDocument();
+    // Nothing here is editable: the database refuses to change a snapshot, so
+    // offering a control would be a lie.
+    expect(within(panel).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('says so when the snapshot was reconstructed rather than recorded', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        stage: 'HANDED_OVER',
+        allowed_stage_moves: [],
+        handover_blocked_reason: null,
+        handover_snapshot: {
+          ...SNAPSHOT,
+          document_ids: [],
+          snapshot_source: 'backfilled_from_deal_buyer',
+        },
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText(/Reconstructed from the records/)).toBeInTheDocument();
+    expect(screen.getByText(/0 documents were included/)).toBeInTheDocument();
+  });
+
+  it('says the paperwork was not recorded rather than that there was none', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        stage: 'HANDED_OVER',
+        allowed_stage_moves: [],
+        handover_blocked_reason: null,
+        handover_snapshot: {
+          ...SNAPSHOT,
+          document_ids: null,
+          snapshot_source: 'backfilled_from_deal_buyer',
+        },
+      }),
+    );
+    renderPage();
+
+    expect(
+      await screen.findByText(/Which documents were included was not recorded/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/0 documents were included/)).not.toBeInTheDocument();
+  });
+});
+
+// ── The buyer as a company record (plan P4-4) ───────────────────────────────
+
+describe('the buyer company', () => {
+  it('is absent on every deal whose buyer is still a deal_buyer row', async () => {
+    renderPage();
+    await screen.findByText('Rotterdam shipment, March');
+    expect(screen.queryByText('Buyer company')).not.toBeInTheDocument();
+  });
+
+  it('links to the company and shows its masked identifiers when one is recorded', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        buyer_company: {
+          company_id: '99999999-9999-4999-8999-999999999999',
+          name: 'Rotterdam Trading BV',
+          country: 'NL',
+          pipeline_status: null,
+          pan: '••••••1234',
+          cin: null,
+        },
+      }),
+    );
+    renderPage();
+
+    await screen.findByText('Buyer company');
+    const link = screen.getByRole('link', { name: 'Rotterdam Trading BV' });
+    expect(link).toHaveAttribute('href', '/companies/99999999-9999-4999-8999-999999999999');
+    expect(screen.getByText('••••••1234')).toBeInTheDocument();
   });
 });

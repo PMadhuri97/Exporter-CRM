@@ -4,6 +4,11 @@
 it once the seam lands: a field added, removed, renamed, reordered or retyped is a
 contract change that needs both developers' written agreement first (§6.4). These
 tests are the tripwire. If one fails, the fix is the agreement, not the test.
+
+**Seam v2** (plan P0-2, allocation F1, 1 October 2026) is that agreement, made once:
+``cycle_id`` on both input types and ``current_cycle_id`` on the company's inputs, each
+appended with a ``None`` default (``docs/contracts/background-check.md`` §12). The
+catalogue is seven items since plan P2-4a retired ``website-reviewed``.
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ FROZEN_SHAPE = {
         ("latest_review_status", "str | None"),
         ("latest_reviewed_at", "datetime | None"),
         ("evidence_document_ids", "tuple[uuid.UUID, ...]"),
+        ("cycle_id", "uuid.UUID | None"),  # v2
     ],
     ScreeningItemInput: [
         ("item_key", "str"),
@@ -49,14 +55,27 @@ FROZEN_SHAPE = {
         ("status", "str | None"),
         ("reviewed_by", "str | None"),
         ("reviewed_at", "datetime | None"),
+        ("cycle_id", "uuid.UUID | None"),  # v2
     ],
     CompanyComplianceInputs: [
         ("company_id", "uuid.UUID"),
         ("screening_catalogue", "tuple[str, ...]"),
         ("screening_items", "tuple[ScreeningItemInput, ...]"),
         ("verifications", "tuple[VerificationInput, ...]"),
+        ("current_cycle_id", "uuid.UUID | None"),  # v2
     ],
 }
+
+
+@pytest.mark.parametrize("cls", list(FROZEN_SHAPE), ids=lambda cls: cls.__name__)
+def test_the_v2_fields_default_so_a_v1_construction_still_builds(cls):
+    """v2 appended its fields with a ``None`` default: no v1 caller had to change."""
+    v2 = {"cycle_id", "current_cycle_id"}
+    for field in dataclasses.fields(cls):
+        if field.name in v2:
+            assert field.default is None, (cls.__name__, field.name)
+        else:
+            assert field.default is dataclasses.MISSING, (cls.__name__, field.name)
 
 
 @pytest.mark.parametrize("cls", list(FROZEN_SHAPE), ids=lambda cls: cls.__name__)
@@ -114,10 +133,10 @@ def test_the_service_implements_each_read_with_the_protocols_signature(method, p
     )
 
 
-def test_the_catalogue_is_the_eight_keys_in_display_order():
-    """§6.1: "the eight keys, in display order" — the order `VerificationSection.tsx` renders."""
+def test_the_catalogue_is_the_seven_keys_in_display_order():
+    """§6.1: the keys in display order — the order `ScreeningChecklist.tsx` renders.
+    Seven since plan P2-4a retired `website-reviewed` (decision K)."""
     assert SCREENING_CATALOGUE == (
-        "website-reviewed",
         "address-physical",
         "business-consistency",
         "payment-purpose",
@@ -127,7 +146,8 @@ def test_the_catalogue_is_the_eight_keys_in_display_order():
         "exception-evidence",
     )
     assert frozenset(SCREENING_CATALOGUE) == VALID_ITEM_KEYS
-    assert len(set(SCREENING_CATALOGUE)) == 8
+    assert len(set(SCREENING_CATALOGUE)) == 7
+    assert "website-reviewed" not in VALID_ITEM_KEYS
 
 
 def test_a_value_can_be_built_as_the_contract_describes():

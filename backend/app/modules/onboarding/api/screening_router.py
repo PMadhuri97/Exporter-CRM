@@ -15,6 +15,11 @@ company history under the `screening` dimension (**D9**).
 
 The screening checklist is a compliance list inside the background check. It is
 not qualification (architecture §5.5).
+
+Developer 1 (1 October 2026): the list is about one check cycle — the current one, or
+an earlier one named by ``cycle_id`` (read-only: ``can_record_decision`` is false there,
+plan P2-3d) — and lists the seven catalogue items (P2-4a). An answer may carry evidence
+references (P2-1b). A retired item's history stays readable; a new answer to it is 422.
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.actor_names import actor_names
+from app.modules.onboarding.api.schemas.background_check import CheckCycleResponse
 from app.modules.onboarding.api.schemas.screening import (
     BankActivityFindingResponse,
     BankActivityResponse,
@@ -38,7 +44,14 @@ from app.modules.onboarding.api.schemas.screening import (
 )
 from app.modules.onboarding.application.screening_review_service import (
     SCREENING_CATALOGUE_ITEMS,
+    ScreeningCycleScope,
     ScreeningReviewService,
+)
+from app.modules.onboarding.domain.entities.check_cycle import CheckCycle
+from app.modules.onboarding.domain.entities.screening_review import ScreeningReviewItem
+from app.modules.onboarding.infrastructure.repositories.check_cycle_repository import (
+    CheckCycleRepository,
+    resolved_cycle_id,
 )
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
@@ -57,6 +70,36 @@ _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 _CATALOGUE = [ScreeningCatalogueItemResponse.model_validate(i) for i in SCREENING_CATALOGUE_ITEMS]
 
 
+def _item(
+    row: ScreeningReviewItem, names: dict[str, str], initial: CheckCycle | None
+) -> ScreeningReviewItemResponse:
+    """One answer as served: named, with the legacy cycle rule applied."""
+    return (
+        ScreeningReviewItemResponse.model_validate(row)
+        .named(names)
+        .model_copy(update={"cycle_id": resolved_cycle_id(row.cycle_id, initial)})
+    )
+
+
+def _cycle(scope: ScreeningCycleScope, names: dict[str, str]) -> CheckCycleResponse | None:
+    cycle = scope.selected
+    if cycle is None:
+        return None
+    return CheckCycleResponse(
+        id=cycle.id,
+        company_id=cycle.company_id,
+        number=cycle.number,
+        kind=cycle.kind,
+        reason=cycle.reason,
+        started_at=cycle.started_at,
+        started_by=cycle.created_by,
+        started_by_name=names.get(cycle.created_by),
+        source=cycle.source,
+        rules_version=cycle.rules_version,
+        is_current=scope.is_current,
+    )
+
+
 # ── E9 screening review workspace ─────────────────────────────────────────
 
 @router.get(
@@ -64,29 +107,41 @@ _CATALOGUE = [ScreeningCatalogueItemResponse.model_validate(i) for i in SCREENIN
     response_model=ScreeningReviewListResponse,
     summary="List persisted screening-review checklist decisions",
     description=(
-        "The current decision on each checklist item that has one, the full checklist "
-        "catalogue in display order, and whether the caller may record a decision."
+        "The decision on each checklist item that has one in a check cycle — the "
+        "current cycle, or the one named by `cycle_id` — the full checklist catalogue "
+        "in display order, and whether the caller may record a decision (only ever in "
+        "the current cycle)."
     ),
     responses={
         401: {"description": "Unauthorized"},
         403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
-        404: {"description": "Company not found"},
+        404: {"description": "Company not found, or a `cycle_id` that is not this company's"},
     },
 )
 async def list_screening_review(
     customer_id: uuid.UUID,
     current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
+    cycle_id: uuid.UUID | None = Query(
+        default=None, description="A check cycle of this company. Default: the current one."
+    ),
 ) -> ScreeningReviewListResponse:
-    items = await ScreeningReviewService(db).list_review_items(customer_id)
-    names = await actor_names(db, current_user, (item.reviewed_by for item in items))
+    service = ScreeningReviewService(db)
+    scope = await service.cycle_scope(customer_id, cycle_id)
+    items = await service.list_review_items(customer_id, scope=scope)
+    names = await actor_names(
+        db,
+        current_user,
+        [*(item.reviewed_by for item in items), scope.selected.created_by if scope.selected else None],
+    )
     return ScreeningReviewListResponse(
         customer_id=customer_id,
-        items=[ScreeningReviewItemResponse.model_validate(item).named(names) for item in items],
+        items=[_item(item, names, scope.initial) for item in items],
         catalogue=_CATALOGUE,
         capabilities=ScreeningCapabilities(
-            can_record_decision=current_user.role in _DECISION_ROLES
+            can_record_decision=current_user.role in _DECISION_ROLES and scope.is_current
         ),
+        cycle=_cycle(scope, names),
     )
 
 
@@ -117,10 +172,12 @@ async def list_screening_review_item_history(
         customer_id, item_key, limit=limit, offset=offset
     )
     names = await actor_names(db, current_user, (row.reviewed_by for row in rows))
+    cycles = await CheckCycleRepository(db).list_for_company(customer_id)
+    initial = cycles[0] if cycles else None
     return ScreeningItemHistoryResponse(
         customer_id=customer_id,
         item_key=item_key,
-        items=[ScreeningReviewItemResponse.model_validate(row).named(names) for row in rows],
+        items=[_item(row, names, initial) for row in rows],
         total=total,
         limit=limit,
         offset=offset,
@@ -131,11 +188,22 @@ async def list_screening_review_item_history(
     "/{customer_id}/screening-review/{item_key}",
     response_model=ScreeningReviewItemResponse,
     summary="Record or update one screening-review checklist decision",
+    description=(
+        "Appends a new answer to the item in the company's current check cycle; every "
+        "earlier answer stays in the item's history. `evidence_refs` is optional: a "
+        "`document` must be one of the company's own `AVAILABLE` documents, a `url` an "
+        "http(s) link. A retired item (`website-reviewed`) takes no new answer."
+    ),
     responses={
         401: {"description": "Unauthorized"},
         403: {"description": "COMPLIANCE or ADMIN role required"},
         404: {"description": "Company not found"},
-        422: {"description": "Unknown checklist item or status"},
+        422: {
+            "description": (
+                "Unknown or retired checklist item, unknown status, or evidence that is "
+                "malformed, foreign or not AVAILABLE"
+            )
+        },
     },
 )
 async def update_screening_review(
@@ -151,9 +219,11 @@ async def update_screening_review(
         status=body.status,
         comment=body.comment,
         actor_id=str(current_user.id),
+        evidence=body.to_evidence(),
     )
     names = await actor_names(db, current_user, [item.reviewed_by])
-    return ScreeningReviewItemResponse.model_validate(item).named(names)
+    # A new answer always carries its cycle, so no legacy rule applies.
+    return _item(item, names, None)
 
 
 @router.get(

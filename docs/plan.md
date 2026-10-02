@@ -4,11 +4,11 @@
 |---|---|
 | Date | 1 October 2026 |
 | Repository state audited | `main` @ `632a824` ("Fix and Hardening"), clean working tree, one Alembic head `onboarding_0022_integrity` |
-| Business source of truth | `docs/plan.md` — *ANER Exporter CRM — Post-Demo Change Plan*, 30 September 2026 (decisions A–K; DPDP and RXIL open) |
+| Business source of truth | *ANER Exporter CRM — Post-Demo Change Plan*, 30 September 2026 (decisions A–K; DPDP and RXIL open). It was the untracked `docs/plan.md` when this audit was written; it is **not in the repository** — this file now holds that path |
 | Target picture used alongside it | `crm-state-model-v2.png` ("One company, several gauges", decisions A–K recorded 30 September 2026) |
 | What this file is | An audit of the code against that plan, and the engineering plan that follows from it. No code, migration or behaviour was changed |
 | Decisions recorded | 1 October 2026: all blocking and design questions answered, see §19.0 (it overrides earlier text where they differ) |
-| Where it lives | Repository root. `docs/plan.md` is the source document and is untracked, so it was not overwritten |
+| Where it lives | `docs/plan.md`, committed with Developer 1's compliance PR (`feature/compliance-foundation`). Written at the repository root and moved here; every "P…" task id and "§" number in `developer-allocation.md` refers to this file |
 
 Status words used for claims: **VERIFIED** (read in code), **NOT VERIFIED** (the claim is contradicted by the code), **PARTIALLY IMPLEMENTED**, **NOT IMPLEMENTED**, **UNKNOWN / NEEDS VERIFICATION** (cannot be settled from the repository). File references are relative to the repository root.
 
@@ -494,7 +494,7 @@ This document is the audit. Phase 0's remaining work turns its open points into 
 ### P1-1 — Domestic criteria version
 - **Objective:** a domestic company with no IEC or export history can be qualified. Thresholds stay in USD (BQ-1, answered 1 October).
 - **Current state:** v1 seed (`onboarding_0017_qualification.py:92-104`); ADMIN can add versions in the UI.
-- **Required change:** new versions of `export_history` and `export_licence` with `required=false`. `revenue` and `deal_size` are **not** changed (USD kept), so their existing results keep counting. Do it as a data migration (`onboarding_0023_domestic_criteria`) so every environment gets identical versions, with `created_by` set to a recognisable migration actor, rather than by hand per environment.
+- **Required change:** new versions of `export_history` and `export_licence` with `required=false`. `revenue` and `deal_size` are **not** changed (USD kept), so their existing results keep counting. Do it as a data migration (shipped as `onboarding_0031_domestic_first` — the id first written here, `onboarding_0023_domestic_criteria`, is 33 characters and fails on `alembic_version`) so every environment gets identical versions, with `created_by` set to a recognisable migration actor, rather than by hand per environment.
 - **Backend:** none beyond the migration; update `sample_data.py` so sample companies pass the new versions.
 - **Frontend:** none (P1-3 handles display).
 - **Database:** inserts only (the table is append-only).
