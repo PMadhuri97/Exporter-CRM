@@ -47,11 +47,15 @@ export function reviewVerification(
   );
 }
 
+/** The checklist in one check cycle — the current one unless `cycleId` names another
+ * (earlier cycles are read-only; Developer 1, P2-3d). */
 export function getScreeningReview(
   customerId: string,
+  cycleId?: string,
 ): Promise<import('../types').ScreeningReviewList> {
+  const suffix = cycleId ? `?${new URLSearchParams({ cycle_id: cycleId }).toString()}` : '';
   return apiRequest<import('../types').ScreeningReviewList>(
-    `/onboarding/exporters/${customerId}/screening-review`,
+    `/onboarding/exporters/${customerId}/screening-review${suffix}`,
   );
 }
 
@@ -76,6 +80,8 @@ export function updateScreeningReviewItem(
   payload: {
     status: import('../types').ScreeningChecklistStatus;
     comment: string | null;
+    /** Optional (IQ-14): the company's AVAILABLE documents or http(s) links. */
+    evidence_refs?: import('../types').VerificationEvidenceRef[];
   },
 ): Promise<import('../types').ScreeningReviewItem> {
   return apiRequest<import('../types').ScreeningReviewItem>(

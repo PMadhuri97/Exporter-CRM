@@ -29,6 +29,7 @@ from app.modules.onboarding.api.schemas.history import (
     HistoryListResponse,
 )
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.domain.history_dimensions import HIDDEN_FROM_DEVELOPER
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
 from app.platform.database.services import get_db
@@ -51,8 +52,10 @@ _READER = require_role(
 #: ids, and the verification and screening routes (`background-check.md` §14,
 #: `4b-task.md` §13). Their history rows carry the same values, reasons, review notes
 #: and screening comments, so serving them here would hand DEVELOPER exactly what
-#: those routes refuse it. Every other dimension stays readable.
-_HIDDEN_FROM_DEVELOPER = frozenset({"background_check", "verification", "screening"})
+#: those routes refuse it. Every other dimension stays readable. F1 added the
+#: background check's own new dimensions, `check_cycle` and
+#: `background_check_approval`, for the same reason (`domain/history_dimensions.py`).
+_HIDDEN_FROM_DEVELOPER = HIDDEN_FROM_DEVELOPER
 
 #: `details` keys DEVELOPER does not see on the rows it does receive. The move to
 #: `CUSTOMER` is a journey row, and it records the clearing decision and its risk
@@ -100,8 +103,9 @@ _ORDERING = (
         "Every recorded change to this company: its journey, each of its three "
         "gauges, its marker and its deals, interleaved. Filter to one with "
         "`dimension`. DEVELOPER does not receive `background_check`, "
-        "`verification` or `screening` rows, nor a row's `risk_rating` or "
-        "`clearing_decision_id` details (decision D8). " + _ORDERING
+        "`verification`, `screening`, `check_cycle` or `background_check_approval` "
+        "rows, nor a row's `risk_rating` or `clearing_decision_id` details "
+        "(decision D8). " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},
@@ -118,7 +122,9 @@ async def list_company_history(
         max_length=32,
         description=(
             "Restrict to one dimension: journey, qualification, conversation, "
-            "background_check, deal, marker, profile, verification or screening."
+            "background_check, deal, marker, profile, verification, screening, "
+            "check_cycle, background_check_approval, gst_registration, trade or "
+            "pipeline."
         ),
     ),
     limit: int = Query(default=50, ge=1, le=200),

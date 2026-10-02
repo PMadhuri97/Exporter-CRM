@@ -95,7 +95,7 @@ async def test_an_unknown_item_key_is_422_over_the_api(client, tokens):
 async def test_an_unknown_status_is_422_over_the_api(client, tokens):
     company_id = await make_company()
     resp = await client.put(
-        f"{BASE}/exporters/{company_id}/screening-review/website-reviewed",
+        f"{BASE}/exporters/{company_id}/screening-review/address-physical",
         json={"status": "MAYBE"},
         headers=auth_header(tokens[UserRole.COMPLIANCE]),
     )
@@ -105,12 +105,12 @@ async def test_an_unknown_status_is_422_over_the_api(client, tokens):
 async def test_an_unknown_status_is_refused_by_the_service_too():
     company_id = await make_company()
     with pytest.raises(ValidationError, match="status"):
-        await _decide(company_id, "website-reviewed", "MAYBE")
+        await _decide(company_id, "address-physical", "MAYBE")
 
 
 async def test_recording_on_an_unknown_company_is_404_not_a_database_error(client, tokens):
     resp = await client.put(
-        f"{BASE}/exporters/{uuid.uuid4()}/screening-review/website-reviewed",
+        f"{BASE}/exporters/{uuid.uuid4()}/screening-review/address-physical",
         json={"status": "PASSED"},
         headers=auth_header(tokens[UserRole.COMPLIANCE]),
     )
@@ -118,7 +118,7 @@ async def test_recording_on_an_unknown_company_is_404_not_a_database_error(clien
     assert resp.json()["error_code"] == "EXPORTER_PROFILE_NOT_FOUND"
 
 
-@pytest.mark.parametrize("suffix", ["", "/website-reviewed/history"])
+@pytest.mark.parametrize("suffix", ["", "/address-physical/history"])
 async def test_reading_an_unknown_company_is_404(client, tokens, suffix):
     resp = await client.get(
         f"{BASE}/exporters/{uuid.uuid4()}/screening-review{suffix}",
@@ -129,7 +129,7 @@ async def test_reading_an_unknown_company_is_404(client, tokens, suffix):
 
 async def test_the_service_refuses_an_unknown_company_before_writing():
     with pytest.raises(ExporterProfileNotFoundError):
-        await _decide(uuid.uuid4(), "website-reviewed", "PASSED")
+        await _decide(uuid.uuid4(), "address-physical", "PASSED")
 
 
 # ── History ──────────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ async def test_history_is_every_decision_newest_first_and_paged(client, tokens):
     first = await _decide(company_id, "payment-purpose", "FAILED", "a")
     second = await _decide(company_id, "payment-purpose", "NEEDS_REVIEW", "b")
     third = await _decide(company_id, "payment-purpose", "PASSED", "c")
-    await _decide(company_id, "website-reviewed", "PASSED", "d")  # another item
+    await _decide(company_id, "address-physical", "PASSED", "d")  # another item
 
     url = f"{BASE}/exporters/{company_id}/screening-review/payment-purpose/history"
     headers = auth_header(tokens[UserRole.OPERATIONS])
@@ -187,8 +187,8 @@ async def test_every_screening_decision_writes_a_screening_history_row():
     """D9 (lead, 28 Sep 2026): decisions appear in the company timeline under the
     ``screening`` dimension, from the item's previous status to the new one."""
     company_id = await make_company()
-    first = await _decide(company_id, "website-reviewed", "FAILED", "a")
-    second = await _decide(company_id, "website-reviewed", "PASSED", "b")
+    first = await _decide(company_id, "address-physical", "FAILED", "a")
+    second = await _decide(company_id, "address-physical", "PASSED", "b")
     other = await _decide(company_id, "payment-purpose", "EXEMPT", "c")
 
     with pg() as cur:
@@ -209,10 +209,13 @@ async def test_every_screening_decision_writes_a_screening_history_row():
             "source": "screening_review_service.upsert_review_item",
             "item_key": key,
             "screening_review_item_id": str(item.id),
+            # Developer 1 (P2-3a, P2-1b): the answer's cycle and its evidence count.
+            "cycle_id": str(item.cycle_id),
+            "evidence_count": 0,
         }
         for key, item in (
-            ("website-reviewed", first),
-            ("website-reviewed", second),
+            ("address-physical", first),
+            ("address-physical", second),
             ("payment-purpose", other),
         )
     ]
@@ -231,7 +234,9 @@ async def test_a_refused_screening_decision_writes_no_history_row():
 
 async def test_the_model_declares_the_companys_foreign_key():
     column = ScreeningReviewItem.__table__.c.customer_id
-    [fk] = column.foreign_keys
+    # `customer_id` is also half of the composite cycle key (0025,
+    # `fk_screening_review_item_cycle`), so pick the company's own by name.
+    [fk] = [fk for fk in column.foreign_keys if fk.name == "fk_screening_review_item_customer_id"]
     assert fk.name == "fk_screening_review_item_customer_id"
     assert fk.target_fullname == "onboarding.exporter_profile.customer_id"
     assert fk.ondelete == "RESTRICT"

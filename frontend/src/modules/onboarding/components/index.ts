@@ -27,3 +27,7 @@ export { BackgroundCheckGauge } from './BackgroundCheckGauge';
 export { RiskChip } from './RiskChip';
 export { BackgroundCheckMoveDialog } from './BackgroundCheckMoveDialog';
 export { DecisionHistory } from './DecisionHistory';
+
+// ── Compliance engine — owner: Developer 1 ──
+// Mounted by other lanes: Developer 2 on the deal page (seller and buyer company).
+export { CompanyComplianceSummary } from './CompanyComplianceSummary';

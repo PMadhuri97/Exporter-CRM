@@ -187,7 +187,8 @@ def test_placeholder_rule(normalized_result, provider_reference, expected):
 def test_the_catalogue_is_one_ordered_list_every_other_copy_derives_from():
     assert SCREENING_CATALOGUE == tuple(item.key for item in SCREENING_CATALOGUE_ITEMS)
     assert frozenset(SCREENING_CATALOGUE) == VALID_ITEM_KEYS
-    assert len(SCREENING_CATALOGUE) == len(VALID_ITEM_KEYS) == 8
+    # Seven since plan P2-4a retired `website-reviewed` (decision K).
+    assert len(SCREENING_CATALOGUE) == len(VALID_ITEM_KEYS) == 7
 
 
 def test_every_catalogue_item_has_a_label_and_a_known_section():

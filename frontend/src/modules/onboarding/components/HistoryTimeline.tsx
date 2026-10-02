@@ -20,12 +20,16 @@
 import {
   BadgeCheck,
   Briefcase,
+  Compass,
   Flag,
+  Handshake,
   History as HistoryIcon,
+  Landmark,
   ListChecks,
   MessageSquare,
   PencilLine,
   Route,
+  Shield,
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
@@ -39,6 +43,7 @@ import { useCompanyHistory, useDealHistory, useQualification, useScreeningReview
 import type { HistoryDimension, HistoryEntry, HistoryList } from '../types';
 
 import { actorLabel } from './actor-label';
+import { cycleKindLabel, proposedMoveLabel } from './background-check-labels';
 import { verificationTypeLabel } from './verification-labels';
 
 const PAGE_SIZE = 25;
@@ -53,6 +58,12 @@ const DIMENSION_LOOK: Record<string, { label: string; icon: LucideIcon; tone: st
   profile: { label: 'Profile', icon: PencilLine, tone: 'text-ink-muted bg-surface-sunken' },
   verification: { label: 'Verification', icon: ShieldCheck, tone: 'text-ink-muted bg-surface-sunken' },
   screening: { label: 'Screening', icon: ListChecks, tone: 'text-ink-muted bg-surface-sunken' },
+  // The five F1 dimensions (`history-row.md` §2), added once for every lane.
+  check_cycle: { label: 'Check cycle', icon: ShieldCheck, tone: 'text-status-review bg-status-review/10' },
+  background_check_approval: { label: 'Approval', icon: Shield, tone: 'text-status-review bg-status-review/10' },
+  gst_registration: { label: 'GST registration', icon: Landmark, tone: 'text-ink-muted bg-surface-sunken' },
+  trade: { label: 'Trade', icon: Handshake, tone: 'text-brand-600 bg-brand-50' },
+  pipeline: { label: 'Pipeline', icon: Compass, tone: 'text-ink-muted bg-surface-sunken' },
 };
 
 const FALLBACK_LOOK = { label: 'Change', icon: HistoryIcon, tone: 'text-ink-muted bg-surface-sunken' };
@@ -142,6 +153,14 @@ function subjectOf(entry: HistoryEntry, labels: HistoryLabels): string | null {
     const onBuyer = details.entity_type === 'BUYER' && type !== 'BUYER';
     const subject = onBuyer ? `Buyer ${check.charAt(0).toLowerCase()}${check.slice(1)}` : check;
     return entry.event_type === 'verification_reviewed' ? `${subject} reviewed` : subject;
+  }
+  // Developer 1's dimensions: a proposal's status means nothing without the move it
+  // proposes ("Clear proposal: Open → Approved"), and a cycle row names its kind.
+  if (entry.dimension === 'background_check_approval' && typeof details.to_value === 'string') {
+    return `${proposedMoveLabel(details.to_value)} proposal`;
+  }
+  if (entry.dimension === 'check_cycle' && typeof details.kind === 'string') {
+    return `${cycleKindLabel(details.kind)} — check cycle`;
   }
   return null;
 }

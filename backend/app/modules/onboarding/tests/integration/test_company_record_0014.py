@@ -250,15 +250,24 @@ async def test_a_company_with_children_cannot_be_deleted():
 
 async def test_verification_results_deliberately_have_no_company_link():
     """`entity_reference` names several kinds of subject (company, person,
-    buyer), so it cannot point at one table."""
+    buyer), so it cannot point at one table.
+
+    Since F1 (0023) and P2-3a (0025) the table has two foreign keys of its own — the
+    set-once `subject_company_id` and `cycle_id` — and neither is on
+    `entity_reference`, which still has none."""
     conn = _connect()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT count(*) FROM pg_constraint "
+                "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
                 "WHERE conrelid = 'onboarding.verification_result'::regclass AND contype = 'f'"
             )
-            assert cur.fetchone()[0] == 0
+            foreign_keys = dict(cur.fetchall())
+            assert set(foreign_keys) == {
+                "fk_verification_result_subject_company_id",
+                "fk_verification_result_cycle_id",
+            }
+            assert not any("entity_reference" in d for d in foreign_keys.values())
     finally:
         conn.close()
 

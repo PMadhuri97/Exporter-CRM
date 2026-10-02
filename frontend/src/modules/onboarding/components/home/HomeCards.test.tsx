@@ -1,16 +1,39 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { listFollowUps, searchExporterProfiles } from '../../api';
-import type { ExporterProfileListItem, FollowUpList } from '../../types';
+import { ApiError } from '@/lib/api/errors';
 
-import { CheckBacksDueCard, FollowUpsDueCard, PipelineSummaryCard } from './HomeCards';
+import {
+  approveBackgroundCheckProposal,
+  listFollowUps,
+  listOpenProposals,
+  listReKycDue,
+  searchExporterProfiles,
+} from '../../api';
+import type {
+  BackgroundCheckProposal,
+  ExporterProfileListItem,
+  FollowUpList,
+} from '../../types';
+
+import {
+  CheckBacksDueCard,
+  FollowUpsDueCard,
+  PipelineSummaryCard,
+  ProposalsAwaitingMeCard,
+  ReKycDueCard,
+} from './HomeCards';
 
 vi.mock('../../api', () => ({
+  approveBackgroundCheckProposal: vi.fn(),
   listFollowUps: vi.fn(),
+  listOpenProposals: vi.fn(),
+  listReKycDue: vi.fn(),
+  rejectBackgroundCheckProposal: vi.fn(),
   searchExporterProfiles: vi.fn(),
+  withdrawBackgroundCheckProposal: vi.fn(),
 }));
 
 const CUSTOMER_ID = '11111111-1111-4111-8111-111111111111';
@@ -104,5 +127,130 @@ describe('Home cards', () => {
       'href',
       '/companies?journey=PROSPECT',
     );
+  });
+});
+
+// ── Developer 1: maker-checker (P3-1c) and Re-KYC due (P3-3c) ──────────────
+
+const PROPOSAL: BackgroundCheckProposal = {
+  id: 'p1',
+  company_id: CUSTOMER_ID,
+  company_name: 'Coastal Seafood Exports Pvt Ltd',
+  based_on_decision_id: 'd1',
+  from_value: 'IN_REVIEW',
+  to_value: 'CLEAR',
+  risk_rating: 'MEDIUM',
+  reason: 'Every check passed.',
+  proposed_by: 'maker-id',
+  proposed_by_name: 'Asha Maker',
+  proposed_at: '2026-10-01T09:00:00Z',
+  cycle_id: 'c1',
+  cycle_number: 1,
+  rules_version: 'clear-2026-10-01-7items-kyb-aml-sanctions',
+  evidence_count: 10,
+  status: 'OPEN',
+  allowed_actions: ['APPROVE', 'REJECT'],
+};
+
+describe('Home cards — compliance', () => {
+  it('lists the proposals awaiting me, and approves one in two clicks', async () => {
+    vi.mocked(listOpenProposals).mockResolvedValue({
+      proposals: [PROPOSAL],
+      total: 1,
+      limit: 5,
+      offset: 0,
+    });
+    vi.mocked(approveBackgroundCheckProposal).mockResolvedValue({
+      decision: {} as never,
+      proposal: { ...PROPOSAL, status: 'APPROVED' },
+    });
+    renderCard(<ProposalsAwaitingMeCard />);
+
+    const row = await screen.findByTestId('proposal-awaiting');
+    expect(listOpenProposals).toHaveBeenCalledWith({ awaitingMe: true, limit: 5 });
+    expect(screen.getByTestId('proposals-awaiting-count')).toHaveTextContent('1');
+    expect(within(row).getByRole('link', { name: /Coastal Seafood/ })).toHaveAttribute(
+      'href',
+      `/companies/${CUSTOMER_ID}?tab=background-check`,
+    );
+    expect(row).toHaveTextContent('Asha Maker');
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Approve' })); // 1
+    const dialog = screen.getByRole('dialog', { name: 'Approve this decision' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' })); // 2
+
+    await waitFor(() =>
+      expect(approveBackgroundCheckProposal).toHaveBeenCalledWith(CUSTOMER_ID, 'p1'),
+    );
+  });
+
+  it('says so when nothing awaits approval, and when the queue cannot be loaded', async () => {
+    vi.mocked(listOpenProposals).mockResolvedValueOnce({
+      proposals: [],
+      total: 0,
+      limit: 5,
+      offset: 0,
+    });
+    const { unmount } = renderCard(<ProposalsAwaitingMeCard />);
+    expect(
+      await screen.findByText('No background-check decision is waiting for your approval.'),
+    ).toBeInTheDocument();
+    unmount();
+
+    vi.mocked(listOpenProposals).mockRejectedValueOnce(new ApiError(500, 'boom'));
+    renderCard(<ProposalsAwaitingMeCard />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Couldn't load the proposals/);
+  });
+
+  it('lists companies due for Re-KYC, the expired ones marked as such', async () => {
+    vi.mocked(listReKycDue).mockResolvedValue({
+      companies: [
+        {
+          company_id: CUSTOMER_ID,
+          company_name: 'Aarav Textiles Pvt Ltd',
+          journey: 'CUSTOMER',
+          background_check: 'CLEAR',
+          expires_at: '2026-09-20T00:00:00Z',
+          is_expired: true,
+          current_cycle_number: 1,
+        },
+        {
+          company_id: 'other',
+          company_name: 'Blue Harbour Foods',
+          journey: 'PROSPECT',
+          background_check: 'CLEAR',
+          expires_at: '2026-10-20T00:00:00Z',
+          is_expired: false,
+          current_cycle_number: 2,
+        },
+      ],
+      total: 2,
+      limit: 5,
+      offset: 0,
+      before: '2026-10-31T00:00:00Z',
+    });
+    renderCard(<ReKycDueCard />);
+
+    const rows = await screen.findAllByTestId('rekyc-due-row');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent(/Aarav Textiles.*Expired/);
+    expect(rows[1]).toHaveTextContent(/Blue Harbour Foods.*Expires/);
+    expect(screen.getByTestId('rekyc-due-count')).toHaveTextContent('2');
+    expect(within(rows[0] as HTMLElement).getByRole('link')).toHaveAttribute(
+      'href',
+      `/companies/${CUSTOMER_ID}?tab=background-check`,
+    );
+  });
+
+  it('says plainly when no Clear is due', async () => {
+    vi.mocked(listReKycDue).mockResolvedValue({
+      companies: [],
+      total: 0,
+      limit: 5,
+      offset: 0,
+      before: '2026-10-31T00:00:00Z',
+    });
+    renderCard(<ReKycDueCard />);
+    expect(await screen.findByText(/No Clear has expired or expires before/)).toBeInTheDocument();
   });
 });

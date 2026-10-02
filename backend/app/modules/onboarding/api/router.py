@@ -47,6 +47,9 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
 )
 from app.modules.onboarding.exceptions import VerificationResultNotFoundError
+from app.modules.onboarding.infrastructure.repositories.check_cycle_repository import (
+    CheckCycleRepository,
+)
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
 from app.platform.database.services import get_db
@@ -402,6 +405,31 @@ _VERIFICATION_DECISION_ROLES = (UserRole.COMPLIANCE, UserRole.ADMIN)
 _VERIFICATION_DECIDER = require_role(*_VERIFICATION_DECISION_ROLES)
 
 
+async def _initial_cycle_ids(db: AsyncSession, views) -> dict[uuid.UUID, uuid.UUID]:
+    """Each company's cycle-1 id, for the companies these results are about — so a
+    legacy result (no cycle) is served as cycle 1 (Developer 1, P2-3a; company-keyed
+    since P4-5, so a mapped deal-buyer result reads in its company's cycle 1)."""
+    companies = {
+        view.result.subject_company
+        for view in views
+        if view.result.subject_company is not None and view.result.cycle_id is None
+    }
+    initial: dict[uuid.UUID, uuid.UUID] = {}
+    cycles = CheckCycleRepository(db)
+    for company_id in companies:
+        first = next(iter(await cycles.list_for_company(company_id)), None)
+        if first is not None:
+            initial[company_id] = first.id
+    return initial
+
+
+def _result_response(view, viewer: User, names, initial: dict[uuid.UUID, uuid.UUID]):
+    cycle_id = view.result.cycle_id
+    if cycle_id is None and view.result.subject_company is not None:
+        cycle_id = initial.get(view.result.subject_company)
+    return VerificationResultResponse.from_view(view, viewer, names, cycle_id=cycle_id)
+
+
 @router.post(
     "/verifications",
     response_model=VerificationResultResponse,
@@ -451,7 +479,7 @@ async def trigger_verification(
     )
     view = await service.get_result_view(result.id)
     names = await actor_names(db, current_user, reviewer_ids([view]))
-    return VerificationResultResponse.from_view(view, current_user, names)
+    return _result_response(view, current_user, names, await _initial_cycle_ids(db, [view]))
 
 
 @router.get(
@@ -477,7 +505,7 @@ async def get_verification_result(
             f"Verification result '{verification_result_id}' not found"
         ) from None
     names = await actor_names(db, current_user, reviewer_ids([view]))
-    return VerificationResultResponse.from_view(view, current_user, names)
+    return _result_response(view, current_user, names, await _initial_cycle_ids(db, [view]))
 
 
 @router.get(
@@ -510,10 +538,11 @@ async def list_verification_results(
     # D17: no new check on a buyer of a closed deal — served as a capability too, so
     # the screen never offers a form the server would refuse. Reviews stay open.
     may_record = may_decide and await service.accepts_new_check(entity_type, entity_reference)
+    initial = await _initial_cycle_ids(db, views)
     return VerificationResultListResponse(
         entity_type=entity_type,
         entity_reference=entity_reference,
-        results=[VerificationResultResponse.from_view(v, current_user, names) for v in views],
+        results=[_result_response(v, current_user, names, initial) for v in views],
         total=len(views),
         capabilities=VerificationCapabilities(
             can_record_result=may_record, can_review=may_decide
@@ -564,4 +593,4 @@ async def record_verification_review(
     )
     view = await service.get_result_view(verification_result_id)
     names = await actor_names(db, current_user, reviewer_ids([view]))
-    return VerificationResultResponse.from_view(view, current_user, names)
+    return _result_response(view, current_user, names, await _initial_cycle_ids(db, [view]))

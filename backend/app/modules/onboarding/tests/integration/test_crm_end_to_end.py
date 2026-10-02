@@ -19,6 +19,7 @@ from httpx import AsyncClient
 from app.modules.onboarding.application.screening_review_service import SCREENING_CATALOGUE
 from app.modules.onboarding.events import publisher as publisher_module
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
+from app.modules.onboarding.tests.fixtures.compliance import make_compliance_user
 from app.platform.authentication.models import UserRole
 from app.platform.messaging.ports import InMemoryEventBus
 from app.platform.messaging.schemas import EventType
@@ -54,8 +55,11 @@ def _events(bus: InMemoryEventBus, event_type: EventType) -> list:
 class _Crm:
     """The API calls the path is made of, each asserting it succeeded."""
 
-    def __init__(self, client: AsyncClient, ops: str, compliance: str) -> None:
+    def __init__(self, client: AsyncClient, ops: str, compliance: str, checker: str) -> None:
         self.client, self.ops, self.compliance = client, ops, compliance
+        # Maker-checker (Developer 1, plan P3-1d): a second compliance officer approves
+        # what `compliance` proposes.
+        self.checker = checker
 
     async def ok(self, method: str, path: str, token: str, **kwargs) -> dict:
         resp = await self.client.request(method, f"{BASE}{path}", headers=auth_header(token),
@@ -70,15 +74,29 @@ class _Crm:
         return await self.ok("GET", f"/deals/{deal_id}", self.ops)
 
     async def decide(self, company_id: str, to_value: str, token: str, **body) -> dict:
-        return await self.ok(
-            "POST", f"/exporters/{company_id}/background-check/decisions", token,
-            json={"to_value": to_value, **body},
-        )
+        """Record a move; a CLEAR, FLAGGED or ON_HOLD is proposed (202) and approved by
+        the second officer (maker-checker). Returns the decision."""
+        path = f"/exporters/{company_id}/background-check"
+        resp = await self.client.post(f"{BASE}{path}/decisions", headers=auth_header(token),
+                                      json={"to_value": to_value, **body})
+        if resp.status_code != 202:
+            assert resp.status_code == 201, f"{to_value}: {resp.text}"
+            return resp.json()
+        approved = await self.ok("POST", f"{path}/proposals/{resp.json()['id']}/approve",
+                                 self.checker)
+        return approved["decision"]
 
     async def answer_screening(self, company_id: str) -> None:
         for key in SCREENING_CATALOGUE:
             await self.ok("PUT", f"/exporters/{company_id}/screening-review/{key}",
                           self.compliance, json={"status": "PASSED"})
+        # Rule B (plan P3-2): KYB, AML and sanctions passed in the current cycle.
+        for check in ("KYB", "AML", "SANCTIONS"):
+            await self.ok("POST", "/verifications", self.compliance,
+                          json={"verification_type": check, "entity_type": "EXPORTER",
+                                "entity_reference": company_id,
+                                "payload": {"status": "PASSED"},
+                                "evidence_note": f"{check} checked manually."})
 
     async def new_prospect_with_a_deal_ready_to_hand_over(self) -> tuple[str, str]:
         """Steps 1–7 of §4.1: a qualified company, a deal, its buyer and paperwork."""
@@ -114,6 +132,7 @@ async def _crm(client: AsyncClient) -> _Crm:
         client,
         await token_with_role(client, UserRole.OPERATIONS),
         await token_with_role(client, UserRole.COMPLIANCE),
+        (await make_compliance_user(client, label="e2e-checker")).token,
     )
 
 
@@ -171,8 +190,8 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     assert "HANDED_OVER" not in {m["to_stage"] for m in blocked["allowed_stage_moves"]}
     assert "not CUSTOMER" in blocked["handover_blocked_reason"]
 
-    # 9–10. One compliance user records CLEAR; the company becomes a CUSTOMER and
-    # "became customer" is announced, once.
+    # 9–10. One compliance user proposes CLEAR and a second approves it; the company
+    # becomes a CUSTOMER and "became customer" is announced, once.
     clearing = await crm.decide(company_id, "CLEAR", crm.compliance,
                                 reason="Screening complete; nothing adverse.",
                                 risk_rating="LOW")
@@ -181,6 +200,7 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     assert became_customer.payload["company_id"] == company_id
     assert became_customer.payload["clearing_decision_id"] == clearing["id"]
     assert became_customer.payload["risk_rating"] == "LOW"
+    assert clearing["approved_by"] != clearing["decided_by"]
 
     # 11–12. The deal is handed over, and the lending team is told.
     ready = await crm.deal(deal_id)

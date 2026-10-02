@@ -128,6 +128,54 @@ class BackgroundCheckDecision(AppendOnlyModel):
             text("decided_at DESC"),
             text("id DESC"),
         ),
+        # 0025 (Developer 1, P2-3a): the cycle a decision was taken in, and a cycle
+        # of the same company.
+        ForeignKeyConstraint(
+            ["cycle_id", "company_id"],
+            [f"{SCHEMA}.check_cycle.id", f"{SCHEMA}.check_cycle.company_id"],
+            name="fk_background_check_decision_cycle",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_background_check_decision_cycle_id",
+            "cycle_id",
+            postgresql_where=text("cycle_id IS NOT NULL"),
+        ),
+        # 0026 (Developer 1, P3-1a): an approved decision names its proposal — of the
+        # same company, by the same proposer (`decided_by`), for the same move — and
+        # was approved by someone else. `use_alter`: the proposal names its base
+        # decision too, so the two tables refer to each other.
+        ForeignKeyConstraint(
+            ["proposal_id", "company_id", "decided_by", "from_value", "to_value"],
+            [
+                f"{SCHEMA}.background_check_proposal.id",
+                f"{SCHEMA}.background_check_proposal.company_id",
+                f"{SCHEMA}.background_check_proposal.created_by",
+                f"{SCHEMA}.background_check_proposal.from_value",
+                f"{SCHEMA}.background_check_proposal.to_value",
+            ],
+            name="fk_background_check_decision_proposal",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        UniqueConstraint("proposal_id", name="uq_background_check_decision_proposal"),
+        UniqueConstraint(
+            "id", "proposal_id", "approved_by", name="uq_background_check_decision_approval_key"
+        ),
+        CheckConstraint(
+            "(proposal_id IS NULL) = (approved_by IS NULL) "
+            "AND (approved_by IS NULL) = (approved_at IS NULL)",
+            name="ck_background_check_decision_approval",
+        ),
+        CheckConstraint(
+            "approved_by IS NULL OR approved_by <> decided_by",
+            name="ck_background_check_decision_maker_checker",
+        ),
+        # 0027 (Developer 1, P3-3a): only a CLEAR expires, and after it was decided.
+        CheckConstraint(
+            "expires_at IS NULL OR (to_value = 'CLEAR' AND expires_at > decided_at)",
+            name="ck_background_check_decision_expiry",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -190,6 +238,26 @@ class BackgroundCheckDecision(AppendOnlyModel):
     details: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
+    #: The Clear rules in force when the decision was taken (Developer 1, P2-4a):
+    #: `background_check_views.CLEAR_RULES_V2` on every decision recorded since
+    #: migration 0025. `NULL` on the decisions before it, which the documented read
+    #: rule takes as `CLEAR_RULES_V1` — the eight-item checklist (decision K).
+    rules_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: The check cycle the decision was taken in (P2-3a); `NULL` = cycle 1 by rule.
+    cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: Maker-checker (Developer 1, P3-1a/b, decision A): the proposal this decision
+    #: approved, who approved it and when. All three or none
+    #: (`ck_background_check_decision_approval`); the approver is never the decider
+    #: (`ck_background_check_decision_maker_checker`). `NULL` on every decision recorded
+    #: by one person — before maker-checker, or a move that needs no approval (IQ-1).
+    proposal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: When this CLEAR stops being current (Developer 1, P3-3a, decision E): `decided_at`
+    #: + the validity setting, on every CLEAR since migration 0027. `NULL` on a CLEAR
+    #: before it, which the documented read rule takes as `decided_at` + one year
+    #: (BQ-5), and on every other move.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class BackgroundCheckEvidence(AppendOnlyModel):

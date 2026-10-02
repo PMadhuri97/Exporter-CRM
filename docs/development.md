@@ -54,6 +54,15 @@ Optional: `STORAGE_LOCAL_ROOT` (where uploaded documents go; default
 `POST /api/v1/auth/register` off; it only ever grants `API_USER`, which reaches nothing
 in the CRM).
 
+Compliance engine (plans P3-1b, P3-3; `onboarding/application/compliance_settings.py`):
+`CRM_BACKGROUND_CHECK_MAKER_CHECKER` (default `true`: CLEAR, FLAGGED and ON_HOLD need a
+second COMPLIANCE/ADMIN user; `false` is accepted only where `ENVIRONMENT` is `local` or
+`test`, and the server refuses to start with it off anywhere else — including
+`development`, the default, so set `ENVIRONMENT=local` on your machine to turn it off),
+`CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS` (default 365: how long a new Clear stays
+current; at least 1) and `CRM_REKYC_DUE_WINDOW_DAYS` (default 30: how far ahead "Re-KYC
+due" looks).
+
 ```bash
 python -m alembic upgrade head        # the schema
 python -m alembic heads               # must print exactly one revision
@@ -140,6 +149,20 @@ pnpm build
   and the ORM matches the `onboarding` schema (`test_orm_matches_the_onboarding_schema.py`).
 - `app/modules/onboarding/tests/integration/test_crm_end_to_end.py` walks the whole
   main path through the API, with nothing substituted.
+- **"Now" in new code comes from `app/shared/clock.py`** (`clock.now()`, timezone-aware
+  UTC), never an inline `datetime.now(...)` (allocation §2.2). A test moves time with
+  `with use_clock(FixedClock(at)):` — no sleeping, no patching `datetime`.
+- **Two compliance users (maker-checker is on in tests).** `CLEAR`, `FLAGGED` and
+  `ON_HOLD` are proposed by one COMPLIANCE/ADMIN user and approved by another (plan
+  P3-1b). A test takes a company there with the helpers in
+  `app/modules/onboarding/tests/fixtures/compliance.py`: `approve_as(checker, company,
+  maker=…)` (services), `propose_and_approve(client, company, maker_token=…,
+  checker_token=…)` (HTTP), and `record_required_checks(company)` for rule B's KYB, AML
+  and sanctions. A test of code that *reads* compliance (the handover guard) can use
+  `StaticComplianceFactsReader` / `party_facts(...)` from the same module, a fake of the
+  published `ComplianceFactsReader`. `CRM_BACKGROUND_CHECK_MAKER_CHECKER=false` is
+  accepted only where `ENVIRONMENT` is local or test — the server refuses to start with it
+  off anywhere else, `development` included (IQ-17).
 
 ## 8. Changing the API
 

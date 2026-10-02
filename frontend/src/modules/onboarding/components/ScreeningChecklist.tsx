@@ -1,6 +1,6 @@
 /**
- * The eight-item compliance screening checklist — **owner: Developer 4B**
- * (4b-task.md §5.5, §5.6, §5.10; 4B-7).
+ * The compliance screening checklist — **owner: Developer 4B** (4b-task.md §5.5, §5.6,
+ * §5.10; 4B-7); evidence and cycles by **Developer 1** (plans P2-1b/c, P2-3d).
  *
  * Rendered from the server: the items, their labels, sections and order come from
  * `catalogue` (the one backend catalogue, `SCREENING_CATALOGUE_ITEMS`), and whether
@@ -9,6 +9,16 @@
  *
  * Screening is a compliance list inside the background check. It is not
  * qualification, and not a gauge (architecture §5.5).
+ *
+ * Developer 1, 1 October 2026:
+ * - **Evidence** (P2-1b/c): each answer shows the evidence it was given (`EvidenceList`),
+ *   and a new answer may carry some — the company's scanned-clean documents or an
+ *   http(s) link. Optional (IQ-14). Answers are append-only, so evidence belongs to the
+ *   answer it was given with; a new answer starts with none attached.
+ * - **Cycles** (P2-3d): the list is one check cycle's — the current one, where answers
+ *   are recorded; an earlier one, read-only, when chosen. Whether the viewer may record
+ *   still comes only from `capabilities`, which the server sets false on earlier cycles.
+ * - The catalogue is seven items since `website-reviewed` was retired (P2-4a).
  */
 
 import { AlertTriangle } from 'lucide-react';
@@ -16,16 +26,65 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api/errors';
-import { formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
 
-import { useScreeningReview, useUpdateScreeningReviewItem } from '../hooks';
-import type { ScreeningCatalogueItem, ScreeningChecklistStatus } from '../types';
+import {
+  useCheckCycles,
+  useCompanyDocuments,
+  useScreeningReview,
+  useUpdateScreeningReviewItem,
+} from '../hooks';
+import type {
+  ScreeningCatalogueItem,
+  ScreeningChecklistStatus,
+  VerificationEvidenceRef,
+  VerificationEvidenceRefStored,
+} from '../types';
 
+import { cycleKindLabel } from './background-check-labels';
+import { EvidenceList } from './EvidenceList';
 import { ScreeningItemHistory } from './ScreeningItemHistory';
+import { isWebLink } from './verification-labels';
 import { VerificationStatusChip } from './VerificationStatusChip';
 
+/** Which cycle the checklist shows; the current one unless the viewer picks another. */
+function CyclePicker({
+  customerId,
+  currentNumber,
+  value,
+  onChange,
+}: {
+  customerId: string;
+  currentNumber: number;
+  value: string | undefined;
+  onChange: (cycleId: string | undefined) => void;
+}) {
+  // Fetched only when there is an earlier cycle to show (the current number is > 1).
+  const cycles = useCheckCycles(currentNumber > 1 ? customerId : undefined);
+  const options = cycles.data?.cycles ?? [];
+  if (options.length < 2) return null;
+  return (
+    <label className="mt-2 flex items-center gap-2 text-xs text-ink-muted">
+      Cycle
+      <select
+        aria-label="Check cycle"
+        className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink"
+        value={value ?? ''}
+        onChange={(event) => onChange(event.target.value || undefined)}
+      >
+        {[...options].reverse().map((cycle) => (
+          <option key={cycle.id} value={cycle.is_current ? '' : cycle.id}>
+            {`Cycle ${cycle.number} · ${cycleKindLabel(cycle.kind)}${cycle.is_current ? ' (current)' : ''}`}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function ScreeningChecklist({ customerId }: { customerId: string }) {
-  const query = useScreeningReview(customerId);
+  const [cycleId, setCycleId] = useState<string | undefined>(undefined);
+  const query = useScreeningReview(customerId, cycleId);
   const mutation = useUpdateScreeningReviewItem(customerId);
   const catalogue = query.data?.catalogue ?? [];
   const canRecord = query.data?.capabilities.can_record_decision ?? false;
@@ -43,12 +102,22 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
   const knownKeys = new Set(catalogue.map((item) => item.key));
   const unrecognised = serverItems.filter((item) => !knownKeys.has(item.item_key));
 
-  async function save(itemKey: string, status: ScreeningChecklistStatus, comment: string | null) {
+  const cycle = query.data?.cycle ?? null;
+  const isCurrentCycle = cycle?.is_current ?? true;
+
+  async function save(
+    itemKey: string,
+    status: ScreeningChecklistStatus,
+    comment: string | null,
+    evidenceRefs: VerificationEvidenceRef[],
+  ): Promise<boolean> {
     try {
-      await mutation.mutateAsync({ itemKey, status, comment });
+      await mutation.mutateAsync({ itemKey, status, comment, evidenceRefs });
       toast.success('Review item saved');
+      return true;
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : 'Could not save review item');
+      return false;
     }
   }
 
@@ -69,6 +138,20 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
             )}
           </div>
         </div>
+        {cycle && (
+          <p data-testid="screening-cycle" className="mt-2 text-xs text-ink-muted">
+            Cycle {cycle.number} · {cycleKindLabel(cycle.kind)} · started {formatDate(cycle.started_at)}
+            {!isCurrentCycle && ' · earlier cycle, read-only'}
+          </p>
+        )}
+        {cycle && (
+          <CyclePicker
+            customerId={customerId}
+            currentNumber={isCurrentCycle ? cycle.number : cycle.number + 1}
+            value={cycleId}
+            onChange={setCycleId}
+          />
+        )}
         <p className="mt-3 rounded-md bg-surface-subtle px-3 py-2 text-xs leading-5 text-ink-faint">
           Decisions and comments are stored with reviewer and timestamp; every earlier
           decision stays in each item&apos;s history.
@@ -99,11 +182,13 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
                         // Stable: keying on the saved values remounted every card
                         // whenever any one of them saved, throwing away unsaved text
                         // in the others. The card reconciles server changes itself.
-                        key={item.key}
+                        // A different cycle is a different list, so it remounts.
+                        key={`${cycleId ?? 'current'}:${item.key}`}
                         customerId={customerId}
                         item={item}
                         initialStatus={saved?.status ?? 'NEEDS_REVIEW'}
                         initialComment={saved?.comment ?? ''}
+                        savedEvidence={saved?.evidence_refs ?? []}
                         canRecord={canRecord}
                         busy={mutation.isPending}
                         onSave={save}
@@ -151,11 +236,115 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
   );
 }
 
+/**
+ * Evidence for the answer about to be recorded: the company's scanned-clean documents
+ * and an optional http(s) link. Mounted only when opened, so the documents are fetched
+ * only then. The server checks the same rules (and ownership) again.
+ */
+function EvidencePicker({
+  customerId,
+  refs,
+  onChange,
+  disabled,
+}: {
+  customerId: string;
+  refs: VerificationEvidenceRef[];
+  onChange: (refs: VerificationEvidenceRef[]) => void;
+  disabled: boolean;
+}) {
+  const documents = useCompanyDocuments(customerId);
+  const [link, setLink] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const available = (documents.data?.documents ?? []).filter(
+    (document) => document.scan_status === 'AVAILABLE',
+  );
+  const chosen = new Set(refs.filter((ref) => ref.type === 'document').map((ref) => ref.ref));
+
+  function toggle(documentId: string) {
+    onChange(
+      chosen.has(documentId)
+        ? refs.filter((ref) => !(ref.type === 'document' && ref.ref === documentId))
+        : [...refs, { type: 'document', ref: documentId }],
+    );
+  }
+
+  function addLink() {
+    const value = link.trim();
+    if (!isWebLink(value)) {
+      setError('The link must start with http:// or https://.');
+      return;
+    }
+    setError(null);
+    onChange([...refs, { type: 'url', ref: value }]);
+    setLink('');
+  }
+
+  return (
+    <div data-testid="screening-evidence-picker" className="mt-2 rounded-md border border-border p-2">
+      {documents.isLoading ? (
+        <p className="text-[11px] text-ink-faint">Loading documents…</p>
+      ) : available.length === 0 ? (
+        <p className="text-[11px] text-ink-faint">No scanned-clean documents to attach.</p>
+      ) : (
+        <div className="space-y-1">
+          {available.map((document) => (
+            <label key={document.id} className="flex items-center gap-2 text-[11px] text-ink">
+              <input
+                type="checkbox"
+                checked={chosen.has(document.id)}
+                disabled={disabled}
+                onChange={() => toggle(document.id)}
+              />
+              {document.file_name}
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="mt-2 flex gap-2">
+        <input
+          aria-label="Evidence link"
+          type="url"
+          className="w-full rounded-md border border-border bg-surface px-2 py-1 text-[11px] text-ink"
+          placeholder="https://…"
+          value={link}
+          disabled={disabled}
+          onChange={(event) => setLink(event.target.value)}
+        />
+        <button
+          type="button"
+          className="rounded-md border border-border px-2 py-1 text-[11px] text-ink-muted"
+          disabled={disabled || !link.trim()}
+          onClick={addLink}
+        >
+          Add link
+        </button>
+      </div>
+      {refs.some((ref) => ref.type === 'url') && (
+        <ul className="mt-1 space-y-0.5 text-[11px] text-ink-muted">
+          {refs
+            .filter((ref) => ref.type === 'url')
+            .map((ref) => (
+              <li key={ref.ref} className="break-all">
+                {ref.ref}
+              </li>
+            ))}
+        </ul>
+      )}
+      {error && (
+        <p role="alert" className="mt-1 text-[11px] text-red-700">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ChecklistCard({
   customerId,
   item,
   initialStatus,
   initialComment,
+  savedEvidence,
   canRecord,
   busy,
   onSave,
@@ -164,12 +353,20 @@ function ChecklistCard({
   item: ScreeningCatalogueItem;
   initialStatus: ScreeningChecklistStatus;
   initialComment: string;
+  savedEvidence: VerificationEvidenceRefStored[];
   canRecord: boolean;
   busy: boolean;
-  onSave: (itemKey: string, status: ScreeningChecklistStatus, comment: string | null) => Promise<void>;
+  onSave: (
+    itemKey: string,
+    status: ScreeningChecklistStatus,
+    comment: string | null,
+    evidenceRefs: VerificationEvidenceRef[],
+  ) => Promise<boolean>;
 }) {
   const [status, setStatus] = useState(initialStatus);
   const [comment, setComment] = useState(initialComment);
+  const [refs, setRefs] = useState<VerificationEvidenceRef[]>([]);
+  const [attaching, setAttaching] = useState(false);
 
   // With a stable key, adopting a newly saved value has to be explicit: when the
   // server values this card was last synced from change — its own save landing, or a
@@ -186,7 +383,15 @@ function ChecklistCard({
   }
 
   const disabled = !canRecord || busy;
-  const dirty = status !== initialStatus || comment !== initialComment;
+  const dirty = status !== initialStatus || comment !== initialComment || refs.length > 0;
+
+  async function save() {
+    const saved = await onSave(item.key, status, comment.trim() || null, refs);
+    if (saved) {
+      setRefs([]);
+      setAttaching(false);
+    }
+  }
 
   return (
     <div
@@ -215,11 +420,30 @@ function ChecklistCard({
         disabled={disabled}
         onChange={(event) => setComment(event.target.value)}
       />
+      <EvidenceList note={null} refs={savedEvidence} />
+      {canRecord && !attaching && (
+        <button
+          type="button"
+          className="mt-2 text-[11px] font-medium text-brand-600 hover:underline disabled:opacity-50"
+          disabled={disabled}
+          onClick={() => setAttaching(true)}
+        >
+          Attach evidence (optional)
+        </button>
+      )}
+      {canRecord && attaching && (
+        <EvidencePicker
+          customerId={customerId}
+          refs={refs}
+          onChange={setRefs}
+          disabled={disabled}
+        />
+      )}
       {dirty && !disabled && (
         <div className="mt-2 flex justify-end">
           <button
             type="button"
-            onClick={() => void onSave(item.key, status, comment.trim() || null)}
+            onClick={() => void save()}
             className="rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-white"
           >
             Save

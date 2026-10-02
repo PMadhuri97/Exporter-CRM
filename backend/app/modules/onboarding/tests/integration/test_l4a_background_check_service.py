@@ -9,6 +9,14 @@ Every test mints its own company, so nothing here depends on or damages shared r
 The seam is a **fake** ``ComplianceInputsReader`` by default — the service must work
 against the Protocol, not against Dev4B's implementation — with a separate section
 proving it also works against the real ``ComplianceInputsService``.
+
+**Maker-checker (Developer 1, plan P3-1d).** With maker-checker on — the default, and
+how this suite runs — ``CLEAR``, ``FLAGGED`` and ``ON_HOLD`` take two people. These
+tests are about the move mechanism, so they make those moves through
+``TwoPersonService``: its ``clear``/``flag``/``hold``/``record_decision`` propose as the
+caller and approve as a **second** compliance user, exactly the two acts the API takes.
+Nothing here is a single-user path; maker-checker itself is proved in
+``test_dev1_maker_checker.py``.
 """
 
 from __future__ import annotations
@@ -51,6 +59,7 @@ from app.modules.onboarding.domain.storage import DocumentScanStatus
 from app.modules.onboarding.exceptions import (
     BackgroundCheckMoveNotAllowedError,
     BackgroundCheckPrerequisitesUnmetError,
+    BackgroundCheckProposalOpenError,
     BackgroundCheckReasonRequiredError,
     BackgroundCheckRiskNotAllowedError,
     BackgroundCheckRiskRequiredError,
@@ -137,15 +146,80 @@ class FakeReader:
         return ()
 
 
+#: The second compliance user who approves what the tests propose (P3-1d).
+CHECKER = "second-compliance-user"
+
+
+class TwoPersonService(BackgroundCheckService):
+    """``BackgroundCheckService`` whose approval-needing moves (IQ-1) are the two acts
+    maker-checker requires, in one call: the caller proposes, ``CHECKER`` approves.
+    Every refusal a move gives still comes from the proposal (premise, legality, role,
+    text, risk, prerequisites), before anything is written."""
+
+    async def _two_person(
+        self,
+        company_id: uuid.UUID,
+        *,
+        to_value: State,
+        reason: str | None,
+        risk: BackgroundCheckRisk | None,
+        actor_id: str,
+        actor_role: UserRole,
+        seen_value: State | None = None,
+    ):
+        proposal = await self.propose(
+            company_id,
+            to_value=to_value,
+            reason=reason,
+            risk=risk,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            seen_value=seen_value,
+        )
+        approved = await self.approve(
+            company_id, proposal.id, actor_id=CHECKER, actor_role=UserRole.COMPLIANCE
+        )
+        return approved.decision
+
+    async def clear(self, company_id, *, risk, reason, actor_id, actor_role):
+        return await self._two_person(
+            company_id, to_value=State.CLEAR, reason=reason, risk=risk,
+            actor_id=actor_id, actor_role=actor_role,
+        )
+
+    async def flag(self, company_id, *, reason, actor_id, actor_role):
+        return await self._two_person(
+            company_id, to_value=State.FLAGGED, reason=reason, risk=None,
+            actor_id=actor_id, actor_role=actor_role,
+        )
+
+    async def hold(self, company_id, *, reason, actor_id, actor_role):
+        return await self._two_person(
+            company_id, to_value=State.ON_HOLD, reason=reason, risk=None,
+            actor_id=actor_id, actor_role=actor_role,
+        )
+
+    async def record_decision(
+        self, company_id, *, to_value, reason, risk, actor_id, actor_role, seen_value=None
+    ):
+        if self.needs_approval(to_value):
+            return await self._two_person(
+                company_id, to_value=to_value, reason=reason, risk=risk,
+                actor_id=actor_id, actor_role=actor_role, seen_value=seen_value,
+            )
+        return await super().record_decision(
+            company_id, to_value=to_value, reason=reason, risk=risk,
+            actor_id=actor_id, actor_role=actor_role, seen_value=seen_value,
+        )
+
+
 def _service(db, reader: FakeReader | None = None) -> BackgroundCheckService:
-    return BackgroundCheckService(
-        db, reader=reader or FakeReader(), clear_policy=TEST_POLICY
-    )
+    return TwoPersonService(db, reader=reader or FakeReader(), clear_policy=TEST_POLICY)
 
 
 def _settled(db, reader: FakeReader | None = None) -> BackgroundCheckService:
     """A service running the **shipped** policy, for tests about the settled answers."""
-    return BackgroundCheckService(db, reader=reader or FakeReader(), clear_policy=CLEAR_POLICY)
+    return TwoPersonService(db, reader=reader or FakeReader(), clear_policy=CLEAR_POLICY)
 
 
 def _pinned_documents(view) -> set[uuid.UUID]:
@@ -521,12 +595,22 @@ class TestOneTransaction:
         assert row.dimension == "background_check"
 
     async def test_a_failure_after_the_decision_rolls_everything_back(self):
-        """A history failure must take the value, the decision and the evidence with it."""
+        """A history failure must take the value, the decision and the evidence with it
+        — and, for an approval, the resolution: the proposal stays open."""
         company_id = await _started()
 
         class BoomError(Exception):
             pass
 
+        async with db_services.AsyncSessionLocal() as db:
+            proposal = await _service(db).propose(
+                company_id,
+                to_value=State.FLAGGED,
+                reason="r",
+                risk=None,
+                actor_id="compliance-user",
+                actor_role=UserRole.COMPLIANCE,
+            )
         async with db_services.AsyncSessionLocal() as db:
             service = _service(db)
 
@@ -535,13 +619,13 @@ class TestOneTransaction:
 
             service._history.record = explode  # type: ignore[method-assign]
             with pytest.raises(BoomError):
-                await service.flag(
-                    company_id,
-                    reason="r",
-                    actor_id="compliance-user",
-                    actor_role=UserRole.COMPLIANCE,
+                await service.approve(
+                    company_id, proposal.id, actor_id=CHECKER, actor_role=UserRole.COMPLIANCE
                 )
             await db.rollback()
+        async with db_services.AsyncSessionLocal() as db:
+            still_open = await BackgroundCheckService(db).open_proposal(company_id)
+        assert still_open is not None and still_open[0].id == proposal.id
 
         # Nothing of the flag survives: not the value, not the decision, not history.
         assert await _state(company_id) is State.IN_REVIEW
@@ -612,8 +696,9 @@ class TestChain:
         """The company row lock is what stops a fork, before the unique index has to.
 
         Two sessions try to flag the same `IN_REVIEW` company at once. The lock makes
-        the second wait; by the time it reads, the company is `FLAGGED`, so its move is
-        refused. The chain never forks.
+        the second wait; by the time it reads, the first has either proposed (one open
+        proposal per company) or been approved (the company is `FLAGGED`), so its move
+        is refused. The chain never forks.
         """
         company_id = await _started()
 
@@ -629,7 +714,9 @@ class TestChain:
         results = await asyncio.gather(flag("a"), flag("b"), return_exceptions=True)
         failures = [r for r in results if isinstance(r, Exception)]
         assert len(failures) == 1
-        assert isinstance(failures[0], BackgroundCheckMoveNotAllowedError)
+        assert isinstance(
+            failures[0], BackgroundCheckMoveNotAllowedError | BackgroundCheckProposalOpenError
+        )
 
         rows = await _decisions(company_id)
         assert [r.to_value for r in rows] == [State.FLAGGED, State.IN_REVIEW]
