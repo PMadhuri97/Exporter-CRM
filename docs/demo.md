@@ -70,8 +70,8 @@ exporter's documents — see §6.
 2. **Company C — Coastal Seafood Exports.** A **prospect** whose check is **`FLAGGED`**
    (a failed screening item for suspicious bank indicators). Its Dubai deal is gathering
    paperwork with its buyer recorded, but is **not ready to hand over**, and the deal page
-   names both reasons: the company is a `PROSPECT`, not a `CUSTOMER`, and its check is
-   `FLAGGED`, not `CLEAR`.
+   names every reason: the company is a `PROSPECT`, not a `CUSTOMER`, its check is
+   `FLAGGED`, not `CLEAR`, and the deal has no pre-shipment document yet.
 3. **Company A — Aarav Textiles.** A prospect who said **"not now"**: the conversation is
    `NOT_NOW` with a check-back date, which shows on Home and the Follow-ups screen.
 4. **D** (not qualified, and **paused**), **E** (**ended** — hidden from the default list,
@@ -97,8 +97,12 @@ As **OPERATIONS** unless noted.
 5. **Open a deal.** At `READY_NOW` the Conversation tab offers to open a deal (or use
    the Deals tab — opening one sets `READY_NOW` itself). On the deal page, record the
    buyer and move it to **gathering paperwork**.
-6. **Paperwork.** Upload the sample file to the deal. It is scanned before it can be
-   opened; the scanner is labelled **pass-through** because it is a placeholder.
+6. **Paperwork.** Upload the sample file to the deal in the **Pre-shipment** category
+   (for example a proforma invoice). It is scanned before it can be opened; the scanner
+   is labelled **pass-through** because it is a placeholder. Before the upload the deal
+   page says `missing required documents: PRE_SHIPMENT`: a handover needs a scanned-clean
+   pre-shipment document (IQ-10, IQ-11), and ADMIN changes which categories are required
+   under **Settings → Required documents**. A file in another category does not count.
 7. **Start the background check** on the company's Background check tab (OPERATIONS
    may start one).
 8. **Switch to COMPLIANCE.** Answer the seven screening items and record manual
@@ -128,8 +132,9 @@ As **OPERATIONS** unless noted.
    expires (one year), and "became customer" is announced to the customers team's
    event (nobody receives it yet; §6).
 10. **Hand over the deal** (back as OPERATIONS): the move is now offered; confirm it.
-    The deal is **`HANDED_OVER`**, its paperwork snapshot is fixed, and "deal handed
-    over" is announced for the lending team.
+    The deal is **`HANDED_OVER`**, and "deal handed over" is announced for the lending
+    team. The deal page now shows **What was handed over**: the buyer and the paperwork
+    as they stood at that moment, kept on the deal and never changed afterwards.
 11. **Show the History tab**: qualification, journey, conversation, deal, screening and
     background-check rows, each with who (by name) and why. A row about one thing of
     several names it — "Buyer recorded: …", the screening item's label, the

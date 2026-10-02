@@ -15,7 +15,7 @@
 
 import { Handshake, Upload } from 'lucide-react';
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import {
@@ -33,7 +33,7 @@ import {
   Textarea,
 } from '@/components';
 import { formatDateTime, humanize } from '@/lib/format';
-import { isStaffRole, useCurrentUser } from '@/platform/auth';
+import { isAdminRole, isStaffRole, useCurrentUser } from '@/platform/auth';
 import { canReveal } from '@/platform/mask';
 
 import {
@@ -153,6 +153,60 @@ function BuyerForm({
         </div>
       </form>
     </FormPanel>
+  );
+}
+
+/** What the handover snapshot's `snapshot_source` means, in words. */
+const SNAPSHOT_SOURCE_LABEL: Record<string, string> = {
+  taken_at_handover: 'Recorded at the moment of the handover.',
+  backfilled_from_deal_buyer:
+    'Reconstructed from the records that existed: this deal was handed over before snapshots were kept.',
+};
+
+/**
+ * What the lending team was given (plan P2-7).
+ *
+ * Read-only, always: the snapshot is set once and the database refuses to change
+ * it, so there is nothing to offer here but the record. The buyer's identifiers
+ * arrive already masked for the roles that may not see them — the server masks,
+ * never the browser.
+ */
+function HandoverSnapshot({ snapshot }: { snapshot: Record<string, unknown> }) {
+  const buyer = (snapshot.buyer ?? null) as Record<string, string | null> | null;
+  // `null` in a backfilled snapshot means no record of the paperwork survived —
+  // "not recorded", which must not read as "none".
+  const documentIds = Array.isArray(snapshot.document_ids) ? snapshot.document_ids : null;
+  const source = typeof snapshot.snapshot_source === 'string' ? snapshot.snapshot_source : '';
+
+  return (
+    <Panel
+      title="What was handed over"
+      description="The buyer and the paperwork as they stood when this deal went to the lending team. This record does not change."
+    >
+      {buyer ? (
+        <dl className="grid gap-x-8 sm:grid-cols-2">
+          <DetailRow label="Buyer">{buyer.name ?? '—'}</DetailRow>
+          <DetailRow label="Country">{buyer.country ?? '—'}</DetailRow>
+          <DetailRow label="Registration number">{buyer.registration_number ?? '—'}</DetailRow>
+          <DetailRow label="Tax identifier">{buyer.tax_id ?? '—'}</DetailRow>
+          <DetailRow label="Contact email">{buyer.contact_email ?? '—'}</DetailRow>
+          <DetailRow label="Contact phone">{buyer.contact_phone ?? '—'}</DetailRow>
+        </dl>
+      ) : (
+        <EmptySection>
+          This handover's buyer is no longer on record. The snapshot was reconstructed
+          after the fact and the buyer row had already gone.
+        </EmptySection>
+      )}
+      <p className="mt-3 text-xs text-ink-muted">
+        {documentIds === null
+          ? 'Which documents were included was not recorded.'
+          : documentIds.length === 1
+            ? '1 document was included.'
+            : `${documentIds.length} documents were included.`}{' '}
+        <span className="text-ink-faint">{SNAPSHOT_SOURCE_LABEL[source] ?? ''}</span>
+      </p>
+    </Panel>
   );
 }
 
@@ -386,6 +440,25 @@ export function DealDetailPage() {
               />
             )}
 
+            {/* The buyer as a company record, once one is recorded (P4-4). It is
+                the authority when both it and the legacy row are present, so it
+                reads first. `null` on every deal until the buyer migration. */}
+            {deal.buyer_company && (
+              <dl className="mb-3 grid gap-x-8 border-b border-border pb-3 sm:grid-cols-2">
+                <DetailRow label="Buyer company">
+                  <Link
+                    to={paths.company(deal.buyer_company.company_id)}
+                    className="font-medium text-brand-600 hover:underline"
+                  >
+                    {deal.buyer_company.name ?? 'Unnamed company'}
+                  </Link>
+                </DetailRow>
+                <DetailRow label="Country">{deal.buyer_company.country ?? '—'}</DetailRow>
+                <DetailRow label="PAN">{deal.buyer_company.pan ?? '—'}</DetailRow>
+                <DetailRow label="CIN">{deal.buyer_company.cin ?? '—'}</DetailRow>
+              </dl>
+            )}
+
             {deal.buyer ? (
               <dl className="grid gap-x-8 sm:grid-cols-2">
                 <DetailRow label="Name">{deal.buyer.name}</DetailRow>
@@ -396,11 +469,17 @@ export function DealDetailPage() {
                 <DetailRow label="Contact phone">{deal.buyer.contact_phone ?? '—'}</DetailRow>
               </dl>
             ) : (
-              !editingBuyer && (
+              !editingBuyer &&
+              !deal.buyer_company && (
                 <EmptySection>No buyer recorded yet. A deal cannot be handed over without one.</EmptySection>
               )
             )}
           </Panel>
+
+          {/* What the lending team was given (P2-7). Shown only once it exists,
+              which is only on a handed-over deal: a snapshot is a record of an
+              event, so there is nothing to show before the event. */}
+          {deal.handover_snapshot && <HandoverSnapshot snapshot={deal.handover_snapshot} />}
 
           {/* Checks on the buyer (decision 9: they attach to the buyer, never the
               company). Staff only: DEVELOPER is refused the verification routes (D8).
@@ -438,6 +517,23 @@ export function DealDetailPage() {
                 {deal.stage === 'HANDED_OVER'
                   ? 'This deal has been handed over. Its paperwork is what the lending team was given, so nothing more can be added.'
                   : 'This deal was withdrawn. Its paperwork is kept as a record and nothing more can be added.'}
+              </p>
+            )}
+
+            {/* Where the handover's paperwork rule lives, for the one role that
+                can change it. The rule itself is served with the refusal reason,
+                so everyone else already sees *what* is missing; only an
+                administrator has anywhere to go from here. */}
+            {isAdminRole(user.role) && !isClosed && (
+              <p className="mb-3 text-xs text-ink-faint">
+                Which categories a handover needs is set in{' '}
+                <Link
+                  to={paths.dealRequiredDocuments}
+                  className="text-brand-600 hover:underline"
+                >
+                  Required documents
+                </Link>
+                .
               </p>
             )}
             <DocumentList

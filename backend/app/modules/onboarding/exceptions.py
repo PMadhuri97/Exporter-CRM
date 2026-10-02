@@ -1198,12 +1198,12 @@ class StorageKeyRefusedError(AnerBaseException):
 
 
 class DealHandoverBlockedError(AnerBaseException):
-    """A handover whose assumption-A5 guard is unmet.
+    """A handover whose guard is unmet.
 
-    The company must be a `CUSTOMER` **and** its background check `CLEAR`. The
-    reason names which condition failed, including "the background check is not
-    recorded yet" while Developer 4's migration 0015 is missing — "not recorded" is
-    never treated as "clear".
+    The guard is the ordered list in `domain/handover_conditions.py`: the company a
+    `CUSTOMER` with a `CLEAR` check (assumption A5), the required documents present,
+    and the conditions still waiting for their providers. The reason names **every**
+    unmet condition, joined with "; " (`deal-and-buyer.md` §6.1).
 
     A class rather than an inline exception (which is what `deal_service.py` built
     until the review): the code it raises is part of the documented contract
@@ -1217,6 +1217,24 @@ class DealHandoverBlockedError(AnerBaseException):
             error_code="DEAL_HANDOVER_BLOCKED",
             status_code=409,
             extensions={"reason": reason},
+        )
+
+
+class DealRequiredDocumentChangedError(AnerBaseException):
+    """Another change to this required-document key landed first: the version this
+    one would have become already exists (`uq_deal_required_document_key_version`).
+    Nothing was saved; read the rule again and re-apply the change on top of it —
+    the same answer a qualification criterion's version race gets."""
+
+    def __init__(self, requirement: str, version: int) -> None:
+        super().__init__(
+            detail=(
+                f"Version {version} of the required document {requirement} was added by "
+                "someone else first; nothing was saved — reload the rule and try again"
+            ),
+            error_code="DEAL_REQUIRED_DOCUMENT_CHANGED",
+            status_code=409,
+            extensions={"requirement": requirement, "version": version},
         )
 
 

@@ -236,6 +236,14 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("POST", f"{CRM}/deals/{{deal_id}}/transitions"): STAFF,
     ("PUT", f"{CRM}/deals/{{deal_id}}/buyer"): STAFF,
     #
+    # Which paperwork a handover needs (plan P2-5a). A settings rule about every
+    # deal rather than a property of one, so it sits under `/settings/` and is
+    # gated like `/qualification/criteria`: any CRM reader may see the rule — it
+    # carries no identifiers and nothing decision D8 protects — and only ADMIN may
+    # change it, because changing it changes which deals can be handed over.
+    ("GET", f"{CRM}/settings/deal-required-documents"): READERS,
+    ("POST", f"{CRM}/settings/deal-required-documents"): ADMIN_ONLY,
+    #
     # Documents (L3-09). Uploading is a staff write; reading, the catalogue and
     # minting a download link are reader routes. `GET /documents/content` is a
     # reader route **and** needs a valid signature over the key and the expiry, and

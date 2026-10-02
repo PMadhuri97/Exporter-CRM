@@ -1171,7 +1171,9 @@ export interface paths {
          * Move a deal to another stage
          * @description The only way a deal's stage changes. The move must be one the stage graph allows (deal contract §1.1); `WITHDRAWN` requires a reason (assumption A7) and every other stage refuses one.
          *
-         *     `HANDED_OVER` additionally requires a buyer and assumption A5's guard — the company a `CUSTOMER` with a `CLEAR` background check. That check is Developer 4's column in migration 0015, which has not landed, so every handover is currently refused with `DEAL_HANDOVER_BLOCKED` rather than being allowed on the strength of a column that does not exist.
+         *     `HANDED_OVER` additionally requires a buyer, and every condition of the handover guard (deal contract §6.1). Live today: the company must be a `CUSTOMER` with a `CLEAR` background check (assumption A5), and the deal must have an `AVAILABLE` document in every category `/settings/deal-required-documents` requires.
+         *
+         *     A refusal is 409 `DEAL_HANDOVER_BLOCKED` and names **every** unmet condition, not the first — so an operator does not have to fix one to discover the next.
          */
         post: operations["transition_deal_stage_api_v1_onboarding_deals__deal_id__transitions_post"];
         delete?: never;
@@ -1198,6 +1200,36 @@ export interface paths {
          */
         put: operations["set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/settings/deal-required-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which document categories a deal must have before handover
+         * @description `requirements` is the current version of every requirement, whether or not it is still `active` — a removed requirement is shown as inactive rather than hidden, because the table is append-only and the record of what was required when is part of the rule.
+         *
+         *     `history` is every version ever written. `can_edit` says whether **this** caller may change the rule, so the screen offers the controls from the server rather than from the role (§7.5).
+         */
+        get: operations["list_deal_required_documents_api_v1_onboarding_settings_deal_required_documents_get"];
+        put?: never;
+        /**
+         * Require a document category before handover, or stop requiring it
+         * @description Writes a **new version** of the requirement. There is no delete: send `active: false` to stop requiring a category, which records that it was removed, by whom and when.
+         *
+         *     `document_type` is optional — left out, any document in the category satisfies the requirement, which is how the seeded `PRE_SHIPMENT` rule works. Named, it must be a type the document settings configure under that category (the same list the upload route accepts), or no deal could ever meet it.
+         *
+         *     **This changes which deals can be handed over.** A deal with no `AVAILABLE` document in a required category is refused with 409 `DEAL_HANDOVER_BLOCKED`, naming the category. Deals already handed over are unaffected: the guard runs on the move, never retrospectively.
+         */
+        post: operations["set_deal_required_document_api_v1_onboarding_settings_deal_required_documents_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2429,6 +2461,35 @@ export interface components {
             source: components["schemas"]["DocumentSource"];
         };
         /**
+         * BuyerCompanyResponse
+         * @description The deal's buyer as a company record (plan P4-4), summarised.
+         *
+         *     `pan` and `cin` are masked for OPERATIONS and DEVELOPER by exactly the rule
+         *     the company response uses — the buyer being a company does not make its
+         *     identifiers more visible than the seller's.
+         *
+         *     `pipeline_status` is `null` until Developer 3's F3 column exists. The field is
+         *     in the shape from F2 on purpose: the company screens are built against this
+         *     response, and adding a field to it later would be a contract change.
+         */
+        BuyerCompanyResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            /** Pipeline Status */
+            pipeline_status: string | null;
+            /** Pan */
+            pan: string | null;
+            /** Cin */
+            cin: string | null;
+        };
+        /**
          * BuyerSnapshotResponse
          * @description A BUYER check's subject as it was when the check was recorded. The
          *     registration number and tax id are masked for every role but COMPLIANCE and
@@ -3078,6 +3139,51 @@ export interface components {
              */
             can_open_deal: boolean;
         };
+        /**
+         * DealRequiredDocumentResponse
+         * @description One version of one requirement.
+         */
+        DealRequiredDocumentResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            category: components["schemas"]["DocumentCategory"];
+            /** Document Type */
+            document_type: string | null;
+            /** Version */
+            version: number;
+            /** Active */
+            active: boolean;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * DealRequiredDocumentsResponse
+         * @description The handover rule as it stands, and how it got there.
+         *
+         *     `requirements` is the current version of every key, `active` or not, so a
+         *     screen can show that something was removed rather than merely not showing it.
+         *     `history` is every version ever written, newest first per key.
+         */
+        DealRequiredDocumentsResponse: {
+            /** Requirements */
+            requirements: components["schemas"]["DealRequiredDocumentResponse"][];
+            /** History */
+            history: components["schemas"]["DealRequiredDocumentResponse"][];
+            /**
+             * Can Edit
+             * @description Whether **this** caller may change the rule (ADMIN). The screen offers the controls from this rather than checking the role itself (§7.5).
+             * @default false
+             */
+            can_edit: boolean;
+        };
         /** DealResponse */
         DealResponse: {
             /**
@@ -3108,6 +3214,13 @@ export interface components {
              */
             updated_at: string;
             buyer: components["schemas"]["DealBuyerResponse"] | null;
+            buyer_company: components["schemas"]["BuyerCompanyResponse"] | null;
+            /** Handover Snapshot */
+            handover_snapshot: {
+                [key: string]: unknown;
+            } | null;
+            /** Seller Gst Registration Id */
+            seller_gst_registration_id: string | null;
             /** Allowed Stage Moves */
             allowed_stage_moves: components["schemas"]["DealStageMoveResponse"][];
             /** Handover Blocked Reason */
@@ -5072,6 +5185,26 @@ export interface components {
             contact_email?: string | null;
             /** Contact Phone */
             contact_phone?: string | null;
+        };
+        /**
+         * SetDealRequiredDocumentRequest
+         * @description Add a required document category to a deal's handover rule, or stop
+         *     requiring it. ADMIN only.
+         *
+         *     There is no delete: the table is append-only, so "stop requiring it" is
+         *     `active: false`, which writes a new version. The record of what was required
+         *     when is part of the point (plan P2-5a).
+         */
+        SetDealRequiredDocumentRequest: {
+            category: components["schemas"]["DocumentCategory"];
+            /** Document Type */
+            document_type?: string | null;
+            /**
+             * Active
+             * @description `true` requires the category, `false` stops requiring it. Either way a new version is written; nothing is updated or deleted.
+             * @default true
+             */
+            active: boolean;
         };
         /**
          * SetMarkerRequest
@@ -9143,6 +9276,92 @@ export interface operations {
                 content?: never;
             };
             /** @description Missing name, a country that is not ISO-3166-1 alpha-2, or a masked value sent back */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_deal_required_documents_api_v1_onboarding_settings_deal_required_documents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealRequiredDocumentsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_deal_required_document_api_v1_onboarding_settings_deal_required_documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDealRequiredDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealRequiredDocumentResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `DEAL_REQUIRED_DOCUMENT_CHANGED`: another administrator changed the same requirement first; nothing was saved */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A category a deal cannot hold (it belongs to a company), a `document_type` not configured under the category (`DOCUMENT_TYPE_NOT_ALLOWED`), or a change that would leave the rule as it already is */
             422: {
                 headers: {
                     [name: string]: unknown;

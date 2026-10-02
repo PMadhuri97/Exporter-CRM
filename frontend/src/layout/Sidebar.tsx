@@ -1,5 +1,6 @@
 import {
   Building2,
+  FileCheck,
   Home,
   Kanban,
   ListChecks,
@@ -40,6 +41,8 @@ const SETTINGS_ITEM: NavItem = { label: 'Settings', path: '/settings', icon: Set
 /** Rows only ADMIN sees — the server refuses these screens to anyone else. */
 const ADMIN_ITEMS: NavItem[] = [
   { label: 'Qualification criteria', path: '/settings/qualification-criteria', icon: SlidersHorizontal },
+  // Which paperwork a deal must have before handover (plan P2-5a).
+  { label: 'Required documents', path: '/settings/deal-required-documents', icon: FileCheck },
 ];
 
 /** Whether `pathname` is inside `path`: an exact match for the root, otherwise

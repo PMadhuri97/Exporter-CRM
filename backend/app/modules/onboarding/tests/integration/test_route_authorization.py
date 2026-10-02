@@ -217,6 +217,16 @@ GATED_ROUTES = [
         {"name": "Rotterdam Trading BV", "country": "NL"},
         STAFF,
     ),
+    # Required document categories — owner: Developer 2 (plan P2-5a). A settings
+    # rule about every deal, so the read is `READERS` like `/qualification/criteria`
+    # and the write is ADMIN only.
+    ("GET", f"{BASE}/settings/deal-required-documents", None, READERS),
+    (
+        "POST",
+        f"{BASE}/settings/deal-required-documents",
+        {"category": "BUYER"},
+        ADMIN_ONLY,
+    ),
     # Documents (L3-09). The two uploads are multipart, so they are covered by their
     # own refusal tests in `test_l3b_documents.py` rather than here — this table
     # sends a JSON body, and a multipart route refuses a JSON one at parsing with a

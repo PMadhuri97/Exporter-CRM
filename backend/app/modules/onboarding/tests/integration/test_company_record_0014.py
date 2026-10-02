@@ -759,7 +759,8 @@ async def test_sample_data_reaches_the_three_example_companies():
     """Architecture §3.9, reached through the services rather than written: B is a
     CUSTOMER because its check is CLEAR, with one of its two deals handed over; C is
     a PROSPECT whose check is FLAGGED and whose deal is gathering paperwork, its
-    handover refused for both reasons; A is untouched by both. And the rule behind
+    handover refused for both reasons and for its missing pre-shipment document; A is
+    untouched by both. And the rule behind
     B's journey holds — a CUSTOMER's history shows a CLEAR check (company-record §8,
     invariant 2)."""
     await load_sample_data()
@@ -785,8 +786,11 @@ async def test_sample_data_reaches_the_three_example_companies():
     assert sorted(d.stage.value for d in b_deals) == ["GATHERING_PAPERWORK", "HANDED_OVER"]
     assert [d.stage.value for d in c_deals] == ["GATHERING_PAPERWORK"]
     assert "HANDED_OVER" not in {move.to.value for move in c_deal.allowed_stage_moves}
+    # And no pre-shipment document: `sample_data_deals` adds the one migration 0030
+    # requires only to deals it is about to hand over, so C's refusal names that too.
     assert c_deal.handover_blocked_reason == (
-        "the company is PROSPECT, not CUSTOMER; the background check is FLAGGED, not CLEAR"
+        "the company is PROSPECT, not CUSTOMER; the background check is FLAGGED, not CLEAR; "
+        "missing required documents: PRE_SHIPMENT"
     )
     assert "CLEAR" in {row.to_status for row in b_checks}
 

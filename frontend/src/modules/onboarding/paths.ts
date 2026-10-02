@@ -34,4 +34,6 @@ export const paths = {
   followUps: '/follow-ups',
   pipeline: '/pipeline',
   qualificationCriteria: '/settings/qualification-criteria',
+  /** Which paperwork a handover needs (plan P2-5a). ADMIN only. */
+  dealRequiredDocuments: '/settings/deal-required-documents',
 } as const;

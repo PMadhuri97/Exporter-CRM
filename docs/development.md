@@ -188,17 +188,18 @@ users; change the contract in the same pull request as the code.
 
 ## 9. Baseline
 
-Measured 29 September 2026, after the UAT-readiness fixes:
+Measured 2 October 2026, on Developer 2's `feature/handover-snapshot` with `main` (Developer 1's
+compliance work) merged in:
 
 | Gate | Baseline |
 |---|---|
-| Backend suite | **4,570 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (18 minutes) |
-| Temporal workflow tests (`test_onboarding_workflow*.py`, part of the suite) | 143 passed, 1 skipped (the opt-in restart suite, `RUN_RESILIENCE_TESTS=1`). They download the Temporal test server, so they need internet access |
+| Backend suite | **4,926 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (21 minutes) |
+| Temporal workflow tests (`test_onboarding_workflow*.py`, part of the suite) | 143 passed, 1 skipped when last counted on their own (29 September; the skip is the opt-in restart suite, `RUN_RESILIENCE_TESTS=1`). They download the Temporal test server, so they need internet access |
 | `ruff check .` | 16 findings, all pre-existing: two auto-generated Alembic merge revisions and two package index files |
 | `lint-imports` | 19 contracts kept, 0 broken |
-| `alembic heads` | one: `onboarding_0022_integrity` |
+| `alembic heads` | one: `onboarding_0030_deal_req_docs` |
 | `alembic check` | no new upgrade operations |
-| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 32 files, 294 tests; build passes with a >500 kB chunk warning |
+| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 38 files, 369 tests; build passes with a >500 kB chunk warning |
 
 The 27 expected failures are the tests in `compliance/tests/integration/test_compliance.py`,
 `test_screening_uses_rule_registry.py` and `audit/tests/integration/test_audit.py` that
