@@ -59,7 +59,7 @@ close it. While a proposal is open nothing else moves the check. ``_apply_move``
 the one place a decision is written, and it refuses an approval-needing move that
 does not come from :meth:`approve` (``BACKGROUND_CHECK_APPROVAL_REQUIRED``) — so no
 path lets one user take a company to ``CLEAR``. The switch
-``CRM_BACKGROUND_CHECK_MAKER_CHECKER`` may be off only in local/development/test
+``CRM_BACKGROUND_CHECK_MAKER_CHECKER`` may be off only in local/test
 (``compliance_settings``).
 
 **Expiry (Developer 1, plan P3-3a).** Every ``CLEAR`` stores ``expires_at`` =

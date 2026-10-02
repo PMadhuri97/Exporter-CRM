@@ -25,12 +25,12 @@ from datetime import timedelta
 
 from app.platform.configuration.config import Settings, settings
 
-#: Where maker-checker may be switched off (IQ-17: "local/test"). ``development`` is
-#: this repository's name for a developer's own machine (``.env.example``, and the
-#: environments ``bootstrap`` seeds development data into).
-MAKER_CHECKER_OFF_ALLOWED_ENVIRONMENTS: frozenset[str] = frozenset(
-    {"local", "development", "test", "testing"}
-)
+#: Where maker-checker may be switched off (IQ-17: "local/test", taken literally).
+#: ``development`` is deliberately absent: it is ``Settings.ENVIRONMENT``'s default and
+#: what ``.env.example`` — and so the docker-compose stack a UAT runs on — sets, so
+#: allowing it would leave the start-up guard inert on any server nobody remembered to
+#: rename. A developer who wants the switch off sets ``ENVIRONMENT=local``.
+MAKER_CHECKER_OFF_ALLOWED_ENVIRONMENTS: frozenset[str] = frozenset({"local", "test", "testing"})
 
 
 def _settings(override: Settings | None) -> Settings:
@@ -73,7 +73,7 @@ def enforce_compliance_settings(override: Settings | None = None) -> None:
     clear a company must not serve a single request.
 
     Raises:
-        RuntimeError: maker-checker is off outside local/development/test, or a
+        RuntimeError: maker-checker is off outside local/test, or a
             duration setting is out of range.
     """
     current = _settings(override)

@@ -79,7 +79,7 @@ Recorded in [`open-items.md`](open-items.md) §1.1 (built on a recommendation; c
 
 1. REVIEW + REJECTED sanctions/AML reads as **FAILED** (`check_state`).
 2. A new check cycle is refused while the current one is empty (`CHECK_CYCLE_EMPTY`).
-3. Maker-checker details: the proposer cannot reject (only withdraw); nothing else moves the check while a proposal is open; any input change — including a company document passing its scan — makes a proposal stale; the switch may be off in `development` as well as `local`/`test`; the queue is COMPLIANCE/ADMIN only; the approved decision's `decided_by` (and so the journey row and `company.became_customer`) names the proposer.
+3. Maker-checker details: the proposer cannot reject (only withdraw); nothing else moves the check while a proposal is open; any input change — including a company document passing its scan — makes a proposal stale; the queue is COMPLIANCE/ADMIN only; the approved decision's `decided_by` (and so the journey row and `company.became_customer`) names the proposer.
 4. The expiry backfill uses the **last** CLEAR decision (BQ-5 literally).
 5. `BuyerChecks.tsx` kept for legacy deal buyers until P4-10.
 
@@ -162,11 +162,23 @@ cd backend
 All five were downgraded to 0022 and upgraded again on a copy of the test database (1 Oct 2026):
 `alembic check` clean, `--validate` 0.
 
+**Merging the other lanes after this PR.** On 1 October 2026 two other branches also number
+from 0023 on `onboarding_0022_integrity`: Developer 2's `feature/handover-snapshot`
+(`onboarding_0025_deal_foundation`, `onboarding_0026_deal_snapshot`,
+`onboarding_0027_deal_req_docs`) and Developer 3's `feature/trade_history`
+(`onboarding_0023_domestic_first`). Merged as they are, the chain has three heads. Whichever
+merges next renumbers from **0028**, points its first `down_revision` at the head at that moment
+(`onboarding_0027_dev1_expiry` if it is the first after this PR), checks `alembic heads` prints
+one, and regenerates `frontend/openapi.json` and `frontend/src/lib/api/schema.ts` rather than
+hand-merging them (allocation §2.2). A trial merge also conflicts in
+`contracts/migration-register.md` (both), `frontend/openapi.json` (Dev 2), and
+`frontend/src/pages/HomePage.tsx`, `frontend/src/platform/auth/roles.ts` and `index.ts` (Dev 3).
+
 **Settings** (`platform/configuration/config.py`; [`development.md`](development.md) §3):
 
 | Setting | Default | Note |
 |---|---|---|
-| `CRM_BACKGROUND_CHECK_MAKER_CHECKER` | `true` | `false` only where `ENVIRONMENT` is `local`, `development` or `test`; **the server refuses to start** with it off anywhere else |
+| `CRM_BACKGROUND_CHECK_MAKER_CHECKER` | `true` | `false` only where `ENVIRONMENT` is `local` or `test` (IQ-17); **the server refuses to start** with it off anywhere else — `development` included, because it is the default and what `.env.example` / docker-compose set |
 | `CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS` | `365` | ≥ 1; applies to Clears recorded after a change |
 | `CRM_REKYC_DUE_WINDOW_DAYS` | `30` | ≥ 0 |
 
@@ -198,7 +210,7 @@ Each is a minimal, deliberate edit:
 | File | Owner | Why |
 |---|---|---|
 | `backend/app/platform/configuration/config.py` | platform | the three compliance settings |
-| `backend/app/main.py` | platform | one call: refuse to start with maker-checker off outside local/dev/test (IQ-17) |
+| `backend/app/main.py` | platform | one call: refuse to start with maker-checker off outside local/test (IQ-17) |
 | `backend/app/modules/onboarding/domain/entities/exporter_profile.py`, `application/exporter_profile_service.py` | Dev 3 | F1's one column and one promotion change (allowed once, allocation §2.2) |
 | `backend/app/modules/onboarding/tests/integration/test_crm_end_to_end.py` | Dev 2 | two compliance users and rule-B checks (plan P3-1d names this file) |
 | `backend/app/modules/onboarding/tests/integration/test_company_record_0014.py` | Dev 3 | one FK-count assertion (F1) |

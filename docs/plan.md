@@ -4,11 +4,11 @@
 |---|---|
 | Date | 1 October 2026 |
 | Repository state audited | `main` @ `632a824` ("Fix and Hardening"), clean working tree, one Alembic head `onboarding_0022_integrity` |
-| Business source of truth | `docs/plan.md` — *ANER Exporter CRM — Post-Demo Change Plan*, 30 September 2026 (decisions A–K; DPDP and RXIL open) |
+| Business source of truth | *ANER Exporter CRM — Post-Demo Change Plan*, 30 September 2026 (decisions A–K; DPDP and RXIL open). It was the untracked `docs/plan.md` when this audit was written; it is **not in the repository** — this file now holds that path |
 | Target picture used alongside it | `crm-state-model-v2.png` ("One company, several gauges", decisions A–K recorded 30 September 2026) |
 | What this file is | An audit of the code against that plan, and the engineering plan that follows from it. No code, migration or behaviour was changed |
 | Decisions recorded | 1 October 2026: all blocking and design questions answered, see §19.0 (it overrides earlier text where they differ) |
-| Where it lives | Repository root. `docs/plan.md` is the source document and is untracked, so it was not overwritten |
+| Where it lives | `docs/plan.md`, committed with Developer 1's compliance PR (`feature/compliance-foundation`). Written at the repository root and moved here; every "P…" task id and "§" number in `developer-allocation.md` refers to this file |
 
 Status words used for claims: **VERIFIED** (read in code), **NOT VERIFIED** (the claim is contradicted by the code), **PARTIALLY IMPLEMENTED**, **NOT IMPLEMENTED**, **UNKNOWN / NEEDS VERIFICATION** (cannot be settled from the repository). File references are relative to the repository root.
 

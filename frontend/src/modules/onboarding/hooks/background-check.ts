@@ -110,7 +110,8 @@ export function useCheckCycles(customerId: string | undefined) {
 /**
  * Start a Re-KYC / Re-KYB. A new cycle changes what every compliance read shows —
  * the standing (and on a CLEAR company the gauge), the decisions, the checklist and
- * the results grouped by cycle — and on a CLEAR company the deals' handover state.
+ * the results grouped by cycle — and on a CLEAR company the deals' handover state and
+ * the Home "Re-KYC due" list, which the reopened company leaves.
  */
 export function useStartCheckCycle(customerId: string) {
   const queryClient = useQueryClient();
@@ -124,6 +125,7 @@ export function useStartCheckCycle(customerId: string) {
       void queryClient.invalidateQueries({
         queryKey: ['verificationResults', 'EXPORTER', customerId],
       });
+      void queryClient.invalidateQueries({ queryKey: REKYC_DUE_KEY });
       invalidateJourney(queryClient, customerId);
     },
     onError: () => {

@@ -34,8 +34,8 @@ class Settings(BaseSettings):
     # ── Exporter CRM: compliance engine (Developer 1, plan P3-1b, P3-3) ───────
     # Maker-checker (decision A, IQ-17): a CLEAR, FLAGGED or ON_HOLD needs a second
     # COMPLIANCE/ADMIN user to approve it. On by default. It may be turned off only
-    # where ENVIRONMENT is local, development or test; anywhere else the application
-    # refuses to start with it off
+    # where ENVIRONMENT is local or test — not development, the default; anywhere else
+    # the application refuses to start with it off
     # (`onboarding.application.compliance_settings.enforce_compliance_settings`).
     CRM_BACKGROUND_CHECK_MAKER_CHECKER: bool = True
     # How long a new CLEAR stays current (decision E). Each CLEAR stores its own

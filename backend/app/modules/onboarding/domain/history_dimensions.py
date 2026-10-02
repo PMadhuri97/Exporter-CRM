@@ -10,8 +10,9 @@ to prevent.
 
 The last five were added together in F1 so that no lane edits this list again
 (allocation §2.2): ``check_cycle`` and ``background_check_approval`` are Developer 1's,
-``gst_registration``, ``trade`` and ``pipeline`` Developer 3's. Only
-``check_cycle`` has a writer so far (plan P2-3c).
+``gst_registration``, ``trade`` and ``pipeline`` Developer 3's. Developer 1's two have
+writers (``check_cycle``, plan P2-3c; ``background_check_approval``, plan P3-1b);
+Developer 3's have none yet.
 """
 
 from __future__ import annotations

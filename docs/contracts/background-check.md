@@ -617,9 +617,11 @@ Rules that go with it:
 - **History**: dimension `background_check_approval` (`history-row.md` §2); DEVELOPER does not
   receive it (D8).
 - **The switch** `CRM_BACKGROUND_CHECK_MAKER_CHECKER` (IQ-17): on by default; off is accepted only
-  where `ENVIRONMENT` is `local`, `development` or `test` — the application refuses to start with
-  it off anywhere else (`compliance_settings.enforce_compliance_settings`). Off, the three moves
-  are recorded directly, as before.
+  where `ENVIRONMENT` is `local` or `test` (IQ-17 literally) — the application refuses to start
+  with it off anywhere else, **including `development`**, which is `ENVIRONMENT`'s default and
+  what `.env.example` (and so the docker-compose stack) sets
+  (`compliance_settings.enforce_compliance_settings`). Off, the three moves are recorded
+  directly, as before.
 
 ### 12.6 Rule B — KYB, AML and sanctions passed (plan P3-2, decision B, IQ-2)
 

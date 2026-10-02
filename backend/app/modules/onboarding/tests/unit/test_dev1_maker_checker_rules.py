@@ -292,7 +292,11 @@ class TestSettings:
         assert clear_validity(settings) == timedelta(days=365)
         assert rekyc_due_window(settings) == timedelta(days=30)
 
-    @pytest.mark.parametrize("environment", ["production", "uat", "staging", "Production"])
+    # `development` is refused too: it is the default ENVIRONMENT and what `.env.example`
+    # (and so the docker-compose UAT stack) sets, so allowing it would make the guard inert.
+    @pytest.mark.parametrize(
+        "environment", ["production", "uat", "staging", "Production", "development"]
+    )
     def test_the_application_refuses_to_start_with_maker_checker_off_outside_local_or_test(
         self, environment
     ):
@@ -312,6 +316,19 @@ class TestSettings:
 
     def test_on_is_accepted_everywhere(self):
         enforce_compliance_settings(Settings(_env_file=None, ENVIRONMENT="production"))
+
+    def test_the_default_environment_does_not_allow_it_off(self):
+        """A server started with no ENVIRONMENT set must still refuse 'off'. The
+        default is read from the field, not the process, so an exported ENVIRONMENT in
+        the shell running the tests cannot change what is checked."""
+        default = Settings.model_fields["ENVIRONMENT"].default
+        assert default.strip().lower() not in MAKER_CHECKER_OFF_ALLOWED_ENVIRONMENTS
+        with pytest.raises(RuntimeError, match="CRM_BACKGROUND_CHECK_MAKER_CHECKER is off"):
+            enforce_compliance_settings(
+                Settings(
+                    _env_file=None, ENVIRONMENT=default, CRM_BACKGROUND_CHECK_MAKER_CHECKER=False
+                )
+            )
 
     @pytest.mark.parametrize(
         ("name", "value"),

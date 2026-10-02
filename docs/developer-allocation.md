@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 1 October 2026 |
-| Based on | The implementation plan (repository root, audited at `main` @ `632a824`). Task ids such as P2-3a and section numbers such as §17.2 refer to that plan |
+| Based on | The implementation plan ([`plan.md`](plan.md), audited at `main` @ `632a824`). Task ids such as P2-3a and section numbers such as §17.2 refer to that plan |
 | Decisions | A–K (30 Sep) and BQ/IQ answers (1 Oct, plan §19.0). Nothing here reopens them |
 | Purpose | Split the plan into three lanes a developer can finish without waiting for another developer's feature code |
 
