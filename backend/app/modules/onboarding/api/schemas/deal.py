@@ -255,11 +255,11 @@ class DealResponse(BaseModel):
     #:
     #: `snapshot_source` is `taken_at_handover` for a snapshot written by the
     #: handover itself and `backfilled_from_deal_buyer` for one reconstructed by
-    #: migration 0026 from the records that existed — so a reader can tell a
+    #: migration 0029 from the records that existed — so a reader can tell a
     #: record from a reconstruction.
     #:
     #: An open map rather than a model on purpose: it is served **as stored**, and
-    #: migration 0026's backfill builds its `buyer` from `to_jsonb(deal_buyer)`,
+    #: migration 0029's backfill builds its `buyer` from `to_jsonb(deal_buyer)`,
     #: so a buyer column added later appears in new snapshots. A fixed model would
     #: silently drop that from the response — hiding part of the very record this
     #: field exists to preserve.

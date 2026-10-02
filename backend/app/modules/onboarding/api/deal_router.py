@@ -318,7 +318,9 @@ async def list_deal_required_documents(
         "removed, by whom and when.\n\n"
         "`document_type` is optional — left out, any document in the category "
         "satisfies the requirement, which is how the seeded `PRE_SHIPMENT` rule "
-        "works.\n\n"
+        "works. Named, it must be a type the document settings configure under "
+        "that category (the same list the upload route accepts), or no deal could "
+        "ever meet it.\n\n"
         "**This changes which deals can be handed over.** A deal with no "
         "`AVAILABLE` document in a required category is refused with 409 "
         "`DEAL_HANDOVER_BLOCKED`, naming the category. Deals already handed over "
@@ -327,10 +329,18 @@ async def list_deal_required_documents(
     responses={
         401: {"description": "Unauthorized"},
         403: {"description": "ADMIN role required"},
+        409: {
+            "description": (
+                "`DEAL_REQUIRED_DOCUMENT_CHANGED`: another administrator changed the "
+                "same requirement first; nothing was saved"
+            )
+        },
         422: {
             "description": (
-                "A category a deal cannot hold (it belongs to a company), or a "
-                "change that would leave the rule as it already is"
+                "A category a deal cannot hold (it belongs to a company), a "
+                "`document_type` not configured under the category "
+                "(`DOCUMENT_TYPE_NOT_ALLOWED`), or a change that would leave the rule "
+                "as it already is"
             )
         },
     },

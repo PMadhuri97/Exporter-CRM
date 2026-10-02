@@ -15,6 +15,15 @@
  *
  * What the viewer may do comes from the server's `capabilities` — this file makes no
  * role comparison.
+ *
+ * Developer 1, 1 October 2026:
+ * - **Filters** (P2-2): All / Automated / Manual / Flagged, over served fields only.
+ *   Automated is a real provider (`provenance = PROVIDER`; the RXIL stub is not, IQ-15)
+ *   and says honestly that none is connected; Flagged is a `FAILED` result or a
+ *   `HIGH`/`CRITICAL` risk.
+ * - **Cycles** (P2-3d): the results of the current check cycle are listed as before;
+ *   an earlier cycle's (after a Re-KYC / Re-KYB) stay readable, grouped by cycle and
+ *   read-only. The current cycle is the server's (`current_cycle` on the standing).
  */
 
 import { Activity, AlertTriangle, Building2, Info, ShieldCheck } from 'lucide-react';
@@ -22,9 +31,10 @@ import { useState } from 'react';
 
 import { humanize } from '@/lib/format';
 
-import { useVerificationResults } from '../hooks';
+import { useBackgroundCheck, useCheckCycles, useVerificationResults } from '../hooks';
 import type { VerificationResult } from '../types';
 
+import { cycleKindLabel } from './background-check-labels';
 import { BankActivityPanel } from './BankActivityPanel';
 import { ManualResultForm } from './ManualResultForm';
 import { ScreeningChecklist } from './ScreeningChecklist';
@@ -32,6 +42,84 @@ import { COMPANY_CHECK_TYPES } from './verification-labels';
 import { VerificationResultRow } from './VerificationResultRow';
 
 type WorkspaceTab = 'COMPANY' | 'BANK';
+
+/** The result filters (P2-2), over fields the server serves. */
+type ResultFilter = 'ALL' | 'AUTOMATED' | 'MANUAL' | 'FLAGGED';
+
+const FILTERS: { value: ResultFilter; label: string }[] = [
+  { value: 'ALL', label: 'All' },
+  { value: 'AUTOMATED', label: 'Automated' },
+  { value: 'MANUAL', label: 'Manual' },
+  { value: 'FLAGGED', label: 'Flagged' },
+];
+
+function matchesFilter(result: VerificationResult, filter: ResultFilter): boolean {
+  if (filter === 'AUTOMATED') return result.provenance === 'PROVIDER';
+  if (filter === 'MANUAL') return result.provenance === 'MANUAL';
+  if (filter === 'FLAGGED') {
+    return (
+      result.status === 'FAILED' || result.risk_level === 'HIGH' || result.risk_level === 'CRITICAL'
+    );
+  }
+  return true;
+}
+
+function FilteredEmpty({ filter }: { filter: ResultFilter }) {
+  const text =
+    filter === 'AUTOMATED'
+      ? 'No automated checks. No provider integration is connected, so every check is recorded by hand for now.'
+      : filter === 'FLAGGED'
+        ? 'No failed or high-risk checks in this cycle.'
+        : 'No manual checks in this cycle.';
+  return (
+    <p
+      data-testid="verification-filter-empty"
+      className="rounded-lg border border-dashed border-border-strong bg-surface-subtle px-4 py-6 text-center text-xs text-ink-muted"
+    >
+      {text}
+    </p>
+  );
+}
+
+/** An earlier cycle's results: readable, never reviewable (P2-3d). */
+function EarlierCycle({
+  label,
+  results,
+  customerId,
+  onStale,
+}: {
+  label: string;
+  results: VerificationResult[];
+  customerId: string;
+  onStale: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div data-testid="earlier-cycle-results" className="mt-4">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="text-xs font-semibold text-ink"
+      >
+        {label} — {results.length} result{results.length === 1 ? '' : 's'}, read-only
+      </button>
+      {open && (
+        <div className="mt-2 rounded-lg border border-border px-4 opacity-90">
+          {results.map((result) => (
+            <VerificationResultRow
+              key={result.id}
+              result={result}
+              customerId={customerId}
+              canReview={false}
+              onStale={onStale}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * The company check types the tab advertises that have no result yet. No provider is
@@ -88,15 +176,36 @@ export function VerificationSection({ customerId }: { customerId: string }) {
   const query = useVerificationResults('EXPORTER', customerId);
   const [tab, setTab] = useState<WorkspaceTab>('COMPANY');
   const [recording, setRecording] = useState(false);
-  const results = query.data?.results ?? [];
+  const [filter, setFilter] = useState<ResultFilter>('ALL');
+  const allResults = query.data?.results ?? [];
   const capabilities = query.data?.capabilities;
-  const companyResults = results.filter((result) =>
+
+  // The current cycle is the server's. Until it is known (or for a company with no
+  // cycle yet) every result is treated as current, as before cycles existed.
+  const standing = useBackgroundCheck(customerId);
+  const currentCycleId = standing.data?.current_cycle?.id ?? null;
+  const inCurrentCycle = (result: VerificationResult) =>
+    currentCycleId === null || !result.cycle_id || result.cycle_id === currentCycleId;
+  const results = allResults.filter(inCurrentCycle);
+  const earlier = allResults.filter((result) => !inCurrentCycle(result));
+  const cycles = useCheckCycles(earlier.length > 0 ? customerId : undefined);
+  const earlierCycles = (cycles.data?.cycles ?? [])
+    .filter((cycle) => !cycle.is_current)
+    .reverse()
+    .map((cycle) => ({
+      cycle,
+      results: earlier.filter((result) => result.cycle_id === cycle.id),
+    }))
+    .filter((group) => group.results.length > 0);
+
+  const shown = results.filter((result) => matchesFilter(result, filter));
+  const companyResults = shown.filter((result) =>
     COMPANY_CHECK_TYPES.includes(result.verification_type),
   );
   // Every result on the company is a background-check input — a `REVIEW` or `PENDING`
   // one of any type blocks CLEAR — so one outside the screening set is listed too,
   // never dropped where nobody can see or review it.
-  const otherResults = results.filter(
+  const otherResults = shown.filter(
     (result) => !COMPANY_CHECK_TYPES.includes(result.verification_type),
   );
 
@@ -174,9 +283,31 @@ export function VerificationSection({ customerId }: { customerId: string }) {
             </div>
           ) : (
             <>
-              {companyResults.length === 0 ? (
+              <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Filter checks">
+                {FILTERS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={filter === option.value}
+                    onClick={() => setFilter(option.value)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                      filter === option.value
+                        ? 'border-ink bg-ink text-surface'
+                        : 'border-border text-ink-muted hover:text-ink'
+                    }`}
+                  >
+                    {option.label}{' '}
+                    <span className="opacity-70">
+                      ({results.filter((result) => matchesFilter(result, option.value)).length})
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {filter !== 'ALL' && shown.length === 0 ? (
+                <FilteredEmpty filter={filter} />
+              ) : companyResults.length === 0 && filter === 'ALL' ? (
                 <EmptyScreenings />
-              ) : (
+              ) : companyResults.length === 0 ? null : (
                 <div className="rounded-lg border border-border px-4">
                   {companyResults.map((result) => (
                     <VerificationResultRow
@@ -209,7 +340,16 @@ export function VerificationSection({ customerId }: { customerId: string }) {
                   </div>
                 </div>
               )}
-              <MissingChecks results={results} />
+              {filter === 'ALL' && <MissingChecks results={results} />}
+              {earlierCycles.map(({ cycle, results: cycleResults }) => (
+                <EarlierCycle
+                  key={cycle.id}
+                  label={`Cycle ${cycle.number} · ${cycleKindLabel(cycle.kind)}`}
+                  results={cycleResults}
+                  customerId={customerId}
+                  onStale={() => void query.refetch()}
+                />
+              ))}
             </>
           )}
         </div>

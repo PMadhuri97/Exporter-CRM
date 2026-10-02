@@ -173,7 +173,9 @@ const SNAPSHOT_SOURCE_LABEL: Record<string, string> = {
  */
 function HandoverSnapshot({ snapshot }: { snapshot: Record<string, unknown> }) {
   const buyer = (snapshot.buyer ?? null) as Record<string, string | null> | null;
-  const documentIds = Array.isArray(snapshot.document_ids) ? snapshot.document_ids : [];
+  // `null` in a backfilled snapshot means no record of the paperwork survived —
+  // "not recorded", which must not read as "none".
+  const documentIds = Array.isArray(snapshot.document_ids) ? snapshot.document_ids : null;
   const source = typeof snapshot.snapshot_source === 'string' ? snapshot.snapshot_source : '';
 
   return (
@@ -197,9 +199,11 @@ function HandoverSnapshot({ snapshot }: { snapshot: Record<string, unknown> }) {
         </EmptySection>
       )}
       <p className="mt-3 text-xs text-ink-muted">
-        {documentIds.length === 1
-          ? '1 document was included.'
-          : `${documentIds.length} documents were included.`}{' '}
+        {documentIds === null
+          ? 'Which documents were included was not recorded.'
+          : documentIds.length === 1
+            ? '1 document was included.'
+            : `${documentIds.length} documents were included.`}{' '}
         <span className="text-ink-faint">{SNAPSHOT_SOURCE_LABEL[source] ?? ''}</span>
       </p>
     </Panel>

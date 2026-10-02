@@ -1,10 +1,10 @@
 """Required document categories for a deal — **owner: Developer 2** (plan P2-5a,
 allocation task 2.2).
 
-Revision ID: onboarding_0027_deal_req_docs
-Revises: onboarding_0026_deal_snapshot
+Revision ID: onboarding_0030_deal_req_docs
+Revises: onboarding_0029_deal_snapshot
 
-``onboarding_0027_deal_req_docs`` is 30 characters, inside the register's
+``onboarding_0030_deal_req_docs`` is 30 characters, inside the register's
 32-character limit.
 
 Why
@@ -51,8 +51,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "onboarding_0027_deal_req_docs"
-down_revision: str | None = "onboarding_0026_deal_snapshot"
+revision: str = "onboarding_0030_deal_req_docs"
+down_revision: str | None = "onboarding_0029_deal_snapshot"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -129,7 +129,7 @@ def upgrade() -> None:
                 "document_type": "",
                 "version": 1,
                 "active": True,
-                "source": "migration_0027_seed",
+                "source": "migration_0030_seed",
             }
         ],
     )

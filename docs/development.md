@@ -54,6 +54,15 @@ Optional: `STORAGE_LOCAL_ROOT` (where uploaded documents go; default
 `POST /api/v1/auth/register` off; it only ever grants `API_USER`, which reaches nothing
 in the CRM).
 
+Compliance engine (plans P3-1b, P3-3; `onboarding/application/compliance_settings.py`):
+`CRM_BACKGROUND_CHECK_MAKER_CHECKER` (default `true`: CLEAR, FLAGGED and ON_HOLD need a
+second COMPLIANCE/ADMIN user; `false` is accepted only where `ENVIRONMENT` is `local` or
+`test`, and the server refuses to start with it off anywhere else — including
+`development`, the default, so set `ENVIRONMENT=local` on your machine to turn it off),
+`CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS` (default 365: how long a new Clear stays
+current; at least 1) and `CRM_REKYC_DUE_WINDOW_DAYS` (default 30: how far ahead "Re-KYC
+due" looks).
+
 ```bash
 python -m alembic upgrade head        # the schema
 python -m alembic heads               # must print exactly one revision
@@ -140,6 +149,20 @@ pnpm build
   and the ORM matches the `onboarding` schema (`test_orm_matches_the_onboarding_schema.py`).
 - `app/modules/onboarding/tests/integration/test_crm_end_to_end.py` walks the whole
   main path through the API, with nothing substituted.
+- **"Now" in new code comes from `app/shared/clock.py`** (`clock.now()`, timezone-aware
+  UTC), never an inline `datetime.now(...)` (allocation §2.2). A test moves time with
+  `with use_clock(FixedClock(at)):` — no sleeping, no patching `datetime`.
+- **Two compliance users (maker-checker is on in tests).** `CLEAR`, `FLAGGED` and
+  `ON_HOLD` are proposed by one COMPLIANCE/ADMIN user and approved by another (plan
+  P3-1b). A test takes a company there with the helpers in
+  `app/modules/onboarding/tests/fixtures/compliance.py`: `approve_as(checker, company,
+  maker=…)` (services), `propose_and_approve(client, company, maker_token=…,
+  checker_token=…)` (HTTP), and `record_required_checks(company)` for rule B's KYB, AML
+  and sanctions. A test of code that *reads* compliance (the handover guard) can use
+  `StaticComplianceFactsReader` / `party_facts(...)` from the same module, a fake of the
+  published `ComplianceFactsReader`. `CRM_BACKGROUND_CHECK_MAKER_CHECKER=false` is
+  accepted only where `ENVIRONMENT` is local or test — the server refuses to start with it
+  off anywhere else, `development` included (IQ-17).
 
 ## 8. Changing the API
 
@@ -165,17 +188,18 @@ users; change the contract in the same pull request as the code.
 
 ## 9. Baseline
 
-Measured 29 September 2026, after the UAT-readiness fixes:
+Measured 2 October 2026, on Developer 2's `feature/handover-snapshot` with `main` (Developer 1's
+compliance work) merged in:
 
 | Gate | Baseline |
 |---|---|
-| Backend suite | **4,570 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (18 minutes) |
-| Temporal workflow tests (`test_onboarding_workflow*.py`, part of the suite) | 143 passed, 1 skipped (the opt-in restart suite, `RUN_RESILIENCE_TESTS=1`). They download the Temporal test server, so they need internet access |
+| Backend suite | **4,926 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (21 minutes) |
+| Temporal workflow tests (`test_onboarding_workflow*.py`, part of the suite) | 143 passed, 1 skipped when last counted on their own (29 September; the skip is the opt-in restart suite, `RUN_RESILIENCE_TESTS=1`). They download the Temporal test server, so they need internet access |
 | `ruff check .` | 16 findings, all pre-existing: two auto-generated Alembic merge revisions and two package index files |
 | `lint-imports` | 19 contracts kept, 0 broken |
-| `alembic heads` | one: `onboarding_0027_deal_req_docs` |
+| `alembic heads` | one: `onboarding_0030_deal_req_docs` |
 | `alembic check` | no new upgrade operations |
-| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 34 files, 310 tests; build passes with a >500 kB chunk warning |
+| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 38 files, 369 tests; build passes with a >500 kB chunk warning |
 
 The 27 expected failures are the tests in `compliance/tests/integration/test_compliance.py`,
 `test_screening_uses_rule_registry.py` and `audit/tests/integration/test_audit.py` that

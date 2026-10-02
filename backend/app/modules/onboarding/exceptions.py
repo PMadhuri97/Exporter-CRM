@@ -1198,12 +1198,12 @@ class StorageKeyRefusedError(AnerBaseException):
 
 
 class DealHandoverBlockedError(AnerBaseException):
-    """A handover whose assumption-A5 guard is unmet.
+    """A handover whose guard is unmet.
 
-    The company must be a `CUSTOMER` **and** its background check `CLEAR`. The
-    reason names which condition failed, including "the background check is not
-    recorded yet" while Developer 4's migration 0015 is missing — "not recorded" is
-    never treated as "clear".
+    The guard is the ordered list in `domain/handover_conditions.py`: the company a
+    `CUSTOMER` with a `CLEAR` check (assumption A5), the required documents present,
+    and the conditions still waiting for their providers. The reason names **every**
+    unmet condition, joined with "; " (`deal-and-buyer.md` §6.1).
 
     A class rather than an inline exception (which is what `deal_service.py` built
     until the review): the code it raises is part of the documented contract
@@ -1217,6 +1217,24 @@ class DealHandoverBlockedError(AnerBaseException):
             error_code="DEAL_HANDOVER_BLOCKED",
             status_code=409,
             extensions={"reason": reason},
+        )
+
+
+class DealRequiredDocumentChangedError(AnerBaseException):
+    """Another change to this required-document key landed first: the version this
+    one would have become already exists (`uq_deal_required_document_key_version`).
+    Nothing was saved; read the rule again and re-apply the change on top of it —
+    the same answer a qualification criterion's version race gets."""
+
+    def __init__(self, requirement: str, version: int) -> None:
+        super().__init__(
+            detail=(
+                f"Version {version} of the required document {requirement} was added by "
+                "someone else first; nothing was saved — reload the rule and try again"
+            ),
+            error_code="DEAL_REQUIRED_DOCUMENT_CHANGED",
+            status_code=409,
+            extensions={"requirement": requirement, "version": version},
         )
 
 
@@ -1467,4 +1485,211 @@ class VerificationLegacyReviewUnchainedError(AnerBaseException):
             error_code="VERIFICATION_LEGACY_REVIEW_UNCHAINED",
             status_code=409,
             extensions={"legacy_review_status": legacy_review_status},
+        )
+
+
+# ── Compliance engine — owner: Developer 1 (allocation §3) ──
+# (Developer 1 appends here.)
+
+
+class BackgroundCheckDecisionNotFoundError(AnerBaseException):
+    """No background-check decision with this id belongs to this company.
+
+    A decision of another company is the same 404 as one that does not exist, so the
+    evidence route cannot be used to learn which decision ids exist elsewhere.
+    """
+
+    def __init__(self, company_id: object, decision_id: object) -> None:
+        super().__init__(
+            detail=f"No background-check decision {decision_id} for company {company_id}",
+            error_code="BACKGROUND_CHECK_DECISION_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class CheckCycleNotFoundError(AnerBaseException):
+    """No check cycle with this id belongs to this company (404)."""
+
+    def __init__(self, company_id: object, cycle_id: object) -> None:
+        super().__init__(
+            detail=f"No check cycle {cycle_id} for company {company_id}",
+            error_code="CHECK_CYCLE_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class CheckCycleNotAllowedError(AnerBaseException):
+    """A new cycle was asked for from a state that does not allow one (plan P2-3c).
+
+    ``FLAGGED`` and ``ON_HOLD`` companies are reassessed first: a new round of checks
+    is not how a concern already on record is dealt with. 409: the request is
+    well-formed; the company's state forbids it.
+    """
+
+    def __init__(self, company_id: object, current: object) -> None:
+        value = _bc_value(current)
+        super().__init__(
+            detail=(
+                f"A new check cycle cannot be started while the background check for "
+                f"company {company_id} is {value}; reassess it first"
+            ),
+            error_code="CHECK_CYCLE_NOT_ALLOWED",
+            status_code=409,
+            extensions={"current": value},
+        )
+
+
+class CheckCycleEmptyError(AnerBaseException):
+    """The current cycle has nothing recorded in it yet, so a new one would replace an
+    empty round with another empty round (plan P2-3c).
+
+    This is also what makes two simultaneous starts produce **one** cycle: the second
+    finds the first's new cycle still empty and is refused. 409.
+    """
+
+    def __init__(self, company_id: object, cycle_number: int) -> None:
+        super().__init__(
+            detail=(
+                f"Check cycle {cycle_number} of company {company_id} has nothing recorded "
+                "in it yet; record its checks before starting another"
+            ),
+            error_code="CHECK_CYCLE_EMPTY",
+            status_code=409,
+            extensions={"current_cycle_number": cycle_number},
+        )
+
+
+class CheckCycleRoleNotAllowedError(AnerBaseException):
+    """Only COMPLIANCE and ADMIN may start a check cycle (plan P2-3c, IQ-3). 403."""
+
+    def __init__(self, role: object) -> None:
+        super().__init__(
+            detail=f"The {_bc_value(role)} role may not start a check cycle",
+            error_code="CHECK_CYCLE_ROLE_NOT_ALLOWED",
+            status_code=403,
+        )
+
+
+# ── Maker-checker (Developer 1, plan P3-1b, decision A) ──
+
+
+class BackgroundCheckApprovalRequiredError(AnerBaseException):
+    """A move that needs a second approver (IQ-1) was asked to take effect directly.
+
+    With maker-checker on, ``CLEAR``, ``FLAGGED`` and ``ON_HOLD`` are recorded as a
+    proposal and take effect only when a different COMPLIANCE or ADMIN user approves
+    them. This is what stops any path letting one user take a company there. 409.
+    """
+
+    def __init__(self, from_value: object, to_value: object) -> None:
+        super().__init__(
+            detail=(
+                f"{_bc_value(from_value)} → {_bc_value(to_value)} needs a second approver: "
+                "propose it, and another compliance officer approves it"
+            ),
+            error_code="BACKGROUND_CHECK_APPROVAL_REQUIRED",
+            status_code=409,
+            extensions={"from_value": _bc_value(from_value), "to_value": _bc_value(to_value)},
+        )
+
+
+class BackgroundCheckProposalOpenError(AnerBaseException):
+    """The company already has a proposal awaiting approval (one per company, P3-1a).
+
+    While it is open nothing else moves the check — no second proposal, no other move
+    and no new cycle: approve, reject or withdraw it first. 409.
+    """
+
+    def __init__(self, company_id: object, proposal_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"The background check for company {company_id} is awaiting approval of "
+                f"proposal {proposal_id}; approve, reject or withdraw it first"
+            ),
+            error_code="BACKGROUND_CHECK_PROPOSAL_OPEN",
+            status_code=409,
+            extensions={"proposal_id": str(proposal_id)},
+        )
+
+
+class BackgroundCheckProposalNotFoundError(AnerBaseException):
+    """No proposal with this id belongs to this company (404)."""
+
+    def __init__(self, company_id: object, proposal_id: object) -> None:
+        super().__init__(
+            detail=f"No background-check proposal {proposal_id} for company {company_id}",
+            error_code="BACKGROUND_CHECK_PROPOSAL_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class BackgroundCheckProposalResolvedError(AnerBaseException):
+    """The proposal was already approved, rejected or withdrawn (409). Also what the
+    loser of two concurrent approve/reject requests receives."""
+
+    def __init__(self, proposal_id: object, outcome: object) -> None:
+        super().__init__(
+            detail=f"Proposal {proposal_id} is already {_bc_value(outcome).lower()}",
+            error_code="BACKGROUND_CHECK_PROPOSAL_RESOLVED",
+            status_code=409,
+            extensions={"outcome": _bc_value(outcome)},
+        )
+
+
+class BackgroundCheckProposalStaleError(AnerBaseException):
+    """The proposal no longer describes the company: the check has moved since, or its
+    inputs changed (a new result, review, screening answer, document or cycle). The
+    checker would be approving something the maker never saw. 409 — reject or withdraw
+    it, and record the move again."""
+
+    def __init__(self, proposal_id: object, why: str) -> None:
+        super().__init__(
+            detail=(
+                f"Proposal {proposal_id} is out of date ({why}); reject or withdraw it and "
+                "record the decision again"
+            ),
+            error_code="BACKGROUND_CHECK_PROPOSAL_STALE",
+            status_code=409,
+            extensions={"why": why},
+        )
+
+
+class BackgroundCheckSelfApprovalError(AnerBaseException):
+    """The proposer tried to approve or reject their own proposal (maker-checker). 403 —
+    the proposer may only withdraw it."""
+
+    def __init__(self, proposal_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"You proposed {proposal_id}, so another compliance officer must approve or "
+                "reject it; you may withdraw it"
+            ),
+            error_code="BACKGROUND_CHECK_SELF_APPROVAL",
+            status_code=403,
+        )
+
+
+class BackgroundCheckProposalNotYoursError(AnerBaseException):
+    """Only the proposer may withdraw a proposal (403)."""
+
+    def __init__(self, proposal_id: object) -> None:
+        super().__init__(
+            detail=f"Only the officer who proposed {proposal_id} may withdraw it",
+            error_code="BACKGROUND_CHECK_PROPOSAL_NOT_YOURS",
+            status_code=403,
+        )
+
+
+class BackgroundCheckApproverRoleNotAllowedError(AnerBaseException):
+    """Only COMPLIANCE and ADMIN propose, approve or reject — never OPERATIONS (the RM
+    never approves compliance, plan §8). 403."""
+
+    def __init__(self, role: object) -> None:
+        super().__init__(
+            detail=(
+                f"The {_bc_value(role)} role may not propose or resolve a "
+                "background-check decision"
+            ),
+            error_code="BACKGROUND_CHECK_APPROVER_ROLE_NOT_ALLOWED",
+            status_code=403,
         )

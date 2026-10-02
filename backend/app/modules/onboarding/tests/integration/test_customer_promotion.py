@@ -42,6 +42,7 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
 )
 from app.modules.onboarding.events import publisher as publisher_module
 from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
+from app.modules.onboarding.tests.fixtures.compliance import record_required_checks
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 from app.platform.messaging.ports import InMemoryEventBus
@@ -50,6 +51,8 @@ from app.platform.messaging.schemas import EventType
 pytestmark = pytest.mark.asyncio
 
 COMPLIANCE = "compliance-officer"
+#: Maker-checker (plan P3-1d): the second officer who approves what COMPLIANCE proposes.
+CHECKER = "second-compliance-officer"
 
 
 @pytest.fixture
@@ -77,6 +80,8 @@ async def _answer_the_screening(company_id: uuid.UUID) -> None:
 
 async def _in_review_and_answered(company_id: uuid.UUID) -> None:
     await _answer_the_screening(company_id)
+    # Rule B (plan P3-2): KYB, AML and sanctions passed in the current cycle.
+    await record_required_checks(company_id, actor_id=COMPLIANCE)
     async with db_services.AsyncSessionLocal() as db:
         await BackgroundCheckService(db).start_review(
             company_id, actor_id="ops", actor_role=UserRole.OPERATIONS
@@ -84,14 +89,22 @@ async def _in_review_and_answered(company_id: uuid.UUID) -> None:
 
 
 async def _clear(company_id: uuid.UUID, risk: BackgroundCheckRisk = BackgroundCheckRisk.LOW):
+    """COMPLIANCE proposes the CLEAR and CHECKER approves it (maker-checker, P3-1b): the
+    approval is the transaction that writes the decision and promotes."""
     async with db_services.AsyncSessionLocal() as db:
-        return await BackgroundCheckService(db).clear(
+        proposal = await BackgroundCheckService(db).propose(
             company_id,
+            to_value=BackgroundCheckState.CLEAR,
             risk=risk,
             reason="Screening complete, nothing adverse.",
             actor_id=COMPLIANCE,
             actor_role=UserRole.COMPLIANCE,
         )
+    async with db_services.AsyncSessionLocal() as db:
+        approved = await BackgroundCheckService(db).approve(
+            company_id, proposal.id, actor_id=CHECKER, actor_role=UserRole.COMPLIANCE
+        )
+    return approved.decision
 
 
 async def _qualify(company_id: uuid.UUID) -> None:

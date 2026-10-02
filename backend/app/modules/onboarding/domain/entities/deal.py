@@ -53,7 +53,7 @@ class Deal(AnerModel):
             " OR (stage <> 'WITHDRAWN' AND withdrawal_reason IS NULL)",
             name="ck_deal_withdrawal_reason",
         ),
-        # A company does not sell to itself (migration 0025). NULL-tolerant,
+        # A company does not sell to itself (migration 0028). NULL-tolerant,
         # because every deal written before the buyer migration (P4-6) has its
         # buyer in `deal_buyer` and this column empty.
         CheckConstraint(
@@ -95,10 +95,11 @@ class Deal(AnerModel):
         DateTime(timezone=True), nullable=True
     )
 
-    # ── The buyer as a company (migration 0025, plan P4-4) ───────────────────
+    # ── The buyer as a company (migration 0028, plan P4-4) ───────────────────
     #: The buyer, once buyers are ordinary company records. Nullable, and NULL on
     #: every deal written before the buyer migration (P4-6) — such a deal's buyer
-    #: is still its `deal_buyer` row, and `_NEEDS_BUYER` accepts either. A real
+    #: is still its `deal_buyer` row. Until P4-4 the handover still requires that
+    #: row (`_NEEDS_BUYER` reads `deal.buyer`); P4-4 makes it accept either. A real
     #: FK to `exporter_profile.customer_id` with `RESTRICT`, the same rule the
     #: seller's FK has and for the same reason.
     #:
@@ -115,7 +116,7 @@ class Deal(AnerModel):
         nullable=True,
     )
 
-    # ── What the lending team was given (migration 0026, plan P2-7) ──────────
+    # ── What the lending team was given (migration 0029, plan P2-7) ──────────
     #: ``{buyer, buyer_company_id, document_ids, snapshot_source, snapshot_at}``,
     #: written inside the transaction that hands the deal over. **Set once**:
     #: ``trg_deal_terminal_freeze`` lets it go from NULL to a value on a terminal
@@ -128,7 +129,7 @@ class Deal(AnerModel):
         JSONB(none_as_null=True), nullable=True
     )
 
-    # ── The invoicing branch (migration 0025, plan P6-6) ─────────────────────
+    # ── The invoicing branch (migration 0028, plan P6-6) ─────────────────────
     #: Which of the seller's GST registrations this deal is invoiced from. NULL on
     #: every legacy deal, and set at most once before handover — the service rule
     #: and the trigger entry both arrive with P6-6.

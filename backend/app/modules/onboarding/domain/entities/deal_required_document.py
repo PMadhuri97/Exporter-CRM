@@ -1,5 +1,5 @@
 """``DealRequiredDocument`` — which paperwork a deal must have before it may be
-handed over — **owner: Developer 2** (plan P2-5a, migration 0027).
+handed over — **owner: Developer 2** (plan P2-5a, migration 0030).
 
 Contract: ``docs/contracts/deal-and-buyer.md`` §6.1 condition 3. Answers R7
 ("verify each deal with evidence before handover") together with the evidence
@@ -90,7 +90,7 @@ class DealRequiredDocument(AppendOnlyModel):
     # ── Provenance on every new table (plan BQ-7) ────────────────────────────
     #: Who wrote this version, from the session. ``NULL`` for the seeded v1.
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    #: How it arrived: ``settings_api`` for the route, ``migration_0027_seed`` for
+    #: How it arrived: ``settings_api`` for the route, ``migration_0030_seed`` for
     #: the seed.
     source: Mapped[str] = mapped_column(String(100), nullable=False)
     #: What it came from, when that means anything — ``NULL`` for a hand-made

@@ -54,11 +54,21 @@ describe('Sidebar', () => {
     expect(current()).toEqual(['Qualification criteria']);
   });
 
+  it('shows the required documents row to ADMIN, lit on its own page', () => {
+    renderAt('/settings/deal-required-documents', 'ADMIN');
+    expect(current()).toEqual(['Required documents']);
+    expect(screen.getByRole('link', { name: 'Required documents' })).toHaveAttribute(
+      'href',
+      '/settings/deal-required-documents',
+    );
+  });
+
   it.each<UserRole>(['OPERATIONS', 'COMPLIANCE', 'DEVELOPER'])(
     'shows no settings row to %s, whom the server refuses',
     (role) => {
       renderAt('/', role);
       expect(screen.queryByRole('link', { name: 'Qualification criteria' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Required documents' })).not.toBeInTheDocument();
     },
   );
 

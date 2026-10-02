@@ -170,7 +170,7 @@ def read_background_check(company: ExporterProfile) -> str | None:
 
 
 #: Marks a snapshot taken inside the handover's own transaction, as against one
-#: reconstructed afterwards by migration 0026
+#: reconstructed afterwards by migration 0029
 #: (``"backfilled_from_deal_buyer"``). A reader can always tell the two apart.
 SNAPSHOT_TAKEN_AT_HANDOVER = "taken_at_handover"
 
@@ -195,7 +195,7 @@ class _Handover:
     at: datetime
 
     def as_snapshot(self) -> dict:
-        """The JSONB value stored on the deal. The same keys migration 0026's
+        """The JSONB value stored on the deal. The same keys migration 0029's
         backfill writes, so one reader handles both."""
         return {
             "buyer": self.buyer or None,

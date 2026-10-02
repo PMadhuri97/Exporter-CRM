@@ -21,7 +21,7 @@
 import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-import { EmptySection, Skeleton } from '@/components';
+import { EmptySection, ErrorState, Skeleton } from '@/components';
 import { formatDate } from '@/lib/format';
 
 import { useCompanyDeals } from '../hooks';
@@ -75,6 +75,12 @@ export function CompanyDealsList({ companyId, as }: CompanyDealsListProps) {
     );
   }
   if (query.isLoading) return <Skeleton className="h-20 rounded-lg" />;
+  // A failed read is not "no deals" — the same distinction the buyer branch keeps.
+  if (query.isError) {
+    return (
+      <ErrorState title="Couldn't load this company's deals." onRetry={() => void query.refetch()} />
+    );
+  }
 
   const deals = query.data?.deals ?? [];
   if (deals.length === 0) {

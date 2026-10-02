@@ -546,6 +546,27 @@ describe('the handover snapshot', () => {
     expect(await screen.findByText(/Reconstructed from the records/)).toBeInTheDocument();
     expect(screen.getByText(/0 documents were included/)).toBeInTheDocument();
   });
+
+  it('says the paperwork was not recorded rather than that there was none', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        stage: 'HANDED_OVER',
+        allowed_stage_moves: [],
+        handover_blocked_reason: null,
+        handover_snapshot: {
+          ...SNAPSHOT,
+          document_ids: null,
+          snapshot_source: 'backfilled_from_deal_buyer',
+        },
+      }),
+    );
+    renderPage();
+
+    expect(
+      await screen.findByText(/Which documents were included was not recorded/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/0 documents were included/)).not.toBeInTheDocument();
+  });
 });
 
 // ── The buyer as a company record (plan P4-4) ───────────────────────────────

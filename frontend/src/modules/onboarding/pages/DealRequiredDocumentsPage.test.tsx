@@ -5,8 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useCurrentUser } from '@/platform/auth';
 
-import { listDealRequiredDocuments, setDealRequiredDocument } from '../api';
-import type { DealRequiredDocument, DealRequiredDocuments } from '../types';
+import {
+  getDocumentCategories,
+  listDealRequiredDocuments,
+  setDealRequiredDocument,
+} from '../api';
+import type {
+  DealRequiredDocument,
+  DealRequiredDocuments,
+  DocumentCategoryList,
+} from '../types';
 
 import { DealRequiredDocumentsPage } from './DealRequiredDocumentsPage';
 
@@ -15,9 +23,33 @@ vi.mock('@/platform/auth', async (importOriginal) => ({
   useCurrentUser: vi.fn(),
 }));
 vi.mock('../api', () => ({
+  getDocumentCategories: vi.fn(),
   listDealRequiredDocuments: vi.fn(),
   setDealRequiredDocument: vi.fn(),
 }));
+
+/** The deal's filing catalogue, as `GET /documents/categories?owner=DEAL` serves it. */
+const CATALOGUE: DocumentCategoryList = {
+  scanner_name: 'pass-through',
+  categories: [
+    {
+      category: 'PRE_SHIPMENT',
+      owner_kind: 'DEAL',
+      types: [
+        { key: 'proforma_invoice', label: 'Proforma invoice' },
+        { key: 'purchase_order', label: 'Purchase order' },
+      ],
+    },
+    {
+      category: 'SHIPPING',
+      owner_kind: 'DEAL',
+      types: [
+        { key: 'bill_of_lading', label: 'Bill of lading' },
+        { key: 'packing_list', label: 'Packing list' },
+      ],
+    },
+  ],
+};
 
 function requirement(
   overrides: Partial<DealRequiredDocument> = {},
@@ -69,6 +101,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   signedInAs('ADMIN');
   vi.mocked(listDealRequiredDocuments).mockResolvedValue(rule());
+  vi.mocked(getDocumentCategories).mockResolvedValue(CATALOGUE);
   vi.mocked(setDealRequiredDocument).mockResolvedValue(
     requirement({ version: 2, active: false }),
   );
@@ -143,7 +176,28 @@ describe('DealRequiredDocumentsPage', () => {
     });
   });
 
-  it('sends a named type when one is given', async () => {
+  it('offers only the types the settings configure for the chosen category', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Require a category/ }));
+    const typeSelect = screen.getByLabelText(/Document type/);
+    // Nothing to choose until a category is: a type belongs to one category.
+    expect(typeSelect).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/Category/), {
+      target: { value: 'SHIPPING' },
+    });
+    await waitFor(() =>
+      expect(within(typeSelect).getByRole('option', { name: 'Bill of lading' })).toBeInTheDocument(),
+    );
+    expect(within(typeSelect).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Any type in the category',
+      'Bill of lading',
+      'Packing list',
+    ]);
+  });
+
+  it('sends a named type when one is chosen', async () => {
     vi.mocked(setDealRequiredDocument).mockResolvedValue(
       requirement({ category: 'SHIPPING', document_type: 'bill_of_lading' }),
     );
@@ -153,9 +207,11 @@ describe('DealRequiredDocumentsPage', () => {
     fireEvent.change(screen.getByLabelText(/Category/), {
       target: { value: 'SHIPPING' },
     });
-    fireEvent.change(screen.getByLabelText(/Document type/), {
-      target: { value: '  bill_of_lading  ' },
-    });
+    const typeSelect = screen.getByLabelText(/Document type/);
+    await waitFor(() =>
+      expect(within(typeSelect).getByRole('option', { name: 'Bill of lading' })).toBeInTheDocument(),
+    );
+    fireEvent.change(typeSelect, { target: { value: 'bill_of_lading' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add requirement' }));
 
     await waitFor(() => expect(setDealRequiredDocument).toHaveBeenCalled());

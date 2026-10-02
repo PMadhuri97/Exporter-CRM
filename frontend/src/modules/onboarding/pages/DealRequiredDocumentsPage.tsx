@@ -46,7 +46,11 @@ import { ApiError } from '@/lib/api/errors';
 import { formatDateTime } from '@/lib/format';
 import { isAdminRole, useCurrentUser } from '@/platform/auth';
 
-import { useDealRequiredDocuments, useSetDealRequiredDocument } from '../hooks';
+import {
+  useDealRequiredDocuments,
+  useDocumentCategories,
+  useSetDealRequiredDocument,
+} from '../hooks';
 import type { DealRequiredDocument } from '../types';
 
 /**
@@ -78,9 +82,14 @@ function describe(row: DealRequiredDocument): string {
 
 function AddDialog({ onClose }: { onClose: () => void }) {
   const mutation = useSetDealRequiredDocument();
+  // The types a deal may upload in each category — the same list the upload route
+  // checks, so a requirement can only name a type a deal could actually provide.
+  const catalogue = useDocumentCategories('DEAL');
   const [category, setCategory] = useState('');
   const [documentType, setDocumentType] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const types =
+    catalogue.data?.categories.find((option) => option.category === category)?.types ?? [];
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -89,7 +98,7 @@ function AddDialog({ onClose }: { onClose: () => void }) {
       await mutation.mutateAsync({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the server validates the value
         category: category as any,
-        document_type: documentType.trim() || null,
+        document_type: documentType || null,
         active: true,
       });
       toast.success('Requirement added');
@@ -111,7 +120,11 @@ function AddDialog({ onClose }: { onClose: () => void }) {
             id="required-category"
             required
             value={category}
-            onChange={(event) => setCategory(event.target.value)}
+            onChange={(event) => {
+              setCategory(event.target.value);
+              // A type belongs to one category; keep it and the server refuses it.
+              setDocumentType('');
+            }}
           >
             <option value="">Choose a category…</option>
             {DEAL_CATEGORIES.map((option) => (
@@ -123,18 +136,24 @@ function AddDialog({ onClose }: { onClose: () => void }) {
         </Field>
 
         <Field label="Document type (optional)" htmlFor="required-type">
-          <input
+          <Select
             id="required-type"
-            type="text"
-            placeholder="Any type in the category"
             value={documentType}
+            disabled={category === ''}
             onChange={(event) => setDocumentType(event.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint"
-          />
+          >
+            <option value="">Any type in the category</option>
+            {types.map((type) => (
+              <option key={type.key} value={type.key}>
+                {type.label}
+              </option>
+            ))}
+          </Select>
         </Field>
         <p className="text-xs text-ink-faint">
-          Left empty, any document in the category satisfies the requirement. Name a
-          type to insist on that one.
+          &ldquo;Any type&rdquo; is met by any document in the category. Choose a type to
+          insist on that one — only the types the document settings configure for the
+          category are offered, because a deal could never upload any other.
         </p>
 
         {error !== null && <FormError>{error}</FormError>}

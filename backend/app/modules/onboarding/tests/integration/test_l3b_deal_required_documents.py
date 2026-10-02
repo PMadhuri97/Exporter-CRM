@@ -1,6 +1,6 @@
 """Required document categories as a setting, and the guard condition that reads
 them — **owner: Developer 2** (plan P2-5a and P2-5b, allocation tasks 2.2 and 2.3,
-migration 0027).
+migration 0030).
 
 Three things are tested here, in this order:
 
@@ -42,6 +42,7 @@ from app.modules.onboarding.domain.entities.document_enums import (
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.storage import DocumentScanStatus, ScanOutcome
+from app.modules.onboarding.exceptions import DealRequiredDocumentChangedError
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import make_company
@@ -77,36 +78,41 @@ def clear_background_check(monkeypatch: pytest.MonkeyPatch):
     )
 
 
+async def _active_keys() -> set[tuple[DocumentCategory, str]]:
+    async with db_services.AsyncSessionLocal() as db:
+        rows = await DealRequiredDocumentsService(db).active()
+    return {(row.category, row.document_type) for row in rows}
+
+
 @pytest.fixture(autouse=True)
-async def _restore_the_seeded_rule():
-    """Put the requirements back after any test that changed them.
+async def _restore_the_rule():
+    """Put the requirements back exactly as the test found them.
 
     These tests write to a table the whole suite's handovers depend on, and it is
-    append-only — so "restore" means appending a version that says what the seed
-    said, not deleting what the test wrote. Without this, a test that removes the
+    append-only — so "restore" means appending versions that say what was in force
+    before, not deleting what the test wrote. Without this, a test that removes the
     `PRE_SHIPMENT` requirement would silently disable the guard for every test
     that ran after it.
+
+    Restored to the set in force **before the test**, not to "the seed and nothing
+    else": the suite runs against a shared database, and a requirement someone
+    configured there by hand is not this file's to switch off.
     """
+    before = await _active_keys()
     yield
+    after = await _active_keys()
     async with db_services.AsyncSessionLocal() as db:
         service = DealRequiredDocumentsService(db)
-        active = {(row.category, row.document_type) for row in await service.active()}
-        if (DocumentCategory.PRE_SHIPMENT, "") not in active:
+        for (category, document_type), active in [
+            *((key, True) for key in sorted(before - after, key=str)),
+            *((key, False) for key in sorted(after - before, key=str)),
+        ]:
             await service.set_requirement(
-                category=DocumentCategory.PRE_SHIPMENT,
-                document_type=None,
-                active=True,
+                category=category,
+                document_type=document_type or None,
+                active=active,
                 actor_id="test-teardown",
             )
-        # Anything the test added beyond the seeded rule is turned back off.
-        for category, document_type in active:
-            if (category, document_type) != (DocumentCategory.PRE_SHIPMENT, ""):
-                await service.set_requirement(
-                    category=category,
-                    document_type=document_type or None,
-                    active=False,
-                    actor_id="test-teardown",
-                )
 
 
 def _raw_sql():
@@ -192,17 +198,13 @@ async def _version_of(category: DocumentCategory, document_type: str = "") -> in
     )
 
 
-def _unique_type() -> str:
-    """A document type no other test uses, so the key it forms starts at version
-    1 however often this file has run before."""
-    return f"test_type_{uuid.uuid4().hex[:8]}"
 
 
 # ── 1. The setting ───────────────────────────────────────────────────────────
 
 
 async def test_the_seeded_rule_is_one_pre_shipment_requirement():
-    """IQ-10: migration 0027 seeds exactly this, with no ``created_by`` — nobody
+    """IQ-10: migration 0030 seeds exactly this, with no ``created_by`` — nobody
     added it, so attributing it to someone would be a lie.
 
     Asserted about **version 1**, not about whatever version is active now: this
@@ -215,14 +217,14 @@ async def test_the_seeded_rule_is_one_pre_shipment_requirement():
     # Identified by `source`, which is what says a row came from the migration.
     # Not by `version == 1`: every key's first version is 1, and other tests in
     # this file add keys of their own.
-    seeded = [row for row in history if row.source == "migration_0027_seed"]
+    seeded = [row for row in history if row.source == "migration_0030_seed"]
     assert [
         (row.category, row.document_type, row.version, row.active) for row in seeded
     ] == [
         (DocumentCategory.PRE_SHIPMENT, "", 1, True)
     ], "the migration seeds exactly one requirement"
     assert seeded[0].created_by is None
-    assert seeded[0].source == "migration_0027_seed"
+    assert seeded[0].source == "migration_0030_seed"
 
     # And it is in force on a database nobody has reconfigured.
     async with db_services.AsyncSessionLocal() as db:
@@ -575,9 +577,11 @@ async def test_admin_adds_and_removes_a_category_through_the_routes(
     """Task 2.2's acceptance criterion: ADMIN can add/remove a category, and the
     history of changes is kept."""
     admin = await token_with_role(client, UserRole.ADMIN)
-    # A type nothing else uses, so this key is new and its versions start at 1
-    # however many times this file has run against the database.
-    document_type = _unique_type()
+    # A real configured type — an unconfigured one is refused (see below). Its key
+    # may already have versions from earlier runs on this database, so the
+    # assertions are about increments from wherever it stands (`_version_of`).
+    document_type = "buyer_rating_report"
+    was = await _version_of(DocumentCategory.BUYER, document_type)
 
     added = await client.post(
         SETTINGS,
@@ -585,7 +589,7 @@ async def test_admin_adds_and_removes_a_category_through_the_routes(
         headers=auth_header(admin),
     )
     assert added.status_code == 201, added.text
-    assert added.json()["version"] == 1
+    assert added.json()["version"] == was + 1
     assert added.json()["active"] is True
     assert added.json()["document_type"] == document_type
 
@@ -595,7 +599,7 @@ async def test_admin_adds_and_removes_a_category_through_the_routes(
         headers=auth_header(admin),
     )
     assert removed.status_code == 201, removed.text
-    assert removed.json()["version"] == 2
+    assert removed.json()["version"] == was + 2
 
     rule = (await client.get(SETTINGS, headers=auth_header(admin))).json()
     history = [
@@ -603,7 +607,100 @@ async def test_admin_adds_and_removes_a_category_through_the_routes(
         for row in rule["history"]
         if row["category"] == "BUYER" and row["document_type"] == document_type
     ]
-    assert history == [(2, False), (1, True)]
+    assert history[:2] == [(was + 2, False), (was + 1, True)]
+
+
+@pytest.mark.parametrize(
+    ("category", "document_type"),
+    [
+        # A typo of a real type: what an administrator typing free text produces.
+        ("PRE_SHIPMENT", "Proforma Invoice"),
+        # A real type, but configured under another category.
+        ("PRE_SHIPMENT", "bill_of_lading"),
+    ],
+)
+async def test_a_type_the_settings_do_not_configure_cannot_be_required(
+    client: AsyncClient, category: str, document_type: str
+):
+    """The upload route refuses a type the document settings do not configure under
+    the category, so a requirement naming one could never be met and every handover
+    would be blocked by it. Refused with the upload route's own code, and nothing is
+    written."""
+    admin = await token_with_role(client, UserRole.ADMIN)
+    before = await _version_of(DocumentCategory(category), document_type)
+
+    resp = await client.post(
+        SETTINGS,
+        json={"category": category, "document_type": document_type},
+        headers=auth_header(admin),
+    )
+
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "DOCUMENT_TYPE_NOT_ALLOWED"
+    assert await _version_of(DocumentCategory(category), document_type) == before
+
+
+async def test_stopping_a_requirement_that_was_never_made_is_refused():
+    """A key nobody ever required is already "not required", so writing a first
+    version that says so would be a change that changes nothing."""
+    category, document_type = DocumentCategory.INSURANCE, "marine_certificate"
+    assert (category, document_type) not in await _active_keys()
+    before = await _version_of(category, document_type)
+
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ValidationError) as caught:
+            await DealRequiredDocumentsService(db).set_requirement(
+                category=category,
+                document_type=document_type,
+                active=False,
+                actor_id="admin-user",
+            )
+
+    assert "already not required" in str(caught.value)
+    assert await _version_of(category, document_type) == before
+
+
+async def test_two_administrators_changing_one_requirement_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Both read the same current version and write the next one;
+    ``uq_deal_required_document_key_version`` lets the first in, and the second gets
+    409 ``DEAL_REQUIRED_DOCUMENT_CHANGED`` with nothing saved — not a 500.
+
+    The race is made deterministic by giving the second writer the rule as it
+    stood before the first one committed, which is exactly what it read."""
+    category, document_type = DocumentCategory.BUYER, "buyer_kyc"
+    async with db_services.AsyncSessionLocal() as db:
+        stale = await DealRequiredDocumentsService(db).current()
+    was = await _version_of(category, document_type)
+
+    async with db_services.AsyncSessionLocal() as db:
+        first = await DealRequiredDocumentsService(db).set_requirement(
+            category=category, document_type=document_type, active=True, actor_id="first"
+        )
+    assert first.version == was + 1
+
+    async with db_services.AsyncSessionLocal() as db:
+        second = DealRequiredDocumentsService(db)
+
+        async def _as_it_was() -> list[DealRequiredDocument]:
+            return stale
+
+        monkeypatch.setattr(second, "current", _as_it_was)
+        with pytest.raises(DealRequiredDocumentChangedError) as caught:
+            await second.set_requirement(
+                category=category, document_type=document_type, active=True, actor_id="second"
+            )
+
+    assert caught.value.status_code == 409
+    assert caught.value.error_code == "DEAL_REQUIRED_DOCUMENT_CHANGED"
+    async with db_services.AsyncSessionLocal() as db:
+        versions = [
+            (row.version, row.created_by)
+            for row in await DealRequiredDocumentsService(db).history()
+            if row.category is category and row.document_type == document_type
+        ]
+    assert versions[0] == (was + 1, "first"), "only the first change was saved"
 
 
 async def test_a_company_only_category_is_refused_by_the_route(client: AsyncClient):

@@ -2,8 +2,8 @@
 
 **Owner:** Developer 2 (post-demo allocation; Developer 3B before it) · **Tables:**
 `onboarding.deal`, `onboarding.deal_buyer`, `onboarding.deal_required_document` ·
-**Migrations:** `onboarding_0018_deal_buyer`, `onboarding_0025_deal_foundation`,
-`onboarding_0026_deal_snapshot`, `onboarding_0027_deal_req_docs`
+**Migrations:** `onboarding_0018_deal_buyer`, `onboarding_0028_deal_foundation`,
+`onboarding_0029_deal_snapshot`, `onboarding_0030_deal_req_docs`
 
 **Used by:** Developer 3 (company lists and panels, trade history), Developer 1
 (buyer checks attach to the deal's buyer; the handover guard reads the company's
@@ -114,7 +114,7 @@ handover, since the payload carries buyer details (§6).
 
 ### 3.0 The buyer is becoming a company record
 
-Plan P4-4. `deal.buyer_company_id` (migration 0025) is a nullable FK to
+Plan P4-4. `deal.buyer_company_id` (migration 0028) is a nullable FK to
 `exporter_profile.customer_id`, `ON DELETE RESTRICT`, with
 `ck_deal_buyer_is_not_the_seller` refusing a deal a company sells to itself on. The
 deal response carries `buyer_company` — `{company_id, name, country,
@@ -241,7 +241,7 @@ after the buyer migration (P4-6).
 
 ### 6.1.1 Condition 3 — the required documents
 
-`onboarding.deal_required_document` (migration 0027) is the rule, as data: one row
+`onboarding.deal_required_document` (migration 0030) is the rule, as data: one row
 per `(category, document_type, version)`, `active` saying whether that version
 requires the document. It is **versioned and append-only**, like
 `qualification_criterion` — adding a requirement writes version *n+1* with
@@ -260,13 +260,16 @@ at a version. The API maps `''` to `null` both ways, so no caller sees it.
 | Counts as present | An `AVAILABLE` document on the deal (IQ-11). `PENDING_SCAN` is not evidence yet; `QUARANTINED` and `SCAN_FAILED` never will be |
 | Satisfies a typed requirement | Only a document of that type |
 | Routes | `GET /settings/deal-required-documents` (any CRM reader), `POST` (ADMIN) |
-| Refused | A category a deal cannot hold — `ENTITY_KYC` belongs to a company (§3.4), so requiring it of a deal would be a rule no deal could satisfy. And a change that would leave the rule as it already is |
+| Refused | A category a deal cannot hold — `ENTITY_KYC` belongs to a company (§3.4), so requiring it of a deal would be a rule no deal could satisfy. A `document_type` the document settings do not configure under the category (422 `DOCUMENT_TYPE_NOT_ALLOWED`, the upload route's own refusal), checked when a requirement is added and not when one is stopped. A change that would leave the rule as it already is — including stopping a key nobody ever required. Two administrators changing one key at once: the second gets 409 `DEAL_REQUIRED_DOCUMENT_CHANGED` and nothing is saved |
 | The message | `missing required documents: PRE_SHIPMENT, BANKING` — every missing category at once, the category alone for an any-type requirement and `CATEGORY (type)` for a typed one |
 
 **This changed behaviour deliberately.** Before P2-5b a deal could go to the
 lending team with no paperwork at all. Deals **already** `HANDED_OVER` are
 untouched: the guard runs on the move, so a past handover is never re-judged, and
-turning a new requirement on does not invalidate one.
+turning a new requirement on does not invalidate one. **On a live database**, every
+open deal without an `AVAILABLE` pre-shipment document is blocked from handover the
+moment `onboarding_0030_deal_req_docs` runs, until one is uploaded — tell the
+operations team before deploying it.
 
 The guard reads the company row **once** per run, share-locked on the move (D10) and
 unlocked on the read that renders a page, and hands every condition the same
@@ -287,7 +290,7 @@ On handover, in this order:
 The snapshot is **set once**: the trigger lets it go from `NULL` to a value on a
 terminal deal, so a deal handed over before snapshots existed can be filled in by a
 migration, and refuses every change after that. `snapshot_source` says which it is —
-`taken_at_handover` for a record, `backfilled_from_deal_buyer` for migration 0026's
+`taken_at_handover` for a record, `backfilled_from_deal_buyer` for migration 0029's
 reconstruction from the `deal_buyer` row and the handover history row.
 
 The stored snapshot is never masked: it is the record of what the lending team was
@@ -297,6 +300,9 @@ response masks the buyer inside it by exactly the rule that masks the live buyer
 
 `document_ids` is every document on the deal when it was handed over, whatever its
 scan status — the snapshot records what was there, not only what satisfied a rule.
+In a backfilled snapshot it is `null` when no handover history row recorded the
+paperwork, just as `buyer` is `null` when the buyer row is gone: "not recorded",
+never `[]`, which would say the deal went over with no paperwork.
 Whether a document *counts towards a requirement* is condition 3's separate
 question, and only `AVAILABLE` documents do (§6.1.1).
 
@@ -339,6 +345,8 @@ updates.
 | `DEAL_BUYER_REQUIRED` | 422 | Leaving `GATHERING_PAPERWORK` with no buyer. |
 | `DEAL_HANDOVER_BLOCKED` | 409 | Any §6.1 condition is unmet. The message names every one of them. |
 | `VALIDATION_ERROR` | 422 | On `POST /settings/deal-required-documents`: a category a deal cannot hold, or a change that changes nothing (§6.1.1). |
+| `DOCUMENT_TYPE_NOT_ALLOWED` | 422 | On `POST /settings/deal-required-documents`: a `document_type` not configured under the category (§6.1.1). |
+| `DEAL_REQUIRED_DOCUMENT_CHANGED` | 409 | On `POST /settings/deal-required-documents`: another administrator changed the same requirement first; nothing was saved (§6.1.1). |
 | `DEAL_COMPANY_NOT_FOUND` | 404 | Opening a deal for a company that does not exist. |
 | `DEAL_COMPANY_NOT_READY` | 409 | Opening a deal for a company that is still a `LEAD` (§2). |
 

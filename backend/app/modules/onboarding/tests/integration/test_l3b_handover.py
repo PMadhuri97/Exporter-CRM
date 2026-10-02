@@ -101,7 +101,7 @@ async def _deal_ready_to_hand_over(company_id: uuid.UUID) -> uuid.UUID:
     paperwork** — everything but the check.
 
     The pre-shipment document is here because P2-5b made "the required documents
-    are present" a condition of the handover, and migration 0027 seeds one
+    are present" a condition of the handover, and migration 0030 seeds one
     requirement: category ``PRE_SHIPMENT``, any type (IQ-10). Without it the guard
     refuses, correctly, and these tests would be exercising that refusal instead
     of what they are about.
@@ -158,7 +158,7 @@ async def _deal_with_a_buyer_but_no_paperwork(company_id: uuid.UUID) -> uuid.UUI
 
 
 async def _add_required_document(deal_id: uuid.UUID) -> uuid.UUID:
-    """One ``AVAILABLE`` ``PRE_SHIPMENT`` document, satisfying migration 0027's
+    """One ``AVAILABLE`` ``PRE_SHIPMENT`` document, satisfying migration 0030's
     seeded requirement.
 
     Written through ``DocumentService`` with the clean scanner, like every other
@@ -299,7 +299,7 @@ async def test_the_announcement_carries_the_buyer_and_a_document_snapshot(
     assert payload["buyer"]["name"] == "Rotterdam Trading BV"
     assert payload["buyer"]["country"] == "NL"
     # A superset, not an equality: `_deal_ready_to_hand_over` also uploaded the
-    # PRE_SHIPMENT document migration 0027 requires, and the snapshot is every
+    # PRE_SHIPMENT document migration 0030 requires, and the snapshot is every
     # document on the deal — so asserting equality here would be asserting the
     # requirement's absence.
     assert {str(first), str(second)} <= set(payload["document_ids"])
@@ -348,7 +348,7 @@ async def test_a_handover_with_no_documents_at_all_is_now_refused(
     condition of the handover (assumption A5 names the customer status and the
     check, and nothing else)".
 
-    P2-5b changed that rule deliberately (IQ-10): migration 0027 requires a
+    P2-5b changed that rule deliberately (IQ-10): migration 0030 requires a
     ``PRE_SHIPMENT`` document, so a deal with no paperwork is refused and the
     refusal names the category. It is kept here, inverted, rather than deleted —
     the old behaviour is what a reader of this file would otherwise assume still

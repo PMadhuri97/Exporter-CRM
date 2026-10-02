@@ -38,9 +38,10 @@ class BuyerCompanyView:
 
     Distinct from ``DealBuyerView``, which is the legacy per-deal ``deal_buyer``
     row, and the two coexist on purpose: a deal written before the buyer migration
-    (P4-6) has only the second, a deal written after it has the first, and the
-    handover guard accepts either. A deal in the middle of the migration may
-    briefly have both, with the company as the authority.
+    (P4-6) has only the second, a deal written after it has the first, and from
+    P4-4 the handover accepts either (until then it still needs the
+    ``deal_buyer`` row). A deal in the middle of the migration may briefly have
+    both, with the company as the authority.
 
     A summary rather than the whole company: enough to recognise the buyer and
     click through to it. ``pipeline_status`` is ``None`` until Developer 3's F3

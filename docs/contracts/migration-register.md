@@ -1,6 +1,6 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0027_deal_req_docs`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0030_deal_req_docs`
 
 The prototype's migrations, from four developers and one platform change, in one
 chain. This is the running order and the rules. Dev 1 keeps it current.
@@ -26,27 +26,17 @@ merged.
 | `auth_0004` | Platform (user management) | Roles and permissions as data (RBAC) | `auth_0003_user_admin` |
 | 0021 | Dev 4B | Superseding verification reviews, the outcome freeze, evidence and subject snapshots | `auth_0004_rbac` |
 | 0022 | Release audit | Database guards: no document or verification result is deleted, a document's identity is fixed once set, and a `HANDED_OVER` or `WITHDRAWN` deal no longer changes | `onboarding_0021_verif_review` |
-| 0025 | Dev 2 | The deal's new columns: `buyer_company_id` (FK, not the seller), `handover_snapshot`, `seller_gst_registration_id` (FK) | `onboarding_0022_integrity` |
-| 0026 | Dev 2 | Backfill `handover_snapshot` for every already-handed-over deal, then add it to `prevent_terminal_deal_change()` under a **set-once** rule | `onboarding_0025_deal_foundation` |
-| 0027 | Dev 2 | `deal_required_document` (versioned, append-only), seeded with one `PRE_SHIPMENT` requirement. **Changes behaviour**: a deal with no pre-shipment document can no longer be handed over | `onboarding_0026_deal_snapshot` |
+| 0023 | Dev 1 (F1) | `onboarding_0023_dev1_foundation`: `verification_result.subject_company_id` (FK, set once then frozen by `trg_verification_result_input_immutability`); `exporter_profile.background_check_expires_at` (indexed). Downgrade lossy since P4-5/P3-3a write both (drops every result's subject company and every current expiry; both re-derivable) — verified 1 Oct 2026 by a downgrade to 0022 and upgrade on a copy of the test database | `onboarding_0022_integrity` |
+| 0024 | Dev 1 (P2-1b) | `onboarding_0024_dev1_evidence`: `screening_review_item.evidence_refs` (`jsonb NOT NULL DEFAULT '[]'`, DDL — no row updated). Lossy downgrade (drops the references) | `onboarding_0023_dev1_foundation` |
+| 0025 | Dev 1 (P2-3a, P2-4a) | `onboarding_0025_dev1_check_cycle`: append-only `check_cycle`; `cycle_id` on results, screening answers and decisions (composite FK on the last two), frozen on results; `background_check_decision.rules_version`; **inserts** one cycle 1 per company with inputs — no existing row updated (`NULL` cycle = cycle 1, `NULL` rules = v1). Lossy downgrade | `onboarding_0024_dev1_evidence` |
+| 0026 | Dev 1 (P3-1a) | `onboarding_0026_dev1_approval`: maker-checker — append-only `background_check_proposal` and `background_check_proposal_resolution` (one per proposal; `(outcome = 'WITHDRAWN') = (created_by = proposed_by)`, the proposer copy pinned by a composite FK); `background_check_decision.proposal_id`, `approved_by`, `approved_at` with `CHECK (approved_by IS NULL OR approved_by <> decided_by)` and a composite FK to the proposal (same company, proposer and move). Schema only, no data. Lossy downgrade (proposals and approvals) | `onboarding_0025_dev1_check_cycle` |
+| 0027 | Dev 1 (P3-3a) | `onboarding_0027_dev1_expiry`: `background_check_decision.expires_at` (`CHECK`: CLEAR only, after `decided_at`); **data: backfills `exporter_profile.background_check_expires_at`** for every company now `CLEAR` from its last CLEAR decision (stored expiry, else `decided_at` + 8,760 h — BQ-5), only where NULL, idempotent; no append-only row touched. Dry run: `python -m app.modules.onboarding.migrations.onboarding_0027_dev1_expiry --dry-run`; after: `--validate` must print 0. `pg_dump` first. Lossy downgrade (drops the stored expiries; sets the profile column back to NULL) | `onboarding_0026_dev1_approval` |
+| 0028 | Dev 2 (F2) | `onboarding_0028_deal_foundation`: the deal's new columns — `buyer_company_id` (FK to `exporter_profile.customer_id`, `RESTRICT`, with `ck_deal_buyer_is_not_the_seller`), `handover_snapshot` (`jsonb`), `seller_gst_registration_id` (FK to `exporter_gstin.id`, `RESTRICT`). Schema only, no data. Downgrade drops the three columns | `onboarding_0027_dev1_expiry` |
+| 0029 | Dev 2 (P2-7) | `onboarding_0029_deal_snapshot`: **data: backfills `deal.handover_snapshot`** for every `HANDED_OVER` deal without one, from its `deal_buyer` row and its handover history row (`snapshot_source = 'backfilled_from_deal_buyer'`; `buyer` / `document_ids` are `null` where that record no longer exists), **then** replaces `prevent_terminal_deal_change()` so the column is set once and never changed. No append-only row touched. Run the module's `_VALIDATION` queries before and after; the first must print 0 afterwards. `pg_dump` first. Downgrade restores 0022's function and clears only the backfilled snapshots | `onboarding_0028_deal_foundation` |
+| 0030 | Dev 2 (P2-5a) | `onboarding_0030_deal_req_docs`: `deal_required_document` (versioned, append-only, reuses 0019's `crm_document_category_enum`), **seeded with one `PRE_SHIPMENT` requirement. Changes behaviour:** from this revision a deal with no `AVAILABLE` pre-shipment document cannot be handed over, so open deals on a live database need one uploaded first; deals already handed over are not re-judged. Lossy downgrade (drops the record of what was required when) | `onboarding_0029_deal_snapshot` |
 
-0027 reuses `crm_document_category_enum` from 0019 rather than declaring a second
-list of the same ten values, so it creates no enum of its own.
-
-**Numbers reserved for the post-demo foundation PRs.** The work allocation fixes
-the merge order **F1 → F3 → F2** (allocation §6), so the three foundation
-migrations take numbers in that order:
-
-| Number | Lane | Foundation |
-|---|---|---|
-| 0023 | Dev 1 | F1 — compliance (`verification_result.subject_company_id`, `exporter_profile.background_check_expires_at`) |
-| 0024 | Dev 3 | F3 — company (`identity_type`, `registration_number`, `pipeline_status`, `created_via`) |
-| 0025 | Dev 2 | F2 — deal (above) |
-
-Numbers are labels, not order (§2). 0025 and 0026 were written against
-`onboarding_0022_integrity` because F1 and F3 had not merged yet; on rebase their
-`down_revision` is re-pointed at whatever `alembic heads` then prints and the
-numbers stay. **Next free onboarding number: 0028.**
+**Next free onboarding number: 0031.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
+32 characters at most (`docs/developer-allocation.md` §2.2).
 
 The two `auth_*` revisions belong to the platform's user-management work, not to the
 CRM; they sit in this chain because there is only one chain (§2), so a CRM migration

@@ -70,8 +70,8 @@ exporter's documents — see §6.
 2. **Company C — Coastal Seafood Exports.** A **prospect** whose check is **`FLAGGED`**
    (a failed screening item for suspicious bank indicators). Its Dubai deal is gathering
    paperwork with its buyer recorded, but is **not ready to hand over**, and the deal page
-   names both reasons: the company is a `PROSPECT`, not a `CUSTOMER`, and its check is
-   `FLAGGED`, not `CLEAR`.
+   names every reason: the company is a `PROSPECT`, not a `CUSTOMER`, its check is
+   `FLAGGED`, not `CLEAR`, and the deal has no pre-shipment document yet.
 3. **Company A — Aarav Textiles.** A prospect who said **"not now"**: the conversation is
    `NOT_NOW` with a check-back date, which shows on Home and the Follow-ups screen.
 4. **D** (not qualified, and **paused**), **E** (**ended** — hidden from the default list,
@@ -97,15 +97,20 @@ As **OPERATIONS** unless noted.
 5. **Open a deal.** At `READY_NOW` the Conversation tab offers to open a deal (or use
    the Deals tab — opening one sets `READY_NOW` itself). On the deal page, record the
    buyer and move it to **gathering paperwork**.
-6. **Paperwork.** Upload the sample file to the deal. It is scanned before it can be
-   opened; the scanner is labelled **pass-through** because it is a placeholder.
+6. **Paperwork.** Upload the sample file to the deal in the **Pre-shipment** category
+   (for example a proforma invoice). It is scanned before it can be opened; the scanner
+   is labelled **pass-through** because it is a placeholder. Before the upload the deal
+   page says `missing required documents: PRE_SHIPMENT`: a handover needs a scanned-clean
+   pre-shipment document (IQ-10, IQ-11), and ADMIN changes which categories are required
+   under **Settings → Required documents**. A file in another category does not count.
 7. **Start the background check** on the company's Background check tab (OPERATIONS
    may start one).
-8. **Switch to COMPLIANCE.** Answer the eight screening items; optionally record a
-   manual verification result with a note as evidence (a document can be evidence too,
-   but only one uploaded to the company's own Documents tab — deal paperwork belongs to
-   the deal). The `CLEAR` move lists any prerequisite still unmet until they are all
-   met.
+8. **Switch to COMPLIANCE.** Answer the seven screening items and record manual
+   **KYB, AML and Sanctions** results as `PASSED`, each with a note as evidence — a
+   Clear needs all three passed in the current cycle (rule B; the panel lists them
+   under "Required for Clear"). A document can be evidence too, but only one uploaded to
+   the company's own Documents tab — deal paperwork belongs to the deal. The `CLEAR`
+   move lists any prerequisite still unmet until they are all met.
 
    On the deal page, COMPLIANCE can also record a **buyer check** (for example a
    `FAILED` sanctions check with a note; the buyer check types are Buyer, KYB, Company
@@ -117,14 +122,19 @@ As **OPERATIONS** unless noted.
    is `CLEAR` — and buyer checks never touch the company. Whether a `FAILED` sanctions
    or AML result on the buyer should block handover is an open business question
    ([`open-items.md`](open-items.md) §1.2).
-9. **Record `CLEAR`** with a reason and a risk rating. The company becomes a
-   **`CUSTOMER`** in the same step — show the journey on the company header, which
-   changes without a reload — and
-   "became customer" is announced to the customers team's event (nobody receives it
-   yet; §6).
+9. **Propose `CLEAR`** with a reason and a risk rating (maker-checker, decision A).
+   Nothing moves yet: the check shows **Awaiting approval**, and the proposer can only
+   withdraw it. **Sign in as a second officer** — the ADMIN account `bootstrap` made, or
+   another COMPLIANCE user — and approve it from Home (**Proposals awaiting me** →
+   Approve → Approve: two clicks) or from the company's Background check tab. On
+   approval the company becomes a **`CUSTOMER`** in the same step — show the journey on
+   the company header — the decision trail names both people, the Clear shows when it
+   expires (one year), and "became customer" is announced to the customers team's
+   event (nobody receives it yet; §6).
 10. **Hand over the deal** (back as OPERATIONS): the move is now offered; confirm it.
-    The deal is **`HANDED_OVER`**, its paperwork snapshot is fixed, and "deal handed
-    over" is announced for the lending team.
+    The deal is **`HANDED_OVER`**, and "deal handed over" is announced for the lending
+    team. The deal page now shows **What was handed over**: the buyer and the paperwork
+    as they stood at that moment, kept on the deal and never changed afterwards.
 11. **Show the History tab**: qualification, journey, conversation, deal, screening and
     background-check rows, each with who (by name) and why. A row about one thing of
     several names it — "Buyer recorded: …", the screening item's label, the
@@ -139,7 +149,8 @@ As **OPERATIONS** unless noted.
 - **Compliance needs more:** move the check to `MORE_INFO` with a note of what is
   needed; staff answer it back to `IN_REVIEW` with a note of what arrived.
 - **New information about a customer:** as COMPLIANCE, **reopen** company B
-  (`CLEAR` → `IN_REVIEW`, with a reason), then **flag** it. B stays a **customer**, but
+  (`CLEAR` → `IN_REVIEW`, with a reason), then **propose a flag**, which a second officer
+  approves (a flag, like a Clear or a hold, takes two people). B stays a **customer**, but
   its Rotterdam deal can no longer be handed over. Reassess and clear it again — it is
   not announced as a new customer twice.
 - **A deal falls through:** withdraw it with a reason; the company is untouched.

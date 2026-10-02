@@ -10,17 +10,25 @@ Architecture §3.9: company B's check is ``CLEAR`` — which makes the qualified
 ``ExporterProfileService.promote_to_customer_if_ready``) — and company C's is
 ``FLAGGED``, so its deal cannot be handed over.
 
-**Through the services, nothing written directly.** The eight screening decisions go
-through ``ScreeningReviewService``; every move goes through ``BackgroundCheckService``
-with its default reader and the shipped ``CLEAR_POLICY``. So B is cleared only because
-its inputs really meet A3's prerequisites, and C is flagged the way the architecture
-says a failed screening item leads to (D3): a ``FAILED`` item, then ``FLAGGED`` with a
-reason.
+**Through the services, nothing written directly.** The screening decisions (seven
+items since plan P2-4a) go through ``ScreeningReviewService``; every move goes through
+``BackgroundCheckService`` with its default reader and the shipped ``CLEAR_POLICY``. So B
+is cleared only because its inputs really meet A3's prerequisites, and C is flagged the
+way the architecture says a failed screening item leads to (D3): a ``FAILED`` item, then
+``FLAGGED`` with a reason.
 
 Converges like every other seeder: an item already at its sample answer is not
 answered again, and a company already at its target value records no decision, so a
 repeat run reports zero. A company found somewhere else on the gauge (someone moved it
 by hand) is left alone and logged, never forced.
+
+**Maker-checker and rule B (Developer 1, plan P3-1d / P3-2).** No single seeded actor
+takes a company to ``CLEAR`` or ``FLAGGED``: ``SAMPLE_DATA_ACTOR`` proposes and a second
+seeded officer, ``SAMPLE_DATA_CHECKER``, approves — the two-person path every user
+takes. Company B's KYB, AML and sanctions are recorded as manual ``PASSED`` results
+(through Developer 4B's ``VerificationService``) before it is proposed, because a Clear
+needs them (rule B). A proposal a previous run left open for the sample's target is
+approved rather than proposed again.
 """
 
 from __future__ import annotations
@@ -37,17 +45,31 @@ from app.modules.onboarding.application.screening_review_service import (
     SCREENING_CATALOGUE,
     ScreeningReviewService,
 )
+from app.modules.onboarding.application.verification_service import VerificationService
+from app.modules.onboarding.domain.background_check_views import (
+    CLEAR_POLICY,
+    required_check_states,
+)
 from app.modules.onboarding.domain.entities.background_check_enums import (
     BackgroundCheckRisk,
     BackgroundCheckState,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.entities.orchestration_enums import (
+    VerificationEntityType,
+    VerificationType,
+)
+from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
 logger = structlog.get_logger(__name__)
 
 _State = BackgroundCheckState
+
+#: The second seeded compliance officer, who approves what ``SAMPLE_DATA_ACTOR``
+#: proposes (maker-checker, decision A). Not a user account, like the first.
+SAMPLE_DATA_CHECKER = "sample-data-checker"
 
 
 @dataclass(frozen=True)
@@ -67,7 +89,7 @@ SAMPLE_CHECKS: dict[str, _SampleCheck] = {
     # §3.9 company B: cleared at LOW risk, and so a customer.
     "company-b": _SampleCheck(
         target=_State.CLEAR,
-        reason="Sample data: all eight screening items passed; nothing adverse found.",
+        reason="Sample data: every screening item passed; nothing adverse found.",
         risk=BackgroundCheckRisk.LOW,
     ),
     # §3.9 company C: flagged. A failed screening item is what FLAGGED is for (D3).
@@ -104,6 +126,31 @@ async def load_background_check_sample_data() -> int:
         await _ensure_screening(company_id, sample, actor_id=SAMPLE_DATA_ACTOR)
         decided += await _ensure_gauge(company_id, sample, actor_id=SAMPLE_DATA_ACTOR)
     return decided
+
+
+async def _ensure_required_checks(company_id: uuid.UUID, *, actor_id: str) -> None:
+    """Rule B (plan P3-2): record a manual ``PASSED`` result of each type a Clear
+    requires that has not passed in the current cycle yet."""
+    async with db_services.AsyncSessionLocal() as db:
+        inputs = await ComplianceInputsService(db).company_inputs(company_id)
+    for required in required_check_states(inputs, CLEAR_POLICY):
+        if required.state == "PASSED":
+            continue
+        async with db_services.AsyncSessionLocal() as db:
+            await VerificationService(db).trigger_verification(
+                VerificationType(required.verification_type),
+                VerificationEntityType.EXPORTER,
+                company_id,
+                provider="manual",
+                payload={"status": "PASSED"},
+                actor_id=actor_id,
+                evidence=VerificationEvidence(
+                    note=(
+                        f"Sample data: {required.verification_type} checked manually; "
+                        "nothing found."
+                    )
+                ),
+            )
 
 
 async def _ensure_screening(company_id: uuid.UUID, sample: _SampleCheck, *, actor_id: str) -> None:
@@ -145,20 +192,39 @@ async def _ensure_gauge(company_id: uuid.UUID, sample: _SampleCheck, *, actor_id
         )
         return decided
 
+    # Maker-checker: the sample actor proposes, the second seeded officer approves. A
+    # proposal an earlier run left open for this target is approved, not repeated.
     async with db_services.AsyncSessionLocal() as db:
-        service = BackgroundCheckService(db)
+        awaiting = await BackgroundCheckService(db).open_proposal(company_id)
+    if awaiting is not None and awaiting[0].to_value is not sample.target:
+        logger.warning(
+            "sample_background_check.left_alone",
+            company_id=str(company_id),
+            open_proposal=awaiting[0].to_value.value,
+            target=sample.target.value,
+        )
+        return decided
+    if awaiting is None:
         if sample.target is _State.CLEAR:
-            await service.clear(
+            # Only now, on a company about to be proposed for CLEAR: one already at its
+            # target is left exactly as it is.
+            await _ensure_required_checks(company_id, actor_id=actor_id)
+        async with db_services.AsyncSessionLocal() as db:
+            proposal = await BackgroundCheckService(db).propose(
                 company_id,
-                risk=sample.risk,
+                to_value=sample.target,
+                risk=sample.risk if sample.target is _State.CLEAR else None,
                 reason=sample.reason,
                 actor_id=actor_id,
                 actor_role=UserRole.COMPLIANCE,
             )
-        else:
-            await service.flag(
-                company_id, reason=sample.reason, actor_id=actor_id, actor_role=UserRole.COMPLIANCE
-            )
+        proposal_id = proposal.id
+    else:
+        proposal_id = awaiting[0].id
+    async with db_services.AsyncSessionLocal() as db:
+        await BackgroundCheckService(db).approve(
+            company_id, proposal_id, actor_id=SAMPLE_DATA_CHECKER, actor_role=UserRole.COMPLIANCE
+        )
     logger.info(
         "sample_background_check.decided",
         company_id=str(company_id),
@@ -176,4 +242,4 @@ async def _state(company_id: uuid.UUID) -> BackgroundCheckState:
         )
 
 
-__all__ = ["SAMPLE_CHECKS", "load_background_check_sample_data"]
+__all__ = ["SAMPLE_CHECKS", "SAMPLE_DATA_CHECKER", "load_background_check_sample_data"]

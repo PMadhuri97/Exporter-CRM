@@ -17,26 +17,51 @@ Every decision is also written to the company's shared history log under the
 The checklist table stays the item's own full history.
 
 Screening is not qualification and not a gauge (architecture §5.5).
+
+Developer 1 (compliance engine) since 1 October 2026:
+
+* **Seven items, not eight** (plan P2-4a, decision K). ``website-reviewed`` left the
+  catalogue with the website field (R11). Its stored rows stay exactly as they were,
+  and every decision that pinned one keeps it; the key is *retired*: readable in an
+  item's history and in a decision's evidence, refused on a new write (422).
+* **Evidence on an answer** (plan P2-1b, IQ-14: optional). An answer may carry
+  ``{type, ref}`` references, checked by the same rule as a verification result's
+  (``evidence_documents.check_evidence_documents``): the company's own ``AVAILABLE``
+  documents, or http(s) links.
+* **Cycles** (plan P2-3a/b). Every answer is stamped with the company's current check
+  cycle; "the current state of an item" is its latest row **in that cycle**. A new
+  cycle therefore starts with every item unanswered (IQ-3), and an earlier cycle's
+  answers stay readable by naming the cycle.
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.company_input_lock import share_lock_companies
+from app.modules.onboarding.application.evidence_documents import check_evidence_documents
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.domain.entities.check_cycle import CheckCycle
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.screening_review import (
     SCREENING_STATUSES,
     BankActivityFinding,
     ScreeningReviewItem,
 )
-from app.modules.onboarding.exceptions import ExporterProfileNotFoundError
+from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
+from app.modules.onboarding.exceptions import (
+    CheckCycleNotFoundError,
+    ExporterProfileNotFoundError,
+)
+from app.modules.onboarding.infrastructure.repositories.check_cycle_repository import (
+    CheckCycleRepository,
+    in_cycle,
+)
+from app.shared import clock
 from app.shared.exceptions import ValidationError
 
 
@@ -49,7 +74,7 @@ class ScreeningCatalogueItem:
     section: str
 
 
-#: **The one screening catalogue** — the eight checklist items, in display order,
+#: **The one screening catalogue** — the seven checklist items, in display order,
 #: with the label and section the workspace shows. Served to the frontend in the
 #: list response (4b-task.md §5.5, Dev4B 4B-1), so `VerificationSection.tsx` needs
 #: no copy of its own; everything else in the backend derives from this tuple.
@@ -59,13 +84,9 @@ class ScreeningCatalogueItem:
 #: check a typo persisted happily, rendered nowhere, and never counted toward the
 #: "X/8 reviewed" progress the reviewer is working against.
 #:
-#: Adding a ninth item is one entry here.
+#: Adding an item is one entry here; retiring one moves it to
+#: `RETIRED_SCREENING_ITEMS` (plan P2-4a) so its stored rows keep a label.
 SCREENING_CATALOGUE_ITEMS: tuple[ScreeningCatalogueItem, ...] = (
-    ScreeningCatalogueItem(
-        "website-reviewed",
-        "Has the website been reviewed?",
-        "Company checks",
-    ),
     ScreeningCatalogueItem(
         "address-physical",
         "Is the registered address a physical business address?",
@@ -103,30 +124,99 @@ SCREENING_CATALOGUE_ITEMS: tuple[ScreeningCatalogueItem, ...] = (
     ),
 )
 
+#: Items that were once in the catalogue (plan P2-4a, decision K). Their stored rows
+#: are kept and a decision that pinned one still resolves it, so they keep a label;
+#: a new answer to one is refused.
+RETIRED_SCREENING_ITEMS: tuple[ScreeningCatalogueItem, ...] = (
+    # Retired 1 October 2026 with the website field (R11); part of `CLEAR_RULES_V1`.
+    ScreeningCatalogueItem(
+        "website-reviewed",
+        "Has the website been reviewed?",
+        "Company checks",
+    ),
+)
+
 #: The catalogue's keys in display order — what the compliance-inputs contract
 #: serves (4b-task.md §6.1). Derived, so there is still one backend copy.
 SCREENING_CATALOGUE: tuple[str, ...] = tuple(item.key for item in SCREENING_CATALOGUE_ITEMS)
+#: The keys a new answer may be recorded under.
 VALID_ITEM_KEYS: frozenset[str] = frozenset(SCREENING_CATALOGUE)
+RETIRED_ITEM_KEYS: frozenset[str] = frozenset(item.key for item in RETIRED_SCREENING_ITEMS)
+#: Every key a stored row may carry and a reader may ask about, with its label.
+ITEM_LABELS: dict[str, str] = {
+    item.key: item.label for item in (*SCREENING_CATALOGUE_ITEMS, *RETIRED_SCREENING_ITEMS)
+}
 
 #: The shared-history dimension screening decisions are recorded under (D9). Needs
 #: its row in `docs/contracts/history-row.md` §2 — Developer 1's contract.
 HISTORY_DIMENSION = "screening"
 
 
-def _check_item_key(item_key: str) -> None:
-    if item_key not in VALID_ITEM_KEYS:
+def _check_item_key(item_key: str, *, for_write: bool) -> None:
+    if for_write and item_key in RETIRED_ITEM_KEYS:
+        raise ValidationError(
+            f"Screening-review item {item_key!r} has been retired from the checklist; "
+            "its earlier answers are kept, but no new one can be recorded."
+        )
+    if item_key not in VALID_ITEM_KEYS and item_key not in RETIRED_ITEM_KEYS:
         raise ValidationError(
             f"Unknown screening-review item_key {item_key!r}. "
             f"Expected one of: {', '.join(SCREENING_CATALOGUE)}."
         )
 
 
+@dataclass(frozen=True)
+class ScreeningCycleScope:
+    """Which cycle a checklist read is about, and where that sits among the company's.
+
+    ``selected`` is ``None`` only for a company with no cycle row yet — its implicit
+    cycle 1, which is also its current one.
+    """
+
+    selected: CheckCycle | None
+    current: CheckCycle | None
+    initial: CheckCycle | None
+
+    @property
+    def is_current(self) -> bool:
+        return self.selected is None or (
+            self.current is not None and self.selected.id == self.current.id
+        )
+
+
 class ScreeningReviewService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+        self._cycles = CheckCycleRepository(db)
 
-    async def list_review_items(self, customer_id: uuid.UUID) -> list[ScreeningReviewItem]:
-        """The current state of each checklist item — one row per `item_key`.
+    async def cycle_scope(
+        self, customer_id: uuid.UUID, cycle_id: uuid.UUID | None = None
+    ) -> ScreeningCycleScope:
+        """The cycle a read is about: ``cycle_id`` if given, else the current one.
+
+        Raises `ExporterProfileNotFoundError` (404) for an unknown company and
+        `CheckCycleNotFoundError` (404) for a cycle that is not this company's.
+        """
+        await self._require_company(customer_id)
+        cycles = await self._cycles.list_for_company(customer_id)
+        current = cycles[-1] if cycles else None
+        initial = cycles[0] if cycles else None
+        if cycle_id is None:
+            return ScreeningCycleScope(selected=current, current=current, initial=initial)
+        selected = next((cycle for cycle in cycles if cycle.id == cycle_id), None)
+        if selected is None:
+            raise CheckCycleNotFoundError(customer_id, cycle_id)
+        return ScreeningCycleScope(selected=selected, current=current, initial=initial)
+
+    async def list_review_items(
+        self, customer_id: uuid.UUID, *, scope: ScreeningCycleScope | None = None
+    ) -> list[ScreeningReviewItem]:
+        """The state of each checklist item in one cycle — one row per `item_key`.
+
+        The cycle is ``scope.selected`` (default: the company's current cycle), with the
+        legacy rule that a row with no cycle belongs to cycle 1. Only catalogue keys are
+        listed: a retired item's rows stay stored and readable through its history, but
+        they are not part of the checklist any more (plan P2-4a).
 
         `DISTINCT ON (item_key)` with a matching `ORDER BY` takes the first row
         of each `item_key` group, and `created_at DESC` makes that the newest.
@@ -146,10 +236,14 @@ class ScreeningReviewService:
 
         Raises `ExporterProfileNotFoundError` (404) for an unknown company.
         """
-        await self._require_company(customer_id)
+        scope = scope or await self.cycle_scope(customer_id)
         result = await self._db.execute(
             select(ScreeningReviewItem)
-            .where(ScreeningReviewItem.customer_id == customer_id)
+            .where(
+                ScreeningReviewItem.customer_id == customer_id,
+                ScreeningReviewItem.item_key.in_(SCREENING_CATALOGUE),
+                in_cycle(ScreeningReviewItem.cycle_id, scope.selected),
+            )
             .distinct(ScreeningReviewItem.item_key)
             .order_by(
                 ScreeningReviewItem.item_key.asc(),
@@ -168,17 +262,18 @@ class ScreeningReviewService:
         offset: int = 0,
     ) -> tuple[list[ScreeningReviewItem], int]:
         """Every decision ever recorded for one checklist item, newest first — one
-        page of it, with the total behind the page.
+        page of it, with the total behind the page. Every cycle's, each row naming its
+        own; a retired item's history stays readable.
 
         The append-only table *is* the full history the architecture asks for
         (4b-task.md §5.6); nothing is copied anywhere. Same order as the latest-row
         rule (`created_at DESC, id DESC`), so the first row of the first page is
-        always the item's current state.
+        always the item's most recent answer.
 
         Raises `ValidationError` (422) for an unknown `item_key` and
         `ExporterProfileNotFoundError` (404) for an unknown company.
         """
-        _check_item_key(item_key)
+        _check_item_key(item_key, for_write=False)
         await self._require_company(customer_id)
         where = (
             ScreeningReviewItem.customer_id == customer_id,
@@ -207,6 +302,7 @@ class ScreeningReviewService:
         status: str,
         comment: str | None,
         actor_id: str,
+        evidence: VerificationEvidence | None = None,
     ) -> ScreeningReviewItem:
         """Record one checklist decision and return it.
 
@@ -215,21 +311,24 @@ class ScreeningReviewService:
         insert, every time: the previous decision for this item stays exactly as
         it was written.
 
-        Raises `ValidationError` (422) for an `item_key` outside the catalogue or a
-        `status` outside `SCREENING_STATUSES` (the database refuses one too:
-        `ck_screening_review_item_status`), and `ExporterProfileNotFoundError`
-        (404) for an unknown company — not a foreign-key error.
+        Raises `ValidationError` (422) for an `item_key` outside the catalogue (or a
+        retired one), a `status` outside `SCREENING_STATUSES` (the database refuses one
+        too: `ck_screening_review_item_status`) or evidence the document rule refuses,
+        and `ExporterProfileNotFoundError` (404) for an unknown company — not a
+        foreign-key error.
 
         Takes `FOR SHARE` on the company row before the insert (4b-task.md §6.2
-        invariant 6), so a decision cannot land in the middle of Developer 4A's
-        background-check decision, which holds that row `FOR UPDATE`.
+        invariant 6), so a decision cannot land in the middle of a background-check
+        decision or the start of a new cycle, which hold that row `FOR UPDATE`. Under
+        that lock the answer is stamped with the company's current cycle (created as
+        cycle 1 if the company has none yet).
 
         Also writes one `screening` row to the company's shared history log, in
-        the same transaction (**D9**): `from_value` the item's previous status (or
-        `None` for its first decision), `to_value` the new one, `reason` the
-        comment, and the item key and row id in `details`.
+        the same transaction (**D9**): `from_value` the item's previous status in this
+        cycle (or `None` for its first answer in it), `to_value` the new one, `reason`
+        the comment, and the item key, row id and cycle in `details`.
         """
-        _check_item_key(item_key)
+        _check_item_key(item_key, for_write=True)
         if status not in SCREENING_STATUSES:
             raise ValidationError(
                 f"Unknown screening-review status {status!r}. "
@@ -239,22 +338,36 @@ class ScreeningReviewService:
         locked = await share_lock_companies(self._db, [customer_id])
         if customer_id not in locked:
             raise ExporterProfileNotFoundError(customer_id)
+        await check_evidence_documents(
+            self._db, evidence, company_id=customer_id, subject_label="company"
+        )
+        now = clock.now()
+        cycle = await self._cycles.current_or_initial(
+            customer_id,
+            actor_id=actor_id,
+            source_ref="screening_review_service.upsert_review_item",
+            at=now,
+        )
         previous_status = await self._db.scalar(
             select(ScreeningReviewItem.status)
             .where(
                 ScreeningReviewItem.customer_id == customer_id,
                 ScreeningReviewItem.item_key == item_key,
+                in_cycle(ScreeningReviewItem.cycle_id, cycle),
             )
             .order_by(ScreeningReviewItem.created_at.desc(), ScreeningReviewItem.id.desc())
             .limit(1)
         )
+        refs = [ref.as_json() for ref in evidence.refs] if evidence is not None else []
         item = ScreeningReviewItem(
             customer_id=customer_id,
             item_key=item_key,
             status=status,
             comment=comment,
             reviewed_by=actor_id,
-            reviewed_at=datetime.now(UTC),
+            reviewed_at=now,
+            evidence_refs=refs,
+            cycle_id=cycle.id,
         )
         self._db.add(item)
         await self._db.flush()
@@ -266,7 +379,12 @@ class ScreeningReviewService:
             actor_id=actor_id,
             source="screening_review_service.upsert_review_item",
             reason=comment,
-            details={"item_key": item_key, "screening_review_item_id": str(item.id)},
+            details={
+                "item_key": item_key,
+                "screening_review_item_id": str(item.id),
+                "cycle_id": str(cycle.id),
+                "evidence_count": len(refs),
+            },
         )
         await self._db.commit()
         await self._db.refresh(item)
@@ -292,9 +410,13 @@ class ScreeningReviewService:
 
 __all__ = [
     "HISTORY_DIMENSION",
+    "ITEM_LABELS",
+    "RETIRED_ITEM_KEYS",
+    "RETIRED_SCREENING_ITEMS",
     "SCREENING_CATALOGUE",
     "SCREENING_CATALOGUE_ITEMS",
     "ScreeningCatalogueItem",
+    "ScreeningCycleScope",
     "ScreeningReviewService",
     "VALID_ITEM_KEYS",
 ]

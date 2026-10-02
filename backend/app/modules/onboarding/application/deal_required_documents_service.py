@@ -2,7 +2,7 @@
 (plan P2-5a and P2-5b, allocation tasks 2.2 and 2.3).
 
 Contract: ``docs/contracts/deal-and-buyer.md`` §6.1 condition 3. Table:
-``domain/entities/deal_required_document.py``, migration 0027.
+``domain/entities/deal_required_document.py``, migration 0030.
 
 Two jobs, deliberately in one file because they are two readings of one table:
 
@@ -27,6 +27,7 @@ import uuid
 
 import structlog
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.entities.crm_document import CrmDocument
@@ -39,6 +40,11 @@ from app.modules.onboarding.domain.entities.document_enums import (
     DocumentOwnerKind,
 )
 from app.modules.onboarding.domain.storage import DocumentScanStatus
+from app.modules.onboarding.exceptions import (
+    DealRequiredDocumentChangedError,
+    DocumentTypeNotAllowedError,
+)
+from app.modules.onboarding.infrastructure.document_type_loader import is_valid_type
 from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
@@ -123,9 +129,20 @@ class DealRequiredDocumentsService:
         * a category a deal cannot hold (422) — ``ENTITY_KYC`` belongs to a
           company, so requiring it of a deal would be a rule no deal could ever
           satisfy;
+        * requiring a ``document_type`` the settings do not configure under that
+          category (422 ``DOCUMENT_TYPE_NOT_ALLOWED``, the upload route's own
+          refusal) — the upload route refuses that type, so a deal could never
+          meet the requirement and every handover would be blocked by a typo.
+          Only on the way **in**: stopping a requirement whose type has since left
+          the settings must stay possible, or it could never be removed;
         * a change that would not change anything (422), because an append-only
           table should not fill up with versions that say what the previous one
-          said.
+          said. A key that was never required is already "not required".
+
+        Two administrators changing the same key at once both compute the same next
+        version; ``uq_deal_required_document_key_version`` lets one in and the
+        other gets 409 ``DEAL_REQUIRED_DOCUMENT_CHANGED`` with nothing saved, the
+        way a qualification criterion's version race is answered.
         """
         cleaned_type = (document_type or "").strip() or ANY_DOCUMENT_TYPE
         if not category.allows(DocumentOwnerKind.DEAL):
@@ -133,6 +150,12 @@ class DealRequiredDocumentsService:
                 f"{category.value} is filed against a company, not a deal, "
                 "so a deal cannot be required to have one"
             )
+        if (
+            active
+            and cleaned_type != ANY_DOCUMENT_TYPE
+            and not is_valid_type(category, cleaned_type)
+        ):
+            raise DocumentTypeNotAllowedError(category.value, cleaned_type)
 
         existing = next(
             (
@@ -142,22 +165,30 @@ class DealRequiredDocumentsService:
             ),
             None,
         )
-        if existing is not None and existing.active == active:
+        currently_required = existing is not None and existing.active
+        if currently_required == active:
             raise ValidationError(
-                f"{category.value} is already "
+                f"{_key_label(category, cleaned_type)} is already "
                 f"{'required' if active else 'not required'}"
             )
 
+        version = 1 if existing is None else existing.version + 1
         row = DealRequiredDocument(
             category=category,
             document_type=cleaned_type,
-            version=1 if existing is None else existing.version + 1,
+            version=version,
             active=active,
             created_by=actor_id,
             source="settings_api",
         )
         self._db.add(row)
-        await self._db.commit()
+        try:
+            await self._db.commit()
+        except IntegrityError:
+            await self._db.rollback()
+            raise DealRequiredDocumentChangedError(
+                _key_label(category, cleaned_type), version
+            ) from None
         await self._db.refresh(row)
 
         logger.info(
@@ -235,9 +266,14 @@ class DealRequiredDocumentsPolicy:
 def _label(row: DealRequiredDocument) -> str:
     """How one unmet requirement reads in the guard's message: the category, and
     the type too when the requirement names one."""
-    if row.document_type == ANY_DOCUMENT_TYPE:
-        return row.category.value
-    return f"{row.category.value} ({row.document_type})"
+    return _key_label(row.category, row.document_type)
+
+
+def _key_label(category: DocumentCategory, document_type: str) -> str:
+    """One requirement key as a person reads it — the same words the guard uses."""
+    if document_type == ANY_DOCUMENT_TYPE:
+        return category.value
+    return f"{category.value} ({document_type})"
 
 
 __all__ = ["DealRequiredDocumentsPolicy", "DealRequiredDocumentsService"]

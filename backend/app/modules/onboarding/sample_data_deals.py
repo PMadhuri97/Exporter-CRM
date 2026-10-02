@@ -40,7 +40,7 @@ logger = structlog.get_logger(__name__)
 #: purpose: the sample data is about states, not about file content.
 _SAMPLE_PDF = b"%PDF-1.4 sample proforma invoice"
 
-#: The document every deal bound for ``HANDED_OVER`` needs, because migration 0027
+#: The document every deal bound for ``HANDED_OVER`` needs, because migration 0030
 #: requires a ``PRE_SHIPMENT`` document before a handover (plan P2-5b, IQ-10).
 #: Without it ``hand_over_sample_deals`` would log "handover_blocked" and company B
 #: would never reach the §3.9 state the sample data exists to produce.

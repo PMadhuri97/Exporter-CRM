@@ -1,5 +1,5 @@
 """The persisted handover snapshot — **owner: Developer 2** (plan P2-7,
-allocation task 2.1, migrations 0025 and 0026).
+allocation task 2.1, migrations 0028 and 0029).
 
 A separate file from ``test_l3b_handover.py`` on purpose: that file is about the
 guard and the announcement, this one is about the **record**. The distinction is
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import psycopg2
@@ -41,6 +42,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourne
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.storage import DocumentScanStatus, ScanOutcome
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
+from app.modules.onboarding.migrations import onboarding_0029_deal_snapshot as snapshot_migration
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.authentication.models import UserRole
@@ -106,7 +108,7 @@ async def _deal_ready_to_hand_over(company_id: uuid.UUID) -> uuid.UUID:
         await DealService(db).transition_stage(
             view.id, DealStage.GATHERING_PAPERWORK, actor_id="tester"
         )
-    # The PRE_SHIPMENT document migration 0027 requires (P2-5b). Without it the
+    # The PRE_SHIPMENT document migration 0030 requires (P2-5b). Without it the
     # guard refuses and these tests never reach the snapshot they are about.
     await _add_document(
         view.id,
@@ -246,7 +248,7 @@ async def test_raw_sql_cannot_change_a_snapshot_once_set(clear_background_check)
 
 
 async def test_raw_sql_may_fill_a_snapshot_that_is_missing(clear_background_check):
-    """Set-once, not frozen: migration 0026's backfill and P4-6's have to be able
+    """Set-once, not frozen: migration 0029's backfill and P4-6's have to be able
     to fill a deal that was handed over before snapshots existed. The 0022 columns
     stay frozen outright while this happens."""
     company_id = await _customer()
@@ -283,8 +285,69 @@ async def test_raw_sql_may_fill_a_snapshot_that_is_missing(clear_background_chec
         connection.close()
 
 
+async def test_the_migration_backfill_rebuilds_what_the_handover_wrote(
+    clear_background_check,
+):
+    """Migration 0029's own ``_BACKFILL`` statement, run for real rather than
+    imitated: on a deal handed over through the service and then stripped of its
+    snapshot, the reconstruction has the same keys, the same buyer, the same
+    paperwork and the same moment as the snapshot the handover took — so one reader
+    serves both. A handed-over deal with no buyer row and no handover history row
+    gets ``buyer: null`` and ``document_ids: null`` ("not recorded"), never ``[]``.
+
+    Everything runs in one transaction that is rolled back, because the statement
+    fills **every** handed-over deal without a snapshot."""
+    company_id = await _customer()
+    deal_id = await _deal_ready_to_hand_over(company_id)
+    await _hand_over(deal_id)
+    taken = await _stored_snapshot(deal_id)
+    bare_id = uuid.uuid4()
+
+    connection = _raw_sql()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("ALTER TABLE onboarding.deal DISABLE TRIGGER trg_deal_terminal_freeze;")
+            cursor.execute(
+                "UPDATE onboarding.deal SET handover_snapshot = NULL WHERE id = %s;",
+                (str(deal_id),),
+            )
+            cursor.execute("ALTER TABLE onboarding.deal ENABLE TRIGGER trg_deal_terminal_freeze;")
+            # A deal that reached HANDED_OVER without a buyer row or a history row —
+            # possible only around the service, which is the case the nulls are for.
+            cursor.execute(
+                "INSERT INTO onboarding.deal (id, company_id, reference, stage, handed_over_at)"
+                " VALUES (%s, %s, 'Handed over off the books', 'HANDED_OVER', now());",
+                (str(bare_id), str(company_id)),
+            )
+
+            cursor.execute(snapshot_migration._BACKFILL)
+
+            cursor.execute(
+                "SELECT id, handover_snapshot FROM onboarding.deal WHERE id IN (%s, %s);",
+                (str(deal_id), str(bare_id)),
+            )
+            rebuilt = {uuid.UUID(str(row_id)): snapshot for row_id, snapshot in cursor.fetchall()}
+    finally:
+        connection.rollback()
+        connection.close()
+
+    again = rebuilt[deal_id]
+    assert set(again) == set(taken)
+    assert again["snapshot_source"] == "backfilled_from_deal_buyer"
+    assert again["buyer"] == taken["buyer"]
+    assert again["document_ids"] == taken["document_ids"]
+    assert again["buyer_company_id"] is None
+    assert datetime.fromisoformat(again["snapshot_at"]) == datetime.fromisoformat(
+        taken["snapshot_at"]
+    )
+
+    bare = rebuilt[bare_id]
+    assert (bare["buyer"], bare["document_ids"]) == (None, None)
+    assert bare["snapshot_source"] == "backfilled_from_deal_buyer"
+
+
 async def test_the_0022_columns_are_still_frozen_outright(clear_background_check):
-    """0026 replaced ``prevent_terminal_deal_change()``; the five columns 0022
+    """0029 replaced ``prevent_terminal_deal_change()``; the five columns 0022
     froze must keep exactly the rule 0022 gave them."""
     company_id = await _customer()
     deal_id = await _deal_ready_to_hand_over(company_id)
@@ -313,7 +376,7 @@ async def test_the_0022_columns_are_still_frozen_outright(clear_background_check
 
 
 async def test_a_company_cannot_be_both_sides_of_a_deal():
-    """``ck_deal_buyer_is_not_the_seller`` (migration 0025). Checked in the
+    """``ck_deal_buyer_is_not_the_seller`` (migration 0028). Checked in the
     database because P4-6's migration writes the column directly."""
     company_id = await _customer()
     deal_id = await _deal_ready_to_hand_over(company_id)

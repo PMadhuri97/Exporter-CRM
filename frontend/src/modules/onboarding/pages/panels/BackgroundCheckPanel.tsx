@@ -19,11 +19,25 @@
  * The one role check that remains is the one the page already applied: DEVELOPER may
  * read the CRM but the background-check routes refuse it (D8, settled 28 September
  * 2026), so the panel is not rendered for it rather than rendered broken.
+ *
+ * Developer 1, 1 October 2026: the panel names the current check cycle and, when the
+ * server offers them (`allowed_cycle_actions`), the Re-KYC / Re-KYB buttons (P2-3c/d);
+ * a Clear's expiry is shown (F1); each decision opens to the evidence it rested on
+ * (P2-1c) and decisions are grouped by cycle.
+ *
+ * Developer 1, tranche 2: maker-checker (P3-1c) — a proposed CLEAR, FLAGGED or ON_HOLD
+ * shows as "Awaiting approval" with exactly the actions the server allows this user
+ * (approve / reject for a second officer, withdraw for the proposer); rule B's required
+ * checks and their state in the current cycle (P3-2); a "Re-KYC due" badge when the
+ * Clear has expired or soon will (P3-3c); the proposals already resolved — approved,
+ * rejected with the reason, or withdrawn — so the maker sees how theirs ended.
  */
 
 import { useState } from 'react';
 
 import { ApiError } from '@/lib/api/errors';
+
+import { formatDate } from '@/lib/format';
 
 import {
   BackgroundCheckGauge,
@@ -32,7 +46,14 @@ import {
   RiskChip,
   VerificationSection,
 } from '../../components';
-import { describeClearBlocker } from '../../components/background-check-labels';
+import {
+  cycleKindLabel,
+  describeClearBlocker,
+} from '../../components/background-check-labels';
+import { AwaitingApproval } from '../../components/AwaitingApproval';
+import { CheckCycleActions } from '../../components/CheckCycleActions';
+import { RequiredChecks } from '../../components/ComplianceCheckChip';
+import { ProposalHistory } from '../../components/ProposalHistory';
 import {
   useBackgroundCheck,
   useBackgroundCheckDecisions,
@@ -67,6 +88,8 @@ function GaugeSection({ customerId }: { customerId: string }) {
   const standing = check.data;
   const moves = standing.allowed_moves ?? [];
   const blocked = standing.clear_blocked_reasons ?? [];
+  const cycle = standing.current_cycle ?? null;
+  const compliance = standing.compliance;
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4">
@@ -74,8 +97,29 @@ function GaugeSection({ customerId }: { customerId: string }) {
         <div>
           <h3 className="text-base font-semibold text-slate-900">Background check</h3>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <BackgroundCheckGauge value={standing.value} />
+            <BackgroundCheckGauge
+              value={standing.value}
+              awaitingApproval={standing.awaiting_approval}
+              rekycDue={standing.rekyc_due}
+            />
           </div>
+          {cycle && (
+            <p data-testid="current-cycle" className="mt-2 text-xs text-slate-600">
+              Cycle {cycle.number} · {cycleKindLabel(cycle.kind)} · started{' '}
+              {formatDate(cycle.started_at)}
+              {cycle.reason && ` — ${cycle.reason}`}
+            </p>
+          )}
+          {compliance?.is_clear && compliance.clear_expires_at && (
+            <p
+              data-testid="clear-expiry"
+              className={`mt-1 text-xs ${compliance.is_clear_current ? 'text-slate-600' : 'font-medium text-red-700'}`}
+            >
+              {compliance.is_clear_current
+                ? `Clear until ${formatDate(compliance.clear_expires_at)}`
+                : `Clear expired on ${formatDate(compliance.clear_expires_at)} — Re-KYC due`}
+            </p>
+          )}
         </div>
         {moves.length > 0 && !dialogOpen && (
           <button
@@ -99,6 +143,19 @@ function GaugeSection({ customerId }: { customerId: string }) {
             </span>
           )}
         </div>
+      )}
+
+      {standing.open_proposal && <AwaitingApproval proposal={standing.open_proposal} />}
+
+      {standing.value === 'IN_REVIEW' && (
+        <RequiredChecks checks={standing.required_checks ?? []} />
+      )}
+
+      {!dialogOpen && (
+        <CheckCycleActions
+          customerId={customerId}
+          actions={standing.allowed_cycle_actions ?? []}
+        />
       )}
 
       {standing.value === 'IN_REVIEW' && blocked.length > 0 && (
@@ -132,12 +189,17 @@ function GaugeSection({ customerId }: { customerId: string }) {
       )}
 
       <div className="mt-5">
+        <ProposalHistory customerId={customerId} />
+      </div>
+
+      <div className="mt-5">
         <h4 className="text-sm font-semibold text-slate-900">Decisions</h4>
         <div className="mt-2">
           <DecisionHistory
             decisions={decisions.data?.decisions ?? []}
             isLoading={decisions.isLoading}
             isError={decisions.isError}
+            customerId={customerId}
           />
         </div>
       </div>

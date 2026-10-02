@@ -1,10 +1,10 @@
 """The handover snapshot: backfilled, then frozen — **owner: Developer 2**
 (plan P2-7, allocation task 2.1).
 
-Revision ID: onboarding_0026_deal_snapshot
-Revises: onboarding_0025_deal_foundation
+Revision ID: onboarding_0029_deal_snapshot
+Revises: onboarding_0028_deal_foundation
 
-``onboarding_0026_deal_snapshot`` is 29 characters, inside the register's
+``onboarding_0029_deal_snapshot`` is 29 characters, inside the register's
 32-character limit.
 
 Why
@@ -24,7 +24,9 @@ What it does
    ``snapshot_source = 'backfilled_from_deal_buyer'`` so a reader can always tell a
    reconstruction from a snapshot taken at the moment of the handover
    (``taken_at_handover``). A deal whose buyer row is gone still gets a snapshot,
-   with ``buyer: null`` — an honest "we no longer know" rather than no row.
+   with ``buyer: null`` — an honest "we no longer know" rather than no row — and
+   likewise ``document_ids: null`` for a deal with no handover history row, which
+   is not the same as ``[]`` ("handed over with no paperwork").
 2. **Freezes it**, by replacing ``prevent_terminal_deal_change()`` with a version
    that adds ``handover_snapshot`` under a **set-once** rule: on a terminal deal it
    may go from ``NULL`` to a value once, and never change again. Frozen outright
@@ -57,8 +59,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "onboarding_0026_deal_snapshot"
-down_revision: str | None = "onboarding_0025_deal_foundation"
+revision: str = "onboarding_0029_deal_snapshot"
+down_revision: str | None = "onboarding_0028_deal_foundation"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -80,6 +82,13 @@ SELECT count(*) FROM onboarding.deal d
 -- Informational: how many snapshots are reconstructions rather than records.
 SELECT handover_snapshot ->> 'snapshot_source' AS source, count(*)
   FROM onboarding.deal WHERE handover_snapshot IS NOT NULL GROUP BY 1;
+
+-- Informational: reconstructions whose buyer or paperwork could not be recovered.
+SELECT count(*) FILTER (WHERE handover_snapshot -> 'buyer' = 'null'::jsonb) AS no_buyer,
+       count(*) FILTER (WHERE handover_snapshot -> 'document_ids' = 'null'::jsonb)
+           AS no_document_record
+  FROM onboarding.deal
+ WHERE handover_snapshot ->> 'snapshot_source' = 'backfilled_from_deal_buyer';
 """
 
 #: 0022's five columns, frozen outright on a terminal deal, plus
@@ -148,7 +157,9 @@ $fn$;
 #: ``document_ids`` comes from the handover history row, the only record of which
 #: documents the handover rested on. A deal has exactly one such row, but the
 #: correlated subquery is ordered anyway so the query is total rather than
-#: accidentally right.
+#: accidentally right. With no such row (or one without the key) it is JSON
+#: ``null``, like ``buyer``: "not recorded", never ``[]``, which would claim the
+#: deal went over with no paperwork.
 _BACKFILL = """
 UPDATE onboarding.deal d
    SET handover_snapshot = jsonb_build_object(
@@ -157,15 +168,13 @@ UPDATE onboarding.deal d
               FROM onboarding.deal_buyer b WHERE b.deal_id = d.id),
            'buyer_company_id', to_jsonb(d.buyer_company_id),
            'document_ids',
-           coalesce(
-               (SELECT h.event_metadata -> 'document_ids'
-                  FROM onboarding.exporter_lifecycle_history h
-                 WHERE h.dimension = 'deal'
-                   AND h.to_status = 'HANDED_OVER'
-                   AND h.deal_id = d.id
-                 ORDER BY h.created_at DESC, h.id DESC
-                 LIMIT 1),
-               '[]'::jsonb),
+           (SELECT h.event_metadata -> 'document_ids'
+              FROM onboarding.exporter_lifecycle_history h
+             WHERE h.dimension = 'deal'
+               AND h.to_status = 'HANDED_OVER'
+               AND h.deal_id = d.id
+             ORDER BY h.created_at DESC, h.id DESC
+             LIMIT 1),
            'snapshot_source', 'backfilled_from_deal_buyer',
            'snapshot_at', to_jsonb(d.handed_over_at)
        )

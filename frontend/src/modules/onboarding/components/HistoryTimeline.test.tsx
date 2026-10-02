@@ -154,6 +154,43 @@ describe('rows about one thing of several', () => {
   });
 });
 
+describe('background-check approvals and cycles (Developer 1)', () => {
+  it('names the proposed move and the cycle kind', async () => {
+    vi.mocked(listCompanyHistory).mockResolvedValue(
+      page([
+        entry({
+          dimension: 'background_check_approval',
+          event_type: 'background_check_proposed',
+          from_value: null,
+          to_value: 'OPEN',
+          details: { proposal_id: 'p1', from_value: 'IN_REVIEW', to_value: 'CLEAR' },
+        }),
+        entry({
+          dimension: 'background_check_approval',
+          event_type: 'background_check_rejected',
+          from_value: 'OPEN',
+          to_value: 'REJECTED',
+          reason: 'AML needs a second look',
+          details: { proposal_id: 'p1', from_value: 'IN_REVIEW', to_value: 'CLEAR' },
+        }),
+        entry({
+          dimension: 'check_cycle',
+          event_type: 'check_cycle_started',
+          from_value: '1',
+          to_value: '2',
+          details: { kind: 'RE_KYC' },
+        }),
+      ]),
+    );
+    renderWith(<CompanyHistory customerId={COMPANY_ID} />);
+    const [proposed, rejected, cycle] = await rows();
+    expect(proposed).toHaveTextContent('Clear proposal: Open');
+    expect(rejected).toHaveTextContent('Clear proposal: Open → Rejected');
+    expect(rejected).toHaveTextContent('AML needs a second look');
+    expect(cycle).toHaveTextContent('Re-KYC — check cycle: 1 → 2');
+  });
+});
+
 describe('who acted', () => {
   it('shows the name the server resolved, the platform, or a shortened id', async () => {
     vi.mocked(listCompanyHistory).mockResolvedValue(

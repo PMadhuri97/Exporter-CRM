@@ -1,16 +1,17 @@
 """The deal's new columns — **owner: Developer 2** (allocation F2).
 
-Revision ID: onboarding_0025_deal_foundation
-Revises: onboarding_0022_integrity
+Revision ID: onboarding_0028_deal_foundation
+Revises: onboarding_0027_dev1_expiry
 
-``onboarding_0025_deal_foundation`` is 31 characters, inside the register's
+``onboarding_0028_deal_foundation`` is 31 characters, inside the register's
 32-character limit on ``alembic_version.version_num``.
 
-**Numbered 0025, not 0023.** The work allocation fixes the foundation merge order
-F1 -> F3 -> F2 (§6), so 0023 is reserved for Developer 1's compliance foundation
-and 0024 for Developer 3's company foundation. Numbers are labels, not order
-(register §2): on rebase this revision's ``down_revision`` is re-pointed at
-whatever ``alembic heads`` then prints, and the number stays.
+**Numbered 0028, after Developer 1's 0023–0027.** This was first written as 0025
+on ``onboarding_0022_integrity``, before Developer 1's compliance PR merged with
+0023–0027 of its own. Merged as it was, the chain had two heads and two files
+labelled 0025, 0026 and 0027, so ``dev1-handover.md`` §6 had the next lane to
+merge renumber from 0028 and parent on the head at that moment,
+``onboarding_0027_dev1_expiry``. 0029 and 0030 follow it.
 
 What it adds, all on ``onboarding.deal``
 ----------------------------------------
@@ -20,7 +21,7 @@ What it adds, all on ``onboarding.deal``
   ``deal_buyer`` instead, and the migration that fills this column is P4-6.
   ``ck_deal_buyer_is_not_the_seller`` refuses a deal a company sells to itself on.
 * ``handover_snapshot JSONB`` — what the lending team was given, written at the
-  moment of the handover (plan P2-7). Filled and frozen by 0026; this revision
+  moment of the handover (plan P2-7). Filled and frozen by 0029; this revision
   only makes the column exist.
 * ``seller_gst_registration_id`` — nullable FK to ``exporter_gstin.id``, the
   branch a deal is invoiced from (plan P6-6). **Verified before writing this:**
@@ -28,13 +29,13 @@ What it adds, all on ``onboarding.deal``
   and no key had to be agreed with Developer 3.
 
 **No trigger change here.** ``prevent_terminal_deal_change()`` is extended once
-per column that needs freezing, by the task that starts writing it: 0026 for
+per column that needs freezing, by the task that starts writing it: 0029 for
 ``handover_snapshot``, P4-4 for ``buyer_company_id`` and P6-6 for
 ``seller_gst_registration_id``. Freezing a column nothing writes yet would only
 make the backfills in those tasks harder.
 
 Additive and reversible: downgrade drops the three columns and loses whatever was
-in them. Nothing writes them until 0026, so a downgrade run immediately after this
+in them. Nothing writes them until 0029, so a downgrade run immediately after this
 one loses nothing at all.
 """
 
@@ -46,8 +47,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "onboarding_0025_deal_foundation"
-down_revision: str | None = "onboarding_0022_integrity"
+revision: str = "onboarding_0028_deal_foundation"
+down_revision: str | None = "onboarding_0027_dev1_expiry"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -68,7 +69,7 @@ def upgrade() -> None:
         "deal",
         # `none_as_null`, like `qualification_criterion.allowed_values`: "no
         # snapshot" is SQL NULL, never the JSON value `null`, so the set-once
-        # trigger in 0026 has one absence to compare against instead of two.
+        # trigger in 0029 has one absence to compare against instead of two.
         sa.Column("handover_snapshot", postgresql.JSONB(none_as_null=True), nullable=True),
         schema=SCHEMA,
     )

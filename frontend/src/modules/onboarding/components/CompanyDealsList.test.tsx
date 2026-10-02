@@ -62,6 +62,14 @@ it('says a company with no deals as the seller has none', async () => {
   ).toBeInTheDocument();
 });
 
+it('says the read failed rather than that there are no deals', async () => {
+  vi.mocked(listCompanyDeals).mockRejectedValue(new Error('boom'));
+  renderList('seller');
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(/Couldn't load this company's deals/);
+  expect(screen.queryByText(/No deals where this company is the seller/)).not.toBeInTheDocument();
+});
+
 it('does not pretend a company has no deals as the buyer before that read exists', async () => {
   // The distinction this stub exists to protect: "none" and "we cannot answer
   // that yet" must not look the same. It must also not fall back to the seller
