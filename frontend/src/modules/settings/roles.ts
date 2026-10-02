@@ -16,11 +16,15 @@ export const ROLE_OPTIONS: Role[] = [
 ];
 
 /** What each role can actually do, per section 3.7 of the architecture plan —
- * shown next to the role picker so an administrator is not guessing. */
+ * shown next to the role picker so an administrator is not guessing.
+ *
+ * The role *names* in this prose must match `roleLabel()`. COMPLIANCE's description
+ * used to open "Everything Operations can do", which would have left the retired word
+ * sitting in the product after every other site had moved off it. */
 export const ROLE_DESCRIPTION: Record<Role, string> = {
   ADMIN: 'Full access, including managing users and qualification criteria.',
   COMPLIANCE:
-    'Everything Operations can do, plus compliance decisions, audit trails, and unmasked tax IDs.',
+    'Everything an RM can do, plus compliance decisions, audit trails, and unmasked tax IDs.',
   OPERATIONS:
     'Day-to-day CRM work: companies, contacts, activities and deals. Tax IDs are masked.',
   DEVELOPER:

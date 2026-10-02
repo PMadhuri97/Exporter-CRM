@@ -354,8 +354,14 @@ async def _ensure_activities(company: SampleCompany) -> int:
     return added
 
 
-#: The criteria every sample review records a result for.
-_REQUIRED_KEYS = ("revenue", "years_in_business", "export_history", "export_licence")
+#: The criteria every sample review records a result for — the ones that are
+#: **required** after `onboarding_0031_domestic_first`.
+#:
+#: `export_history` and `export_licence` are deliberately absent. The first phase is
+#: domestic trade, so they are no longer required, and leaving them here would make
+#: every sample company carry export evidence it does not need — hiding the very
+#: thing the change exists to demonstrate: a company qualifies with none.
+_REQUIRED_KEYS = ("revenue", "years_in_business")
 
 
 async def _ensure_qualification(company: SampleCompany) -> bool:

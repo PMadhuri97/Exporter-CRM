@@ -7,7 +7,10 @@ that is now done; §4 says where their still-useful content went.
 
 Developer 1's (compliance engine) handover to the other lanes — what switches its
 behaviour on, what waits, and the integration contract — is in
-[`dev1-handover.md`](dev1-handover.md).
+[`dev1-handover.md`](dev1-handover.md). The post-demo lanes' remaining work, task by task:
+Developer 2 (deals, handover, buyer migration) in [`dev2-handover.md`](dev2-handover.md),
+Developer 3 (company record, settings, GST, trade history) in
+[`dev3-remaining-work.md`](dev3-remaining-work.md).
 
 What is deliberately not built is in [`architecture.md`](architecture.md) §12. Each
 contract also keeps its own open-items table (for example `company-record.md` §10);
@@ -44,7 +47,7 @@ this page lists what needs a decision or a change, and links there for detail.
 | **RXIL's service identity** | RXIL company intake is ADMIN-only because a person pastes the package. A direct integration needs a machine identity — never `API_USER`, which public sign-up grants | — |
 | **O2 — `CUSTOMER` replaces `ONBOARDED`** for the ANER-4.2-S1T2 consumer, which watched journey rows marked `terminal` | That consumer sees completions only if `CUSTOMER` is confirmed as the replacement | `company-record.md` §10 |
 | **Identifier disclosure to masked roles.** OPERATIONS cannot search by PAN, but learns which company holds one from the duplicate refusal (`existing_customer_id`), GSTIN warnings and import candidates | Keep (decision 4's data-entry benefit) or omit the ids for roles that may not reveal identifiers. The screens now show the holder as a link ("another company — open it") rather than printing its id, and reveal nothing the response does not | architecture §12 |
-| **Should a failed buyer check block the handover?** A `FAILED` sanctions or AML result on a deal's buyer is recorded against the buyer and never touches the company (decision 9); the handover guard (A5) looks only at the company, so the deal can still be handed over | A financier may expect a sanctioned buyer to stop the deal. Blocking would be a new condition in `DealService`'s guard, read through the 4A ↔ 4B seam's `buyer_checks` | `deal-and-buyer.md` §3.1, §6; `demo.md` §4 step 8 |
+| **Should a failed buyer check block the handover?** A `FAILED` sanctions or AML result on a deal's buyer is recorded against the buyer and never touches the company (decision 9); the handover guard (A5) looks only at the company, so the deal can still be handed over | **Decided 1 October (BQ-4): yes** — the buyer's sanctions and AML must both be `PASSED`. Written as guard condition 5 but **inert** until Developer 2's task 2.5 injects Developer 1's `ComplianceFactsReader` (`dev2-handover.md` §2) | `deal-and-buyer.md` §3.1, §6.1; `demo.md` §4 step 8 |
 | **A refresh whose answer never arrives.** The browser now shares one token refresh per tab and takes turns across tabs (Web Locks), treats only a 401 as the end of a session, and the server serialises two exchanges of one token (`SELECT … FOR UPDATE`) and rolls back a rotation whose caller has already gone. Measured in headless Chrome on 29 September: three company pages opened at once, 30 of 30 signed in; 72 of 72 reloads after the page settled, signed in; bursts of four reloads 250 ms apart, 30 of 30 signed in on the dev server but 21 of 30 on the production build. The remainder is a reload landing after the server committed the rotation, while its answer is in flight: the next load holds a revoked token and must sign in again | Closing it needs either a short server-side grace window for the just-replaced token (which weakens rotation, so it is a security decision) or keeping the access token across reloads (which changes where it may be read by script) | architecture §9 |
 | **Re-dating a `NOT_NOW` check-back** takes two moves, because a move to the value already held is refused | One step would need `NOT_NOW → NOT_NOW` with a new date in the contract | `engagement.md` §1.1 |
 | **Retire `GET /exporters/activities/pending`** | Superseded by `GET /follow-ups`, and it still lists completed follow-ups. The screens no longer call it | `engagement.md` §5.6 |
@@ -57,7 +60,7 @@ this page lists what needs a decision or a change, and links there for detail.
 
 | Item | Detail |
 |---|---|
-| IEC has no `CHECK` constraint, unlike PAN, GSTIN and CIN | The service checks it; the database does not. Needs migration 0023 |
+| IEC has no `CHECK` constraint, unlike PAN, GSTIN and CIN | The service checks it; the database does not. Needs a migration (Developer 3's lane, next free number in the register; `dev3-remaining-work.md` §3) |
 | `POST /exporters` without `name` or `country` still creates a company | Remove the unnamed create path once nothing calls it, then make both columns `NOT NULL` |
 | CSV imports stop at 1,000 rows | Only if the business needs more: a background job with a pollable report, not a longer request |
 | `bank_activity_finding` has no foreign key to the company | Decide whether it should when a bank feed is connected |

@@ -223,9 +223,17 @@ authentication failed".
 Rules (details in [`../backend/migrations/README.md`](../backend/migrations/README.md) and
 [`contracts/migration-register.md`](contracts/migration-register.md)):
 
+- **Name it `onboarding_00NN_<lane>_<topic>`** — module, next free number, area of
+  work, what it does. Keep the tail short; see the next rule but one.
 - **One chain, one head.** A new migration's `down_revision` is the current head. If
-  two land at once, the later one re-parents; never add a merge revision.
-- **Revision ids are 32 characters or fewer** (`alembic_version.version_num`).
+  two land at once, the later one re-parents; never add a merge revision. Re-point
+  `down_revision` and re-run `alembic heads` **before merging** — a branch that waited
+  was written against a head that has moved.
+- **Revision ids are 32 characters or fewer** (`alembic_version.version_num`). It is
+  easier to breach than it looks: `onboarding_0023_domestic_criteria` is 33 and failed
+  on the database partway through the migration.
+- **`pg_dump` before any migration that changes data**, and say in its docstring how
+  it rolls back and what it changes about rows that already exist.
 - **Never `ALTER TYPE … ADD VALUE` in an autocommit block.**
 - **Register a new migrations directory in `alembic.ini`** (one line);
   `test_migration_discovery.py` checks it.

@@ -1,6 +1,6 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0030_deal_req_docs`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `auth_0005_rm_role_name`
 
 The prototype's migrations, from four developers and one platform change, in one
 chain. This is the running order and the rules. Dev 1 keeps it current.
@@ -34,13 +34,16 @@ merged.
 | 0028 | Dev 2 (F2) | `onboarding_0028_deal_foundation`: the deal's new columns — `buyer_company_id` (FK to `exporter_profile.customer_id`, `RESTRICT`, with `ck_deal_buyer_is_not_the_seller`), `handover_snapshot` (`jsonb`), `seller_gst_registration_id` (FK to `exporter_gstin.id`, `RESTRICT`). Schema only, no data. Downgrade drops the three columns | `onboarding_0027_dev1_expiry` |
 | 0029 | Dev 2 (P2-7) | `onboarding_0029_deal_snapshot`: **data: backfills `deal.handover_snapshot`** for every `HANDED_OVER` deal without one, from its `deal_buyer` row and its handover history row (`snapshot_source = 'backfilled_from_deal_buyer'`; `buyer` / `document_ids` are `null` where that record no longer exists), **then** replaces `prevent_terminal_deal_change()` so the column is set once and never changed. No append-only row touched. Run the module's `_VALIDATION` queries before and after; the first must print 0 afterwards. `pg_dump` first. Downgrade restores 0022's function and clears only the backfilled snapshots | `onboarding_0028_deal_foundation` |
 | 0030 | Dev 2 (P2-5a) | `onboarding_0030_deal_req_docs`: `deal_required_document` (versioned, append-only, reuses 0019's `crm_document_category_enum`), **seeded with one `PRE_SHIPMENT` requirement. Changes behaviour:** from this revision a deal with no `AVAILABLE` pre-shipment document cannot be handed over, so open deals on a live database need one uploaded first; deals already handed over are not re-judged. Lossy downgrade (drops the record of what was required when) | `onboarding_0029_deal_snapshot` |
+| 0031 | Dev 3 (P1-1, P1-2) | `onboarding_0031_domestic_first`: **data:** the next version of `export_history` and `export_licence`, copied from the current one with `required = false` (none where the current version is already not required; `created_by = migration:onboarding_0031_domestic_first`), and `no_export_history`, `no_export_licence`, `geography_not_supported` deactivated. **Changes behaviour:** export results stop counting towards the suggestion, so an undecided lead may now read QUALIFIED; decided companies are not re-judged. `pg_dump` first. Downgrade deletes only its own rows and is refused once a result has been recorded against them (restore the dump instead) | `onboarding_0030_deal_req_docs` |
+| `auth_0005` | Dev 3 (P1-5) | `auth_0005_rm_role_name`: **data:** the built-in OPERATIONS row in `auth.role` is named "RM (Relationship Manager)" and loses the "unless you own the record" description (IQ-13, decision 12) — only where an administrator has not already changed them. Slug and enum unchanged. Downgrade restores both | `onboarding_0031_domestic_first` |
 
-**Next free onboarding number: 0031.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
-32 characters at most (`docs/developer-allocation.md` §2.2).
+**Next free onboarding number: 0032.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
+32 characters at most (`docs/developer-allocation.md` §2.2, and §2 below).
 
-The two `auth_*` revisions belong to the platform's user-management work, not to the
-CRM; they sit in this chain because there is only one chain (§2), so a CRM migration
-written after them parents on them like on any other.
+`auth_0003` and `auth_0004` belong to the platform's user-management work, not to the
+CRM (`auth_0005` only renames a row they seeded); they sit in this chain because
+there is only one chain (§2), so a CRM migration written after them parents on them
+like on any other.
 
 ### 0014 also adds the history foreign key
 
@@ -57,6 +60,18 @@ constraint applies cleanly whenever 0014 runs.
 ---
 
 ## 2. Rules
+
+**Name a migration `onboarding_00NN_<lane>_<topic>`.** `onboarding` is the module
+whose directory holds it, `NN` the next free number from §1, `<lane>` the area of work
+(`dev1`, `deal`, `domestic`, `verif`), `<topic>` what it does. The lane matters when
+several people are migrating at once: it is what tells a reviewer whose change this is
+without opening the file. Other modules use their own prefix — `auth_0004_rbac`.
+
+Keep `<lane>_<topic>` short, because of the next rule. The limit is easy to breach:
+`onboarding_0023_domestic_criteria` — the name `plan.md` P1-1 prescribed — is **33
+characters** and failed on the database with `value too long for type character
+varying(32)` after the migration body had already run. It shipped as
+`onboarding_0031_domestic_first` (30).
 
 **One chain, one head.** `alembic heads` must print exactly one revision. If it
 prints two, someone branched: fix it by re-parenting, not by adding a merge
@@ -76,10 +91,30 @@ still says the old revision, so a re-run tries to add a value that already
 exists. Add the value in an ordinary transactional migration, as
 `onboarding_0012_risk_critical` does.
 
-**If the merge order changes, re-parent — do not renumber.** The later migration
-updates its own `down_revision` (a one-line change) and whoever does it tells
-Dev 1 to update the table above. Numbers are labels, not order; `down_revision`
-is the order.
+**If the merge order changes, re-parent.** The later migration updates its own
+`down_revision` (a one-line change) and whoever does it tells Dev 1 to update the
+table above. Numbers are labels, not order; `down_revision` is the order. **If the
+number itself has meanwhile been taken by a migration that merged first, take the
+next free one as well** — two files carrying one number make §1 ambiguous. That is
+what happened on 2 October 2026: Dev 2's 0025–0027 became 0028–0030 and Dev 3's
+0023 became 0031.
+
+The same rule, from the other direction: **before you merge, re-point
+`down_revision` to whatever head is there now and re-run `alembic heads`.** A branch
+that sat for a week was written against a head that has since moved. Reserve numbers
+from §1 in the order the work is expected to merge, and accept that the expectation
+will sometimes be wrong.
+
+**Take a `pg_dump` before any migration that changes data**, not just schema. A data
+migration that inserts rows into an append-only table cannot be undone by a plain
+`DELETE` — the trigger refuses it — so its downgrade has to lift the trigger
+deliberately, and a dump is what makes that safe to attempt. Each data migration says
+in its docstring how it rolls back and what it changes about existing rows.
+
+**Grow a column in three steps when a table is in use: expand, backfill, contract.**
+Add the new column nullable, fill it, and only then make it `NOT NULL` or drop the old
+one — in separate migrations. One migration that adds a `NOT NULL` column to a
+populated table fails on the row it cannot fill.
 
 **Register a new module migration directory in `alembic.ini`.** `version_locations`
 is explicit, must stay on one line (Alembic splits it on commas and spaces, so a

@@ -184,6 +184,24 @@ async def test_my_permissions_needs_no_permission_of_its_own(
             assert ("users", "view") not in pairs
 
 
+async def test_the_operations_role_reads_rm_everywhere_it_is_named(
+    client: AsyncClient, tokens: dict[UserRole, str]
+):
+    """IQ-13 (task 3.6, `auth_0005_rm_role_name`): the built-in row is what the
+    Roles tab, the user form and "Signed in as …" show, so the rename has to reach
+    it. An account with no `role_id` is named by that same built-in row — the one
+    its permissions come from — not by the enum title-cased into "Operations"."""
+    roles = await _roles_by_slug(client, tokens[UserRole.ADMIN])
+    assert roles["operations"]["name"] == "RM (Relationship Manager)"
+    assert "unless you own" not in (roles["operations"]["description"] or "")
+
+    mine = await client.get(
+        f"{BASE}/me/permissions", headers=auth_header(tokens[UserRole.OPERATIONS])
+    )
+    assert mine.json()["role_id"] is None
+    assert mine.json()["role_name"] == "RM (Relationship Manager)"
+
+
 async def test_granting_users_view_opens_the_user_list_without_a_code_change(
     client: AsyncClient,
 ):

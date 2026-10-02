@@ -6,7 +6,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.platform.authentication.models import User
+from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.models import Role, RolePermission
 from app.platform.database.adapters.repository import BaseRepository
 
@@ -24,6 +24,14 @@ class RoleRepository(BaseRepository[Role]):
     async def get_by_slug(self, slug: str) -> Role | None:
         result = await self.session.execute(
             select(Role).where(Role.slug == slug).options(selectinload(Role.permissions))
+        )
+        return result.scalar_one_or_none()
+
+    async def get_builtin(self, builtin_role: UserRole) -> Role | None:
+        """The built-in row for a legacy enum value — the row `resolve_permissions`
+        reads for an account with no `role_id`."""
+        result = await self.session.execute(
+            select(Role).where(Role.builtin_role == builtin_role)
         )
         return result.scalar_one_or_none()
 

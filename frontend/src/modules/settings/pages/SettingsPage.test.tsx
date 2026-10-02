@@ -18,7 +18,11 @@ import type { AdminUser, PermissionRef, Role } from '../types';
 import { SettingsPage } from './SettingsPage';
 
 // vitest hoists vi.mock above the imports it replaces.
-vi.mock('@/platform/auth', () => ({
+// Partial: only the session is faked. `roleLabel` and the role predicates are pure
+// and stay real, so these tests exercise the label a person actually sees rather than
+// a stub that would pass whatever it was given.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
   useCurrentUser: vi.fn(),
   useAuth: vi.fn(),
 }));
@@ -62,7 +66,7 @@ function role(overrides: Partial<Role> = {}): Role {
   return {
     id: 'role-1',
     slug: 'operations',
-    name: 'Operations',
+    name: 'RM (Relationship Manager)',
     description: 'Day-to-day CRM work.',
     builtin_role: 'OPERATIONS',
     is_builtin: true,
@@ -282,13 +286,13 @@ describe('RolesTab', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Roles' }));
     await waitFor(() => expect(listRoles).toHaveBeenCalled());
 
-    expect(await screen.findByText('Operations')).toBeInTheDocument();
+    expect(await screen.findByText('RM (Relationship Manager)')).toBeInTheDocument();
     expect(screen.getByText('Credit reviewer')).toBeInTheDocument();
     expect(screen.getByText('Built-in')).toBeInTheDocument();
 
     // The built-in role cannot be deleted server-side, so no control exists.
     expect(
-      screen.queryByRole('button', { name: 'Delete Operations' }),
+      screen.queryByRole('button', { name: 'Delete RM (Relationship Manager)' }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Delete Credit reviewer' }),
@@ -301,10 +305,10 @@ describe('RolesTab', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Roles' }));
     await waitFor(() => expect(listRoles).toHaveBeenCalled());
 
-    expect(await screen.findByText('Operations')).toBeInTheDocument();
+    expect(await screen.findByText('RM (Relationship Manager)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'New role' })).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Edit Operations' }),
+      screen.queryByRole('button', { name: 'Edit RM (Relationship Manager)' }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Delete Credit reviewer' }),
@@ -316,7 +320,9 @@ describe('RolesTab', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Roles' }));
     await waitFor(() => expect(listRoles).toHaveBeenCalled());
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit Operations' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Edit RM (Relationship Manager)' }),
+    );
     await waitFor(() => expect(getPermissionCatalog).toHaveBeenCalled());
 
     // The catalogue marks `exporters` unenforced and `users` enforced; only the

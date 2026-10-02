@@ -494,7 +494,7 @@ This document is the audit. Phase 0's remaining work turns its open points into 
 ### P1-1 — Domestic criteria version
 - **Objective:** a domestic company with no IEC or export history can be qualified. Thresholds stay in USD (BQ-1, answered 1 October).
 - **Current state:** v1 seed (`onboarding_0017_qualification.py:92-104`); ADMIN can add versions in the UI.
-- **Required change:** new versions of `export_history` and `export_licence` with `required=false`. `revenue` and `deal_size` are **not** changed (USD kept), so their existing results keep counting. Do it as a data migration (`onboarding_0023_domestic_criteria`) so every environment gets identical versions, with `created_by` set to a recognisable migration actor, rather than by hand per environment.
+- **Required change:** new versions of `export_history` and `export_licence` with `required=false`. `revenue` and `deal_size` are **not** changed (USD kept), so their existing results keep counting. Do it as a data migration (shipped as `onboarding_0031_domestic_first` — the id first written here, `onboarding_0023_domestic_criteria`, is 33 characters and fails on `alembic_version`) so every environment gets identical versions, with `created_by` set to a recognisable migration actor, rather than by hand per environment.
 - **Backend:** none beyond the migration; update `sample_data.py` so sample companies pass the new versions.
 - **Frontend:** none (P1-3 handles display).
 - **Database:** inserts only (the table is append-only).

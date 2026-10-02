@@ -354,16 +354,19 @@ async def my_permissions(
 ) -> MyPermissionsResponse:
     granted = await resolve_permissions(db, current_user)
     repo = RoleRepository(db)
+    # The same row `resolve_permissions` read: the assigned role, else the built-in
+    # row for the enum — whose name an administrator may have changed, and which
+    # for OPERATIONS reads "RM (Relationship Manager)" (auth_0005, IQ-13).
     role = (
         await repo.get_by_id(current_user.role_id)
         if current_user.role_id is not None
-        else None
+        else await repo.get_builtin(current_user.role)
     )
     return MyPermissionsResponse(
         role=current_user.role,
         role_id=current_user.role_id,
-        # Falls back to the enum's own name when no row is assigned, so the
-        # field is always something a client can display.
+        # Falls back to the enum's own name only if no row resolves at all, so
+        # the field is always something a client can display.
         role_name=role.name if role is not None else current_user.role.value.title(),
         permissions=[
             PermissionRef(module=module, action=action)

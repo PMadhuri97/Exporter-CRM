@@ -15,7 +15,6 @@ import { Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { buttonClasses, PageHeader } from '@/components';
-import { humanize } from '@/lib/format';
 import {
   CheckBacksDueCard,
   FollowUpsDueCard,
@@ -24,7 +23,7 @@ import {
   ProposalsAwaitingMeCard,
   ReKycDueCard,
 } from '@/modules/onboarding';
-import { isComplianceRole, isStaffRole, useCurrentUser } from '@/platform/auth';
+import { isComplianceRole, isStaffRole, roleLabel, useCurrentUser } from '@/platform/auth';
 
 function greeting(now: Date): string {
   const hour = now.getHours();
@@ -41,7 +40,7 @@ export function HomePage() {
     <div>
       <PageHeader
         title={`${greeting(new Date())}${firstName ? `, ${firstName}` : ''}`}
-        description={`Signed in as ${humanize(user.role).toLowerCase()}. Here is what needs attention.`}
+        description={`Signed in as ${roleLabel(user.role)}. Here is what needs attention.`}
         actions={
           isStaffRole(user.role) && (
             <Link to={paths.newCompany} className={buttonClasses({ variant: 'primary' })}>

@@ -66,6 +66,11 @@ same key at once get 409 `QUALIFICATION_CRITERION_EXISTS`.
 `geography` (trade corridor), `deal_size`. Their kinds and thresholds are seed
 data chosen at L2-09, not part of this contract.
 
+**Domestic first (P1-1, `onboarding_0031_domestic_first`):** `export_history` and
+`export_licence` have a later version with `required = false` — still active and
+recordable, no longer counted towards the suggestion. `revenue` and
+`years_in_business` are the required set.
+
 **Who:** ADMIN creates, edits, activates and deactivates criteria. Everyone who
 can read a company can read the criteria.
 
@@ -164,6 +169,11 @@ initial criterion (`revenue_below_threshold`, `years_in_business_below_threshold
 `no_export_history`, `no_export_licence`, `industry_not_supported`,
 `geography_not_supported`, `deal_size_out_of_range`) plus
 `insufficient_information` and `other`. An unknown code is refused.
+
+`no_export_history`, `no_export_licence` and `geography_not_supported` are
+**inactive** since `onboarding_0031_domestic_first` (IQ-12): a new outcome citing
+one is refused like an unknown code, and an outcome recorded before still shows it —
+outcomes store codes as strings, not references.
 
 **Who:** OPERATIONS, COMPLIANCE and ADMIN record outcomes and re-reviews.
 

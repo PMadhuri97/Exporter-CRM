@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { useCurrentUser } from '@/platform/auth';
+import { roleLabel, useCurrentUser } from '@/platform/auth';
 
 import { useCreateUser, useRoles, useUpdateUser } from '../hooks';
 import { assessPassword } from '../passwordStrength';
@@ -172,7 +172,7 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
             >
               {ROLE_OPTIONS.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {roleLabel(option)}
                 </option>
               ))}
             </select>
@@ -197,7 +197,7 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
               onChange={(event) => setRoleId(event.target.value)}
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:bg-surface-sunken disabled:text-ink-muted"
             >
-              <option value="">Default for {role}</option>
+              <option value="">Default for {roleLabel(role)}</option>
               {assignableRoles.map((candidate) => (
                 <option key={candidate.id} value={candidate.id}>
                   {candidate.name}

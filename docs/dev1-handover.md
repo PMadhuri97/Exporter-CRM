@@ -173,7 +173,7 @@ one, and regenerates `frontend/openapi.json` and `frontend/src/lib/api/schema.ts
 hand-merging them (allocation §2.2). **Update, 2 October 2026:** Developer 2's branch did this —
 its revisions are now `onboarding_0028_deal_foundation`, `onboarding_0029_deal_snapshot` and
 `onboarding_0030_deal_req_docs` on `onboarding_0027_dev1_expiry` — so Developer 3's branch
-renumbers from **0031** and parents on `onboarding_0030_deal_req_docs`. A trial merge also conflicts in
+renumbers from **0031** and parents on `onboarding_0030_deal_req_docs` (done at its audit: `onboarding_0031_domestic_first`, then `auth_0005_rm_role_name`; next free 0032). A trial merge also conflicts in
 `contracts/migration-register.md` (both), `frontend/openapi.json` (Dev 2), and
 `frontend/src/pages/HomePage.tsx`, `frontend/src/platform/auth/roles.ts` and `index.ts` (Dev 3).
 
