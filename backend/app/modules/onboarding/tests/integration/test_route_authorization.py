@@ -100,6 +100,30 @@ GATED_ROUTES = [
         STAFF,
     ),
     ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
+    # GST registrations (tasks 3.13, 3.14). Recording and deactivating a branch is a
+    # relationship manager's record; flagging one stops trade through it, so it is
+    # COMPLIANCE's — and that difference is what `_GST_FLAG_ROLES` below asserts.
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/gst-registrations",
+        {"gstin": "27AAAPL1234C1ZV"},
+        STAFF,
+    ),
+    ("POST", f"{BASE}/gst-registrations/{_ID}/deactivate", {}, STAFF),
+    (
+        "POST",
+        f"{BASE}/gst-registrations/{_ID}/flag",
+        {"reason": "Returns unfiled"},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    (
+        "POST",
+        f"{BASE}/gst-registrations/{_ID}/unflag",
+        {"reason": "Now filed"},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    # A deal's invoicing branch (task 2.8) — a routine CRM write, like its buyer.
+    ("PUT", f"{BASE}/deals/{_ID}/invoicing-branch", {"gst_registration_id": None}, STAFF),
     # Bringing a buyer-only company into the sales pipeline (task 3.11). A
     # commercial decision, so the roles that make commercial decisions; DEVELOPER is
     # read-only throughout the CRM.
@@ -708,13 +732,23 @@ async def test_write_responses_are_masked_too(client: AsyncClient, tokens: dict[
     assert resp.status_code == 201, resp.text
     assert resp.json()["pan"] == _masked(pan)
 
-    patched = await client.patch(
-        f"{BASE}/exporters/{resp.json()['customer_id']}",
-        json={"gstins": [gstin]},
+    # The same rule on the GST registrations route, which is where a GSTIN is written
+    # since task 3.13 — a PATCH no longer accepts `gstins`.
+    added = await client.post(
+        f"{BASE}/exporters/{resp.json()['customer_id']}/gst-registrations",
+        json={"gstin": gstin},
         headers=auth_header(token),
     )
-    assert patched.status_code == 200, patched.text
-    assert patched.json()["gstins"] == [_masked(gstin)]
+    assert added.status_code == 201, added.text
+    assert added.json()["gstin"] == _masked(gstin)
+    # And the portal link is withheld, because it would carry the full value (3.17).
+    assert added.json()["verify_url"] is None
+
+    # The company response masks it too, wherever it appears.
+    listed = await client.get(
+        f"{BASE}/exporters/{resp.json()['customer_id']}", headers=auth_header(token)
+    )
+    assert listed.json()["gstins"] == [_masked(gstin)]
 
 
 # ── Contact email/phone masking ──────────────────────────────────────────────

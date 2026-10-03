@@ -162,12 +162,15 @@ async def test_full_exporter_profile_flow(client: AsyncClient):
     )
     assert reject_source_resp.status_code == 422
 
-    # Search by gstin after setting one via update.
-    await client.patch(
-        f"/api/v1/onboarding/exporters/{customer_id}",
-        json={"gstins": ["27AAAPL9999C1ZV"]},
+    # Search by gstin after recording one. Through the GST registrations route since
+    # task 3.13: a PATCH no longer accepts `gstins`, because a registration is a branch
+    # and dropping one from a list used to delete its row.
+    added = await client.post(
+        f"/api/v1/onboarding/exporters/{customer_id}/gst-registrations",
+        json={"gstin": "27AAAPL9999C1ZV"},
         headers=_auth(token),
     )
+    assert added.status_code == 201, added.text
     search_resp = await client.get(
         "/api/v1/onboarding/exporters",
         params={"gstin": "27AAAPL9999C1ZV"},

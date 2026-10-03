@@ -66,9 +66,9 @@ architecture.
 | `screening` | A screening checklist item's decision (`screening_initial` / `screening_transition`; decision D9) | Dev 4B → Dev 1 |
 | `check_cycle` | A new background-check cycle started — a Re-KYC or Re-KYB (plan P2-3c). `from_status` / `to_status` are the previous and new cycle **numbers** (`"1"` → `"2"`); `event_type = "check_cycle_started"` | Dev 1 |
 | `background_check_approval` | A maker-checker proposal proposed, approved, rejected or withdrawn (plan P3-1b). `from_status` / `to_status` are the **proposal's** status: `null` → `OPEN` (`event_type = "background_check_proposed"`), then `OPEN` → `APPROVED` / `REJECTED` / `WITHDRAWN` (`background_check_approved` / `_rejected` / `_withdrawn`). `actor_id` is the proposer, then the resolver; `reason` the proposal's reason, then the rejection's or withdrawal's. An approval also writes the usual `background_check` row for the decision, whose actor is the decider (the proposer) | Dev 1 |
-| `gst_registration` | A GST registration added, deactivated, flagged or unflagged (plan P6-2, P6-5). **Reserved** — no writer yet. The GSTIN in `details` must be stored masked, like the profile rows | Dev 3 |
-| `trade` | A trade relationship, invoice or payment outcome recorded (plan P5-3, P5-4). **Reserved** — no writer yet | Dev 3 |
-| `pipeline` | A company entering or leaving the sales pipeline — created as a buyer-only company, or onboarded (plan P4-6, P4-9). **Reserved** — no writer yet | Dev 3 |
+| `gst_registration` | A GST registration added, reactivated, deactivated, flagged or unflagged (plan P6-2, P6-5). **Written** by `GstRegistrationService` (tasks 3.13, 3.14). `to_value` is the branch's state name; `details` carries the registration id, the **masked** GSTIN, the state and the row's `active`/`flag_status`. A flag and an unflag both carry their `reason` | Dev 3 |
+| `trade` | An invoice or a payment outcome recorded (plan P5-3, P5-4). **Written** by `TradeHistoryService` (task 3.19), on the **seller's** timeline, carrying `deal_id` when the invoice came from a deal. `to_value` is the invoice's currency for `trade_invoice_recorded` and the payment status for `trade_outcome_recorded`; an outcome's `reason` is its evidence note. A relationship's own creation writes no row — it is a consequence of recording a deal's buyer, which already has one | Dev 3 |
+| `pipeline` | A company entering or leaving the sales pipeline — created as a buyer-only company, or brought in (plan P4-6, P4-9). **Written** by `CompanyDirectoryService.create_buyer_company` (`NULL` → `NOT_IN_PIPELINE`, with the deal it came from) and by `ExporterProfileService.bring_into_pipeline` (`NOT_IN_PIPELINE` → `IN_PIPELINE`, task 3.11). A buyer-only company's **first** row is on this dimension, not `journey`: it has no journey until it enters the pipeline | Dev 3 |
 
 The last five were added together in F1 (allocation §2.2, 1 October 2026) so that no
 lane edits this list again. In code the list is
@@ -252,7 +252,7 @@ Stated separately so nobody reads this contract as a description of the code.
 | Append-only trigger and repository | **implemented** (0011) |
 | The shared writer, `HistoryService.record` (flushes, never commits) | **implemented** (L1-11) |
 | The read routes, `GET /exporters/{id}/history` and `GET /deals/{id}/history` | **implemented** (L1-11); DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details — the `CUSTOMER` journey row carries both (D8) |
-| The five F1 dimensions (§2) | **listed** (1 October 2026): `check_cycle` (P2-3c) and `background_check_approval` (P3-1b) are written; `gst_registration`, `trade` and `pipeline` are reserved for their lanes' tasks |
+| The five F1 dimensions (§2) | **all written** (3 October 2026): `check_cycle` (P2-3c) and `background_check_approval` (P3-1b) by Developer 1; `pipeline` (F3, task 3.11), `gst_registration` (tasks 3.13, 3.14) and `trade` (task 3.19) by Developer 3 |
 | `actor_name` on every row read (§3.1) | **implemented** (29 September 2026) |
 | Every dimension in §2 | **implemented** by its owner's service |
 | The move to `CUSTOMER`, with `terminal: true` | **implemented** (L2-11) |

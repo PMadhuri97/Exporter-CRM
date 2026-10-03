@@ -17,6 +17,7 @@ its background check is ``CLEAR``     nothing (the company row)
 the required documents are present    ``RequiredDocumentsPolicy``  (Dev 2, P2-5b)
 the seller's compliance is current    ``ComplianceFactsReader``    (Dev 1, P4-7)
 the buyer's sanctions and AML pass    ``ComplianceFactsReader``    (Dev 1, P4-7)
+the invoicing branch is recorded      ``BranchFlagReader``         (Dev 3, P6-7)
 the invoicing branch is not flagged   ``BranchFlagReader``         (Dev 3, P6-7)
 ====================================  ==========================================
 
@@ -157,11 +158,25 @@ class RequiredDocumentsPolicy(Protocol):
 
 @runtime_checkable
 class BranchFlagReader(Protocol):
-    """Developer 3's F3 interface: whether a GST registration is flagged (P6-5)."""
+    """Developer 3's interface to GST registrations, for the two branch rules (P6-7).
+
+    ``is_flagged`` answers about one registration and returns the state's name with
+    it, because the refusal quotes it — "the invoicing branch Maharashtra is flagged"
+    — and only Developer 3's lane knows that a GSTIN's state comes from its first two
+    characters.
+
+    ``has_active_registrations`` answers about the **company**, and exists for P6-7's
+    second rule: a deal with no invoicing branch recorded is blocked *only* when its
+    seller has a branch to record. A seller with no GST registration at all is not
+    asked for one, which is the difference between a rule and a nuisance — some
+    sellers legitimately have none.
+    """
 
     async def is_flagged(
         self, gst_registration_id: uuid.UUID
     ) -> tuple[bool, str | None]: ...
+
+    async def has_active_registrations(self, company_id: uuid.UUID) -> bool: ...
 
 
 class NoComplianceFacts:
@@ -199,13 +214,23 @@ class NoRequiredDocuments:
 
 
 class NoBranchFlags:
-    """The null ``BranchFlagReader``: no branch is flagged. The same answer
-    Developer 3's own F3 stub gives until P6-5 lands."""
+    """The null ``BranchFlagReader``: no branch is flagged, and no seller is known to
+    have one.
+
+    Both answers are the ones that **add no refusal**, which is what a null provider
+    must do: a caller that has not injected a real reader gets the guard it had
+    before these rules existed. In particular ``has_active_registrations`` returning
+    ``False`` means "we cannot see any", so the "record the invoicing branch" rule
+    stays silent rather than blocking every deal on a question nobody can answer.
+    """
 
     async def is_flagged(
         self, gst_registration_id: uuid.UUID
     ) -> tuple[bool, str | None]:
         return (False, None)
+
+    async def has_active_registrations(self, company_id: uuid.UUID) -> bool:
+        return False
 
 
 @dataclass(frozen=True)
@@ -335,11 +360,42 @@ async def buyer_compliance_passes(
     return "; ".join(unmet) or None
 
 
+async def invoicing_branch_is_recorded(
+    subject: HandoverSubject, providers: HandoverProviders
+) -> str | None:
+    """Plan P6-7's second rule (task 2.9): a deal invoiced from somewhere must say
+    where.
+
+    Asked **only of a seller that has a branch to name**. A seller with no active GST
+    registration is not asked for one — some sellers legitimately have none, and
+    blocking them on a field they cannot fill would make the rule a nuisance rather
+    than a control. That is why the reader answers about the company and not just
+    about the deal.
+
+    Kept separate from the flag rule below rather than folded into it: the two have
+    different remedies — "record the branch" versus "resolve the flag or invoice from
+    another branch" — and a joined message that offered both for one deal would be
+    confusing.
+    """
+    if subject.seller_gst_registration_id is not None:
+        return None
+    if not await providers.branch_flags.has_active_registrations(
+        subject.seller_company_id
+    ):
+        return None
+    return "the invoicing branch is not recorded"
+
+
 async def invoicing_branch_is_not_flagged(
     subject: HandoverSubject, providers: HandoverProviders
 ) -> str | None:
-    """Plan P6-7. A deal with no branch recorded is not refused here; whether one
-    is *required* is P6-7's second rule and belongs to that task."""
+    """Plan P6-7's first rule. A deal with no branch recorded is not refused here —
+    that is ``invoicing_branch_is_recorded``'s question.
+
+    One branch, not the company (decision BQ-6): a company trading through five
+    states may have a problem in one of them, and deals invoiced from the other four
+    proceed.
+    """
     registration_id = subject.seller_gst_registration_id
     if registration_id is None:
         return None
@@ -359,6 +415,7 @@ HANDOVER_CONDITIONS: tuple[Condition, ...] = (
     required_documents_are_present,
     seller_compliance_is_current,
     buyer_compliance_passes,
+    invoicing_branch_is_recorded,
     invoicing_branch_is_not_flagged,
 )
 

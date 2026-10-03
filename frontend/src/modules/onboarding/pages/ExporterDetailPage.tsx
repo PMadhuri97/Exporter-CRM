@@ -45,6 +45,7 @@ import { isStaffRole, useCurrentUser } from '@/platform/auth';
 import { MaskedValue } from '@/platform/mask';
 
 import {
+  GstRegistrationsSection,
   CompanyDealsList,
   NotInPipelineNotice,
   CompanyHistory,
@@ -197,6 +198,11 @@ export function ExporterDetailPage() {
   // gauges do not apply, and the server refuses them (plan P4-2, task 3.9). Read
   // here, below the guards, because it needs the loaded profile.
   const notInPipeline = profile.pipeline_status === 'NOT_IN_PIPELINE';
+  // Flagging a branch stops trade through it, so it is a compliance decision and not
+  // a sales one (plan P6-5). The server refuses it for OPERATIONS; the screen does not
+  // offer it either, rather than showing a button that 403s.
+  const canFlagBranches =
+    currentUser.role === 'COMPLIANCE' || currentUser.role === 'ADMIN';
 
   return (
     // One `Tabs` root around the sticky header and the panels, so the triggers
@@ -253,7 +259,17 @@ export function ExporterDetailPage() {
       </div>
 
       <TabsContent value="overview">
-        <CompanyPanel profile={profile} canEdit={isStaff} />
+        <div className="flex flex-col gap-5">
+          <CompanyPanel profile={profile} canEdit={isStaff} />
+          {/* The company's branches (task 3.13), replacing the comma-separated GSTIN
+              field that used to be inside the panel. Flagging one is COMPLIANCE's
+              decision, so it is gated separately from editing. */}
+          <GstRegistrationsSection
+            customerId={customerId}
+            canEdit={isStaff}
+            canFlag={canFlagBranches}
+          />
+        </div>
       </TabsContent>
       <TabsContent value="qualification">
         {notInPipeline ? (

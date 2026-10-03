@@ -117,11 +117,13 @@ As **OPERATIONS** unless noted.
    registry, Sanctions, AML, PEP and Adverse media): it is recorded against the buyer
    and never changes the company's background check (decision 9).
 
-   **Say plainly: a failed buyer check does not block the deal's handover.** The
-   handover guard (assumption A5) looks only at the company — a `CUSTOMER` whose check
-   is `CLEAR` — and buyer checks never touch the company. Whether a `FAILED` sanctions
-   or AML result on the buyer should block handover is an open business question
-   ([`open-items.md`](open-items.md) §1.2).
+   **The buyer's checks now do decide.** Decision BQ-4 was answered yes, and the
+   handover guard reads it since task 2.5: the buyer's sanctions **and** AML must both
+   be `PASSED`. A buyer nobody has screened reads `MISSING`, which is why the guard
+   says `PASSED` rather than "not `FAILED`" — so screen the buyer before trying the
+   handover, and show the refusal first if you want to demonstrate it. A failed buyer
+   check still never changes the *company's* background check (decision 9): it is
+   recorded against the buyer, and only the handover reads it.
 9. **Propose `CLEAR`** with a reason and a risk rating (maker-checker, decision A).
    Nothing moves yet: the check shows **Awaiting approval**, and the proposer can only
    withdraw it. **Sign in as a second officer** — the ADMIN account `bootstrap` made, or
@@ -131,12 +133,21 @@ As **OPERATIONS** unless noted.
    the company header — the decision trail names both people, the Clear shows when it
    expires (one year), and "became customer" is announced to the customers team's
    event (nobody receives it yet; §6).
-10. **Hand over the deal** (back as OPERATIONS): the move is now offered; confirm it.
+10. **Record the invoicing branch** (back as OPERATIONS), on the deal page: which of
+    the seller's GST registrations this deal is invoiced from. The guard asks for it
+    whenever the seller has one (task 2.9) — company B has two, so the refusal reads
+    "the invoicing branch is not recorded" until you choose. Worth showing alongside
+    **flagging a branch** as COMPLIANCE (company B's Overview tab → GST
+    registrations): a flagged branch blocks the deals invoiced through *that* branch
+    and leaves the company's other branch working, which is the point of flagging a
+    branch rather than a company.
+11. **Hand over the deal**: the move is now offered; confirm it.
     The deal is **`HANDED_OVER`**, and "deal handed over" is announced for the lending
     team. The deal page now shows **What was handed over**: the buyer and the paperwork
     as they stood at that moment, kept on the deal and never changed afterwards.
-11. **Show the History tab**: qualification, journey, conversation, deal, screening and
-    background-check rows, each with who (by name) and why. A row about one thing of
+12. **Show the History tab**: qualification, journey, conversation, deal, GST
+    registration, trade, screening and background-check rows, each with who (by name)
+    and why. A row about one thing of
     several names it — "Buyer recorded: …", the screening item's label, the
     criterion's label, the check type.
 

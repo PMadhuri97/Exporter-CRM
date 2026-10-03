@@ -9,6 +9,10 @@
 import { apiRequest } from '@/lib/api/client';
 
 import type {
+  AddGstRegistrationRequest,
+  FlagGstRegistrationRequest,
+  GstRegistration,
+  GstRegistrationList,
   BringIntoPipelineRequest,
   CompanyMatch,
   CompanyMatchRequest,
@@ -145,4 +149,61 @@ export function bringExporterIntoPipeline(
     method: 'POST',
     body,
   });
+}
+
+// ── GST registrations: a company's branches (tasks 3.13, 3.14, 3.17) ─────────
+
+/** A company's branches, newest last, deactivated ones included. */
+export function listGstRegistrations(customerId: string): Promise<GstRegistrationList> {
+  return apiRequest<GstRegistrationList>(
+    `/onboarding/exporters/${customerId}/gst-registrations`,
+  );
+}
+
+/**
+ * Record a GST registration. The state is derived from the GSTIN by the server and
+ * is not sent; a GSTIN another company also holds comes back in `also_held_by` as a
+ * warning, never a refusal (decision IQ-9).
+ */
+export function addGstRegistration(
+  customerId: string,
+  body: AddGstRegistrationRequest,
+): Promise<GstRegistration> {
+  return apiRequest<GstRegistration>(
+    `/onboarding/exporters/${customerId}/gst-registrations`,
+    { method: 'POST', body },
+  );
+}
+
+/** Stop using a branch, keeping its record. There is no delete. */
+export function deactivateGstRegistration(
+  registrationId: string,
+  body: { reason?: string | null } = {},
+): Promise<GstRegistration> {
+  return apiRequest<GstRegistration>(
+    `/onboarding/gst-registrations/${registrationId}/deactivate`,
+    { method: 'POST', body },
+  );
+}
+
+/** Flag a branch (COMPLIANCE, ADMIN). The reason is what a blocked handover says. */
+export function flagGstRegistration(
+  registrationId: string,
+  body: FlagGstRegistrationRequest,
+): Promise<GstRegistration> {
+  return apiRequest<GstRegistration>(
+    `/onboarding/gst-registrations/${registrationId}/flag`,
+    { method: 'POST', body },
+  );
+}
+
+/** Lift a branch's flag (COMPLIANCE, ADMIN). A reason is required here too. */
+export function unflagGstRegistration(
+  registrationId: string,
+  body: FlagGstRegistrationRequest,
+): Promise<GstRegistration> {
+  return apiRequest<GstRegistration>(
+    `/onboarding/gst-registrations/${registrationId}/unflag`,
+    { method: 'POST', body },
+  );
 }

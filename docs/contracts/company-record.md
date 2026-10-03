@@ -245,6 +245,57 @@ when there is nothing to warn about; the GSTIN in a warning is masked like
 every other identifier. Only the database's per-company uniqueness
 (`uq_exporter_gstin_customer_gstin`) exists — never a global one.
 
+### 4.1 A GST registration is a branch (task 3.12, plan P6-1)
+
+`exporter_gstin` grew in place rather than being copied into a `gst_registration`
+table. A row is now a **branch**: a GSTIN plus the state it was issued in, the GST
+portal's status, the registered address, a compliance flag, and whether the company
+still uses it.
+
+Three facts that are easy to confuse, kept apart:
+
+| Column | Whose answer it is |
+|---|---|
+| `status` (`UNVERIFIED` / `ACTIVE` / `CANCELLED` / `SUSPENDED`) | the **GST portal's**. `UNVERIFIED` is the default and means "nobody has checked", deliberately not `ACTIVE`, which would be a claim |
+| `active` | **ours** — whether we still use this branch |
+| `flag_status` (`NONE` / `FLAGGED`) | **compliance's** (task 3.14) |
+
+`state_code` and `state_name` are **derived** from the GSTIN's first two characters
+(`domain/gst_states.py`) and never entered: a typed state could contradict the GSTIN
+beside it. A state code this release does not know keeps `state_name = NULL` —
+recorded as unknown rather than guessed, because the format check accepts any two
+digits.
+
+**A registration is never deleted.** `trg_exporter_gstin_no_delete` refuses it, and
+`gstin_rows` no longer cascades `delete-orphan`. Before task 3.12 a company edit that
+dropped a GSTIN deleted its row; once a deal records its invoicing branch that delete
+hits `fk_deal_seller_gst_registration_id`'s `RESTRICT`, and where it succeeded it
+destroyed the record of a branch the company really traded through. Dropping one is a
+**deactivation**, and re-adding the same GSTIN reactivates that row rather than
+inserting a second — so there is one row per `(company, GSTIN)` forever.
+
+`PATCH /exporters/{id}` **no longer accepts `gstins`** (422, task 3.13). Adding,
+deactivating and flagging a branch are three decisions with three routes under
+`/exporters/{id}/gst-registrations` and `/gst-registrations/{id}`, each leaving its
+own `gst_registration` history row with the GSTIN masked. `company.gstins` means the
+**active** ones.
+
+**Flagging is per branch and per company.** A company trading through five states may
+have a problem in one of them, so a flag blocks handovers only for deals invoiced
+through *that* branch (decision BQ-6, task 2.9). A reason is required to flag **and**
+to unflag — the first is what the block will say, the second is why we decided the
+problem was resolved — and `ck_exporter_gstin_flag_reason` holds the first at the
+database. Because a GSTIN may legitimately sit on two companies (IQ-9), flagging one
+company's row does **not** touch the other's; the flag response names the other
+holders so nobody believes they have stopped trade that is still running (task 3.15).
+
+Flag and unflag are **COMPLIANCE and ADMIN only**. Recording and deactivating a
+branch stay with STAFF: which branches a company trades through is a record a
+relationship manager keeps.
+
+A "verify on the GST portal" link is served only to a role that sees the full GSTIN
+(task 3.17), because the link contains it.
+
 **Bulk import matching** (L2-13, assumption A14) matches an incoming row to an
 existing company on PAN, then GSTIN via its embedded PAN, then IEC, then CIN,
 and reports every row as accepted, rejected, or possible duplicate. It never

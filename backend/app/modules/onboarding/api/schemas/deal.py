@@ -89,6 +89,22 @@ class TransitionDealStageRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
 
 
+class SetDealInvoicingBranchRequest(BaseModel):
+    """Which of the seller's GST branches this deal is invoiced from (task 2.8).
+
+    ``null`` clears it: a branch recorded by mistake can be un-recorded, and the
+    handover guard will ask for one again if the seller has any.
+
+    The registration's id, never its GSTIN — which is what makes it impossible to
+    point a deal at the other company's copy of a shared GSTIN (plan P6-3's
+    consequence, decision IQ-9).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    gst_registration_id: uuid.UUID | None = None
+
+
 class DealSide(str, enum.Enum):
     """Which side of its deals a company is being listed on (task 2.7).
 

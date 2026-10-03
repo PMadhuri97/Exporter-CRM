@@ -171,6 +171,21 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # The response carries no identifiers for any role, and every identifier lookup is
     # audited.
     ("POST", f"{CRM}/companies/match"): STAFF,
+    # GST registrations — a company's branches (tasks 3.12–3.17, plan P6-2, P6-5).
+    # Reading is every CRM reader's, with the GSTIN masked per role and the portal link
+    # withheld from a role that sees it masked (the link carries the GSTIN).
+    ("GET", f"{CRM}/exporters/{{customer_id}}/gst-registrations"): READERS,
+    # Recording and deactivating a branch is a record a relationship manager keeps.
+    ("POST", f"{CRM}/exporters/{{customer_id}}/gst-registrations"): STAFF,
+    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/deactivate"): STAFF,
+    # Flagging one stops handovers for every deal invoiced through it, so it is a
+    # compliance decision and not a sales one — the one place in these routes where
+    # OPERATIONS is refused.
+    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/flag"): COMPLIANCE_OR_ADMIN,
+    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/unflag"): COMPLIANCE_OR_ADMIN,
+    # A deal's invoicing branch (task 2.8): which of the seller's branches it invoices
+    # from. A routine CRM write, like recording its buyer.
+    ("PUT", f"{CRM}/deals/{{deal_id}}/invoicing-branch"): STAFF,
     # RXIL company intake and bulk import (L2-12, L2-13): both create companies.
     ("POST", f"{CRM}/rxil/company-intake"): ADMIN_ONLY,
     ("GET", f"{CRM}/imports/companies/template"): STAFF,

@@ -137,8 +137,29 @@ class _Crm:
                             "document_type": "proforma_invoice",
                             "source": "EXPORTER_UPLOAD"},
                       files={"file": ("proforma_invoice.pdf", PDF, "application/pdf")})
+        await self.record_the_invoicing_branch(company_id, deal["id"])
         await self.screen_the_buyer(deal["id"])
         return company_id, deal["id"]
+
+    async def record_the_invoicing_branch(self, company_id: str, deal_id: str) -> None:
+        """Say which of the seller's GST branches this deal is invoiced from.
+
+        Part of the real path since task 2.8. The handover guard asks for it whenever
+        the seller has an active registration (plan P6-7), and this company is created
+        with one — so without this the handover is refused with "the invoicing branch
+        is not recorded", which is the rule working rather than a problem.
+        """
+        branches = await self.ok(
+            "GET", f"/exporters/{company_id}/gst-registrations", self.ops
+        )
+        active = [row for row in branches["registrations"] if row["active"]]
+        assert active, "this company was created with a GSTIN, so it has a branch"
+        await self.ok(
+            "PUT",
+            f"/deals/{deal_id}/invoicing-branch",
+            self.ops,
+            json={"gst_registration_id": active[0]["id"]},
+        )
 
     async def _create(self, pan: str) -> dict:
         resp = await self.client.post(
@@ -195,6 +216,7 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     assert conversation["conversation"] == "READY_NOW"
     await crm.ok("PUT", f"/deals/{deal_id}/buyer", crm.ops,
                  json={"name": "Rotterdam Trading BV", "country": "NL"})
+    await crm.record_the_invoicing_branch(company_id, deal_id)
     await crm.ok("POST", f"/deals/{deal_id}/transitions", crm.ops,
                  json={"to_stage": "GATHERING_PAPERWORK"})
 

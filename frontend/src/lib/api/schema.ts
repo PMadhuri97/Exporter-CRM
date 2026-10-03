@@ -1068,6 +1068,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/exporters/{customer_id}/gst-registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A company's GST registrations (its branches)
+         * @description Newest last, **including deactivated ones**: a deactivated branch is how a deal handed over through it is explained, and `active` tells them apart.
+         *
+         *     `state_code` and `state_name` are derived from each GSTIN, never entered. The GSTIN is masked for OPERATIONS and DEVELOPER, and `verify_url` — the GST portal's page for that GSTIN — is served only to a role that sees the full value, because the link contains it.
+         *
+         *     `flagged_count` is how many active branches compliance has flagged, which is what the company page's warning chip shows.
+         */
+        get: operations["list_gst_registrations_api_v1_onboarding_exporters__customer_id__gst_registrations_get"];
+        put?: never;
+        /**
+         * Record a GST registration for a company
+         * @description The GSTIN must carry the company's PAN in characters 3–12, the same rule every other write path applies. The state is derived from the GSTIN and is not accepted here.
+         *
+         *     A GSTIN this company **deactivated** earlier reactivates that row rather than adding a second one, so there is one row per company and GSTIN forever — which keeps a handed-over deal's invoicing branch pointing at the branch it really used. Re-adding an **active** one is a 409.
+         *
+         *     A GSTIN another company also holds is **allowed** and reported in `also_held_by` (decision IQ-9: duplicates stay warn-only), never refused.
+         */
+        post: operations["add_gst_registration_api_v1_onboarding_exporters__customer_id__gst_registrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/gst-registrations/{registration_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop using a branch, keeping its record
+         * @description There is no delete: `trg_exporter_gstin_no_delete` refuses one, because a GST registration is a branch the company really traded through and a handed-over deal names the one it invoiced from. Deactivating removes it from the company's current GSTINs and from the branches a new deal may be invoiced through, and leaves the row readable.
+         *
+         *     Deactivating an already-deactivated branch is a no-op, so a retry is not an error.
+         */
+        post: operations["deactivate_gst_registration_api_v1_onboarding_gst_registrations__registration_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/gst-registrations/{registration_id}/flag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Flag a branch (COMPLIANCE, ADMIN)
+         * @description A reason is required: it is what a blocked handover will say, so without it whoever hits the block has nothing to act on.
+         *
+         *     Flagging a branch blocks a handover for deals invoiced **through that branch** and leaves the company's other branches alone (decision BQ-6) — a company trading through five states may have a problem in one of them.
+         *
+         *     The flag belongs to **this** company's row. When another company holds the same GSTIN (allowed, decision IQ-9), `also_held_by` names it: that copy is **not** flagged, and whoever flags this one needs to know trade may still be running on the other.
+         */
+        post: operations["flag_gst_registration_api_v1_onboarding_gst_registrations__registration_id__flag_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/gst-registrations/{registration_id}/unflag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lift a branch's flag (COMPLIANCE, ADMIN)
+         * @description A reason is required here too: "why we decided the problem is resolved" is the half of the story a later reader needs most, and the flag's own reason is about to stop being readable on the row. Both reasons survive in the company's history.
+         */
+        post: operations["unflag_gst_registration_api_v1_onboarding_gst_registrations__registration_id__unflag_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/exporters/{customer_id}/history": {
         parameters: {
             query?: never;
@@ -1247,6 +1345,30 @@ export interface paths {
          *     In the legacy form the registration number, tax ID, contact email and contact phone are masked for OPERATIONS and DEVELOPER. Leave any of them out to keep its stored value — so a role that only sees the masked form can edit the rest — or send null to clear it. A masked value is refused.
          */
         put: operations["set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}/invoicing-branch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record which of the seller's GST branches this deal is invoiced from
+         * @description The registration's id, never its GSTIN — which is what makes it impossible to point a deal at another company's copy of a shared GSTIN (decision IQ-9). It must be one of **this deal's seller's** registrations and must be active; `fk_deal_seller_gst_registration_id` is composite and would refuse another company's anyway.
+         *
+         *     May be set and changed freely before handover (decision IQ-20) and is frozen with the deal afterwards. `null` clears it.
+         *
+         *     Two handover rules read it (plan P6-7): a deal invoiced through a **flagged** branch is blocked, and a deal whose seller has an active registration but names none is asked to name one. A seller with no registration at all is not asked.
+         */
+        put: operations["set_deal_invoicing_branch_api_v1_onboarding_deals__deal_id__invoicing_branch_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1909,6 +2031,26 @@ export interface components {
              * @default false
              */
             is_primary: boolean;
+        };
+        /**
+         * AddGstRegistrationRequest
+         * @description Record a GST registration for a company (task 3.13).
+         *
+         *     **No state.** ``state_code`` and ``state_name`` come from the GSTIN's first two
+         *     characters (``domain/gst_states.py``); accepting them here would let someone
+         *     record "Maharashtra" against a GSTIN issued in Karnataka, and the record would
+         *     contradict itself with no way to tell which half was wrong.
+         *
+         *     ``status`` defaults to ``UNVERIFIED``, which means "nobody has checked this
+         *     against the portal" — deliberately not ``ACTIVE``, which would be a claim.
+         */
+        AddGstRegistrationRequest: {
+            /** Gstin */
+            gstin: string;
+            /** Address */
+            address?: string | null;
+            /** @default UNVERIFIED */
+            status: components["schemas"]["GstRegistrationStatus"];
         };
         /**
          * AdminCreateUserRequest
@@ -3230,6 +3372,15 @@ export interface components {
             counts: boolean;
         };
         /**
+         * DeactivateGstRegistrationRequest
+         * @description Stop using a branch. Not a delete — the row is kept, because a deal handed
+         *     over through it names it.
+         */
+        DeactivateGstRegistrationRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * DealBuyerResponse
          * @description The deal's buyer. The identifiers and contact details are masked for
          *     OPERATIONS and DEVELOPER; COMPLIANCE and ADMIN see them in full.
@@ -4168,6 +4319,19 @@ export interface components {
          */
         ExporterSource: "MANUAL" | "SALES" | "REFERRAL" | "RXIL" | "PARTNER" | "API" | "BROKER" | "EVENT" | "EXISTING_CUSTOMER" | "DEAL_BUYER";
         /**
+         * FlagGstRegistrationRequest
+         * @description Flag or unflag a branch (task 3.14). The reason is **required** both ways.
+         *
+         *     Flagging: the reason is what the blocked handover will say, so without it the
+         *     person who hits the block has nothing to act on. Unflagging: "why we decided the
+         *     problem is resolved" is the half a later reader needs most, and the flag's own
+         *     reason is about to stop being readable on the row.
+         */
+        FlagGstRegistrationRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /**
          * FollowUpCompletionResponse
          * @description A completion, as recorded. Every field comes from the completion row and none
          *     from the activity — nothing may be written to an activity after it is logged.
@@ -4355,6 +4519,103 @@ export interface components {
                 [key: string]: components["schemas"]["DependencyHealth"];
             };
         };
+        /**
+         * GstRegistrationFlag
+         * @description Whether compliance has flagged this branch — **owner: Developer 3**
+         *     (allocation task 3.14, plan P6-5).
+         *
+         *     One branch, not the company: a company trading through five states may have a
+         *     problem in one of them, and flagging the company would stop the other four
+         *     (decision BQ-6). A flagged branch blocks a handover only for deals invoiced
+         *     *through that branch* (task 2.9).
+         *
+         *     `FLAGGED` always carries a reason — `ck_exporter_gstin_flag_reason` requires it —
+         *     because the reason is what the person reading the block needs, and a flag whose
+         *     reason nobody recorded cannot be acted on or lifted with confidence.
+         * @enum {string}
+         */
+        GstRegistrationFlag: "NONE" | "FLAGGED";
+        /**
+         * GstRegistrationListResponse
+         * @description A company's branches, newest last.
+         *
+         *     Deactivated ones are included: a branch that was deactivated is how a deal handed
+         *     over through it is explained, and hiding it would make that deal's invoicing
+         *     branch look as though it came from nowhere. `active` tells them apart.
+         */
+        GstRegistrationListResponse: {
+            /** Registrations */
+            registrations: components["schemas"]["GstRegistrationResponse"][];
+            /**
+             * Flagged Count
+             * @default 0
+             */
+            flagged_count: number;
+        };
+        /**
+         * GstRegistrationResponse
+         * @description One branch.
+         *
+         *     ``gstin`` is masked for a role that may not reveal identifiers, by the same rule
+         *     as the company's own. ``verify_url`` is served **only** to a role that sees the
+         *     full GSTIN (task 3.17): the link contains the GSTIN, so sending it to a masked
+         *     role would hand over the value the masking exists to withhold.
+         */
+        GstRegistrationResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            /** Gstin */
+            gstin: string;
+            /** State Code */
+            state_code: string | null;
+            /** State Name */
+            state_name: string | null;
+            status: components["schemas"]["GstRegistrationStatus"];
+            /** Address */
+            address: string | null;
+            flag_status: components["schemas"]["GstRegistrationFlag"];
+            /** Flag Reason */
+            flag_reason: string | null;
+            /** Active */
+            active: boolean;
+            /** Deactivated At */
+            deactivated_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Verify Url */
+            verify_url?: string | null;
+            /** Also Held By */
+            also_held_by?: string[];
+        };
+        /**
+         * GstRegistrationStatus
+         * @description What the GST portal says about a registration — **owner: Developer 3**
+         *     (allocation task 3.12, plan P6-1).
+         *
+         *     `UNVERIFIED` is the default and means exactly that: somebody recorded the GSTIN
+         *     and nobody has checked it against the portal. It is deliberately **not** called
+         *     `ACTIVE`, which would be a claim the CRM has no basis for — the whole point of
+         *     the column is to tell "we believe this is live" apart from "nobody has looked".
+         *
+         *     `CANCELLED` and `SUSPENDED` come from the portal. Neither deactivates the row by
+         *     itself (`active` is a separate, local decision, task 3.12): a cancelled
+         *     registration is still part of the company's record, and the two questions — "is
+         *     this registration live at the GST portal?" and "do we still use it?" — have
+         *     different answers and different owners.
+         * @enum {string}
+         */
+        GstRegistrationStatus: "UNVERIFIED" | "ACTIVE" | "CANCELLED" | "SUSPENDED";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5398,6 +5659,21 @@ export interface components {
             contact_phone?: string | null;
         };
         /**
+         * SetDealInvoicingBranchRequest
+         * @description Which of the seller's GST branches this deal is invoiced from (task 2.8).
+         *
+         *     ``null`` clears it: a branch recorded by mistake can be un-recorded, and the
+         *     handover guard will ask for one again if the seller has any.
+         *
+         *     The registration's id, never its GSTIN — which is what makes it impossible to
+         *     point a deal at the other company's copy of a shared GSTIN (plan P6-3's
+         *     consequence, decision IQ-9).
+         */
+        SetDealInvoicingBranchRequest: {
+            /** Gst Registration Id */
+            gst_registration_id?: string | null;
+        };
+        /**
          * SetDealRequiredDocumentRequest
          * @description Add a required document category to a deal's handover rule, or stop
          *     requiring it. ADMIN only.
@@ -5572,7 +5848,7 @@ export interface components {
          * @description Update mutable CRM fields. A field left out is unchanged; a field sent
          *     as `null` (or an empty string or list) is cleared — the router keeps the
          *     two apart with `exclude_unset=True`. `name` and `country` can be
-         *     corrected but not cleared. `gstins` replaces the whole list. Every change
+         *     corrected but not cleared. Every change
          *     is recorded in the company's history, with the signed-in user as the
          *     actor; there is no actor field here, and `extra="forbid"` refuses one.
          *
@@ -5581,6 +5857,13 @@ export interface components {
          *     rejected at the API boundary (422). The marker has its own route. `website`
          *     joined them in R11 (decision IQ-16): it can no longer be set or cleared
          *     here, and a stored value is left untouched.
+         *
+         *     **`gstins` joined them in task 3.13.** It used to replace the company's whole
+         *     list, which deleted the row of every GSTIN dropped — and a GST registration is a
+         *     branch the company traded through, named by any deal that invoiced from it.
+         *     Adding one, deactivating one and flagging one are now three decisions with three
+         *     routes under `/exporters/{id}/gst-registrations`, each leaving its own history
+         *     row.
          */
         UpdateExporterProfileRequest: {
             /** Name */
@@ -5589,8 +5872,6 @@ export interface components {
             country?: string | null;
             /** Pan */
             pan?: string | null;
-            /** Gstins */
-            gstins?: string[] | null;
             /** Iec */
             iec?: string | null;
             /** Cin */
@@ -9104,6 +9385,276 @@ export interface operations {
             };
         };
     };
+    list_gst_registrations_api_v1_onboarding_exporters__customer_id__gst_registrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstRegistrationListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_gst_registration_api_v1_onboarding_exporters__customer_id__gst_registrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddGstRegistrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstRegistrationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The company already holds this GSTIN, active */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A malformed GSTIN, or one that does not carry the company's PAN */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deactivate_gst_registration_api_v1_onboarding_gst_registrations__registration_id__deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeactivateGstRegistrationRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstRegistrationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description GST registration not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    flag_gst_registration_api_v1_onboarding_gst_registrations__registration_id__flag_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlagGstRegistrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstRegistrationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description GST registration not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A flag without a reason */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unflag_gst_registration_api_v1_onboarding_gst_registrations__registration_id__unflag_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlagGstRegistrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstRegistrationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description GST registration not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Lifting a flag without a reason */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_company_history_api_v1_onboarding_exporters__customer_id__history_get: {
         parameters: {
             query?: {
@@ -9599,6 +10150,67 @@ export interface operations {
                 content?: never;
             };
             /** @description Both forms at once, neither form complete, a country that is not ISO-3166-1 alpha-2, a buyer company that is the seller, or a masked value sent back */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_deal_invoicing_branch_api_v1_onboarding_deals__deal_id__invoicing_branch_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDealInvoicingBranchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal or GST registration not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The deal is handed over or withdrawn */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The registration belongs to another company, or is deactivated */
             422: {
                 headers: {
                     [name: string]: unknown;

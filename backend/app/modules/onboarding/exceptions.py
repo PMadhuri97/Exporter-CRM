@@ -1840,3 +1840,174 @@ class DealBuyerIsTheSellerError(AnerBaseException):
             error_code="DEAL_BUYER_IS_THE_SELLER",
             status_code=422,
         )
+
+
+class GstRegistrationNotFoundError(AnerBaseException):
+    """No GST registration with this id.
+
+    Distinct from ``EXPORTER_PROFILE_NOT_FOUND`` so a screen can say which of the two
+    is missing — the routes that flag and deactivate a branch take a registration id
+    and never a company id, because a registration belongs to exactly one company and
+    carrying both would invite a request whose two halves disagree.
+    """
+
+    def __init__(self, registration_id: object) -> None:
+        super().__init__(
+            detail=f"GST registration {registration_id} was not found",
+            error_code="GST_REGISTRATION_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class GstRegistrationAlreadyActiveError(AnerBaseException):
+    """This company already holds this GSTIN, active.
+
+    Refused rather than treated as a no-op: ``uq_exporter_gstin_customer_gstin`` would
+    refuse a second row anyway, and succeeding silently would suggest something had
+    been recorded. A GSTIN the company **deactivated** is a different case — adding it
+    again reactivates that row, which is not an error.
+
+    409 rather than 422: the request is well formed, and the answer depends on what
+    the company already holds.
+    """
+
+    def __init__(self, customer_id: object, registration_id: object) -> None:
+        self.registration_id = registration_id
+        super().__init__(
+            detail=(
+                f"Company {customer_id} already has this GST registration "
+                f"({registration_id}) and it is active"
+            ),
+            error_code="GST_REGISTRATION_ALREADY_ACTIVE",
+            status_code=409,
+            extensions={"registration_id": str(registration_id)},
+        )
+
+
+class GstRegistrationNotThisCompanysError(AnerBaseException):
+    """A deal's invoicing branch must be one of its **seller's** registrations.
+
+    ``fk_deal_seller_gst_registration`` — the composite FK to
+    ``(exporter_gstin.id, customer_id)`` — refuses the row, and this turns that into a
+    422 naming the problem. A deal invoiced through another company's branch would put
+    somebody else's GSTIN on the invoice, and the handover guard would be asking about
+    a branch whose flag belongs to a different company.
+    """
+
+    def __init__(self, deal_id: object, registration_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"GST registration {registration_id} does not belong to the company "
+                f"selling on deal {deal_id}, so it cannot be its invoicing branch"
+            ),
+            error_code="GST_REGISTRATION_NOT_THIS_COMPANYS",
+            status_code=422,
+        )
+
+
+class GstRegistrationInactiveError(AnerBaseException):
+    """A deal cannot be invoiced through a branch the company has stopped using.
+
+    The row is kept — a deal handed over through it last year still names it — but it
+    is no longer a branch to invoice *new* trade from. Refused at the point of choosing
+    rather than at handover, so the person picking sees the problem while they are
+    picking.
+    """
+
+    def __init__(self, registration_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"GST registration {registration_id} is deactivated and cannot be a "
+                "deal's invoicing branch"
+            ),
+            error_code="GST_REGISTRATION_INACTIVE",
+            status_code=422,
+        )
+
+
+class TradeRelationshipNotFoundError(AnerBaseException):
+    """No trade relationship with this id."""
+
+    def __init__(self, relationship_id: object) -> None:
+        super().__init__(
+            detail=f"Trade relationship {relationship_id} was not found",
+            error_code="TRADE_RELATIONSHIP_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class TradeRelationshipIsSelfError(AnerBaseException):
+    """A company does not trade with itself.
+
+    ``ck_trade_relationship_not_self`` refuses the row; this names the problem. The
+    same rule ``ck_deal_buyer_is_not_the_seller`` applies to a deal, restated because a
+    relationship can also be created by the backfill, which does not go through one.
+    """
+
+    def __init__(self, company_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {company_id} cannot be both the seller and the buyer in a "
+                "trade relationship"
+            ),
+            error_code="TRADE_RELATIONSHIP_IS_SELF",
+            status_code=422,
+        )
+
+
+class TradeInvoiceNotFoundError(AnerBaseException):
+    """No trade invoice with this id."""
+
+    def __init__(self, invoice_id: object) -> None:
+        super().__init__(
+            detail=f"Trade invoice {invoice_id} was not found",
+            error_code="TRADE_INVOICE_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class TradeOutcomeStaleError(AnerBaseException):
+    """An outcome that does not supersede the chain's current head.
+
+    An invoice's payment story is an append-only superseding chain, so a correction
+    names the belief it replaces. Three ways to get this wrong, all refused here:
+    superseding nothing when there is a head, superseding something when there is no
+    head, and superseding a row that has already been superseded.
+
+    The last is the one that matters: it means two people are each correcting the same
+    outcome without having seen the other's. Refusing it is what makes the chain a
+    line rather than a tree — the same rule ``VerificationReviewStaleError`` enforces
+    for a review, and ``uq_trade_invoice_outcome_supersedes`` behind it.
+
+    409 rather than 422: the request is well formed, and the answer depends on what
+    somebody else recorded in the meantime. The current head is named so the caller
+    can read it and decide again.
+    """
+
+    def __init__(
+        self, invoice_id: object, supersedes: object, current_head: object
+    ) -> None:
+        self.current_head = current_head
+        if current_head is None:
+            detail = (
+                f"Trade invoice {invoice_id} has no outcome yet, so this one supersedes "
+                "nothing: omit supersedes_outcome_id"
+            )
+        elif supersedes is None:
+            detail = (
+                f"Trade invoice {invoice_id} already has an outcome ({current_head}); "
+                "a further outcome must supersede it"
+            )
+        else:
+            detail = (
+                f"Outcome {supersedes} is not the current outcome of trade invoice "
+                f"{invoice_id} ({current_head}); read it and decide again"
+            )
+        super().__init__(
+            detail=detail,
+            error_code="TRADE_OUTCOME_STALE",
+            status_code=409,
+            extensions={
+                "current_outcome_id": str(current_head) if current_head else None
+            },
+        )

@@ -175,12 +175,14 @@ async def test_update_profile_updates_mutable_fields():
     async with db_services.AsyncSessionLocal() as db:
         updated = await ExporterProfileService(db).update_profile(
             customer_id,
-            {"industry": "Textiles", "gstins": ["27AAAPL1234C1ZV"]},
+            # `gstins` is not an editable field since task 3.13: a GST registration is a
+            # branch, added and deactivated through `GstRegistrationService`.
+            {"industry": "Textiles", "relationship_manager": "Priya"},
             actor_id="agent_1",
         )
 
     assert updated.industry == "Textiles"
-    assert updated.gstins == ["27AAAPL1234C1ZV"]
+    assert updated.relationship_manager == "Priya"
     assert updated.source == ExporterSource.SALES  # untouched
 
 

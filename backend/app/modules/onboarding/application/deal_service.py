@@ -72,12 +72,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.background_check_reader import current_background_check
+from app.modules.onboarding.application.branch_flags import BranchFlagService
 from app.modules.onboarding.application.compliance_facts import ComplianceFactsService
 from app.modules.onboarding.application.conversation_service import ConversationService
 from app.modules.onboarding.application.deal_required_documents_service import (
     DealRequiredDocumentsPolicy,
 )
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.application.trade_history_service import (
+    SOURCE_DEAL_BUYER_RECORDED,
+    TradeHistoryService,
+)
 from app.modules.onboarding.domain.deal_views import (
     BuyerCompanyView,
     DealBuyerView,
@@ -88,6 +93,7 @@ from app.modules.onboarding.domain.deal_views import (
 from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.handover_conditions import (
     HANDOVER_JOURNEY,
@@ -108,6 +114,9 @@ from app.modules.onboarding.exceptions import (
     DealTerminalError,
     DealTransitionNotAllowedError,
     DealWithdrawalReasonRequiredError,
+    GstRegistrationInactiveError,
+    GstRegistrationNotFoundError,
+    GstRegistrationNotThisCompanysError,
 )
 from app.modules.onboarding.infrastructure.repositories.crm_document_repository import (
     CrmDocumentRepository,
@@ -243,6 +252,11 @@ class DealService:
             else HandoverProviders(
                 compliance=ComplianceFactsService(db),
                 required_documents=DealRequiredDocumentsPolicy(db),
+                # Developer 3's real reader (task 3.14), replacing `NoBranchFlags`.
+                # Both branch conditions become live with it: a flagged invoicing
+                # branch blocks the deals invoiced through it, and a deal whose seller
+                # has a branch but names none is asked to name it (task 2.9, P6-7).
+                branch_flags=BranchFlagService(db),
             )
         )
 
@@ -665,6 +679,18 @@ class DealService:
             raise DealCompanyNotFoundError(buyer_company_id)
 
         deal.buyer_company_id = buyer_company_id
+        # The pair now has a trade relationship (task 3.18, plan P5-1): "every deal
+        # with a buyer company has a relationship" is that task's acceptance
+        # criterion, and the same transaction is what makes it true rather than
+        # eventually true. `get_or_create` is safe if two deals record the same new
+        # pair at once, and it deliberately does not commit — this unit of work does.
+        await TradeHistoryService(self._db).get_or_create_relationship(
+            seller_company_id=deal.company_id,
+            buyer_company_id=buyer_company_id,
+            actor_id=actor_id,
+            source=SOURCE_DEAL_BUYER_RECORDED,
+            source_ref=str(deal.id),
+        )
         await self._history.record(
             deal.company_id,
             dimension="deal",
@@ -688,6 +714,92 @@ class DealService:
             "deal.buyer_company.set.ok",
             deal_id=str(deal.id),
             buyer_company_id=str(buyer_company_id),
+            actor_id=actor_id,
+        )
+        return await self._to_view(deal)
+
+    async def set_invoicing_branch(
+        self,
+        deal_id: uuid.UUID,
+        *,
+        gst_registration_id: uuid.UUID | None,
+        actor_id: str | None,
+    ) -> DealView:
+        """Record which of the seller's GST branches this deal is invoiced from
+        (task 2.8, plan P6-6).
+
+        May be set **and changed** freely before handover (decision IQ-20), and
+        `prevent_terminal_deal_change()` freezes it afterwards. Deliberately not
+        set-once, unlike `buyer_company_id`: choosing the wrong branch has no
+        consequence until the handover reads it, while a buyer company accumulates
+        compliance results under it that re-pointing would silently reinterpret.
+
+        `None` clears it — a branch recorded by mistake can be un-recorded, and the
+        handover guard will then ask for one again if the seller has any.
+
+        The registration must belong to **this deal's seller** and be active.
+        `fk_deal_seller_gst_registration_id` is composite and would refuse another
+        company's branch, but the check here names the problem instead of surfacing an
+        integrity error; the inactive rule is the service's alone, because a
+        deactivated row is still a real row of the right company.
+
+        Writes a `deal` history row, `event_type="deal_invoicing_branch_set"`, with
+        the branch's **state** rather than its GSTIN: the state is what identifies a
+        branch to a reader, and the GSTIN would be an unmasked identifier in a log
+        every CRM reader can see.
+
+        Raises:
+            DealNotFoundError: no such deal.
+            DealTerminalError: the deal is handed over or withdrawn.
+            GstRegistrationNotFoundError: no such registration.
+            GstRegistrationNotThisCompanysError: it belongs to another company.
+            GstRegistrationInactiveError: it is deactivated.
+        """
+        deal = await self._lock_deal(deal_id)
+        if deal.stage.is_terminal:
+            raise DealTerminalError(deal_id, deal.stage.value)
+
+        registration = None
+        if gst_registration_id is not None:
+            registration = await self._db.scalar(
+                select(ExporterGstin).where(ExporterGstin.id == gst_registration_id)
+            )
+            if registration is None:
+                raise GstRegistrationNotFoundError(gst_registration_id)
+            if registration.customer_id != deal.company_id:
+                raise GstRegistrationNotThisCompanysError(deal_id, gst_registration_id)
+            if not registration.active:
+                raise GstRegistrationInactiveError(gst_registration_id)
+
+        if deal.seller_gst_registration_id == gst_registration_id:
+            # Nothing changed, so nothing is recorded: a second history row would make
+            # the record read as two decisions.
+            return await self._to_view(deal)
+
+        deal.seller_gst_registration_id = gst_registration_id
+        await self._history.record(
+            deal.company_id,
+            dimension="deal",
+            to_value=deal.stage.value,
+            actor_id=actor_id,
+            source="deal_service.set_invoicing_branch",
+            deal_id=deal.id,
+            event_type="deal_invoicing_branch_set",
+            details={
+                "gst_registration_id": (
+                    str(gst_registration_id) if gst_registration_id else None
+                ),
+                # The state, not the GSTIN: this log is readable by every CRM role.
+                "state_name": registration.state_name if registration else None,
+                "state_code": registration.state_code if registration else None,
+            },
+        )
+        await self._db.commit()
+        await self._db.refresh(deal)
+        logger.info(
+            "deal.invoicing_branch.set.ok",
+            deal_id=str(deal.id),
+            gst_registration_id=str(gst_registration_id) if gst_registration_id else None,
             actor_id=actor_id,
         )
         return await self._to_view(deal)

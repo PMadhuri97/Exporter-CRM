@@ -8,11 +8,11 @@ code before trusting a "not built" below — this file says what was true on tha
 | | |
 |---|---|
 | **Done (merged)** | 3.1, 3.3, 3.4, 3.5, 3.6 — and 3.2's script |
-| **Done, awaiting merge** | **F3** (migration 0032); **3.7, 3.8** (migration 0033), **3.9, 3.10, 3.11** |
+| **Done, awaiting merge** | **F3** (0032); **3.7, 3.8** (0033), **3.9, 3.10, 3.11**; **3.12** (0035), **3.13, 3.14, 3.15, 3.17**; **3.18, 3.19** (0037) |
 | **Still owed on a done task** | 3.2's per-environment **reports**; the 0031 **release note** (§1) |
-| **Next** | 3.12 — it must land before Developer 2's 2.8 (§3) |
-| **Not started** | 3.12 – 3.24, and the two inherited items at the end of §3 (the IEC `CHECK`, and `name`/`country` `NOT NULL`) |
-| **Next free migration number** | **0035** — 0032 (F3) and 0033 (3.8) are this lane's; 0034 is Developer 2's 2.4 (`contracts/migration-register.md` §1) |
+| **Next** | 3.20 (trade read and write routes) → 3.21 → 3.22; then 3.23 and 3.24 |
+| **Not started** | 3.16 (conditional on 3.2's reports), 3.20 – 3.24, and the two inherited items at the end of §3 (the IEC `CHECK`, and `name`/`country` `NOT NULL`) |
+| **Next free migration number** | **0038** — 0032, 0033, 0035 and 0037 are this lane's; 0034 and 0036 are Developer 2's (`contracts/migration-register.md` §1) |
 
 **The merge order changed.** The allocation planned F1 → F3 → F2. What happened was
 **F1 → F2 → F3**: Developer 2's foundation merged before yours, so it declared the one

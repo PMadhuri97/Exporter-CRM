@@ -15,6 +15,9 @@ from app.modules.onboarding.api.document_router import router as document_router
 from app.modules.onboarding.api.engagement_router import router as engagement_router
 from app.modules.onboarding.api.exporter_router import router as exporter_router
 from app.modules.onboarding.api.follow_up_router import router as follow_up_router
+from app.modules.onboarding.api.gst_registration_router import (
+    router as gst_registration_router,
+)
 from app.modules.onboarding.api.history_router import router as history_router
 from app.modules.onboarding.api.qualification_router import router as qualification_router
 from app.modules.onboarding.api.schemas.case import (
@@ -90,6 +93,10 @@ router.include_router(company_intake_router)
 # prefix, because the question is asked before any company id is known; see the
 # router's module docstring.
 router.include_router(company_directory_router)
+# GST registrations — a company's branches (P6-2, P6-5; tasks 3.13, 3.14, 3.17) —
+# Developer 3's. Absolute paths, because reading and adding one hangs off a company
+# while flagging one takes only the registration's own id.
+router.include_router(gst_registration_router)
 
 # Shared CRM history log (L1-11) — Developer 1's, in its own file for the same
 # reason the Exporter CRM routes are in theirs, and included here so it

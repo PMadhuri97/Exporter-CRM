@@ -189,12 +189,18 @@ class ExporterProfile(AnerModel):
     #: Company registration number (`ck_exporter_profile_cin_format`).
     cin: Mapped[str | None] = mapped_column(String(21), nullable=True)
 
-    #: The company's GSTINs, one row each (`ExporterGstin`), newest last.
+    #: The company's GST registrations, one row each (`ExporterGstin`), newest last.
     #: Loaded with the profile (`selectin`), so async code never lazy-loads it.
+    #:
+    #: **No `delete-orphan`** since task 3.12. A registration is a branch the company
+    #: really traded through: a handed-over deal records which one it invoiced from
+    #: (`deal.seller_gst_registration_id`), so deleting the row would either break
+    #: that FK's `RESTRICT` or destroy the record. Dropping one is a *deactivation*
+    #: (`active = false`), and `trg_exporter_gstin_no_delete` refuses a DELETE outright
+    #: — including one the ORM would otherwise emit from this relationship.
     gstin_rows: Mapped[list[ExporterGstin]] = relationship(
         lazy="selectin",
         order_by="ExporterGstin.created_at, ExporterGstin.gstin",
-        cascade="all, delete-orphan",
     )
 
     # ── Marker (L2-08): commercial pause or ending, not a journey stage ─────
@@ -347,8 +353,21 @@ class ExporterProfile(AnerModel):
 
     @property
     def gstins(self) -> list[str]:
-        """The company's GSTINs as plain strings, in `gstin_rows` order."""
-        return [row.gstin for row in self.gstin_rows]
+        """The company's **active** GSTINs as plain strings, in `gstin_rows` order.
+
+        Active only, since task 3.12: a deactivated branch is part of the record but
+        not part of the company's current identity, and every caller of this property
+        — the duplicate warning, the PAN/GSTIN consistency check, the responses —
+        means "the GSTINs this company trades under now". `gstin_rows` is still every
+        row, for the screen that shows the history.
+        """
+        return [row.gstin for row in self.gstin_rows if row.active]
+
+    @property
+    def flagged_branch_count(self) -> int:
+        """How many active branches compliance has flagged (task 3.14) — what the
+        company page's warning chip counts."""
+        return sum(1 for row in self.gstin_rows if row.active and row.is_flagged)
 
 
 __all__ = ["ExporterProfile"]

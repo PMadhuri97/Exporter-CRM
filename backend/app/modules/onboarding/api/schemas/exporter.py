@@ -198,7 +198,7 @@ class UpdateExporterProfileRequest(BaseModel):
     """Update mutable CRM fields. A field left out is unchanged; a field sent
     as `null` (or an empty string or list) is cleared — the router keeps the
     two apart with `exclude_unset=True`. `name` and `country` can be
-    corrected but not cleared. `gstins` replaces the whole list. Every change
+    corrected but not cleared. Every change
     is recorded in the company's history, with the signed-in user as the
     actor; there is no actor field here, and `extra="forbid"` refuses one.
 
@@ -207,6 +207,13 @@ class UpdateExporterProfileRequest(BaseModel):
     rejected at the API boundary (422). The marker has its own route. `website`
     joined them in R11 (decision IQ-16): it can no longer be set or cleared
     here, and a stored value is left untouched.
+
+    **`gstins` joined them in task 3.13.** It used to replace the company's whole
+    list, which deleted the row of every GSTIN dropped — and a GST registration is a
+    branch the company traded through, named by any deal that invoiced from it.
+    Adding one, deactivating one and flagging one are now three decisions with three
+    routes under `/exporters/{id}/gst-registrations`, each leaving its own history
+    row.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -214,7 +221,6 @@ class UpdateExporterProfileRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     country: str | None = Field(default=None, max_length=2)
     pan: Annotated[str | None, NotMasked] = Field(default=None, max_length=_IDENTIFIER_MAX)
-    gstins: list[_GstinIn] | None = None
     iec: Annotated[str | None, NotMasked] = Field(default=None, max_length=10)
     cin: Annotated[str | None, NotMasked] = Field(default=None, max_length=_IDENTIFIER_MAX)
     #: Whatever the company's own registrar issued, for a company that is not

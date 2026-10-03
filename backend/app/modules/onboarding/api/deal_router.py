@@ -31,6 +31,7 @@ from app.modules.onboarding.api.schemas.deal import (
     DealSide,
     OpenDealRequest,
     SetDealBuyerRequest,
+    SetDealInvoicingBranchRequest,
     SetDealRequiredDocumentRequest,
     TransitionDealStageRequest,
 )
@@ -301,6 +302,50 @@ async def set_deal_buyer(
             keep=body.fields_to_keep(),
             actor_id=str(current_user.id),
         )
+    return DealResponse.from_view(view, current_user)
+
+
+@router.put(
+    "/deals/{deal_id}/invoicing-branch",
+    response_model=DealResponse,
+    summary="Record which of the seller's GST branches this deal is invoiced from",
+    description=(
+        "The registration's id, never its GSTIN — which is what makes it impossible "
+        "to point a deal at another company's copy of a shared GSTIN (decision "
+        "IQ-9). It must be one of **this deal's seller's** registrations and must be "
+        "active; `fk_deal_seller_gst_registration_id` is composite and would refuse "
+        "another company's anyway.\n\n"
+        "May be set and changed freely before handover (decision IQ-20) and is frozen "
+        "with the deal afterwards. `null` clears it.\n\n"
+        "Two handover rules read it (plan P6-7): a deal invoiced through a **flagged** "
+        "branch is blocked, and a deal whose seller has an active registration but "
+        "names none is asked to name one. A seller with no registration at all is not "
+        "asked."
+    ),
+    responses={
+        200: {"model": DealResponse},
+        401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        404: {"description": "Deal or GST registration not found"},
+        409: {"description": "The deal is handed over or withdrawn"},
+        422: {
+            "description": (
+                "The registration belongs to another company, or is deactivated"
+            )
+        },
+    },
+)
+async def set_deal_invoicing_branch(
+    deal_id: uuid.UUID,
+    body: SetDealInvoicingBranchRequest,
+    current_user: Annotated[User, Depends(_STAFF)],
+    db: AsyncSession = Depends(get_db),
+) -> DealResponse:
+    view = await DealService(db).set_invoicing_branch(
+        deal_id,
+        gst_registration_id=body.gst_registration_id,
+        actor_id=str(current_user.id),
+    )
     return DealResponse.from_view(view, current_user)
 
 

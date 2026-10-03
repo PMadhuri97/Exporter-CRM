@@ -248,3 +248,26 @@ __all__ += [
     "BackgroundCheckProposalResolution",
     "ProposalOutcome",
 ]
+
+# Trade history (Developer 3, tasks 3.18 and 3.19; plan P5-1, P5-2). Imported here so
+# the metadata carries the three tables — the ORM drift test and Alembic's autogenerate
+# both read this barrel.
+from app.modules.onboarding.domain.entities.trade_enums import (  # noqa: E402
+    TradePaymentStatus,
+    TradeProofStatus,
+)
+from app.modules.onboarding.domain.entities.trade_invoice import (  # noqa: E402
+    TradeInvoice,
+    TradeInvoiceOutcome,
+)
+from app.modules.onboarding.domain.entities.trade_relationship import (  # noqa: E402
+    TradeRelationship,
+)
+
+__all__ += [
+    "TradeInvoice",
+    "TradeInvoiceOutcome",
+    "TradePaymentStatus",
+    "TradeProofStatus",
+    "TradeRelationship",
+]

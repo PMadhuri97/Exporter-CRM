@@ -9,10 +9,10 @@
 (buyer checks attach to the deal's buyer; the handover guard reads the company's
 background check and compliance facts).
 
-**State.** All of it is built, and §6's handover works end to end. The guard is now
-a list of conditions over injected providers (§6.1): three of the six decide today —
-the two assumption-A5 conditions and the required documents (§6.1.1) — and the other
-three are inert until the lane that owns each provider ships it. The handover is
+**State.** All of it is built, and §6's handover works end to end. The guard is a list
+of conditions over injected providers (§6.1), and **all seven now decide**: the two
+assumption-A5 conditions, the required documents (§6.1.1), both parties' compliance
+(P3-3b, P3-4, P4-7) and the two invoicing-branch rules (P6-7). The handover is
 persisted as well as announced (§6.2).
 
 Architecture §3.3 ("The deal"), §3.5 and §3.6 are the source.
@@ -255,7 +255,8 @@ move, so the screen explains instead of offering a button that 409s (§4.1).
 | 3 | every required document category is present | `RequiredDocumentsPolicy` | **live** (P2-5b) |
 | 4 | the company's Clear is current, and its own sanctions/AML have not failed | `ComplianceFactsReader` | **live** (P3-3b, P4-7) |
 | 5 | the buyer's sanctions **and** AML are `PASSED` | `ComplianceFactsReader` | **live** (P3-4, P4-7) |
-| 6 | the invoicing branch is not flagged | `BranchFlagReader` | waits for P6-7 |
+| 6 | the invoicing branch is recorded, when the seller has one | `BranchFlagReader` | **live** (P6-7, task 2.9) |
+| 7 | the invoicing branch is not flagged | `BranchFlagReader` | **live** (P6-7, task 2.9) |
 
 Conditions 1 and 2 are real: a company becomes a `CUSTOMER` when it is a `PROSPECT`
 with a `CLEAR` check (`company-record.md` §3.2), and the check is read through
@@ -263,10 +264,11 @@ Developer 4A's published helper (`background-check.md` §10) — this service ne
 creates or writes that column (`company-record.md` §2.4). A company never checked
 reads `NOT_STARTED`, and "not `CLEAR`" is never treated as "clear".
 
-Conditions 3–6 ask an **injected provider**. Only condition 6 is still waiting: its
-null provider is injected and it reports nothing until Developer 3's real
-`BranchFlagReader` lands (P6-7). "No facts" is never read as "everything passed": a
-missing provider cannot let a deal through.
+Conditions 3–7 ask an **injected provider**, and all of them are now live. "No facts"
+is never read as "everything passed": the null providers (`NoComplianceFacts`,
+`NoRequiredDocuments`, `NoBranchFlags`) each answer the way that **adds no refusal**,
+so a caller that has not injected a real reader gets the guard it had before that
+rule existed — never a deal let through on a question nobody answered.
 
 Conditions 4 and 5 read Developer 1's published `ComplianceFactsReader`
 (`domain/compliance_facts.py`, implemented by `application/compliance_facts.py`), in
@@ -278,6 +280,22 @@ rule decides before and after the buyer migration (P4-6).
 `CLEAR` but no longer currently so — a company that was never `CLEAR` is condition 2's
 to report, and saying "expired" as well would tell an operator to renew a check that
 was never passed. The message is "the background check expired on `YYYY-MM-DD`".
+
+**Conditions 6 and 7 are the branch rules** (plan P6-7, task 2.9), kept separate
+because they have different remedies: "record the branch" versus "resolve the flag or
+invoice from another branch". A joined message offering both for one deal would be
+confusing, and they cannot both apply — a deal either names a branch or does not.
+
+Condition 6 is asked **only of a seller that has a branch to name**: a company with no
+active GST registration is not blocked on a field it cannot fill, which is why the
+reader answers about the company (`has_active_registrations`) and not just about the
+deal. Its message is "the invoicing branch is not recorded".
+
+Condition 7 names the state — "the invoicing branch Maharashtra is flagged" — which is
+why the reader returns it alongside the answer: a deal's invoicing branch is a row id,
+and only Developer 3's lane knows that a GSTIN's state is its first two characters. One
+branch, not the company (decision BQ-6): deals invoiced from the company's other
+branches proceed.
 
 **Condition 5 requires `PASSED`, not "not `FAILED`".** An unscreened buyer reads
 `MISSING` and blocks (BQ-4): "we have not checked" and "the check came back clean"

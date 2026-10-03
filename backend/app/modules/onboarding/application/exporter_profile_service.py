@@ -75,6 +75,7 @@ from app.modules.onboarding.domain.exporter_profile_views import (
     ExporterProfileDetail,
     ExporterProfileListItem,
 )
+from app.modules.onboarding.domain.gst_states import state_code_of, state_name_of
 from app.modules.onboarding.domain.tax_identifiers import (
     check_gstins_match_pan,
     normalise_cin,
@@ -139,7 +140,6 @@ _EDITABLE_FIELDS = frozenset(
         "country",
         "cin",
         "pan",
-        "gstins",
         "iec",
         "relationship_manager",
         "industry",
@@ -367,7 +367,20 @@ class ExporterProfileService:
             # The channel, derived from the one string that already names it, so this
             # and migration 0033's backfill cannot disagree (plan P4-1).
             created_via=created_via_for_history_source(history_source),
-            gstin_rows=[ExporterGstin(customer_id=customer_id, gstin=g) for g in gstin_values],
+            # The state comes from the GSTIN (task 3.12), here as well as on the
+            # `gst-registrations` route: a registration created on this path and one
+            # created there must be the same kind of row, or the branch flag reader
+            # has no state to name in "the invoicing branch Maharashtra is flagged"
+            # and the company page shows "Unknown state".
+            gstin_rows=[
+                ExporterGstin(
+                    customer_id=customer_id,
+                    gstin=g,
+                    state_code=state_code_of(g),
+                    state_name=state_name_of(g),
+                )
+                for g in gstin_values
+            ],
         )
 
         try:
@@ -434,8 +447,15 @@ class ExporterProfileService:
         request with `exclude_unset=True`, which is what keeps the two apart.
 
         Identifiers are checked on the company's state *after* the edit: a new
-        PAN must fit the GSTINs being kept, and new GSTINs must carry the PAN.
-        `gstins` replaces the company's whole list.
+        PAN must fit the GSTINs the company holds.
+
+        **`gstins` is not editable here** (task 3.13). It used to replace the whole
+        list, which deleted the row of every GSTIN dropped — and a GST registration is
+        a branch the company traded through, named by any deal that invoiced from it
+        (`deal.seller_gst_registration_id`). `GstRegistrationService` adds one,
+        deactivates one and flags one, each as its own decision with its own history
+        row. Sending `gstins` here is a 422 at the API boundary, because
+        `UpdateExporterProfileRequest` no longer has the field and forbids extras.
 
         Each field whose value actually changes writes one `profile` history
         row through the shared `HistoryService`: `to_value` names the field,
@@ -494,8 +514,6 @@ class ExporterProfileService:
             wanted["registration_number"] = normalise_registration_number(
                 wanted["registration_number"]  # type: ignore[arg-type]
             )
-        if "gstins" in wanted:
-            wanted["gstins"] = normalise_gstins(wanted["gstins"]) or None  # type: ignore[arg-type]
         check_gstins_match_pan(
             wanted.get("pan", profile.pan),  # type: ignore[arg-type]
             wanted.get("gstins", profile.gstins) or [],  # type: ignore[arg-type]
@@ -527,17 +545,7 @@ class ExporterProfileService:
 
         edit_id = str(uuid.uuid4())
         for field, (old_value, new_value) in edits.items():
-            if field == "gstins":
-                # Keep the row of every GSTIN that stays: the unit of work
-                # inserts before it deletes, so re-creating a kept GSTIN would
-                # collide with its own old row on uq_exporter_gstin_customer_gstin.
-                kept = {row.gstin: row for row in profile.gstin_rows}
-                profile.gstin_rows = [
-                    kept.get(g) or ExporterGstin(customer_id=customer_id, gstin=g)
-                    for g in (new_value or [])  # type: ignore[union-attr]
-                ]
-            else:
-                setattr(profile, field, new_value)
+            setattr(profile, field, new_value)
             await self._history.record(
                 customer_id,
                 dimension=HISTORY_DIMENSION_PROFILE,

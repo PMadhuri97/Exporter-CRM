@@ -342,3 +342,13 @@ export type ReKycDueList = components['schemas']['ReKycDueListResponse'];
 
 /** Bring a buyer-only company into the sales pipeline (task 3.11). */
 export type BringIntoPipelineRequest = Schemas['BringIntoPipelineRequest'];
+
+// ── GST registrations: a company's branches (tasks 3.12–3.17) ────────────────
+
+/** One branch: a state, an address, a portal status, and possibly a flag. */
+export type GstRegistration = Schemas['GstRegistrationResponse'];
+export type GstRegistrationList = Schemas['GstRegistrationListResponse'];
+export type AddGstRegistrationRequest = Schemas['AddGstRegistrationRequest'];
+export type FlagGstRegistrationRequest = Schemas['FlagGstRegistrationRequest'];
+/** UNVERIFIED | ACTIVE | CANCELLED | SUSPENDED — what the GST portal says. */
+export type GstRegistrationStatus = GstRegistration['status'];

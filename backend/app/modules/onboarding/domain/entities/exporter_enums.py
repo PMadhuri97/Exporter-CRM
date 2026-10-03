@@ -101,3 +101,43 @@ class CompanyPipelineStatus(str, enum.Enum):
 
     IN_PIPELINE = "IN_PIPELINE"
     NOT_IN_PIPELINE = "NOT_IN_PIPELINE"
+
+
+class GstRegistrationStatus(str, enum.Enum):
+    """What the GST portal says about a registration — **owner: Developer 3**
+    (allocation task 3.12, plan P6-1).
+
+    `UNVERIFIED` is the default and means exactly that: somebody recorded the GSTIN
+    and nobody has checked it against the portal. It is deliberately **not** called
+    `ACTIVE`, which would be a claim the CRM has no basis for — the whole point of
+    the column is to tell "we believe this is live" apart from "nobody has looked".
+
+    `CANCELLED` and `SUSPENDED` come from the portal. Neither deactivates the row by
+    itself (`active` is a separate, local decision, task 3.12): a cancelled
+    registration is still part of the company's record, and the two questions — "is
+    this registration live at the GST portal?" and "do we still use it?" — have
+    different answers and different owners.
+    """
+
+    UNVERIFIED = "UNVERIFIED"
+    ACTIVE = "ACTIVE"
+    CANCELLED = "CANCELLED"
+    SUSPENDED = "SUSPENDED"
+
+
+class GstRegistrationFlag(str, enum.Enum):
+    """Whether compliance has flagged this branch — **owner: Developer 3**
+    (allocation task 3.14, plan P6-5).
+
+    One branch, not the company: a company trading through five states may have a
+    problem in one of them, and flagging the company would stop the other four
+    (decision BQ-6). A flagged branch blocks a handover only for deals invoiced
+    *through that branch* (task 2.9).
+
+    `FLAGGED` always carries a reason — `ck_exporter_gstin_flag_reason` requires it —
+    because the reason is what the person reading the block needs, and a flag whose
+    reason nobody recorded cannot be acted on or lifted with confidence.
+    """
+
+    NONE = "NONE"
+    FLAGGED = "FLAGGED"

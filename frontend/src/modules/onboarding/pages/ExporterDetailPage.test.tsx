@@ -317,8 +317,14 @@ describe('ExporterDetailPage — E9', () => {
     mockUser('COMPLIANCE', 'someone-else');
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    // PAN, GSTIN and IEC in the profile, plus PAN and GSTIN in the header strip.
-    expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(5);
+    // PAN and IEC in the profile, plus PAN and GSTIN in the header strip. `cin` and
+    // `registration_number` are null in this fixture, and a null value renders no
+    // reveal control — there is nothing to reveal.
+    //
+    // Four, not five: the panel's own GSTIN row went with task 3.13. The GSTINs are
+    // `GstRegistrationsSection` now, where each is a branch with a state, a status and
+    // possibly a flag rather than a bare value.
+    expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(4);
   });
 
   it('shows no website at all, whatever is stored', async () => {
@@ -447,7 +453,9 @@ describe('ExporterDetailPage — E9', () => {
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
     fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
     const form = await screen.findByRole('form', { name: 'Edit profile' });
-    for (const label of ['PAN', 'GSTINs (comma-separated)', 'IEC', 'CIN']) {
+    // `GSTINs (comma-separated)` is gone with task 3.13: a branch cannot be edited
+    // as a string, and the PATCH refuses the field.
+    for (const label of ['PAN', 'IEC', 'CIN']) {
       const input = within(form).getByLabelText(label);
       expect(input).toHaveValue('');
       expect(input).toHaveAttribute('placeholder', 'Hidden — type to replace');

@@ -9,9 +9,9 @@ that date.
 | | |
 |---|---|
 | **Done (merged)** | F2, 2.1, 2.2, 2.3 |
-| **Done, awaiting merge** | **2.5** (every §2 gap closed); **2.4** (migration 0034), **2.7** |
-| **Can start now** | 2.9 and 2.11 — Developer 3's `BranchFlagReader` stub and `TradeHistoryPanel` are merged, and 2.4 is done |
-| **Waiting on Developer 3** | 2.6 (needs 3.2's reports to size it), 2.8 (needs **3.12**) |
+| **Done, awaiting merge** | **2.5** (every §2 gap closed); **2.4** (0034), **2.7**; **2.8** (0036), **2.9** |
+| **Can start now** | 2.11 — Developer 3's `TradeHistoryPanel` stub is merged and 2.4 is done |
+| **Waiting on Developer 3** | 2.6 (needs 3.2's reports to size it), 2.12 (needs 3.21) |
 | **Final integration** | 2.12 |
 | **Next free migration number** | **0035** — 0034 is this lane's (2.4's set-once rule); 0032 and 0033 are Developer 3's (`contracts/migration-register.md` §1) |
 

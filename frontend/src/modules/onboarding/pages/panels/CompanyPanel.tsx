@@ -39,7 +39,6 @@ interface ProfileDraft {
   name: string;
   country: string;
   pan: string;
-  gstins: string;
   iec: string;
   cin: string;
   registration_number: string;
@@ -54,7 +53,6 @@ const FIELDS: { key: keyof ProfileDraft; label: string }[] = [
   { key: 'name', label: 'Company name' },
   { key: 'country', label: 'Country' },
   { key: 'pan', label: 'PAN' },
-  { key: 'gstins', label: 'GSTINs (comma-separated)' },
   { key: 'iec', label: 'IEC' },
   { key: 'cin', label: 'CIN' },
   { key: 'registration_number', label: 'Registration number' },
@@ -65,7 +63,7 @@ const FIELDS: { key: keyof ProfileDraft; label: string }[] = [
   { key: 'year_established', label: 'Year established' },
 ];
 
-const LIST_FIELDS = new Set<keyof ProfileDraft>(['gstins', 'export_markets', 'products']);
+const LIST_FIELDS = new Set<keyof ProfileDraft>(['export_markets', 'products']);
 
 /**
  * Identifiers masked for roles that may not reveal them. The server masks the
@@ -75,7 +73,6 @@ const LIST_FIELDS = new Set<keyof ProfileDraft>(['gstins', 'export_markets', 'pr
  */
 const MASKED_FIELDS = new Set<keyof ProfileDraft>([
   'pan',
-  'gstins',
   'iec',
   'cin',
   'registration_number',
@@ -91,7 +88,6 @@ function draftFrom(profile: ExporterProfileDetail, revealIdentifiers: boolean): 
     name: profile.name ?? '',
     country: profile.country ?? '',
     pan: revealIdentifiers ? (profile.pan ?? '') : '',
-    gstins: revealIdentifiers ? profile.gstins.join(', ') : '',
     iec: revealIdentifiers ? (profile.iec ?? '') : '',
     cin: revealIdentifiers ? (profile.cin ?? '') : '',
     registration_number: revealIdentifiers ? (profile.registration_number ?? '') : '',
@@ -273,12 +269,17 @@ export function CompanyPanel({
             <dl>
               <DetailRow label="Country">{profile.country ?? '—'}</DetailRow>
               <DetailRow label="PAN"><MaskedValue value={profile.pan} /></DetailRow>
-              <DetailRow label={profile.gstins.length > 1 ? 'GSTINs' : 'GSTIN'}>
-                {profile.gstins.length === 0 ? '—' : (
-                  <span className="flex flex-col items-end">
-                    {profile.gstins.map((gstin) => <MaskedValue key={gstin} value={gstin} />)}
-                  </span>
-                )}
+              {/* The GSTINs themselves are `GstRegistrationsSection` below (task
+                  3.13): each is a branch with a state, a status, an address and
+                  possibly a flag, and a list of bare values here would be a second,
+                  poorer view of the same thing. The count stays, because "how many
+                  states is this company registered in" belongs in the summary. */}
+              <DetailRow label="GST registrations">
+                {profile.gstins.length === 0
+                  ? 'None'
+                  : profile.gstins.length === 1
+                    ? '1 active'
+                    : `${profile.gstins.length} active`}
               </DetailRow>
               <DetailRow label="IEC"><MaskedValue value={profile.iec} /></DetailRow>
               <DetailRow label="CIN"><MaskedValue value={profile.cin} /></DetailRow>

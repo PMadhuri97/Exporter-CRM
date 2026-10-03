@@ -470,3 +470,55 @@ async def test_the_handover_snapshot_carries_the_buyer_company_not_a_legacy_row(
     assert snapshot["buyer"]["tax_id"] == buyer_pan
     assert snapshot["buyer"]["contact_email"] is None
     assert snapshot["buyer"]["contact_phone"] is None
+
+
+async def test_recording_a_buyer_company_creates_the_trade_relationship():
+    """Task 3.18's acceptance criterion — "every deal with a buyer company has a
+    relationship" — met in the **same transaction** that records the buyer, so it is
+    true rather than eventually true.
+
+    The relationship is found by the pair, not by a column on the deal (allocation §1,
+    adjustment 1): a deal already names both parties, so a stored link would be a
+    second copy of the same fact able to drift from it.
+    """
+    from app.modules.onboarding.application.trade_history_service import (
+        SOURCE_DEAL_BUYER_RECORDED,
+        TradeHistoryService,
+    )
+
+    deal_id, seller = await _deal()
+    buyer = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        await DealService(db).set_buyer_company(
+            deal_id, buyer_company_id=buyer, actor_id="rm-1"
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        relationship = await TradeHistoryService(db).relationship_for_pair(
+            seller_company_id=seller, buyer_company_id=buyer
+        )
+    assert relationship is not None
+    assert relationship.source == SOURCE_DEAL_BUYER_RECORDED
+    assert relationship.source_ref == str(deal_id)
+
+
+async def test_a_second_deal_for_the_same_pair_reuses_the_relationship():
+    """Two companies have one relationship however many deals it carries."""
+    from app.modules.onboarding.application.trade_history_service import TradeHistoryService
+
+    seller = await make_prospect()
+    buyer = await make_company()
+    first, _s = await _deal(seller)
+    second, _s = await _deal(seller)
+    for deal_id in (first, second):
+        async with db_services.AsyncSessionLocal() as db:
+            await DealService(db).set_buyer_company(
+                deal_id, buyer_company_id=buyer, actor_id="rm-1"
+            )
+
+    async with db_services.AsyncSessionLocal() as db:
+        relationships = await TradeHistoryService(db).list_relationships(seller)
+    for_this_buyer = [r for r in relationships if r.buyer_company_id == buyer]
+    assert len(for_this_buyer) == 1
+    # The first deal's id stays as the provenance: it is where the relationship began.
+    assert for_this_buyer[0].source_ref == str(first)
