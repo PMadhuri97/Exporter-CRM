@@ -36,6 +36,9 @@ from app.modules.onboarding.domain.entities.exporter_profile import ExporterProf
 from app.modules.onboarding.domain.storage import DocumentScanStatus, ScanOutcome
 from app.modules.onboarding.events import publisher as publisher_module
 from app.modules.onboarding.exceptions import DealTerminalError
+from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository import (
+    DealBuyerRepository,
+)
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
@@ -128,7 +131,52 @@ async def _deal_ready_to_hand_over(company_id: uuid.UUID) -> uuid.UUID:
             view.id, DealStage.GATHERING_PAPERWORK, actor_id="tester"
         )
     await _add_required_document(view.id)
+    await record_legacy_buyer_checks(view.id)
     return view.id
+
+
+async def record_legacy_buyer_checks(
+    deal_id: uuid.UUID, *, status: str = "PASSED"
+) -> None:
+    """PASSED sanctions and AML on the deal's ``deal_buyer`` row.
+
+    Needed since task 2.5 wired Developer 1's reader: BQ-4 requires the buyer's
+    sanctions **and** AML to be ``PASSED``, and a buyer nobody has checked reads
+    ``MISSING`` — which is the point of requiring `PASSED` rather than "not FAILED".
+    Without these two results the guard refuses, correctly, and a test about anything
+    else would be exercising that refusal instead.
+
+    Recorded against ``VerificationEntityType.BUYER`` keyed to the ``deal_buyer`` row,
+    which is where ``ComplianceFactsReader.for_legacy_buyer`` reads them.
+
+    Exported (no leading underscore) because
+    ``test_l4a_background_check_reader.py`` and
+    ``test_dev1_concurrency.py`` reach a real handover through
+    ``_deal_ready_to_hand_over`` and need the same two results.
+    """
+    from app.modules.onboarding.application.verification_service import VerificationService
+    from app.modules.onboarding.domain.entities.orchestration_enums import (
+        VerificationEntityType,
+        VerificationType,
+    )
+    from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
+
+    async with db_services.AsyncSessionLocal() as db:
+        buyer = await DealBuyerRepository(db).get_for_deal(deal_id)
+        assert buyer is not None, "the deal needs its buyer before its buyer's checks"
+        buyer_id = buyer.id
+
+    for verification_type in (VerificationType.SANCTIONS, VerificationType.AML):
+        async with db_services.AsyncSessionLocal() as db:
+            await VerificationService(db).trigger_verification(
+                verification_type,
+                VerificationEntityType.BUYER,
+                buyer_id,
+                provider="manual",
+                payload={"status": status},
+                actor_id="tester",
+                evidence=VerificationEvidence(note="Test: screened the buyer."),
+            )
 
 
 async def _deal_with_a_buyer_but_no_paperwork(company_id: uuid.UUID) -> uuid.UUID:
@@ -378,6 +426,9 @@ async def test_a_handover_is_allowed_once_the_required_document_is_there(
     company_id = await _customer()
     deal_id = await _deal_with_a_buyer_but_no_paperwork(company_id)
     required = await _add_required_document(deal_id)
+    # BQ-4's buyer checks too, since 2.5 wired the real reader — this test is about
+    # the paperwork condition, not about the buyer's screening.
+    await record_legacy_buyer_checks(deal_id)
 
     view = await _hand_over(deal_id)
 

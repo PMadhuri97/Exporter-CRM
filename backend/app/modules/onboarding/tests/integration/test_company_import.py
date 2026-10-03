@@ -551,8 +551,11 @@ async def test_a_line_that_is_not_valid_csv_saves_nothing():
     pan = _pan()
     previous = csv.field_size_limit(64)
     try:
+        # Any cell longer than the limit will do; `industry` is the longest free-text
+        # column left now that `website` has retired (R11). The point is that the CSV
+        # reader itself gives up, before a single row is judged or saved.
         with pytest.raises(ValidationError, match="not valid CSV near line 3"):
-            await _import(_row(pan=pan), _row(website="https://example.com/" + "x" * 100))
+            await _import(_row(pan=pan), _row(industry="Textiles " + "x" * 100))
     finally:
         csv.field_size_limit(previous)
     assert await _count_with_pan(pan) == 0

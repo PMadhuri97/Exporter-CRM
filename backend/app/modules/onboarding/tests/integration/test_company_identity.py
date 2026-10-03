@@ -48,11 +48,22 @@ async def ops_token(client: AsyncClient) -> str:
 
 
 async def _create_named(
-    client: AsyncClient, token: str, *, name: str, country: str = "IN", key: str | None = None
+    client: AsyncClient,
+    token: str,
+    *,
+    name: str,
+    country: str = "IN",
+    key: str | None = None,
+    registration_number: str | None = None,
 ):
+    body = {"source": "SALES", "name": name, "country": country}
+    if country.upper() != "IN":
+        # A foreign company must carry a registration number (decision IQ-7,
+        # task 3.8), so one is supplied here rather than at each call site.
+        body["registration_number"] = registration_number or f"REG-{uuid.uuid4().hex[:10].upper()}"
     return await client.post(
         f"{BASE}/exporters",
-        json={"source": "SALES", "name": name, "country": country},
+        json=body,
         headers={**auth_header(token), "Idempotency-Key": key or str(uuid.uuid4())},
     )
 

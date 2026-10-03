@@ -3,16 +3,18 @@
 **Owner:** Developer 2 (post-demo allocation; Developer 3B before it) · **Tables:**
 `onboarding.deal`, `onboarding.deal_buyer`, `onboarding.deal_required_document` ·
 **Migrations:** `onboarding_0018_deal_buyer`, `onboarding_0028_deal_foundation`,
-`onboarding_0029_deal_snapshot`, `onboarding_0030_deal_req_docs`
+`onboarding_0029_deal_snapshot`, `onboarding_0030_deal_req_docs`,
+`onboarding_0034_deal_buyer_co`, `onboarding_0036_deal_branch`,
+`onboarding_0038_buyer_map`, `onboarding_0039_closed_buyer`
 
 **Used by:** Developer 3 (company lists and panels, trade history), Developer 1
 (buyer checks attach to the deal's buyer; the handover guard reads the company's
 background check and compliance facts).
 
-**State.** All of it is built, and §6's handover works end to end. The guard is now
-a list of conditions over injected providers (§6.1): three of the six decide today —
-the two assumption-A5 conditions and the required documents (§6.1.1) — and the other
-three are inert until the lane that owns each provider ships it. The handover is
+**State.** All of it is built, and §6's handover works end to end. The guard is a list
+of conditions over injected providers (§6.1), and **all seven now decide**: the two
+assumption-A5 conditions, the required documents (§6.1.1), both parties' compliance
+(P3-3b, P3-4, P4-7) and the two invoicing-branch rules (P6-7). The handover is
 persisted as well as announced (§6.2).
 
 Architecture §3.3 ("The deal"), §3.5 and §3.6 are the source.
@@ -128,14 +130,59 @@ The two coexist on purpose, and for a while:
 | written after P4-4 | `buyer_company_id` | `for_company(buyer_company_id)` |
 | mid-migration | both | the **company**, which is the authority |
 
+"A handover needs a buyer" is satisfied by **either** (task 2.4): a deal the
+migration has not reached is not blocked, and a deal with neither is still refused
+with `DEAL_BUYER_REQUIRED`. The handover snapshot is built from the company when
+there is one, since that is what the lending team is being handed; its keys are the
+same either way, so a reader never has to know which era wrote it. A company has no
+`tax_id` of its own, so the snapshot's `tax_id` is its PAN and its contact fields are
+empty — a company's contacts are people on its own record, and inventing a primary
+contact here would put a name in the handover that nobody chose.
+
 So the buyer migration (P4-6) is a data migration, not a behaviour change: §6.1
 condition 5 decides the same thing either way. `deal_buyer` writes are retired in
 P4-10, after every environment has migrated; the table itself is kept.
 
-The whole column is `NULL` on every deal today, and `buyer_company` is `null` in
-every response. The field is in the shape from the deal foundation PR anyway,
-because the company screens are built against it and adding a field later would be
-a contract change.
+**Writing it (task 2.4).** `PUT /deals/{id}/buyer` takes either form, and exactly
+one per request: `{buyer_company_id}` names the company the buyer is, and the legacy
+`{name, country, …}` records a `deal_buyer` row. A body carrying both is refused
+(422) rather than merged — the two disagree about what a buyer *is*, and writing both
+would leave a deal whose company says one thing and whose row says another.
+
+`buyer_company_id` is **set once**: `trg_deal_buyer_company_set_once`
+(migration 0034) lets it go from `NULL` to a value and refuses every change after,
+and the service refuses a *different* company with 409
+`DEAL_BUYER_COMPANY_ALREADY_SET` while treating the same company again as a no-op so
+a retry is not an error. The reason is that the column is what the buyer's checks are
+recorded against and read back through (`for_company(buyer_company_id)`), what the
+handover guard's condition 5 asks about (BQ-4), and what the handover snapshot
+records: re-pointing it would silently reinterpret all three. A deal pointed at the
+wrong buyer is withdrawn and a new one opened, so the correction leaves a trail. The
+column is also in `prevent_terminal_deal_change()` from 0034, so a closed deal's
+buyer no longer changes at all — which, unlike set-once, also refuses a *first* write
+to a closed deal.
+
+**One condition was too strong, and migration 0039 relaxed it.** 0034's terminal
+freeze refused *any* difference on a closed deal, `NULL` → a value included — so a
+deal handed over last year could never be linked to its buyer company, which is
+exactly the write P4-6 has to make. 0039 moves the column into its own clause, refused
+only when the **old** value was not `NULL`: a closed deal's buyer company may be
+filled in once and never changed. That is the rule 0029 had already given
+`handover_snapshot` for the same reason, and `buyer_company_id` had simply not been
+given it. Set-once is unchanged everywhere else. It was found by writing 2.6's tests
+rather than by reading the trigger, which is what those tests are for.
+
+A company may not be its own buyer: 422 `DEAL_BUYER_IS_THE_SELLER`, ahead of
+`ck_deal_buyer_is_not_the_seller`, so the refusal names the problem. The check means
+such a row **cannot exist**, which is worth knowing when reading code that handles
+one: the buyer migration's "resolved to its own seller" report and the relationship
+backfill's refusal are both guards that cannot fire while that constraint stands, and
+§17.2's matching validation query is structurally zero.
+
+Recording one writes a `deal` history row, `event_type = "deal_buyer_company_set"`,
+whose `details` carry `buyer_company_id`, the company's `buyer_name` and
+`had_legacy_buyer` — the last so the P4-10 retirement can find the deals that still
+carry both.
 
 ### 3.1 A buyer's problems stay on the buyer
 
@@ -148,6 +195,42 @@ The deal page shows the buyer's checks to staff (`BuyerChecks`), read and record
 `deal_buyer.id`. Once the deal is `HANDED_OVER` or `WITHDRAWN`, no new check may be
 recorded (D17, 409 `DEAL_CLOSED`), and the verifications list stops offering
 `can_record_result` for that buyer; existing checks stay readable and reviewable.
+
+### 3.2 Linking the deals that came before (the buyer migration, P4-6)
+
+A **command**, not an Alembic revision —
+`python -m app.modules.onboarding.migrate_deal_buyers` — because plan §17.2 puts a
+person between reading and writing: name-only duplicates are reported and confirmed by
+hand (IQ-8), and a revision has nowhere to pause for that. The sequence is `pg_dump`,
+`--dry-run`, read the report, confirm the duplicates, `--apply --run-id`, `--validate`.
+
+How a legacy buyer's identity is resolved, in order of confidence: a **PAN** (which may
+well join an existing *seller* — that is the point of unifying the two), then a
+**`(country, normalised registration number)`** pair, then a **new**
+`NOT_IN_PIPELINE` company. A **matching name with no identifier** is reported and
+never merged automatically; confirming one records `match_rule = NAME_CONFIRMED`, so
+the row says a human decided. Two cases are refused and reported rather than guessed:
+a buyer resolving to its own deal's seller, and a buyer whose PAN and registration
+number name *different* companies.
+
+It writes `deal_buyer_company_map` (0038, append-only, keyed on `deal_buyer_id`, which
+is what makes a re-run a no-op), the created companies, `deal.buyer_company_id`, and
+`verification_result.subject_company_id` for the deal's BUYER results. It touches no
+`deal_buyer` row, no `entity_type`, no `entity_reference`, no `subject_snapshot` and no
+history row.
+
+**There is no logical rollback**, and `--rollback` writes nothing: it reports what a
+run did and names the dump. §17.2 allowed for one *"before enabling the freeze
+trigger"*, but in the shipped schema both `deal.buyer_company_id` and
+`verification_result.subject_company_id` are set-once and frozen, so neither can be
+set back to `NULL`. Restoring the `pg_dump` is the only route back — which is why
+taking one is step zero and not a precaution.
+
+**Then the relationships.** The migration writes `buyer_company_id` with an `UPDATE`,
+so the deals it links arrive without the trade relationship that
+`DealService.set_buyer_company` would have created in the same transaction. Developer
+3's `backfill_trade_relationships` (P5-5) is step 3 of the operational order and
+creates exactly those. See `trade-history.md`.
 
 ---
 
@@ -222,9 +305,10 @@ move, so the screen explains instead of offering a button that 409s (§4.1).
 | 1 | the company's journey is `CUSTOMER` | — | **live** (assumption A5) |
 | 2 | the company's background check is `CLEAR` | — | **live** (assumption A5) |
 | 3 | every required document category is present | `RequiredDocumentsPolicy` | **live** (P2-5b) |
-| 4 | the company's Clear is current, and its own sanctions/AML have not failed | `ComplianceFactsReader` | waits for P3-3b, P4-7 |
-| 5 | the buyer's sanctions **and** AML are `PASSED` | `ComplianceFactsReader` | waits for P3-4, P4-7 |
-| 6 | the invoicing branch is not flagged | `BranchFlagReader` | waits for P6-7 |
+| 4 | the company's Clear is current, and its own sanctions/AML have not failed | `ComplianceFactsReader` | **live** (P3-3b, P4-7) |
+| 5 | the buyer's sanctions **and** AML are `PASSED` | `ComplianceFactsReader` | **live** (P3-4, P4-7) |
+| 6 | the invoicing branch is recorded, when the seller has one | `BranchFlagReader` | **live** (P6-7, task 2.9) |
+| 7 | the invoicing branch is not flagged | `BranchFlagReader` | **live** (P6-7, task 2.9) |
 
 Conditions 1 and 2 are real: a company becomes a `CUSTOMER` when it is a `PROSPECT`
 with a `CLEAR` check (`company-record.md` §3.2), and the check is read through
@@ -232,12 +316,44 @@ Developer 4A's published helper (`background-check.md` §10) — this service ne
 creates or writes that column (`company-record.md` §2.4). A company never checked
 reads `NOT_STARTED`, and "not `CLEAR`" is never treated as "clear".
 
-Conditions 3–6 ask an **injected provider**. Until the lane that owns one ships it,
-its null provider is injected and the condition reports nothing. "No facts" is
-never read as "everything passed": a missing provider cannot let a deal through.
-Condition 5 reads a buyer recorded as a company through `for_company` and a legacy
-`deal_buyer` row through `for_legacy_buyer`, so the same rule decides before and
-after the buyer migration (P4-6).
+Conditions 3–7 ask an **injected provider**, and all of them are now live. "No facts"
+is never read as "everything passed": the null providers (`NoComplianceFacts`,
+`NoRequiredDocuments`, `NoBranchFlags`) each answer the way that **adds no refusal**,
+so a caller that has not injected a real reader gets the guard it had before that
+rule existed — never a deal let through on a question nobody answered.
+
+Conditions 4 and 5 read Developer 1's published `ComplianceFactsReader`
+(`domain/compliance_facts.py`, implemented by `application/compliance_facts.py`), in
+the guard's own session. Condition 5 reads a buyer recorded as a company through
+`for_company` and a legacy `deal_buyer` row through `for_legacy_buyer`, so the same
+rule decides before and after the buyer migration (P4-6).
+
+**Condition 4 names the date.** It reports an expiry only when the company *is*
+`CLEAR` but no longer currently so — a company that was never `CLEAR` is condition 2's
+to report, and saying "expired" as well would tell an operator to renew a check that
+was never passed. The message is "the background check expired on `YYYY-MM-DD`".
+
+**Conditions 6 and 7 are the branch rules** (plan P6-7, task 2.9), kept separate
+because they have different remedies: "record the branch" versus "resolve the flag or
+invoice from another branch". A joined message offering both for one deal would be
+confusing, and they cannot both apply — a deal either names a branch or does not.
+
+Condition 6 is asked **only of a seller that has a branch to name**: a company with no
+active GST registration is not blocked on a field it cannot fill, which is why the
+reader answers about the company (`has_active_registrations`) and not just about the
+deal. Its message is "the invoicing branch is not recorded".
+
+Condition 7 names the state — "the invoicing branch Maharashtra is flagged" — which is
+why the reader returns it alongside the answer: a deal's invoicing branch is a row id,
+and only Developer 3's lane knows that a GSTIN's state is its first two characters. One
+branch, not the company (decision BQ-6): deals invoiced from the company's other
+branches proceed.
+
+**Condition 5 requires `PASSED`, not "not `FAILED`".** An unscreened buyer reads
+`MISSING` and blocks (BQ-4): "we have not checked" and "the check came back clean"
+must not collapse into one outcome. So a deal whose buyer has no sanctions and AML
+results cannot be handed over, whether that buyer is a company or a legacy
+`deal_buyer` row.
 
 ### 6.1.1 Condition 3 — the required documents
 
@@ -271,9 +387,15 @@ open deal without an `AVAILABLE` pre-shipment document is blocked from handover 
 moment `onboarding_0030_deal_req_docs` runs, until one is uploaded — tell the
 operations team before deploying it.
 
-The guard reads the company row **once** per run, share-locked on the move (D10) and
-unlocked on the read that renders a page, and hands every condition the same
-snapshot — so no condition can see a different company than the lock was taken on.
+The guard reads **both parties'** rows once per run — share-locked on the move (D10)
+and unlocked on the read that renders a page — and hands every condition the same
+snapshot, so no condition can see a different company than the lock was taken on.
+
+The locking read is one statement, `WHERE customer_id IN (…) ORDER BY customer_id …
+FOR SHARE`. The ordering is the deadlock rule, not tidiness: Postgres takes row locks
+in the order the query returns them, so two handovers that share a pair of companies —
+A selling to B while B sells to A — queue in one order instead of each holding what
+the other wants (P4-7).
 
 ### 6.2 The handover is recorded, not only announced
 
@@ -359,3 +481,7 @@ updates.
 - **Underwriting decisions.** The CRM hands a deal over; whether to fund it is not
   its business.
 - **Documents.** `storage-and-documents.md`, same owner.
+- **What the two companies have traded, and whether they were paid.**
+  `trade-history.md` (Developer 3). A deal is what they are doing now; a trade
+  relationship is what they have done, invoice by invoice. The deal page shows the
+  pair's history, and the handover does not depend on it.

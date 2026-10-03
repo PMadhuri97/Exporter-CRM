@@ -192,7 +192,7 @@ class PartnerIntakeService:
                     iec=identity.iec,
                     cin=identity.cin,
                     industry=intake.industry,
-                    website=intake.website,
+                    registration_number=intake.registration_number,
                     actor_id=actor_id,
                     history_source=f"partner_intake.{intake.source.value.lower()}",
                 )

@@ -17,7 +17,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Collection, Sequence
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
@@ -30,12 +30,57 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(ExporterLifecycleHistory, session)
 
+    @staticmethod
+    def _about_company(customer_id: uuid.UUID, *, include_deals_as_buyer: bool):
+        """Which rows count as "this company's history" (task 2.7).
+
+        Every row carries the ``customer_id`` of the company it is **about**, and for
+        a deal row that is the **seller** — the deal hangs off the selling company.
+        So a company that is the buyer on a deal sees nothing of that deal on its own
+        timeline, which was right while a buyer was a ``deal_buyer`` row and is wrong
+        now that a buyer is a company record: being bought from is part of a
+        company's story (plan P4-4).
+
+        With ``include_deals_as_buyer`` the predicate also admits the ``deal``-dimension
+        rows of deals this company buys on. Matched through ``deal.buyer_company_id``
+        with a subquery rather than by writing a second history row per event: one
+        event, one row, is what makes the log reconstructible, and two rows would have
+        to be kept in step forever on an append-only table where a mistake cannot be
+        edited out.
+
+        **Only the ``deal`` dimension**, and that restriction is the whole subtlety
+        here. Other dimensions carry a ``deal_id`` too — a ``conversation`` row when
+        seam S1 moves a seller to ``READY_NOW`` on opening a deal, a ``verification``
+        row for a check run in a deal's context — but those are about the *seller's*
+        own state and merely mention the deal. Admitting every row that carries the id
+        would put the seller's conversation gauge on the buyer's timeline, where it
+        would read as the buyer's own. The buyer's own rows, including its own checks,
+        already arrive through ``customer_id``.
+
+        Used by both the page and its count, so the two cannot disagree about what
+        the company's history is.
+        """
+        from app.modules.onboarding.domain import history_dimensions
+        from app.modules.onboarding.domain.entities.deal import Deal
+
+        own = ExporterLifecycleHistory.customer_id == customer_id
+        if not include_deals_as_buyer:
+            return own
+        bought_on = and_(
+            ExporterLifecycleHistory.dimension == history_dimensions.DEAL,
+            ExporterLifecycleHistory.deal_id.in_(
+                select(Deal.id).where(Deal.buyer_company_id == customer_id)
+            ),
+        )
+        return or_(own, bought_on)
+
     async def list_by_customer(
         self,
         customer_id: uuid.UUID,
         *,
         dimension: str | None = None,
         exclude_dimensions: Collection[str] = (),
+        include_deals_as_buyer: bool = False,
         limit: int | None = None,
         offset: int = 0,
     ) -> Sequence[ExporterLifecycleHistory]:
@@ -60,9 +105,16 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
 
         ``exclude_dimensions`` leaves whole dimensions out — the history route
         uses it to keep from DEVELOPER what decision D8 keeps from it elsewhere.
+
+        ``include_deals_as_buyer`` adds the rows of deals this company buys on; see
+        ``_about_company``. It composes with ``exclude_dimensions``, so D8 still
+        applies to rows that arrive this way: a dimension DEVELOPER may not see on
+        its own company is not readable through a deal either.
         """
         stmt = select(ExporterLifecycleHistory).where(
-            ExporterLifecycleHistory.customer_id == customer_id
+            self._about_company(
+                customer_id, include_deals_as_buyer=include_deals_as_buyer
+            )
         )
         if dimension is not None:
             stmt = stmt.where(ExporterLifecycleHistory.dimension == dimension)
@@ -83,11 +135,17 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         *,
         dimension: str | None = None,
         exclude_dimensions: Collection[str] = (),
+        include_deals_as_buyer: bool = False,
     ) -> int:
         """How many rows the matching `list_by_customer` call would return in
-        total, so a paged response can say how much more there is."""
+        total, so a paged response can say how much more there is.
+
+        ``include_deals_as_buyer`` must match the ``list_by_customer`` call it is
+        counting for, or the page and the total describe different things."""
         stmt = select(func.count()).select_from(ExporterLifecycleHistory).where(
-            ExporterLifecycleHistory.customer_id == customer_id
+            self._about_company(
+                customer_id, include_deals_as_buyer=include_deals_as_buyer
+            )
         )
         if dimension is not None:
             stmt = stmt.where(ExporterLifecycleHistory.dimension == dimension)

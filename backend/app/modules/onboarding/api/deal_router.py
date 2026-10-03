@@ -28,8 +28,10 @@ from app.modules.onboarding.api.schemas.deal import (
     DealRequiredDocumentResponse,
     DealRequiredDocumentsResponse,
     DealResponse,
+    DealSide,
     OpenDealRequest,
     SetDealBuyerRequest,
+    SetDealInvoicingBranchRequest,
     SetDealRequiredDocumentRequest,
     TransitionDealStageRequest,
 )
@@ -99,13 +101,24 @@ async def open_deal(
 @router.get(
     "/exporters/{company_id}/deals",
     response_model=DealListResponse,
-    summary="List a company's deals",
+    summary="List a company's deals, as seller or as buyer",
     description=(
         "Newest first. `stage` may be repeated to filter to several stages; "
         "omitted, every stage is returned, including withdrawn and handed-over "
         "deals — a company's deal history is part of its record.\n\n"
+        "`as` chooses which side: `seller` (the default) lists the deals this "
+        "company sells on, `buyer` the deals it buys on (task 2.7). The two are "
+        "separate lists on purpose — the same company can be the seller on one deal "
+        "and the buyer on another, and one list mixing them would show rows whose "
+        "meaning changed line by line. On the buyer side, `buyer_name` carries **the "
+        "seller's** name, because the company whose page this is would otherwise be "
+        "repeated in every row.\n\n"
+        "The buyer side matches `buyer_company_id` only. A deal whose buyer is still "
+        "a legacy `deal_buyer` row does not appear, because nothing yet says that "
+        "buyer is this company; the buyer migration (P4-6) is what makes it appear."
+        "\n\n"
         "`can_open_deal` says whether this caller may open another deal on the "
-        "company now."
+        "company now — always about selling, whichever side is listed."
     ),
     responses={
         401: {"description": "Unauthorized"},
@@ -116,6 +129,7 @@ async def list_company_deals(
     company_id: uuid.UUID,
     current_user: Annotated[User, Depends(_READER)],
     stage: Annotated[list[DealStage] | None, Query()] = None,
+    as_: Annotated[DealSide, Query(alias="as")] = DealSide.SELLER,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -124,6 +138,7 @@ async def list_company_deals(
     views, total = await service.list_for_company(
         company_id,
         stages=tuple(stage) if stage else None,
+        as_buyer=as_ is DealSide.BUYER,
         limit=limit,
         offset=offset,
     )
@@ -216,26 +231,45 @@ async def transition_deal_stage(
 @router.put(
     "/deals/{deal_id}/buyer",
     response_model=DealResponse,
-    summary="Record or replace the deal's buyer",
+    summary="Record the deal's buyer, as a company or as details",
     description=(
-        "One buyer per deal, so this replaces that one row rather than adding "
-        "another (deal contract §3). `PUT` rather than `POST` for the same "
-        "reason.\n\n"
+        "Two forms, exactly one per request.\n\n"
+        "**`{buyer_company_id}`** names the company the buyer **is** (plan P4-4). "
+        "Use this one. The buyer is then a full company record: it can be screened "
+        "on its own timeline, the handover guard reads its sanctions and AML "
+        "(decision BQ-4), and the same company can be the seller on another deal. "
+        "It is **set once** — a deal pointed at the wrong buyer is withdrawn and a "
+        "new one opened, so that the correction leaves a trail. Setting the same "
+        "company again changes nothing and is not an error. The company must exist "
+        "and must not be the seller on this deal.\n\n"
+        "**`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer "
+        "per deal, so it replaces that row rather than adding another (deal "
+        "contract §3); `PUT` rather than `POST` for the same reason. Still accepted "
+        "because deals written before the buyer migration have one, and because a "
+        "`deal_buyer`'s own sanctions and AML are the only thing BQ-4's rule can "
+        "read for such a deal. These writes retire in P4-10.\n\n"
         "A buyer's problems stay on the buyer: a failed buyer check is recorded "
-        "against this row and never against the company (architecture §3.5).\n\n"
-        "The registration number, tax ID, contact email and contact phone are "
-        "masked for OPERATIONS and DEVELOPER. Leave any of them out to keep its "
-        "stored value — so a role that only sees the masked form can edit the "
-        "rest — or send null to clear it. A masked value is refused."
+        "against the buyer and never against the selling company "
+        "(architecture §3.5).\n\n"
+        "In the legacy form the registration number, tax ID, contact email and "
+        "contact phone are masked for OPERATIONS and DEVELOPER. Leave any of them "
+        "out to keep its stored value — so a role that only sees the masked form "
+        "can edit the rest — or send null to clear it. A masked value is refused."
     ),
     responses={
         401: {"description": "Unauthorized"},
         403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
-        404: {"description": "Deal not found"},
-        409: {"description": "The deal is handed over or withdrawn"},
+        404: {"description": "Deal not found, or no such buyer company"},
+        409: {
+            "description": (
+                "The deal is handed over or withdrawn, or it already names a "
+                "different buyer company"
+            )
+        },
         422: {
             "description": (
-                "Missing name, a country that is not ISO-3166-1 alpha-2, or a "
+                "Both forms at once, neither form complete, a country that is not "
+                "ISO-3166-1 alpha-2, a buyer company that is the seller, or a "
                 "masked value sent back"
             )
         },
@@ -247,15 +281,69 @@ async def set_deal_buyer(
     current_user: Annotated[User, Depends(_STAFF)],
     db: AsyncSession = Depends(get_db),
 ) -> DealResponse:
-    view = await DealService(db).set_buyer(
+    service = DealService(db)
+    if body.is_company_form:
+        # `SetDealBuyerRequest` has already refused a body carrying both forms, so
+        # this branch cannot also write a `deal_buyer` row.
+        view = await service.set_buyer_company(
+            deal_id,
+            buyer_company_id=body.buyer_company_id,
+            actor_id=str(current_user.id),
+        )
+    else:
+        view = await service.set_buyer(
+            deal_id,
+            name=body.name,
+            country=body.country,
+            registration_number=body.registration_number,
+            tax_id=body.tax_id,
+            contact_email=body.contact_email,
+            contact_phone=body.contact_phone,
+            keep=body.fields_to_keep(),
+            actor_id=str(current_user.id),
+        )
+    return DealResponse.from_view(view, current_user)
+
+
+@router.put(
+    "/deals/{deal_id}/invoicing-branch",
+    response_model=DealResponse,
+    summary="Record which of the seller's GST branches this deal is invoiced from",
+    description=(
+        "The registration's id, never its GSTIN — which is what makes it impossible "
+        "to point a deal at another company's copy of a shared GSTIN (decision "
+        "IQ-9). It must be one of **this deal's seller's** registrations and must be "
+        "active; `fk_deal_seller_gst_registration_id` is composite and would refuse "
+        "another company's anyway.\n\n"
+        "May be set and changed freely before handover (decision IQ-20) and is frozen "
+        "with the deal afterwards. `null` clears it.\n\n"
+        "Two handover rules read it (plan P6-7): a deal invoiced through a **flagged** "
+        "branch is blocked, and a deal whose seller has an active registration but "
+        "names none is asked to name one. A seller with no registration at all is not "
+        "asked."
+    ),
+    responses={
+        200: {"model": DealResponse},
+        401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        404: {"description": "Deal or GST registration not found"},
+        409: {"description": "The deal is handed over or withdrawn"},
+        422: {
+            "description": (
+                "The registration belongs to another company, or is deactivated"
+            )
+        },
+    },
+)
+async def set_deal_invoicing_branch(
+    deal_id: uuid.UUID,
+    body: SetDealInvoicingBranchRequest,
+    current_user: Annotated[User, Depends(_STAFF)],
+    db: AsyncSession = Depends(get_db),
+) -> DealResponse:
+    view = await DealService(db).set_invoicing_branch(
         deal_id,
-        name=body.name,
-        country=body.country,
-        registration_number=body.registration_number,
-        tax_id=body.tax_id,
-        contact_email=body.contact_email,
-        contact_phone=body.contact_phone,
-        keep=body.fields_to_keep(),
+        gst_registration_id=body.gst_registration_id,
         actor_id=str(current_user.id),
     )
     return DealResponse.from_view(view, current_user)

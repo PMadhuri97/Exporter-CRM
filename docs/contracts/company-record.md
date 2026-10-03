@@ -245,6 +245,57 @@ when there is nothing to warn about; the GSTIN in a warning is masked like
 every other identifier. Only the database's per-company uniqueness
 (`uq_exporter_gstin_customer_gstin`) exists — never a global one.
 
+### 4.1 A GST registration is a branch (task 3.12, plan P6-1)
+
+`exporter_gstin` grew in place rather than being copied into a `gst_registration`
+table. A row is now a **branch**: a GSTIN plus the state it was issued in, the GST
+portal's status, the registered address, a compliance flag, and whether the company
+still uses it.
+
+Three facts that are easy to confuse, kept apart:
+
+| Column | Whose answer it is |
+|---|---|
+| `status` (`UNVERIFIED` / `ACTIVE` / `CANCELLED` / `SUSPENDED`) | the **GST portal's**. `UNVERIFIED` is the default and means "nobody has checked", deliberately not `ACTIVE`, which would be a claim |
+| `active` | **ours** — whether we still use this branch |
+| `flag_status` (`NONE` / `FLAGGED`) | **compliance's** (task 3.14) |
+
+`state_code` and `state_name` are **derived** from the GSTIN's first two characters
+(`domain/gst_states.py`) and never entered: a typed state could contradict the GSTIN
+beside it. A state code this release does not know keeps `state_name = NULL` —
+recorded as unknown rather than guessed, because the format check accepts any two
+digits.
+
+**A registration is never deleted.** `trg_exporter_gstin_no_delete` refuses it, and
+`gstin_rows` no longer cascades `delete-orphan`. Before task 3.12 a company edit that
+dropped a GSTIN deleted its row; once a deal records its invoicing branch that delete
+hits `fk_deal_seller_gst_registration_id`'s `RESTRICT`, and where it succeeded it
+destroyed the record of a branch the company really traded through. Dropping one is a
+**deactivation**, and re-adding the same GSTIN reactivates that row rather than
+inserting a second — so there is one row per `(company, GSTIN)` forever.
+
+`PATCH /exporters/{id}` **no longer accepts `gstins`** (422, task 3.13). Adding,
+deactivating and flagging a branch are three decisions with three routes under
+`/exporters/{id}/gst-registrations` and `/gst-registrations/{id}`, each leaving its
+own `gst_registration` history row with the GSTIN masked. `company.gstins` means the
+**active** ones.
+
+**Flagging is per branch and per company.** A company trading through five states may
+have a problem in one of them, so a flag blocks handovers only for deals invoiced
+through *that* branch (decision BQ-6, task 2.9). A reason is required to flag **and**
+to unflag — the first is what the block will say, the second is why we decided the
+problem was resolved — and `ck_exporter_gstin_flag_reason` holds the first at the
+database. Because a GSTIN may legitimately sit on two companies (IQ-9), flagging one
+company's row does **not** touch the other's; the flag response names the other
+holders so nobody believes they have stopped trade that is still running (task 3.15).
+
+Flag and unflag are **COMPLIANCE and ADMIN only**. Recording and deactivating a
+branch stay with STAFF: which branches a company trades through is a record a
+relationship manager keeps.
+
+A "verify on the GST portal" link is served only to a role that sees the full GSTIN
+(task 3.17), because the link contains it.
+
 **Bulk import matching** (L2-13, assumption A14) matches an incoming row to an
 existing company on PAN, then GSTIN via its embedded PAN, then IEC, then CIN,
 and reports every row as accepted, rejected, or possible duplicate. It never
@@ -423,7 +474,8 @@ Stated separately so nobody reads this contract as a description of the code.
 | `journey` (`LEAD`/`PROSPECT`/`CUSTOMER`) and `qualification` columns | **implemented** (0017); the old `lifecycle_status` beside it was dropped in 0020. Qualification moves it `LEAD` -> `PROSPECT` |
 | `conversation`, `background_check` fields | **implemented** — Dev 3A's 0016 and Dev 4A's 0015 (see §2.4) |
 | The ORM declares every index and constraint 0014/0017 created (PAN unique, the outcome chain) | **implemented** — checked by `test_orm_matches_the_onboarding_schema.py` |
-| `website` | an absolute `http(s)` link or nothing, on every write path (manual, CSV, RXIL); anything else is refused (422) |
+| `website` | **retired** (R11, decision IQ-16, task 3.7). No write path accepts one — the request schemas refuse the field (422) and the CSV importer reads the old `website` column and ignores it — and no response carries one. The column and every stored value are kept: nothing is destroyed, nothing is shown |
+| `registration_number` | whatever the company's own registrar issued, for a company not identified by a PAN. **Required for a company outside India** that holds no PAN (decision IQ-7); stored as the registrar writes it and compared with punctuation and case removed, so one number cannot be entered twice per country (`uq_exporter_profile_country_registration_number`). A duplicate is refused with 409 `DUPLICATE_REGISTRATION_NUMBER` naming the holder, like a PAN — unlike a GSTIN, which stays warn-only (IQ-9). Masked like CIN |
 | `profile` history on edits; clearing a field | **implemented** (L2-07) |
 | Real links from contacts, activities, screening items, GSTINs and history | **implemented** (0014, `ON DELETE RESTRICT`); `verification_result.entity_reference` deliberately has none |
 | `name` required by the database | **not built** — waits for the unnamed create path to go |

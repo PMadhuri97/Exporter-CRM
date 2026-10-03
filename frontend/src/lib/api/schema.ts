@@ -610,7 +610,7 @@ export interface paths {
         };
         /**
          * Search exporter profiles
-         * @description Filters by gstin, pan, iec, source, journey, qualification, marker (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
+         * @description Filters by gstin, pan, iec, source, journey, qualification, marker, pipeline_status (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. Companies that are NOT_IN_PIPELINE — a company that exists only because it was somebody's buyer — follow the same rule: excluded by default, found by any search term, and listed on their own with pipeline_status=NOT_IN_PIPELINE. The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -663,6 +663,26 @@ export interface paths {
          * @description A commercial pause or ending, recorded beside the journey and never instead of it: the journey does not move. PAUSED and ENDED need a reason; clearing to NONE does not. ENDED -> PAUSED is not a move (clear first), and a move to the current value is refused. Every change is recorded in the company's history with the signed-in user.
          */
         post: operations["set_exporter_marker_api_v1_onboarding_exporters__customer_id__marker_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bring a buyer-only company into the sales pipeline
+         * @description A company that exists only because it was somebody's buyer is NOT_IN_PIPELINE: nobody is selling to it, so it is kept out of the working list and out of pipeline counts, and qualification and the conversation gauge refuse it. This is the one way in. It sets pipeline_status to IN_PIPELINE and starts the company's journey history at LEAD — from then on it is an ordinary lead. A reason is optional and recorded on the history row. Deciding to sell to a company is a commercial decision, so this is OPERATIONS, COMPLIANCE or ADMIN; a company already in the pipeline is a 409, because there is nothing to do.
+         */
+        post: operations["bring_exporter_into_pipeline_api_v1_onboarding_exporters__customer_id__pipeline_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1028,6 +1048,266 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/companies/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Find the company a name and identifiers belong to
+         * @description Answers MATCHED, POSSIBLE_DUPLICATE, CONFLICT or NEW. A full PAN, GSTIN or (country, registration_number) names the company that holds it — including for a role that sees identifiers masked (decision BQ-2) — and every such lookup is audited. Partial or prefix identifier search is not offered. Without an identifier, companies in the same country whose name differs only in punctuation, spacing, case or legal form come back as POSSIBLE_DUPLICATE candidates for a person to choose between; a GSTIN held by two companies does the same (decision IQ-9). The response names candidates by id, name and country, and never carries an identifier. Nothing is created or changed.
+         */
+        post: operations["match_company_api_v1_onboarding_companies_match_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/gst-registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A company's GST registrations (its branches)
+         * @description Newest last, **including deactivated ones**: a deactivated branch is how a deal handed over through it is explained, and `active` tells them apart.
+         *
+         *     `state_code` and `state_name` are derived from each GSTIN, never entered. The GSTIN is masked for OPERATIONS and DEVELOPER, and `verify_url` — the GST portal's page for that GSTIN — is served only to a role that sees the full value, because the link contains it.
+         *
+         *     `flagged_count` is how many active branches compliance has flagged, which is what the company page's warning chip shows.
+         */
+        get: operations["list_gst_registrations_api_v1_onboarding_exporters__customer_id__gst_registrations_get"];
+        put?: never;
+        /**
+         * Record a GST registration for a company
+         * @description The GSTIN must carry the company's PAN in characters 3–12, the same rule every other write path applies. The state is derived from the GSTIN and is not accepted here.
+         *
+         *     A GSTIN this company **deactivated** earlier reactivates that row rather than adding a second one, so there is one row per company and GSTIN forever — which keeps a handed-over deal's invoicing branch pointing at the branch it really used. Re-adding an **active** one is a 409.
+         *
+         *     A GSTIN another company also holds is **allowed** and reported in `also_held_by` (decision IQ-9: duplicates stay warn-only), never refused.
+         */
+        post: operations["add_gst_registration_api_v1_onboarding_exporters__customer_id__gst_registrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/gst-registrations/{registration_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop using a branch, keeping its record
+         * @description There is no delete: `trg_exporter_gstin_no_delete` refuses one, because a GST registration is a branch the company really traded through and a handed-over deal names the one it invoiced from. Deactivating removes it from the company's current GSTINs and from the branches a new deal may be invoiced through, and leaves the row readable.
+         *
+         *     Deactivating an already-deactivated branch is a no-op, so a retry is not an error.
+         */
+        post: operations["deactivate_gst_registration_api_v1_onboarding_gst_registrations__registration_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/gst-registrations/{registration_id}/flag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Flag a branch (COMPLIANCE, ADMIN)
+         * @description A reason is required: it is what a blocked handover will say, so without it whoever hits the block has nothing to act on.
+         *
+         *     Flagging a branch blocks a handover for deals invoiced **through that branch** and leaves the company's other branches alone (decision BQ-6) — a company trading through five states may have a problem in one of them.
+         *
+         *     The flag belongs to **this** company's row. When another company holds the same GSTIN (allowed, decision IQ-9), `also_held_by` names it: that copy is **not** flagged, and whoever flags this one needs to know trade may still be running on the other.
+         */
+        post: operations["flag_gst_registration_api_v1_onboarding_gst_registrations__registration_id__flag_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/gst-registrations/{registration_id}/unflag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lift a branch's flag (COMPLIANCE, ADMIN)
+         * @description A reason is required here too: "why we decided the problem is resolved" is the half of the story a later reader needs most, and the flag's own reason is about to stop being readable on the row. Both reasons survive in the company's history.
+         */
+        post: operations["unflag_gst_registration_api_v1_onboarding_gst_registrations__registration_id__unflag_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/trade-relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A company's trade relationships, as seller or as buyer
+         * @description `as` chooses the side: `seller` (the default) is who this company sells to, `buyer` who it buys from. Two lists, never one — a company can be on either side with different counterparties, and one list mixing them would read differently row by row.
+         *
+         *     A relationship is created automatically when a deal records its buyer company, so every such deal has one. `invoice_count` says whether anything has been recorded against it yet.
+         *
+         *     No identifiers are served to any role: a counterparty is an id, a name, a country and whether it is in the pipeline. Open the company for the rest.
+         */
+        get: operations["list_trade_relationships_api_v1_onboarding_exporters__customer_id__trade_relationships_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/trade-relationships/{relationship_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One trade relationship, with its invoices
+         * @description Invoices newest first, each carrying the outcome we currently believe. `current_outcome` is `null` when nobody has recorded one — which is not the same as `UNKNOWN`, where somebody looked and could not say.
+         *
+         *     An invoice's whole outcome chain is `GET /trade-invoices/{id}`.
+         */
+        get: operations["get_trade_relationship_api_v1_onboarding_trade_relationships__relationship_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/trade-invoices/{invoice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One invoice and its whole outcome chain
+         * @description Outcomes oldest first — every belief and when it was replaced, not just the current one. `is_current` marks the live row, which is the outcome nothing supersedes rather than the newest by timestamp: two rows written in one transaction share a timestamp.
+         *
+         *     Nothing here is editable. A correction is a new outcome naming the one it replaces, and an invoice's identity is frozen by trigger.
+         */
+        get: operations["get_trade_invoice_api_v1_onboarding_trade_invoices__invoice_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/trade-relationships/{relationship_id}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record an invoice against a trade relationship
+         * @description A fact about the past: its identity — the relationship, number, date, amount and currency — is frozen once written, so there is no edit route. A mistake is corrected by recording the right invoice; the wrong one stays visible.
+         *
+         *     The currency is stored as issued and **never converted** (decision IQ-4). Amounts come back as strings, because money is not a float and JSON numbers would invite adding two currencies together.
+         *
+         *     `deal_id` is omitted for past trade — what the two companies did before they came to us. One invoice number per relationship; the same number on another relationship is a different invoice.
+         */
+        post: operations["record_trade_invoice_api_v1_onboarding_trade_relationships__relationship_id__invoices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/trade-invoices/{invoice_id}/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Append what we now know about an invoice
+         * @description Nothing is edited. A correction is a **new** outcome naming the one it replaces, so the record says what we believed and when we stopped believing it.
+         *
+         *     `supersedes_outcome_id` must be the invoice's current outcome — omit it for the first. Anything else is a 409 rather than an overwrite, because two people each correcting the same outcome without seeing the other's is what the chain exists to prevent. A correction also needs an `evidence_note`.
+         *
+         *     `PARTIAL` requires `amount_paid`, in the invoice's own currency. `proof_status` is kept apart from `payment_status` on purpose: "they paid" and "we can prove they paid" are different claims, and a history that could not tell them apart would be worthless as evidence.
+         */
+        post: operations["record_trade_outcome_api_v1_onboarding_trade_invoices__invoice_id__outcomes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}/payment-outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record how a handed-over deal was paid
+         * @description The last question the CRM answers about a deal: it went to the lending team, and then what happened. Recorded at the deal, because the person who knows has the deal in front of them rather than a relationship id and an invoice id.
+         *
+         *     **Creates the invoice if this deal has none**, from the number, date, amount and currency in the body — all four together or none. If the deal already has an invoice they must be omitted: an invoice's identity is frozen, and ignoring new details would tell you they had been recorded.
+         *
+         *     The deal must be `HANDED_OVER`: before that there is nothing to have been paid. It must also name a **buyer company** — a trade relationship is a pair of company records, and a deal whose buyer is still a legacy `deal_buyer` row has nothing to pair with until the buyer migration links it.
+         *
+         *     Further outcomes supersede, exactly as on `POST /trade-invoices/{id}/outcomes`: a correction is a new row naming the one it replaces.
+         */
+        post: operations["record_deal_payment_outcome_api_v1_onboarding_deals__deal_id__payment_outcome_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/exporters/{customer_id}/history": {
         parameters: {
             query?: never;
@@ -1116,10 +1396,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List a company's deals
+         * List a company's deals, as seller or as buyer
          * @description Newest first. `stage` may be repeated to filter to several stages; omitted, every stage is returned, including withdrawn and handed-over deals — a company's deal history is part of its record.
          *
-         *     `can_open_deal` says whether this caller may open another deal on the company now.
+         *     `as` chooses which side: `seller` (the default) lists the deals this company sells on, `buyer` the deals it buys on (task 2.7). The two are separate lists on purpose — the same company can be the seller on one deal and the buyer on another, and one list mixing them would show rows whose meaning changed line by line. On the buyer side, `buyer_name` carries **the seller's** name, because the company whose page this is would otherwise be repeated in every row.
+         *
+         *     The buyer side matches `buyer_company_id` only. A deal whose buyer is still a legacy `deal_buyer` row does not appear, because nothing yet says that buyer is this company; the buyer migration (P4-6) is what makes it appear.
+         *
+         *     `can_open_deal` says whether this caller may open another deal on the company now — always about selling, whichever side is listed.
          */
         get: operations["list_company_deals_api_v1_onboarding_exporters__company_id__deals_get"];
         put?: never;
@@ -1191,14 +1475,42 @@ export interface paths {
         };
         get?: never;
         /**
-         * Record or replace the deal's buyer
-         * @description One buyer per deal, so this replaces that one row rather than adding another (deal contract §3). `PUT` rather than `POST` for the same reason.
+         * Record the deal's buyer, as a company or as details
+         * @description Two forms, exactly one per request.
          *
-         *     A buyer's problems stay on the buyer: a failed buyer check is recorded against this row and never against the company (architecture §3.5).
+         *     **`{buyer_company_id}`** names the company the buyer **is** (plan P4-4). Use this one. The buyer is then a full company record: it can be screened on its own timeline, the handover guard reads its sanctions and AML (decision BQ-4), and the same company can be the seller on another deal. It is **set once** — a deal pointed at the wrong buyer is withdrawn and a new one opened, so that the correction leaves a trail. Setting the same company again changes nothing and is not an error. The company must exist and must not be the seller on this deal.
          *
-         *     The registration number, tax ID, contact email and contact phone are masked for OPERATIONS and DEVELOPER. Leave any of them out to keep its stored value — so a role that only sees the masked form can edit the rest — or send null to clear it. A masked value is refused.
+         *     **`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer per deal, so it replaces that row rather than adding another (deal contract §3); `PUT` rather than `POST` for the same reason. Still accepted because deals written before the buyer migration have one, and because a `deal_buyer`'s own sanctions and AML are the only thing BQ-4's rule can read for such a deal. These writes retire in P4-10.
+         *
+         *     A buyer's problems stay on the buyer: a failed buyer check is recorded against the buyer and never against the selling company (architecture §3.5).
+         *
+         *     In the legacy form the registration number, tax ID, contact email and contact phone are masked for OPERATIONS and DEVELOPER. Leave any of them out to keep its stored value — so a role that only sees the masked form can edit the rest — or send null to clear it. A masked value is refused.
          */
         put: operations["set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}/invoicing-branch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record which of the seller's GST branches this deal is invoiced from
+         * @description The registration's id, never its GSTIN — which is what makes it impossible to point a deal at another company's copy of a shared GSTIN (decision IQ-9). It must be one of **this deal's seller's** registrations and must be active; `fk_deal_seller_gst_registration_id` is composite and would refuse another company's anyway.
+         *
+         *     May be set and changed freely before handover (decision IQ-20) and is frozen with the deal afterwards. `null` clears it.
+         *
+         *     Two handover rules read it (plan P6-7): a deal invoiced through a **flagged** branch is blocked, and a deal whose seller has an active registration but names none is asked to name one. A seller with no registration at all is not asked.
+         */
+        put: operations["set_deal_invoicing_branch_api_v1_onboarding_deals__deal_id__invoicing_branch_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1863,6 +2175,26 @@ export interface components {
             is_primary: boolean;
         };
         /**
+         * AddGstRegistrationRequest
+         * @description Record a GST registration for a company (task 3.13).
+         *
+         *     **No state.** ``state_code`` and ``state_name`` come from the GSTIN's first two
+         *     characters (``domain/gst_states.py``); accepting them here would let someone
+         *     record "Maharashtra" against a GSTIN issued in Karnataka, and the record would
+         *     contradict itself with no way to tell which half was wrong.
+         *
+         *     ``status`` defaults to ``UNVERIFIED``, which means "nobody has checked this
+         *     against the portal" — deliberately not ``ACTIVE``, which would be a claim.
+         */
+        AddGstRegistrationRequest: {
+            /** Gstin */
+            gstin: string;
+            /** Address */
+            address?: string | null;
+            /** @default UNVERIFIED */
+            status: components["schemas"]["GstRegistrationStatus"];
+        };
+        /**
          * AdminCreateUserRequest
          * @description An administrator creating an account for a colleague.
          *
@@ -2461,6 +2793,20 @@ export interface components {
             source: components["schemas"]["DocumentSource"];
         };
         /**
+         * BringIntoPipelineRequest
+         * @description Bring a buyer-only company into the sales pipeline (task 3.11).
+         *
+         *     Only a reason, and it is optional: the decision is the request itself, and
+         *     there is nothing to choose — a company is either in the pipeline or not, and
+         *     this route only moves it in. A reason is worth asking for anyway, because
+         *     "why did we start selling to our buyer" is the question the history row will
+         *     be read to answer.
+         */
+        BringIntoPipelineRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * BuyerCompanyResponse
          * @description The deal's buyer as a company record (plan P4-4), summarised.
          *
@@ -2785,6 +3131,106 @@ export interface components {
             aml: "PASSED" | "FAILED" | "MISSING" | "PENDING";
         };
         /**
+         * CompanyIdentityType
+         * @description Which kind of registration identifies this company — **owner: Developer 3**
+         *     (allocation F3, plan P4-1).
+         *
+         *     An Indian company is identified by its PAN; a foreign one by whatever its own
+         *     jurisdiction issues, which ``registration_number`` carries. The distinction has to
+         *     be a column rather than "has a PAN?", because a buyer company created by the
+         *     migration may have neither yet (IQ-7 excuses migrated buyers from the requirement)
+         *     and "we do not know which" must not read as "foreign".
+         *
+         *     Nullable on ``exporter_profile``: every company created before F3 predates the
+         *     question. Migration 0032 sets ``IN_PAN`` wherever a PAN is already stored, which is
+         *     the only case it can infer safely.
+         * @enum {string}
+         */
+        CompanyIdentityType: "IN_PAN" | "FOREIGN_REG";
+        /**
+         * CompanyMatchCandidate
+         * @description One company the matcher found.
+         *
+         *     No identifiers, for any role (``company_directory_router.py``). ``name`` and
+         *     ``country`` are nullable because the older unnamed create path left them empty
+         *     on some companies; a candidate with no name is still worth returning, since its
+         *     id is what the caller needs.
+         */
+        CompanyMatchCandidate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
+        };
+        /**
+         * CompanyMatchRequest
+         * @description What is known about a company at the moment somebody needs to find it.
+         *
+         *     ``name`` and ``country`` are always required, even when an identifier is given.
+         *     Two reasons: the country is part of the registration-number identity, and the
+         *     name is what the answer is *checked* against by the person reading it — a
+         *     MATCHED result naming a company whose name looks nothing like what they typed
+         *     is the signal that something is wrong, and without the name there is nothing
+         *     for the matcher to fall back to when no identifier matches.
+         *
+         *     Each identifier is optional and must be **complete**. There is no partial or
+         *     prefix form of any of them: an exact match is a lookup, a prefix match is a way
+         *     to read identifiers out of the CRM one character at a time.
+         */
+        CompanyMatchRequest: {
+            /** Name */
+            name: string;
+            /** Country */
+            country: string;
+            /** Pan */
+            pan?: string | null;
+            /** Gstin */
+            gstin?: string | null;
+            /** Registration Number */
+            registration_number?: string | null;
+        };
+        /**
+         * CompanyMatchResponse
+         * @description The matcher's answer.
+         */
+        CompanyMatchResponse: {
+            kind: components["schemas"]["MatchKind"];
+            /** Company Id */
+            company_id?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Needs A Person
+             * @default false
+             */
+            needs_a_person: boolean;
+            /** Candidates */
+            candidates?: components["schemas"]["CompanyMatchCandidate"][];
+        };
+        /**
+         * CompanyPipelineStatus
+         * @description Whether this company is in the sales pipeline at all — **owner: Developer 3**
+         *     (allocation F3, plan P4-1, P4-2).
+         *
+         *     A company that exists only because it was somebody's buyer is not a lead, and must
+         *     not appear in pipeline counts or be chased by sales (plan §8: buyers become leads
+         *     only when someone onboards them). It is still a full company record: it can be
+         *     screened, cleared and have checks recorded against it (Developer 1's P4-11).
+         *
+         *     ``NOT_IN_PIPELINE`` implies the journey has not started — `LEAD`, with
+         *     qualification `NOT_YET_REVIEWED` and conversation `NOT_CONTACTED` — and migration
+         *     0032 enforces that with a check constraint. `POST /exporters/{id}/pipeline`
+         *     (task 3.11) is the one way out, and it starts the journey properly.
+         * @enum {string}
+         */
+        CompanyPipelineStatus: "IN_PIPELINE" | "NOT_IN_PIPELINE";
+        /**
          * CompleteFollowUpRequest
          * @description Record that a follow-up was dealt with.
          *
@@ -2941,6 +3387,12 @@ export interface components {
          *     refused. A company starts with no marker.
          *
          *     `customer_id` is optional: when omitted, the API mints a fresh one.
+         *
+         *     `website` is **not** a field here any more (R11, decision IQ-16): with
+         *     `extra="forbid"`, sending one is a 422. The column and every value already
+         *     stored stay as they are — nothing is destroyed, and nothing is shown.
+         *     Only the CSV importer still tolerates the old header, because those files
+         *     come from somebody's machine rather than from this application's own form.
          */
         CreateExporterProfileRequest: {
             /** Customer Id */
@@ -2954,6 +3406,8 @@ export interface components {
             iec?: string | null;
             /** Cin */
             cin?: string | null;
+            /** Registration Number */
+            registration_number?: string | null;
             /** Relationship Manager */
             relationship_manager?: string | null;
             /** Industry */
@@ -2964,8 +3418,6 @@ export interface components {
             products?: string[] | null;
             /** Year Established */
             year_established?: number | null;
-            /** Website */
-            website?: string | null;
             /** Name */
             name?: string | null;
             /** Country */
@@ -3062,6 +3514,15 @@ export interface components {
             counts: boolean;
         };
         /**
+         * DeactivateGstRegistrationRequest
+         * @description Stop using a branch. Not a delete — the row is kept, because a deal handed
+         *     over through it names it.
+         */
+        DeactivateGstRegistrationRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * DealBuyerResponse
          * @description The deal's buyer. The identifiers and contact details are masked for
          *     OPERATIONS and DEVELOPER; COMPLIANCE and ADMIN see them in full.
@@ -3138,6 +3599,19 @@ export interface components {
              * @default false
              */
             can_open_deal: boolean;
+        };
+        /**
+         * DealPaymentOutcomeResponse
+         * @description The invoice this deal was paid against, and what we now know about it.
+         */
+        DealPaymentOutcomeResponse: {
+            invoice: components["schemas"]["TradeInvoiceResponse"];
+            outcome: components["schemas"]["TradeOutcomeResponse"];
+            /**
+             * Invoice Created
+             * @default false
+             */
+            invoice_created: boolean;
         };
         /**
          * DealRequiredDocumentResponse
@@ -3226,6 +3700,16 @@ export interface components {
             /** Handover Blocked Reason */
             handover_blocked_reason: string | null;
         };
+        /**
+         * DealSide
+         * @description Which side of its deals a company is being listed on (task 2.7).
+         *
+         *     An enum rather than a boolean query parameter, because ``?as=buyer`` reads as
+         *     what it means and ``?as_buyer=true`` does not — and because a third side is
+         *     conceivable later (a guarantor, say) without changing the parameter's shape.
+         * @enum {string}
+         */
+        DealSide: "seller" | "buyer";
         /**
          * DealStage
          * @description Where a deal has got to — architecture §3.3 ("The deal"), and
@@ -3823,8 +4307,10 @@ export interface components {
             products: string[] | null;
             /** Year Established */
             year_established: number | null;
-            /** Website */
-            website: string | null;
+            /** Registration Number */
+            registration_number: string | null;
+            identity_type: components["schemas"]["CompanyIdentityType"] | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
             /**
              * Date Added
              * Format: date-time
@@ -3887,6 +4373,10 @@ export interface components {
             industry: string | null;
             /** Year Established */
             year_established: number | null;
+            /** Registration Number */
+            registration_number: string | null;
+            identity_type: components["schemas"]["CompanyIdentityType"] | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
             /**
              * Date Added
              * Format: date-time
@@ -3940,8 +4430,10 @@ export interface components {
             products: string[] | null;
             /** Year Established */
             year_established: number | null;
-            /** Website */
-            website: string | null;
+            /** Registration Number */
+            registration_number: string | null;
+            identity_type: components["schemas"]["CompanyIdentityType"] | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
             /**
              * Date Added
              * Format: date-time
@@ -3980,7 +4472,20 @@ export interface components {
          *     reasoning ``ComplianceCase.resolved_by`` is guarded for.
          * @enum {string}
          */
-        ExporterSource: "MANUAL" | "SALES" | "REFERRAL" | "RXIL" | "PARTNER" | "API" | "BROKER" | "EVENT" | "EXISTING_CUSTOMER";
+        ExporterSource: "MANUAL" | "SALES" | "REFERRAL" | "RXIL" | "PARTNER" | "API" | "BROKER" | "EVENT" | "EXISTING_CUSTOMER" | "DEAL_BUYER";
+        /**
+         * FlagGstRegistrationRequest
+         * @description Flag or unflag a branch (task 3.14). The reason is **required** both ways.
+         *
+         *     Flagging: the reason is what the blocked handover will say, so without it the
+         *     person who hits the block has nothing to act on. Unflagging: "why we decided the
+         *     problem is resolved" is the half a later reader needs most, and the flag's own
+         *     reason is about to stop being readable on the row.
+         */
+        FlagGstRegistrationRequest: {
+            /** Reason */
+            reason: string;
+        };
         /**
          * FollowUpCompletionResponse
          * @description A completion, as recorded. Every field comes from the completion row and none
@@ -4169,6 +4674,103 @@ export interface components {
                 [key: string]: components["schemas"]["DependencyHealth"];
             };
         };
+        /**
+         * GstRegistrationFlag
+         * @description Whether compliance has flagged this branch — **owner: Developer 3**
+         *     (allocation task 3.14, plan P6-5).
+         *
+         *     One branch, not the company: a company trading through five states may have a
+         *     problem in one of them, and flagging the company would stop the other four
+         *     (decision BQ-6). A flagged branch blocks a handover only for deals invoiced
+         *     *through that branch* (task 2.9).
+         *
+         *     `FLAGGED` always carries a reason — `ck_exporter_gstin_flag_reason` requires it —
+         *     because the reason is what the person reading the block needs, and a flag whose
+         *     reason nobody recorded cannot be acted on or lifted with confidence.
+         * @enum {string}
+         */
+        GstRegistrationFlag: "NONE" | "FLAGGED";
+        /**
+         * GstRegistrationListResponse
+         * @description A company's branches, newest last.
+         *
+         *     Deactivated ones are included: a branch that was deactivated is how a deal handed
+         *     over through it is explained, and hiding it would make that deal's invoicing
+         *     branch look as though it came from nowhere. `active` tells them apart.
+         */
+        GstRegistrationListResponse: {
+            /** Registrations */
+            registrations: components["schemas"]["GstRegistrationResponse"][];
+            /**
+             * Flagged Count
+             * @default 0
+             */
+            flagged_count: number;
+        };
+        /**
+         * GstRegistrationResponse
+         * @description One branch.
+         *
+         *     ``gstin`` is masked for a role that may not reveal identifiers, by the same rule
+         *     as the company's own. ``verify_url`` is served **only** to a role that sees the
+         *     full GSTIN (task 3.17): the link contains the GSTIN, so sending it to a masked
+         *     role would hand over the value the masking exists to withhold.
+         */
+        GstRegistrationResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            /** Gstin */
+            gstin: string;
+            /** State Code */
+            state_code: string | null;
+            /** State Name */
+            state_name: string | null;
+            status: components["schemas"]["GstRegistrationStatus"];
+            /** Address */
+            address: string | null;
+            flag_status: components["schemas"]["GstRegistrationFlag"];
+            /** Flag Reason */
+            flag_reason: string | null;
+            /** Active */
+            active: boolean;
+            /** Deactivated At */
+            deactivated_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Verify Url */
+            verify_url?: string | null;
+            /** Also Held By */
+            also_held_by?: string[];
+        };
+        /**
+         * GstRegistrationStatus
+         * @description What the GST portal says about a registration — **owner: Developer 3**
+         *     (allocation task 3.12, plan P6-1).
+         *
+         *     `UNVERIFIED` is the default and means exactly that: somebody recorded the GSTIN
+         *     and nobody has checked it against the portal. It is deliberately **not** called
+         *     `ACTIVE`, which would be a claim the CRM has no basis for — the whole point of
+         *     the column is to tell "we believe this is live" apart from "nobody has looked".
+         *
+         *     `CANCELLED` and `SUSPENDED` come from the portal. Neither deactivates the row by
+         *     itself (`active` is a separate, local decision, task 3.12): a cancelled
+         *     registration is still part of the company's record, and the two questions — "is
+         *     this registration live at the GST portal?" and "do we still use it?" — have
+         *     different answers and different owners.
+         * @enum {string}
+         */
+        GstRegistrationStatus: "UNVERIFIED" | "ACTIVE" | "CANCELLED" | "SUSPENDED";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -4361,6 +4963,12 @@ export interface components {
             /** Reason Required */
             reason_required: boolean;
         };
+        /**
+         * MatchKind
+         * @description How confident the directory is, in the four words the plan uses (P4-3).
+         * @enum {string}
+         */
+        MatchKind: "MATCHED" | "POSSIBLE_DUPLICATE" | "CONFLICT" | "NEW";
         /** ModuleSpecResponse */
         ModuleSpecResponse: {
             /** Key */
@@ -4791,6 +5399,40 @@ export interface components {
             from_value?: components["schemas"]["BackgroundCheckState"] | null;
         };
         /**
+         * RecordDealPaymentOutcomeRequest
+         * @description How a handed-over deal was actually paid (task 3.21).
+         *
+         *     The outcome fields of `RecordTradeOutcomeRequest`, plus the invoice's identity —
+         *     **required only when this deal has no invoice yet**, and refused when it already
+         *     has one, because an invoice's identity is frozen and ignoring new details would
+         *     tell the caller they had been recorded.
+         *
+         *     Recording it at the deal rather than at an invoice is the point: the person who
+         *     knows whether a deal was paid has the deal in front of them, not a relationship
+         *     id and an invoice id.
+         */
+        RecordDealPaymentOutcomeRequest: {
+            payment_status: components["schemas"]["TradePaymentStatus"];
+            /** Amount Paid */
+            amount_paid?: number | string | null;
+            /** @default CLAIMED */
+            proof_status: components["schemas"]["TradeProofStatus"];
+            /** Evidence Note */
+            evidence_note?: string | null;
+            /** Evidence Refs */
+            evidence_refs?: Record<string, never>[] | null;
+            /** Supersedes Outcome Id */
+            supersedes_outcome_id?: string | null;
+            /** Invoice Number */
+            invoice_number?: string | null;
+            /** Invoice Date */
+            invoice_date?: string | null;
+            /** Amount */
+            amount?: number | string | null;
+            /** Currency */
+            currency?: string | null;
+        };
+        /**
          * RecordOutcomeRequest
          * @description The signed-in reviewer's decision. `NOT_QUALIFIED` needs at least one
          *     reason code; `other` needs a note.
@@ -4824,6 +5466,55 @@ export interface components {
             note?: string | null;
             /** Supersedes Review Id */
             supersedes_review_id?: string | null;
+        };
+        /**
+         * RecordTradeInvoiceRequest
+         * @description Record an invoice against a relationship.
+         *
+         *     Its identity is frozen the moment it is written, so there is no edit route: a
+         *     mistake is corrected by recording the right invoice, and the wrong one stays
+         *     visible. That is the same trade-off every append-only record in this module
+         *     makes, and it is why the fields here are worth getting right first time.
+         */
+        RecordTradeInvoiceRequest: {
+            /** Invoice Number */
+            invoice_number: string;
+            /**
+             * Invoice Date
+             * Format: date
+             */
+            invoice_date: string;
+            /** Amount */
+            amount: number | string;
+            /** Currency */
+            currency: string;
+            /** Deal Id */
+            deal_id?: string | null;
+        };
+        /**
+         * RecordTradeOutcomeRequest
+         * @description Append what we now know about an invoice.
+         *
+         *     Nothing is edited: a correction is a **new** outcome naming the one it replaces,
+         *     so the record says what we believed and when we stopped believing it.
+         *
+         *     `supersedes_outcome_id` must be the invoice's **current** outcome — the one
+         *     `current_outcome` reports. Omit it for the first. Getting it wrong is a 409
+         *     rather than an overwrite, because two people each correcting the same outcome
+         *     without seeing the other's is exactly what the chain exists to prevent.
+         */
+        RecordTradeOutcomeRequest: {
+            payment_status: components["schemas"]["TradePaymentStatus"];
+            /** Amount Paid */
+            amount_paid?: number | string | null;
+            /** @default CLAIMED */
+            proof_status: components["schemas"]["TradeProofStatus"];
+            /** Evidence Note */
+            evidence_note?: string | null;
+            /** Evidence Refs */
+            evidence_refs?: Record<string, never>[] | null;
+            /** Supersedes Outcome Id */
+            supersedes_outcome_id?: string | null;
         };
         /** RefreshRequest */
         RefreshRequest: {
@@ -5164,19 +5855,38 @@ export interface components {
         };
         /**
          * SetDealBuyerRequest
-         * @description Record or replace the deal's buyer. One buyer per deal, so this is an
-         *     upsert of that one row, not an add.
+         * @description Record the deal's buyer, in **one of two forms** (plan P4-4, task 2.4).
          *
-         *     ``registration_number``, ``tax_id``, ``contact_email`` and ``contact_phone``
-         *     are masked for OPERATIONS and DEVELOPER. Leave one out to keep its stored
-         *     value; send ``null`` or an empty string to clear it; a masked value is
-         *     refused (422).
+         *     *The company form* — ``{"buyer_company_id": "..."}`` — names the company the
+         *     buyer **is**. This is the form to use. The buyer is then a full company record:
+         *     it can be screened on its own timeline, the handover guard asks about it
+         *     (BQ-4), and the same company can be a seller on another deal. It is **set
+         *     once**; see ``DealBuyerCompanyAlreadySetError``.
+         *
+         *     *The legacy form* — ``{"name": ..., "country": ..., ...}`` — records a
+         *     ``deal_buyer`` row: a set of details with no record of its own. It is still
+         *     accepted because deals written before the buyer migration (P4-6) have one, and
+         *     because a ``deal_buyer``'s sanctions and AML are the only place BQ-4's rule can
+         *     read for such a deal (``background-check.md`` §12.2). These writes retire in
+         *     P4-10, and the table is kept.
+         *
+         *     **Exactly one form per request.** Mixing them is refused rather than merged:
+         *     the two disagree about what a buyer *is*, and silently writing both would leave
+         *     a deal whose company says one thing and whose row says another, with no way to
+         *     tell which the person meant.
+         *
+         *     In the legacy form, ``registration_number``, ``tax_id``, ``contact_email`` and
+         *     ``contact_phone`` are masked for OPERATIONS and DEVELOPER. Leave one out to
+         *     keep its stored value; send ``null`` or an empty string to clear it; a masked
+         *     value is refused (422).
          */
         SetDealBuyerRequest: {
+            /** Buyer Company Id */
+            buyer_company_id?: string | null;
             /** Name */
-            name: string;
+            name?: string | null;
             /** Country */
-            country: string;
+            country?: string | null;
             /** Registration Number */
             registration_number?: string | null;
             /** Tax Id */
@@ -5185,6 +5895,21 @@ export interface components {
             contact_email?: string | null;
             /** Contact Phone */
             contact_phone?: string | null;
+        };
+        /**
+         * SetDealInvoicingBranchRequest
+         * @description Which of the seller's GST branches this deal is invoiced from (task 2.8).
+         *
+         *     ``null`` clears it: a branch recorded by mistake can be un-recorded, and the
+         *     handover guard will ask for one again if the seller has any.
+         *
+         *     The registration's id, never its GSTIN — which is what makes it impossible to
+         *     point a deal at the other company's copy of a shared GSTIN (plan P6-3's
+         *     consequence, decision IQ-9).
+         */
+        SetDealInvoicingBranchRequest: {
+            /** Gst Registration Id */
+            gst_registration_id?: string | null;
         };
         /**
          * SetDealRequiredDocumentRequest
@@ -5276,6 +6001,190 @@ export interface components {
             expires_in: number;
         };
         /**
+         * TradeCounterparty
+         * @description The company on the other side. No identifiers — see the module docstring.
+         */
+        TradeCounterparty: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
+        };
+        /**
+         * TradeInvoiceDetailResponse
+         * @description One invoice and its **whole** outcome chain, oldest first.
+         *
+         *     The chain, not just the head, because that is the record: every belief and when
+         *     it was replaced. A screen showing only the current outcome would make a
+         *     corrected invoice indistinguishable from one that was right first time.
+         */
+        TradeInvoiceDetailResponse: {
+            invoice: components["schemas"]["TradeInvoiceResponse"];
+            /** Outcomes */
+            outcomes: components["schemas"]["TradeOutcomeResponse"][];
+        };
+        /**
+         * TradeInvoiceResponse
+         * @description One invoice, with the outcome we currently believe.
+         */
+        TradeInvoiceResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Relationship Id
+             * Format: uuid
+             */
+            relationship_id: string;
+            /** Deal Id */
+            deal_id: string | null;
+            /** Invoice Number */
+            invoice_number: string;
+            /**
+             * Invoice Date
+             * Format: date
+             */
+            invoice_date: string;
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            current_outcome?: components["schemas"]["TradeOutcomeResponse"] | null;
+        };
+        /**
+         * TradeOutcomeResponse
+         * @description One thing we learned about an invoice.
+         */
+        TradeOutcomeResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Invoice Id
+             * Format: uuid
+             */
+            invoice_id: string;
+            payment_status: components["schemas"]["TradePaymentStatus"];
+            /** Amount Paid */
+            amount_paid: string | null;
+            proof_status: components["schemas"]["TradeProofStatus"];
+            /** Evidence Note */
+            evidence_note: string | null;
+            /** Evidence Refs */
+            evidence_refs: Record<string, never>[] | null;
+            /** Recorded By */
+            recorded_by: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Supersedes Outcome Id */
+            supersedes_outcome_id: string | null;
+            /**
+             * Is Current
+             * @default false
+             */
+            is_current: boolean;
+        };
+        /**
+         * TradePaymentStatus
+         * @description What happened to an invoice.
+         *
+         *     ``UNKNOWN`` is a real answer and not a missing one: a relationship manager may
+         *     know an invoice exists — the exporter showed it to them — without knowing whether
+         *     it was paid. Recording that is more useful than recording nothing, and it is why
+         *     an outcome is required to carry a status at all.
+         *
+         *     ``PARTIAL`` carries ``amount_paid``; the others may. ``DISPUTED`` is not a
+         *     judgement about who is right, only that the two parties disagree.
+         * @enum {string}
+         */
+        TradePaymentStatus: "PAID" | "UNPAID" | "PARTIAL" | "DISPUTED" | "UNKNOWN";
+        /**
+         * TradeProofStatus
+         * @description How well we know it.
+         *
+         *     ``CLAIMED`` — somebody told us, usually the exporter. ``PROVEN`` — there is
+         *     evidence on file: a document, a bank reference, a link.
+         *
+         *     Kept apart from ``payment_status`` so a reader can weigh a trade history rather
+         *     than just read it. An exporter's own account of its past trade is worth
+         *     recording; it is not worth the same as a settled invoice, and a model that stored
+         *     only "PAID" would make the two indistinguishable six months later.
+         * @enum {string}
+         */
+        TradeProofStatus: "CLAIMED" | "PROVEN";
+        /**
+         * TradeRelationshipDetailResponse
+         * @description One relationship with its invoices, newest first, each carrying the outcome
+         *     we currently believe. The full outcome chain of one invoice is its own route.
+         */
+        TradeRelationshipDetailResponse: {
+            relationship: components["schemas"]["TradeRelationshipResponse"];
+            /** Invoices */
+            invoices: components["schemas"]["TradeInvoiceResponse"][];
+        };
+        /**
+         * TradeRelationshipListResponse
+         * @description A company's relationships on one side.
+         *
+         *     Two sides, two lists, for the same reason the deal lists are separate (task
+         *     2.7): a company can sell to one counterparty and buy from another, and one list
+         *     mixing them would read differently row by row.
+         */
+        TradeRelationshipListResponse: {
+            /** Relationships */
+            relationships: components["schemas"]["TradeRelationshipResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * TradeRelationshipResponse
+         * @description One (seller, buyer) pair.
+         *
+         *     Ordered, not symmetric: A selling to B is a different relationship from B
+         *     selling to A, with different invoices and different risk.
+         */
+        TradeRelationshipResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            seller: components["schemas"]["TradeCounterparty"];
+            buyer: components["schemas"]["TradeCounterparty"];
+            /** Source */
+            source: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Invoice Count
+             * @default 0
+             */
+            invoice_count: number;
+        };
+        /**
          * TransactionStatus
          * @enum {string}
          */
@@ -5361,13 +6270,22 @@ export interface components {
          * @description Update mutable CRM fields. A field left out is unchanged; a field sent
          *     as `null` (or an empty string or list) is cleared — the router keeps the
          *     two apart with `exclude_unset=True`. `name` and `country` can be
-         *     corrected but not cleared. `gstins` replaces the whole list. Every change
+         *     corrected but not cleared. Every change
          *     is recorded in the company's history, with the signed-in user as the
          *     actor; there is no actor field here, and `extra="forbid"` refuses one.
          *
          *     `source`, the journey, the qualification gauge and the marker are
          *     deliberately not fields on this model at all — with `extra="forbid"`, sending any of them is
-         *     rejected at the API boundary (422). The marker has its own route.
+         *     rejected at the API boundary (422). The marker has its own route. `website`
+         *     joined them in R11 (decision IQ-16): it can no longer be set or cleared
+         *     here, and a stored value is left untouched.
+         *
+         *     **`gstins` joined them in task 3.13.** It used to replace the company's whole
+         *     list, which deleted the row of every GSTIN dropped — and a GST registration is a
+         *     branch the company traded through, named by any deal that invoiced from it.
+         *     Adding one, deactivating one and flagging one are now three decisions with three
+         *     routes under `/exporters/{id}/gst-registrations`, each leaving its own history
+         *     row.
          */
         UpdateExporterProfileRequest: {
             /** Name */
@@ -5376,12 +6294,12 @@ export interface components {
             country?: string | null;
             /** Pan */
             pan?: string | null;
-            /** Gstins */
-            gstins?: string[] | null;
             /** Iec */
             iec?: string | null;
             /** Cin */
             cin?: string | null;
+            /** Registration Number */
+            registration_number?: string | null;
             /** Relationship Manager */
             relationship_manager?: string | null;
             /** Industry */
@@ -5392,8 +6310,6 @@ export interface components {
             products?: string[] | null;
             /** Year Established */
             year_established?: number | null;
-            /** Website */
-            website?: string | null;
         };
         /**
          * UpdateMeRequest
@@ -7358,6 +8274,7 @@ export interface operations {
                 journey?: components["schemas"]["ExporterJourney"] | null;
                 qualification?: components["schemas"]["QualificationState"] | null;
                 marker?: components["schemas"]["ExporterMarker"] | null;
+                pipeline_status?: components["schemas"]["CompanyPipelineStatus"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -7628,6 +8545,69 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    bring_exporter_into_pipeline_api_v1_onboarding_exporters__customer_id__pipeline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BringIntoPipelineRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExporterProfileResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The company is already in the sales pipeline */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -8782,6 +9762,648 @@ export interface operations {
             };
         };
     };
+    match_company_api_v1_onboarding_companies_match_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyMatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyMatchResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_gst_registrations_api_v1_onboarding_exporters__customer_id__gst_registrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstRegistrationListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_gst_registration_api_v1_onboarding_exporters__customer_id__gst_registrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddGstRegistrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstRegistrationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The company already holds this GSTIN, active */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A malformed GSTIN, or one that does not carry the company's PAN */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deactivate_gst_registration_api_v1_onboarding_gst_registrations__registration_id__deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeactivateGstRegistrationRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstRegistrationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description GST registration not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    flag_gst_registration_api_v1_onboarding_gst_registrations__registration_id__flag_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlagGstRegistrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstRegistrationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description GST registration not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A flag without a reason */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unflag_gst_registration_api_v1_onboarding_gst_registrations__registration_id__unflag_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                registration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlagGstRegistrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GstRegistrationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description GST registration not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Lifting a flag without a reason */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_trade_relationships_api_v1_onboarding_exporters__customer_id__trade_relationships_get: {
+        parameters: {
+            query?: {
+                as?: components["schemas"]["DealSide"];
+            };
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeRelationshipListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trade_relationship_api_v1_onboarding_trade_relationships__relationship_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeRelationshipDetailResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Trade relationship not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trade_invoice_api_v1_onboarding_trade_invoices__invoice_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeInvoiceDetailResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Trade invoice not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_trade_invoice_api_v1_onboarding_trade_relationships__relationship_id__invoices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordTradeInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeInvoiceResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Trade relationship not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A blank number, a non-positive amount, a currency that is not an ISO 4217 code, or a number this relationship already has */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    record_trade_outcome_api_v1_onboarding_trade_invoices__invoice_id__outcomes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordTradeOutcomeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeOutcomeResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Trade invoice not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description supersedes_outcome_id is not the invoice's current outcome */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A PARTIAL outcome with no amount, a correction with no note, or malformed evidence */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    record_deal_payment_outcome_api_v1_onboarding_deals__deal_id__payment_outcome_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordDealPaymentOutcomeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealPaymentOutcomeResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The deal is not handed over, its buyer is not a company, or supersedes_outcome_id is not the invoice's current outcome */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A partial invoice identity, invoice details for a deal that already has one, a PARTIAL outcome with no amount, or a correction with no note */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_company_history_api_v1_onboarding_exporters__customer_id__history_get: {
         parameters: {
             query?: {
@@ -9004,6 +10626,7 @@ export interface operations {
         parameters: {
             query?: {
                 stage?: components["schemas"]["DealStage"][] | null;
+                as?: components["schemas"]["DealSide"];
                 limit?: number;
                 offset?: number;
             };
@@ -9261,7 +10884,68 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Deal not found */
+            /** @description Deal not found, or no such buyer company */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The deal is handed over or withdrawn, or it already names a different buyer company */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Both forms at once, neither form complete, a country that is not ISO-3166-1 alpha-2, a buyer company that is the seller, or a masked value sent back */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_deal_invoicing_branch_api_v1_onboarding_deals__deal_id__invoicing_branch_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDealInvoicingBranchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal or GST registration not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9275,7 +10959,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Missing name, a country that is not ISO-3166-1 alpha-2, or a masked value sent back */
+            /** @description The registration belongs to another company, or is deactivated */
             422: {
                 headers: {
                     [name: string]: unknown;

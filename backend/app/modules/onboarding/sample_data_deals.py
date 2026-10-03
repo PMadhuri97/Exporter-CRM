@@ -24,14 +24,17 @@ from __future__ import annotations
 import uuid
 
 import structlog
+from sqlalchemy import select
 
 from app.modules.onboarding.application.deal_service import DealService
 from app.modules.onboarding.application.document_service import DocumentService
+from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.modules.onboarding.domain.entities.document_enums import (
     DocumentCategory,
     DocumentSource,
 )
+from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.platform.database import services as db_services
 
 logger = structlog.get_logger(__name__)
@@ -124,6 +127,44 @@ async def load_deal_sample_data() -> int:
     return created
 
 
+async def _ensure_invoicing_branch(company_id: uuid.UUID, deal_id: uuid.UUID) -> None:
+    """Record the seller's first active GST registration as this deal's invoicing
+    branch, if it has one and the deal has none.
+
+    Without it the handover guard refuses with "the invoicing branch is not recorded"
+    (task 2.9, plan P6-7), and the sample data exists to show a CRM whose deals can
+    actually be handed over — a demo in which every deal is blocked on an unfilled
+    field shows the wrong thing.
+
+    Applied to deals this run *finds* as well as ones it creates, so a database seeded
+    before task 2.8 converges instead of keeping an outdated state — the same promise
+    `_ensure_deal` already makes about the stage. Sellers with no registration are left
+    alone, as the rule intends.
+    """
+    async with db_services.AsyncSessionLocal() as db:
+        deal = await db.scalar(select(Deal).where(Deal.id == deal_id))
+        if deal is None or deal.seller_gst_registration_id is not None:
+            return
+        if deal.stage.is_terminal:
+            # A closed deal's branch is frozen, and rightly: it is what the lending
+            # team was given.
+            return
+        branch = await db.scalar(
+            select(ExporterGstin)
+            .where(
+                ExporterGstin.customer_id == company_id,
+                ExporterGstin.active.is_(True),
+            )
+            .order_by(ExporterGstin.created_at, ExporterGstin.gstin)
+            .limit(1)
+        )
+        if branch is None:
+            return
+        await DealService(db).set_invoicing_branch(
+            deal_id, gst_registration_id=branch.id, actor_id=None
+        )
+
+
 async def _ensure_deal(company_id: uuid.UUID, sample: _SampleDeal) -> bool:
     """Create one deal, its buyer and its stage, unless a deal with that
     reference is already there — in which case an ``OPEN`` one is only moved on to
@@ -144,6 +185,7 @@ async def _ensure_deal(company_id: uuid.UUID, sample: _SampleDeal) -> bool:
                 deal_id=str(found.id),
                 reference=sample.reference,
             )
+        await _ensure_invoicing_branch(company_id, found.id)
         return False
 
     async with db_services.AsyncSessionLocal() as db:
@@ -158,6 +200,8 @@ async def _ensure_deal(company_id: uuid.UUID, sample: _SampleDeal) -> bool:
             registration_number=sample.buyer_registration_number,
             actor_id=None,
         )
+    await _ensure_invoicing_branch(company_id, view.id)
+
     # One stage at a time, as a person would: a deal bound for HANDED_OVER stops at
     # GATHERING_PAPERWORK here, and `hand_over_sample_deals` makes the last move.
     stage = (
@@ -205,10 +249,11 @@ async def hand_over_sample_deals() -> int:
                 or view.stage is not DealStage.GATHERING_PAPERWORK
             ):
                 continue
-            # The paperwork the handover guard requires, added only for a deal
-            # that is about to be handed over — C's open deal is meant to stay
-            # refused, and giving it the document would hide the reason why.
+            # What the handover guard requires, added only for a deal that is about
+            # to be handed over — C's open deal is meant to stay refused, and
+            # satisfying its conditions would hide the reason why.
             await _ensure_required_document(view.id)
+            await _ensure_buyer_screened(view.id)
             try:
                 async with db_services.AsyncSessionLocal() as db:
                     await DealService(db).transition_stage(
@@ -250,6 +295,60 @@ async def _ensure_required_document(deal_id: uuid.UUID) -> None:
             actor_id=None,
         )
     logger.info("sample_deals.required_document_added", deal_id=str(deal_id))
+
+
+async def _ensure_buyer_screened(deal_id: uuid.UUID) -> None:
+    """PASSED sanctions and AML on the deal's buyer, if they are not there already.
+
+    Required since task 2.5 wired Developer 1's reader: BQ-4 wants the buyer's
+    sanctions **and** AML ``PASSED``, and an unscreened buyer reads ``MISSING``. Without
+    this, company B could never reach the ``HANDED_OVER`` state architecture §3.9 gives
+    it, and `hand_over_sample_deals` would log "handover_blocked" instead.
+
+    Converges like the rest of this file: it looks at what is recorded and adds only
+    what is missing.
+    """
+    from app.modules.onboarding.application.verification_service import VerificationService
+    from app.modules.onboarding.domain.entities.orchestration_enums import (
+        VerificationEntityType,
+        VerificationType,
+    )
+    from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
+    from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository import (
+        DealBuyerRepository,
+    )
+
+    async with db_services.AsyncSessionLocal() as db:
+        buyer = await DealBuyerRepository(db).get_for_deal(deal_id)
+        if buyer is None:  # pragma: no cover - every sample deal has a buyer
+            return
+        buyer_id = buyer.id
+
+    for verification_type in (VerificationType.SANCTIONS, VerificationType.AML):
+        async with db_services.AsyncSessionLocal() as db:
+            service = VerificationService(db)
+            existing = await service.list_verification_results(
+                VerificationEntityType.BUYER, buyer_id
+            )
+            if any(
+                result.verification_type is verification_type
+                and result.status.value == "PASSED"
+                for result in existing
+            ):
+                continue
+        async with db_services.AsyncSessionLocal() as db:
+            await VerificationService(db).trigger_verification(
+                verification_type,
+                VerificationEntityType.BUYER,
+                buyer_id,
+                provider="manual",
+                payload={"status": "PASSED"},
+                actor_id=None,
+                evidence=VerificationEvidence(
+                    note="Sample data: buyer screened, nothing adverse."
+                ),
+            )
+    logger.info("sample_deals.buyer_screened", deal_id=str(deal_id))
 
 
 __all__ = ["hand_over_sample_deals", "load_deal_sample_data"]

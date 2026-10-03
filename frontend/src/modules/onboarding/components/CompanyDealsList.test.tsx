@@ -70,14 +70,36 @@ it('says the read failed rather than that there are no deals', async () => {
   expect(screen.queryByText(/No deals where this company is the seller/)).not.toBeInTheDocument();
 });
 
-it('does not pretend a company has no deals as the buyer before that read exists', async () => {
-  // The distinction this stub exists to protect: "none" and "we cannot answer
-  // that yet" must not look the same. It must also not fall back to the seller
-  // read, which would show the wrong deals under the right heading.
+it('asks the server for the buyer side, rather than reusing the seller read', async () => {
+  // The mistake this guards against is showing the seller's deals under the buyer
+  // heading — the right heading over the wrong rows.
+  renderList('buyer');
+
+  await waitFor(() => expect(listCompanyDeals).toHaveBeenCalled());
+  expect(vi.mocked(listCompanyDeals).mock.calls[0]).toEqual([
+    COMPANY_ID,
+    expect.objectContaining({ as: 'buyer' }),
+  ]);
+});
+
+it('names the seller on the buyer side, not the company whose page it is', async () => {
+  // The server puts the other party in `buyer_name` both ways: on this side that is
+  // the seller. Repeating this company in every row would say nothing.
+  vi.mocked(listCompanyDeals).mockResolvedValue(list([item({ buyer_name: 'Acme Exports' })]));
+  renderList('buyer');
+
+  expect(await screen.findByText(/Acme Exports/)).toBeInTheDocument();
+});
+
+it('explains why a buyer-side list can be empty when the deals exist', async () => {
+  // A deal whose buyer is still a legacy `deal_buyer` row is invisible here until
+  // the migration links it to a company. "None" and "not linked yet" are different
+  // facts, and a bare "no deals" would be read as the first.
+  vi.mocked(listCompanyDeals).mockResolvedValue(list([]));
   renderList('buyer');
 
   expect(
-    await screen.findByText(/are not listed yet/),
+    await screen.findByText(/No deals where this company is the buyer/),
   ).toBeInTheDocument();
-  await waitFor(() => expect(listCompanyDeals).not.toHaveBeenCalled());
+  expect(screen.getByText(/before the buyer migration are not linked/)).toBeInTheDocument();
 });

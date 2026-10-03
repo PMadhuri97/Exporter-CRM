@@ -29,7 +29,16 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,6 +68,18 @@ class Deal(AnerModel):
         CheckConstraint(
             "buyer_company_id IS NULL OR buyer_company_id <> company_id",
             name="ck_deal_buyer_is_not_the_seller",
+        ),
+        # A deal's invoicing branch must be one of its **seller's** registrations
+        # (migration 0036, plan P6-6). Composite rather than a plain FK to
+        # `exporter_gstin.id`, which would admit any company's branch: a deal invoiced
+        # through a stranger's branch would put their GSTIN on the invoice, and the
+        # handover guard would be asking about a branch whose flag belongs to someone
+        # else. Points at `uq_exporter_gstin_id_customer_id`, which exists for this.
+        ForeignKeyConstraint(
+            ["seller_gst_registration_id", "company_id"],
+            [f"{SCHEMA}.exporter_gstin.id", f"{SCHEMA}.exporter_gstin.customer_id"],
+            name="fk_deal_seller_gst_registration_id",
+            ondelete="RESTRICT",
         ),
         # One company's deals, newest first — what the Deals panel asks for.
         Index("ix_deal_company_recent", "company_id", "created_at"),
@@ -129,18 +150,18 @@ class Deal(AnerModel):
         JSONB(none_as_null=True), nullable=True
     )
 
-    # ── The invoicing branch (migration 0028, plan P6-6) ─────────────────────
-    #: Which of the seller's GST registrations this deal is invoiced from. NULL on
-    #: every legacy deal, and set at most once before handover — the service rule
-    #: and the trigger entry both arrive with P6-6.
+    # ── The invoicing branch (migrations 0028 and 0036, plan P6-6) ───────────
+    #: Which of the seller's GST registrations this deal is invoiced from. ``NULL``
+    #: on every legacy deal.
+    #:
+    #: Its FK is **composite** — see ``__table_args__`` — so the database refuses a
+    #: registration belonging to another company. It may be set and changed freely
+    #: before handover (decision IQ-20) and is frozen with the deal afterwards by
+    #: ``prevent_terminal_deal_change()``. Deliberately *not* set-once, unlike
+    #: ``buyer_company_id``: choosing the wrong branch has no consequence until the
+    #: handover reads it, while a buyer company accumulates compliance results.
     seller_gst_registration_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey(
-            f"{SCHEMA}.exporter_gstin.id",
-            name="fk_deal_seller_gst_registration_id",
-            ondelete="RESTRICT",
-        ),
-        nullable=True,
+        UUID(as_uuid=True), nullable=True
     )
 
     buyer: Mapped[DealBuyer | None] = relationship(

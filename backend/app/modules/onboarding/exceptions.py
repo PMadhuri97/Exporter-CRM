@@ -1693,3 +1693,393 @@ class BackgroundCheckApproverRoleNotAllowedError(AnerBaseException):
             error_code="BACKGROUND_CHECK_APPROVER_ROLE_NOT_ALLOWED",
             status_code=403,
         )
+
+
+class CompanyNotInPipelineError(AnerBaseException):
+    """A sales step asked of a company that is not in the sales pipeline.
+
+    A company record is no longer always somebody we are selling to: a buyer on
+    a deal is a company too (plan §8), created ``NOT_IN_PIPELINE`` with
+    ``journey='LEAD'`` only because the column is ``NOT NULL``. Qualifying such a
+    company, or recording how the conversation with it is going, would record an
+    opinion about a sales process that was never started — and, worse, qualifying
+    it moves the journey to ``PROSPECT``, which
+    ``ck_exporter_profile_not_in_pipeline_start`` then refuses at the database,
+    turning a sales action into a constraint violation.
+
+    This is the refusal Developer 1's P4-11 relies on to know a buyer-only
+    company can never be promoted by accident (``dev3-remaining-work.md`` §3).
+
+    409 rather than 422: the request is well formed, and the answer depends on
+    the company's current pipeline status rather than on anything the caller
+    sent. ``POST /exporters/{id}/pipeline`` is the way in (task 3.11).
+    """
+
+    def __init__(self, customer_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {customer_id} is not in the sales pipeline: it exists as a "
+                "buyer on a deal. Bring it into the pipeline first if we are going "
+                "to sell to it."
+            ),
+            error_code="COMPANY_NOT_IN_PIPELINE",
+            status_code=409,
+            extensions={"pipeline_status": "NOT_IN_PIPELINE"},
+        )
+
+
+class DuplicateRegistrationNumberError(AnerBaseException):
+    """A registration number another company in the same country already holds.
+
+    Refused rather than merged, for the same reason as a duplicate PAN
+    (architecture decision 4): two records claiming one registration is a data
+    problem a person has to resolve, and guessing which is right by joining them
+    loses whichever history we overwrote.
+
+    Unlike a GSTIN, a registration number is **not** warn-only. A GSTIN can
+    legitimately appear on two companies (decision IQ-9 — a shared premises or a
+    transferred registration), but ``(country, registration number)`` is the
+    foreign equivalent of a PAN: it is the identity itself, which is why
+    ``uq_exporter_profile_country_registration_number`` exists.
+
+    Names the holder so the person entering the duplicate can open that company
+    instead. The number itself is not repeated: the caller sent it, and the
+    response may be read by a role that sees it masked — the same reasoning as
+    `DuplicatePanError`.
+    """
+
+    def __init__(self, existing_customer_id: object, country: object) -> None:
+        self.existing_customer_id = existing_customer_id
+        super().__init__(
+            detail=(
+                f"This registration number is already held by company "
+                f"{existing_customer_id} in {country}; a registration number "
+                "belongs to one company per country"
+            ),
+            error_code="DUPLICATE_REGISTRATION_NUMBER",
+            status_code=409,
+            extensions={
+                "existing_customer_id": str(existing_customer_id),
+                "country": str(country),
+            },
+        )
+
+
+class CompanyAlreadyInPipelineError(AnerBaseException):
+    """``POST /exporters/{id}/pipeline`` for a company that is already in it.
+
+    Refused rather than treated as a no-op: the route's whole job is to start a
+    company's journey, and doing that twice would append a second `LEAD` creation
+    row to a journey already underway — making the history read as though the
+    company restarted. A 409 says plainly that there was nothing to do.
+
+    Every company except a buyer-only one is already in the pipeline, so this is
+    the ordinary answer for an ordinary company, not an edge case.
+    """
+
+    def __init__(self, customer_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {customer_id} is already in the sales pipeline; "
+                "there is nothing to bring in"
+            ),
+            error_code="COMPANY_ALREADY_IN_PIPELINE",
+            status_code=409,
+            extensions={"pipeline_status": "IN_PIPELINE"},
+        )
+
+
+class DealBuyerCompanyAlreadySetError(AnerBaseException):
+    """A second, different ``buyer_company_id`` on one deal.
+
+    Set once (migration 0034, plan P4-4). The buyer company is what a deal's buyer
+    checks are recorded against and read back through
+    (``for_company(buyer_company_id)``), what the handover guard's condition 5 asks
+    about (BQ-4), and what the handover snapshot records. Re-pointing it would
+    silently reinterpret all three: sanctions and AML somebody ran on one company
+    would start answering for another, with nothing recording that it had happened.
+
+    A deal pointed at the wrong buyer is **withdrawn and reopened**, which leaves a
+    trail, rather than quietly corrected. Setting the same company again is not an
+    error — it changes nothing — so only a *different* company raises this.
+
+    409: the request is well formed, and the answer depends on what the deal
+    already says.
+    """
+
+    def __init__(self, deal_id: object, existing_company_id: object) -> None:
+        self.existing_company_id = existing_company_id
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} already names company {existing_company_id} as its "
+                "buyer, and a deal's buyer company is set once. Withdraw this deal "
+                "and open a new one if the buyer is wrong."
+            ),
+            error_code="DEAL_BUYER_COMPANY_ALREADY_SET",
+            status_code=409,
+            extensions={"existing_company_id": str(existing_company_id)},
+        )
+
+
+class DealBuyerIsTheSellerError(AnerBaseException):
+    """A deal whose buyer company is the company selling on it.
+
+    ``ck_deal_buyer_is_not_the_seller`` (migration 0028) refuses the row, and this
+    turns that into a 422 naming the problem rather than a 500 carrying a Postgres
+    message. A company does not sell to itself: an invoice from a company to itself
+    is not trade finance, and both sides of the handover guard would be the same
+    party.
+    """
+
+    def __init__(self, deal_id: object, company_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {company_id} is the seller on deal {deal_id}, so it cannot "
+                "also be the buyer"
+            ),
+            error_code="DEAL_BUYER_IS_THE_SELLER",
+            status_code=422,
+        )
+
+
+class GstRegistrationNotFoundError(AnerBaseException):
+    """No GST registration with this id.
+
+    Distinct from ``EXPORTER_PROFILE_NOT_FOUND`` so a screen can say which of the two
+    is missing — the routes that flag and deactivate a branch take a registration id
+    and never a company id, because a registration belongs to exactly one company and
+    carrying both would invite a request whose two halves disagree.
+    """
+
+    def __init__(self, registration_id: object) -> None:
+        super().__init__(
+            detail=f"GST registration {registration_id} was not found",
+            error_code="GST_REGISTRATION_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class GstRegistrationAlreadyActiveError(AnerBaseException):
+    """This company already holds this GSTIN, active.
+
+    Refused rather than treated as a no-op: ``uq_exporter_gstin_customer_gstin`` would
+    refuse a second row anyway, and succeeding silently would suggest something had
+    been recorded. A GSTIN the company **deactivated** is a different case — adding it
+    again reactivates that row, which is not an error.
+
+    409 rather than 422: the request is well formed, and the answer depends on what
+    the company already holds.
+    """
+
+    def __init__(self, customer_id: object, registration_id: object) -> None:
+        self.registration_id = registration_id
+        super().__init__(
+            detail=(
+                f"Company {customer_id} already has this GST registration "
+                f"({registration_id}) and it is active"
+            ),
+            error_code="GST_REGISTRATION_ALREADY_ACTIVE",
+            status_code=409,
+            extensions={"registration_id": str(registration_id)},
+        )
+
+
+class GstRegistrationNotThisCompanysError(AnerBaseException):
+    """A deal's invoicing branch must be one of its **seller's** registrations.
+
+    ``fk_deal_seller_gst_registration`` — the composite FK to
+    ``(exporter_gstin.id, customer_id)`` — refuses the row, and this turns that into a
+    422 naming the problem. A deal invoiced through another company's branch would put
+    somebody else's GSTIN on the invoice, and the handover guard would be asking about
+    a branch whose flag belongs to a different company.
+    """
+
+    def __init__(self, deal_id: object, registration_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"GST registration {registration_id} does not belong to the company "
+                f"selling on deal {deal_id}, so it cannot be its invoicing branch"
+            ),
+            error_code="GST_REGISTRATION_NOT_THIS_COMPANYS",
+            status_code=422,
+        )
+
+
+class GstRegistrationInactiveError(AnerBaseException):
+    """A deal cannot be invoiced through a branch the company has stopped using.
+
+    The row is kept — a deal handed over through it last year still names it — but it
+    is no longer a branch to invoice *new* trade from. Refused at the point of choosing
+    rather than at handover, so the person picking sees the problem while they are
+    picking.
+    """
+
+    def __init__(self, registration_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"GST registration {registration_id} is deactivated and cannot be a "
+                "deal's invoicing branch"
+            ),
+            error_code="GST_REGISTRATION_INACTIVE",
+            status_code=422,
+        )
+
+
+class TradeRelationshipNotFoundError(AnerBaseException):
+    """No trade relationship with this id."""
+
+    def __init__(self, relationship_id: object) -> None:
+        super().__init__(
+            detail=f"Trade relationship {relationship_id} was not found",
+            error_code="TRADE_RELATIONSHIP_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class TradeRelationshipIsSelfError(AnerBaseException):
+    """A company does not trade with itself.
+
+    ``ck_trade_relationship_not_self`` refuses the row; this names the problem. The
+    same rule ``ck_deal_buyer_is_not_the_seller`` applies to a deal, restated because a
+    relationship can also be created by the backfill, which does not go through one.
+    """
+
+    def __init__(self, company_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {company_id} cannot be both the seller and the buyer in a "
+                "trade relationship"
+            ),
+            error_code="TRADE_RELATIONSHIP_IS_SELF",
+            status_code=422,
+        )
+
+
+class TradeInvoiceNotFoundError(AnerBaseException):
+    """No trade invoice with this id."""
+
+    def __init__(self, invoice_id: object) -> None:
+        super().__init__(
+            detail=f"Trade invoice {invoice_id} was not found",
+            error_code="TRADE_INVOICE_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class TradeOutcomeStaleError(AnerBaseException):
+    """An outcome that does not supersede the chain's current head.
+
+    An invoice's payment story is an append-only superseding chain, so a correction
+    names the belief it replaces. Three ways to get this wrong, all refused here:
+    superseding nothing when there is a head, superseding something when there is no
+    head, and superseding a row that has already been superseded.
+
+    The last is the one that matters: it means two people are each correcting the same
+    outcome without having seen the other's. Refusing it is what makes the chain a
+    line rather than a tree — the same rule ``VerificationReviewStaleError`` enforces
+    for a review, and ``uq_trade_invoice_outcome_supersedes`` behind it.
+
+    409 rather than 422: the request is well formed, and the answer depends on what
+    somebody else recorded in the meantime. The current head is named so the caller
+    can read it and decide again.
+    """
+
+    def __init__(
+        self, invoice_id: object, supersedes: object, current_head: object
+    ) -> None:
+        self.current_head = current_head
+        if current_head is None:
+            detail = (
+                f"Trade invoice {invoice_id} has no outcome yet, so this one supersedes "
+                "nothing: omit supersedes_outcome_id"
+            )
+        elif supersedes is None:
+            detail = (
+                f"Trade invoice {invoice_id} already has an outcome ({current_head}); "
+                "a further outcome must supersede it"
+            )
+        else:
+            detail = (
+                f"Outcome {supersedes} is not the current outcome of trade invoice "
+                f"{invoice_id} ({current_head}); read it and decide again"
+            )
+        super().__init__(
+            detail=detail,
+            error_code="TRADE_OUTCOME_STALE",
+            status_code=409,
+            extensions={
+                "current_outcome_id": str(current_head) if current_head else None
+            },
+        )
+
+
+class DealNotHandedOverError(AnerBaseException):
+    """A payment outcome recorded on a deal that has not been handed over.
+
+    Before the handover there is nothing to have been paid: the lending team has not
+    received the deal, no invoice has been raised against it, and an outcome recorded
+    now would claim a trade that has not happened. A withdrawn deal is the same
+    answer for the opposite reason — it never will.
+
+    409 rather than 422: the request is well formed, and the answer depends on the
+    deal's stage.
+    """
+
+    def __init__(self, deal_id: object, stage: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} is {stage!s}: how it was paid can only be recorded "
+                "once it has been handed over"
+            ),
+            error_code="DEAL_NOT_HANDED_OVER",
+            status_code=409,
+            extensions={"stage": str(stage)},
+        )
+
+
+class DealBuyerIsNotACompanyError(AnerBaseException):
+    """A deal whose buyer is still a legacy ``deal_buyer`` row, where a company is
+    needed.
+
+    A trade relationship is a pair of **company records**. A ``deal_buyer`` row is a
+    set of details with nothing to pair with, so a deal written before the buyer
+    migration (P4-6) cannot carry trade history until that migration links it to a
+    company.
+
+    Said plainly rather than worked around: the alternative would be inventing a
+    company for the row, which is precisely what the migration exists to do properly,
+    with a dedupe pass and a review.
+    """
+
+    def __init__(self, deal_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} records its buyer as details rather than as a "
+                "company, so it has no trade relationship yet. The buyer migration "
+                "links it to one."
+            ),
+            error_code="DEAL_BUYER_IS_NOT_A_COMPANY",
+            status_code=409,
+        )
+
+
+class TradeInvoiceAlreadyRecordedError(AnerBaseException):
+    """Invoice details sent for a deal that already has an invoice.
+
+    An invoice's identity is frozen once written, so new details cannot be applied —
+    and ignoring them silently would tell the caller they had been recorded. Append
+    the outcome without them, or record a second invoice against the relationship if
+    the deal really produced two.
+    """
+
+    def __init__(self, deal_id: object, invoice_id: object) -> None:
+        self.invoice_id = invoice_id
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} already has invoice {invoice_id}, whose identity is "
+                "frozen. Record the outcome without invoice details."
+            ),
+            error_code="TRADE_INVOICE_ALREADY_RECORDED",
+            status_code=422,
+            extensions={"invoice_id": str(invoice_id)},
+        )

@@ -9,6 +9,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  addGstRegistration,
+  deactivateGstRegistration,
+  flagGstRegistration,
+  listGstRegistrations,
+  unflagGstRegistration,
+  bringExporterIntoPipeline,
   createExporterLead,
   getExporterProfileDetail,
   searchExporterProfiles,
@@ -16,6 +22,8 @@ import {
   updateExporterProfile,
 } from '../api';
 import type {
+  AddGstRegistrationRequest,
+  BringIntoPipelineRequest,
   ExporterSearchParams,
   SetMarkerRequest,
   UpdateExporterProfileRequest,
@@ -90,5 +98,68 @@ export function useSetExporterMarker(customerId: string) {
   return useMutation({
     mutationFn: (request: SetMarkerRequest) => setExporterMarker(customerId, request),
     onSuccess: () => invalidateCompany(queryClient, customerId),
+  });
+}
+
+/** Bring a buyer-only company into the sales pipeline (task 3.11). */
+export function useBringIntoPipeline(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BringIntoPipelineRequest = {}) =>
+      bringExporterIntoPipeline(customerId, body),
+    // The journey, the gauges and the lists all change meaning at once, so the
+    // whole company is invalidated rather than one query.
+    onSuccess: () => invalidateCompany(queryClient, customerId),
+  });
+}
+
+// ── GST registrations (tasks 3.13, 3.14, 3.17) ───────────────────────────────
+
+export function useGstRegistrations(customerId: string | undefined) {
+  return useQuery({
+    queryKey: ['gstRegistrations', customerId],
+    queryFn: () => listGstRegistrations(customerId!),
+    enabled: Boolean(customerId),
+  });
+}
+
+/**
+ * Every write to a branch invalidates the company too, not just the list: the
+ * company's GSTINs, its flagged-branch count and the handover guard's answer on each
+ * of its deals all change with it.
+ */
+function invalidateBranches(queryClient: ReturnType<typeof useQueryClient>, customerId: string) {
+  void queryClient.invalidateQueries({ queryKey: ['gstRegistrations', customerId] });
+  invalidateCompany(queryClient, customerId);
+  // A flag blocks the handover of deals invoiced through that branch, so their
+  // `handover_blocked_reason` is now stale.
+  void queryClient.invalidateQueries({ queryKey: ['deal'] });
+}
+
+export function useAddGstRegistration(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AddGstRegistrationRequest) => addGstRegistration(customerId, body),
+    onSuccess: () => invalidateBranches(queryClient, customerId),
+  });
+}
+
+export function useDeactivateGstRegistration(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { registrationId: string; reason?: string }) =>
+      deactivateGstRegistration(vars.registrationId, { reason: vars.reason ?? null }),
+    onSuccess: () => invalidateBranches(queryClient, customerId),
+  });
+}
+
+export function useSetGstRegistrationFlag(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { registrationId: string; reason: string; flagged: boolean }) =>
+      vars.flagged
+        ? flagGstRegistration(vars.registrationId, { reason: vars.reason })
+        : unflagGstRegistration(vars.registrationId, { reason: vars.reason }),
+    onSuccess: () => invalidateBranches(queryClient, customerId),
   });
 }

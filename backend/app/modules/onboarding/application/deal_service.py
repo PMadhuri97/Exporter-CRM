@@ -65,18 +65,24 @@ from __future__ import annotations
 import uuid
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.background_check_reader import current_background_check
+from app.modules.onboarding.application.branch_flags import BranchFlagService
+from app.modules.onboarding.application.compliance_facts import ComplianceFactsService
 from app.modules.onboarding.application.conversation_service import ConversationService
 from app.modules.onboarding.application.deal_required_documents_service import (
     DealRequiredDocumentsPolicy,
 )
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.application.trade_history_service import (
+    SOURCE_DEAL_BUYER_RECORDED,
+    TradeHistoryService,
+)
 from app.modules.onboarding.domain.deal_views import (
     BuyerCompanyView,
     DealBuyerView,
@@ -87,6 +93,7 @@ from app.modules.onboarding.domain.deal_views import (
 from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.handover_conditions import (
     HANDOVER_JOURNEY,
@@ -97,6 +104,8 @@ from app.modules.onboarding.domain.handover_conditions import (
 )
 from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import (
+    DealBuyerCompanyAlreadySetError,
+    DealBuyerIsTheSellerError,
     DealBuyerRequiredError,
     DealCompanyNotFoundError,
     DealCompanyNotReadyError,
@@ -105,6 +114,9 @@ from app.modules.onboarding.exceptions import (
     DealTerminalError,
     DealTransitionNotAllowedError,
     DealWithdrawalReasonRequiredError,
+    GstRegistrationInactiveError,
+    GstRegistrationNotFoundError,
+    GstRegistrationNotThisCompanysError,
 )
 from app.modules.onboarding.infrastructure.repositories.crm_document_repository import (
     CrmDocumentRepository,
@@ -113,6 +125,7 @@ from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository im
     DealBuyerRepository,
 )
 from app.modules.onboarding.infrastructure.repositories.deal_repository import DealRepository
+from app.shared import clock
 from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
@@ -222,19 +235,29 @@ class DealService:
         self._events = OnboardingEventPublisher()
         # The handover guard's providers (`domain/handover_conditions.py`).
         #
-        # `RequiredDocumentsPolicy` is **real** since P2-5b: condition 3 now reads
-        # `deal_required_document` and the deal's own paperwork. The other two are
-        # still their null version, which answers "nothing unmet", so assumption
-        # A5's conditions decide exactly what they decided before — P4-7 hands in
-        # Developer 1's `ComplianceFactsReader` and P6-7 Developer 3's
-        # `BranchFlagReader`, neither of which changes a condition's code.
+        # Five of the six conditions are live: assumption A5's two, the required
+        # documents (P2-5b), and — since P4-7 — the seller's and the buyer's
+        # compliance, through Developer 1's published reader. Only the invoicing
+        # branch is still inert, waiting on Developer 3's real `BranchFlagReader`
+        # (task 2.9 swaps `NoBranchFlags` for it and changes no condition's code).
         #
-        # A caller may pass `providers` to substitute any of them; the handover
-        # tests use it to drive a condition from a fake.
+        # `ComplianceFactsService` reads in this same session and never writes, so the
+        # facts a condition sees are the ones this transaction's locks cover.
+        #
+        # A caller may pass `providers` to substitute any of them; the handover tests
+        # drive conditions from `StaticComplianceFactsReader`.
         self._providers = (
             providers
             if providers is not None
-            else HandoverProviders(required_documents=DealRequiredDocumentsPolicy(db))
+            else HandoverProviders(
+                compliance=ComplianceFactsService(db),
+                required_documents=DealRequiredDocumentsPolicy(db),
+                # Developer 3's real reader (task 3.14), replacing `NoBranchFlags`.
+                # Both branch conditions become live with it: a flagged invoicing
+                # branch blocks the deals invoiced through it, and a deal whose seller
+                # has a branch but names none is asked to name it (task 2.9, P6-7).
+                branch_flags=BranchFlagService(db),
+            )
         )
 
     # ── Read ─────────────────────────────────────────────────────────────────
@@ -254,19 +277,42 @@ class DealService:
         company_id: uuid.UUID,
         *,
         stages: tuple[DealStage, ...] | None = None,
+        as_buyer: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[DealListItemView], int]:
+        """One company's deals — the ones it sells on, or with ``as_buyer`` the ones
+        it buys on (task 2.7).
+
+        On the buyer side, ``buyer_name`` is **the seller's** name rather than the
+        buyer's: on a list of "deals where this company is the buyer", repeating the
+        company whose page you are on in every row says nothing, and the other party
+        is the only thing that distinguishes the rows. The field keeps its name
+        because it is the same column of the same table — "the other party on this
+        deal" — and renaming it would be a contract change for every caller.
+        """
         deals, total = await self._deals.list_for_company(
-            company_id, stages=stages, limit=limit, offset=offset
+            company_id, stages=stages, as_buyer=as_buyer, limit=limit, offset=offset
         )
+        sellers: dict[uuid.UUID, str | None] = {}
+        if as_buyer and deals:
+            rows = await self._db.execute(
+                select(ExporterProfile.customer_id, ExporterProfile.name).where(
+                    ExporterProfile.customer_id.in_({deal.company_id for deal in deals})
+                )
+            )
+            sellers = {row.customer_id: row.name for row in rows}
         return [
             DealListItemView(
                 id=deal.id,
                 company_id=deal.company_id,
                 reference=deal.reference,
                 stage=deal.stage,
-                buyer_name=deal.buyer.name if deal.buyer is not None else None,
+                buyer_name=(
+                    sellers.get(deal.company_id)
+                    if as_buyer
+                    else (deal.buyer.name if deal.buyer is not None else None)
+                ),
                 created_at=deal.created_at,
                 updated_at=deal.updated_at,
             )
@@ -404,7 +450,10 @@ class DealService:
             )
 
         if to_stage in _NEEDS_BUYER:
-            if deal.buyer is None:
+            # The company is the authority once it is set, and a `deal_buyer` row
+            # satisfies this until the migration fills it (contract §3.0). Either one
+            # is a buyer; neither is not.
+            if deal.buyer_company_id is None and deal.buyer is None:
                 raise DealBuyerRequiredError(deal_id)
             # `lock=True`: D10. The company row is share-locked for the rest of this
             # transaction, so the check cannot change between this guard and the
@@ -417,7 +466,9 @@ class DealService:
         deal.withdrawal_reason = cleaned_reason
         handover: _Handover | None = None
         if to_stage is DealStage.HANDED_OVER:
-            deal.handed_over_at = datetime.now(tz=UTC)
+            # The shared clock here too, so the time the handover is recorded at and
+            # the `now` its guard just ran against are the same moment.
+            deal.handed_over_at = clock.now()
             # The snapshot is taken **now**, inside the transaction, so it is the
             # list the handover actually rested on: a document uploaded a minute
             # later cannot change what the lending team was given (architecture
@@ -568,6 +619,191 @@ class DealService:
         )
         return await self._to_view(deal)
 
+    async def set_buyer_company(
+        self, deal_id: uuid.UUID, *, buyer_company_id: uuid.UUID, actor_id: str | None
+    ) -> DealView:
+        """Name the company this deal's buyer **is** (plan P4-4, task 2.4).
+
+        The successor to `set_buyer`, which records a `deal_buyer` row — a set of
+        details with no record of its own. A buyer company is a full company record:
+        it can be screened, its sanctions and AML live on its own timeline, and the
+        same company can be the buyer on one deal and the seller on another. That is
+        the point of the whole keystone (plan §1).
+
+        **Set once.** Naming a different company later is refused, by this method and
+        by `trg_deal_buyer_company_set_once` behind it — see
+        `DealBuyerCompanyAlreadySetError` for why re-pointing it is worse than
+        refusing it. Naming the *same* company again changes nothing and is allowed,
+        so a retried request is not an error.
+
+        The legacy `deal_buyer` row, if the deal has one, is deliberately left alone.
+        It is what a handover before the migration was built from, and the deal
+        response still serves it until P4-10 retires those writes; the company is the
+        authority from here on (contract §3.0).
+
+        Writes a `deal` history row with `event_type="deal_buyer_company_set"`.
+
+        Raises:
+            DealNotFoundError: no such deal.
+            DealTerminalError: the deal is handed over or withdrawn.
+            DealCompanyNotFoundError: no such company.
+            DealBuyerIsTheSellerError: that company is the seller on this deal.
+            DealBuyerCompanyAlreadySetError: the deal already names a different one.
+        """
+        deal = await self._lock_deal(deal_id)
+        if deal.stage.is_terminal:
+            # The same rule as `set_buyer`: a handed-over deal's buyer is what the
+            # lending team was given, and a withdrawn deal's is history.
+            raise DealTerminalError(deal_id, deal.stage.value)
+
+        if deal.buyer_company_id is not None:
+            if deal.buyer_company_id == buyer_company_id:
+                # Already so. Not an error — a retried request must not fail — and
+                # nothing to record, since nothing changed.
+                return await self._to_view(deal)
+            raise DealBuyerCompanyAlreadySetError(deal_id, deal.buyer_company_id)
+
+        if buyer_company_id == deal.company_id:
+            # `ck_deal_buyer_is_not_the_seller` would refuse the row; this names the
+            # problem instead of surfacing a constraint violation.
+            raise DealBuyerIsTheSellerError(deal_id, buyer_company_id)
+
+        company = await self._db.scalar(
+            select(ExporterProfile).where(
+                ExporterProfile.customer_id == buyer_company_id
+            )
+        )
+        if company is None:
+            # `fk_deal_buyer_company_id` would refuse it; a 404 naming the company is
+            # the useful answer.
+            raise DealCompanyNotFoundError(buyer_company_id)
+
+        deal.buyer_company_id = buyer_company_id
+        # The pair now has a trade relationship (task 3.18, plan P5-1): "every deal
+        # with a buyer company has a relationship" is that task's acceptance
+        # criterion, and the same transaction is what makes it true rather than
+        # eventually true. `get_or_create` is safe if two deals record the same new
+        # pair at once, and it deliberately does not commit — this unit of work does.
+        await TradeHistoryService(self._db).get_or_create_relationship(
+            seller_company_id=deal.company_id,
+            buyer_company_id=buyer_company_id,
+            actor_id=actor_id,
+            source=SOURCE_DEAL_BUYER_RECORDED,
+            source_ref=str(deal.id),
+        )
+        await self._history.record(
+            deal.company_id,
+            dimension="deal",
+            to_value=deal.stage.value,
+            actor_id=actor_id,
+            source="deal_service.set_buyer_company",
+            deal_id=deal.id,
+            event_type="deal_buyer_company_set",
+            details={
+                "buyer_company_id": str(buyer_company_id),
+                "buyer_name": company.name,
+                # Whether this deal also carries a legacy `deal_buyer` row, so the
+                # P4-10 retirement can tell which deals still have both.
+                "had_legacy_buyer": deal.buyer is not None,
+            },
+        )
+        await self._db.commit()
+        await self._db.refresh(deal)
+
+        logger.info(
+            "deal.buyer_company.set.ok",
+            deal_id=str(deal.id),
+            buyer_company_id=str(buyer_company_id),
+            actor_id=actor_id,
+        )
+        return await self._to_view(deal)
+
+    async def set_invoicing_branch(
+        self,
+        deal_id: uuid.UUID,
+        *,
+        gst_registration_id: uuid.UUID | None,
+        actor_id: str | None,
+    ) -> DealView:
+        """Record which of the seller's GST branches this deal is invoiced from
+        (task 2.8, plan P6-6).
+
+        May be set **and changed** freely before handover (decision IQ-20), and
+        `prevent_terminal_deal_change()` freezes it afterwards. Deliberately not
+        set-once, unlike `buyer_company_id`: choosing the wrong branch has no
+        consequence until the handover reads it, while a buyer company accumulates
+        compliance results under it that re-pointing would silently reinterpret.
+
+        `None` clears it — a branch recorded by mistake can be un-recorded, and the
+        handover guard will then ask for one again if the seller has any.
+
+        The registration must belong to **this deal's seller** and be active.
+        `fk_deal_seller_gst_registration_id` is composite and would refuse another
+        company's branch, but the check here names the problem instead of surfacing an
+        integrity error; the inactive rule is the service's alone, because a
+        deactivated row is still a real row of the right company.
+
+        Writes a `deal` history row, `event_type="deal_invoicing_branch_set"`, with
+        the branch's **state** rather than its GSTIN: the state is what identifies a
+        branch to a reader, and the GSTIN would be an unmasked identifier in a log
+        every CRM reader can see.
+
+        Raises:
+            DealNotFoundError: no such deal.
+            DealTerminalError: the deal is handed over or withdrawn.
+            GstRegistrationNotFoundError: no such registration.
+            GstRegistrationNotThisCompanysError: it belongs to another company.
+            GstRegistrationInactiveError: it is deactivated.
+        """
+        deal = await self._lock_deal(deal_id)
+        if deal.stage.is_terminal:
+            raise DealTerminalError(deal_id, deal.stage.value)
+
+        registration = None
+        if gst_registration_id is not None:
+            registration = await self._db.scalar(
+                select(ExporterGstin).where(ExporterGstin.id == gst_registration_id)
+            )
+            if registration is None:
+                raise GstRegistrationNotFoundError(gst_registration_id)
+            if registration.customer_id != deal.company_id:
+                raise GstRegistrationNotThisCompanysError(deal_id, gst_registration_id)
+            if not registration.active:
+                raise GstRegistrationInactiveError(gst_registration_id)
+
+        if deal.seller_gst_registration_id == gst_registration_id:
+            # Nothing changed, so nothing is recorded: a second history row would make
+            # the record read as two decisions.
+            return await self._to_view(deal)
+
+        deal.seller_gst_registration_id = gst_registration_id
+        await self._history.record(
+            deal.company_id,
+            dimension="deal",
+            to_value=deal.stage.value,
+            actor_id=actor_id,
+            source="deal_service.set_invoicing_branch",
+            deal_id=deal.id,
+            event_type="deal_invoicing_branch_set",
+            details={
+                "gst_registration_id": (
+                    str(gst_registration_id) if gst_registration_id else None
+                ),
+                # The state, not the GSTIN: this log is readable by every CRM role.
+                "state_name": registration.state_name if registration else None,
+                "state_code": registration.state_code if registration else None,
+            },
+        )
+        await self._db.commit()
+        await self._db.refresh(deal)
+        logger.info(
+            "deal.invoicing_branch.set.ok",
+            deal_id=str(deal.id),
+            gst_registration_id=str(gst_registration_id) if gst_registration_id else None,
+            actor_id=actor_id,
+        )
+        return await self._to_view(deal)
+
     # ── The handover ─────────────────────────────────────────────────────────
 
     async def _handover_snapshot(self, deal: Deal) -> _Handover:
@@ -583,28 +819,60 @@ class DealService:
         """
         documents = await CrmDocumentRepository(self._db).list_for_deal_ids((deal.id,))
         buyer = deal.buyer
+        # Built from the buyer **company** when the deal names one, and from the
+        # legacy `deal_buyer` row otherwise (plan P4-4). The company is the
+        # authority, so a deal carrying both snapshots the company: that is what the
+        # lending team is being handed, and what every later read of this deal's
+        # buyer resolves to.
+        #
+        # The keys are the same either way, because the snapshot is a record of what
+        # was handed over and a reader must not have to know which era wrote it. A
+        # company has no `tax_id` of its own — PAN is the Indian equivalent and
+        # `registration_number` the foreign one — so `tax_id` is the PAN, and the
+        # contact fields are empty: a company's contacts are people on its own
+        # record, not one pair of fields, and inventing a primary contact here would
+        # put a name in the handover that nobody chose.
+        if deal.buyer_company_id is not None:
+            company = await self._db.scalar(
+                select(ExporterProfile).where(
+                    ExporterProfile.customer_id == deal.buyer_company_id
+                )
+            )
+        else:
+            company = None
+
+        if company is not None:
+            buyer_details = {
+                "name": company.name,
+                "country": company.country,
+                "registration_number": company.registration_number,
+                "tax_id": company.pan,
+                "contact_email": None,
+                "contact_phone": None,
+            }
+        elif buyer is not None:
+            buyer_details = {
+                "name": buyer.name,
+                "country": buyer.country,
+                "registration_number": buyer.registration_number,
+                "tax_id": buyer.tax_id,
+                "contact_email": buyer.contact_email,
+                "contact_phone": buyer.contact_phone,
+            }
+        else:
+            # `_NEEDS_BUYER` already refused a handover without either, so this is
+            # unreachable from `transition_stage`; it is here so the method is safe
+            # to call from anywhere.
+            buyer_details = {}
+
         return _Handover(
-            buyer=(
-                {
-                    "name": buyer.name,
-                    "country": buyer.country,
-                    "registration_number": buyer.registration_number,
-                    "tax_id": buyer.tax_id,
-                    "contact_email": buyer.contact_email,
-                    "contact_phone": buyer.contact_phone,
-                }
-                # `_NEEDS_BUYER` already refused a handover without one, so this
-                # branch is unreachable from `transition_stage`; it is here so the
-                # method is safe to call from anywhere.
-                if buyer is not None
-                else {}
-            ),
+            buyer=buyer_details,
             document_ids=[str(document.id) for document in documents],
             # Recorded alongside the buyer's details, not instead of them: once
             # P4-4 points deals at company records, the snapshot has to say *which*
             # company was handed over as well as what it looked like at the time.
             buyer_company_id=deal.buyer_company_id,
-            at=deal.handed_over_at or datetime.now(tz=UTC),
+            at=deal.handed_over_at or clock.now(),
         )
 
     # ── The A5 handover guard ────────────────────────────────────────────────
@@ -645,20 +913,39 @@ class DealService:
         writers, which is the point, while two handovers of different deals on the
         same company still proceed in parallel.
         """
+        # **Both** parties, in one statement ordered by `customer_id` (P4-7). The
+        # seller alone was enough while only its own standing was read; condition 5
+        # now reads the buyer's, so a flag landing on the buyer between this guard and
+        # the commit would be the same race D10 closed for the seller.
+        #
+        # `ORDER BY customer_id` is the deadlock rule, not a tidiness one: Postgres
+        # takes row locks in the order the query returns them, so two handovers that
+        # share a pair of companies — A selling to B while B sells to A — queue in one
+        # order instead of each holding what the other wants. Sorted on the database
+        # rather than in Python, so the lock order is the one the SQL actually used.
+        #
         # By `customer_id`, not `db.get`: `customer_id` is the company's business
         # key and the target of `fk_deal_company_id`, while the table's primary key
         # is the inherited `id`. `db.get` would look up the wrong column and find
         # nothing for every company.
-        statement = select(ExporterProfile).where(
-            ExporterProfile.customer_id == deal.company_id
-        )
+        wanted = {deal.company_id}
+        if deal.buyer_company_id is not None:
+            # `ck_deal_buyer_is_not_the_seller` rules out the two being equal, so this
+            # is two rows whenever a buyer company is recorded.
+            wanted.add(deal.buyer_company_id)
+        statement = select(ExporterProfile).where(ExporterProfile.customer_id.in_(wanted))
         if lock:
-            statement = statement.with_for_update(read=True).execution_options(
-                populate_existing=True
-            )
-        company = await self._db.scalar(statement)
+            statement = statement.order_by(ExporterProfile.customer_id).with_for_update(
+                read=True
+            ).execution_options(populate_existing=True)
+        rows = {row.customer_id: row for row in await self._db.scalars(statement)}
+
+        company = rows.get(deal.company_id)
         if company is None:  # pragma: no cover - the FK makes this unreachable
             raise DealCompanyNotFoundError(deal.company_id)
+        if deal.buyer_company_id is not None and deal.buyer_company_id not in rows:
+            # pragma: no cover - `fk_deal_buyer_company_id` makes this unreachable
+            raise DealCompanyNotFoundError(deal.buyer_company_id)
 
         # Every unmet condition, journey first, so the screen tells the whole story at
         # once — a PROSPECT whose check is FLAGGED needs both fixed, not one.
@@ -673,8 +960,10 @@ class DealService:
             legacy_buyer_id=deal.buyer.id if deal.buyer is not None else None,
             seller_gst_registration_id=deal.seller_gst_registration_id,
             # One "now" for the whole run, so two conditions cannot disagree about
-            # whether a check had expired.
-            now=datetime.now(tz=UTC),
+            # whether a check had expired — and taken from the shared clock
+            # (allocation §2.2), so a test can move past a Clear's expiry instead of
+            # rewriting a decision the database refuses to change anyway.
+            now=clock.now(),
         )
         return await blocked_reason(subject, self._providers)
 
@@ -744,13 +1033,10 @@ class DealService:
             company_id=company.customer_id,
             name=company.name,
             country=company.country,
-            # Developer 3's F3 column, read by name through `state_name` so an
-            # enum and a string look the same here. The `getattr` is there **only**
-            # until F3 merges: this lane fixed the response shape in F2 so
-            # Developer 3's screens could be built against it, and a hard attribute
-            # read would make this file fail against today's schema. It comes out in
-            # the commit that rebases onto F3.
-            pipeline_status=state_name(getattr(company, "pipeline_status", None)),
+            # Developer 3's F3 column, read by name through `state_name` so an enum
+            # and a string look the same here. The `getattr` this used to need came
+            # out when F3 merged, as its comment said it would.
+            pipeline_status=state_name(company.pipeline_status),
             pan=company.pan,
             cin=company.cin,
         )

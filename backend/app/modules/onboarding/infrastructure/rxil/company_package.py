@@ -20,7 +20,7 @@ The provisional package, as JSON::
       "exporter": {
         "legal_name": "…", "country": "IN",         # required
         "pan": "…", "gstins": ["…"], "iec": "…", "cin": "…",
-        "industry": "…", "website": "…"
+        "industry": "…", "registration_number": "…"   # kept when sent; see below
       },
       "qualification": {
         "decision": "QUALIFIED",                    # required; RXIL only sends qualified exporters
@@ -50,6 +50,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from app.modules.onboarding.domain.company_identity import normalise_registration_number
 from app.modules.onboarding.domain.company_intake import (
     PartnerCompanyIntake,
     PartnerQualification,
@@ -63,6 +64,7 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
 )
 from app.modules.onboarding.domain.qualification_views import EvidenceRef, ResultEntry
 from app.modules.onboarding.exceptions import PartnerPackageInvalidError
+from app.shared.exceptions import ValidationError
 
 PARTNER = "RXIL"
 
@@ -143,6 +145,20 @@ def parse_rxil_company_package(payload: Any) -> PartnerCompanyIntake:
     for reason in reasons:
         problems.add(reason.code, reason.message)
 
+    # Decision IQ-7 is **not** checked here, deliberately. A delivery must carry a
+    # PAN or at least one GSTIN (`IntakeIdentity.has_identifier`, so a repeat finds
+    # the same company), and both mean the exporter is identified by a PAN — so
+    # there is no reachable delivery for which IQ-7 has anything left to ask. The
+    # rule still holds on this path: `create_or_get_profile` enforces it for every
+    # create path at once. A number RXIL does send is kept.
+    try:
+        registration_number = normalise_registration_number(
+            _text(exporter.get("registration_number"))
+        )
+    except ValidationError as exc:
+        registration_number = None
+        problems.add("INVALID_REGISTRATION_NUMBER", exc.detail)
+
     decision = _DECISIONS.get(str(qualification.get("decision", "")).strip().upper())
     if decision is None:
         problems.add("INVALID_DECISION", "qualification.decision must be QUALIFIED or NOT_QUALIFIED")
@@ -165,7 +181,7 @@ def parse_rxil_company_package(payload: Any) -> PartnerCompanyIntake:
         ),
         external_reference=package_id,
         industry=_text(exporter.get("industry")),
-        website=_text(exporter.get("website")),
+        registration_number=registration_number,
     )
 
 

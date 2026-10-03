@@ -8,10 +8,11 @@ code before trusting a "not built" below — this file says what was true on tha
 | | |
 |---|---|
 | **Done (merged)** | 3.1, 3.3, 3.4, 3.5, 3.6 — and 3.2's script |
-| **Still owed on a done task** | 3.2's per-environment **reports**; the 0031 **release note** (§1) |
-| **Next, and on the critical path** | **F3** — Developer 2 is now waiting on it (§3) |
-| **Not started** | 3.7 – 3.24 |
-| **Next free migration number** | **0032**, parent `auth_0005_rm_role_name` (`contracts/migration-register.md` §1) |
+| **Done, awaiting merge** | **F3** (0032); **3.7, 3.8** (0033), **3.9, 3.10, 3.11**; **3.12** (0035), **3.13, 3.14, 3.15, 3.17**; **3.18, 3.19** (0037); **3.20, 3.21, 3.22, 3.23, 3.24**; the inherited IEC `CHECK` (0040) |
+| **Still owed on a done task** | 3.2's per-environment **reports**; the 0031 **release note** (§1); **3.23's run**, which waits on Developer 2's P4-6 being applied (§5) |
+| **Next** | Nothing in this lane blocks anything. 3.16 if 3.2's reports say it is worth doing |
+| **Not started** | 3.16 (conditional on 3.2's reports) and one inherited item: `name` / `country` `NOT NULL` (the IEC `CHECK` is done, 0040) |
+| **Next free migration number** | **0041** — 0032, 0033, 0035, 0037 and 0040 are this lane's; 0034, 0036, 0038 and 0039 are Developer 2's (`contracts/migration-register.md` §1) |
 
 **The merge order changed.** The allocation planned F1 → F3 → F2. What happened was
 **F1 → F2 → F3**: Developer 2's foundation merged before yours, so it declared the one
@@ -138,16 +139,21 @@ Specs are in allocation §5; this column says what has changed since it was writ
 | 3.17 | "Verify GSTIN" link (GST portal) for COMPLIANCE and ADMIN; no reveal for masked roles | 3.12 | — |
 | 3.18 | `trade_relationship(seller_company_id, buyer_company_id)`, unique pair, seller ≠ buyer, `get_or_create` | F3 | Found by the pair `(deal.company_id, deal.buyer_company_id)` — **no column on `deal`** (allocation §1, adjustment 1) |
 | 3.19 | `trade_invoice` (identity frozen), `trade_invoice_outcome` (append-only chain); currency stored, never converted (IQ-4) | 3.18 | Every new table: `created_by`, `created_at`, `source`, `source_ref` (BQ-7); direct-SQL append-only tests |
-| 3.20 | Read routes (as seller / as buyer / one relationship) and write routes; RM, Compliance, Admin write; Developer reads masked (IQ-19); `trade` history rows | 3.19 | Route-authorisation rows in your lane's block; D8 handling |
-| 3.21 | Outcome after handover (creates the invoice if absent); claimed past trade with `deal_id NULL`, `proof_status = CLAIMED` | 3.20 | — |
-| 3.22 | `TradeHistoryPanel` full version; company-page panel | 3.20 | Developer 2's 2.11 mounts it on the deal page |
-| 3.23 | Relationship backfill for every deal with `buyer_company_id` | 3.18 | Code can be written any time; **run** it only after Developer 2's P4-6 has been applied (§5) |
-| 3.24 | Masking sweep: every CRM read as OPERATIONS and DEVELOPER, no unmasked PAN, GSTIN, IEC, CIN, registration number or contact | everything | Final integration (allocation §6) |
+| 3.20 | **Done.** Five routes in `api/trade_history_router.py` (both sides of a company's relationships, one relationship with its invoices, one invoice with its whole outcome chain, and the two writes). `trade` history rows on every write. **IQ-19 is satisfied by the response shape, not by a masking pass**: `TradeCounterparty` carries an id, a name, a country and a pipeline status and *no identifiers for any role*, so there is nothing for DEVELOPER to be served masked — which is also what `history-row.md` already says about `trade` rows. No totals anywhere (IQ-4) | 3.19 | Rows added to **both** authorisation tables (`test_route_authorization.py` and `tests/contract/test_route_authorization_coverage.py`) |
+| 3.21 | **Done.** `POST /deals/{id}/payment-outcome`: requires `HANDED_OVER` and a buyer **company**, creates the deal's invoice if it has none (the four invoice fields are required together or not at all) and appends the outcome. Claimed past trade is the same write with `deal_id` null and `proof_status = CLAIMED`. Not a deal stage (architecture §3.3) | 3.20 | Three new refusals: `DealNotHandedOverError`, `DealBuyerIsNotACompanyError`, `TradeInvoiceAlreadyRecordedError` |
+| 3.22 | **Done.** `TradeHistoryPanel` filled in (the pair as "A → B", invoices with status chips, the outcome chain on demand, `EvidenceList` for proof) plus `CompanyTradePanel` for the company page — both sides, one relationship open at a time. `TradeInvoiceList` is the part they share. **The stub's props were not touched**, which is why 2.11's mounting did not change | 3.20 | `TradeOutcomeChip` keeps "nobody looked" (no outcome) apart from "looked and could not say" (`UNKNOWN`) — a distinction only the screen shows |
+| 3.23 | **Code done; not run.** `python -m app.modules.onboarding.backfill_trade_relationships --dry-run / --apply / --validate / --report-run`. **P5-5's `deal.relationship_id` is not needed and was not added**: a relationship is keyed on the ordered pair and a deal carries both sides, so nothing is written to `deal` and the terminal-deal freeze is never involved — which removes the whole difficulty P5-5 anticipated. Only deals linked *without* `set_buyer_company` need it (that method creates the relationship itself), so its subject is exactly the deals P4-6 links | 3.18 | **Run it only after P4-6 has been applied** (§5). The dry run says so itself when most deals still have no buyer company |
+| 3.24 | **Done.** `test_dev3_masking_sweep.py`: reads the mounted routes out of the OpenAPI document, calls **every** CRM `GET` as OPERATIONS and as DEVELOPER against one company carrying all six secrets, and searches the whole response text — not a field — for the raw value. A new `GET` is swept with no edit, and one whose path parameter the module cannot fill **fails the test** rather than being skipped. Two by-products: an anti-vacuity check (every secret must be found *masked* somewhere, so a wall of 404s cannot pass) and a refusal table asserted both ways | everything | Writing it found two gates nobody had written down — the proposal queue is closed to OPERATIONS, the import template to DEVELOPER — and one leak of its own making: the fixture had put the PAN in the company name, which is not masked and never will be |
 
 ### Inherited items in this lane (from `open-items.md` §2)
 
-- **IEC has no `CHECK` constraint**, unlike PAN, GSTIN and CIN — the service checks it, the
-  database does not. A migration (next free number) with a direct-SQL violation test.
+- ~~**IEC has no `CHECK` constraint**~~ — **done**, migration **0040**
+  (`ck_exporter_profile_iec_format`). The violation test goes through raw SQL, because the
+  only writer the constraint exists for is one that skipped the service, and it asserts the
+  SQL pattern **equals `IEC_RE.pattern`** rather than restating it: two copies of a regex
+  drifting is how a constraint stops matching the rule it was meant to be. One thing the
+  test taught — an over-long IEC never reaches the constraint, `varchar(10)` refuses it
+  first — so every bad case in it is short, lower-case or punctuated.
 - **`POST /exporters` without `name` or `country` still creates a company** — remove the
   unnamed path once nothing calls it, then make both columns `NOT NULL` (expand → backfill →
   contract). Fits naturally beside 3.8.
@@ -158,14 +164,14 @@ Specs are in allocation §5; this column says what has changed since it was writ
 
 Developer 2's side of each is in `dev2-remaining-work.md` §3–§4.
 
-| Developer 2's task | Needs from you |
-|---|---|
-| 2.4 buyer company on the deal | `CompanyPicker` (F3 stub, 3.10 full) |
-| 2.6 buyer migration (P4-6) | `CompanyDirectory.create_buyer_company` (F3), and **3.2's reports** |
-| 2.8 invoicing branch on the deal | **3.12** first (see the 3.12 note) |
-| 2.9 "invoicing branch is flagged" | `BranchFlagReader` stub (F3), real one (3.14) |
-| 2.11 trade history on the deal page | `TradeHistoryPanel` (F3 stub, 3.22 full) |
-| 2.12 main end-to-end ("… → payment outcome") | 3.21 |
+| Developer 2's task | Needs from you | State |
+|---|---|---|
+| 2.4 buyer company on the deal | `CompanyPicker` (F3 stub, 3.10 full) | delivered |
+| 2.6 buyer migration (P4-6) | `CompanyDirectory.create_buyer_company` (F3), and **3.2's reports** | code delivered; **the reports are still owed**, and they are what sizes the run |
+| 2.8 invoicing branch on the deal | **3.12** first (see the 3.12 note) | delivered |
+| 2.9 "invoicing branch is flagged" | `BranchFlagReader` stub (F3), real one (3.14) | delivered |
+| 2.11 trade history on the deal page | `TradeHistoryPanel` (F3 stub, 3.22 full) | delivered, and mounted — the stub's props never changed |
+| 2.12 main end-to-end ("… → payment outcome") | 3.21 | delivered |
 
 ---
 
@@ -176,7 +182,12 @@ From allocation §6. Not a coding dependency; the order things run on a live dat
 1. `pg_dump`.
 2. Developer 2's buyer migration **P4-6** (after their 2.4 merges): dry run, Compliance
    reviews the name-only duplicates (IQ-8), apply, validation queries.
-3. Your relationship backfill **P5-5** (3.23).
+3. Your relationship backfill **P5-5** (3.23):
+   `python -m app.modules.onboarding.backfill_trade_relationships --dry-run`, then
+   `--apply --run-id <id>`, then `--validate`. The dry run tells you if step 2 has not
+   happened — most deals without a buyer company is what that looks like. Undoing a run
+   is one `DELETE` (the module's docstring has it), unless an invoice has been recorded
+   against one of its relationships, which `--report-run` counts before you try.
 4. Developer 2's **P4-10** (retire `deal_buyer` writes), only once every environment has
    passed step 2.
 

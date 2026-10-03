@@ -183,6 +183,18 @@ not apply to leads. Each deal has at most one buyer (its own row, `deal_buyer`),
 checks about a buyer attach to the buyer, never to the company (decision 9). Contract:
 [`contracts/deal-and-buyer.md`](contracts/deal-and-buyer.md).
 
+**A deal's buyer is becoming a company record** (P4-4): `deal.buyer_company_id` names
+the company the buyer *is*, set once, and the legacy `deal_buyer` row stays until every
+environment has run the buyer migration (P4-6). "A handover needs a buyer" is satisfied
+by either, so the migration is a data migration and not a behaviour change.
+
+**What two companies have traded** is separate from the deal between them, and separate
+from any judgement about it: a trade relationship is the ordered pair, its invoices are
+what was billed, and an outcome is what became of each invoice — recorded after the
+handover, because what happened to the money is not a deal stage. Amounts stay in the
+currency they were invoiced in and nothing is totalled (IQ-4). Contract:
+[`contracts/trade-history.md`](contracts/trade-history.md).
+
 ## 5. The move to CUSTOMER, and the handover
 
 **The move to `CUSTOMER` is one transaction** with the move that completes its
@@ -415,8 +427,8 @@ The prototype is built to be honest about what is not real yet.
 
 - What is still open, and who decides: [`open-items.md`](open-items.md).
 - The contracts: [`contracts/`](contracts/) — company record, criterion results,
-  engagement, deal and buyer, storage and documents, background check, verification and
-  screening, history row,
+  engagement, deal and buyer, trade history, storage and documents, background check,
+  verification and screening, history row,
   event envelope, migration register.
 - What each post-demo developer still has to do: [`dev1-remaining-work.md`](dev1-remaining-work.md) (compliance engine), [`dev2-remaining-work.md`](dev2-remaining-work.md) (deals, handover, buyer migration) and [`dev3-remaining-work.md`](dev3-remaining-work.md) (company record, settings, GST, trade history).
 - Running, testing and migrating: [`development.md`](development.md). The demo walk-through:

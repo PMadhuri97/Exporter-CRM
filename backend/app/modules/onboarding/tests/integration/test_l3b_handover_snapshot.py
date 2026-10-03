@@ -45,6 +45,9 @@ from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.migrations import onboarding_0029_deal_snapshot as snapshot_migration
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.integration.test_l3b_handover import (
+    record_legacy_buyer_checks,
+)
 from app.platform.authentication.models import UserRole
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
@@ -117,6 +120,10 @@ async def _deal_ready_to_hand_over(company_id: uuid.UUID) -> uuid.UUID:
         category=DocumentCategory.PRE_SHIPMENT,
         document_type="proforma_invoice",
     )
+    # PASSED sanctions and AML on the buyer (BQ-4), live since task 2.5 wired
+    # Developer 1's reader. Without them the guard refuses and these tests never
+    # reach the snapshot they are about.
+    await record_legacy_buyer_checks(view.id)
     return view.id
 
 

@@ -188,7 +188,10 @@ class PartnerCompanyIntake:
     #: Used to make a repeated delivery a no-op; never invented.
     external_reference: str | None = None
     industry: str | None = None
-    website: str | None = None
+    #: Whatever the exporter's own registrar issued, when it is not identified by a
+    #: PAN. Required for a foreign company (decision IQ-7), checked by the partner's
+    #: own parser so the problem names the package's field.
+    registration_number: str | None = None
 
 
 __all__ = [

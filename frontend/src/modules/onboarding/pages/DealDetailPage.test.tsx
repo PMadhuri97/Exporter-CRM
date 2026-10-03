@@ -12,6 +12,7 @@ import {
   getExporterProfileDetail,
   listDealDocuments,
   listDealHistory,
+  listTradeRelationships,
   listVerificationResults,
   setDealBuyer,
 } from '../api';
@@ -38,6 +39,11 @@ vi.mock('../api', () => ({
   listDealHistory: vi.fn(),
   // Staff see the buyer's checks under the buyer.
   listVerificationResults: vi.fn(),
+  // Trade history (task 2.11), mounted only on a deal with a buyer company.
+  listTradeRelationships: vi.fn(),
+  getTradeRelationship: vi.fn(),
+  getTradeInvoice: vi.fn(),
+  recordDealPaymentOutcome: vi.fn(),
 }));
 
 const DEAL_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -191,7 +197,7 @@ describe('DealDetailPage — the server decides what may happen next', () => {
     expect(await screen.findByText('Rotterdam shipment, March')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Edit buyer' }),
+      screen.queryByRole('button', { name: 'Edit buyer details' }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Upload a document' }),
@@ -211,7 +217,7 @@ describe('DealDetailPage — the server decides what may happen next', () => {
 
     expect(await screen.findByText('Handed over')).toBeInTheDocument();
     // What the lending team was given must not be editable afterwards.
-    expect(screen.queryByRole('button', { name: 'Edit buyer' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit buyer details' })).not.toBeInTheDocument();
   });
 });
 
@@ -430,7 +436,7 @@ describe('DealDetailPage — editing a buyer whose details are masked', () => {
   it('starts the masked fields empty and leaves them out, so the stored values are kept', async () => {
     vi.mocked(getDeal).mockResolvedValue(MASKED);
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer details' }));
 
     const taxId = screen.getByLabelText('Tax identifier');
     expect(taxId).toHaveValue('');
@@ -458,7 +464,7 @@ describe('DealDetailPage — editing a buyer whose details are masked', () => {
   it('prefills and sends every field for COMPLIANCE, who sees them in full', async () => {
     signedInAs('COMPLIANCE');
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer details' }));
     expect(screen.getByLabelText('Registration number')).toHaveValue('NL-8899');
 
     fireEvent.click(screen.getByRole('button', { name: 'Save buyer' }));
@@ -597,5 +603,69 @@ describe('the buyer company', () => {
     const link = screen.getByRole('link', { name: 'Rotterdam Trading BV' });
     expect(link).toHaveAttribute('href', '/companies/99999999-9999-4999-8999-999999999999');
     expect(screen.getByText('••••••1234')).toBeInTheDocument();
+  });
+
+  // Task 2.11: Developer 3's panel, mounted only where it has two companies to
+  // pair. A deal whose buyer is still a `deal_buyer` row has one, so the panel is
+  // absent rather than empty — an empty panel would imply these two have never
+  // traded, when the truth is that nothing yet says who the buyer is.
+  it('shows trade history only once the buyer is a company', async () => {
+    vi.mocked(listTradeRelationships).mockResolvedValue({ relationships: [], total: 0 });
+
+    renderPage();
+    await screen.findByText('Rotterdam shipment, March');
+    expect(screen.queryByTestId('trade-history-panel')).not.toBeInTheDocument();
+    expect(listTradeRelationships).not.toHaveBeenCalled();
+
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        buyer_company: {
+          company_id: '99999999-9999-4999-8999-999999999999',
+          name: 'Rotterdam Trading BV',
+          country: 'NL',
+          pipeline_status: null,
+          pan: null,
+          cin: null,
+        },
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByTestId('trade-history-panel')).toBeInTheDocument();
+    // The seller's side of the pair is the deal's own company, not the buyer's.
+    await waitFor(() =>
+      expect(listTradeRelationships).toHaveBeenCalledWith(COMPANY_ID, { as: 'seller' }),
+    );
+  });
+
+  // P5-6. The server refuses a payment outcome on a deal that has not been handed
+  // over, so offering the control earlier would be offering a refusal.
+  it('offers "Record outcome" only after the handover', async () => {
+    vi.mocked(listTradeRelationships).mockResolvedValue({ relationships: [], total: 0 });
+    const buyerCompany = {
+      company_id: '99999999-9999-4999-8999-999999999999',
+      name: 'Rotterdam Trading BV',
+      country: 'NL',
+      pipeline_status: null,
+      pan: null,
+      cin: null,
+    };
+
+    vi.mocked(getDeal).mockResolvedValue(deal({ buyer_company: buyerCompany }));
+    renderPage();
+    await screen.findByTestId('trade-history-panel');
+    expect(screen.queryByRole('button', { name: 'Record outcome' })).not.toBeInTheDocument();
+
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        buyer_company: buyerCompany,
+        stage: 'HANDED_OVER',
+        handed_over_at: '2026-04-01T10:00:00Z',
+      }),
+    );
+    renderPage();
+    expect(
+      await screen.findByRole('button', { name: 'Record outcome' }),
+    ).toBeInTheDocument();
   });
 });

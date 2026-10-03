@@ -4,8 +4,9 @@
  * so anything else — including a value stored before the server refused it — must be
  * shown as text, never as a link.
  *
- * The same rule as the server's `domain/web_links.py`, used for a company's website
- * and a verification result's `url` evidence.
+ * The same rule as the server's `domain/web_links.py`. Its one caller today is a
+ * verification result's `url` evidence; the company website, which this rule was
+ * also written for, retired in R11 (decision IQ-16).
  */
 export function isWebLink(value: string): boolean {
   try {

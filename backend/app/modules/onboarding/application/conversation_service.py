@@ -44,9 +44,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.engagement_views import ConversationMove, ConversationView
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterConversation
-from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
+from app.modules.onboarding.domain.entities.exporter_enums import (
+    CompanyPipelineStatus,
+    ExporterJourney,
+)
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.exceptions import (
+    CompanyNotInPipelineError,
     ConversationCheckBackInPastError,
     ConversationCheckBackNotAllowedError,
     ConversationCheckBackRequiredError,
@@ -367,6 +371,13 @@ class ConversationService:
         profile = result.scalar_one_or_none()
         if profile is None:
             raise ExporterProfileNotFoundError(company_id)
+        # A buyer-only company is not being sold to (plan P4-1). Refused on the
+        # locking path, which every write in this service goes through, rather
+        # than once per route: a sales step that slipped past would move the
+        # journey and be refused by `ck_exporter_profile_not_in_pipeline_start`
+        # as a constraint violation instead of a clear 409.
+        if profile.pipeline_status is CompanyPipelineStatus.NOT_IN_PIPELINE:
+            raise CompanyNotInPipelineError(company_id)
         return profile
 
 

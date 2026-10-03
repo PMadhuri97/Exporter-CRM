@@ -56,6 +56,8 @@ from sqlalchemy.sql import func
 from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterConversation
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    CompanyIdentityType,
+    CompanyPipelineStatus,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -116,6 +118,46 @@ class ExporterProfile(AnerModel):
             "background_check_expires_at",
             postgresql_where=text("background_check_expires_at IS NOT NULL"),
         ),
+        # ── 0032 — Developer 3 (F3): identity and pipeline (plan P4-1) ───────
+        #
+        # `NOT_IN_PIPELINE` means the journey has not started. Enforced here and not
+        # only in the service, because the buyer migration writes these rows directly
+        # and a buyer that leaked into the pipeline counts would be invisible until
+        # somebody noticed the numbers.
+        # Ten letters or digits, the same rule `IEC_RE` enforces in the service
+        # (migration 0040). Every other identifier on this table has had its format
+        # checked by the database since 0014; the IEC was the one that did not.
+        CheckConstraint(
+            "iec IS NULL OR iec ~ '^[A-Z0-9]{10}$'",
+            name="ck_exporter_profile_iec_format",
+        ),
+        CheckConstraint(
+            "pipeline_status <> 'NOT_IN_PIPELINE'"
+            " OR (journey = 'LEAD'"
+            "     AND qualification = 'NOT_YET_REVIEWED'"
+            "     AND conversation = 'NOT_CONTACTED')",
+            name="ck_exporter_profile_not_in_pipeline_start",
+        ),
+        # A foreign registration number identifies one company per country. Normalised
+        # (upper-cased, inner whitespace and punctuation stripped) so "KVK 1234-56" and
+        # "kvk123456" collide, which is the whole point. Partial: most rows are NULL,
+        # and two companies with no number are not duplicates.
+        Index(
+            "uq_exporter_profile_country_registration_number",
+            "country",
+            text("upper(regexp_replace(registration_number, '[^A-Za-z0-9]', '', 'g'))"),
+            unique=True,
+            postgresql_where=text(
+                "registration_number IS NOT NULL AND country IS NOT NULL"
+            ),
+        ),
+        # "Which companies did this deal's buyer become?" — the buyer migration's own
+        # read, and the company page's "created from deal X" link.
+        Index(
+            "ix_exporter_profile_created_via_deal_id",
+            "created_via_deal_id",
+            postgresql_where=text("created_via_deal_id IS NOT NULL"),
+        ),
         {"schema": SCHEMA},
     )
 
@@ -154,12 +196,18 @@ class ExporterProfile(AnerModel):
     #: Company registration number (`ck_exporter_profile_cin_format`).
     cin: Mapped[str | None] = mapped_column(String(21), nullable=True)
 
-    #: The company's GSTINs, one row each (`ExporterGstin`), newest last.
+    #: The company's GST registrations, one row each (`ExporterGstin`), newest last.
     #: Loaded with the profile (`selectin`), so async code never lazy-loads it.
+    #:
+    #: **No `delete-orphan`** since task 3.12. A registration is a branch the company
+    #: really traded through: a handed-over deal records which one it invoiced from
+    #: (`deal.seller_gst_registration_id`), so deleting the row would either break
+    #: that FK's `RESTRICT` or destroy the record. Dropping one is a *deactivation*
+    #: (`active = false`), and `trg_exporter_gstin_no_delete` refuses a DELETE outright
+    #: — including one the ORM would otherwise emit from this relationship.
     gstin_rows: Mapped[list[ExporterGstin]] = relationship(
         lazy="selectin",
         order_by="ExporterGstin.created_at, ExporterGstin.gstin",
-        cascade="all, delete-orphan",
     )
 
     # ── Marker (L2-08): commercial pause or ending, not a journey stage ─────
@@ -256,10 +304,77 @@ class ExporterProfile(AnerModel):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    # ── Identity and pipeline (migration 0032, F3 — plan P4-1) ───────────────
+    #
+    # A company is no longer always an exporter we went looking for: it may exist only
+    # because it was somebody's buyer. These five columns are what tell the two apart.
+
+    #: Which registration identifies this company — PAN for an Indian one, a foreign
+    #: registration number for the rest. `NULL` on every company created before F3:
+    #: the question did not exist then, and guessing from "has a PAN?" would read a
+    #: migrated buyer with neither as foreign.
+    identity_type: Mapped[CompanyIdentityType | None] = mapped_column(
+        Enum(
+            CompanyIdentityType,
+            name="company_identity_type_enum",
+            schema=SCHEMA,
+            create_type=False,
+        ),
+        nullable=True,
+    )
+    #: Whatever the company's own jurisdiction issues, for a company that is not
+    #: identified by a PAN. Required on a foreign create path (IQ-7) except for buyers
+    #: the migration made, which may have nothing but a name and a country. Unique per
+    #: country once normalised — a partial index, because most rows are `NULL`.
+    #: Masked like CIN (task 3.8).
+    registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    #: Whether this company is in the sales pipeline at all (plan P4-2). `NOT NULL`
+    #: with a server default, so every existing company reads `IN_PIPELINE` without a
+    #: backfill. `ck_exporter_profile_not_in_pipeline_start` holds the implication that
+    #: `NOT_IN_PIPELINE` means the journey has not started.
+    pipeline_status: Mapped[CompanyPipelineStatus] = mapped_column(
+        Enum(
+            CompanyPipelineStatus,
+            name="company_pipeline_status_enum",
+            schema=SCHEMA,
+            create_type=False,
+        ),
+        nullable=False,
+        server_default=CompanyPipelineStatus.IN_PIPELINE.value,
+        default=CompanyPipelineStatus.IN_PIPELINE,
+    )
+
+    #: How the record came to exist, as a channel rather than a sales story —
+    #: `ExporterSource` mixes "how we found them" with "which channel", and the
+    #: creation channel was previously recoverable only from the first history row's
+    #: `event_metadata.source` (audit §3.1). Task 3.8 backfills it from there.
+    created_via: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: The deal whose buyer this company was, when that is why it exists. A bare uuid
+    #: with no FK, like `exporter_lifecycle_history.deal_id`: the deal may be withdrawn
+    #: or (in a future cleanup) gone, and losing the company because of it would be
+    #: worse than losing the link.
+    created_via_deal_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
     @property
     def gstins(self) -> list[str]:
-        """The company's GSTINs as plain strings, in `gstin_rows` order."""
-        return [row.gstin for row in self.gstin_rows]
+        """The company's **active** GSTINs as plain strings, in `gstin_rows` order.
+
+        Active only, since task 3.12: a deactivated branch is part of the record but
+        not part of the company's current identity, and every caller of this property
+        — the duplicate warning, the PAN/GSTIN consistency check, the responses —
+        means "the GSTINs this company trades under now". `gstin_rows` is still every
+        row, for the screen that shows the history.
+        """
+        return [row.gstin for row in self.gstin_rows if row.active]
+
+    @property
+    def flagged_branch_count(self) -> int:
+        """How many active branches compliance has flagged (task 3.14) — what the
+        company page's warning chip counts."""
+        return sum(1 for row in self.gstin_rows if row.active and row.is_flagged)
 
 
 __all__ = ["ExporterProfile"]
