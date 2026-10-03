@@ -84,7 +84,9 @@ const DETAIL: ExporterProfileDetail = {
   export_markets: ['US', 'GB'],
   products: ['Garments'],
   year_established: 2019,
-  website: 'https://example.com',
+  registration_number: null,
+  identity_type: 'IN_PAN',
+  pipeline_status: 'IN_PIPELINE',
   date_added: '2026-09-21T00:00:00Z',
   created_at: '2026-09-21T00:00:00Z',
   updated_at: '2026-09-21T00:00:00Z',
@@ -319,26 +321,44 @@ describe('ExporterDetailPage — E9', () => {
     expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(5);
   });
 
-  it('links an http(s) website, and shows any other stored value as text, never as a link', async () => {
+  it('shows no website at all, whatever is stored', async () => {
+    // R11, decision IQ-16: the field retired. Stored values are kept — nothing is
+    // destroyed — and simply never shown. This replaces the test that proved an
+    // http(s) value became a link and anything else stayed text: with nothing
+    // rendered, the `javascript:` href that rule existed for cannot arise here.
     mockUser('COMPLIANCE', 'someone-else');
-    const { unmount } = renderPage();
-    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getByRole('link', { name: /https:\/\/example\.com/ })).toHaveAttribute(
-      'href',
-      'https://example.com',
-    );
-    unmount();
-
-    // A value stored before the server refused it: React 18 would render a
-    // `javascript:` href as written, so it must stay text.
     vi.mocked(getExporterProfileDetail).mockResolvedValue({
       ...DETAIL,
-      website: 'javascript:alert(document.cookie)',
-    });
+      // Still on the record, as a company created before the field retired has.
+      website: 'https://example.com',
+    } as never);
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getByText('javascript:alert(document.cookie)')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /javascript:/ })).not.toBeInTheDocument();
+
+    expect(screen.queryByText('Website')).not.toBeInTheDocument();
+    expect(screen.queryByText(/example\.com/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /example\.com/ })).not.toBeInTheDocument();
+  });
+
+  it('replaces the journey chip and both gauges for a buyer-only company', async () => {
+    // Its `journey` column reads LEAD because the column is NOT NULL, not because
+    // anyone judged it (plan P4-2) — and the server refuses to qualify it. Showing a
+    // Lead chip and an empty qualification form would invite exactly the action that
+    // 409s.
+    mockUser('COMPLIANCE', 'someone-else');
+    vi.mocked(getExporterProfileDetail).mockResolvedValue({
+      ...DETAIL,
+      pipeline_status: 'NOT_IN_PIPELINE',
+    } as never);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+
+    expect(screen.getByText('Not in pipeline')).toBeInTheDocument();
+    expect(screen.queryByTestId('journey-chip')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Qualification/ }));
+    expect(await screen.findByTestId('not-in-pipeline-notice')).toBeInTheDocument();
+    expect(screen.getByText(/Qualification is not needed/)).toBeInTheDocument();
   });
 
   it('shows the journey, qualification and marker separately, with no journey control', async () => {

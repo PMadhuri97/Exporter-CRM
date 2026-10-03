@@ -1693,3 +1693,150 @@ class BackgroundCheckApproverRoleNotAllowedError(AnerBaseException):
             error_code="BACKGROUND_CHECK_APPROVER_ROLE_NOT_ALLOWED",
             status_code=403,
         )
+
+
+class CompanyNotInPipelineError(AnerBaseException):
+    """A sales step asked of a company that is not in the sales pipeline.
+
+    A company record is no longer always somebody we are selling to: a buyer on
+    a deal is a company too (plan §8), created ``NOT_IN_PIPELINE`` with
+    ``journey='LEAD'`` only because the column is ``NOT NULL``. Qualifying such a
+    company, or recording how the conversation with it is going, would record an
+    opinion about a sales process that was never started — and, worse, qualifying
+    it moves the journey to ``PROSPECT``, which
+    ``ck_exporter_profile_not_in_pipeline_start`` then refuses at the database,
+    turning a sales action into a constraint violation.
+
+    This is the refusal Developer 1's P4-11 relies on to know a buyer-only
+    company can never be promoted by accident (``dev3-remaining-work.md`` §3).
+
+    409 rather than 422: the request is well formed, and the answer depends on
+    the company's current pipeline status rather than on anything the caller
+    sent. ``POST /exporters/{id}/pipeline`` is the way in (task 3.11).
+    """
+
+    def __init__(self, customer_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {customer_id} is not in the sales pipeline: it exists as a "
+                "buyer on a deal. Bring it into the pipeline first if we are going "
+                "to sell to it."
+            ),
+            error_code="COMPANY_NOT_IN_PIPELINE",
+            status_code=409,
+            extensions={"pipeline_status": "NOT_IN_PIPELINE"},
+        )
+
+
+class DuplicateRegistrationNumberError(AnerBaseException):
+    """A registration number another company in the same country already holds.
+
+    Refused rather than merged, for the same reason as a duplicate PAN
+    (architecture decision 4): two records claiming one registration is a data
+    problem a person has to resolve, and guessing which is right by joining them
+    loses whichever history we overwrote.
+
+    Unlike a GSTIN, a registration number is **not** warn-only. A GSTIN can
+    legitimately appear on two companies (decision IQ-9 — a shared premises or a
+    transferred registration), but ``(country, registration number)`` is the
+    foreign equivalent of a PAN: it is the identity itself, which is why
+    ``uq_exporter_profile_country_registration_number`` exists.
+
+    Names the holder so the person entering the duplicate can open that company
+    instead. The number itself is not repeated: the caller sent it, and the
+    response may be read by a role that sees it masked — the same reasoning as
+    `DuplicatePanError`.
+    """
+
+    def __init__(self, existing_customer_id: object, country: object) -> None:
+        self.existing_customer_id = existing_customer_id
+        super().__init__(
+            detail=(
+                f"This registration number is already held by company "
+                f"{existing_customer_id} in {country}; a registration number "
+                "belongs to one company per country"
+            ),
+            error_code="DUPLICATE_REGISTRATION_NUMBER",
+            status_code=409,
+            extensions={
+                "existing_customer_id": str(existing_customer_id),
+                "country": str(country),
+            },
+        )
+
+
+class CompanyAlreadyInPipelineError(AnerBaseException):
+    """``POST /exporters/{id}/pipeline`` for a company that is already in it.
+
+    Refused rather than treated as a no-op: the route's whole job is to start a
+    company's journey, and doing that twice would append a second `LEAD` creation
+    row to a journey already underway — making the history read as though the
+    company restarted. A 409 says plainly that there was nothing to do.
+
+    Every company except a buyer-only one is already in the pipeline, so this is
+    the ordinary answer for an ordinary company, not an edge case.
+    """
+
+    def __init__(self, customer_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {customer_id} is already in the sales pipeline; "
+                "there is nothing to bring in"
+            ),
+            error_code="COMPANY_ALREADY_IN_PIPELINE",
+            status_code=409,
+            extensions={"pipeline_status": "IN_PIPELINE"},
+        )
+
+
+class DealBuyerCompanyAlreadySetError(AnerBaseException):
+    """A second, different ``buyer_company_id`` on one deal.
+
+    Set once (migration 0034, plan P4-4). The buyer company is what a deal's buyer
+    checks are recorded against and read back through
+    (``for_company(buyer_company_id)``), what the handover guard's condition 5 asks
+    about (BQ-4), and what the handover snapshot records. Re-pointing it would
+    silently reinterpret all three: sanctions and AML somebody ran on one company
+    would start answering for another, with nothing recording that it had happened.
+
+    A deal pointed at the wrong buyer is **withdrawn and reopened**, which leaves a
+    trail, rather than quietly corrected. Setting the same company again is not an
+    error — it changes nothing — so only a *different* company raises this.
+
+    409: the request is well formed, and the answer depends on what the deal
+    already says.
+    """
+
+    def __init__(self, deal_id: object, existing_company_id: object) -> None:
+        self.existing_company_id = existing_company_id
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} already names company {existing_company_id} as its "
+                "buyer, and a deal's buyer company is set once. Withdraw this deal "
+                "and open a new one if the buyer is wrong."
+            ),
+            error_code="DEAL_BUYER_COMPANY_ALREADY_SET",
+            status_code=409,
+            extensions={"existing_company_id": str(existing_company_id)},
+        )
+
+
+class DealBuyerIsTheSellerError(AnerBaseException):
+    """A deal whose buyer company is the company selling on it.
+
+    ``ck_deal_buyer_is_not_the_seller`` (migration 0028) refuses the row, and this
+    turns that into a 422 naming the problem rather than a 500 carrying a Postgres
+    message. A company does not sell to itself: an invoice from a company to itself
+    is not trade finance, and both sides of the handover guard would be the same
+    party.
+    """
+
+    def __init__(self, deal_id: object, company_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {company_id} is the seller on deal {deal_id}, so it cannot "
+                "also be the buyer"
+            ),
+            error_code="DEAL_BUYER_IS_THE_SELLER",
+            status_code=422,
+        )

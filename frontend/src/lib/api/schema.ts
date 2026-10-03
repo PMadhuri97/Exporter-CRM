@@ -610,7 +610,7 @@ export interface paths {
         };
         /**
          * Search exporter profiles
-         * @description Filters by gstin, pan, iec, source, journey, qualification, marker (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
+         * @description Filters by gstin, pan, iec, source, journey, qualification, marker, pipeline_status (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. Companies that are NOT_IN_PIPELINE — a company that exists only because it was somebody's buyer — follow the same rule: excluded by default, found by any search term, and listed on their own with pipeline_status=NOT_IN_PIPELINE. The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -663,6 +663,26 @@ export interface paths {
          * @description A commercial pause or ending, recorded beside the journey and never instead of it: the journey does not move. PAUSED and ENDED need a reason; clearing to NONE does not. ENDED -> PAUSED is not a move (clear first), and a move to the current value is refused. Every change is recorded in the company's history with the signed-in user.
          */
         post: operations["set_exporter_marker_api_v1_onboarding_exporters__customer_id__marker_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bring a buyer-only company into the sales pipeline
+         * @description A company that exists only because it was somebody's buyer is NOT_IN_PIPELINE: nobody is selling to it, so it is kept out of the working list and out of pipeline counts, and qualification and the conversation gauge refuse it. This is the one way in. It sets pipeline_status to IN_PIPELINE and starts the company's journey history at LEAD — from then on it is an ordinary lead. A reason is optional and recorded on the history row. Deciding to sell to a company is a commercial decision, so this is OPERATIONS, COMPLIANCE or ADMIN; a company already in the pipeline is a 409, because there is nothing to do.
+         */
+        post: operations["bring_exporter_into_pipeline_api_v1_onboarding_exporters__customer_id__pipeline_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1028,6 +1048,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/companies/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Find the company a name and identifiers belong to
+         * @description Answers MATCHED, POSSIBLE_DUPLICATE, CONFLICT or NEW. A full PAN, GSTIN or (country, registration_number) names the company that holds it — including for a role that sees identifiers masked (decision BQ-2) — and every such lookup is audited. Partial or prefix identifier search is not offered. Without an identifier, companies in the same country whose name differs only in punctuation, spacing, case or legal form come back as POSSIBLE_DUPLICATE candidates for a person to choose between; a GSTIN held by two companies does the same (decision IQ-9). The response names candidates by id, name and country, and never carries an identifier. Nothing is created or changed.
+         */
+        post: operations["match_company_api_v1_onboarding_companies_match_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/exporters/{customer_id}/history": {
         parameters: {
             query?: never;
@@ -1116,10 +1156,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List a company's deals
+         * List a company's deals, as seller or as buyer
          * @description Newest first. `stage` may be repeated to filter to several stages; omitted, every stage is returned, including withdrawn and handed-over deals — a company's deal history is part of its record.
          *
-         *     `can_open_deal` says whether this caller may open another deal on the company now.
+         *     `as` chooses which side: `seller` (the default) lists the deals this company sells on, `buyer` the deals it buys on (task 2.7). The two are separate lists on purpose — the same company can be the seller on one deal and the buyer on another, and one list mixing them would show rows whose meaning changed line by line. On the buyer side, `buyer_name` carries **the seller's** name, because the company whose page this is would otherwise be repeated in every row.
+         *
+         *     The buyer side matches `buyer_company_id` only. A deal whose buyer is still a legacy `deal_buyer` row does not appear, because nothing yet says that buyer is this company; the buyer migration (P4-6) is what makes it appear.
+         *
+         *     `can_open_deal` says whether this caller may open another deal on the company now — always about selling, whichever side is listed.
          */
         get: operations["list_company_deals_api_v1_onboarding_exporters__company_id__deals_get"];
         put?: never;
@@ -1191,12 +1235,16 @@ export interface paths {
         };
         get?: never;
         /**
-         * Record or replace the deal's buyer
-         * @description One buyer per deal, so this replaces that one row rather than adding another (deal contract §3). `PUT` rather than `POST` for the same reason.
+         * Record the deal's buyer, as a company or as details
+         * @description Two forms, exactly one per request.
          *
-         *     A buyer's problems stay on the buyer: a failed buyer check is recorded against this row and never against the company (architecture §3.5).
+         *     **`{buyer_company_id}`** names the company the buyer **is** (plan P4-4). Use this one. The buyer is then a full company record: it can be screened on its own timeline, the handover guard reads its sanctions and AML (decision BQ-4), and the same company can be the seller on another deal. It is **set once** — a deal pointed at the wrong buyer is withdrawn and a new one opened, so that the correction leaves a trail. Setting the same company again changes nothing and is not an error. The company must exist and must not be the seller on this deal.
          *
-         *     The registration number, tax ID, contact email and contact phone are masked for OPERATIONS and DEVELOPER. Leave any of them out to keep its stored value — so a role that only sees the masked form can edit the rest — or send null to clear it. A masked value is refused.
+         *     **`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer per deal, so it replaces that row rather than adding another (deal contract §3); `PUT` rather than `POST` for the same reason. Still accepted because deals written before the buyer migration have one, and because a `deal_buyer`'s own sanctions and AML are the only thing BQ-4's rule can read for such a deal. These writes retire in P4-10.
+         *
+         *     A buyer's problems stay on the buyer: a failed buyer check is recorded against the buyer and never against the selling company (architecture §3.5).
+         *
+         *     In the legacy form the registration number, tax ID, contact email and contact phone are masked for OPERATIONS and DEVELOPER. Leave any of them out to keep its stored value — so a role that only sees the masked form can edit the rest — or send null to clear it. A masked value is refused.
          */
         put: operations["set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put"];
         post?: never;
@@ -2461,6 +2509,20 @@ export interface components {
             source: components["schemas"]["DocumentSource"];
         };
         /**
+         * BringIntoPipelineRequest
+         * @description Bring a buyer-only company into the sales pipeline (task 3.11).
+         *
+         *     Only a reason, and it is optional: the decision is the request itself, and
+         *     there is nothing to choose — a company is either in the pipeline or not, and
+         *     this route only moves it in. A reason is worth asking for anyway, because
+         *     "why did we start selling to our buyer" is the question the history row will
+         *     be read to answer.
+         */
+        BringIntoPipelineRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * BuyerCompanyResponse
          * @description The deal's buyer as a company record (plan P4-4), summarised.
          *
@@ -2785,6 +2847,106 @@ export interface components {
             aml: "PASSED" | "FAILED" | "MISSING" | "PENDING";
         };
         /**
+         * CompanyIdentityType
+         * @description Which kind of registration identifies this company — **owner: Developer 3**
+         *     (allocation F3, plan P4-1).
+         *
+         *     An Indian company is identified by its PAN; a foreign one by whatever its own
+         *     jurisdiction issues, which ``registration_number`` carries. The distinction has to
+         *     be a column rather than "has a PAN?", because a buyer company created by the
+         *     migration may have neither yet (IQ-7 excuses migrated buyers from the requirement)
+         *     and "we do not know which" must not read as "foreign".
+         *
+         *     Nullable on ``exporter_profile``: every company created before F3 predates the
+         *     question. Migration 0032 sets ``IN_PAN`` wherever a PAN is already stored, which is
+         *     the only case it can infer safely.
+         * @enum {string}
+         */
+        CompanyIdentityType: "IN_PAN" | "FOREIGN_REG";
+        /**
+         * CompanyMatchCandidate
+         * @description One company the matcher found.
+         *
+         *     No identifiers, for any role (``company_directory_router.py``). ``name`` and
+         *     ``country`` are nullable because the older unnamed create path left them empty
+         *     on some companies; a candidate with no name is still worth returning, since its
+         *     id is what the caller needs.
+         */
+        CompanyMatchCandidate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
+        };
+        /**
+         * CompanyMatchRequest
+         * @description What is known about a company at the moment somebody needs to find it.
+         *
+         *     ``name`` and ``country`` are always required, even when an identifier is given.
+         *     Two reasons: the country is part of the registration-number identity, and the
+         *     name is what the answer is *checked* against by the person reading it — a
+         *     MATCHED result naming a company whose name looks nothing like what they typed
+         *     is the signal that something is wrong, and without the name there is nothing
+         *     for the matcher to fall back to when no identifier matches.
+         *
+         *     Each identifier is optional and must be **complete**. There is no partial or
+         *     prefix form of any of them: an exact match is a lookup, a prefix match is a way
+         *     to read identifiers out of the CRM one character at a time.
+         */
+        CompanyMatchRequest: {
+            /** Name */
+            name: string;
+            /** Country */
+            country: string;
+            /** Pan */
+            pan?: string | null;
+            /** Gstin */
+            gstin?: string | null;
+            /** Registration Number */
+            registration_number?: string | null;
+        };
+        /**
+         * CompanyMatchResponse
+         * @description The matcher's answer.
+         */
+        CompanyMatchResponse: {
+            kind: components["schemas"]["MatchKind"];
+            /** Company Id */
+            company_id?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Needs A Person
+             * @default false
+             */
+            needs_a_person: boolean;
+            /** Candidates */
+            candidates?: components["schemas"]["CompanyMatchCandidate"][];
+        };
+        /**
+         * CompanyPipelineStatus
+         * @description Whether this company is in the sales pipeline at all — **owner: Developer 3**
+         *     (allocation F3, plan P4-1, P4-2).
+         *
+         *     A company that exists only because it was somebody's buyer is not a lead, and must
+         *     not appear in pipeline counts or be chased by sales (plan §8: buyers become leads
+         *     only when someone onboards them). It is still a full company record: it can be
+         *     screened, cleared and have checks recorded against it (Developer 1's P4-11).
+         *
+         *     ``NOT_IN_PIPELINE`` implies the journey has not started — `LEAD`, with
+         *     qualification `NOT_YET_REVIEWED` and conversation `NOT_CONTACTED` — and migration
+         *     0032 enforces that with a check constraint. `POST /exporters/{id}/pipeline`
+         *     (task 3.11) is the one way out, and it starts the journey properly.
+         * @enum {string}
+         */
+        CompanyPipelineStatus: "IN_PIPELINE" | "NOT_IN_PIPELINE";
+        /**
          * CompleteFollowUpRequest
          * @description Record that a follow-up was dealt with.
          *
@@ -2941,6 +3103,12 @@ export interface components {
          *     refused. A company starts with no marker.
          *
          *     `customer_id` is optional: when omitted, the API mints a fresh one.
+         *
+         *     `website` is **not** a field here any more (R11, decision IQ-16): with
+         *     `extra="forbid"`, sending one is a 422. The column and every value already
+         *     stored stay as they are — nothing is destroyed, and nothing is shown.
+         *     Only the CSV importer still tolerates the old header, because those files
+         *     come from somebody's machine rather than from this application's own form.
          */
         CreateExporterProfileRequest: {
             /** Customer Id */
@@ -2954,6 +3122,8 @@ export interface components {
             iec?: string | null;
             /** Cin */
             cin?: string | null;
+            /** Registration Number */
+            registration_number?: string | null;
             /** Relationship Manager */
             relationship_manager?: string | null;
             /** Industry */
@@ -2964,8 +3134,6 @@ export interface components {
             products?: string[] | null;
             /** Year Established */
             year_established?: number | null;
-            /** Website */
-            website?: string | null;
             /** Name */
             name?: string | null;
             /** Country */
@@ -3226,6 +3394,16 @@ export interface components {
             /** Handover Blocked Reason */
             handover_blocked_reason: string | null;
         };
+        /**
+         * DealSide
+         * @description Which side of its deals a company is being listed on (task 2.7).
+         *
+         *     An enum rather than a boolean query parameter, because ``?as=buyer`` reads as
+         *     what it means and ``?as_buyer=true`` does not — and because a third side is
+         *     conceivable later (a guarantor, say) without changing the parameter's shape.
+         * @enum {string}
+         */
+        DealSide: "seller" | "buyer";
         /**
          * DealStage
          * @description Where a deal has got to — architecture §3.3 ("The deal"), and
@@ -3823,8 +4001,10 @@ export interface components {
             products: string[] | null;
             /** Year Established */
             year_established: number | null;
-            /** Website */
-            website: string | null;
+            /** Registration Number */
+            registration_number: string | null;
+            identity_type: components["schemas"]["CompanyIdentityType"] | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
             /**
              * Date Added
              * Format: date-time
@@ -3887,6 +4067,10 @@ export interface components {
             industry: string | null;
             /** Year Established */
             year_established: number | null;
+            /** Registration Number */
+            registration_number: string | null;
+            identity_type: components["schemas"]["CompanyIdentityType"] | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
             /**
              * Date Added
              * Format: date-time
@@ -3940,8 +4124,10 @@ export interface components {
             products: string[] | null;
             /** Year Established */
             year_established: number | null;
-            /** Website */
-            website: string | null;
+            /** Registration Number */
+            registration_number: string | null;
+            identity_type: components["schemas"]["CompanyIdentityType"] | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
             /**
              * Date Added
              * Format: date-time
@@ -4361,6 +4547,12 @@ export interface components {
             /** Reason Required */
             reason_required: boolean;
         };
+        /**
+         * MatchKind
+         * @description How confident the directory is, in the four words the plan uses (P4-3).
+         * @enum {string}
+         */
+        MatchKind: "MATCHED" | "POSSIBLE_DUPLICATE" | "CONFLICT" | "NEW";
         /** ModuleSpecResponse */
         ModuleSpecResponse: {
             /** Key */
@@ -5164,19 +5356,38 @@ export interface components {
         };
         /**
          * SetDealBuyerRequest
-         * @description Record or replace the deal's buyer. One buyer per deal, so this is an
-         *     upsert of that one row, not an add.
+         * @description Record the deal's buyer, in **one of two forms** (plan P4-4, task 2.4).
          *
-         *     ``registration_number``, ``tax_id``, ``contact_email`` and ``contact_phone``
-         *     are masked for OPERATIONS and DEVELOPER. Leave one out to keep its stored
-         *     value; send ``null`` or an empty string to clear it; a masked value is
-         *     refused (422).
+         *     *The company form* — ``{"buyer_company_id": "..."}`` — names the company the
+         *     buyer **is**. This is the form to use. The buyer is then a full company record:
+         *     it can be screened on its own timeline, the handover guard asks about it
+         *     (BQ-4), and the same company can be a seller on another deal. It is **set
+         *     once**; see ``DealBuyerCompanyAlreadySetError``.
+         *
+         *     *The legacy form* — ``{"name": ..., "country": ..., ...}`` — records a
+         *     ``deal_buyer`` row: a set of details with no record of its own. It is still
+         *     accepted because deals written before the buyer migration (P4-6) have one, and
+         *     because a ``deal_buyer``'s sanctions and AML are the only place BQ-4's rule can
+         *     read for such a deal (``background-check.md`` §12.2). These writes retire in
+         *     P4-10, and the table is kept.
+         *
+         *     **Exactly one form per request.** Mixing them is refused rather than merged:
+         *     the two disagree about what a buyer *is*, and silently writing both would leave
+         *     a deal whose company says one thing and whose row says another, with no way to
+         *     tell which the person meant.
+         *
+         *     In the legacy form, ``registration_number``, ``tax_id``, ``contact_email`` and
+         *     ``contact_phone`` are masked for OPERATIONS and DEVELOPER. Leave one out to
+         *     keep its stored value; send ``null`` or an empty string to clear it; a masked
+         *     value is refused (422).
          */
         SetDealBuyerRequest: {
+            /** Buyer Company Id */
+            buyer_company_id?: string | null;
             /** Name */
-            name: string;
+            name?: string | null;
             /** Country */
-            country: string;
+            country?: string | null;
             /** Registration Number */
             registration_number?: string | null;
             /** Tax Id */
@@ -5367,7 +5578,9 @@ export interface components {
          *
          *     `source`, the journey, the qualification gauge and the marker are
          *     deliberately not fields on this model at all — with `extra="forbid"`, sending any of them is
-         *     rejected at the API boundary (422). The marker has its own route.
+         *     rejected at the API boundary (422). The marker has its own route. `website`
+         *     joined them in R11 (decision IQ-16): it can no longer be set or cleared
+         *     here, and a stored value is left untouched.
          */
         UpdateExporterProfileRequest: {
             /** Name */
@@ -5382,6 +5595,8 @@ export interface components {
             iec?: string | null;
             /** Cin */
             cin?: string | null;
+            /** Registration Number */
+            registration_number?: string | null;
             /** Relationship Manager */
             relationship_manager?: string | null;
             /** Industry */
@@ -5392,8 +5607,6 @@ export interface components {
             products?: string[] | null;
             /** Year Established */
             year_established?: number | null;
-            /** Website */
-            website?: string | null;
         };
         /**
          * UpdateMeRequest
@@ -7358,6 +7571,7 @@ export interface operations {
                 journey?: components["schemas"]["ExporterJourney"] | null;
                 qualification?: components["schemas"]["QualificationState"] | null;
                 marker?: components["schemas"]["ExporterMarker"] | null;
+                pipeline_status?: components["schemas"]["CompanyPipelineStatus"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -7628,6 +7842,69 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    bring_exporter_into_pipeline_api_v1_onboarding_exporters__customer_id__pipeline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BringIntoPipelineRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExporterProfileResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The company is already in the sales pipeline */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -8782,6 +9059,51 @@ export interface operations {
             };
         };
     };
+    match_company_api_v1_onboarding_companies_match_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyMatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyMatchResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_company_history_api_v1_onboarding_exporters__customer_id__history_get: {
         parameters: {
             query?: {
@@ -9004,6 +9326,7 @@ export interface operations {
         parameters: {
             query?: {
                 stage?: components["schemas"]["DealStage"][] | null;
+                as?: components["schemas"]["DealSide"];
                 limit?: number;
                 offset?: number;
             };
@@ -9261,21 +9584,21 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Deal not found */
+            /** @description Deal not found, or no such buyer company */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description The deal is handed over or withdrawn */
+            /** @description The deal is handed over or withdrawn, or it already names a different buyer company */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Missing name, a country that is not ISO-3166-1 alpha-2, or a masked value sent back */
+            /** @description Both forms at once, neither form complete, a country that is not ISO-3166-1 alpha-2, a buyer company that is the seller, or a masked value sent back */
             422: {
                 headers: {
                     [name: string]: unknown;

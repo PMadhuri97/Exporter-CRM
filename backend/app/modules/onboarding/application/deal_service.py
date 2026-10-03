@@ -98,6 +98,8 @@ from app.modules.onboarding.domain.handover_conditions import (
 )
 from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import (
+    DealBuyerCompanyAlreadySetError,
+    DealBuyerIsTheSellerError,
     DealBuyerRequiredError,
     DealCompanyNotFoundError,
     DealCompanyNotReadyError,
@@ -261,19 +263,42 @@ class DealService:
         company_id: uuid.UUID,
         *,
         stages: tuple[DealStage, ...] | None = None,
+        as_buyer: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[DealListItemView], int]:
+        """One company's deals — the ones it sells on, or with ``as_buyer`` the ones
+        it buys on (task 2.7).
+
+        On the buyer side, ``buyer_name`` is **the seller's** name rather than the
+        buyer's: on a list of "deals where this company is the buyer", repeating the
+        company whose page you are on in every row says nothing, and the other party
+        is the only thing that distinguishes the rows. The field keeps its name
+        because it is the same column of the same table — "the other party on this
+        deal" — and renaming it would be a contract change for every caller.
+        """
         deals, total = await self._deals.list_for_company(
-            company_id, stages=stages, limit=limit, offset=offset
+            company_id, stages=stages, as_buyer=as_buyer, limit=limit, offset=offset
         )
+        sellers: dict[uuid.UUID, str | None] = {}
+        if as_buyer and deals:
+            rows = await self._db.execute(
+                select(ExporterProfile.customer_id, ExporterProfile.name).where(
+                    ExporterProfile.customer_id.in_({deal.company_id for deal in deals})
+                )
+            )
+            sellers = {row.customer_id: row.name for row in rows}
         return [
             DealListItemView(
                 id=deal.id,
                 company_id=deal.company_id,
                 reference=deal.reference,
                 stage=deal.stage,
-                buyer_name=deal.buyer.name if deal.buyer is not None else None,
+                buyer_name=(
+                    sellers.get(deal.company_id)
+                    if as_buyer
+                    else (deal.buyer.name if deal.buyer is not None else None)
+                ),
                 created_at=deal.created_at,
                 updated_at=deal.updated_at,
             )
@@ -411,7 +436,10 @@ class DealService:
             )
 
         if to_stage in _NEEDS_BUYER:
-            if deal.buyer is None:
+            # The company is the authority once it is set, and a `deal_buyer` row
+            # satisfies this until the migration fills it (contract §3.0). Either one
+            # is a buyer; neither is not.
+            if deal.buyer_company_id is None and deal.buyer is None:
                 raise DealBuyerRequiredError(deal_id)
             # `lock=True`: D10. The company row is share-locked for the rest of this
             # transaction, so the check cannot change between this guard and the
@@ -577,6 +605,93 @@ class DealService:
         )
         return await self._to_view(deal)
 
+    async def set_buyer_company(
+        self, deal_id: uuid.UUID, *, buyer_company_id: uuid.UUID, actor_id: str | None
+    ) -> DealView:
+        """Name the company this deal's buyer **is** (plan P4-4, task 2.4).
+
+        The successor to `set_buyer`, which records a `deal_buyer` row — a set of
+        details with no record of its own. A buyer company is a full company record:
+        it can be screened, its sanctions and AML live on its own timeline, and the
+        same company can be the buyer on one deal and the seller on another. That is
+        the point of the whole keystone (plan §1).
+
+        **Set once.** Naming a different company later is refused, by this method and
+        by `trg_deal_buyer_company_set_once` behind it — see
+        `DealBuyerCompanyAlreadySetError` for why re-pointing it is worse than
+        refusing it. Naming the *same* company again changes nothing and is allowed,
+        so a retried request is not an error.
+
+        The legacy `deal_buyer` row, if the deal has one, is deliberately left alone.
+        It is what a handover before the migration was built from, and the deal
+        response still serves it until P4-10 retires those writes; the company is the
+        authority from here on (contract §3.0).
+
+        Writes a `deal` history row with `event_type="deal_buyer_company_set"`.
+
+        Raises:
+            DealNotFoundError: no such deal.
+            DealTerminalError: the deal is handed over or withdrawn.
+            DealCompanyNotFoundError: no such company.
+            DealBuyerIsTheSellerError: that company is the seller on this deal.
+            DealBuyerCompanyAlreadySetError: the deal already names a different one.
+        """
+        deal = await self._lock_deal(deal_id)
+        if deal.stage.is_terminal:
+            # The same rule as `set_buyer`: a handed-over deal's buyer is what the
+            # lending team was given, and a withdrawn deal's is history.
+            raise DealTerminalError(deal_id, deal.stage.value)
+
+        if deal.buyer_company_id is not None:
+            if deal.buyer_company_id == buyer_company_id:
+                # Already so. Not an error — a retried request must not fail — and
+                # nothing to record, since nothing changed.
+                return await self._to_view(deal)
+            raise DealBuyerCompanyAlreadySetError(deal_id, deal.buyer_company_id)
+
+        if buyer_company_id == deal.company_id:
+            # `ck_deal_buyer_is_not_the_seller` would refuse the row; this names the
+            # problem instead of surfacing a constraint violation.
+            raise DealBuyerIsTheSellerError(deal_id, buyer_company_id)
+
+        company = await self._db.scalar(
+            select(ExporterProfile).where(
+                ExporterProfile.customer_id == buyer_company_id
+            )
+        )
+        if company is None:
+            # `fk_deal_buyer_company_id` would refuse it; a 404 naming the company is
+            # the useful answer.
+            raise DealCompanyNotFoundError(buyer_company_id)
+
+        deal.buyer_company_id = buyer_company_id
+        await self._history.record(
+            deal.company_id,
+            dimension="deal",
+            to_value=deal.stage.value,
+            actor_id=actor_id,
+            source="deal_service.set_buyer_company",
+            deal_id=deal.id,
+            event_type="deal_buyer_company_set",
+            details={
+                "buyer_company_id": str(buyer_company_id),
+                "buyer_name": company.name,
+                # Whether this deal also carries a legacy `deal_buyer` row, so the
+                # P4-10 retirement can tell which deals still have both.
+                "had_legacy_buyer": deal.buyer is not None,
+            },
+        )
+        await self._db.commit()
+        await self._db.refresh(deal)
+
+        logger.info(
+            "deal.buyer_company.set.ok",
+            deal_id=str(deal.id),
+            buyer_company_id=str(buyer_company_id),
+            actor_id=actor_id,
+        )
+        return await self._to_view(deal)
+
     # ── The handover ─────────────────────────────────────────────────────────
 
     async def _handover_snapshot(self, deal: Deal) -> _Handover:
@@ -592,22 +707,54 @@ class DealService:
         """
         documents = await CrmDocumentRepository(self._db).list_for_deal_ids((deal.id,))
         buyer = deal.buyer
+        # Built from the buyer **company** when the deal names one, and from the
+        # legacy `deal_buyer` row otherwise (plan P4-4). The company is the
+        # authority, so a deal carrying both snapshots the company: that is what the
+        # lending team is being handed, and what every later read of this deal's
+        # buyer resolves to.
+        #
+        # The keys are the same either way, because the snapshot is a record of what
+        # was handed over and a reader must not have to know which era wrote it. A
+        # company has no `tax_id` of its own — PAN is the Indian equivalent and
+        # `registration_number` the foreign one — so `tax_id` is the PAN, and the
+        # contact fields are empty: a company's contacts are people on its own
+        # record, not one pair of fields, and inventing a primary contact here would
+        # put a name in the handover that nobody chose.
+        if deal.buyer_company_id is not None:
+            company = await self._db.scalar(
+                select(ExporterProfile).where(
+                    ExporterProfile.customer_id == deal.buyer_company_id
+                )
+            )
+        else:
+            company = None
+
+        if company is not None:
+            buyer_details = {
+                "name": company.name,
+                "country": company.country,
+                "registration_number": company.registration_number,
+                "tax_id": company.pan,
+                "contact_email": None,
+                "contact_phone": None,
+            }
+        elif buyer is not None:
+            buyer_details = {
+                "name": buyer.name,
+                "country": buyer.country,
+                "registration_number": buyer.registration_number,
+                "tax_id": buyer.tax_id,
+                "contact_email": buyer.contact_email,
+                "contact_phone": buyer.contact_phone,
+            }
+        else:
+            # `_NEEDS_BUYER` already refused a handover without either, so this is
+            # unreachable from `transition_stage`; it is here so the method is safe
+            # to call from anywhere.
+            buyer_details = {}
+
         return _Handover(
-            buyer=(
-                {
-                    "name": buyer.name,
-                    "country": buyer.country,
-                    "registration_number": buyer.registration_number,
-                    "tax_id": buyer.tax_id,
-                    "contact_email": buyer.contact_email,
-                    "contact_phone": buyer.contact_phone,
-                }
-                # `_NEEDS_BUYER` already refused a handover without one, so this
-                # branch is unreachable from `transition_stage`; it is here so the
-                # method is safe to call from anywhere.
-                if buyer is not None
-                else {}
-            ),
+            buyer=buyer_details,
             document_ids=[str(document.id) for document in documents],
             # Recorded alongside the buyer's details, not instead of them: once
             # P4-4 points deals at company records, the snapshot has to say *which*
@@ -774,13 +921,10 @@ class DealService:
             company_id=company.customer_id,
             name=company.name,
             country=company.country,
-            # Developer 3's F3 column, read by name through `state_name` so an
-            # enum and a string look the same here. The `getattr` is there **only**
-            # until F3 merges: this lane fixed the response shape in F2 so
-            # Developer 3's screens could be built against it, and a hard attribute
-            # read would make this file fail against today's schema. It comes out in
-            # the commit that rebases onto F3.
-            pipeline_status=state_name(getattr(company, "pipeline_status", None)),
+            # Developer 3's F3 column, read by name through `state_name` so an enum
+            # and a string look the same here. The `getattr` this used to need came
+            # out when F3 merged, as its comment said it would.
+            pipeline_status=state_name(company.pipeline_status),
             pan=company.pan,
             cin=company.cin,
         )

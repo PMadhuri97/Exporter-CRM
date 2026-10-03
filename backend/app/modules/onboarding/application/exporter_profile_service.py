@@ -42,6 +42,13 @@ from app.modules.onboarding.api.schemas.masking import mask_identifier
 from app.modules.onboarding.application.background_check_reader import BackgroundCheckReader
 from app.modules.onboarding.application.compliance_facts import ComplianceFactsService
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.domain import history_dimensions
+from app.modules.onboarding.domain.company_identity import (
+    created_via_for_history_source,
+    decide_identity_type,
+    normalise_registration_number,
+    require_foreign_registration_number,
+)
 from app.modules.onboarding.domain.engagement_views import (
     ExporterActivityView,
     ExporterContactView,
@@ -49,6 +56,7 @@ from app.modules.onboarding.domain.engagement_views import (
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    CompanyPipelineStatus,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -76,10 +84,11 @@ from app.modules.onboarding.domain.tax_identifiers import (
     normalise_name,
     normalise_pan,
 )
-from app.modules.onboarding.domain.web_links import normalise_website
 from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import (
+    CompanyAlreadyInPipelineError,
     DuplicatePanError,
+    DuplicateRegistrationNumberError,
     ExporterProfileNotFoundError,
     ExporterSourceImmutableError,
     InvalidMarkerTransitionError,
@@ -137,7 +146,7 @@ _EDITABLE_FIELDS = frozenset(
         "export_markets",
         "products",
         "year_established",
-        "website",
+        "registration_number",
     }
 )
 
@@ -154,6 +163,10 @@ _MASKED_IN_HISTORY = frozenset({"gstins", "pan", "iec", "cin"})
 #: History dimensions and event types this service writes
 #: (`docs/contracts/company-record.md` §6).
 HISTORY_DIMENSION_PROFILE = "profile"
+#: A company entering the sales pipeline (task 3.11). Taken from Developer 1's one
+#: list of dimensions rather than restated, so the read route's D8 rule and this
+#: writer cannot disagree about the spelling.
+HISTORY_DIMENSION_PIPELINE = history_dimensions.PIPELINE
 PROFILE_EDIT_EVENT = "profile_transition"
 HISTORY_DIMENSION_MARKER = "marker"
 
@@ -199,7 +212,7 @@ class ExporterProfileService:
         export_markets: list[str] | None = None,
         products: list[str] | None = None,
         year_established: int | None = None,
-        website: str | None = None,
+        registration_number: str | None = None,
         correlation_id: str | None = None,
         actor_id: str | None = None,
     ) -> tuple[ExporterProfile, bool]:
@@ -225,7 +238,7 @@ class ExporterProfileService:
             export_markets=export_markets,
             products=products,
             year_established=year_established,
-            website=website,
+            registration_number=registration_number,
             idempotency_key=idempotency_key,
             correlation_id=correlation_id,
             actor_id=actor_id,
@@ -250,7 +263,9 @@ class ExporterProfileService:
         export_markets: list[str] | None = None,
         products: list[str] | None = None,
         year_established: int | None = None,
-        website: str | None = None,
+        registration_number: str | None = None,
+        allow_missing_registration_number: bool = False,
+        start_journey_history: bool = True,
         idempotency_key: str | None = None,
         correlation_id: str | None = None,
         actor_id: str | None = None,
@@ -280,12 +295,16 @@ class ExporterProfileService:
         pan = normalise_pan(pan)
         cin = normalise_cin(cin)
         iec = normalise_iec(iec)
-        # An http(s) link or nothing: it is rendered to other staff as a link
-        # (`domain/web_links.py`). Checked here, before anything is written, so
-        # manual creation, CSV import and RXIL intake all refuse the same values.
-        website = normalise_website(website)
+        registration_number = normalise_registration_number(registration_number)
         gstin_values = normalise_gstins(gstins)
         check_gstins_match_pan(pan, gstin_values)
+        # Decision IQ-7, on every create path at once rather than once per caller.
+        require_foreign_registration_number(
+            country=country,
+            pan=pan,
+            registration_number=registration_number,
+            allow_missing=allow_missing_registration_number,
+        )
 
         if idempotency_key is not None:
             reg_result = await register_key(
@@ -324,6 +343,9 @@ class ExporterProfileService:
             return existing, False
 
         await self._refuse_duplicate_pan(pan, customer_id)
+        await self._refuse_duplicate_registration_number(
+            registration_number, country, customer_id
+        )
 
         profile = ExporterProfile(
             customer_id=customer_id,
@@ -338,7 +360,13 @@ class ExporterProfileService:
             export_markets=export_markets,
             products=products,
             year_established=year_established,
-            website=website,
+            registration_number=registration_number,
+            identity_type=decide_identity_type(
+                pan=pan, registration_number=registration_number
+            ),
+            # The channel, derived from the one string that already names it, so this
+            # and migration 0033's backfill cannot disagree (plan P4-1).
+            created_via=created_via_for_history_source(history_source),
             gstin_rows=[ExporterGstin(customer_id=customer_id, gstin=g) for g in gstin_values],
         )
 
@@ -356,13 +384,19 @@ class ExporterProfileService:
             winner = await self._profiles.get_by_customer_id(customer_id)
             if winner is None:
                 await self._refuse_duplicate_pan(pan, customer_id)
+                await self._refuse_duplicate_registration_number(
+                    registration_number, country, customer_id
+                )
                 raise
             logger.info(
                 "exporter_profile.create.lost_race", customer_id=str(customer_id)
             )
             return winner, False
 
-        await self._record_journey_start(customer_id, actor_id=actor_id, source=history_source)
+        if start_journey_history:
+            await self._record_journey_start(
+                customer_id, actor_id=actor_id, source=history_source
+            )
 
         if idempotency_key is not None:
             await complete_key(
@@ -456,8 +490,10 @@ class ExporterProfileService:
             wanted["cin"] = normalise_cin(wanted["cin"])  # type: ignore[arg-type]
         if "iec" in wanted:
             wanted["iec"] = normalise_iec(wanted["iec"])  # type: ignore[arg-type]
-        if "website" in wanted:
-            wanted["website"] = normalise_website(wanted["website"])  # type: ignore[arg-type]
+        if "registration_number" in wanted:
+            wanted["registration_number"] = normalise_registration_number(
+                wanted["registration_number"]  # type: ignore[arg-type]
+            )
         if "gstins" in wanted:
             wanted["gstins"] = normalise_gstins(wanted["gstins"]) or None  # type: ignore[arg-type]
         check_gstins_match_pan(
@@ -466,6 +502,15 @@ class ExporterProfileService:
         )
         if wanted.get("pan") is not None and wanted["pan"] != profile.pan:
             await self._refuse_duplicate_pan(wanted["pan"], customer_id)  # type: ignore[arg-type]
+        if (
+            wanted.get("registration_number") is not None
+            and wanted["registration_number"] != profile.registration_number
+        ):
+            await self._refuse_duplicate_registration_number(
+                wanted["registration_number"],  # type: ignore[arg-type]
+                wanted.get("country") or profile.country,  # type: ignore[arg-type]
+                customer_id,
+            )
 
         edits: dict[str, tuple[object, object]] = {}
         for field in sorted(wanted):
@@ -511,10 +556,17 @@ class ExporterProfileService:
         try:
             await self._db.commit()
         except IntegrityError:
-            # A concurrent writer took the PAN between the check and the commit.
+            # A concurrent writer took the PAN or the registration number between
+            # the check and the commit.
             await self._db.rollback()
             if "pan" in edits:
                 await self._refuse_duplicate_pan(wanted["pan"], customer_id)  # type: ignore[arg-type]
+            if "registration_number" in edits:
+                await self._refuse_duplicate_registration_number(
+                    wanted["registration_number"],  # type: ignore[arg-type]
+                    wanted.get("country") or profile.country,  # type: ignore[arg-type]
+                    customer_id,
+                )
             raise
         await self._db.refresh(profile)
 
@@ -610,6 +662,7 @@ class ExporterProfileService:
         journey: ExporterJourney | None = None,
         qualification: QualificationState | None = None,
         marker: ExporterMarker | None = None,
+        pipeline_status: CompanyPipelineStatus | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfileListItem]:
@@ -626,6 +679,18 @@ class ExporterProfileService:
         excluded; any search term includes them; `marker=ENDED` lists only
         them. `source`, `journey` and `qualification` are list filters, not search
         terms, and do not bring `ENDED` companies back.
+
+        **`NOT_IN_PIPELINE` companies follow the same rule** (plan P4-2, task 3.9).
+        A company that exists only because it was somebody's buyer is not a lead:
+        it must not appear in the working list, or in any count drawn from it, or
+        creating a buyer would silently raise this month's lead numbers. It is
+        still a full company record, so a search term finds it — a person who
+        types a buyer's name is looking for that buyer — and `pipeline_status=`
+        lists them deliberately, which is what the IQ-7 completion list needs.
+
+        The two exclusions are deliberately separate: `marker=ENDED` must not
+        drag buyer-only companies into its list, and `pipeline_status=` must not
+        resurrect `ENDED` ones.
         """
         pan = _normalise_term(pan)
         gstin = _normalise_term(gstin)
@@ -643,7 +708,9 @@ class ExporterProfileService:
             journey=journey,
             qualification=qualification,
             marker=marker,
+            pipeline_status=pipeline_status,
             exclude_ended=marker is None and not searching,
+            exclude_not_in_pipeline=pipeline_status is None and not searching,
             limit=limit,
             offset=offset,
         )
@@ -665,6 +732,9 @@ class ExporterProfileService:
                 marker_reason=profile.marker_reason,
                 industry=profile.industry,
                 year_established=profile.year_established,
+                registration_number=profile.registration_number,
+                identity_type=profile.identity_type,
+                pipeline_status=profile.pipeline_status,
                 date_added=profile.date_added,
                 created_at=profile.created_at,
                 updated_at=profile.updated_at,
@@ -696,6 +766,66 @@ class ExporterProfileService:
             event_type=LIFECYCLE_INITIAL_EVENT,
             details={"terminal": False},
         )
+
+    # ── Into the sales pipeline (task 3.11) ──────────────────────────────────
+
+    async def bring_into_pipeline(
+        self, customer_id: uuid.UUID, *, actor_id: str | None, reason: str | None = None
+    ) -> ExporterProfile:
+        """Move a buyer-only company into the sales pipeline: the one way in.
+
+        A company created as somebody's buyer is `NOT_IN_PIPELINE` and has no
+        journey history (plan P4-6) — nobody was selling to it. If we decide to,
+        this is what starts that: `pipeline_status` becomes `IN_PIPELINE` and the
+        journey history begins at `LEAD`, exactly as it would for a company
+        entered by hand. From here on it is an ordinary lead, so qualification and
+        the conversation gauge stop refusing it (`CompanyNotInPipelineError`).
+
+        Two history rows, because two different things happened: a `pipeline` row
+        for the decision, and the journey's own creation row. Writing only the
+        first would leave a company in the pipeline whose journey history started
+        nowhere; writing only the second would lose who decided and why.
+
+        The move is deliberately one-way here. Taking a company *out* of the
+        pipeline is not its mirror image — the journey, qualification and
+        conversation it has accumulated would have to go somewhere, and
+        `ck_exporter_profile_not_in_pipeline_start` refuses the row until they
+        do — so it needs its own decision rather than a flag flip.
+
+        Returns the updated company.
+
+        Raises:
+            ExporterProfileNotFoundError: no such company.
+            CompanyAlreadyInPipelineError: it is already in the pipeline.
+        """
+        profile = await self._lock_profile(customer_id)
+        if profile.pipeline_status is CompanyPipelineStatus.IN_PIPELINE:
+            raise CompanyAlreadyInPipelineError(customer_id)
+
+        profile.pipeline_status = CompanyPipelineStatus.IN_PIPELINE
+        await self._history.record(
+            customer_id,
+            dimension=HISTORY_DIMENSION_PIPELINE,
+            from_value=CompanyPipelineStatus.NOT_IN_PIPELINE.value,
+            to_value=CompanyPipelineStatus.IN_PIPELINE.value,
+            actor_id=actor_id,
+            source="exporter_profile_service.bring_into_pipeline",
+            reason=reason,
+        )
+        # The journey starts now, not when the buyer record was created.
+        await self._record_journey_start(
+            customer_id,
+            actor_id=actor_id,
+            source="exporter_profile_service.bring_into_pipeline",
+        )
+        await self._db.commit()
+        await self._db.refresh(profile)
+        logger.info(
+            "exporter_profile.brought_into_pipeline",
+            customer_id=str(customer_id),
+            actor_id=actor_id,
+        )
+        return profile
 
     # ── The move to CUSTOMER (L2-11) ─────────────────────────────────────────
 
@@ -845,7 +975,9 @@ class ExporterProfileService:
             export_markets=profile.export_markets,
             products=profile.products,
             year_established=profile.year_established,
-            website=profile.website,
+            registration_number=profile.registration_number,
+            identity_type=profile.identity_type,
+            pipeline_status=profile.pipeline_status,
             date_added=profile.date_added,
             created_at=profile.created_at,
             updated_at=profile.updated_at,
@@ -883,6 +1015,28 @@ class ExporterProfileService:
         holder = await self._profiles.get_by_pan(pan)
         if holder is not None and holder.customer_id != customer_id:
             raise DuplicatePanError(holder.customer_id)
+
+    async def _refuse_duplicate_registration_number(
+        self,
+        registration_number: str | None,
+        country: str | None,
+        customer_id: uuid.UUID,
+    ) -> None:
+        """Raise `DuplicateRegistrationNumberError` if another company in this
+        country already holds this registration number.
+
+        The foreign counterpart of the duplicate-PAN refusal, and checked the same
+        way: ahead of the write, so the caller is told which company holds it,
+        with `uq_exporter_profile_country_registration_number` behind it for the
+        concurrent case this cannot see.
+        """
+        if registration_number is None or not (country or "").strip():
+            return
+        holder = await self._profiles.get_by_registration_number(
+            country=country, registration_number=registration_number
+        )
+        if holder is not None and holder.customer_id != customer_id:
+            raise DuplicateRegistrationNumberError(holder.customer_id, country)
 
 
 async def announce_became_customer(announcement: CustomerAnnouncement | None) -> None:

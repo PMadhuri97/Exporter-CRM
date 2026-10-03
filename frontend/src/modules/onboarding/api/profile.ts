@@ -9,6 +9,9 @@
 import { apiRequest } from '@/lib/api/client';
 
 import type {
+  BringIntoPipelineRequest,
+  CompanyMatch,
+  CompanyMatchRequest,
   CreateExporterLeadRequest,
   ExporterProfile,
   ExporterProfileDetail,
@@ -95,5 +98,51 @@ export function setExporterMarker(
   return apiRequest<ExporterProfile>(`/onboarding/exporters/${customerId}/marker`, {
     method: 'POST',
     body: request,
+  });
+}
+
+// ── "Do we already have this company?" (task 3.10, plan P4-3) ────────────────
+
+/**
+ * Find the company a name and identifiers belong to.
+ *
+ * `POST` rather than `GET` because the body carries full tax identifiers, and a
+ * query string lands in access logs, browser history and every proxy in between —
+ * for exactly the values the rest of the CRM masks.
+ *
+ * A full PAN, GSTIN or `(country, registration_number)` names the company that
+ * holds it, even for a role that sees identifiers masked (decision BQ-2); the
+ * response never carries an identifier back, and every such lookup is audited.
+ * Partial identifiers are refused: send the whole value or none.
+ */
+export function matchCompany(body: CompanyMatchRequest): Promise<CompanyMatch> {
+  return apiRequest<CompanyMatch>('/onboarding/companies/match', {
+    method: 'POST',
+    body,
+  });
+}
+
+// ── Into the sales pipeline (task 3.11) ──────────────────────────────────────
+
+/**
+ * Bring a buyer-only company into the sales pipeline: the one way in.
+ *
+ * A company that exists only because it was somebody's buyer is
+ * `NOT_IN_PIPELINE` — kept out of the working list and of pipeline counts, and
+ * refused by qualification and the conversation gauge. This sets
+ * `pipeline_status` to `IN_PIPELINE` and starts the company's journey history at
+ * `LEAD`; from then on it is an ordinary lead.
+ *
+ * A company already in the pipeline is a 409: there is nothing to do, and a
+ * second call would append a second `LEAD` row, making the history read as a
+ * restart.
+ */
+export function bringExporterIntoPipeline(
+  customerId: string,
+  body: BringIntoPipelineRequest = {},
+): Promise<ExporterProfile> {
+  return apiRequest<ExporterProfile>(`/onboarding/exporters/${customerId}/pipeline`, {
+    method: 'POST',
+    body,
   });
 }

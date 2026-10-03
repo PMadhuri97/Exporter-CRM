@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.exporter import (
+    BringIntoPipelineRequest,
     CreateExporterProfileRequest,
     DuplicateGstinWarningResponse,
     ExporterProfileDetailResponse,
@@ -50,6 +51,7 @@ from app.modules.onboarding.api.schemas.exporter import (
 from app.modules.onboarding.api.schemas.masking import can_reveal_identifiers
 from app.modules.onboarding.application import ExporterProfileService
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    CompanyPipelineStatus,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -162,7 +164,7 @@ async def create_exporter_profile(
             export_markets=body.export_markets,
             products=body.products,
             year_established=body.year_established,
-            website=body.website,
+            registration_number=body.registration_number,
             actor_id=str(current_user.id),
         )
         # `status_code=201` on the decorator is only the default — found via
@@ -189,7 +191,7 @@ async def create_exporter_profile(
         export_markets=body.export_markets,
         products=body.products,
         year_established=body.year_established,
-        website=body.website,
+        registration_number=body.registration_number,
         idempotency_key=idempotency_key,
         actor_id=str(current_user.id),
     )
@@ -268,12 +270,15 @@ async def update_exporter_profile(
     response_model=ExporterProfileSearchResponse,
     summary="Search exporter profiles",
     description=(
-        "Filters by gstin, pan, iec, source, journey, qualification, marker (exact "
-        "match) and name (case-insensitive partial match on the company's "
-        "name). ENDED companies are left out of the default working list: "
-        "with no marker filter and no search term (name, gstin, pan, iec) they "
-        "are excluded; any search term includes them; marker=ENDED lists only "
-        "them. The gstin/pan/iec filters are "
+        "Filters by gstin, pan, iec, source, journey, qualification, marker, "
+        "pipeline_status (exact match) and name (case-insensitive partial match "
+        "on the company's name). ENDED companies are left out of the default "
+        "working list: with no marker filter and no search term (name, gstin, "
+        "pan, iec) they are excluded; any search term includes them; "
+        "marker=ENDED lists only them. Companies that are NOT_IN_PIPELINE — a "
+        "company that exists only because it was somebody's buyer — follow the "
+        "same rule: excluded by default, found by any search term, and listed on "
+        "their own with pipeline_status=NOT_IN_PIPELINE. The gstin/pan/iec filters are "
         "COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals "
         "which company holds it even when the response body is masked."
     ),
@@ -299,6 +304,7 @@ async def search_exporter_profiles(
     journey: ExporterJourney | None = Query(default=None),
     qualification: QualificationState | None = Query(default=None),
     marker: ExporterMarker | None = Query(default=None),
+    pipeline_status: CompanyPipelineStatus | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ExporterProfileSearchResponse:
@@ -313,6 +319,7 @@ async def search_exporter_profiles(
         journey=journey,
         qualification=qualification,
         marker=marker,
+        pipeline_status=pipeline_status,
         limit=limit,
         offset=offset,
     )
@@ -361,6 +368,48 @@ async def set_exporter_marker(
     response = ExporterProfileResponse.model_validate(profile).masked_for(current_user)
     response.allowed_marker_moves = _marker_moves(profile.marker, current_user)
     return response
+
+
+# ── Into the sales pipeline (task 3.11) ──────────────────────────────────
+
+
+@router.post(
+    "/{customer_id}/pipeline",
+    response_model=ExporterProfileResponse,
+    summary="Bring a buyer-only company into the sales pipeline",
+    description=(
+        "A company that exists only because it was somebody's buyer is "
+        "NOT_IN_PIPELINE: nobody is selling to it, so it is kept out of the "
+        "working list and out of pipeline counts, and qualification and the "
+        "conversation gauge refuse it. This is the one way in. It sets "
+        "pipeline_status to IN_PIPELINE and starts the company's journey "
+        "history at LEAD — from then on it is an ordinary lead. "
+        "A reason is optional and recorded on the history row. "
+        "Deciding to sell to a company is a commercial decision, so this is "
+        "OPERATIONS, COMPLIANCE or ADMIN; a company already in the pipeline is "
+        "a 409, because there is nothing to do."
+    ),
+    responses={
+        200: {"model": ExporterProfileResponse},
+        401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        404: {"description": "Exporter profile not found"},
+        409: {"description": "The company is already in the sales pipeline"},
+    },
+)
+async def bring_exporter_into_pipeline(
+    customer_id: uuid.UUID,
+    current_user: Annotated[User, Depends(_STAFF)],
+    db: AsyncSession = Depends(get_db),
+    body: BringIntoPipelineRequest | None = None,
+) -> ExporterProfileResponse:
+    service = ExporterProfileService(db)
+    profile = await service.bring_into_pipeline(
+        customer_id,
+        reason=body.reason if body is not None else None,
+        actor_id=str(current_user.id),
+    )
+    return await _company_response(service, profile, current_user)
 
 
 async def _company_response(

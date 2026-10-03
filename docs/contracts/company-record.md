@@ -423,7 +423,8 @@ Stated separately so nobody reads this contract as a description of the code.
 | `journey` (`LEAD`/`PROSPECT`/`CUSTOMER`) and `qualification` columns | **implemented** (0017); the old `lifecycle_status` beside it was dropped in 0020. Qualification moves it `LEAD` -> `PROSPECT` |
 | `conversation`, `background_check` fields | **implemented** — Dev 3A's 0016 and Dev 4A's 0015 (see §2.4) |
 | The ORM declares every index and constraint 0014/0017 created (PAN unique, the outcome chain) | **implemented** — checked by `test_orm_matches_the_onboarding_schema.py` |
-| `website` | an absolute `http(s)` link or nothing, on every write path (manual, CSV, RXIL); anything else is refused (422) |
+| `website` | **retired** (R11, decision IQ-16, task 3.7). No write path accepts one — the request schemas refuse the field (422) and the CSV importer reads the old `website` column and ignores it — and no response carries one. The column and every stored value are kept: nothing is destroyed, nothing is shown |
+| `registration_number` | whatever the company's own registrar issued, for a company not identified by a PAN. **Required for a company outside India** that holds no PAN (decision IQ-7); stored as the registrar writes it and compared with punctuation and case removed, so one number cannot be entered twice per country (`uq_exporter_profile_country_registration_number`). A duplicate is refused with 409 `DUPLICATE_REGISTRATION_NUMBER` naming the holder, like a PAN — unlike a GSTIN, which stays warn-only (IQ-9). Masked like CIN |
 | `profile` history on edits; clearing a field | **implemented** (L2-07) |
 | Real links from contacts, activities, screening items, GSTINs and history | **implemented** (0014, `ON DELETE RESTRICT`); `verification_result.entity_reference` deliberately has none |
 | `name` required by the database | **not built** — waits for the unnamed create path to go |

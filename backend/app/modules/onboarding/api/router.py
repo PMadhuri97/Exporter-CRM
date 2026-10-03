@@ -6,6 +6,9 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.actor_names import actor_names
+from app.modules.onboarding.api.company_directory_router import (
+    router as company_directory_router,
+)
 from app.modules.onboarding.api.company_intake_router import router as company_intake_router
 from app.modules.onboarding.api.deal_router import router as deal_router
 from app.modules.onboarding.api.document_router import router as document_router
@@ -83,6 +86,10 @@ router.include_router(screening_router)
 router.include_router(qualification_router)
 # RXIL company intake and bulk CSV import (L2-12, L2-13) — Developer 2's.
 router.include_router(company_intake_router)
+# "Which company is this?" (P4-3, task 3.10) — Developer 3's. Its own `/companies`
+# prefix, because the question is asked before any company id is known; see the
+# router's module docstring.
+router.include_router(company_directory_router)
 
 # Shared CRM history log (L1-11) — Developer 1's, in its own file for the same
 # reason the Exporter CRM routes are in theirs, and included here so it

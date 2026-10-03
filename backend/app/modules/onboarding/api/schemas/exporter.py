@@ -34,7 +34,10 @@ from app.modules.onboarding.api.schemas.masking import (
     can_reveal_identifiers,
     mask_identifier,
 )
+from app.modules.onboarding.domain.company_identity import REGISTRATION_NUMBER_MAX
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    CompanyIdentityType,
+    CompanyPipelineStatus,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -68,10 +71,10 @@ def _clean_country(value: str | None) -> str | None:
 
 
 class _IdentifierMasking:
-    """Mixin for the company responses carrying PAN, GSTINs, IEC and CIN
-    (and, on the detail response, contacts and GSTIN warnings). Every route
-    returning one of them must pass it through `masked_for(current_user)`
-    before returning it."""
+    """Mixin for the company responses carrying PAN, GSTINs, IEC, CIN and the
+    foreign registration number (and, on the detail response, contacts and
+    GSTIN warnings). Every route returning one of them must pass it through
+    `masked_for(current_user)` before returning it."""
 
     def masked_for(self, viewer: User) -> Self:
         if can_reveal_identifiers(viewer):
@@ -81,6 +84,9 @@ class _IdentifierMasking:
             "pan": mask_identifier(self.pan),
             "iec": mask_identifier(self.iec),
             "cin": mask_identifier(self.cin),
+            # Masked like CIN (task 3.8): a registration number names the company
+            # in its own registrar's public index, so it carries the same risk.
+            "registration_number": mask_identifier(self.registration_number),
         }
         fields = type(self).model_fields
         if "contacts" in fields:
@@ -134,6 +140,12 @@ class CreateExporterProfileRequest(BaseModel):
     refused. A company starts with no marker.
 
     `customer_id` is optional: when omitted, the API mints a fresh one.
+
+    `website` is **not** a field here any more (R11, decision IQ-16): with
+    `extra="forbid"`, sending one is a 422. The column and every value already
+    stored stay as they are — nothing is destroyed, and nothing is shown.
+    Only the CSV importer still tolerates the old header, because those files
+    come from somebody's machine rather than from this application's own form.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -144,12 +156,18 @@ class CreateExporterProfileRequest(BaseModel):
     gstins: list[_GstinIn] | None = None
     iec: Annotated[str | None, NotMasked] = Field(default=None, max_length=10)
     cin: Annotated[str | None, NotMasked] = Field(default=None, max_length=_IDENTIFIER_MAX)
+    #: Whatever the company's own registrar issued, for a company that is not
+    #: identified by a PAN. Required for a company outside India (decision IQ-7);
+    #: stored as the registrar writes it and compared without punctuation, so one
+    #: number cannot be entered twice per country.
+    registration_number: Annotated[str | None, NotMasked] = Field(
+        default=None, max_length=REGISTRATION_NUMBER_MAX
+    )
     relationship_manager: str | None = Field(default=None, max_length=255)
     industry: str | None = Field(default=None, max_length=255)
     export_markets: list[str] | None = None
     products: list[str] | None = None
     year_established: int | None = None
-    website: str | None = Field(default=None, max_length=2048)
 
     #: The company's legal name.
     name: str | None = Field(default=None, max_length=255)
@@ -186,7 +204,9 @@ class UpdateExporterProfileRequest(BaseModel):
 
     `source`, the journey, the qualification gauge and the marker are
     deliberately not fields on this model at all — with `extra="forbid"`, sending any of them is
-    rejected at the API boundary (422). The marker has its own route.
+    rejected at the API boundary (422). The marker has its own route. `website`
+    joined them in R11 (decision IQ-16): it can no longer be set or cleared
+    here, and a stored value is left untouched.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -197,12 +217,18 @@ class UpdateExporterProfileRequest(BaseModel):
     gstins: list[_GstinIn] | None = None
     iec: Annotated[str | None, NotMasked] = Field(default=None, max_length=10)
     cin: Annotated[str | None, NotMasked] = Field(default=None, max_length=_IDENTIFIER_MAX)
+    #: Whatever the company's own registrar issued, for a company that is not
+    #: identified by a PAN. Required for a company outside India (decision IQ-7);
+    #: stored as the registrar writes it and compared without punctuation, so one
+    #: number cannot be entered twice per country.
+    registration_number: Annotated[str | None, NotMasked] = Field(
+        default=None, max_length=REGISTRATION_NUMBER_MAX
+    )
     relationship_manager: str | None = Field(default=None, max_length=255)
     industry: str | None = Field(default=None, max_length=255)
     export_markets: list[str] | None = None
     products: list[str] | None = None
     year_established: int | None = None
-    website: str | None = Field(default=None, max_length=2048)
 
     @field_validator("country")
     @classmethod
@@ -222,6 +248,21 @@ class SetMarkerRequest(BaseModel):
 
     marker: ExporterMarker
     reason: str | None = Field(default=None, max_length=2000)
+
+
+class BringIntoPipelineRequest(BaseModel):
+    """Bring a buyer-only company into the sales pipeline (task 3.11).
+
+    Only a reason, and it is optional: the decision is the request itself, and
+    there is nothing to choose — a company is either in the pipeline or not, and
+    this route only moves it in. A reason is worth asking for anyway, because
+    "why did we start selling to our buyer" is the question the history row will
+    be read to answer.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, max_length=1000)
 
 
 class ExporterProfileResponse(_IdentifierMasking, BaseModel):
@@ -250,7 +291,14 @@ class ExporterProfileResponse(_IdentifierMasking, BaseModel):
     export_markets: list[str] | None
     products: list[str] | None
     year_established: int | None
-    website: str | None
+    #: Masked for a role that may not reveal identifiers, like CIN.
+    registration_number: str | None
+    #: Which registration identifies the company, or `null` when it holds neither
+    #: — a question left open rather than guessed.
+    identity_type: CompanyIdentityType | None
+    #: Whether the company is in the sales pipeline. A buyer-only company is
+    #: `NOT_IN_PIPELINE`, and its journey and gauges do not apply.
+    pipeline_status: CompanyPipelineStatus
     date_added: datetime
     created_at: datetime
     updated_at: datetime
@@ -281,7 +329,14 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
     export_markets: list[str] | None
     products: list[str] | None
     year_established: int | None
-    website: str | None
+    #: Masked for a role that may not reveal identifiers, like CIN.
+    registration_number: str | None
+    #: Which registration identifies the company, or `null` when it holds neither
+    #: — a question left open rather than guessed.
+    identity_type: CompanyIdentityType | None
+    #: Whether the company is in the sales pipeline. A buyer-only company is
+    #: `NOT_IN_PIPELINE`, and its journey and gauges do not apply.
+    pipeline_status: CompanyPipelineStatus
     date_added: datetime
     created_at: datetime
     updated_at: datetime
@@ -313,7 +368,9 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
             export_markets=detail.export_markets,
             products=detail.products,
             year_established=detail.year_established,
-            website=detail.website,
+            registration_number=detail.registration_number,
+            identity_type=detail.identity_type,
+            pipeline_status=detail.pipeline_status,
             date_added=detail.date_added,
             created_at=detail.created_at,
             updated_at=detail.updated_at,
@@ -353,6 +410,14 @@ class ExporterProfileListItemResponse(_IdentifierMasking, BaseModel):
     marker_reason: str | None
     industry: str | None
     year_established: int | None
+    #: Masked for a role that may not reveal identifiers, like CIN.
+    registration_number: str | None
+    #: Which registration identifies the company, or `null` when it holds neither
+    #: — a question left open rather than guessed.
+    identity_type: CompanyIdentityType | None
+    #: Whether the company is in the sales pipeline. A buyer-only company is
+    #: `NOT_IN_PIPELINE`, and its journey and gauges do not apply.
+    pipeline_status: CompanyPipelineStatus
     date_added: datetime
     created_at: datetime
     updated_at: datetime

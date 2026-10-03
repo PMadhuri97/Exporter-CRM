@@ -162,6 +162,15 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/exporters/{{customer_id}}/qualification"): READERS,
     ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/results"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/outcome"): STAFF,
+    # Into the sales pipeline (task 3.11): a commercial decision, so the roles that
+    # make them. A company already in the pipeline is a 409, not a 403.
+    ("POST", f"{CRM}/exporters/{{customer_id}}/pipeline"): STAFF,
+    # "Which company is this?" (task 3.10, decision BQ-2). STAFF rather than READERS:
+    # OPERATIONS needs it to record a deal's buyer — that is the case BQ-2 was decided
+    # for — while DEVELOPER may never reveal an identifier and has no buyer to resolve.
+    # The response carries no identifiers for any role, and every identifier lookup is
+    # audited.
+    ("POST", f"{CRM}/companies/match"): STAFF,
     # RXIL company intake and bulk import (L2-12, L2-13): both create companies.
     ("POST", f"{CRM}/rxil/company-intake"): ADMIN_ONLY,
     ("GET", f"{CRM}/imports/companies/template"): STAFF,

@@ -100,6 +100,21 @@ GATED_ROUTES = [
         STAFF,
     ),
     ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
+    # Bringing a buyer-only company into the sales pipeline (task 3.11). A
+    # commercial decision, so the roles that make commercial decisions; DEVELOPER is
+    # read-only throughout the CRM.
+    ("POST", f"{BASE}/exporters/{_ID}/pipeline", {}, STAFF),
+    # "Which company is this?" (task 3.10). STAFF, including OPERATIONS: recording a
+    # deal's buyer is a relationship manager's job, and decision BQ-2 was decided for
+    # exactly that case — a full identifier may name a company even for a role that
+    # sees identifiers masked. DEVELOPER is excluded: it may never reveal an
+    # identifier (`can_reveal_identifiers`) and has no buyer to resolve.
+    (
+        "POST",
+        f"{BASE}/companies/match",
+        {"name": "Rotterdam Trading BV", "country": "NL"},
+        STAFF,
+    ),
     # qualification
     (
         "POST",

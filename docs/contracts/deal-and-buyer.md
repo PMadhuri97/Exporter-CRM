@@ -128,14 +128,45 @@ The two coexist on purpose, and for a while:
 | written after P4-4 | `buyer_company_id` | `for_company(buyer_company_id)` |
 | mid-migration | both | the **company**, which is the authority |
 
+"A handover needs a buyer" is satisfied by **either** (task 2.4): a deal the
+migration has not reached is not blocked, and a deal with neither is still refused
+with `DEAL_BUYER_REQUIRED`. The handover snapshot is built from the company when
+there is one, since that is what the lending team is being handed; its keys are the
+same either way, so a reader never has to know which era wrote it. A company has no
+`tax_id` of its own, so the snapshot's `tax_id` is its PAN and its contact fields are
+empty — a company's contacts are people on its own record, and inventing a primary
+contact here would put a name in the handover that nobody chose.
+
 So the buyer migration (P4-6) is a data migration, not a behaviour change: §6.1
 condition 5 decides the same thing either way. `deal_buyer` writes are retired in
 P4-10, after every environment has migrated; the table itself is kept.
 
-The whole column is `NULL` on every deal today, and `buyer_company` is `null` in
-every response. The field is in the shape from the deal foundation PR anyway,
-because the company screens are built against it and adding a field later would be
-a contract change.
+**Writing it (task 2.4).** `PUT /deals/{id}/buyer` takes either form, and exactly
+one per request: `{buyer_company_id}` names the company the buyer is, and the legacy
+`{name, country, …}` records a `deal_buyer` row. A body carrying both is refused
+(422) rather than merged — the two disagree about what a buyer *is*, and writing both
+would leave a deal whose company says one thing and whose row says another.
+
+`buyer_company_id` is **set once**: `trg_deal_buyer_company_set_once`
+(migration 0034) lets it go from `NULL` to a value and refuses every change after,
+and the service refuses a *different* company with 409
+`DEAL_BUYER_COMPANY_ALREADY_SET` while treating the same company again as a no-op so
+a retry is not an error. The reason is that the column is what the buyer's checks are
+recorded against and read back through (`for_company(buyer_company_id)`), what the
+handover guard's condition 5 asks about (BQ-4), and what the handover snapshot
+records: re-pointing it would silently reinterpret all three. A deal pointed at the
+wrong buyer is withdrawn and a new one opened, so the correction leaves a trail. The
+column is also in `prevent_terminal_deal_change()` from 0034, so a closed deal's
+buyer no longer changes at all — which, unlike set-once, also refuses a *first* write
+to a closed deal.
+
+A company may not be its own buyer: 422 `DEAL_BUYER_IS_THE_SELLER`, ahead of
+`ck_deal_buyer_is_not_the_seller`, so the refusal names the problem.
+
+Recording one writes a `deal` history row, `event_type = "deal_buyer_company_set"`,
+whose `details` carry `buyer_company_id`, the company's `buyer_name` and
+`had_legacy_buyer` — the last so the P4-10 retirement can find the deals that still
+carry both.
 
 ### 3.1 A buyer's problems stay on the buyer
 

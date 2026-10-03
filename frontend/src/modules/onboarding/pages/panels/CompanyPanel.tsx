@@ -13,14 +13,13 @@
  * onboarding path's records stay with that path.
  */
 
-import { AlertTriangle, ExternalLink } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { Button, DetailRow, FormError, Input, LINK_CLASSES, Panel } from '@/components';
+import { Button, DetailRow, FormError, Input, Panel } from '@/components';
 import { formatDate, humanize } from '@/lib/format';
-import { isWebLink } from '@/lib/links';
 import { useCurrentUser } from '@/platform/auth';
 import { MaskedValue, canReveal } from '@/platform/mask';
 
@@ -43,12 +42,12 @@ interface ProfileDraft {
   gstins: string;
   iec: string;
   cin: string;
+  registration_number: string;
   relationship_manager: string;
   industry: string;
   export_markets: string;
   products: string;
   year_established: string;
-  website: string;
 }
 
 const FIELDS: { key: keyof ProfileDraft; label: string }[] = [
@@ -58,18 +57,29 @@ const FIELDS: { key: keyof ProfileDraft; label: string }[] = [
   { key: 'gstins', label: 'GSTINs (comma-separated)' },
   { key: 'iec', label: 'IEC' },
   { key: 'cin', label: 'CIN' },
+  { key: 'registration_number', label: 'Registration number' },
   { key: 'relationship_manager', label: 'Owner' },
   { key: 'industry', label: 'Industry' },
   { key: 'export_markets', label: 'Export markets (comma-separated)' },
   { key: 'products', label: 'Products (comma-separated)' },
   { key: 'year_established', label: 'Year established' },
-  { key: 'website', label: 'Website' },
 ];
 
 const LIST_FIELDS = new Set<keyof ProfileDraft>(['gstins', 'export_markets', 'products']);
 
-/** Identifiers masked for roles that may not reveal them — the server masks CIN too. */
-const MASKED_FIELDS = new Set<keyof ProfileDraft>(['pan', 'gstins', 'iec', 'cin']);
+/**
+ * Identifiers masked for roles that may not reveal them. The server masks the
+ * foreign registration number like CIN (task 3.8), so it is listed here too —
+ * otherwise the form would show bullets as if they were the value and send them
+ * back on save.
+ */
+const MASKED_FIELDS = new Set<keyof ProfileDraft>([
+  'pan',
+  'gstins',
+  'iec',
+  'cin',
+  'registration_number',
+]);
 
 /**
  * A role that may not reveal identifiers (OPERATIONS) can still edit, so its
@@ -84,12 +94,12 @@ function draftFrom(profile: ExporterProfileDetail, revealIdentifiers: boolean): 
     gstins: revealIdentifiers ? profile.gstins.join(', ') : '',
     iec: revealIdentifiers ? (profile.iec ?? '') : '',
     cin: revealIdentifiers ? (profile.cin ?? '') : '',
+    registration_number: revealIdentifiers ? (profile.registration_number ?? '') : '',
     relationship_manager: profile.relationship_manager ?? '',
     industry: profile.industry ?? '',
     export_markets: (profile.export_markets ?? []).join(', '),
     products: (profile.products ?? []).join(', '),
     year_established: profile.year_established?.toString() ?? '',
-    website: profile.website ?? '',
   };
 }
 
@@ -272,19 +282,12 @@ export function CompanyPanel({
               </DetailRow>
               <DetailRow label="IEC"><MaskedValue value={profile.iec} /></DetailRow>
               <DetailRow label="CIN"><MaskedValue value={profile.cin} /></DetailRow>
+              <DetailRow label="Registration number">
+                <MaskedValue value={profile.registration_number} />
+              </DetailRow>
               <DetailRow label="Source">{humanize(profile.source)}</DetailRow>
               <DetailRow label="Industry">{profile.industry ?? '—'}</DetailRow>
               <DetailRow label="Established">{profile.year_established ?? '—'}</DetailRow>
-              <DetailRow label="Website">
-                {/* A link only for an http(s) URL: React 18 renders a `javascript:`
-                    href as written, and a value stored before the server refused
-                    one must still never become a link. */}
-                {profile.website && isWebLink(profile.website) ? (
-                  <a href={profile.website} target="_blank" rel="noreferrer" className={`inline-flex max-w-full items-center gap-1 ${LINK_CLASSES}`}>
-                    <span className="truncate">{profile.website}</span><ExternalLink size={13} className="shrink-0" />
-                  </a>
-                ) : (profile.website ?? '—')}
-              </DetailRow>
             </dl>
           )}
         </Panel>
@@ -292,8 +295,21 @@ export function CompanyPanel({
         <div className="space-y-5">
           <Panel title="Where it stands">
             <dl>
-              <DetailRow label="Journey"><JourneyChip journey={profile.journey} /></DetailRow>
-              <DetailRow label="Qualification"><QualificationChip state={profile.qualification} /></DetailRow>
+              {/* A buyer-only company has no journey and no qualification: the
+                  columns hold LEAD and NOT_YET_REVIEWED because they are NOT NULL
+                  and `ck_exporter_profile_not_in_pipeline_start` requires it, not
+                  because anyone judged them (plan P4-2, task 3.9). Chips here would
+                  read as a sales stage that does not exist. */}
+              {profile.pipeline_status === 'NOT_IN_PIPELINE' ? (
+                <DetailRow label="Pipeline">
+                  <span className="text-ink-muted">Not in pipeline — exists as a buyer</span>
+                </DetailRow>
+              ) : (
+                <>
+                  <DetailRow label="Journey"><JourneyChip journey={profile.journey} /></DetailRow>
+                  <DetailRow label="Qualification"><QualificationChip state={profile.qualification} /></DetailRow>
+                </>
+              )}
               <DetailRow label="Relationship">
                 {profile.marker === 'NONE' ? 'Active' : (
                   <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />

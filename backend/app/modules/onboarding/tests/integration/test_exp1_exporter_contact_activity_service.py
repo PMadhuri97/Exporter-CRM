@@ -227,6 +227,9 @@ async def test_list_pending_activities_carries_exporter_display_name():
         request, _created = await ExporterProfileService(db).create_lead(
             name=legal_name,
             country="US",
+            # A company outside India carries its registrar's number (IQ-7, task 3.8);
+            # incidental here — this test is about the pending-activity display name.
+            registration_number=f"REG-{uuid.uuid4().hex[:10].upper()}",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
         )

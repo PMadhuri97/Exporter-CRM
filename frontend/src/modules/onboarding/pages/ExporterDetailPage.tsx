@@ -30,6 +30,7 @@ import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import {
+  Panel,
   ErrorState,
   PageHeader,
   Skeleton,
@@ -44,6 +45,8 @@ import { isStaffRole, useCurrentUser } from '@/platform/auth';
 import { MaskedValue } from '@/platform/mask';
 
 import {
+  CompanyDealsList,
+  NotInPipelineNotice,
   CompanyHistory,
   JourneyChip,
   MarkerBadge,
@@ -51,6 +54,7 @@ import {
   QualificationChip,
 } from '../components';
 import {
+  useBringIntoPipeline,
   useCompanyDeals,
   useExporterActivities,
   useExporterContacts,
@@ -155,6 +159,7 @@ export function ExporterDetailPage() {
   );
   const activityQuery = useExporterActivities(customerId, activityParams);
   const dealsQuery = useCompanyDeals(customerId);
+  const bringIntoPipeline = useBringIntoPipeline(customerId);
 
   if (!customerId) {
     return <p className="text-sm text-status-failed">Company id is missing.</p>;
@@ -188,6 +193,10 @@ export function ExporterDetailPage() {
   const activities = activityQuery.data?.activities ?? [];
   const hasNextActivityPage = activities.length === ACTIVITY_PAGE_SIZE;
   const dealCount = dealsQuery.data?.total;
+  // A company that exists only because it was somebody's buyer: its journey and both
+  // gauges do not apply, and the server refuses them (plan P4-2, task 3.9). Read
+  // here, below the guards, because it needs the loaded profile.
+  const notInPipeline = profile.pipeline_status === 'NOT_IN_PIPELINE';
 
   return (
     // One `Tabs` root around the sticky header and the panels, so the triggers
@@ -199,8 +208,20 @@ export function ExporterDetailPage() {
           title={displayName(profile)}
           meta={
             <>
-              <JourneyChip journey={profile.journey} />
-              <QualificationChip state={profile.qualification} />
+              {/* A buyer-only company's `journey` reads LEAD because the column is
+                  NOT NULL, not because anyone judged it (plan P4-2). Showing the
+                  chip would claim a sales stage that does not exist, and the two
+                  gauges below do not apply either. */}
+              {notInPipeline ? (
+                <span className="rounded-full border border-border-strong bg-surface-subtle px-2 py-0.5 text-xs font-medium text-ink-muted">
+                  Not in pipeline
+                </span>
+              ) : (
+                <>
+                  <JourneyChip journey={profile.journey} />
+                  <QualificationChip state={profile.qualification} />
+                </>
+              )}
               <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />
             </>
           }
@@ -235,9 +256,24 @@ export function ExporterDetailPage() {
         <CompanyPanel profile={profile} canEdit={isStaff} />
       </TabsContent>
       <TabsContent value="qualification">
-        <QualificationPanel customerId={customerId} />
+        {notInPipeline ? (
+          <NotInPipelineNotice
+            what="Qualification"
+            onBringIn={isStaff ? () => bringIntoPipeline.mutate({}) : undefined}
+            busy={bringIntoPipeline.isPending}
+          />
+        ) : (
+          <QualificationPanel customerId={customerId} />
+        )}
       </TabsContent>
       <TabsContent value="conversation">
+        {notInPipeline ? (
+          <NotInPipelineNotice
+            what="The conversation gauge"
+            onBringIn={isStaff ? () => bringIntoPipeline.mutate({}) : undefined}
+            busy={bringIntoPipeline.isPending}
+          />
+        ) : (
         <ConversationPanel
           customerId={customerId}
           contacts={contacts}
@@ -252,9 +288,22 @@ export function ExporterDetailPage() {
           hasNextActivityPage={hasNextActivityPage}
           isStaff={isStaff}
         />
+        )}
       </TabsContent>
       <TabsContent value="deals">
-        <DealsPanel customerId={customerId} isStaff={isStaff} />
+        {/* Both sides of this company's trade (task 3.9). `DealsPanel` is the
+            seller side — it owns the "open a deal" control and shows each deal's
+            stage — and the buyer side is a plain list, because there is nothing to
+            open there: a deal is opened on the company that is selling. */}
+        <div className="flex flex-col gap-5">
+          <DealsPanel customerId={customerId} isStaff={isStaff} />
+          <Panel
+            title="Bought from"
+            description="Deals where this company is the buyer. A company can be a buyer on one deal and a seller on another."
+          >
+            <CompanyDealsList companyId={customerId} as="buyer" />
+          </Panel>
+        </div>
       </TabsContent>
       <TabsContent value="documents">
         <DocumentsPanel customerId={customerId} isStaff={isStaff} />

@@ -9,6 +9,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  bringExporterIntoPipeline,
   createExporterLead,
   getExporterProfileDetail,
   searchExporterProfiles,
@@ -16,6 +17,7 @@ import {
   updateExporterProfile,
 } from '../api';
 import type {
+  BringIntoPipelineRequest,
   ExporterSearchParams,
   SetMarkerRequest,
   UpdateExporterProfileRequest,
@@ -89,6 +91,18 @@ export function useSetExporterMarker(customerId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: SetMarkerRequest) => setExporterMarker(customerId, request),
+    onSuccess: () => invalidateCompany(queryClient, customerId),
+  });
+}
+
+/** Bring a buyer-only company into the sales pipeline (task 3.11). */
+export function useBringIntoPipeline(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BringIntoPipelineRequest = {}) =>
+      bringExporterIntoPipeline(customerId, body),
+    // The journey, the gauges and the lists all change meaning at once, so the
+    // whole company is invalidated rather than one query.
     onSuccess: () => invalidateCompany(queryClient, customerId),
   });
 }

@@ -196,9 +196,26 @@ export type DocumentCategoryValue = Schemas['DocumentCategory'];
 export interface DealListParams {
   /** Repeatable: several stages narrow the list to those stages. */
   stages?: DealStage[];
+  /**
+   * Which side of its deals to list (task 2.7). `seller` (the default) is the deals
+   * this company sells on; `buyer` the ones it buys on. Two lists, never one: the
+   * same company can be seller on one deal and buyer on another, and `buyer_name`
+   * means "the other party", so a mixed list would read differently row by row.
+   */
+  as?: DealSide;
   limit?: number;
   offset?: number;
 }
+
+/** `seller` | `buyer` — which side of a deal a company is on. */
+export type DealSide = Schemas['DealSide'];
+
+/** "Do we already have this company?" — `POST /companies/match` (task 3.10). */
+export type CompanyMatchRequest = Schemas['CompanyMatchRequest'];
+export type CompanyMatch = Schemas['CompanyMatchResponse'];
+export type CompanyMatchCandidate = Schemas['CompanyMatchCandidate'];
+/** MATCHED | POSSIBLE_DUPLICATE | CONFLICT | NEW. */
+export type CompanyMatchKind = CompanyMatch['kind'];
 
 export type CrmDocument = Schemas['DocumentResponse'];
 export type DocumentList = Schemas['DocumentListResponse'];
@@ -322,3 +339,6 @@ export type RequiredCheck = components['schemas']['RequiredCheckResponse'];
 /** A company whose Clear has expired or soon will (P3-3c). */
 export type ReKycDueCompany = components['schemas']['ReKycDueCompanyResponse'];
 export type ReKycDueList = components['schemas']['ReKycDueListResponse'];
+
+/** Bring a buyer-only company into the sales pipeline (task 3.11). */
+export type BringIntoPipelineRequest = Schemas['BringIntoPipelineRequest'];

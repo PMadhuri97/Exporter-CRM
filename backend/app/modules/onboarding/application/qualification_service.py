@@ -48,7 +48,10 @@ from app.modules.onboarding.application.exporter_profile_service import (
 )
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.company_intake import PartnerQualification
-from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
+from app.modules.onboarding.domain.entities.exporter_enums import (
+    CompanyPipelineStatus,
+    ExporterJourney,
+)
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     LIFECYCLE_TRANSITION_EVENT,
 )
@@ -75,6 +78,7 @@ from app.modules.onboarding.domain.qualification_views import (
     ResultEntry,
 )
 from app.modules.onboarding.exceptions import (
+    CompanyNotInPipelineError,
     ExporterProfileNotFoundError,
     QualificationClosedError,
     QualificationCriterionChangedError,
@@ -591,6 +595,13 @@ class QualificationService:
         profile = result.scalar_one_or_none()
         if profile is None:
             raise ExporterProfileNotFoundError(customer_id)
+        # A buyer-only company is not being sold to (plan P4-1). Refused on the
+        # locking path, which every write in this service goes through, rather
+        # than once per route: a QUALIFIED outcome moves the journey to PROSPECT,
+        # which `ck_exporter_profile_not_in_pipeline_start` would then refuse as a
+        # constraint violation instead of a clear 409.
+        if profile.pipeline_status is CompanyPipelineStatus.NOT_IN_PIPELINE:
+            raise CompanyNotInPipelineError(customer_id)
         return profile
 
     async def _require_profile(self, customer_id: uuid.UUID) -> ExporterProfile:

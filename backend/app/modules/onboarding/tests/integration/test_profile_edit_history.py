@@ -73,7 +73,7 @@ async def _current(customer_id: uuid.UUID) -> ExporterProfile:
 
 
 async def test_an_omitted_field_is_unchanged_and_records_nothing():
-    customer_id = await _company(industry="Textiles", website="https://acme.example")
+    customer_id = await _company(industry="Textiles", year_established=1998)
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).update_profile(
             customer_id, {"industry": "Leather"}, actor_id="rm-1"
@@ -81,22 +81,22 @@ async def test_an_omitted_field_is_unchanged_and_records_nothing():
 
     profile = await _current(customer_id)
     assert profile.industry == "Leather"
-    assert profile.website == "https://acme.example"  # left out, left alone
+    assert profile.year_established == 1998  # left out, left alone
     assert [r.to_status for r in await _profile_rows(customer_id)] == ["industry"]
 
 
 @pytest.mark.parametrize("cleared", [None, "", "   "])
 async def test_a_field_sent_empty_is_cleared(cleared):
-    customer_id = await _company(website="https://acme.example")
+    customer_id = await _company(industry="Textiles")
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).update_profile(
-            customer_id, {"website": cleared}, actor_id="rm-1"
+            customer_id, {"industry": cleared}, actor_id="rm-1"
         )
 
-    assert (await _current(customer_id)).website is None
+    assert (await _current(customer_id)).industry is None
     [row] = await _profile_rows(customer_id)
-    assert row.event_metadata["field"] == "website"
-    assert row.event_metadata["from"] == "https://acme.example"
+    assert row.event_metadata["field"] == "industry"
+    assert row.event_metadata["from"] == "Textiles"
     assert row.event_metadata["to"] is None
 
 
@@ -132,13 +132,13 @@ async def test_one_row_per_changed_field_sharing_one_edit_id():
             {
                 "industry": "Leather",  # changes
                 "relationship_manager": "Asha",  # same value: no row
-                "website": "https://new.example",  # was empty: changes
+                "year_established": 1998,  # was empty: changes
             },
             actor_id="rm-7",
         )
 
     rows = await _profile_rows(customer_id)
-    assert sorted(r.to_status for r in rows) == ["industry", "website"]
+    assert sorted(r.to_status for r in rows) == ["industry", "year_established"]
     for row in rows:
         assert row.dimension == HISTORY_DIMENSION_PROFILE
         assert row.event_type == PROFILE_EDIT_EVENT
@@ -205,7 +205,7 @@ async def test_a_refused_edit_changes_nothing(changes):
 async def test_state_and_history_commit_together_or_not_at_all(monkeypatch):
     """If writing the second field's history row fails, the first field's
     change and its row are rolled back with it."""
-    customer_id = await _company(industry="Textiles", website="https://old.example")
+    customer_id = await _company(industry="Textiles", year_established=1990)
     real_record = HistoryService.record
     calls = {"n": 0}
 
@@ -220,13 +220,13 @@ async def test_state_and_history_commit_together_or_not_at_all(monkeypatch):
         with pytest.raises(RuntimeError):
             await ExporterProfileService(db).update_profile(
                 customer_id,
-                {"industry": "Leather", "website": "https://new.example"},
+                {"industry": "Leather", "year_established": 1998},
                 actor_id="rm-1",
             )
     monkeypatch.undo()
 
     profile = await _current(customer_id)
-    assert (profile.industry, profile.website) == ("Textiles", "https://old.example")
+    assert (profile.industry, profile.year_established) == ("Textiles", 1990)
     assert await _profile_rows(customer_id) == []
 
 
@@ -263,21 +263,23 @@ async def test_the_api_refuses_an_actor_in_the_body(client: AsyncClient):
 
 async def test_the_api_distinguishes_omitted_from_null(client: AsyncClient):
     _user_id, token = await user_with_role(client, UserRole.OPERATIONS)
-    customer_id = await _company(industry="Textiles", website="https://acme.example")
+    customer_id = await _company(industry="Textiles", year_established=1998)
 
     omitted = await client.patch(
         f"{BASE}/exporters/{customer_id}", json={}, headers=auth_header(token)
     )
     assert omitted.status_code == 200
-    assert omitted.json()["website"] == "https://acme.example"
+    assert omitted.json()["year_established"] == 1998
 
     cleared = await client.patch(
-        f"{BASE}/exporters/{customer_id}", json={"website": None}, headers=auth_header(token)
+        f"{BASE}/exporters/{customer_id}",
+        json={"year_established": None},
+        headers=auth_header(token),
     )
     assert cleared.status_code == 200
-    assert cleared.json()["website"] is None
+    assert cleared.json()["year_established"] is None
     assert cleared.json()["industry"] == "Textiles"
-    assert [r.to_status for r in await _profile_rows(customer_id)] == ["website"]
+    assert [r.to_status for r in await _profile_rows(customer_id)] == ["year_established"]
 
 
 # ── One history table, one writer ─────────────────────────────────────────────

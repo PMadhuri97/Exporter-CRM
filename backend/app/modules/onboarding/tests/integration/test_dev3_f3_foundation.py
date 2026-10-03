@@ -327,11 +327,20 @@ async def test_match_finds_a_company_by_its_normalised_registration_number():
     assert (result.kind, result.company_id) == (MatchKind.MATCHED, company_id)
 
 
-async def test_match_says_new_when_nothing_matches_and_never_guesses_from_a_name():
-    """The F3 stub's honest limit: a name alone is never a match. Task 3.10 adds
-    similarity, and until then "we did not find it" beats a guess."""
+async def test_a_name_alone_is_never_a_match():
+    """A name is evidence for a person to weigh, never an identity.
+
+    This was the F3 stub's limit — a name alone returned ``NEW``. Task 3.10 added
+    similarity, so the same name now comes back as ``POSSIBLE_DUPLICATE``: still not
+    a match, still ``company_id is None``, but the candidate is named so somebody can
+    check it rather than creating a second record for a company we already hold.
+    What has **not** changed, and is what this test now guards, is that a name never
+    produces ``MATCHED``.
+
+    The similarity rule itself is ``test_dev3_company_match.py``'s subject.
+    """
     async with db_services.AsyncSessionLocal() as db:
-        await CompanyDirectoryService(db).create_buyer_company(
+        company_id = await CompanyDirectoryService(db).create_buyer_company(
             BuyerCompanyDraft(
                 name="Rotterdam Trading BV", country="NL", created_via_deal_id=uuid.uuid4()
             ),
@@ -340,6 +349,17 @@ async def test_match_says_new_when_nothing_matches_and_never_guesses_from_a_name
     async with db_services.AsyncSessionLocal() as db:
         result = await CompanyDirectoryService(db).match(
             name="Rotterdam Trading BV", country="NL"
+        )
+    assert result.kind is MatchKind.POSSIBLE_DUPLICATE
+    assert result.company_id is None
+    assert result.needs_a_person is True
+    assert company_id in result.candidates
+
+
+async def test_an_unknown_name_is_still_new():
+    async with db_services.AsyncSessionLocal() as db:
+        result = await CompanyDirectoryService(db).match(
+            name=f"Nobody At All {uuid.uuid4().hex[:12]}", country="NL"
         )
     assert result.kind is MatchKind.NEW
     assert result.company_id is None

@@ -18,6 +18,8 @@ export { OpenDealForm } from './OpenDealForm';
 // Developer 2 (allocation F2): a company's deals in one role. Mounted on the
 // company page by Developer 3 (task 3.9); filled by task 2.7.
 export { CompanyDealsList } from './CompanyDealsList';
+export { NotInPipelineNotice } from './NotInPipelineNotice';
+export type { NotInPipelineNoticeProps } from './NotInPipelineNotice';
 export type { CompanyDealsListProps } from './CompanyDealsList';
 export { DocumentList } from './DocumentList';
 export { DocumentUpload } from './DocumentUpload';

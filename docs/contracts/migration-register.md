@@ -1,6 +1,6 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0032_company_identity`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0034_deal_buyer_co`
 
 The prototype's migrations, from four developers and one platform change, in one
 chain. This is the running order and the rules. Dev 1 keeps it current.
@@ -38,7 +38,10 @@ merged.
 | `auth_0005` | Dev 3 (P1-5) | `auth_0005_rm_role_name`: **data:** the built-in OPERATIONS row in `auth.role` is named "RM (Relationship Manager)" and loses the "unless you own the record" description (IQ-13, decision 12) — only where an administrator has not already changed them. Slug and enum unchanged. Downgrade restores both | `onboarding_0031_domestic_first` |
 | 0032 | Dev 3 | Company identity and pipeline status (F3): `identity_type`, `registration_number`, `pipeline_status`, `created_via`, `created_via_deal_id`; `ExporterSource.DEAL_BUYER` (IQ-6); the not-in-pipeline check and the normalised registration-number unique index | `auth_0005_rm_role_name` |
 
-**Next free onboarding number: 0033.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
+| 0033 | Dev 3 (3.8) | `onboarding_0033_created_via`: **data: backfills `exporter_profile.created_via`** from each company's earliest creation history row (`journey`, or `pipeline` for a buyer-only company), with the same source → channel mapping `domain/company_identity.py` applies to new companies — a test asserts the two agree. Also normalises any `created_via` already written to upper case (F3 shipped `'deal_buyer'`). Unmapped or missing sources stay `NULL` and are **reported as a count** rather than guessed as `MANUAL`. No append-only row touched. `pg_dump` first. Downgrade sets the column back to `NULL` for every company — lossless in that re-running reproduces it from the history rows, but it discards values written by a create path since | `onboarding_0032_company_identity` |
+| 0034 | Dev 2 (2.4) | `onboarding_0034_deal_buyer_co`: `deal.buyer_company_id` becomes **set once** (`trg_deal_buyer_company_set_once`, via `prevent_field_mutation_when_set` — `NULL` → a value is allowed once, so the P4-6 migration can still fill it) and is added to `prevent_terminal_deal_change()`, so a closed deal's buyer no longer changes. Schema only, no data. Downgrade drops the trigger and restores 0022's function body | `onboarding_0033_created_via` |
+
+**Next free onboarding number: 0035.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
 32 characters at most (`docs/developer-allocation.md` §2.2, and §2 below).
 
 `auth_0003` and `auth_0004` belong to the platform's user-management work, not to the

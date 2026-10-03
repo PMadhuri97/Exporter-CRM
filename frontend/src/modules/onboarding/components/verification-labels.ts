@@ -94,8 +94,9 @@ export function verificationTypeLabel(type: string): string {
 }
 
 /**
- * Whether a `url` evidence reference is safe to render as `href`. The rule is shared
- * with the company website and lives in `@/lib/links`; re-exported here so the
- * verification components keep one import.
+ * Whether a `url` evidence reference is safe to render as `href`. The rule lives in
+ * `@/lib/links`, outside this module, because it is a property of a stored link
+ * rather than of verification; re-exported here so the verification components keep
+ * one import.
  */
 export { isWebLink } from '@/lib/links';

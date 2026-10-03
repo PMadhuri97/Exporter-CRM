@@ -47,8 +47,25 @@ const addCompanySchema = z.object({
   iec: z.string().max(10).optional().or(z.literal('')),
   cin: z.string().max(21).optional().or(z.literal('')),
   industry: z.string().max(255).optional().or(z.literal('')),
-  website: z.string().max(2048).optional().or(z.literal('')),
-});
+  registration_number: z.string().max(100).optional().or(z.literal('')),
+  })
+  // Decision IQ-7: a company outside India is identified by the number its own
+  // registrar issued. Checked here as well as on the server so the person is told
+  // next to the field instead of by a 422 after submitting. A PAN is itself an
+  // identity, so a company holding one is never asked for a number.
+  .superRefine((values, ctx) => {
+    if (
+      values.country !== 'IN' &&
+      !values.pan?.trim() &&
+      !values.registration_number?.trim()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['registration_number'],
+        message: 'Required for a company outside India',
+      });
+    }
+  });
 
 type AddCompanyFormValues = z.infer<typeof addCompanySchema>;
 
@@ -96,7 +113,7 @@ export function AddExporterPage() {
         iec: emptyToUndefined(values.iec),
         cin: emptyToUndefined(values.cin),
         industry: emptyToUndefined(values.industry),
-        website: emptyToUndefined(values.website),
+        registration_number: emptyToUndefined(values.registration_number),
       });
       toast.success(`${values.name} added as a lead`);
       navigate(paths.company(profile.customer_id));
@@ -187,6 +204,18 @@ export function AddExporterPage() {
               <Field label="CIN" htmlFor="company-cin" error={errors.cin?.message}>
                 <Input id="company-cin" {...register('cin')} />
               </Field>
+              <Field
+                label="Registration number"
+                htmlFor="company-registration-number"
+                error={errors.registration_number?.message}
+                hint="For a company outside India — whatever its own registrar issued."
+              >
+                <Input
+                  id="company-registration-number"
+                  placeholder="e.g. KVK 12345678"
+                  {...register('registration_number')}
+                />
+              </Field>
             </div>
           </fieldset>
 
@@ -197,9 +226,6 @@ export function AddExporterPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Industry" htmlFor="company-industry" error={errors.industry?.message}>
                 <Input id="company-industry" {...register('industry')} />
-              </Field>
-              <Field label="Website" htmlFor="company-website" error={errors.website?.message}>
-                <Input id="company-website" placeholder="https://…" {...register('website')} />
               </Field>
             </div>
           </fieldset>

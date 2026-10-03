@@ -191,7 +191,7 @@ describe('DealDetailPage — the server decides what may happen next', () => {
     expect(await screen.findByText('Rotterdam shipment, March')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Edit buyer' }),
+      screen.queryByRole('button', { name: 'Edit buyer details' }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Upload a document' }),
@@ -211,7 +211,7 @@ describe('DealDetailPage — the server decides what may happen next', () => {
 
     expect(await screen.findByText('Handed over')).toBeInTheDocument();
     // What the lending team was given must not be editable afterwards.
-    expect(screen.queryByRole('button', { name: 'Edit buyer' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit buyer details' })).not.toBeInTheDocument();
   });
 });
 
@@ -430,7 +430,7 @@ describe('DealDetailPage — editing a buyer whose details are masked', () => {
   it('starts the masked fields empty and leaves them out, so the stored values are kept', async () => {
     vi.mocked(getDeal).mockResolvedValue(MASKED);
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer details' }));
 
     const taxId = screen.getByLabelText('Tax identifier');
     expect(taxId).toHaveValue('');
@@ -458,7 +458,7 @@ describe('DealDetailPage — editing a buyer whose details are masked', () => {
   it('prefills and sends every field for COMPLIANCE, who sees them in full', async () => {
     signedInAs('COMPLIANCE');
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer details' }));
     expect(screen.getByLabelText('Registration number')).toHaveValue('NL-8899');
 
     fireEvent.click(screen.getByRole('button', { name: 'Save buyer' }));

@@ -95,6 +95,7 @@ async def test_create_lead_stores_name_and_country_as_the_company_identity():
         profile, created = await ExporterProfileService(db).create_lead(
             name=name,
             country="US",
+            registration_number=f"REG-{uuid.uuid4().hex[:10].upper()}",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
         )
@@ -118,6 +119,7 @@ async def test_search_profiles_finds_named_company_by_name():
         profile, _created = await ExporterProfileService(db).create_lead(
             name=name,
             country="US",
+            registration_number=f"REG-{uuid.uuid4().hex[:10].upper()}",
             idempotency_key=str(uuid.uuid4()),
             source=ExporterSource.SALES,
         )
@@ -216,7 +218,11 @@ async def test_search_profiles_by_name_contains_case_insensitive():
     customer_id = uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).create_or_get_profile(
-            customer_id, source=ExporterSource.SALES, name=legal_name, country="US"
+            customer_id,
+            source=ExporterSource.SALES,
+            name=legal_name,
+            country="US",
+            registration_number=f"REG-{uuid.uuid4().hex[:10].upper()}",
         )
 
     search_fragment = legal_name[5:15].upper()  # deliberately wrong case
@@ -256,7 +262,11 @@ async def test_get_profile_detail_carries_the_company_identity():
     customer_id = uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).create_or_get_profile(
-            customer_id, source=ExporterSource.SALES, name=legal_name, country="us"
+            customer_id,
+            source=ExporterSource.SALES,
+            name=legal_name,
+            country="us",
+            registration_number=f"REG-{uuid.uuid4().hex[:10].upper()}",
         )
 
     async with db_services.AsyncSessionLocal() as db:
