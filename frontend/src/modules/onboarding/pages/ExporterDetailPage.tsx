@@ -161,7 +161,8 @@ export function ExporterDetailPage() {
   );
   const activityQuery = useExporterActivities(customerId, activityParams);
   const dealsQuery = useCompanyDeals(customerId);
-  const bringIntoPipeline = useBringIntoPipeline(customerId);
+  // Hooks run before the missing-id guard below; the mutation is only offered after it.
+  const bringIntoPipeline = useBringIntoPipeline(customerId ?? '');
 
   if (!customerId) {
     return <p className="text-sm text-status-failed">Company id is missing.</p>;

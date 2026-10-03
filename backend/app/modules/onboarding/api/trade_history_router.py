@@ -276,6 +276,14 @@ def _outcome_response(outcome, *, is_current: bool) -> TradeOutcomeResponse:
     return response
 
 
+def _evidence_refs(body: RecordTradeOutcomeRequest) -> list[dict] | None:
+    """The request's references as the plain `{type, ref}` objects the service
+    validates and stores."""
+    if body.evidence_refs is None:
+        return None
+    return [ref.model_dump() for ref in body.evidence_refs]
+
+
 @router.post(
     "/trade-relationships/{relationship_id}/invoices",
     response_model=TradeInvoiceResponse,
@@ -369,7 +377,7 @@ async def record_trade_outcome(
         proof_status=body.proof_status,
         amount_paid=body.amount_paid,
         evidence_note=body.evidence_note,
-        evidence_refs=body.evidence_refs,
+        evidence_refs=_evidence_refs(body),
         supersedes_outcome_id=body.supersedes_outcome_id,
         actor_id=str(current_user.id),
     )
@@ -440,7 +448,7 @@ async def record_deal_payment_outcome(
         proof_status=body.proof_status,
         amount_paid=body.amount_paid,
         evidence_note=body.evidence_note,
-        evidence_refs=body.evidence_refs,
+        evidence_refs=_evidence_refs(body),
         supersedes_outcome_id=body.supersedes_outcome_id,
         invoice=draft,
         actor_id=str(current_user.id),

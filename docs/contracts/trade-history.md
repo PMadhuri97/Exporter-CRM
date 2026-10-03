@@ -60,7 +60,9 @@ mistake is corrected by recording the right invoice and the wrong one stays visi
 
 An **outcome** is one thing we learned about an invoice: `payment_status`,
 `amount_paid`, `proof_status`, `evidence_note`, `evidence_refs`, `recorded_by/at` and
-`supersedes_outcome_id`. The table is append-only (`public.prevent_mutation()`), and a
+`supersedes_outcome_id`. `evidence_refs` is a list of `{type, ref}` in a verification
+result's shape (`document` or `url`; a `url` must be http(s)), and the API types it with
+verification's own models. The table is append-only (`public.prevent_mutation()`), and a
 correction is a **new row naming the one it replaces** — the same shape as a
 verification review. A partial unique index allows one head per invoice and one
 superseder per row, so the chain is a line and not a tree: two people cannot each

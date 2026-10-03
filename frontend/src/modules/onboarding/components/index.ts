@@ -57,6 +57,10 @@ export { NoOutcomeChip, TradeOutcomeChip } from './TradeOutcomeChip';
 export { RecordDealOutcomeForm } from './RecordDealOutcomeForm';
 export type { RecordDealOutcomeFormProps } from './RecordDealOutcomeForm';
 export type { TradeOutcomeChipProps } from './TradeOutcomeChip';
+// Which of the seller's GST branches a deal is invoiced from (task 2.8): the handover
+// guard asks for it whenever the seller has an active registration (task 2.9).
+export { InvoicingBranchPicker } from './InvoicingBranchPicker';
+export type { InvoicingBranchPickerProps } from './InvoicingBranchPicker';
 
 // ── Compliance engine — owner: Developer 1 ──
 // Mounted by other lanes: Developer 2 on the deal page (seller and buyer company).

@@ -215,31 +215,53 @@ async def test_the_trigger_allows_the_first_write_so_the_migration_can_fill_it()
     assert (await _reload(deal_id)).buyer_company_id == buyer
 
 
-async def test_a_closed_deals_buyer_company_is_frozen_in_raw_sql():
-    """``prevent_terminal_deal_change()`` gains ``buyer_company_id`` (P4-4): a
-    handed-over deal's buyer is what the lending team was given.
+async def test_a_closed_deals_buyer_company_is_filled_once_then_frozen_in_raw_sql():
+    """``prevent_terminal_deal_change()`` as migration 0039 left it: on a closed deal,
+    ``buyer_company_id`` may go from ``NULL`` to a value **once** and never changes
+    after that — the rule 0029 gives ``handover_snapshot``.
 
-    Note this also refuses a *first* write to a closed deal, which the set-once rule
-    alone would allow — which is why both guards exist.
+    The first write is the one the buyer migration (P4-6) makes for a deal handed over
+    or withdrawn before it ran; 0036's freeze refused even that, and 0039 relaxed it.
+    A change stays refused, because a handed-over deal's buyer is what the lending team
+    was given. Both guards refuse a change: ``trg_deal_buyer_company_set_once`` fires
+    first (triggers fire in name order), so the freeze's own clause is shown with the
+    set-once trigger disabled for one rolled-back transaction, as
+    ``test_l3b_handover_snapshot.py`` does for the snapshot.
     """
     deal_id, _seller = await _deal()
     async with db_services.AsyncSessionLocal() as db:
         await DealService(db).transition_stage(
             deal_id, DealStage.WITHDRAWN, reason="not proceeding", actor_id="rm-1"
         )
-    buyer = await make_company()
+    first, second = await make_company(), await make_company()
+    update = "UPDATE onboarding.deal SET buyer_company_id = %s WHERE id = %s"
 
     connection = _connect()
     try:
+        # The first write to a closed deal is allowed, with every trigger on.
         with connection, connection.cursor() as cursor:
-            with pytest.raises(psycopg2.errors.RaiseException) as caught:
+            cursor.execute(update, (str(first), str(deal_id)))
+        assert (await _reload(deal_id)).buyer_company_id == first
+
+        # A change is refused.
+        with connection, connection.cursor() as cursor:
+            with pytest.raises(psycopg2.errors.RaiseException):
+                cursor.execute(update, (str(second), str(deal_id)))
+
+        # And the terminal freeze refuses it on its own, in its own words.
+        try:
+            with connection.cursor() as cursor:
                 cursor.execute(
-                    "UPDATE onboarding.deal SET buyer_company_id = %s WHERE id = %s",
-                    (str(buyer), str(deal_id)),
+                    "ALTER TABLE onboarding.deal DISABLE TRIGGER trg_deal_buyer_company_set_once;"
                 )
-            assert "no longer changes" in str(caught.value)
+                with pytest.raises(psycopg2.errors.RaiseException) as caught:
+                    cursor.execute(update, (str(second), str(deal_id)))
+                assert "does not change" in str(caught.value)
+        finally:
+            connection.rollback()
     finally:
         connection.close()
+    assert (await _reload(deal_id)).buyer_company_id == first
 
 
 # ── The route takes either form, never both ───────────────────────────────────

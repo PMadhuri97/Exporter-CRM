@@ -17,6 +17,7 @@ import {
   listDealRequiredDocuments,
   openDeal,
   setDealBuyer,
+  setDealInvoicingBranch,
   setDealRequiredDocument,
   transitionDealStage,
 } from '../api';
@@ -24,6 +25,7 @@ import type {
   DealListParams,
   OpenDealRequest,
   SetDealBuyerRequest,
+  SetDealInvoicingBranchRequest,
   SetDealRequiredDocumentRequest,
   TransitionDealStageRequest,
 } from '../types';
@@ -119,6 +121,27 @@ export function useSetDealBuyer(dealId: string, customerId?: string) {
         // The list shows the buyer's name per row.
         void queryClient.invalidateQueries({ queryKey: ['deals', customerId] });
       }
+    },
+  });
+}
+
+/**
+ * Record, change or clear the deal's invoicing branch (task 2.8).
+ *
+ * The response is the deal as this user reads it, so it replaces the cached one at
+ * once: the select shows the new branch without snapping back while a refetch runs,
+ * and `handover_blocked_reason` — which the branch is one of the guard's questions
+ * about — is current as soon as the request returns. History gains a row on the deal
+ * and on the seller's timeline.
+ */
+export function useSetDealInvoicingBranch(dealId: string, customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetDealInvoicingBranchRequest) => setDealInvoicingBranch(dealId, body),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['deal', dealId], updated);
+      void queryClient.invalidateQueries({ queryKey: ['dealHistory', dealId] });
+      void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
     },
   });
 }

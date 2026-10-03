@@ -46,7 +46,6 @@ from pathlib import Path
 import pytest
 from httpx import AsyncClient
 
-from app.main import app
 from app.modules.onboarding.api.schemas.masking import (
     mask_email,
     mask_identifier,
@@ -59,6 +58,10 @@ pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
 PREFIX = f"{BASE}/"
+#: The OpenAPI document the application serves. Read over HTTP through the `client`
+#: fixture rather than from `app.main`: a module never imports the delivery layer
+#: (`importlinter.ini`, "modules never import the delivery layer"), its tests included.
+OPENAPI = "/api/v1/openapi.json"
 PDF = b"%PDF-1.4 sweep"
 
 #: The roles the task names. Both see masked values: architecture decision 12 removed
@@ -400,12 +403,14 @@ UNSWEPT: dict[str, str] = {
     f"{BASE}/{{customer_id}}/status": "no onboarding_request row for a CRM company",
 }
 
-def _crm_gets() -> list[str]:
+@pytest.fixture(scope="module")
+async def crm_gets(client: AsyncClient) -> list[str]:
     """Every mounted `GET` under the CRM prefix, from the served OpenAPI document."""
-    spec = app.openapi()
+    resp = await client.get(OPENAPI)
+    assert resp.status_code == 200, f"{OPENAPI} answered {resp.status_code}"
     return sorted(
         path
-        for path, operations in spec["paths"].items()
+        for path, operations in resp.json()["paths"].items()
         if path.startswith(PREFIX) and "get" in operations
     )
 
@@ -434,16 +439,16 @@ def _query_for(path: str, company_id: str) -> dict[str, str]:
 # ── The sweep ─────────────────────────────────────────────────────────────────
 
 
-def test_every_crm_get_is_either_swept_or_declared_unsweepable():
+async def test_every_crm_get_is_either_swept_or_declared_unsweepable(crm_gets: list[str]):
     """The guard that makes the sweep automatic.
 
     A new `GET` whose path parameter this module cannot fill fails here, naming the
     parameter. The fix is to build that row in `world` — or, if it genuinely cannot be
     reached, to add it to `UNSWEPT` with a reason. Either way somebody decides.
 
-    It runs without the fixtures, against a world holding every parameter name rather
-    than real ids, because what it checks is the parameter *names* — and a failure
-    should not depend on a database.
+    It runs without the `world` fixture, against a world holding every parameter name
+    rather than real ids, because what it checks is the parameter *names* — and a
+    failure should not depend on a database. Reading the served document needs none.
     """
     known = World(
         ids={
@@ -465,7 +470,7 @@ def test_every_crm_get_is_either_swept_or_declared_unsweepable():
     )
     unfillable = [
         path
-        for path in _crm_gets()
+        for path in crm_gets
         if path not in UNSWEPT and _fill(path, known.ids) is None
     ]
     assert not unfillable, (
@@ -475,14 +480,14 @@ def test_every_crm_get_is_either_swept_or_declared_unsweepable():
     )
 
 
-def test_the_unswept_table_names_only_routes_that_exist():
+async def test_the_unswept_table_names_only_routes_that_exist(crm_gets: list[str]):
     """So the exclusions cannot rot into exclusions of nothing."""
-    stale = sorted(set(UNSWEPT) - set(_crm_gets()))
+    stale = sorted(set(UNSWEPT) - set(crm_gets))
     assert not stale, "Declared unsweepable but not mounted:\n  " + "\n  ".join(stale)
 
 
-def test_every_refused_route_is_mounted():
-    stale = sorted(set(EXPECTED_REFUSALS) - set(_crm_gets()))
+async def test_every_refused_route_is_mounted(crm_gets: list[str]):
+    stale = sorted(set(EXPECTED_REFUSALS) - set(crm_gets))
     assert not stale, "Declared as refusing a role but not mounted:\n  " + "\n  ".join(
         stale
     )
@@ -490,7 +495,11 @@ def test_every_refused_route_is_mounted():
 
 @pytest.mark.parametrize("role", MASKED_ROLES)
 async def test_no_crm_read_serves_a_raw_identifier(
-    client: AsyncClient, tokens: dict[UserRole, str], world: World, role: UserRole
+    client: AsyncClient,
+    tokens: dict[UserRole, str],
+    world: World,
+    crm_gets: list[str],
+    role: UserRole,
 ):
     """The sweep itself: every CRM `GET`, and not one raw identifier in any body.
 
@@ -506,7 +515,7 @@ async def test_no_crm_read_serves_a_raw_identifier(
     leaks: list[str] = []
     for company_id in world.subjects():
         ids = world.as_subject(company_id)
-        for path in _crm_gets():
+        for path in crm_gets:
             filled = _fill(path, ids)
             if filled is None:
                 # Declared in `UNSWEPT`; the guard above proves it was declared on
@@ -530,7 +539,11 @@ async def test_no_crm_read_serves_a_raw_identifier(
 
 @pytest.mark.parametrize("role", MASKED_ROLES)
 async def test_the_sweep_actually_read_the_data_it_claims_to_have_checked(
-    client: AsyncClient, tokens: dict[UserRole, str], world: World, role: UserRole
+    client: AsyncClient,
+    tokens: dict[UserRole, str],
+    world: World,
+    crm_gets: list[str],
+    role: UserRole,
 ):
     """The anti-vacuity check, and the reason this file is worth trusting.
 
@@ -545,7 +558,7 @@ async def test_the_sweep_actually_read_the_data_it_claims_to_have_checked(
     found: dict[str, str] = {}
     for company_id in world.subjects():
         ids = world.as_subject(company_id)
-        for path in _crm_gets():
+        for path in crm_gets:
             filled = _fill(path, ids)
             if filled is None:
                 continue
@@ -571,7 +584,11 @@ async def test_the_sweep_actually_read_the_data_it_claims_to_have_checked(
 
 @pytest.mark.parametrize("role", MASKED_ROLES)
 async def test_the_reads_that_are_expected_to_answer_do(
-    client: AsyncClient, tokens: dict[UserRole, str], world: World, role: UserRole
+    client: AsyncClient,
+    tokens: dict[UserRole, str],
+    world: World,
+    crm_gets: list[str],
+    role: UserRole,
 ):
     """Both directions of the refusal table.
 
@@ -584,7 +601,7 @@ async def test_the_reads_that_are_expected_to_answer_do(
     # The seller only: whether a route answers a role is a question about the route,
     # not about which company it is pointed at, and asking twice would report every
     # disagreement twice.
-    for path in _crm_gets():
+    for path in crm_gets:
         filled = _fill(path, world.ids)
         if filled is None:
             continue

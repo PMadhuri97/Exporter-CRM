@@ -5420,7 +5420,7 @@ export interface components {
             /** Evidence Note */
             evidence_note?: string | null;
             /** Evidence Refs */
-            evidence_refs?: Record<string, never>[] | null;
+            evidence_refs?: components["schemas"]["VerificationEvidenceRefModel"][] | null;
             /** Supersedes Outcome Id */
             supersedes_outcome_id?: string | null;
             /** Invoice Number */
@@ -5512,7 +5512,7 @@ export interface components {
             /** Evidence Note */
             evidence_note?: string | null;
             /** Evidence Refs */
-            evidence_refs?: Record<string, never>[] | null;
+            evidence_refs?: components["schemas"]["VerificationEvidenceRefModel"][] | null;
             /** Supersedes Outcome Id */
             supersedes_outcome_id?: string | null;
         };
@@ -6088,7 +6088,7 @@ export interface components {
             /** Evidence Note */
             evidence_note: string | null;
             /** Evidence Refs */
-            evidence_refs: Record<string, never>[] | null;
+            evidence_refs: components["schemas"]["VerificationEvidenceRefOut"][] | null;
             /** Recorded By */
             recorded_by: string | null;
             /**

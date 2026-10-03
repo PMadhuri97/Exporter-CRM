@@ -150,14 +150,24 @@ As **OPERATIONS** unless noted.
    the company header — the decision trail names both people, the Clear shows when it
    expires (one year), and "became customer" is announced to the customers team's
    event (nobody receives it yet; §6).
-10. **Record the invoicing branch** (back as OPERATIONS), on the deal page: which of
-    the seller's GST registrations this deal is invoiced from. The guard asks for it
-    whenever the seller has one (task 2.9) — company B has two, so the refusal reads
-    "the invoicing branch is not recorded" until you choose. Worth showing alongside
-    **flagging a branch** as COMPLIANCE (company B's Overview tab → GST
-    registrations): a flagged branch blocks the deals invoiced through *that* branch
-    and leaves the company's other branch working, which is the point of flagging a
-    branch rather than a company.
+10. **Record the invoicing branch** (back as OPERATIONS), in the deal page's
+    **Invoicing branch** panel: choose under **Invoiced from** which of the seller's GST
+    registrations this deal is invoiced from. Each is listed by its state and its GSTIN
+    as the server sends it — masked for OPERATIONS, in full for COMPLIANCE and ADMIN —
+    and only active registrations are offered. The guard asks for it whenever the
+    seller has an active registration (task 2.9); the company added in step 1 has one,
+    so until you choose, the stage panel's refusal includes "the invoicing branch is not
+    recorded" and the Invoicing branch panel says why. The choice can be changed or
+    cleared until the handover; afterwards the panel shows it read-only, frozen with
+    the deal. A seller with no active registration is not asked, and the panel says so.
+
+    Worth showing alongside **flagging a branch** as COMPLIANCE (company B's Overview
+    tab → GST registrations): a flagged branch blocks the deals invoiced through *that*
+    branch and leaves the company's other branch working, which is the point of
+    flagging a branch rather than a company. Company B's sample deals already have a
+    branch, recorded by the sample data; flag that one and open the Rotterdam shipment —
+    the refusal names the flagged state, the panel marks the branch **Flagged**, and
+    choosing B's other branch removes that reason.
 11. **Hand over the deal**: the move is now offered; confirm it.
     The deal is **`HANDED_OVER`**, and "deal handed over" is announced for the lending
     team. The deal page now shows **What was handed over**: the buyer and the paperwork

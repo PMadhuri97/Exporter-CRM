@@ -30,6 +30,10 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
+from app.modules.onboarding.api.schemas.verification import (
+    VerificationEvidenceRefModel,
+    VerificationEvidenceRefOut,
+)
 from app.modules.onboarding.domain.entities.exporter_enums import CompanyPipelineStatus
 from app.modules.onboarding.domain.entities.trade_enums import (
     TradePaymentStatus,
@@ -95,8 +99,9 @@ class RecordTradeOutcomeRequest(BaseModel):
     #: record anyone can act on later.
     evidence_note: str | None = Field(default=None, max_length=4000)
     #: `{type, ref}` references, validated by the same shape rule a verification
-    #: result's evidence gets — a `url` must be an http(s) link.
-    evidence_refs: list[dict] | None = None
+    #: result's evidence gets — a `url` must be an http(s) link. Verification's own
+    #: models, so the generated client types name the shape and the two cannot drift.
+    evidence_refs: list[VerificationEvidenceRefModel] | None = None
     supersedes_outcome_id: uuid.UUID | None = None
 
 
@@ -170,7 +175,7 @@ class TradeOutcomeResponse(BaseModel):
     amount_paid: Decimal | None
     proof_status: TradeProofStatus
     evidence_note: str | None
-    evidence_refs: list[dict] | None
+    evidence_refs: list[VerificationEvidenceRefOut] | None
     recorded_by: str | None
     recorded_at: datetime
     #: The outcome this one replaced, if any. `null` on an invoice's first.

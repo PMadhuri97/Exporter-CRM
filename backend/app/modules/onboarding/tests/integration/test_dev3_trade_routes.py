@@ -131,6 +131,41 @@ async def test_a_relationship_manager_may_record_invoices_and_outcomes(
     assert outcome.json()["is_current"] is True
 
 
+async def test_an_outcomes_evidence_is_typed_as_type_and_ref(client: AsyncClient):
+    """`evidence_refs` is verification's `{type, ref}` shape on the way in and out
+    (R-01), so the generated client types name it. A reference of another type is
+    refused at the boundary, before anything is written."""
+    relationship_id, _seller, _buyer = await _relationship()
+    _ops_id, ops_token = await user_with_role(client, UserRole.OPERATIONS)
+    created = await client.post(
+        f"{BASE}/trade-relationships/{relationship_id}/invoices",
+        json=_invoice_body(),
+        headers=auth_header(ops_token),
+    )
+    assert created.status_code == 201, created.text
+    invoice_id = created.json()["id"]
+
+    refused = await client.post(
+        f"{BASE}/trade-invoices/{invoice_id}/outcomes",
+        json={"payment_status": "PAID", "evidence_refs": [{"type": "email", "ref": "x"}]},
+        headers=auth_header(ops_token),
+    )
+    assert refused.status_code == 422, refused.text
+
+    ref = {"type": "url", "ref": "https://bank.example/advice/7"}
+    outcome = await client.post(
+        f"{BASE}/trade-invoices/{invoice_id}/outcomes",
+        json={"payment_status": "PAID", "proof_status": "PROVEN", "evidence_refs": [ref]},
+        headers=auth_header(ops_token),
+    )
+    assert outcome.status_code == 201, outcome.text
+    assert outcome.json()["evidence_refs"] == [ref]
+
+    detail = await client.get(f"{BASE}/trade-invoices/{invoice_id}", headers=auth_header(ops_token))
+    assert detail.status_code == 200, detail.text
+    assert [o["evidence_refs"] for o in detail.json()["outcomes"]] == [[ref]]
+
+
 # ── No identifiers, for anyone ────────────────────────────────────────────────
 
 

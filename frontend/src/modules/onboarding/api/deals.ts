@@ -25,6 +25,7 @@ import type {
   DealRequiredDocuments,
   OpenDealRequest,
   SetDealBuyerRequest,
+  SetDealInvoicingBranchRequest,
   SetDealRequiredDocumentRequest,
   TransitionDealStageRequest,
 } from '../types';
@@ -101,6 +102,22 @@ export function setDealBuyer(
   body: SetDealBuyerRequest,
 ): Promise<Deal> {
   return apiRequest<Deal>(`/onboarding/deals/${dealId}/buyer`, {
+    method: 'PUT',
+    body,
+  });
+}
+
+/**
+ * Record which of the seller's GST registrations the deal is invoiced from (task 2.8,
+ * plan P6-6). By the registration's id, never its GSTIN, so a shared GSTIN can only
+ * ever mean this seller's copy (IQ-9). It must be the seller's and active (422
+ * otherwise); `null` clears it. Changeable until the deal closes, then frozen (409).
+ */
+export function setDealInvoicingBranch(
+  dealId: string,
+  body: SetDealInvoicingBranchRequest,
+): Promise<Deal> {
+  return apiRequest<Deal>(`/onboarding/deals/${dealId}/invoicing-branch`, {
     method: 'PUT',
     body,
   });

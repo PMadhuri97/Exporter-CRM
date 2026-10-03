@@ -17,8 +17,8 @@ inferred from reading.
 
 | | |
 |---|---|
-| **PR verdict** | **Not mergeable as it stands.** Three gates fail (§2), and the deal page cannot hand over a deal whose seller has a GST registration (§3). The rest of the PR is sound; once those are fixed it can merge |
-| **Before merge** | §2 and §3: R-01 – R-05, all small |
+| **PR verdict** | **Mergeable once the R-01 – R-05 fixes are committed with it.** On 4 October 2026 the three failing gates were fixed (§2), and the deal page now records the invoicing branch (§3). The fixes are unstaged on top of `dfcb2d2`; §12 has the gate results |
+| **Before merge** | Nothing open. R-01 – R-05 are done |
 | **Before the buyer migration runs anywhere** | §4: R-06 – R-11. On the scratch copy it merged 400 identifier-less buyers into one company |
 | **Bugs to fix soon** | §5: R-12 – R-23, six of them confirmed with a reproduction |
 | **Unbuilt** | §6: R-24 – R-33. Two of them are preconditions for retiring `deal_buyer`; R-33 points to the separate frontend plan |
@@ -40,7 +40,7 @@ tested and checked here. "Done, with defects" points to the item that fixes it.
 | 2.5 compliance conditions (P3-3b, P3-4, P4-7) | **Done** | All four gaps from the old `dev2-remaining-work.md` §2 are closed. Developer 1's reader is injected; there is one copy of each Protocol; the expiry message is gated on `is_clear` and gives the date; both parties are share-locked, sorted by `customer_id`. It includes Developer 1's "handover vs a flag on the buyer" concurrency test (`test_l3b_handover_compliance.py:302`) |
 | 2.6 buyer migration (P4-6) | **Done, with defects; never run on a live database** | `migrate_deal_buyers.py`, the map table (0038), and filling a closed deal's buyer (0039). It breaks IQ-8 and can re-subject results to the wrong company (§4) |
 | 2.7 deals as buyer | **Done** | `GET /exporters/{id}/deals?as=buyer`, `CompanyDealsList` full, and the buyer's history includes its deals' rows (D8 still applied) |
-| 2.8 invoicing branch on the deal (P6-6) | **Backend done; UI missing** | `PUT /deals/{id}/invoicing-branch`, composite FK (0036). No picker on the deal page (R-05) |
+| 2.8 invoicing branch on the deal (P6-6) | **Done** | `PUT /deals/{id}/invoicing-branch`, composite FK (0036). The deal page's **Invoicing branch** panel records it (R-05, fixed 4 October) |
 | 2.9 branch rules in the guard (P6-7) | **Done, with defects** | Both rules live through `BranchFlagService`. A flag does not wait for a handover in flight (R-18) |
 | 2.10 retire `deal_buyer` writes (P4-10) | **Not started** | Blocked (R-25) |
 | 2.11 trade history on the deal page | **Done** | Only on a deal with a buyer company |
@@ -67,7 +67,7 @@ tested and checked here. "Done, with defects" points to the item that fixes it.
 | 3.21 payment outcome on a deal | **Done, with defects** | Not atomic (R-12) |
 | 3.22 trade panels | **Done** | |
 | 3.23 relationship backfill (P5-5) | **Done; never run on a live database** | Works here: 783 created, validation all 0, a re-run creates nothing. Crashes on a Windows console (R-11) |
-| 3.24 masking sweep | **Done, breaks a gate** | Imports `app.main` (R-02) |
+| 3.24 masking sweep | **Done** | Reads the served OpenAPI document through the `client` fixture rather than importing `app.main` (R-02, fixed 4 October) |
 | Inherited: IEC `CHECK` | **Done** | 0040 |
 
 ### Developer 1's lane (merged before this PR)
@@ -94,27 +94,29 @@ tested and checked here. "Done, with defects" points to the item that fixes it.
 - **Masking on reads.** The 3.24 sweep calls every CRM `GET` as OPERATIONS and as
   DEVELOPER. The one leak is in history **written** by an edit, which the sweep does not
   exercise (R-15).
-- **Frontend tests.** vitest passes: 45 files / 435 tests. `vite build` on its own also
-  succeeds.
+- **Frontend tests.** vitest passes: 46 files / 455 tests after the R-01 and R-05 fixes
+  (45 / 435 before). `npm run build`, `tsc -b` and `vite build` together, succeeds.
 
 ---
 
-## 2. Gates that fail today — fix before merging
+## 2. Gates that failed — fixed 4 October 2026
+
+All four are fixed, unstaged on top of `dfcb2d2`. The last column says what was done.
 
 | Id | Gate | What fails | Fix |
 |---|---|---|---|
-| **R-01** | `tsc -b --noEmit`, and so **`npm run build`** (`tsc -b && vite build`) | **21 type errors**, all caused by the PR. Twelve are in source: `GstRegistrationsSection.tsx` lines 87, 98, 271, 274; `TradeInvoiceList.tsx` 76; `DealDetailPage.tsx` 105, 106, 152 (×2); `ExporterDetailPage.tsx` 164. Nine are in tests: `CompanyPicker.test.tsx` (7), `GstRegistrationsSection.test.tsx` (2). One each in `ExportersListPage.test.tsx` and `PipelinePage.test.tsx`, whose fixtures predate three new list fields. **The production build does not complete**; only `vite build` on its own passes | The regenerated `schema.ts` changed shapes the screens were written against: `AddGstRegistrationRequest.status` is now required, `also_held_by` optional, and the legacy buyer form's `name`/`country` optional; list items gained `registration_number`, `identity_type` and `pipeline_status`. `evidence_refs` (`list[dict]` on the server) generates as `Record<string, never>[]`, so type it on the server as a list of `{type, ref}` and regenerate. Then fix the screens and fixtures |
-| **R-02** | `lint-imports --config importlinter.ini` | **18 kept, 1 broken** (baseline 19 / 0). The broken one is "modules never import the delivery layer": `test_dev3_masking_sweep.py:49` does `from app.main import app` | Take the app from the `client` fixture's transport, or move the sweep to `backend/tests/contract/` |
-| **R-03** | `ruff check .` | **17** (baseline 16). The new one is `I001` in `test_dev3_f3_foundation.py:18` | `ruff check --fix` on that file only |
-| **R-04** | Backend suite | See §12 | — |
+| **R-01** | `tsc -b --noEmit`, and so **`npm run build`** (`tsc -b && vite build`) | **21 type errors**, all caused by the PR. Twelve are in source: `GstRegistrationsSection.tsx` lines 87, 98, 271, 274; `TradeInvoiceList.tsx` 76; `DealDetailPage.tsx` 105, 106, 152 (×2); `ExporterDetailPage.tsx` 164. Nine are in tests: `CompanyPicker.test.tsx` (7), `GstRegistrationsSection.test.tsx` (2). One each in `ExportersListPage.test.tsx` and `PipelinePage.test.tsx`, whose fixtures predate three new list fields. **The production build does not complete**; only `vite build` on its own passes | **Fixed.** A trade outcome's `evidence_refs` is now typed with verification's `VerificationEvidenceRefModel` (request) and `VerificationEvidenceRefOut` (response), and `openapi.json` / `schema.ts` were regenerated: those three fields are the only change. The screens are fixed against the generated types, with no casts: the GST form sends `status: 'UNVERIFIED'`, the server's own default (openapi-typescript 7 makes a defaulted request field required); `also_held_by` reads as `[]` when absent; the legacy buyer form has its own `LegacyBuyerRequest` type (`name` and `country` required together); `TradeInvoiceList` passes the refs to `EvidenceList` directly. The fixtures carry the three new list fields, and the tests use optional indexing. A route test covers the typed refs (`test_an_outcomes_evidence_is_typed_as_type_and_ref`) |
+| **R-02** | `lint-imports --config importlinter.ini` | **18 kept, 1 broken** (baseline 19 / 0). The broken one is "modules never import the delivery layer": `test_dev3_masking_sweep.py:49` does `from app.main import app` | **Fixed.** A module-scoped `crm_gets` fixture reads `/api/v1/openapi.json` through the `client` fixture, which is the served document the sweep's docstring already promised. The sweep stays in the module, and `importlinter.ini` is unchanged: 19 kept, 0 broken |
+| **R-03** | `ruff check .` | **17** (baseline 16). The new one is `I001` in `test_dev3_f3_foundation.py:18` | **Fixed** with `ruff check --select I001 --fix` on that file only. Back to 16, all pre-existing |
+| **R-04** | Backend suite | `test_l3b_deal_buyer_company.py::test_a_closed_deals_buyer_company_is_frozen_in_raw_sql` fails every time (`DID NOT RAISE`). It asserts 0034's rule, that a closed deal refuses even a *first* buyer-company write. Migration 0039, from the PR's last commit, deliberately relaxed that so the buyer migration can link closed deals; this test was never updated. 0039's actual rule is already tested in `test_l3b_buyer_migration.py:386`. It is the only failure in the full suite (§12) | **Fixed.** Rewritten as `test_a_closed_deals_buyer_company_is_filled_once_then_frozen_in_raw_sql`. The first write to a withdrawn deal is allowed with every trigger on; a change is refused; and with `trg_deal_buyer_company_set_once` disabled inside a rolled-back transaction (as `test_l3b_handover_snapshot.py` does), the freeze refuses the change on its own with "does not change". Postgres fires triggers in name order, so the set-once trigger answers a plain UPDATE first, with "immutable once set". That is why `test_l3b_buyer_migration.py:386` accepts either message, and why it is not a duplicate |
 
 ---
 
-## 3. Release blocker in behaviour — fix before merging
+## 3. Release blocker in behaviour — fixed 4 October 2026
 
 | Id | Problem | Evidence | Fix |
 |---|---|---|---|
-| **R-05** | **No invoicing-branch picker on the deal page, but the guard asks for one.** Since task 2.9, "the invoicing branch is not recorded" blocks a handover whenever the seller has an active GST registration. The only writer is `PUT /deals/{id}/invoicing-branch`, and no screen calls it. **So a deal opened in the UI for a seller with a GSTIN can never be handed over from the UI.** The seeded deals hide this, because `sample_data_deals._ensure_invoicing_branch` sets the branch for them | No client code calls `/invoicing-branch` (only `schema.ts` names it). `demo.md` §4 step 10 describes a control that does not exist | On the deal page, offer staff a select of the seller's **active** registrations (`GET /exporters/{id}/gst-registrations`: state name and masked GSTIN), with a "clear" option, until the deal closes. Show the recorded branch's state read-only. Add a hook and a test, plus a `DealDetailPage` test that shows the guard's message |
+| **R-05** | **No invoicing-branch picker on the deal page, but the guard asks for one.** Since task 2.9, "the invoicing branch is not recorded" blocks a handover whenever the seller has an active GST registration. The only writer is `PUT /deals/{id}/invoicing-branch`, and no screen calls it. **So a deal opened in the UI for a seller with a GSTIN can never be handed over from the UI.** The seeded deals hide this, because `sample_data_deals._ensure_invoicing_branch` sets the branch for them | No client code calls `/invoicing-branch` (only `schema.ts` names it). `demo.md` §4 step 10 describes a control that does not exist | **Fixed.** A new **Invoicing branch** panel on the deal page (`InvoicingBranchPicker`). Staff choose under **Invoiced from** among the seller's **active** registrations, each shown by state and by its GSTIN as `GET /exporters/{id}/gst-registrations` serves it (masked for OPERATIONS and DEVELOPER). They can change it or **Clear** it until the deal closes. A handed-over or withdrawn deal, and DEVELOPER, see it read-only. A recorded branch that has since been flagged or deactivated is marked. Its notes come from the facts the guard reads, never from parsing `handover_blocked_reason`. New hook `useSetDealInvoicingBranch`: it puts the returned deal in the cache, so the stage panel's refusal updates at once. 13 component tests, and 7 `DealDetailPage` tests: the control, the call, the recorded value, the guard's message, the handover opening once it is set, and the handed-over, withdrawn and DEVELOPER cases. `demo.md` §4 step 10 now describes this control |
 
 ---
 
@@ -167,7 +169,7 @@ can only be undone by restoring the `pg_dump`**.
 | **R-30** | Optional 3.16 / P6-4: PAN from GSTIN for PAN-less companies, with an audit table for rollback | 3.2's reports (§7 step 0) | Only if the reports say it is worth doing |
 | **R-31** | `name` / `country` `NOT NULL`: remove the unnamed `POST /exporters` path, then expand → backfill → contract | Nothing calls the unnamed path | Inherited from `open-items.md` §2 |
 | **R-32** | Name matching scans every company in the country, in Python, on each lookup (`company_directory._by_name`). The migration's step 4 does this **per buyer** | Only matters past about 50,000 companies in one country | Store a `name_key` column, maintained by `company_names.name_key` |
-| **R-33** | **Frontend redesign and fail-closed role access.** Planned separately in `docs/frontend-plan.md` (written 4 October, not yet committed), not repeated here. Its Phase 0 fixes seven role-visibility gaps (G1–G7) on today's screens, for example API_USER seeing the full navigation and DEVELOPER reaching the Add company and Import CSV forms by URL | — | Do Phase 0 before any visual work. Its deal-room and party-card designs should include R-05's branch picker and R-24's create-buyer step, rather than building those twice |
+| **R-33** | **Frontend redesign and fail-closed role access.** Planned separately in `docs/frontend-plan.md` (written 4 October, not yet committed), not repeated here. Its Phase 0 fixes seven role-visibility gaps (G1–G7) on today's screens, for example API_USER seeing the full navigation and DEVELOPER reaching the Add company and Import CSV forms by URL | — | Do Phase 0 before any visual work. Its deal-room and party-card designs should re-compose R-05's `InvoicingBranchPicker` (built 4 October; plan §8.6 puts it on the seller card) and include R-24's create-buyer step, rather than building either twice |
 
 ---
 
@@ -251,7 +253,7 @@ This is not a coding dependency. It is the order things run in each environment:
 
 | Document | What is wrong |
 |---|---|
-| `demo.md` §4 steps 5 and 10 | Step 5 says the picker creates a buyer company (R-24); step 10 says the branch is chosen on the deal page (R-05). Neither control exists |
+| `demo.md` §4 step 5 | It says the picker creates a buyer company (R-24), and that control does not exist. Step 10 was rewritten for R-05 on 4 October |
 | `open-items.md` §1 | Stale rows: §1.1 "the expiry condition … does not yet block a handover" (2.5 is done); "P4-11 rests on … not yet merged" (F3 is in). §1.2's BQ-4 row is now marked built but belongs out of "Undecided". Re-record the 2 October confirmations (§8.2) |
 | `contracts/migration-register.md` §1 | Blank lines after the 0032, 0034 and 0037 rows split the table, so each row after a gap renders as plain text |
 | `onboarding_0033_created_via.py` docstring | Names `test_dev3_f3_created_via.py`, but the test is in `test_dev3_company_identity.py` |
@@ -297,16 +299,17 @@ Run as in `development.md` §7, against a scratch database at head. Never use th
 `aner_settlement`, which sits at 0027. Export **both** `DATABASE_URL` and
 `DATABASE_SYNC_URL`.
 
-| Gate | Result on `451ef97` | Last baseline (2 October) |
-|---|---|---|
-| `alembic heads` | one: `onboarding_0040_iec_format` | one: `auth_0005_rm_role_name` |
-| Backend suite | _pending — the run was still going when this was written_ | 4,932 passed, 7 skipped, 27 xfailed, 1 environmental failure |
-| `ruff check .` | **17** (R-03) | 16 |
-| `lint-imports` | **18 kept, 1 broken** (R-02) | 19 kept, 0 broken |
-| `tsc -b --noEmit` / `npm run build` | **21 errors; the build fails** (R-01) | — |
-| `eslint .` | 0 errors, 2 warnings | same |
-| `vitest run` | 45 files / 435 tests | 39 / 372 |
-| `vite build` alone | passes (chunk-size warning) | same |
+| Gate | Result on `451ef97` | After the R-01 – R-05 fixes (4 October, unstaged on `dfcb2d2`) | Last baseline (2 October) |
+|---|---|---|---|
+| `alembic heads` | one: `onboarding_0040_iec_format` | same (no migration added) | one: `auth_0005_rm_role_name` |
+| Backend suite (5,279 tests) | **5,244 passed, 27 xfailed, 7 skipped, 1 failed** (R-04). Run in two parts on the 15.9k-company scratch copy, because a single run passed the one-hour limit at 86%; the last 728 tests (platform and shared) took 77 s on their own. The old environmental failure (`test_sweep_can_use_the_partial_ck_index`) passed this time | Not re-run: every backend change is inside `app/modules/onboarding`, so `development.md` §7 asks for the CRM suite (next row) | 4,932 passed, 7 skipped, 27 xfailed, 1 environmental failure |
+| CRM suite (`pytest --crm`) | 2,605 passed, 1 skipped, 1 failed (R-04), per `development.md` §9 | **2,607 passed, 1 skipped, 0 failed** (32 min, scratch copy `pr_f3_audit`). The two extra passes are R-04's rewritten test and the new evidence-refs route test; the skip is the Windows symlink test in `test_l3b_local_disk_storage.py` | — |
+| `ruff check .` | **17** (R-03) | **16**, all pre-existing | 16 |
+| `lint-imports` | **18 kept, 1 broken** (R-02) | **19 kept, 0 broken** | 19 kept, 0 broken |
+| `tsc -b --noEmit` / `npm run build` | **21 errors; the build fails** (R-01) | **0 errors; the build passes** (chunk-size warning) | — |
+| `eslint .` | 0 errors, 2 warnings | same | same |
+| `vitest run` | 45 files / 435 tests | **46 files / 455 tests** | 39 / 372 |
+| `vite build` alone | passes (chunk-size warning) | same | same |
 
 **Removed on 4 October 2026:** the three lane documents (this file replaces them) and the
 outdated design PDF, `Exporter-CRM-Architecture-and-Plan.pdf`. Both are recoverable with
@@ -315,7 +318,7 @@ at `plan.md`. Keep this file up to date as items close.
 
 ## 13. Suggested order
 
-1. §2 and §3 (R-01 – R-05): small, and they unblock the merge.
+1. ~~§2 and §3 (R-01 – R-05)~~: done 4 October 2026.
 2. R-15, R-12, R-13, R-17, R-18. One migration (0041) for the FKs; the rest is service
    code with tests.
 3. §4 (R-06 – R-11), including R-07's validation queries. Then run P4-6 on a scratch copy

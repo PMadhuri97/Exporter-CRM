@@ -67,17 +67,9 @@ function OutcomeChain({ outcomes }: { outcomes: TradeOutcome[] }) {
           <p className="mt-0.5 text-xs text-ink-faint">
             {`${outcome.recorded_by ?? 'Unknown'} · ${formatDate(outcome.recorded_at)}`}
           </p>
-          {/* P5-7 asks for `EvidenceList` here. `evidence_refs` is `list[dict]`
-              server-side, so the generated type cannot name its shape; what is stored
-              is verification's shape, which is what this list reads. */}
-          <EvidenceList
-            note={outcome.evidence_note}
-            refs={
-              (outcome.evidence_refs ?? []) as React.ComponentProps<
-                typeof EvidenceList
-              >['refs']
-            }
-          />
+          {/* P5-7 asks for `EvidenceList` here. An outcome's references are stored
+              in verification's `{type, ref}` shape, which is what this list reads. */}
+          <EvidenceList note={outcome.evidence_note} refs={outcome.evidence_refs ?? []} />
         </li>
       ))}
     </ol>

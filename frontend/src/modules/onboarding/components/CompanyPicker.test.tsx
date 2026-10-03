@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { matchCompany, searchExporterProfiles } from '../api';
-import type { CompanyMatch, ExporterProfileListItem } from '../types';
+import type { CompanyMatch, CompanyMatchCandidate, ExporterProfileListItem } from '../types';
 
 import { CompanyPicker } from './CompanyPicker';
 
@@ -28,7 +28,7 @@ function company(overrides: Partial<ExporterProfileListItem> = {}): ExporterProf
   } as ExporterProfileListItem;
 }
 
-function candidate(overrides = {}) {
+function candidate(overrides: Partial<CompanyMatchCandidate> = {}): CompanyMatchCandidate {
   return {
     company_id: ROTTERDAM,
     name: 'Rotterdam Trading BV',
@@ -148,7 +148,7 @@ describe('CompanyPicker — searching by identifier', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
 
     await waitFor(() => expect(vi.mocked(matchCompany)).toHaveBeenCalled());
-    expect(vi.mocked(matchCompany).mock.calls[0][0]).toMatchObject({
+    expect(vi.mocked(matchCompany).mock.calls[0]?.[0]).toMatchObject({
       pan: 'ABCDE1234F',
       country: 'NL',
     });
@@ -167,7 +167,7 @@ describe('CompanyPicker — searching by identifier', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
 
     await waitFor(() => expect(vi.mocked(matchCompany)).toHaveBeenCalled());
-    expect(vi.mocked(matchCompany).mock.calls[0][0]).toMatchObject({
+    expect(vi.mocked(matchCompany).mock.calls[0]?.[0]).toMatchObject({
       gstin: '27ABCDE1234F1Z5',
     });
   });

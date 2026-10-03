@@ -44,6 +44,7 @@ import {
   DealStageChip,
   DocumentList,
   DocumentUpload,
+  InvoicingBranchPicker,
   RecordDealOutcomeForm,
   TradeHistoryPanel,
 } from '../components';
@@ -65,6 +66,16 @@ const STAGE_ACTION_LABEL: Record<DealStage, string> = {
   WITHDRAWN: 'Withdraw',
 };
 
+/**
+ * `SetDealBuyerRequest`'s legacy form. The generated type is one shape for both forms,
+ * so every field in it is optional; in this form `name` and `country` are required
+ * together, and `buyer_company_id` belongs to the other form.
+ */
+type LegacyBuyerRequest = Omit<SetDealBuyerRequest, 'buyer_company_id' | 'name' | 'country'> & {
+  name: string;
+  country: string;
+};
+
 /** The buyer fields the server masks for OPERATIONS and DEVELOPER. */
 const MASKED_BUYER_FIELDS = ['registration_number', 'tax_id', 'contact_email', 'contact_phone'] as const;
 type MaskedBuyerField = (typeof MASKED_BUYER_FIELDS)[number];
@@ -78,7 +89,7 @@ function BuyerForm({
 }: {
   dealId: string;
   customerId?: string;
-  initial: SetDealBuyerRequest | null;
+  initial: LegacyBuyerRequest | null;
   /** COMPLIANCE and ADMIN receive the buyer in full; every other role receives
    * the masked fields masked. */
   revealIdentifiers: boolean;
@@ -88,14 +99,14 @@ function BuyerForm({
   // A role that sees masked values starts those fields empty rather than holding
   // bullets it could send back (the server refuses them). Left empty they are
   // left out of the request, which keeps the stored value; typed, they replace it.
-  const [form, setForm] = useState<SetDealBuyerRequest>(() => {
+  const [form, setForm] = useState<LegacyBuyerRequest>(() => {
     const start = initial ?? { name: '', country: '' };
     if (revealIdentifiers || initial === null) return start;
     const cleared = { ...start };
     for (const key of MASKED_BUYER_FIELDS) cleared[key] = null;
     return cleared;
   });
-  const hidden = (key: keyof SetDealBuyerRequest): key is MaskedBuyerField =>
+  const hidden = (key: keyof LegacyBuyerRequest): key is MaskedBuyerField =>
     !revealIdentifiers && initial !== null && (MASKED_BUYER_FIELDS as readonly string[]).includes(key);
 
   async function handleSubmit(event: React.FormEvent) {
@@ -117,7 +128,7 @@ function BuyerForm({
     }
   }
 
-  const field = (key: keyof SetDealBuyerRequest, label: string, required = false) => (
+  const field = (key: keyof LegacyBuyerRequest, label: string, required = false) => (
     <Field label={label} htmlFor={`buyer-${key}`} required={required}>
       <Input
         id={`buyer-${key}`}
@@ -556,6 +567,23 @@ export function DealDetailPage() {
                 )}
               </div>
             )}
+          </Panel>
+
+          {/* Which of the seller's GST branches this deal is invoiced from (task 2.8).
+              The guard asks for it whenever the seller has an active registration
+              (task 2.9), and this is the only screen that records it. Staff choose it
+              until the deal closes; after that, and for DEVELOPER, it is read-only. */}
+          <Panel
+            title="Invoicing branch"
+            description="Which of the seller's GST registrations this deal is invoiced from."
+          >
+            <InvoicingBranchPicker
+              dealId={deal.id}
+              sellerId={deal.company_id}
+              recordedId={deal.seller_gst_registration_id}
+              canEdit={isStaff}
+              closed={isClosed}
+            />
           </Panel>
 
           {/* What these two companies have traded before (task 2.11, plan P5-7).

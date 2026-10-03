@@ -39,8 +39,8 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
-from app.modules.onboarding.domain.tax_identifiers import IEC_RE
 from app.modules.onboarding.domain.handover_conditions import BranchFlagReader
+from app.modules.onboarding.domain.tax_identifiers import IEC_RE
 from app.modules.onboarding.migrations.onboarding_0040_iec_format import IEC_PATTERN
 from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.configuration.config import get_settings

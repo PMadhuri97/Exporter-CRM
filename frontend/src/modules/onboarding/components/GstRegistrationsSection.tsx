@@ -84,7 +84,10 @@ export function GstRegistrationsSection({
     const value = gstin.trim();
     if (!value) return;
     add.mutate(
-      { gstin: value, address: address.trim() || null },
+      // `UNVERIFIED` is the server's default, sent because the generated request type
+      // requires every defaulted field: nobody has checked this GSTIN at the portal
+      // yet, and recording it as `ACTIVE` would be a claim.
+      { gstin: value, address: address.trim() || null, status: 'UNVERIFIED' },
       {
         onSuccess: (created) => {
           setAdding(false);
@@ -95,7 +98,7 @@ export function GstRegistrationsSection({
               ? `GST registration added for ${created.state_name}`
               : 'GST registration added',
           );
-          if (created.also_held_by.length > 0) {
+          if ((created.also_held_by ?? []).length > 0) {
             // Allowed, so not an error — but the person should know now rather than
             // discover it when a flag does not do what they expected.
             toast.warning('Another company also holds this GSTIN');
@@ -229,6 +232,8 @@ function Row({
   const [reasoning, setReasoning] = useState(false);
   const [reason, setReason] = useState('');
   const flagged = registration.flag_status === 'FLAGGED';
+  // Optional in the generated type: the server always sends it, defaulting to `[]`.
+  const alsoHeldBy = registration.also_held_by ?? [];
 
   return (
     <li className={`px-4 py-3 ${registration.active ? '' : 'bg-surface-subtle'}`}>
@@ -268,10 +273,10 @@ function Row({
               {registration.flag_reason}
             </p>
           )}
-          {registration.also_held_by.length > 0 && (
+          {alsoHeldBy.length > 0 && (
             <p className="mt-1 text-xs text-ink-muted">
               Also held by{' '}
-              {registration.also_held_by.map((companyId, index) => (
+              {alsoHeldBy.map((companyId, index) => (
                 <span key={companyId}>
                   {index > 0 && ', '}
                   <Link to={paths.company(companyId)} className={LINK_CLASSES}>

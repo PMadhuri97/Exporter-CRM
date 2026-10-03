@@ -106,9 +106,11 @@ describe('GstRegistrationsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
 
     await waitFor(() => expect(vi.mocked(addGstRegistration)).toHaveBeenCalled());
-    expect(vi.mocked(addGstRegistration).mock.calls[0][1]).toMatchObject({
-      gstin: '29ABCDE1234F1Z5',
-    });
+    // Recorded as not yet checked at the portal, never as `ACTIVE`.
+    expect(addGstRegistration).toHaveBeenCalledWith(
+      COMPANY,
+      expect.objectContaining({ gstin: '29ABCDE1234F1Z5', status: 'UNVERIFIED' }),
+    );
   });
 
   it('shows a deactivated branch rather than hiding it', async () => {
@@ -149,7 +151,7 @@ describe('GstRegistrationsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Flag branch' }));
 
     await waitFor(() => expect(vi.mocked(flagGstRegistration)).toHaveBeenCalled());
-    expect(vi.mocked(flagGstRegistration).mock.calls[0][1]).toEqual({
+    expect(flagGstRegistration).toHaveBeenCalledWith(registration().id, {
       reason: 'Returns unfiled',
     });
   });

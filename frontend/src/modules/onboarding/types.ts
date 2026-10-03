@@ -179,6 +179,9 @@ export type DealList = Schemas['DealListResponse'];
 export type OpenDealRequest = Schemas['OpenDealRequest'];
 export type TransitionDealStageRequest = Schemas['TransitionDealStageRequest'];
 export type SetDealBuyerRequest = Schemas['SetDealBuyerRequest'];
+/** Which of the seller's GST registrations a deal is invoiced from; `null` clears it
+ * (task 2.8, plan P6-6). */
+export type SetDealInvoicingBranchRequest = Schemas['SetDealInvoicingBranchRequest'];
 export type DealBuyer = Schemas['DealBuyerResponse'];
 /** One move this user may make from a deal's current stage — served by the API so
  * no screen keeps its own copy of the stage graph (§7.5). */

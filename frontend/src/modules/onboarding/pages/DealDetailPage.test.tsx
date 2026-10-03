@@ -12,11 +12,13 @@ import {
   getExporterProfileDetail,
   listDealDocuments,
   listDealHistory,
+  listGstRegistrations,
   listTradeRelationships,
   listVerificationResults,
   setDealBuyer,
+  setDealInvoicingBranch,
 } from '../api';
-import type { CrmDocument, Deal } from '../types';
+import type { CrmDocument, Deal, GstRegistration } from '../types';
 
 import { DealDetailPage } from './DealDetailPage';
 
@@ -44,6 +46,9 @@ vi.mock('../api', () => ({
   getTradeRelationship: vi.fn(),
   getTradeInvoice: vi.fn(),
   recordDealPaymentOutcome: vi.fn(),
+  // The invoicing branch (task 2.8): the seller's GST registrations, and the write.
+  listGstRegistrations: vi.fn(),
+  setDealInvoicingBranch: vi.fn(),
 }));
 
 const DEAL_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -148,6 +153,8 @@ beforeEach(() => {
     limit: 50,
     offset: 0,
   });
+  // A seller with no GST registration is not asked for an invoicing branch.
+  vi.mocked(listGstRegistrations).mockResolvedValue({ registrations: [], flagged_count: 0 });
 });
 
 describe('DealDetailPage — the server decides what may happen next', () => {
@@ -667,5 +674,163 @@ describe('the buyer company', () => {
     expect(
       await screen.findByRole('button', { name: 'Record outcome' }),
     ).toBeInTheDocument();
+  });
+});
+
+// R-05: the guard has asked for an invoicing branch since task 2.9 whenever the seller
+// has an active GST registration, and this panel is the only way to record one.
+describe('the invoicing branch', () => {
+  const MAHARASHTRA = 'mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm';
+  const KARNATAKA = 'kkkkkkkk-kkkk-4kkk-8kkk-kkkkkkkkkkkk';
+  const NOT_RECORDED = 'the invoicing branch is not recorded';
+
+  function branch(overrides: Partial<GstRegistration> = {}): GstRegistration {
+    return {
+      id: MAHARASHTRA,
+      customer_id: COMPANY_ID,
+      // Masked by the server for OPERATIONS; the page shows it as served.
+      gstin: '•••••••••••F1Z5',
+      state_code: '27',
+      state_name: 'Maharashtra',
+      status: 'ACTIVE',
+      address: null,
+      flag_status: 'NONE',
+      flag_reason: null,
+      active: true,
+      deactivated_at: null,
+      created_at: '2026-03-01T00:00:00Z',
+      verify_url: null,
+      also_held_by: [],
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.mocked(listGstRegistrations).mockResolvedValue({
+      registrations: [
+        branch(),
+        branch({
+          id: KARNATAKA,
+          gstin: '•••••••••••G1Z3',
+          state_code: '29',
+          state_name: 'Karnataka',
+        }),
+      ],
+      flagged_count: 0,
+    });
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        allowed_stage_moves: [{ to_stage: 'WITHDRAWN', reason_required: true }],
+        handover_blocked_reason: NOT_RECORDED,
+      }),
+    );
+  });
+
+  it("offers staff a choice of the seller's branches on an open deal", async () => {
+    renderPage();
+
+    const select = await screen.findByLabelText('Invoiced from');
+    // The seller's registrations — the deal's own company, not the buyer's.
+    expect(listGstRegistrations).toHaveBeenCalledWith(COMPANY_ID);
+    expect(
+      within(select).getByRole('option', { name: 'Maharashtra · •••••••••••F1Z5' }),
+    ).toBeInTheDocument();
+    expect(
+      within(select).getByRole('option', { name: 'Karnataka · •••••••••••G1Z3' }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the guard's message while it is missing, and says what it is asking for", async () => {
+    renderPage();
+
+    expect(await screen.findByText(/Not ready to hand over/)).toBeInTheDocument();
+    expect(screen.getByText(NOT_RECORDED)).toBeInTheDocument();
+    // The panel says the same from the guard's own facts, next to the remedy.
+    expect(await screen.findByRole('status')).toHaveTextContent(/handover asks which one/);
+  });
+
+  it('records the chosen branch through PUT /deals/{id}/invoicing-branch, and the handover opens', async () => {
+    vi.mocked(setDealInvoicingBranch).mockResolvedValue(
+      deal({
+        seller_gst_registration_id: KARNATAKA,
+        allowed_stage_moves: [
+          { to_stage: 'HANDED_OVER', reason_required: false },
+          { to_stage: 'WITHDRAWN', reason_required: true },
+        ],
+        handover_blocked_reason: null,
+      }),
+    );
+    renderPage();
+
+    fireEvent.change(await screen.findByLabelText('Invoiced from'), {
+      target: { value: KARNATAKA },
+    });
+
+    await waitFor(() =>
+      expect(setDealInvoicingBranch).toHaveBeenCalledWith(DEAL_ID, {
+        gst_registration_id: KARNATAKA,
+      }),
+    );
+    // The response is the deal as it now stands: the branch is recorded and the guard
+    // has nothing left to say.
+    expect(
+      await screen.findByRole('button', { name: 'Hand over to lending' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Invoiced from')).toHaveValue(KARNATAKA);
+    expect(screen.queryByText(NOT_RECORDED)).not.toBeInTheDocument();
+  });
+
+  it('shows the recorded branch as the current choice, with a way to clear it', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({ seller_gst_registration_id: MAHARASHTRA, handover_blocked_reason: null }),
+    );
+    renderPage();
+
+    expect(await screen.findByLabelText('Invoiced from')).toHaveValue(MAHARASHTRA);
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  });
+
+  it('shows a handed-over deal its branch read-only, because it is frozen with the deal', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        stage: 'HANDED_OVER',
+        handed_over_at: '2026-04-01T10:00:00Z',
+        seller_gst_registration_id: MAHARASHTRA,
+        allowed_stage_moves: [],
+        handover_blocked_reason: null,
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText('Maharashtra')).toBeInTheDocument();
+    expect(screen.getByText('•••••••••••F1Z5')).toBeInTheDocument();
+    expect(screen.getByText(/Frozen with the deal/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Invoiced from')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+  });
+
+  it('offers no choice on a withdrawn deal either', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        stage: 'WITHDRAWN',
+        withdrawal_reason: 'Buyer went elsewhere',
+        allowed_stage_moves: [],
+        handover_blocked_reason: null,
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText('No invoicing branch was recorded.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Invoiced from')).not.toBeInTheDocument();
+  });
+
+  it('gives a DEVELOPER the recorded branch and no control', async () => {
+    signedInAs('DEVELOPER');
+    vi.mocked(getDeal).mockResolvedValue(deal({ seller_gst_registration_id: MAHARASHTRA }));
+    renderPage();
+
+    expect(await screen.findByText('Maharashtra')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Invoiced from')).not.toBeInTheDocument();
+    expect(setDealInvoicingBranch).not.toHaveBeenCalled();
   });
 });

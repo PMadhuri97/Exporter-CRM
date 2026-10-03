@@ -120,7 +120,7 @@ hand.
 cd backend
 python -m alembic heads                                   # exactly one
 python -m alembic check                                   # no model/database drift
-python -m pytest -q --no-cov -p no:cacheprovider          # 15–30 minutes
+python -m pytest --crm -q --no-cov -p no:cacheprovider    # the CRM suite (below)
 ruff check .
 lint-imports --config importlinter.ini                    # the --config flag is required
 
@@ -131,6 +131,16 @@ pnpm exec vitest run
 pnpm build
 ```
 
+- **`--crm` runs the CRM suite**: the tests in `app/modules/onboarding/tests` and the
+  repository guards in `tests/contract`, about half the tests in the checkout. It leaves
+  out every other module's tests (the module rule means a CRM change edits none of those
+  modules) and the legacy `onboarding_request` path in the same module, Temporal workflow
+  included, which nothing in the CRM uses. The excluded legacy files are listed in
+  `backend/conftest.py` (`_LEGACY_ONBOARDING_TESTS`).
+- **Run the whole suite** — the same command without `--crm` — only when a change
+  reaches outside the CRM: anything in `app/platform`, `app/shared`, `app/main.py`,
+  `migrations/env.py`, another module, or one of the legacy files. While fixing, run just
+  the test files for the code you changed, and the CRM suite once at the end.
 - `--no-cov` and `-p no:cacheprovider` keep a run from writing `htmlcov/`, `.coverage`
   and `.pytest_cache` into the tree; a baseline is about pass/fail.
 - `lint-imports` without `--config importlinter.ini` finds no configuration and fails.
@@ -193,15 +203,16 @@ compliance work) merged in:
 
 | Gate | Baseline |
 |---|---|
-| Backend suite | **4,926 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (21 minutes) |
-| Temporal workflow tests (`test_onboarding_workflow*.py`, part of the suite) | 143 passed, 1 skipped when last counted on their own (29 September; the skip is the opt-in restart suite, `RUN_RESILIENCE_TESTS=1`). They download the Temporal test server, so they need internet access |
+| CRM suite (`pytest --crm`) | **2,605 passed, 1 skipped, 1 failed** (29 minutes on a busy Windows machine). Measured 4 October 2026 on `feature/company-foundation-and-compliance-guard` at `dfcb2d2`, head `onboarding_0040_iec_format`. The failure is R-04 in [`remaining-work.md`](remaining-work.md) (`test_a_closed_deals_buyer_company_is_frozen_in_raw_sql`); the skip is the symlink test in `test_l3b_local_disk_storage.py`, which Windows refuses without developer mode |
+| Whole suite (without `--crm`) | **4,926 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (21 minutes) |
+| Temporal workflow tests (`test_onboarding_workflow*.py`, whole suite only) | 143 passed, 1 skipped when last counted on their own (29 September; the skip is the opt-in restart suite, `RUN_RESILIENCE_TESTS=1`). They download the Temporal test server, so they need internet access |
 | `ruff check .` | 16 findings, all pre-existing: two auto-generated Alembic merge revisions and two package index files |
 | `lint-imports` | 19 contracts kept, 0 broken |
 | `alembic heads` | one: `onboarding_0030_deal_req_docs` |
 | `alembic check` | no new upgrade operations |
 | Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 38 files, 369 tests; build passes with a >500 kB chunk warning |
 
-The 27 expected failures are the tests in `compliance/tests/integration/test_compliance.py`,
+The 27 expected failures (whole suite only) are the tests in `compliance/tests/integration/test_compliance.py`,
 `test_screening_uses_rule_registry.py` and `audit/tests/integration/test_audit.py` that
 create a payment or an FX quote first: those routers are deliberately not mounted in this
 checkout ([`../RUNNING.md`](../RUNNING.md)), so the request gets 404. They are strict
