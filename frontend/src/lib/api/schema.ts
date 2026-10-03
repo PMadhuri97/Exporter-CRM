@@ -1166,6 +1166,148 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/exporters/{customer_id}/trade-relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A company's trade relationships, as seller or as buyer
+         * @description `as` chooses the side: `seller` (the default) is who this company sells to, `buyer` who it buys from. Two lists, never one — a company can be on either side with different counterparties, and one list mixing them would read differently row by row.
+         *
+         *     A relationship is created automatically when a deal records its buyer company, so every such deal has one. `invoice_count` says whether anything has been recorded against it yet.
+         *
+         *     No identifiers are served to any role: a counterparty is an id, a name, a country and whether it is in the pipeline. Open the company for the rest.
+         */
+        get: operations["list_trade_relationships_api_v1_onboarding_exporters__customer_id__trade_relationships_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/trade-relationships/{relationship_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One trade relationship, with its invoices
+         * @description Invoices newest first, each carrying the outcome we currently believe. `current_outcome` is `null` when nobody has recorded one — which is not the same as `UNKNOWN`, where somebody looked and could not say.
+         *
+         *     An invoice's whole outcome chain is `GET /trade-invoices/{id}`.
+         */
+        get: operations["get_trade_relationship_api_v1_onboarding_trade_relationships__relationship_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/trade-invoices/{invoice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One invoice and its whole outcome chain
+         * @description Outcomes oldest first — every belief and when it was replaced, not just the current one. `is_current` marks the live row, which is the outcome nothing supersedes rather than the newest by timestamp: two rows written in one transaction share a timestamp.
+         *
+         *     Nothing here is editable. A correction is a new outcome naming the one it replaces, and an invoice's identity is frozen by trigger.
+         */
+        get: operations["get_trade_invoice_api_v1_onboarding_trade_invoices__invoice_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/trade-relationships/{relationship_id}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record an invoice against a trade relationship
+         * @description A fact about the past: its identity — the relationship, number, date, amount and currency — is frozen once written, so there is no edit route. A mistake is corrected by recording the right invoice; the wrong one stays visible.
+         *
+         *     The currency is stored as issued and **never converted** (decision IQ-4). Amounts come back as strings, because money is not a float and JSON numbers would invite adding two currencies together.
+         *
+         *     `deal_id` is omitted for past trade — what the two companies did before they came to us. One invoice number per relationship; the same number on another relationship is a different invoice.
+         */
+        post: operations["record_trade_invoice_api_v1_onboarding_trade_relationships__relationship_id__invoices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/trade-invoices/{invoice_id}/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Append what we now know about an invoice
+         * @description Nothing is edited. A correction is a **new** outcome naming the one it replaces, so the record says what we believed and when we stopped believing it.
+         *
+         *     `supersedes_outcome_id` must be the invoice's current outcome — omit it for the first. Anything else is a 409 rather than an overwrite, because two people each correcting the same outcome without seeing the other's is what the chain exists to prevent. A correction also needs an `evidence_note`.
+         *
+         *     `PARTIAL` requires `amount_paid`, in the invoice's own currency. `proof_status` is kept apart from `payment_status` on purpose: "they paid" and "we can prove they paid" are different claims, and a history that could not tell them apart would be worthless as evidence.
+         */
+        post: operations["record_trade_outcome_api_v1_onboarding_trade_invoices__invoice_id__outcomes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}/payment-outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record how a handed-over deal was paid
+         * @description The last question the CRM answers about a deal: it went to the lending team, and then what happened. Recorded at the deal, because the person who knows has the deal in front of them rather than a relationship id and an invoice id.
+         *
+         *     **Creates the invoice if this deal has none**, from the number, date, amount and currency in the body — all four together or none. If the deal already has an invoice they must be omitted: an invoice's identity is frozen, and ignoring new details would tell you they had been recorded.
+         *
+         *     The deal must be `HANDED_OVER`: before that there is nothing to have been paid. It must also name a **buyer company** — a trade relationship is a pair of company records, and a deal whose buyer is still a legacy `deal_buyer` row has nothing to pair with until the buyer migration links it.
+         *
+         *     Further outcomes supersede, exactly as on `POST /trade-invoices/{id}/outcomes`: a correction is a new row naming the one it replaces.
+         */
+        post: operations["record_deal_payment_outcome_api_v1_onboarding_deals__deal_id__payment_outcome_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/exporters/{customer_id}/history": {
         parameters: {
             query?: never;
@@ -3459,6 +3601,19 @@ export interface components {
             can_open_deal: boolean;
         };
         /**
+         * DealPaymentOutcomeResponse
+         * @description The invoice this deal was paid against, and what we now know about it.
+         */
+        DealPaymentOutcomeResponse: {
+            invoice: components["schemas"]["TradeInvoiceResponse"];
+            outcome: components["schemas"]["TradeOutcomeResponse"];
+            /**
+             * Invoice Created
+             * @default false
+             */
+            invoice_created: boolean;
+        };
+        /**
          * DealRequiredDocumentResponse
          * @description One version of one requirement.
          */
@@ -5244,6 +5399,40 @@ export interface components {
             from_value?: components["schemas"]["BackgroundCheckState"] | null;
         };
         /**
+         * RecordDealPaymentOutcomeRequest
+         * @description How a handed-over deal was actually paid (task 3.21).
+         *
+         *     The outcome fields of `RecordTradeOutcomeRequest`, plus the invoice's identity —
+         *     **required only when this deal has no invoice yet**, and refused when it already
+         *     has one, because an invoice's identity is frozen and ignoring new details would
+         *     tell the caller they had been recorded.
+         *
+         *     Recording it at the deal rather than at an invoice is the point: the person who
+         *     knows whether a deal was paid has the deal in front of them, not a relationship
+         *     id and an invoice id.
+         */
+        RecordDealPaymentOutcomeRequest: {
+            payment_status: components["schemas"]["TradePaymentStatus"];
+            /** Amount Paid */
+            amount_paid?: number | string | null;
+            /** @default CLAIMED */
+            proof_status: components["schemas"]["TradeProofStatus"];
+            /** Evidence Note */
+            evidence_note?: string | null;
+            /** Evidence Refs */
+            evidence_refs?: Record<string, never>[] | null;
+            /** Supersedes Outcome Id */
+            supersedes_outcome_id?: string | null;
+            /** Invoice Number */
+            invoice_number?: string | null;
+            /** Invoice Date */
+            invoice_date?: string | null;
+            /** Amount */
+            amount?: number | string | null;
+            /** Currency */
+            currency?: string | null;
+        };
+        /**
          * RecordOutcomeRequest
          * @description The signed-in reviewer's decision. `NOT_QUALIFIED` needs at least one
          *     reason code; `other` needs a note.
@@ -5277,6 +5466,55 @@ export interface components {
             note?: string | null;
             /** Supersedes Review Id */
             supersedes_review_id?: string | null;
+        };
+        /**
+         * RecordTradeInvoiceRequest
+         * @description Record an invoice against a relationship.
+         *
+         *     Its identity is frozen the moment it is written, so there is no edit route: a
+         *     mistake is corrected by recording the right invoice, and the wrong one stays
+         *     visible. That is the same trade-off every append-only record in this module
+         *     makes, and it is why the fields here are worth getting right first time.
+         */
+        RecordTradeInvoiceRequest: {
+            /** Invoice Number */
+            invoice_number: string;
+            /**
+             * Invoice Date
+             * Format: date
+             */
+            invoice_date: string;
+            /** Amount */
+            amount: number | string;
+            /** Currency */
+            currency: string;
+            /** Deal Id */
+            deal_id?: string | null;
+        };
+        /**
+         * RecordTradeOutcomeRequest
+         * @description Append what we now know about an invoice.
+         *
+         *     Nothing is edited: a correction is a **new** outcome naming the one it replaces,
+         *     so the record says what we believed and when we stopped believing it.
+         *
+         *     `supersedes_outcome_id` must be the invoice's **current** outcome — the one
+         *     `current_outcome` reports. Omit it for the first. Getting it wrong is a 409
+         *     rather than an overwrite, because two people each correcting the same outcome
+         *     without seeing the other's is exactly what the chain exists to prevent.
+         */
+        RecordTradeOutcomeRequest: {
+            payment_status: components["schemas"]["TradePaymentStatus"];
+            /** Amount Paid */
+            amount_paid?: number | string | null;
+            /** @default CLAIMED */
+            proof_status: components["schemas"]["TradeProofStatus"];
+            /** Evidence Note */
+            evidence_note?: string | null;
+            /** Evidence Refs */
+            evidence_refs?: Record<string, never>[] | null;
+            /** Supersedes Outcome Id */
+            supersedes_outcome_id?: string | null;
         };
         /** RefreshRequest */
         RefreshRequest: {
@@ -5761,6 +5999,190 @@ export interface components {
              * @description Access token lifetime in seconds
              */
             expires_in: number;
+        };
+        /**
+         * TradeCounterparty
+         * @description The company on the other side. No identifiers — see the module docstring.
+         */
+        TradeCounterparty: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
+        };
+        /**
+         * TradeInvoiceDetailResponse
+         * @description One invoice and its **whole** outcome chain, oldest first.
+         *
+         *     The chain, not just the head, because that is the record: every belief and when
+         *     it was replaced. A screen showing only the current outcome would make a
+         *     corrected invoice indistinguishable from one that was right first time.
+         */
+        TradeInvoiceDetailResponse: {
+            invoice: components["schemas"]["TradeInvoiceResponse"];
+            /** Outcomes */
+            outcomes: components["schemas"]["TradeOutcomeResponse"][];
+        };
+        /**
+         * TradeInvoiceResponse
+         * @description One invoice, with the outcome we currently believe.
+         */
+        TradeInvoiceResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Relationship Id
+             * Format: uuid
+             */
+            relationship_id: string;
+            /** Deal Id */
+            deal_id: string | null;
+            /** Invoice Number */
+            invoice_number: string;
+            /**
+             * Invoice Date
+             * Format: date
+             */
+            invoice_date: string;
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            current_outcome?: components["schemas"]["TradeOutcomeResponse"] | null;
+        };
+        /**
+         * TradeOutcomeResponse
+         * @description One thing we learned about an invoice.
+         */
+        TradeOutcomeResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Invoice Id
+             * Format: uuid
+             */
+            invoice_id: string;
+            payment_status: components["schemas"]["TradePaymentStatus"];
+            /** Amount Paid */
+            amount_paid: string | null;
+            proof_status: components["schemas"]["TradeProofStatus"];
+            /** Evidence Note */
+            evidence_note: string | null;
+            /** Evidence Refs */
+            evidence_refs: Record<string, never>[] | null;
+            /** Recorded By */
+            recorded_by: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Supersedes Outcome Id */
+            supersedes_outcome_id: string | null;
+            /**
+             * Is Current
+             * @default false
+             */
+            is_current: boolean;
+        };
+        /**
+         * TradePaymentStatus
+         * @description What happened to an invoice.
+         *
+         *     ``UNKNOWN`` is a real answer and not a missing one: a relationship manager may
+         *     know an invoice exists — the exporter showed it to them — without knowing whether
+         *     it was paid. Recording that is more useful than recording nothing, and it is why
+         *     an outcome is required to carry a status at all.
+         *
+         *     ``PARTIAL`` carries ``amount_paid``; the others may. ``DISPUTED`` is not a
+         *     judgement about who is right, only that the two parties disagree.
+         * @enum {string}
+         */
+        TradePaymentStatus: "PAID" | "UNPAID" | "PARTIAL" | "DISPUTED" | "UNKNOWN";
+        /**
+         * TradeProofStatus
+         * @description How well we know it.
+         *
+         *     ``CLAIMED`` — somebody told us, usually the exporter. ``PROVEN`` — there is
+         *     evidence on file: a document, a bank reference, a link.
+         *
+         *     Kept apart from ``payment_status`` so a reader can weigh a trade history rather
+         *     than just read it. An exporter's own account of its past trade is worth
+         *     recording; it is not worth the same as a settled invoice, and a model that stored
+         *     only "PAID" would make the two indistinguishable six months later.
+         * @enum {string}
+         */
+        TradeProofStatus: "CLAIMED" | "PROVEN";
+        /**
+         * TradeRelationshipDetailResponse
+         * @description One relationship with its invoices, newest first, each carrying the outcome
+         *     we currently believe. The full outcome chain of one invoice is its own route.
+         */
+        TradeRelationshipDetailResponse: {
+            relationship: components["schemas"]["TradeRelationshipResponse"];
+            /** Invoices */
+            invoices: components["schemas"]["TradeInvoiceResponse"][];
+        };
+        /**
+         * TradeRelationshipListResponse
+         * @description A company's relationships on one side.
+         *
+         *     Two sides, two lists, for the same reason the deal lists are separate (task
+         *     2.7): a company can sell to one counterparty and buy from another, and one list
+         *     mixing them would read differently row by row.
+         */
+        TradeRelationshipListResponse: {
+            /** Relationships */
+            relationships: components["schemas"]["TradeRelationshipResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * TradeRelationshipResponse
+         * @description One (seller, buyer) pair.
+         *
+         *     Ordered, not symmetric: A selling to B is a different relationship from B
+         *     selling to A, with different invoices and different risk.
+         */
+        TradeRelationshipResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            seller: components["schemas"]["TradeCounterparty"];
+            buyer: components["schemas"]["TradeCounterparty"];
+            /** Source */
+            source: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Invoice Count
+             * @default 0
+             */
+            invoice_count: number;
         };
         /**
          * TransactionStatus
@@ -9647,6 +10069,333 @@ export interface operations {
                 content?: never;
             };
             /** @description Lifting a flag without a reason */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_trade_relationships_api_v1_onboarding_exporters__customer_id__trade_relationships_get: {
+        parameters: {
+            query?: {
+                as?: components["schemas"]["DealSide"];
+            };
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeRelationshipListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trade_relationship_api_v1_onboarding_trade_relationships__relationship_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeRelationshipDetailResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Trade relationship not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trade_invoice_api_v1_onboarding_trade_invoices__invoice_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeInvoiceDetailResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Trade invoice not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_trade_invoice_api_v1_onboarding_trade_relationships__relationship_id__invoices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordTradeInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeInvoiceResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Trade relationship not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A blank number, a non-positive amount, a currency that is not an ISO 4217 code, or a number this relationship already has */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    record_trade_outcome_api_v1_onboarding_trade_invoices__invoice_id__outcomes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordTradeOutcomeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeOutcomeResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Trade invoice not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description supersedes_outcome_id is not the invoice's current outcome */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A PARTIAL outcome with no amount, a correction with no note, or malformed evidence */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    record_deal_payment_outcome_api_v1_onboarding_deals__deal_id__payment_outcome_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordDealPaymentOutcomeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealPaymentOutcomeResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The deal is not handed over, its buyer is not a company, or supersedes_outcome_id is not the invoice's current outcome */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A partial invoice identity, invoice details for a deal that already has one, a PARTIAL outcome with no amount, or a correction with no note */
             422: {
                 headers: {
                     [name: string]: unknown;

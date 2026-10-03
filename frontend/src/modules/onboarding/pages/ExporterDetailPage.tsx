@@ -47,6 +47,7 @@ import { MaskedValue } from '@/platform/mask';
 import {
   GstRegistrationsSection,
   CompanyDealsList,
+  CompanyTradePanel,
   NotInPipelineNotice,
   CompanyHistory,
   JourneyChip,
@@ -318,6 +319,23 @@ export function ExporterDetailPage() {
             description="Deals where this company is the buyer. A company can be a buyer on one deal and a seller on another."
           >
             <CompanyDealsList companyId={customerId} as="buyer" />
+          </Panel>
+          {/* Trade history, both sides (task 3.22, plan P5-7). It sits with the deals
+              because it answers the next question a reader of that list has — not
+              "who is this company dealing with" but "and how did it go". A deal is
+              what two companies are doing now; a relationship is what they have done,
+              invoice by invoice, which is the thing a lending decision reads. */}
+          <Panel
+            title="Sold to"
+            description="Who this company has invoiced, and what became of each invoice. Nothing here is totalled: amounts stay in the currency they were invoiced in."
+          >
+            <CompanyTradePanel companyId={customerId} as="seller" />
+          </Panel>
+          <Panel
+            title="Bought from, invoice by invoice"
+            description="Who has invoiced this company. The same pair in the other direction is a different relationship, with different invoices."
+          >
+            <CompanyTradePanel companyId={customerId} as="buyer" />
           </Panel>
         </div>
       </TabsContent>

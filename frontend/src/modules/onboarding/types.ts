@@ -352,3 +352,29 @@ export type AddGstRegistrationRequest = Schemas['AddGstRegistrationRequest'];
 export type FlagGstRegistrationRequest = Schemas['FlagGstRegistrationRequest'];
 /** UNVERIFIED | ACTIVE | CANCELLED | SUSPENDED — what the GST portal says. */
 export type GstRegistrationStatus = GstRegistration['status'];
+
+// ── Trade history: what two companies have invoiced and settled (3.18–3.22) ──
+
+/** The other party on a relationship: an id, a name, a country, a pipeline status.
+ * **No identifiers, for any role** — a counterparty's PAN or GSTIN is on its own
+ * company page, where D8's masking applies to it (IQ-19). */
+export type TradeCounterparty = Schemas['TradeCounterparty'];
+/** One ordered (seller, buyer) pair. A selling to B is not B selling to A. */
+export type TradeRelationship = Schemas['TradeRelationshipResponse'];
+export type TradeRelationshipList = Schemas['TradeRelationshipListResponse'];
+export type TradeRelationshipDetail = Schemas['TradeRelationshipDetailResponse'];
+/** One invoice, carrying the outcome we currently believe. `amount` is a **string**:
+ * money is `Numeric` server-side and a JSON number would round it. */
+export type TradeInvoice = Schemas['TradeInvoiceResponse'];
+/** An invoice and its whole outcome chain, oldest first. */
+export type TradeInvoiceDetail = Schemas['TradeInvoiceDetailResponse'];
+/** One thing we learned about an invoice. Never edited; superseded. */
+export type TradeOutcome = Schemas['TradeOutcomeResponse'];
+/** PAID | UNPAID | PARTIAL | DISPUTED | UNKNOWN. `UNKNOWN` is an answer, not a gap. */
+export type TradePaymentStatus = Schemas['TradePaymentStatus'];
+/** PROVEN | CLAIMED — whether anything backs the outcome up. */
+export type TradeProofStatus = Schemas['TradeProofStatus'];
+export type RecordTradeInvoiceRequest = Schemas['RecordTradeInvoiceRequest'];
+export type RecordTradeOutcomeRequest = Schemas['RecordTradeOutcomeRequest'];
+export type RecordDealPaymentOutcomeRequest = Schemas['RecordDealPaymentOutcomeRequest'];
+export type DealPaymentOutcome = Schemas['DealPaymentOutcomeResponse'];

@@ -20,6 +20,7 @@ import {
   getExporterConversation,
   listConversationHistory,
   listCompanyDeals,
+  listTradeRelationships,
   listCompanyHistory,
 } from '../api';
 import type { ExporterProfileDetail, Qualification } from '../types';
@@ -62,6 +63,10 @@ vi.mock('../api', () => ({
   listCompanyDocuments: vi.fn(),
   getDocumentCategories: vi.fn(),
   listCompanyHistory: vi.fn(),
+  // The Deals tab's trade history, both sides (task 3.22).
+  listTradeRelationships: vi.fn(),
+  getTradeRelationship: vi.fn(),
+  getTradeInvoice: vi.fn(),
 }));
 
 const DETAIL: ExporterProfileDetail = {
@@ -218,6 +223,7 @@ describe('ExporterDetailPage — E9', () => {
       can_open_deal: false,
     });
     vi.mocked(listCompanyHistory).mockResolvedValue({ entries: [], total: 0, limit: 25, offset: 0 });
+    vi.mocked(listTradeRelationships).mockResolvedValue({ relationships: [], total: 0 });
   });
 
   it('renders relationship sections safely with no contacts or activity', async () => {
@@ -556,4 +562,27 @@ describe('ExporterDetailPage — E9', () => {
     );
   });
 
+  // Task 3.22's company-page half. Both sides are asked for, because a company can
+  // sell to one counterparty and buy from another, and one list mixing them would
+  // read differently row by row.
+  it('shows trade history on both sides, under the deals', async () => {
+    mockUser('COMPLIANCE', 'someone-else');
+    renderPage('deals');
+
+    expect(await screen.findByText('Sold to')).toBeInTheDocument();
+    expect(screen.getByText('Bought from, invoice by invoice')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(listTradeRelationships).toHaveBeenCalledWith(DETAIL.customer_id, {
+        as: 'seller',
+      });
+      expect(listTradeRelationships).toHaveBeenCalledWith(DETAIL.customer_id, {
+        as: 'buyer',
+      });
+    });
+    // An empty seller side says why it is empty rather than implying the company has
+    // never sold anything.
+    expect(
+      await screen.findByText(/Nobody recorded as a buyer from this company yet/),
+    ).toBeInTheDocument();
+  });
 });

@@ -43,6 +43,9 @@ from app.modules.onboarding.api.schemas.verification import (
     reviewer_ids,
 )
 from app.modules.onboarding.api.screening_router import router as screening_router
+from app.modules.onboarding.api.trade_history_router import (
+    router as trade_history_router,
+)
 from app.modules.onboarding.application import (
     CaseService,
     OnboardingService,
@@ -97,6 +100,10 @@ router.include_router(company_directory_router)
 # Developer 3's. Absolute paths, because reading and adding one hangs off a company
 # while flagging one takes only the registration's own id.
 router.include_router(gst_registration_router)
+# Trade history — what two companies have traded (P5-3, P5-4; task 3.20) —
+# Developer 3's. Absolute paths: a relationship is the pair, not a sub-resource of
+# either company, though one company's relationships are read under `/exporters`.
+router.include_router(trade_history_router)
 
 # Shared CRM history log (L1-11) — Developer 1's, in its own file for the same
 # reason the Exporter CRM routes are in theirs, and included here so it

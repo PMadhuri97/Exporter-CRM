@@ -27,6 +27,7 @@ is worth more than a new one, and the evidence for it predates us.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -246,4 +247,19 @@ class TradeInvoiceOutcome(AppendOnlyModel):
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
-__all__ = ["CURRENCY_LENGTH", "TradeInvoice", "TradeInvoiceOutcome"]
+@dataclass(frozen=True)
+class DealInvoiceDraft:
+    """The identity of an invoice being created alongside a deal's payment outcome
+    (task 3.21).
+
+    A plain value rather than the request schema, so the service does not import the
+    API layer — and so the buyer migration or a script can call the same method.
+    """
+
+    invoice_number: str
+    invoice_date: date
+    amount: Decimal
+    currency: str
+
+
+__all__ = ["CURRENCY_LENGTH", "DealInvoiceDraft", "TradeInvoice", "TradeInvoiceOutcome"]

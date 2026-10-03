@@ -38,11 +38,25 @@ export { DecisionHistory } from './DecisionHistory';
 
 // ── Company record, GST branches, trade history — owner: Developer 3 ──
 // Mounted by other lanes: Developer 2 on the deal page (the buyer picker in 2.4, the
-// trade history in 2.11). Both are F3 stubs with final props; 3.10 and 3.22 fill them.
+// trade history in 2.11). Both began as F3 stubs with final props, which is why
+// filling them (3.10, 3.22) changed no mounting.
 export { CompanyPicker } from './CompanyPicker';
 export type { CompanyPickerProps } from './CompanyPicker';
 export { TradeHistoryPanel } from './TradeHistoryPanel';
 export type { TradeHistoryPanelProps } from './TradeHistoryPanel';
+// The company page's half of trade history: who this company trades with, each side
+// its own list. `TradeInvoiceList` is what both halves render, and
+// `TradeOutcomeChip` keeps "nobody looked" apart from "looked and could not say".
+export { CompanyTradePanel } from './CompanyTradePanel';
+export type { CompanyTradePanelProps } from './CompanyTradePanel';
+export { TradeInvoiceList } from './TradeInvoiceList';
+export type { TradeInvoiceListProps } from './TradeInvoiceList';
+export { NoOutcomeChip, TradeOutcomeChip } from './TradeOutcomeChip';
+// The one write on the deal page (P5-6): how a handed-over deal was paid. Staff only,
+// and only on a handed-over deal with a buyer company.
+export { RecordDealOutcomeForm } from './RecordDealOutcomeForm';
+export type { RecordDealOutcomeFormProps } from './RecordDealOutcomeForm';
+export type { TradeOutcomeChipProps } from './TradeOutcomeChip';
 
 // ── Compliance engine — owner: Developer 1 ──
 // Mounted by other lanes: Developer 2 on the deal page (seller and buyer company).

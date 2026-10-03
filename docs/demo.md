@@ -67,6 +67,13 @@ exporter's documents — see §6.
    **handed over** and the Rotterdam shipment is still gathering paperwork. Open the
    handed-over deal and its history; open the company's History tab to show the whole
    story in one place, including the journey's move to `CUSTOMER`.
+
+   The sample deals record their buyer the **legacy** way, as details on the deal rather
+   than as a company record, so these deals show no Trade history panel and the Deals
+   tab's *Sold to* reads "nobody recorded as a buyer from this company yet". That is the
+   honest state of a database the buyer migration has not run on, and it is worth saying
+   out loud rather than explaining away: the live path in §4 records a buyer **company**
+   and the panel appears there.
 2. **Company C — Coastal Seafood Exports.** A **prospect** whose check is **`FLAGGED`**
    (a failed screening item for suspicious bank indicators). Its Dubai deal is gathering
    paperwork with its buyer recorded, but is **not ready to hand over**, and the deal page
@@ -97,6 +104,16 @@ As **OPERATIONS** unless noted.
 5. **Open a deal.** At `READY_NOW` the Conversation tab offers to open a deal (or use
    the Deals tab — opening one sets `READY_NOW` itself). On the deal page, record the
    buyer and move it to **gathering paperwork**.
+
+   **The buyer is a company record, not a set of details** (task 2.4). Use **Find the
+   buyer** and search by name or by a full PAN or GSTIN: the picker looks for a company
+   we already hold before offering to create one, which is what stops a second record
+   for the same company. Create one if it is genuinely new — a foreign buyer needs its
+   registration number (IQ-7) — then search again and show that it is now found as a
+   possible duplicate. The buyer company is **set once**: show that the picker
+   disappears afterwards and that the only correction is to withdraw the deal and open
+   another, so the change leaves a trail. Recording the buyer also creates the
+   **trade relationship** between the two companies, in the same step.
 6. **Paperwork.** Upload the sample file to the deal in the **Pre-shipment** category
    (for example a proforma invoice). It is scanned before it can be opened; the scanner
    is labelled **pass-through** because it is a placeholder. Before the upload the deal
@@ -145,7 +162,36 @@ As **OPERATIONS** unless noted.
     The deal is **`HANDED_OVER`**, and "deal handed over" is announced for the lending
     team. The deal page now shows **What was handed over**: the buyer and the paperwork
     as they stood at that moment, kept on the deal and never changed afterwards.
-12. **Show the History tab**: qualification, journey, conversation, deal, GST
+12. **Record how it was paid.** Still on the deal page, after the handover: **Record
+    outcome** creates the deal's invoice if it has none — number, date, amount and
+    currency together — and records what happened to it (`PAID`, `PARTIAL`, `UNPAID`,
+    `DISPUTED` or **`UNKNOWN`**), with a note or a document as proof.
+
+    Three things worth saying while it is on screen:
+
+    - **This is not a deal stage.** The deal is already closed and stays closed;
+      what happened to the money afterwards is a fact about the trade, recorded against
+      the invoice (architecture §3.3).
+    - **`UNKNOWN` is an answer and "no outcome recorded" is not.** The panel keeps them
+      apart on purpose: the first means somebody looked and could not say, the second
+      that nobody has followed it up. A chip reading **Claimed** says nobody has shown
+      proof yet, which is deliberately not the same as `PAID`.
+    - **Nothing is totalled.** Each row carries its own amount *and* its own currency,
+      and there is no total anywhere — no reporting currency and no rate exist (IQ-4),
+      so a total across currencies would be a number nobody could defend. (The deal
+      page records the deal's own invoice; adding a *past* invoice to the pair, which is
+      how a second currency appears, is `POST /trade-relationships/{id}/invoices` and has
+      no screen yet.)
+
+    Then correct it: record a *new* outcome superseding the first. The old one stays
+    visible under **Outcome history**, marked superseded, because an invoice corrected
+    from `PAID` to `DISPUTED` is a different thing from one disputed from the start.
+
+    **Trade history** now shows on the deal page as "Seller → Buyer" with the invoice
+    beneath it, and on both companies' **Deals** tab under *Sold to* and *Bought from* —
+    the same relationship read from each side, which is the point of a company record
+    being one record whichever side of a trade it is on.
+13. **Show the History tab**: qualification, journey, conversation, deal, GST
     registration, trade, screening and background-check rows, each with who (by name)
     and why. A row about one thing of
     several names it — "Buyer recorded: …", the screening item's label, the

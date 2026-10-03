@@ -32,12 +32,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions
+from app.modules.onboarding.domain.entities.deal import Deal
+from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.trade_enums import (
     TradePaymentStatus,
     TradeProofStatus,
 )
 from app.modules.onboarding.domain.entities.trade_invoice import (
+    DealInvoiceDraft,
     TradeInvoice,
     TradeInvoiceOutcome,
 )
@@ -48,7 +51,11 @@ from app.modules.onboarding.domain.verification_evidence import (
     check_evidence_shape,
 )
 from app.modules.onboarding.exceptions import (
+    DealBuyerIsNotACompanyError,
+    DealNotFoundError,
+    DealNotHandedOverError,
     ExporterProfileNotFoundError,
+    TradeInvoiceAlreadyRecordedError,
     TradeInvoiceNotFoundError,
     TradeOutcomeStaleError,
     TradeRelationshipIsSelfError,
@@ -418,6 +425,111 @@ class TradeHistoryService:
             superseded=str(supersedes_outcome_id) if supersedes_outcome_id else None,
         )
         return outcome
+
+    # ── A handed-over deal's payment outcome (task 3.21) ─────────────────────
+
+    async def record_outcome_for_deal(
+        self,
+        deal_id: uuid.UUID,
+        *,
+        payment_status: TradePaymentStatus,
+        proof_status: TradeProofStatus = TradeProofStatus.CLAIMED,
+        amount_paid: Decimal | None = None,
+        evidence_note: str | None = None,
+        evidence_refs: list[dict] | None = None,
+        supersedes_outcome_id: uuid.UUID | None = None,
+        invoice: DealInvoiceDraft | None = None,
+        actor_id: str | None,
+    ) -> tuple[TradeInvoice, TradeInvoiceOutcome]:
+        """How a handed-over deal was actually paid — **creating the invoice if there
+        is none** (task 3.21, plan P5-4).
+
+        This is the question the CRM exists to answer in the end: the deal went to the
+        lending team, and then what happened. Recording it at the *deal* is what makes
+        that a single step for the person who knows the answer — they have a deal in
+        front of them, not a relationship id and an invoice id.
+
+        **The deal must be handed over.** Before that there is nothing to have been
+        paid, and recording a payment against a deal still gathering paperwork would
+        put an outcome on a trade that had not happened.
+
+        **The deal must name a buyer company.** A relationship is a pair of company
+        records; a legacy ``deal_buyer`` row is a set of details with nothing to pair
+        with, so such a deal is refused until the buyer migration (P4-6) links it.
+        That is a real limit, and saying so beats inventing a company.
+
+        The relationship is created if the pair has none — ``get_or_create``, so two
+        callers racing produce one. The invoice likewise: if this deal has no invoice
+        yet, ``invoice`` supplies its identity and one is written. If it already has
+        one, ``invoice`` must be omitted, because an invoice's identity is frozen and
+        quietly ignoring new details would tell the caller they had been recorded.
+
+        Returns ``(invoice, outcome)``.
+        """
+        deal = await self._db.scalar(select(Deal).where(Deal.id == deal_id))
+        if deal is None:
+            raise DealNotFoundError(deal_id)
+        if deal.stage is not DealStage.HANDED_OVER:
+            raise DealNotHandedOverError(deal_id, deal.stage.value)
+        if deal.buyer_company_id is None:
+            raise DealBuyerIsNotACompanyError(deal_id)
+
+        relationship, _created = await self.get_or_create_relationship(
+            seller_company_id=deal.company_id,
+            buyer_company_id=deal.buyer_company_id,
+            actor_id=actor_id,
+            source=SOURCE_DEAL_BUYER_RECORDED,
+            source_ref=str(deal_id),
+        )
+
+        existing = await self._db.scalar(
+            select(TradeInvoice).where(
+                TradeInvoice.relationship_id == relationship.id,
+                TradeInvoice.deal_id == deal_id,
+            )
+        )
+        if existing is not None:
+            if invoice is not None:
+                raise TradeInvoiceAlreadyRecordedError(deal_id, existing.id)
+            target = existing
+        else:
+            if invoice is None:
+                raise ValidationError(
+                    "this deal has no invoice yet, so recording how it was paid needs "
+                    "the invoice's number, date, amount and currency"
+                )
+            target = await self.record_invoice(
+                relationship.id,
+                invoice_number=invoice.invoice_number,
+                invoice_date=invoice.invoice_date,
+                amount=invoice.amount,
+                currency=invoice.currency,
+                deal_id=deal_id,
+                actor_id=actor_id,
+                source=SOURCE_DEAL_BUYER_RECORDED,
+                source_ref=str(deal_id),
+            )
+
+        outcome = await self.record_outcome(
+            target.id,
+            payment_status=payment_status,
+            proof_status=proof_status,
+            amount_paid=amount_paid,
+            evidence_note=evidence_note,
+            evidence_refs=evidence_refs,
+            supersedes_outcome_id=supersedes_outcome_id,
+            actor_id=actor_id,
+            source=SOURCE_DEAL_BUYER_RECORDED,
+            source_ref=str(deal_id),
+        )
+        logger.info(
+            "trade_outcome.recorded_for_deal",
+            deal_id=str(deal_id),
+            invoice_id=str(target.id),
+            outcome_id=str(outcome.id),
+            created_invoice=existing is None,
+        )
+        return target, outcome
 
     async def _head_outcome(self, invoice_id: uuid.UUID) -> TradeInvoiceOutcome | None:
         """The chain's current head: the outcome nothing supersedes.

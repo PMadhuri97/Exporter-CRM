@@ -100,6 +100,32 @@ GATED_ROUTES = [
         STAFF,
     ),
     ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
+    # Trade history (task 3.20, decision IQ-19). Writes are STAFF; the reads are in
+    # the contract table — DEVELOPER may make them, which `GATED_ROUTES` here cannot
+    # express because every row of it is a write.
+    (
+        "POST",
+        f"{BASE}/trade-relationships/{_ID}/invoices",
+        {
+            "invoice_number": "INV-1",
+            "invoice_date": "2026-03-01",
+            "amount": "100.00",
+            "currency": "USD",
+        },
+        STAFF,
+    ),
+    (
+        "POST",
+        f"{BASE}/trade-invoices/{_ID}/outcomes",
+        {"payment_status": "UNKNOWN"},
+        STAFF,
+    ),
+    (
+        "POST",
+        f"{BASE}/deals/{_ID}/payment-outcome",
+        {"payment_status": "UNKNOWN"},
+        STAFF,
+    ),
     # GST registrations (tasks 3.13, 3.14). Recording and deactivating a branch is a
     # relationship manager's record; flagging one stops trade through it, so it is
     # COMPLIANCE's — and that difference is what `_GST_FLAG_ROLES` below asserts.

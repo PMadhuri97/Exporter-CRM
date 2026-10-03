@@ -2011,3 +2011,75 @@ class TradeOutcomeStaleError(AnerBaseException):
                 "current_outcome_id": str(current_head) if current_head else None
             },
         )
+
+
+class DealNotHandedOverError(AnerBaseException):
+    """A payment outcome recorded on a deal that has not been handed over.
+
+    Before the handover there is nothing to have been paid: the lending team has not
+    received the deal, no invoice has been raised against it, and an outcome recorded
+    now would claim a trade that has not happened. A withdrawn deal is the same
+    answer for the opposite reason — it never will.
+
+    409 rather than 422: the request is well formed, and the answer depends on the
+    deal's stage.
+    """
+
+    def __init__(self, deal_id: object, stage: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} is {stage!s}: how it was paid can only be recorded "
+                "once it has been handed over"
+            ),
+            error_code="DEAL_NOT_HANDED_OVER",
+            status_code=409,
+            extensions={"stage": str(stage)},
+        )
+
+
+class DealBuyerIsNotACompanyError(AnerBaseException):
+    """A deal whose buyer is still a legacy ``deal_buyer`` row, where a company is
+    needed.
+
+    A trade relationship is a pair of **company records**. A ``deal_buyer`` row is a
+    set of details with nothing to pair with, so a deal written before the buyer
+    migration (P4-6) cannot carry trade history until that migration links it to a
+    company.
+
+    Said plainly rather than worked around: the alternative would be inventing a
+    company for the row, which is precisely what the migration exists to do properly,
+    with a dedupe pass and a review.
+    """
+
+    def __init__(self, deal_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} records its buyer as details rather than as a "
+                "company, so it has no trade relationship yet. The buyer migration "
+                "links it to one."
+            ),
+            error_code="DEAL_BUYER_IS_NOT_A_COMPANY",
+            status_code=409,
+        )
+
+
+class TradeInvoiceAlreadyRecordedError(AnerBaseException):
+    """Invoice details sent for a deal that already has an invoice.
+
+    An invoice's identity is frozen once written, so new details cannot be applied —
+    and ignoring them silently would tell the caller they had been recorded. Append
+    the outcome without them, or record a second invoice against the relationship if
+    the deal really produced two.
+    """
+
+    def __init__(self, deal_id: object, invoice_id: object) -> None:
+        self.invoice_id = invoice_id
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} already has invoice {invoice_id}, whose identity is "
+                "frozen. Record the outcome without invoice details."
+            ),
+            error_code="TRADE_INVOICE_ALREADY_RECORDED",
+            status_code=422,
+            extensions={"invoice_id": str(invoice_id)},
+        )

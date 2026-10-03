@@ -271,3 +271,12 @@ __all__ += [
     "TradeProofStatus",
     "TradeRelationship",
 ]
+
+
+# The buyer migration's mapping table (Developer 2, task 2.6; plan P4-6, §17.2).
+from app.modules.onboarding.domain.entities.deal_buyer_company_map import (  # noqa: E402
+    BuyerMatchRule,
+    DealBuyerCompanyMap,
+)
+
+__all__ += ["BuyerMatchRule", "DealBuyerCompanyMap"]

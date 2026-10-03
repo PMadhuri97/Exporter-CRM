@@ -39,7 +39,9 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.tax_identifiers import IEC_RE
 from app.modules.onboarding.domain.handover_conditions import BranchFlagReader
+from app.modules.onboarding.migrations.onboarding_0040_iec_format import IEC_PATTERN
 from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
@@ -409,3 +411,51 @@ async def test_the_branch_flag_stub_satisfies_developer_2s_protocol():
         reader = BranchFlagService(db)
         assert isinstance(reader, BranchFlagReader)
         assert await reader.is_flagged(uuid.uuid4()) == (False, None)
+
+
+async def test_the_database_refuses_an_iec_the_service_would_refuse():
+    """`ck_exporter_profile_iec_format` (migration 0040), the inherited item from
+    `open-items.md` §2. Raw SQL for the usual reason: the service has always checked
+    the format, so the only writer this constraint exists for is one that skipped it —
+    an import, a fixture, a hand-written UPDATE.
+
+    The pattern is asserted against `IEC_RE` directly rather than restated, because two
+    copies of a regex drifting is exactly how a constraint stops matching the rule it
+    was meant to be."""
+    assert IEC_PATTERN == IEC_RE.pattern
+
+    company_id = await make_company()
+    connection = _raw_sql()
+    try:
+        with connection.cursor() as cursor:
+            # Eleven characters never reach the constraint — `varchar(10)` refuses
+            # them first — so every case here is short, lower-case or punctuated.
+            for bad in ("ABC", "abcde12345", "ABCDE 1234", "ABCDE-1234", ""):
+                with pytest.raises(psycopg2.errors.CheckViolation):
+                    cursor.execute(
+                        "UPDATE onboarding.exporter_profile SET iec = %s"
+                        " WHERE customer_id = %s",
+                        (bad, str(company_id)),
+                    )
+                connection.rollback()
+                assert IEC_RE.match(bad) is None, bad
+
+            # Ten letters or digits is the rule, and NULL stays allowed — most
+            # companies have no IEC on record.
+            for good in ("AABCU9603R", "1234567890"):
+                cursor.execute(
+                    "UPDATE onboarding.exporter_profile SET iec = %s"
+                    " WHERE customer_id = %s",
+                    (good, str(company_id)),
+                )
+                assert cursor.rowcount == 1
+                connection.rollback()
+            cursor.execute(
+                "UPDATE onboarding.exporter_profile SET iec = NULL"
+                " WHERE customer_id = %s",
+                (str(company_id),),
+            )
+            assert cursor.rowcount == 1
+            connection.rollback()
+    finally:
+        connection.close()

@@ -3,7 +3,9 @@
 **Owner:** Developer 2 (post-demo allocation; Developer 3B before it) · **Tables:**
 `onboarding.deal`, `onboarding.deal_buyer`, `onboarding.deal_required_document` ·
 **Migrations:** `onboarding_0018_deal_buyer`, `onboarding_0028_deal_foundation`,
-`onboarding_0029_deal_snapshot`, `onboarding_0030_deal_req_docs`
+`onboarding_0029_deal_snapshot`, `onboarding_0030_deal_req_docs`,
+`onboarding_0034_deal_buyer_co`, `onboarding_0036_deal_branch`,
+`onboarding_0038_buyer_map`, `onboarding_0039_closed_buyer`
 
 **Used by:** Developer 3 (company lists and panels, trade history), Developer 1
 (buyer checks attach to the deal's buyer; the handover guard reads the company's
@@ -160,8 +162,22 @@ column is also in `prevent_terminal_deal_change()` from 0034, so a closed deal's
 buyer no longer changes at all — which, unlike set-once, also refuses a *first* write
 to a closed deal.
 
+**One condition was too strong, and migration 0039 relaxed it.** 0034's terminal
+freeze refused *any* difference on a closed deal, `NULL` → a value included — so a
+deal handed over last year could never be linked to its buyer company, which is
+exactly the write P4-6 has to make. 0039 moves the column into its own clause, refused
+only when the **old** value was not `NULL`: a closed deal's buyer company may be
+filled in once and never changed. That is the rule 0029 had already given
+`handover_snapshot` for the same reason, and `buyer_company_id` had simply not been
+given it. Set-once is unchanged everywhere else. It was found by writing 2.6's tests
+rather than by reading the trigger, which is what those tests are for.
+
 A company may not be its own buyer: 422 `DEAL_BUYER_IS_THE_SELLER`, ahead of
-`ck_deal_buyer_is_not_the_seller`, so the refusal names the problem.
+`ck_deal_buyer_is_not_the_seller`, so the refusal names the problem. The check means
+such a row **cannot exist**, which is worth knowing when reading code that handles
+one: the buyer migration's "resolved to its own seller" report and the relationship
+backfill's refusal are both guards that cannot fire while that constraint stands, and
+§17.2's matching validation query is structurally zero.
 
 Recording one writes a `deal` history row, `event_type = "deal_buyer_company_set"`,
 whose `details` carry `buyer_company_id`, the company's `buyer_name` and
@@ -179,6 +195,42 @@ The deal page shows the buyer's checks to staff (`BuyerChecks`), read and record
 `deal_buyer.id`. Once the deal is `HANDED_OVER` or `WITHDRAWN`, no new check may be
 recorded (D17, 409 `DEAL_CLOSED`), and the verifications list stops offering
 `can_record_result` for that buyer; existing checks stay readable and reviewable.
+
+### 3.2 Linking the deals that came before (the buyer migration, P4-6)
+
+A **command**, not an Alembic revision —
+`python -m app.modules.onboarding.migrate_deal_buyers` — because plan §17.2 puts a
+person between reading and writing: name-only duplicates are reported and confirmed by
+hand (IQ-8), and a revision has nowhere to pause for that. The sequence is `pg_dump`,
+`--dry-run`, read the report, confirm the duplicates, `--apply --run-id`, `--validate`.
+
+How a legacy buyer's identity is resolved, in order of confidence: a **PAN** (which may
+well join an existing *seller* — that is the point of unifying the two), then a
+**`(country, normalised registration number)`** pair, then a **new**
+`NOT_IN_PIPELINE` company. A **matching name with no identifier** is reported and
+never merged automatically; confirming one records `match_rule = NAME_CONFIRMED`, so
+the row says a human decided. Two cases are refused and reported rather than guessed:
+a buyer resolving to its own deal's seller, and a buyer whose PAN and registration
+number name *different* companies.
+
+It writes `deal_buyer_company_map` (0038, append-only, keyed on `deal_buyer_id`, which
+is what makes a re-run a no-op), the created companies, `deal.buyer_company_id`, and
+`verification_result.subject_company_id` for the deal's BUYER results. It touches no
+`deal_buyer` row, no `entity_type`, no `entity_reference`, no `subject_snapshot` and no
+history row.
+
+**There is no logical rollback**, and `--rollback` writes nothing: it reports what a
+run did and names the dump. §17.2 allowed for one *"before enabling the freeze
+trigger"*, but in the shipped schema both `deal.buyer_company_id` and
+`verification_result.subject_company_id` are set-once and frozen, so neither can be
+set back to `NULL`. Restoring the `pg_dump` is the only route back — which is why
+taking one is step zero and not a precaution.
+
+**Then the relationships.** The migration writes `buyer_company_id` with an `UPDATE`,
+so the deals it links arrive without the trade relationship that
+`DealService.set_buyer_company` would have created in the same transaction. Developer
+3's `backfill_trade_relationships` (P5-5) is step 3 of the operational order and
+creates exactly those. See `trade-history.md`.
 
 ---
 
@@ -429,3 +481,7 @@ updates.
 - **Underwriting decisions.** The CRM hands a deal over; whether to fund it is not
   its business.
 - **Documents.** `storage-and-documents.md`, same owner.
+- **What the two companies have traded, and whether they were paid.**
+  `trade-history.md` (Developer 3). A deal is what they are doing now; a trade
+  relationship is what they have done, invoice by invoice. The deal page shows the
+  pair's history, and the handover does not depend on it.

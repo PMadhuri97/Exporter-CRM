@@ -124,6 +124,13 @@ class ExporterProfile(AnerModel):
         # only in the service, because the buyer migration writes these rows directly
         # and a buyer that leaked into the pipeline counts would be invisible until
         # somebody noticed the numbers.
+        # Ten letters or digits, the same rule `IEC_RE` enforces in the service
+        # (migration 0040). Every other identifier on this table has had its format
+        # checked by the database since 0014; the IEC was the one that did not.
+        CheckConstraint(
+            "iec IS NULL OR iec ~ '^[A-Z0-9]{10}$'",
+            name="ck_exporter_profile_iec_format",
+        ),
         CheckConstraint(
             "pipeline_status <> 'NOT_IN_PIPELINE'"
             " OR (journey = 'LEAD'"

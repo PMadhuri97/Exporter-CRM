@@ -44,6 +44,8 @@ import {
   DealStageChip,
   DocumentList,
   DocumentUpload,
+  RecordDealOutcomeForm,
+  TradeHistoryPanel,
 } from '../components';
 import {
   useDeal,
@@ -351,6 +353,9 @@ export function DealDetailPage() {
   // Task 2.4's write: the same `PUT /deals/{id}/buyer` route, in its company form.
   const setBuyerCompany = useSetDealBuyer(dealId ?? '', deal?.company_id);
   const [uploading, setUploading] = useState(false);
+  // P5-6's write. Separate state because it is a different question from the deal's
+  // own: the deal is finished, and this is about what happened to the money.
+  const [recordingOutcome, setRecordingOutcome] = useState(false);
 
   if (isLoading) {
     return (
@@ -552,6 +557,49 @@ export function DealDetailPage() {
               </div>
             )}
           </Panel>
+
+          {/* What these two companies have traded before (task 2.11, plan P5-7).
+              Developer 3's panel, with the props their F3 stub fixed, so this
+              mounting did not change when 3.22 filled it in.
+
+              Only on a deal with a buyer **company**: the panel is about a pair of
+              company records, and a deal whose buyer is still a legacy `deal_buyer`
+              row has no second company to pair the seller with. Such a deal shows
+              nothing here rather than an empty panel implying the two have never
+              traded — the buyer migration (P4-6) is what gives it one. */}
+          {deal.buyer_company && (
+            <Panel
+              title="Trade history"
+              description="What these two companies have invoiced each other before, and how it was settled."
+              actions={
+                // Only after the handover, and only for staff: the server refuses a
+                // payment outcome on a deal that has not been handed over (409
+                // DEAL_NOT_HANDED_OVER), so offering the control earlier would be
+                // offering a refusal. DEVELOPER reads trade history and writes nothing.
+                isStaff &&
+                deal.stage === 'HANDED_OVER' &&
+                !recordingOutcome && (
+                  <Button size="sm" onClick={() => setRecordingOutcome(true)}>
+                    Record outcome
+                  </Button>
+                )
+              }
+            >
+              <TradeHistoryPanel
+                sellerId={deal.company_id}
+                buyerId={deal.buyer_company.company_id}
+                dealId={deal.id}
+              />
+              {recordingOutcome && (
+                <RecordDealOutcomeForm
+                  dealId={deal.id}
+                  sellerId={deal.company_id}
+                  buyerId={deal.buyer_company.company_id}
+                  onClose={() => setRecordingOutcome(false)}
+                />
+              )}
+            </Panel>
+          )}
 
           {/* What the lending team was given (P2-7). Shown only once it exists,
               which is only on a handed-over deal: a snapshot is a record of an

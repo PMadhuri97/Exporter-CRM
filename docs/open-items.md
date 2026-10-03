@@ -56,12 +56,14 @@ this page lists what needs a decision or a change, and links there for detail.
 
 | Item | Detail |
 |---|---|
-| IEC has no `CHECK` constraint, unlike PAN, GSTIN and CIN | The service checks it; the database does not. Needs a migration (Developer 3's lane, next free number in the register; `dev3-remaining-work.md` §3) |
+| ~~IEC has no `CHECK` constraint~~ — **done** | Migration **0040** (`ck_exporter_profile_iec_format`): `iec IS NULL OR iec ~ '^[A-Z0-9]{10}$'`, the rule the service has always applied, now also in the database for writers that skip it. No backfill — no row violated it. Direct-SQL violation test, which asserts the pattern **equals** `IEC_RE.pattern` so the two cannot drift |
+| A **past** invoice can be recorded only through the API | `POST /trade-relationships/{id}/invoices` and `POST /trade-invoices/{id}/outcomes` are live and tested, and claimed past trade (P5-8) is what they are for — an invoice with `deal_id` null and `proof_status = CLAIMED`. The deal page's form records the *deal's* invoice only, so adding history a company tells us about has no screen yet. One form on the company page's trade panel |
 | `POST /exporters` without `name` or `country` still creates a company | Remove the unnamed create path once nothing calls it, then make both columns `NOT NULL` |
 | CSV imports stop at 1,000 rows | Only if the business needs more: a background job with a pollable report, not a longer request |
 | `bank_activity_finding` has no foreign key to the company | Decide whether it should when a bank feed is connected |
 | The OpenAPI comparison includes `info.title`, which comes from `APP_NAME` | Regenerating with another app name fails the test for everyone. Pin the title in code or leave it out of the comparison |
 | The suite inside the `aner-app` container | `test_openapi_artifact_is_current.py` needs `./frontend` mounted, which compose does not do |
+| `test_dev1_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle` sometimes fails | It asserts the decision list reads newest-first, and the two decisions it creates can share a `decided_at`, so the tie is broken arbitrarily (seen 3 October 2026 in a full-suite run; passes alone). Order by `decided_at DESC, id DESC`, or assert the set |
 | `test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index` sometimes fails | It asserts a query plan, which depends on the size of the database |
 | Accounts created before 29 September with a special-use address (`admin@demo.local`) cannot sign in | `bootstrap` and `promote` now refuse such an address, but an account already made with one stays unusable (Settings cannot change an email): make a new one with a real-looking address and deactivate the old |
 | The shared test database accumulates thousands of test rows | Harmless to correctness; demo on a separate database (`demo.md` §1) |
