@@ -6,7 +6,7 @@ Developer 3** (allocation task 3.23, plan P5-5).
     python -m app.modules.onboarding.backfill_trade_relationships --validate
 
 **Run it only after Developer 2's buyer migration (P4-6) has been applied** — step 3
-of the operational order in `dev3-remaining-work.md` §5. Before that, most deals have
+of the operational order in `developer-allocation.md` §6. Before that, most deals have
 no ``buyer_company_id`` and this would create relationships for the few that do and
 report the rest as unmigrated, which is noise rather than a result. The dry run says
 so out loud when it sees a large unmigrated remainder.

@@ -39,9 +39,8 @@ Where each interface is declared
 -------------------------------
 ``ComplianceFactsReader`` and ``PartyComplianceFacts`` are **Developer 1's**, imported
 from ``domain/compliance_facts.py``. This module declared its own structural copies
-while F1 was unmerged; they are gone, so the two cannot drift (``dev2-remaining-work.md``
-§2 item 2). ``CheckState`` is a ``Literal`` of plain strings there, so the conditions
-compare the values directly.
+while F1 was unmerged; they are gone, so the two cannot drift. ``CheckState`` is a
+``Literal`` of plain strings there, so the conditions compare the values directly.
 
 ``RequiredDocumentsPolicy`` and ``BranchFlagReader`` stay ``Protocol``s declared here:
 the first is this lane's own, and the second is satisfied by Developer 3's stub and

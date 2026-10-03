@@ -1,7 +1,7 @@
 # Demonstrating the Exporter CRM
 
 A walk-through of the CRM on sample data, then the main path live on a new company,
-then the other paths. It follows architecture §4 (the PDF) and what the system does
+then the other paths. It follows the original design's §4 paths and what the system does
 today — [`architecture.md`](architecture.md) explains the rules behind each step.
 
 ---

@@ -5,8 +5,8 @@ Everything still open about the Exporter CRM, in one place, as of 29 September 2
 It replaced the pre-demo per-developer notes; §4 says where their still-useful content
 went.
 
-The three post-demo developers' remaining work, task by task — one file each, and the
-only per-developer documents: [`dev1-remaining-work.md`](dev1-remaining-work.md) (compliance engine), [`dev2-remaining-work.md`](dev2-remaining-work.md) (deals, handover, buyer migration) and [`dev3-remaining-work.md`](dev3-remaining-work.md) (company record, settings, GST, trade history).
+Everything still pending — the post-demo tasks, the PR audit's findings, the live-database
+runbook and the decisions — is in one list: [`remaining-work.md`](remaining-work.md).
 
 What is deliberately not built is in [`architecture.md`](architecture.md) §12. Each
 contract also keeps its own open-items table (for example `company-record.md` §10);
@@ -43,7 +43,7 @@ this page lists what needs a decision or a change, and links there for detail.
 | **RXIL's service identity** | RXIL company intake is ADMIN-only because a person pastes the package. A direct integration needs a machine identity — never `API_USER`, which public sign-up grants | — |
 | **O2 — `CUSTOMER` replaces `ONBOARDED`** for the ANER-4.2-S1T2 consumer, which watched journey rows marked `terminal` | That consumer sees completions only if `CUSTOMER` is confirmed as the replacement | `company-record.md` §10 |
 | **Identifier disclosure to masked roles.** OPERATIONS cannot search by PAN, but learns which company holds one from the duplicate refusal (`existing_customer_id`), GSTIN warnings and import candidates | Keep (decision 4's data-entry benefit) or omit the ids for roles that may not reveal identifiers. The screens now show the holder as a link ("another company — open it") rather than printing its id, and reveal nothing the response does not | architecture §12 |
-| **Should a failed buyer check block the handover?** A `FAILED` sanctions or AML result on a deal's buyer is recorded against the buyer and never touches the company (decision 9); the handover guard (A5) looks only at the company, so the deal can still be handed over | **Decided 1 October (BQ-4): yes** — the buyer's sanctions and AML must both be `PASSED`. Written as guard condition 5 but **inert** until Developer 2's task 2.5 injects Developer 1's `ComplianceFactsReader` (`dev2-remaining-work.md` §2) | `deal-and-buyer.md` §3.1, §6.1; `demo.md` §4 step 8 |
+| **Should a failed buyer check block the handover?** A `FAILED` sanctions or AML result on a deal's buyer is recorded against the buyer and never touches the company (decision 9); the handover guard (A5) looks only at the company, so the deal can still be handed over | **Decided 1 October (BQ-4): yes** — the buyer's sanctions and AML must both be `PASSED`. **Built** (task 2.5): guard condition 5 reads Developer 1's `ComplianceFactsReader`, and both parties are share-locked. Nothing left to decide; the row stays until `remaining-work.md` §9's clean-up of this page | `deal-and-buyer.md` §3.1, §6.1; `demo.md` §4 step 8 |
 | **A refresh whose answer never arrives.** The browser now shares one token refresh per tab and takes turns across tabs (Web Locks), treats only a 401 as the end of a session, and the server serialises two exchanges of one token (`SELECT … FOR UPDATE`) and rolls back a rotation whose caller has already gone. Measured in headless Chrome on 29 September: three company pages opened at once, 30 of 30 signed in; 72 of 72 reloads after the page settled, signed in; bursts of four reloads 250 ms apart, 30 of 30 signed in on the dev server but 21 of 30 on the production build. The remainder is a reload landing after the server committed the rotation, while its answer is in flight: the next load holds a revoked token and must sign in again | Closing it needs either a short server-side grace window for the just-replaced token (which weakens rotation, so it is a security decision) or keeping the access token across reloads (which changes where it may be read by script) | architecture §9 |
 | **Re-dating a `NOT_NOW` check-back** takes two moves, because a move to the value already held is refused | One step would need `NOT_NOW → NOT_NOW` with a new date in the contract | `engagement.md` §1.1 |
 | **Retire `GET /exporters/activities/pending`** | Superseded by `GET /follow-ups`, and it still lists completed follow-ups. The screens no longer call it | `engagement.md` §5.6 |
@@ -79,7 +79,7 @@ this page lists what needs a decision or a change, and links there for detail.
 
 Decisions are recorded where their rule lives, not here:
 
-- The twelve prototype decisions and planning assumptions: the design PDF §6, summarised
+- The twelve prototype decisions and planning assumptions: the design PDF §6 (retired on 4 October 2026 as outdated; recover it with `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf`), summarised
   in architecture §11.
 - Developer 4's D1–D17: `contracts/background-check.md` §14 and `contracts/verification-and-screening.md` §11.
 - Each contract's own decisions, for example: follow-up completions write no history row
@@ -102,5 +102,7 @@ Removed on 29 September 2026, after the final release audit. Git history keeps t
 | *Removed 2 October 2026:* `dev1-handover.md`, `dev2-handover.md` | The post-demo lanes' files above — `dev1-remaining-work.md`, `dev2-remaining-work.md` (new files under the pre-demo names), `dev3-remaining-work.md`; the facts contract and its test fake in `contracts/background-check.md` §12.4 |
 | *Removed 2 October 2026:* `dev4/4a-task.md`, `dev4/4b-task.md` | Developer 4A's rules and D1–D14: `contracts/background-check.md` (the seam's full shape, invariants and errors in §12.1). Developer 4B's rules and D4, D7, D9, D15–D17: `contracts/verification-and-screening.md`. Their one open item, RXIL results intake (D12), is in §1.2 above |
 | `exporter-crm-tickets.md`, `exporter-crm-frontend-tickets.md` | The original EXP-* build tickets, superseded by the design PDF |
+| *Removed 4 October 2026:* `dev1-remaining-work.md`, `dev2-remaining-work.md`, `dev3-remaining-work.md` | [`remaining-work.md`](remaining-work.md) — one list now that one developer completes the project |
+| *Removed 4 October 2026:* `Exporter-CRM-Architecture-and-Plan.pdf` (outdated) | [`architecture.md`](architecture.md) and [`plan.md`](plan.md); the PDF itself via `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf` |
 | `frontend-refresh.md` | The 28 September frontend refresh; its remaining items are in §1.2 and §2 above |
 | `../E9-NOTES.md`, `../TEST-BASELINE.md` | Superseded by the contracts and by `development.md` §9 |

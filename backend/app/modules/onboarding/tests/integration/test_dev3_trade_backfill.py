@@ -390,7 +390,7 @@ async def test_report_run_counts_what_a_run_created_and_notices_invoices():
 
 def test_a_mostly_unmigrated_database_is_called_out():
     """Running this before the buyer migration is the one ordering mistake available
-    (``dev3-remaining-work.md`` §5 step 3). It is not an error — the few linked deals
+    (``developer-allocation.md`` §6, step 3). It is not an error — the few linked deals
     would be backfilled correctly — but it wastes the run, so the report says so.
 
     A unit test on `Report`, because seeding thousands of unmigrated deals to prove a

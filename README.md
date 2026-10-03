@@ -50,7 +50,7 @@ pnpm install && pnpm dev                          # http://localhost:5173
 | `frontend/src/modules/onboarding` | The CRM screens |
 | `frontend/openapi.json`, `frontend/src/lib/api/schema.ts` | The generated API contract, committed and checked for drift |
 | `deployments/gitops/reference-data` | Reference data loaded as settings (document types, compliance rules, …) |
-| `docs/` | Architecture, development and demo guides, open items, the contracts, and the design PDF |
+| `docs/` | Architecture, development and demo guides, the post-demo plan, remaining work, open items and the contracts |
 | `Jira/` | The Epic 4 specifications (4.1–4.4 and 4.6) the platform's onboarding, lifecycle, case, customer-API and notification modules were built from — not CRM requirements |
 
 ## Where it came from
@@ -60,5 +60,6 @@ client and operations modules, plus `compliance`), and the Exporter CRM has been
 in it directly since. Modules unrelated to the CRM — ledger, settlement, rails, FX,
 reconciliation, payments — are present as schema only, so the one migration chain
 still applies; [`RUNNING.md`](RUNNING.md) records what was kept, what was removed and
-why. The CRM's design is
-[`docs/Exporter-CRM-Architecture-and-Plan.pdf`](docs/Exporter-CRM-Architecture-and-Plan.pdf).
+why. The CRM's design is described as built in
+[`docs/architecture.md`](docs/architecture.md); what is still pending is
+[`docs/remaining-work.md`](docs/remaining-work.md).

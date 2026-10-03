@@ -254,6 +254,6 @@ Rules (details in [`../backend/migrations/README.md`](../backend/migrations/READ
 | [`open-items.md`](open-items.md) | Everything still open: decisions for the lead, and engineering items |
 | [`contracts/`](contracts/) | What each part promises the others |
 | [`module-rule-exceptions.md`](module-rule-exceptions.md) | The one recorded exception to the module rule |
-| [`Exporter-CRM-Architecture-and-Plan.pdf`](Exporter-CRM-Architecture-and-Plan.pdf) | The design the CRM was built from (v1.0) |
-| [`dev1-remaining-work.md`](dev1-remaining-work.md), [`dev2-remaining-work.md`](dev2-remaining-work.md), [`dev3-remaining-work.md`](dev3-remaining-work.md) | What each post-demo developer still has to do — the only per-developer documents |
+| [`plan.md`](plan.md) | The post-demo plan (P0–P7) and the lead's answers; the original design PDF it builds on was retired on 4 October 2026 as outdated; recover it with `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf` |
+| [`remaining-work.md`](remaining-work.md) | Everything still pending, in one list, with the live-database runbook |
 | [`../RUNNING.md`](../RUNNING.md) | Why this checkout contains more than the CRM, and what was pruned |

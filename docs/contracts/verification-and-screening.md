@@ -13,7 +13,7 @@ evidence a manual result needs, the screening checklist and its history, checks 
 buyer, and the routes that serve them. The background check that *reads* these inputs, and the
 seam it reads them through, are `background-check.md` (§12 for the seam).
 
-**Source of truth.** `docs/Exporter-CRM-Architecture-and-Plan.pdf` §3.3, §3.5, §7.6, decisions
+**Source of truth.** The design PDF (retired on 4 October 2026 as outdated; recover it with `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf`) §3.3, §3.5, §7.6, decisions
 5, 9; the lead's decisions recorded in §10. Where this contract and the architecture disagree,
 the architecture wins.
 
@@ -136,7 +136,7 @@ review `INSERT`). Polling has no production caller; no scheduler exists.
   checks recorded on that company like any company's (`subject_company_id`), read through
   `company_inputs`. Developer 2's buyer migration (P4-6) maps legacy `BUYER` results onto their
   new companies by setting `subject_company_id` once. `BuyerChecks.tsx` stays for legacy buyers
-  until P4-10 (`dev1-remaining-work.md`).
+  until P4-10 (`remaining-work.md`, R-26).
 
 ## 7. Routes
 

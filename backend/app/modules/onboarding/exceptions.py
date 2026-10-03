@@ -1708,7 +1708,7 @@ class CompanyNotInPipelineError(AnerBaseException):
     turning a sales action into a constraint violation.
 
     This is the refusal Developer 1's P4-11 relies on to know a buyer-only
-    company can never be promoted by accident (``dev3-remaining-work.md`` §3).
+    company can never be promoted by accident (allocation task 1.19).
 
     409 rather than 422: the request is well formed, and the answer depends on
     the company's current pipeline status rather than on anything the caller

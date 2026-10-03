@@ -14,7 +14,7 @@ each move and what it needs, the locked decision record behind every move, the e
 pinned to each decision, the CRM risk rating, the history row, and the read helper other
 developers consume.
 
-**Source of truth.** `docs/Exporter-CRM-Architecture-and-Plan.pdf` §3.3 ("Gauge 3: Background
+**Source of truth.** The design PDF (retired on 4 October 2026 as outdated; recover it with `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf`) §3.3 ("Gauge 3: Background
 check"), §3.5, §3.7, §3.8 and Figure 3, §4.1 steps 8–11, §4.2, decisions 5, 6, 9, 10, assumptions
 A1, A3, A5, A8. Where this contract and the architecture disagree, the architecture wins. Where the
 architecture is silent, the question is listed in §14 as an open decision and **this contract does

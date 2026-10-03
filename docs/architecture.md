@@ -1,11 +1,11 @@
 # Exporter CRM — architecture
 
 What the CRM is, how it is put together, the rules each part enforces, and who owns
-what. It describes the code as it stands; the design it was built from is
-[`Exporter-CRM-Architecture-and-Plan.pdf`](Exporter-CRM-Architecture-and-Plan.pdf)
-(v1.0, 25 September 2026), and the exact shapes each part promises the others are
-the contracts in [`contracts/`](contracts/). Where this page says "§x.y" it means a
-section of that PDF.
+what. It describes the code as it stands, and the exact shapes each part promises the
+others are the contracts in [`contracts/`](contracts/). The design it was built from
+was `Exporter-CRM-Architecture-and-Plan.pdf` (v1.0, 25 September 2026), retired on 4 October 2026 as outdated; recover it with `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf`.
+Where this page says "§x.y" it means a section of that PDF; this page and
+[`plan.md`](plan.md) now stand in for it.
 
 ---
 
@@ -430,6 +430,6 @@ The prototype is built to be honest about what is not real yet.
   engagement, deal and buyer, trade history, storage and documents, background check,
   verification and screening, history row,
   event envelope, migration register.
-- What each post-demo developer still has to do: [`dev1-remaining-work.md`](dev1-remaining-work.md) (compliance engine), [`dev2-remaining-work.md`](dev2-remaining-work.md) (deals, handover, buyer migration) and [`dev3-remaining-work.md`](dev3-remaining-work.md) (company record, settings, GST, trade history).
+- Everything still pending, in one list: [`remaining-work.md`](remaining-work.md).
 - Running, testing and migrating: [`development.md`](development.md). The demo walk-through:
   [`demo.md`](demo.md).
