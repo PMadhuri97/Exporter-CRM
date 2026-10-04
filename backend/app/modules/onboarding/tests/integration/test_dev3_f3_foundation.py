@@ -416,7 +416,7 @@ async def test_the_branch_flag_stub_satisfies_developer_2s_protocol():
 
 async def test_the_database_refuses_an_iec_the_service_would_refuse():
     """`ck_exporter_profile_iec_format` (migration 0040), the inherited item from
-    `open-items.md` §2. Raw SQL for the usual reason: the service has always checked
+    the former `open-items.md` §2. Raw SQL for the usual reason: the service has always checked
     the format, so the only writer this constraint exists for is one that skipped it —
     an import, a fixture, a hand-written UPDATE.
 

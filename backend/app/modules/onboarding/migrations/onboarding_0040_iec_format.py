@@ -1,5 +1,5 @@
 """The IEC gets the format check every other identifier already has — **owner:
-Developer 3** (inherited item, `open-items.md` §2).
+Developer 3** (inherited item, from the former `open-items.md` §2).
 
 Revision ID: onboarding_0040_iec_format
 Revises: onboarding_0039_closed_buyer

@@ -39,7 +39,7 @@ kinds found, so a reviewer sees what the matcher saw.
 **Identifier disclosure is the caller's problem, not this module's.** ``match`` takes
 ``actor_role`` and records it on the result so a route can decide what it may say
 (BQ-2: a full identifier may name a company; identifiers themselves stay masked). The
-open lead decision in ``open-items.md`` §1 bounds what task 3.10's response may carry;
+lead's decision D-07 in ``remaining-work.md`` bounds what task 3.10's response may carry;
 this module reports what it found and lets the route narrow it.
 """
 

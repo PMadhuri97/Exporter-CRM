@@ -33,8 +33,8 @@ cd ../frontend && pnpm build && pnpm exec vite preview       # http://localhost:
 there, which used to sign people out on a reload, and no longer does (one refresh is
 shared, and tabs take turns). It is still slower and noisier than the build. Opening
 several tabs at once is safe; reloading several times within a second can still sign
-you out (a reload that lands while a token refresh is answering — `open-items.md`
-§1.2), so reload once and let the page settle.
+you out (a reload that lands while a token refresh is answering — decision D-13 in
+`remaining-work.md`), so reload once and let the page settle.
 
 **Logins.** Have one per role you will show: the ADMIN and COMPLIANCE users from
 `bootstrap`, plus an OPERATIONS user (create it from Settings as ADMIN, or sign up and

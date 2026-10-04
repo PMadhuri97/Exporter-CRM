@@ -18,7 +18,7 @@ data.
 | Understand the CRM — its model, state machines, roles and ownership | [`docs/architecture.md`](docs/architecture.md) |
 | Run it, test it, change its schema or API | [`docs/development.md`](docs/development.md) |
 | Demonstrate it | [`docs/demo.md`](docs/demo.md) |
-| Know what is still open, and who decides | [`docs/open-items.md`](docs/open-items.md) |
+| Know what is done, what is left, and what needs a decision | [`docs/remaining-work.md`](docs/remaining-work.md) |
 | Know exactly what one part promises the others | [`docs/contracts/`](docs/contracts/) |
 | Know why this checkout contains more than the CRM | [`RUNNING.md`](RUNNING.md) |
 

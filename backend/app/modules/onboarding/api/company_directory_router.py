@@ -27,8 +27,8 @@ Three things keep that from becoming a way to read identifiers:
    it named — by ``CompanyDirectoryService``, which is the layer that knows a
    lookup actually happened.
 
-``open-items.md`` §1 records the lead's still-open question about naming holders to
-masked roles at all. This route follows the precedent already set by the duplicate
+BQ-2 (plan §19.0) allows naming the holder of a full identifier to a masked role;
+``remaining-work.md`` D-07 asks the lead to confirm the shared-GSTIN warnings follow it. This route follows the precedent already set by the duplicate
 PAN refusal and the GSTIN warnings: name the company, never the identifier.
 
 Why POST for a read

@@ -915,7 +915,7 @@ None of these blocks a phase. Each unlocks a richer version, and until it lands 
 | A6 | `relationship_manager_user_id` written (it is never written today) and a `relationship_manager_user_id` filter | Dev 3 | "My companies" lens; RM avatars | RM shown as free text; no "mine" for companies |
 | A7 | Export the gated-route table (`method, path, roles`) as a JSON artifact, guarded like `openapi.json` | Dev 1 | Automated drift check of the access manifest (§4.4) | Manual check in review |
 | A8 | `dry_run=true` on `POST /imports/companies` | Dev 3 | Server-validated CSV preview | Header and first lines previewed client-side |
-| A9 | Criteria versions carry `created_by_name` (open-items §2) | Dev 3 | Names instead of ids on the criteria trail | The id, labelled "user id" |
+| A9 | Criteria versions carry `created_by_name` (`remaining-work.md` R-36) | Dev 3 | Names instead of ids on the criteria trail | The id, labelled "user id" |
 
 ---
 

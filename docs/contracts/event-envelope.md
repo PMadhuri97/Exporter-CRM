@@ -97,8 +97,9 @@ which is expected and is why the CRM only announces.
 
 ### `deal.handed_over`
 
-Announced when a deal is handed to the lending team. Only permitted when the
-company is a `CUSTOMER` and its background check is `CLEAR` (assumption A5).
+Announced when a deal is handed to the lending team, after the handover commits —
+which the guard allows only when every condition in `deal-and-buyer.md` §6.1 is met
+(assumption A5 and its extensions).
 
 ```
 partition_key : <company id>
@@ -107,15 +108,22 @@ deal_id       : <the deal id>
 payload       : {
     "deal_id"     : str,
     "company_id"  : str,
-    "buyer"       : {"name": str, "country": str, "identifiers": {...}},
+    "buyer"       : {"name": str, "country": str, "registration_number": str | null,
+                     "tax_id": str | null, "contact_email": str | null,
+                     "contact_phone": str | null},
     "document_ids": [str],
 }
 ```
 
+`buyer` is the handover snapshot's buyer (P2-7): from the buyer company when the deal
+names one — `tax_id` is then its PAN and the contact fields are null — otherwise from the
+legacy `deal_buyer` row. The snapshot's `buyer_company_id` is not in this payload yet;
+P4-10 (`remaining-work.md` R-25) revisits the payload.
+
 Consumer: the lending team, later.
 
-Neither event type exists in `EventType` yet. Adding one is a member plus a
-`TOPIC_FOR_EVENT` entry — Python only, no migration.
+Both types are members of `EventType` (`app/platform/messaging/schemas.py`) with a
+`TOPIC_FOR_EVENT` entry.
 
 ---
 

@@ -11,7 +11,7 @@ dimensions, and `trade` rows reach DEVELOPER with identifiers already masked —
 
 **State.** Built. Tables, services, the five routes, both panels and the relationship
 backfill's code. The backfill has **not been run** on any environment; it is step 3 of
-the operational order in `developer-allocation.md` §6 (runbook: `remaining-work.md` §7).
+the operational order in `developer-allocation.md` §6 (runbook: `remaining-work.md` §8).
 
 Plan P5-1 … P5-8 and architecture §3.5 are the source. Decisions: IQ-4 (currency),
 IQ-19 (who may read), BQ-7 (`source` on every row).

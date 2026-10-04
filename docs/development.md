@@ -198,19 +198,20 @@ users; change the contract in the same pull request as the code.
 
 ## 9. Baseline
 
-Measured 2 October 2026, on Developer 2's `feature/handover-snapshot` with `main` (Developer 1's
-compliance work) merged in:
+Measured 4 October 2026 on `feature/company-foundation-and-compliance-guard` at `6cd71db`,
+against a scratch copy of the 15.9k-company data at head (the same table, with the data
+checks, is [`remaining-work.md`](remaining-work.md) §9):
 
 | Gate | Baseline |
 |---|---|
-| CRM suite (`pytest --crm`) | **2,605 passed, 1 skipped, 1 failed** (29 minutes on a busy Windows machine). Measured 4 October 2026 on `feature/company-foundation-and-compliance-guard` at `dfcb2d2`, head `onboarding_0040_iec_format`. The failure is R-04 in [`remaining-work.md`](remaining-work.md) (`test_a_closed_deals_buyer_company_is_frozen_in_raw_sql`); the skip is the symlink test in `test_l3b_local_disk_storage.py`, which Windows refuses without developer mode |
-| Whole suite (without `--crm`) | **4,926 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (21 minutes) |
-| Temporal workflow tests (`test_onboarding_workflow*.py`, whole suite only) | 143 passed, 1 skipped when last counted on their own (29 September; the skip is the opt-in restart suite, `RUN_RESILIENCE_TESTS=1`). They download the Temporal test server, so they need internet access |
+| CRM suite (`pytest --crm`) | **2,711 passed, 1 skipped, 0 failed** (53 minutes on a busy Windows machine). The skip is the symlink test in `test_l3b_local_disk_storage.py`, which Windows refuses without developer mode |
+| Whole suite (without `--crm`) | **5,350 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (36 minutes) |
+| Temporal workflow tests (`test_onboarding_workflow*.py`, whole suite only) | Pass within the whole suite. They download the Temporal test server, so they need internet access; the opt-in restart suite needs `RUN_RESILIENCE_TESTS=1` |
 | `ruff check .` | 16 findings, all pre-existing: two auto-generated Alembic merge revisions and two package index files |
 | `lint-imports` | 19 contracts kept, 0 broken |
-| `alembic heads` | one: `onboarding_0030_deal_req_docs` |
+| `alembic heads` | one: `onboarding_0043_identity_type` |
 | `alembic check` | no new upgrade operations |
-| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 38 files, 369 tests; build passes with a >500 kB chunk warning |
+| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 51 files, 636 tests; `npm run build` passes with no chunk-size warning |
 
 The 27 expected failures (whole suite only) are the tests in `compliance/tests/integration/test_compliance.py`,
 `test_screening_uses_rule_registry.py` and `audit/tests/integration/test_audit.py` that
@@ -219,9 +220,11 @@ checkout ([`../RUNNING.md`](../RUNNING.md)), so the request gets 404. They are s
 expected failures in `backend/conftest.py` (§7); one that starts passing fails the run.
 Any failure is new.
 
-One test can still fail on some databases:
+Two tests can still fail intermittently (`remaining-work.md` R-38):
 `platform/idempotency/tests/test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index`
-asserts a query plan, which depends on the size and statistics of the database.
+asserts a query plan, which depends on the size and statistics of the database; and
+`test_dev1_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle`
+reads two decisions that can share a `decided_at`.
 
 Two environment traps turn a clean run red: without `google-cloud-logging` and
 `google-cloud-storage` (both in `requirements.txt`) collection stops with two
@@ -261,7 +264,7 @@ Rules (details in [`../backend/migrations/README.md`](../backend/migrations/READ
 The buyer migration (`migrate_deal_buyers`, P4-6) and the trade relationship backfill
 (`backfill_trade_relationships`, P5-5) are commands, not revisions, because a person reads
 a report between reading and writing. Their order on a live database, and what must hold
-before each, is [`remaining-work.md`](remaining-work.md) §7. This section is how to run
+before each, is [`remaining-work.md`](remaining-work.md) §8. This section is how to run
 them without hurting anything.
 
 **Rehearse on a scratch database first, every time.** Never on the shared
@@ -333,9 +336,8 @@ python -m app.modules.onboarding.backfill_trade_relationships --validate
 |---|---|
 | [`architecture.md`](architecture.md) | The CRM: model, state machines, roles, ownership, decisions, limitations |
 | [`demo.md`](demo.md) | How to demonstrate it |
-| [`open-items.md`](open-items.md) | Everything still open: decisions for the lead, and engineering items |
 | [`contracts/`](contracts/) | What each part promises the others |
 | [`module-rule-exceptions.md`](module-rule-exceptions.md) | The one recorded exception to the module rule |
 | [`plan.md`](plan.md) | The post-demo plan (P0–P7) and the lead's answers; the original design PDF it builds on was retired on 4 October 2026 as outdated; recover it with `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf` |
-| [`remaining-work.md`](remaining-work.md) | Everything still pending, in one list, with the live-database runbook |
+| [`remaining-work.md`](remaining-work.md) | The one list: what is done, what is left, the decisions for the lead, what is deferred, and the live-database runbook |
 | [`../RUNNING.md`](../RUNNING.md) | Why this checkout contains more than the CRM, and what was pruned |

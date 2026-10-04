@@ -10,6 +10,10 @@
 | Decisions recorded | 1 October 2026: all blocking and design questions answered, see §19.0 (it overrides earlier text where they differ) |
 | Where it lives | `docs/plan.md`, committed with Developer 1's compliance PR (`feature/compliance-foundation`). Written at the repository root and moved here; every "P…" task id and "§" number in `developer-allocation.md` refers to this file |
 
+**Read this file as the plan of 1 October 2026.** Where it cites `open-items.md`, that
+file was merged into [`remaining-work.md`](remaining-work.md) on 4 October 2026, which also
+holds the current state of every task below.
+
 Status words used for claims: **VERIFIED** (read in code), **NOT VERIFIED** (the claim is contradicted by the code), **PARTIALLY IMPLEMENTED**, **NOT IMPLEMENTED**, **UNKNOWN / NEEDS VERIFICATION** (cannot be settled from the repository). File references are relative to the repository root.
 
 ---

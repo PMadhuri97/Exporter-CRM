@@ -771,7 +771,7 @@ Every answer is recorded here, with its date and who decided. Nothing below is g
 | D11 / U4 / O3 | **Transaction boundary and announcement for the customer move** | **Implemented 29 Sep 2026 as one transaction** (the audit's recommendation; **the programme lead to confirm in writing**): the completing move calls Developer 2's flush-only promotion before its commit and announces after it (§11.3) | lead, Developer 2, Dev4A | nothing |
 | D12 | **RXIL package / results contract**, including the actor of the automatic start | **Blocked** | RXIL, lead, Developer 2 | the automatic `NOT_STARTED → IN_REVIEW` only |
 | D13 | **Risk database type** | **Settled 28 Sep 2026 (Dev4 lead):** a Dev4A-owned `background_check_risk_enum` | — | nothing |
-| D14 | **`history-row.md` §4 omits two required texts** (`MORE_INFO → IN_REVIEW`, `CLEAR`) | **Open** — Dev4A enforces the architecture meanwhile | Developer 1 | the contract's text, before final merge |
+| D14 | **`history-row.md` §4 omits two required texts** (`MORE_INFO → IN_REVIEW`, `CLEAR`) | **Settled:** both rows are in `history-row.md` §4, citing D14 | Developer 1 | nothing |
 
 ### 14.1 D1–D4, as decided on 28 September 2026
 
@@ -831,11 +831,11 @@ one transaction on 29 September (the lead to confirm), and D14's texts are now i
 
 ### 14.2 Confirmed by the programme lead on 2 October 2026
 
-These were built on a recommendation and listed in `open-items.md` §1 as awaiting
-confirmation or undecided. The lead confirmed each **as built** on 2 October 2026. The
-write-up made then never reached `main`, so it was recorded again here on 4 October 2026
-(`remaining-work.md` §8.2), and the rows left `open-items.md` §1. Nothing in the code
-changed: each is the behaviour already described in the section named.
+These were built on a recommendation and listed as awaiting confirmation or undecided
+(in `open-items.md`, since merged into `remaining-work.md`). The lead confirmed each **as
+built** on 2 October 2026. The write-up made then never reached `main`, so it was recorded
+again here on 4 October 2026 (`remaining-work.md` §4). Nothing in the code changed: each
+is the behaviour already described in the section named.
 
 | Confirmed | As built | Where |
 |---|---|---|

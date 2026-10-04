@@ -136,7 +136,7 @@ These change *how* some tasks are built, not *what* the plan delivers.
 
 **Owns:** the deal and its buyer, the handover snapshot, the handover guard (every condition), required documents, the deal-buyer → company migration, the invoicing branch on the deal, and retiring `deal_buyer`.
 
-**Progress (2 October 2026):** F2, 2.1–2.3 merged; 2.4–2.12 open. Task-by-task state as of 4 October 2026: [`remaining-work.md`](remaining-work.md) §1.
+**Progress (2 October 2026):** F2, 2.1–2.3 merged; 2.4–2.12 open. Task-by-task state as of 4 October 2026: [`remaining-work.md`](remaining-work.md) §2 and §6.
 
 ### F2 — Deal foundation PR (days 3–4, merge last; uses F1 and F3 interfaces) · M
 
@@ -181,7 +181,7 @@ These change *how* some tasks are built, not *what* the plan delivers.
 
 **Owns:** the company master (identity, pipeline status, intake, search and match), settings and labels, GST registrations and branch flags, and trade history.
 
-**Progress (2 October 2026):** 3.1, 3.3–3.6 and 3.2's script merged (3.2's reports still owed); F3 next — Developer 2 now waits on it; 3.7–3.24 open. Task-by-task state as of 4 October 2026: [`remaining-work.md`](remaining-work.md) §1.
+**Progress (2 October 2026):** 3.1, 3.3–3.6 and 3.2's script merged (3.2's reports still owed); F3 next — Developer 2 now waits on it; 3.7–3.24 open. Task-by-task state as of 4 October 2026: [`remaining-work.md`](remaining-work.md) §2 and §6.
 
 ### F3 — Company foundation PR (days 2–3, merge second) · M
 
