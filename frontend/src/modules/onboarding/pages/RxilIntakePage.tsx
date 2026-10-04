@@ -15,94 +15,110 @@
  * NotFound there, and neither this page nor an explanation of it.
  */
 
-import { CheckCircle2 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { Button, Card, Chip, PageHeader, Panel, Textarea } from '@/components';
+import { Button, Card, PageHeader, Tag, Textarea } from '@/components';
+import { Icon } from '@/design/icons';
 
 import { useSubmitRxilPackage } from '../hooks';
 import { paths } from '../paths';
+
+/** A few facts read from the pasted package, so the person can see it is the right one. */
+function readPackage(text: string): { ok: true; facts: [string, string][] } | { ok: false } | null {
+  if (!text.trim()) return null;
+  try {
+    const pkg = JSON.parse(text) as Record<string, unknown>;
+    const company = (pkg.company ?? {}) as Record<string, unknown>;
+    const facts: [string, string][] = [];
+    if (typeof pkg.package_id === 'string') facts.push(['Package', pkg.package_id]);
+    if (typeof company.name === 'string') facts.push(['Company', company.name]);
+    if (typeof company.country === 'string') facts.push(['Country', company.country]);
+    return { ok: true, facts };
+  } catch {
+    return { ok: false };
+  }
+}
 
 export function RxilIntakePage() {
   const [text, setText] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
   const mutation = useSubmitRxilPackage();
   const result = mutation.data;
+  const preview = useMemo(() => readPackage(text), [text]);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="max-w-3xl space-y-6">
       <PageHeader
-        back={{ to: paths.companies, label: 'Companies' }}
         title="RXIL intake"
-        meta={<Chip tone="warning">Provisional format</Chip>}
+        meta={<Tag tone="attention">Prototype: provisional format</Tag>}
         description="Take in a company RXIL has qualified. It arrives as a prospect, qualified by RXIL."
       />
 
-      <Card className="p-5">
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            let pkg: unknown;
-            try {
-              pkg = JSON.parse(text);
-            } catch {
-              setParseError('The package is not valid JSON.');
-              return;
-            }
-            setParseError(null);
-            mutation.mutate(pkg);
-          }}
-        >
-          <Textarea
-            aria-label="RXIL package"
-            className="min-h-[16rem] font-mono text-xs"
-            placeholder='{"package_id": "…", …}'
-            spellCheck={false}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          {(parseError ?? mutation.error) && (
-            <p role="alert" className="text-sm text-status-failed">
-              {parseError ?? mutation.error?.message}
-            </p>
-          )}
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={!text.trim()}
-              loading={mutation.isPending}
-            >
-              Submit package
-            </Button>
-          </div>
-        </form>
-      </Card>
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          let pkg: unknown;
+          try {
+            pkg = JSON.parse(text);
+          } catch {
+            setParseError('The package is not valid JSON.');
+            return;
+          }
+          setParseError(null);
+          mutation.mutate(pkg);
+        }}
+      >
+        <Textarea
+          aria-label="RXIL package"
+          className="min-h-[14rem] font-mono text-data"
+          placeholder='Paste the package: {"package_id": "…", …}'
+          spellCheck={false}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        {preview && (
+          <p className="text-secondary text-ink-3" data-testid="package-preview">
+            {preview.ok
+              ? preview.facts.length > 0
+                ? preview.facts.map(([label, value]) => `${label} ${value}`).join(' · ')
+                : 'Valid JSON — no package id or company name found in it.'
+              : 'Not valid JSON yet.'}
+          </p>
+        )}
+        {(parseError ?? mutation.error) && (
+          <p role="alert" className="text-secondary text-negative">
+            {parseError ?? mutation.error?.message}
+          </p>
+        )}
+        <div className="flex justify-end">
+          <Button type="submit" variant="primary" disabled={!text.trim()} loading={mutation.isPending}>
+            Take in
+          </Button>
+        </div>
+      </form>
 
       {result && (
-        <Panel
-          aria-label="Intake result"
-          title={
-            <span className="inline-flex items-center gap-2">
-              <CheckCircle2 size={17} className="text-status-passed" />
-              {result.replayed ? 'Already taken in — nothing changed' : 'Taken in'}
-            </span>
-          }
-          description={`Company ${result.company} · qualification ${result.qualification}`}
-        >
+        <Card aria-label="Intake result" className="space-y-2 p-5" role="group">
+          <p className="flex items-center gap-2 font-display text-display-sm text-ink">
+            <Icon.passed size={20} className="text-positive" aria-hidden />
+            {result.replayed ? 'Already taken in — nothing changed' : 'Taken in'}
+          </p>
+          <p className="text-secondary text-ink-2">
+            Company {result.company} · qualification {result.qualification}
+          </p>
           {result.warnings.length > 0 && (
-            <ul className="mb-3 list-disc pl-5 text-sm text-status-review">
+            <ul className="list-disc pl-5 text-secondary text-attention">
               {result.warnings.map((warning, i) => (
                 <li key={`${warning.code}-${i}`}>{warning.message}</li>
               ))}
             </ul>
           )}
-          <Link to={paths.company(result.customer_id)} className="text-sm font-medium text-brand-600 underline">
+          <Link to={paths.company(result.customer_id)} className="inline-block text-body font-medium text-ink underline underline-offset-[3px]">
             Open company
           </Link>
-        </Panel>
+        </Card>
       )}
     </div>
   );

@@ -21,7 +21,7 @@
 
 import { useState } from 'react';
 
-import { Chip, EmptySection, ErrorState, Skeleton } from '@/components';
+import { EmptySection, ErrorState, Skeleton, Tag } from '@/components';
 import { formatDate } from '@/lib/format';
 
 import { useTradeInvoice, useTradeRelationship } from '../hooks';
@@ -58,13 +58,13 @@ function OutcomeChain({ outcomes }: { outcomes: TradeOutcome[] }) {
               proofStatus={outcome.proof_status}
             />
             {outcome.amount_paid && (
-              <span className="text-xs tabular-nums text-ink-muted">
+              <span className="text-xs tabular-nums text-ink-2">
                 {outcome.amount_paid} paid
               </span>
             )}
-            {!outcome.is_current && <span className="text-xs text-ink-faint">Superseded</span>}
+            {!outcome.is_current && <span className="text-xs text-ink-3">Superseded</span>}
           </div>
-          <p className="mt-0.5 text-xs text-ink-faint">
+          <p className="mt-0.5 text-xs text-ink-3">
             {`${outcome.recorded_by ?? 'Unknown'} · ${formatDate(outcome.recorded_at)}`}
           </p>
           {/* P5-7 asks for `EvidenceList` here. An outcome's references are stored
@@ -96,12 +96,12 @@ function InvoiceRow({ invoice, isThisDeal }: { invoice: TradeInvoice; isThisDeal
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-ink">{invoice.invoice_number}</span>
             {isThisDeal && (
-              <Chip tone="info" title="Raised on the deal you are looking at">
+              <Tag tone="progress" title="Raised on the deal you are looking at">
                 This deal
-              </Chip>
+              </Tag>
             )}
           </p>
-          <p className="mt-0.5 text-xs text-ink-muted">
+          <p className="mt-0.5 text-xs text-ink-2">
             {/* Amount and currency together, never converted (IQ-4). The amount is a
                 string because the server sends `Numeric` as one; it is shown as sent
                 and never parsed. */}
@@ -125,7 +125,7 @@ function InvoiceRow({ invoice, isThisDeal }: { invoice: TradeInvoice; isThisDeal
             <button
               type="button"
               onClick={() => setOpen((was) => !was)}
-              className="text-xs font-medium text-brand-600 hover:underline"
+              className="text-xs font-medium text-ink hover:underline"
               aria-expanded={open}
             >
               {open ? 'Hide history' : 'Outcome history'}
@@ -135,7 +135,7 @@ function InvoiceRow({ invoice, isThisDeal }: { invoice: TradeInvoice; isThisDeal
       </div>
 
       {open && (
-        <div className="mt-3 border-l-2 border-border pl-3">
+        <div className="mt-3 border-l-2 border-line pl-3">
           {chain.isLoading && <Skeleton className="h-12 rounded" />}
           {chain.isError && (
             <ErrorState
@@ -181,7 +181,7 @@ export function TradeInvoiceList({
   }
 
   return (
-    <ul className="divide-y divide-border rounded-lg border border-border">
+    <ul className="divide-y divide-line rounded-lg border border-line">
       {invoices.map((invoice) => (
         <InvoiceRow
           key={invoice.id}

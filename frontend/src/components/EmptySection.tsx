@@ -9,7 +9,7 @@
 
 export function EmptySection({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-border-strong bg-surface-subtle px-4 py-6 text-center text-sm text-ink-muted">
+    <div className="py-3 text-body text-ink-3">
       {children}
     </div>
   );

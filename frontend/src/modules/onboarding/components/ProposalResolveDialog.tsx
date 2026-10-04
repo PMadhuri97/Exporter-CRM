@@ -75,40 +75,40 @@ export function ProposalResolveDialog({
       role="dialog"
       aria-label={TITLES[action]}
       data-testid="proposal-resolve-dialog"
-      className="rounded-lg border border-slate-200 bg-white p-4"
+      className="rounded-lg border border-line bg-surface p-4"
     >
-      <h4 className="text-sm font-semibold text-slate-900">{TITLES[action]}</h4>
-      <dl className="mt-2 space-y-1 text-sm text-slate-700">
+      <h4 className="text-sm font-semibold text-ink">{TITLES[action]}</h4>
+      <dl className="mt-2 space-y-1 text-sm text-ink-2">
         {proposal.company_name && (
           <div>
-            <dt className="inline text-slate-500">Company: </dt>
+            <dt className="inline text-ink-3">Company: </dt>
             <dd className="inline">{proposal.company_name}</dd>
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          <dt className="text-slate-500">Proposed:</dt>
+          <dt className="text-ink-3">Proposed:</dt>
           <dd className="font-medium">{proposedMoveLabel(proposal.to_value)}</dd>
           {proposal.risk_rating && <RiskChip risk={proposal.risk_rating} />}
         </div>
         <div>
-          <dt className="inline text-slate-500">By: </dt>
+          <dt className="inline text-ink-3">By: </dt>
           <dd className="inline">
             {actorLabel(proposal.proposed_by_name, proposal.proposed_by)},{' '}
             {formatDateTime(proposal.proposed_at)}
           </dd>
         </div>
         <div>
-          <dt className="inline text-slate-500">Reason: </dt>
+          <dt className="inline text-ink-3">Reason: </dt>
           <dd className="inline">{proposal.reason}</dd>
         </div>
-        <div className="text-xs text-slate-500">
+        <div className="text-xs text-ink-3">
           Rests on {proposal.evidence_count} item{proposal.evidence_count === 1 ? '' : 's'}
           {proposal.cycle_number ? ` in cycle ${proposal.cycle_number}` : ''}.
         </div>
       </dl>
 
       {action === 'APPROVE' && (
-        <p className="mt-3 rounded bg-slate-50 p-2 text-xs text-slate-600">
+        <p className="mt-3 rounded bg-sunken p-2 text-xs text-ink-2">
           Approving records the decision now — decided by{' '}
           {actorLabel(proposal.proposed_by_name, proposal.proposed_by)}, approved by you
           {proposal.to_value === 'CLEAR' && '; a qualified prospect becomes a customer'}.
@@ -117,13 +117,13 @@ export function ProposalResolveDialog({
 
       {action !== 'APPROVE' && (
         <label className="mt-3 block text-sm">
-          <span className="text-xs font-medium text-slate-600">
+          <span className="text-xs font-medium text-ink-2">
             {reasonRequired ? 'Reason (required)' : 'Reason (optional)'}
           </span>
           <textarea
             aria-label="Reason"
             rows={3}
-            className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
+            className="mt-1 w-full rounded border border-line-strong p-2 text-sm"
             value={reason}
             onChange={(event) => setReason(event.target.value)}
           />
@@ -131,7 +131,7 @@ export function ProposalResolveDialog({
       )}
 
       {resolve.isError && (
-        <p role="alert" className="mt-3 text-xs text-red-700">
+        <p role="alert" className="mt-3 text-xs text-negative">
           {resolve.error instanceof ApiError
             ? resolve.error.message
             : 'The proposal could not be updated.'}
@@ -143,14 +143,14 @@ export function ProposalResolveDialog({
           type="button"
           disabled={!canSubmit || resolve.isPending}
           onClick={submit}
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-40"
+          className="rounded bg-ink px-3 py-1.5 text-sm text-paper disabled:opacity-40"
         >
           {resolve.isPending ? PENDING[action] : CONFIRM[action]}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+          className="rounded border border-line-strong px-3 py-1.5 text-sm"
         >
           Cancel
         </button>

@@ -35,13 +35,14 @@
 
 import { useState } from 'react';
 
+import { Button, FormPanel } from '@/components';
 import { ApiError } from '@/lib/api/errors';
-
 import { formatDate } from '@/lib/format';
 
 import {
   BackgroundCheckGauge,
   BackgroundCheckMoveDialog,
+  CheckRunway,
   DecisionHistory,
   RiskChip,
   VerificationSection,
@@ -59,26 +60,29 @@ import {
   useBackgroundCheckDecisions,
   useRecordBackgroundCheckDecision,
 } from '../../hooks';
+import type { BackgroundCheckState } from '../../types';
 
 function GaugeSection({ customerId }: { customerId: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  // The move chosen on the runway, opened already selected (frontend-plan §6.3).
+  const [initialMove, setInitialMove] = useState<BackgroundCheckState | null>(null);
   const check = useBackgroundCheck(customerId);
   const decisions = useBackgroundCheckDecisions(customerId);
   const record = useRecordBackgroundCheckDecision(customerId);
 
   if (check.isLoading) {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <p className="text-sm text-slate-500">Loading the background check…</p>
+      <section aria-busy className="space-y-2">
+        <p className="text-body text-ink-3">Loading the background check…</p>
       </section>
     );
   }
 
   if (check.isError || !check.data) {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <h3 className="text-base font-semibold text-slate-900">Background check</h3>
-        <p role="alert" className="mt-2 text-sm text-red-700">
+      <section>
+        <h3 className="text-lead font-semibold text-ink">Background check</h3>
+        <p role="alert" className="mt-2 text-body text-negative">
           The background check could not be loaded.
         </p>
       </section>
@@ -92,10 +96,10 @@ function GaugeSection({ customerId }: { customerId: string }) {
   const compliance = standing.compliance;
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
+    <section>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold text-slate-900">Background check</h3>
+          <h3 className="text-lead font-semibold text-ink">Background check</h3>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <BackgroundCheckGauge
               value={standing.value}
@@ -104,7 +108,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
             />
           </div>
           {cycle && (
-            <p data-testid="current-cycle" className="mt-2 text-xs text-slate-600">
+            <p data-testid="current-cycle" className="mt-2 text-xs text-ink-2">
               Cycle {cycle.number} · {cycleKindLabel(cycle.kind)} · started{' '}
               {formatDate(cycle.started_at)}
               {cycle.reason && ` — ${cycle.reason}`}
@@ -113,7 +117,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
           {compliance?.is_clear && compliance.clear_expires_at && (
             <p
               data-testid="clear-expiry"
-              className={`mt-1 text-xs ${compliance.is_clear_current ? 'text-slate-600' : 'font-medium text-red-700'}`}
+              className={`mt-1 text-xs ${compliance.is_clear_current ? 'text-ink-2' : 'font-medium text-negative'}`}
             >
               {compliance.is_clear_current
                 ? `Clear until ${formatDate(compliance.clear_expires_at)}`
@@ -122,14 +126,30 @@ function GaugeSection({ customerId }: { customerId: string }) {
           )}
         </div>
         {moves.length > 0 && !dialogOpen && (
-          <button
-            type="button"
-            onClick={() => setDialogOpen(true)}
-            className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white"
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setInitialMove(null);
+              setDialogOpen(true);
+            }}
           >
             Record a decision
-          </button>
+          </Button>
         )}
+      </div>
+
+      {/* The check as a map: every state drawn, only the served moves clickable. */}
+      <div className="mt-5 rounded-xl border border-line bg-surface p-4">
+        <CheckRunway
+          value={standing.value}
+          moves={moves}
+          openProposal={standing.open_proposal}
+          onChoose={(to) => {
+            setInitialMove(to);
+            setDialogOpen(true);
+          }}
+        />
       </div>
 
       {standing.risk_rating && (
@@ -138,7 +158,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
           {standing.value !== 'CLEAR' && (
             // The risk is the last one anyone recorded, not a statement about the
             // company now — the reader's D6 caveat, said plainly rather than hidden.
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-ink-3">
               from the most recent decision that set one
             </span>
           )}
@@ -159,14 +179,15 @@ function GaugeSection({ customerId }: { customerId: string }) {
       )}
 
       {standing.value === 'IN_REVIEW' && blocked.length > 0 && (
-        <p className="mt-3 rounded bg-slate-50 p-2 text-xs text-slate-600">
+        <p className="mt-3 rounded-md border-l-2 border-line-strong bg-sunken px-3 py-2 text-secondary text-ink-2">
           Before this company can be cleared: {blocked.map(describeClearBlocker).join('; ')}.
         </p>
       )}
 
       {dialogOpen && (
-        <div className="mt-4">
+        <FormPanel title="Record a decision" onClose={() => setDialogOpen(false)}>
           <BackgroundCheckMoveDialog
+            initialMove={initialMove}
             moves={moves}
             blockedReasons={blocked}
             isPending={record.isPending}
@@ -185,7 +206,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
             }
             onCancel={() => setDialogOpen(false)}
           />
-        </div>
+        </FormPanel>
       )}
 
       <div className="mt-5">
@@ -193,7 +214,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
       </div>
 
       <div className="mt-5">
-        <h4 className="text-sm font-semibold text-slate-900">Decisions</h4>
+        <h4 className="text-lead font-semibold text-ink">Decisions</h4>
         <div className="mt-2">
           <DecisionHistory
             decisions={decisions.data?.decisions ?? []}
@@ -216,7 +237,7 @@ export function BackgroundCheckPanel({
 }) {
   if (!isStaff) return null;
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-10">
       <GaugeSection customerId={customerId} />
       {/* Developer 4B's, unchanged and rendered below the gauge: the checks are the
           inputs to the decision, so they read in that order. */}

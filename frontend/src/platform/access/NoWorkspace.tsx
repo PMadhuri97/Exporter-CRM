@@ -1,8 +1,9 @@
-import { LogOut } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { buttonClasses } from '@/components';
+import { BrandMark } from '@/design/BrandMark';
+import { Icon } from '@/design/icons';
 import { useAuth } from '@/platform/auth';
 
 /**
@@ -14,20 +15,17 @@ import { useAuth } from '@/platform/auth';
 export function NoWorkspaceFrame({ children }: { children: ReactNode }) {
   const { logout } = useAuth();
   return (
-    <div className="flex min-h-screen flex-col bg-surface-subtle">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-4 sm:px-6">
-        <Link to="/" className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white dark:text-surface">
-            A
-          </span>
-          <span className="text-sm font-semibold text-ink">Aner Labs</span>
+    <div className="flex min-h-screen flex-col bg-paper">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-surface px-4 sm:px-6">
+        <Link to="/" className="rounded-md">
+          <BrandMark />
         </Link>
         <button
           type="button"
           onClick={() => void logout()}
-          className={buttonClasses({ variant: 'ghost', size: 'sm' })}
+          className={buttonClasses({ variant: 'quiet', size: 'sm' })}
         >
-          <LogOut size={15} />
+          <Icon.signOut size={15} aria-hidden />
           Sign out
         </button>
       </header>
@@ -41,9 +39,9 @@ export function NoWorkspaceFrame({ children }: { children: ReactNode }) {
 /** What `/` shows a user with no workspace. */
 export function NoWorkspace() {
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center py-20 text-center">
-      <h1 className="text-lg font-semibold text-ink">No workspace yet</h1>
-      <p className="mt-1 text-sm text-ink-muted">
+    <div className="max-w-xl py-16 sm:py-24">
+      <h1 className="font-display text-display-lg text-ink">No workspace yet</h1>
+      <p className="mt-2 text-lead text-ink-2">
         Your account doesn&apos;t have access to a workspace yet. Ask an administrator.
       </p>
       <Link to="/settings" className={buttonClasses({ variant: 'secondary', className: 'mt-6' })}>

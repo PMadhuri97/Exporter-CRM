@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '@/lib/api/errors';
 import { useCurrentUser } from '@/platform/auth';
 
 import {
@@ -226,6 +227,35 @@ describe('DealRequiredDocumentsPage', () => {
     expect(
       await screen.findByText(/filed against a company, not a deal/),
     ).toBeInTheDocument();
+  });
+
+  it('lists every deal category, and opens Require on the one chosen', async () => {
+    renderPage();
+    await screen.findByTestId('requirement-row');
+    const categories = screen.getByRole('list', { name: 'Deal document categories' });
+    expect(within(categories).getAllByTestId('category-row')).toHaveLength(7);
+    // Pre-shipment is required for any type, so it offers no second "Require".
+    expect(
+      screen.queryByRole('button', { name: /^Require Pre-shipment/ }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Require Shipping/ }));
+    expect(await screen.findByLabelText(/Category/)).toHaveValue('SHIPPING');
+  });
+
+  it('says someone else changed it when the server reports the race', async () => {
+    vi.mocked(setDealRequiredDocument).mockRejectedValue(
+      new ApiError(409, 'The requirement changed.', 'DEAL_REQUIRED_DOCUMENT_CHANGED'),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Require a category/ }));
+    fireEvent.change(screen.getByLabelText(/Category/), { target: { value: 'BUYER' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add requirement' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /Someone else changed this requirement first/,
+    );
   });
 
   it('never offers an edit or a delete', async () => {

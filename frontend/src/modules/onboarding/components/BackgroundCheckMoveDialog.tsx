@@ -48,6 +48,7 @@ export function BackgroundCheckMoveDialog({
   error,
   onSubmit,
   onCancel,
+  initialMove = null,
 }: {
   moves: BackgroundCheckMove[];
   blockedReasons: string[];
@@ -59,8 +60,10 @@ export function BackgroundCheckMoveDialog({
     risk_rating: BackgroundCheckRisk | null;
   }) => void;
   onCancel: () => void;
+  /** The move chosen on the check runway (frontend-plan §6.3), already selected. */
+  initialMove?: BackgroundCheckState | null;
 }) {
-  const [selected, setSelected] = useState<BackgroundCheckState | null>(null);
+  const [selected, setSelected] = useState<BackgroundCheckState | null>(initialMove);
   const [reason, setReason] = useState('');
   const [risk, setRisk] = useState<BackgroundCheckRisk | ''>('');
 
@@ -75,11 +78,11 @@ export function BackgroundCheckMoveDialog({
     (!move.risk_required || risk !== '');
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <h4 className="text-sm font-semibold text-slate-900">Record a decision</h4>
+    <div className="rounded-lg border border-line bg-surface p-4">
+      <h4 className="text-sm font-semibold text-ink">Record a decision</h4>
 
       <fieldset className="mt-3">
-        <legend className="text-xs font-medium text-slate-600">What has been decided?</legend>
+        <legend className="text-xs font-medium text-ink-2">What has been decided?</legend>
         <div className="mt-2 flex flex-col gap-1">
           {moves.map((candidate) => (
             <label key={candidate.to_value} className="flex items-center gap-2 text-sm">
@@ -100,17 +103,17 @@ export function BackgroundCheckMoveDialog({
       </fieldset>
 
       {clearIsBlocked && (
-        <p className="mt-3 rounded bg-amber-50 p-2 text-xs text-amber-800">
+        <p className="mt-3 rounded bg-attention-tint p-2 text-xs text-attention">
           This company cannot be cleared yet: {blockedReasons.map(describeClearBlocker).join('; ')}.
         </p>
       )}
 
       {move?.risk_required && (
         <label className="mt-3 block text-sm">
-          <span className="text-xs font-medium text-slate-600">Risk rating (required)</span>
+          <span className="text-xs font-medium text-ink-2">Risk rating (required)</span>
           <select
             aria-label="Risk rating"
-            className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
+            className="mt-1 w-full rounded border border-line-strong p-2 text-sm"
             value={risk}
             onChange={(event) => setRisk(event.target.value as BackgroundCheckRisk | '')}
           >
@@ -125,7 +128,7 @@ export function BackgroundCheckMoveDialog({
       )}
 
       {move?.approval_required && (
-        <p data-testid="approval-required-note" className="mt-3 rounded bg-violet-50 p-2 text-xs text-violet-800">
+        <p data-testid="approval-required-note" className="mt-3 rounded bg-transparent p-2 text-xs text-ink">
           This needs a second compliance officer: it is recorded as a proposal, and the
           check moves only when someone else approves it.
         </p>
@@ -133,13 +136,13 @@ export function BackgroundCheckMoveDialog({
 
       {move && (
         <label className="mt-3 block text-sm">
-          <span className="text-xs font-medium text-slate-600">
+          <span className="text-xs font-medium text-ink-2">
             {move.reason_required ? 'Reason (required)' : 'Reason (optional)'}
           </span>
           <textarea
             aria-label="Reason"
             rows={3}
-            className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
+            className="mt-1 w-full rounded border border-line-strong p-2 text-sm"
             value={reason}
             onChange={(event) => setReason(event.target.value)}
           />
@@ -147,7 +150,7 @@ export function BackgroundCheckMoveDialog({
       )}
 
       {error && (
-        <p role="alert" className="mt-3 text-xs text-red-700">
+        <p role="alert" className="mt-3 text-xs text-negative">
           {error}
         </p>
       )}
@@ -164,7 +167,7 @@ export function BackgroundCheckMoveDialog({
               risk_rating: move.risk_required && risk !== '' ? risk : null,
             })
           }
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-40"
+          className="rounded bg-ink px-3 py-1.5 text-sm text-paper disabled:opacity-40"
         >
           {isPending
             ? move?.approval_required
@@ -177,7 +180,7 @@ export function BackgroundCheckMoveDialog({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+          className="rounded border border-line-strong px-3 py-1.5 text-sm"
         >
           Cancel
         </button>

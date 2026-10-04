@@ -1,15 +1,21 @@
 /**
- * An inline form opened inside a panel, with a title and a close button.
+ * A form opened from a page — now a composer surface (frontend-plan §6.10): a sheet
+ * from the right on a wide screen, from the bottom on a narrow one, instead of a box
+ * in the middle of the page. The form inside keeps its own fields and verb; Escape
+ * or the close button calls `onClose`, and focus returns to what opened it.
  *
- * Used for "Add contact" and "Log activity" today, and by whatever Developers
- * 3 and 4 add to the deal and background-check panels. Promoted verbatim out
- * of `ExporterDetailPage.tsx` during the panel split.
- *
- * The close button's `aria-label` includes the title (`Close Add contact`) so
- * two open forms on one page stay distinguishable to a screen reader.
+ * Kept under its old name so every caller moved at once; new code uses `Composer`.
  */
 
-import { X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+
+import { Sheet } from './ui/Dialog';
+
+const WIDE = '(min-width: 1024px)';
+
+function isWide(): boolean {
+  return typeof window === 'undefined' || !window.matchMedia ? true : window.matchMedia(WIDE).matches;
+}
 
 export function FormPanel({
   title,
@@ -20,20 +26,25 @@ export function FormPanel({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const [wide, setWide] = useState(isWide);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const query = window.matchMedia(WIDE);
+    const update = () => setWide(query.matches);
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
+
   return (
-    <div className="mb-4 rounded-lg border border-border bg-surface-subtle p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-ink">{title}</h3>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md p-1 text-ink-faint hover:bg-surface-sunken hover:text-ink"
-          aria-label={`Close ${title}`}
-        >
-          <X size={16} />
-        </button>
-      </div>
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={title}
+      side={wide ? 'right' : 'bottom'}
+    >
       {children}
-    </div>
+    </Sheet>
   );
 }

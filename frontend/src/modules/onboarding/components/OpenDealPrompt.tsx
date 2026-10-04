@@ -12,11 +12,11 @@
  * the buyer and the paperwork are added.
  */
 
-import { Handshake, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components';
+import { Icon } from '@/design/icons';
 
 import { paths } from '../paths';
 import { OpenDealForm } from './OpenDealForm';
@@ -45,17 +45,17 @@ export function OpenDealPrompt({ customerId, isStaff }: OpenDealPromptProps) {
 
   return (
     <div
-      className="flex flex-wrap items-start gap-3 rounded-lg border border-brand-200 bg-brand-50 p-4"
+      className="flex flex-wrap items-start gap-3 rounded-lg border border-line-strong bg-sunken p-4"
       data-extension="open-deal-prompt"
     >
-      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
-        <Handshake size={16} />
+      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sunken text-ink">
+        <Icon.trade size={16} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-brand-900">
+        <p className="text-sm font-medium text-ink">
           This company has something they want financed
         </p>
-        <p className="mt-0.5 text-sm text-brand-900/80">
+        <p className="mt-0.5 text-sm text-ink/80">
           {isStaff
             ? 'Open a deal to record what they want financed, then add the buyer and the paperwork.'
             : 'A staff member can open a deal for it.'}
@@ -63,7 +63,7 @@ export function OpenDealPrompt({ customerId, isStaff }: OpenDealPromptProps) {
       </div>
       {isStaff && (
         <Button size="sm" variant="primary" onClick={() => setOpening(true)}>
-          <Plus size={14} />
+          <Icon.add size={14} />
           Open a deal
         </Button>
       )}

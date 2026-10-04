@@ -64,7 +64,7 @@ export function MarkerControl({ customerId, moves }: MarkerControlProps) {
           <Button
             key={move.to}
             size="sm"
-            variant={move.to === 'ENDED' ? 'ghost' : 'secondary'}
+            variant={move.to === 'ENDED' ? 'quiet' : 'secondary'}
             onClick={() => setPending(move)}
           >
             {MARKER_ACTION_LABEL[move.to]}
@@ -99,12 +99,12 @@ export function MarkerControl({ customerId, moves }: MarkerControlProps) {
               required={pending.reason_required}
             />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={close}>
+              <Button variant="quiet" onClick={close}>
                 Cancel
               </Button>
               <Button
                 type="submit"
-                variant={pending.to === 'ENDED' ? 'danger' : 'primary'}
+                variant={pending.to === 'ENDED' ? 'destructive' : 'primary'}
                 loading={mutation.isPending}
               >
                 Confirm

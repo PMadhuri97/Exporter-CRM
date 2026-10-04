@@ -208,3 +208,31 @@ describe('who acted', () => {
     expect(unnamed).not.toHaveTextContent(ACTOR_ID);
   });
 });
+
+describe('the ledger (frontend-plan §6.5)', () => {
+  it('bundles rows written together into one "same moment" event, and keeps others apart', async () => {
+    vi.mocked(listCompanyHistory).mockResolvedValue(
+      page([
+        entry({ id: 'a', dimension: 'background_check', to_value: 'CLEAR', occurred_at: '2026-10-03T11:04:00Z' }),
+        entry({ id: 'b', dimension: 'journey', to_value: 'CUSTOMER', occurred_at: '2026-10-03T11:04:00Z' }),
+        entry({ id: 'c', dimension: 'conversation', to_value: 'INTERESTED', occurred_at: '2026-10-02T10:12:00Z' }),
+      ]),
+    );
+    renderWith(<CompanyHistory customerId={COMPANY_ID} />);
+    expect(await rows()).toHaveLength(3);
+    expect(screen.getAllByText(/Same moment — 2 changes recorded together/)).toHaveLength(1);
+    // A rule per day.
+    expect(screen.getByRole('region', { name: '3 Oct 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '2 Oct 2026' })).toBeInTheDocument();
+  });
+
+  it('offers a lane chip only for the dimensions it has been sent', async () => {
+    vi.mocked(listCompanyHistory).mockResolvedValue(page([entry({ dimension: 'journey' })]));
+    renderWith(<CompanyHistory customerId={COMPANY_ID} />);
+    await rows();
+    const filters = screen.getByRole('group', { name: 'Filter history' });
+    expect(within(filters).getByRole('button', { name: 'Journey' })).toBeInTheDocument();
+    expect(within(filters).queryByRole('button', { name: 'Background check' })).not.toBeInTheDocument();
+    expect(within(filters).queryByRole('button', { name: 'Verification' })).not.toBeInTheDocument();
+  });
+});

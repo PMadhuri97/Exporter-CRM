@@ -50,13 +50,14 @@ export const RISK_LEVELS: VerificationRiskLevel[] = ['LOW', 'MEDIUM', 'HIGH', 'C
 export const REVIEW_OUTCOMES: VerificationReviewStatus[] = ['ACCEPTED', 'REJECTED', 'ESCALATED'];
 
 export function chipClasses(value: string): string {
-  // CRITICAL is a solid fill rather than another tinted pill: it has to read as a
+  // CRITICAL is the one filled, hatched mark (frontend-plan §5.2): it has to read as a
   // different *class* of signal at a glance, not as a slightly darker HIGH.
-  if (value === 'CRITICAL') return 'bg-red-600 text-white';
-  if (['PASSED', 'LOW', 'ACCEPTED', 'CLOSED'].includes(value)) return 'bg-emerald-50 text-emerald-700';
-  if (['FAILED', 'HIGH', 'REJECTED'].includes(value)) return 'bg-red-50 text-red-700';
-  if (['REVIEW', 'MEDIUM', 'ESCALATED', 'NEEDS_REVIEW', 'OPEN'].includes(value)) return 'bg-amber-50 text-amber-700';
-  return 'bg-surface-sunken text-ink-muted';
+  if (value === 'CRITICAL') return 'hatch bg-negative-solid font-bold text-white';
+  if (['PASSED', 'LOW', 'ACCEPTED', 'CLOSED'].includes(value)) return 'bg-positive-tint text-positive';
+  if (value === 'HIGH') return 'bg-negative-tint text-negative ring-1 ring-inset ring-negative/50';
+  if (['FAILED', 'REJECTED'].includes(value)) return 'bg-negative-tint text-negative';
+  if (['REVIEW', 'MEDIUM', 'ESCALATED', 'NEEDS_REVIEW', 'OPEN'].includes(value)) return 'bg-attention-tint text-attention';
+  return 'bg-sunken text-ink-2';
 }
 
 /**

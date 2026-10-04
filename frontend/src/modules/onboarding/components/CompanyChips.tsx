@@ -4,11 +4,13 @@
  * none of them is a stage of another.
  */
 
-import { Chip } from '@/components';
+import { Tag } from '@/components';
+import { cn } from '@/lib/cn';
 
 import {
   JOURNEY_CHIP_CLASSES,
   JOURNEY_LABEL,
+  JOURNEY_STAGES,
   MARKER_CHIP_CLASSES,
   MARKER_LABEL,
   QUALIFICATION_CHIP_CLASSES,
@@ -16,16 +18,39 @@ import {
 } from '../constants';
 import type { ExporterJourney, ExporterMarker, QualificationState } from '../types';
 
+/** The journey's progress as ink dots — `●○○` lead, `●●○` prospect, `●●●` customer
+ * (frontend-plan §5.2). Progress, not a state, so it is never coloured. */
+export function JourneyDots({ journey, className }: { journey: ExporterJourney; className?: string }) {
+  const reached = JOURNEY_STAGES.indexOf(journey) + 1;
+  return (
+    <span aria-hidden className={cn('inline-flex items-center gap-[3px]', className)}>
+      {JOURNEY_STAGES.map((stage, index) => (
+        <span
+          key={stage}
+          className={cn(
+            'h-[7px] w-[7px] rounded-full border border-ink',
+            index < reached ? 'bg-ink' : 'bg-transparent',
+          )}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function JourneyChip({ journey }: { journey: ExporterJourney }) {
   return (
-    <Chip dot className={JOURNEY_CHIP_CLASSES[journey]} data-testid="journey-chip">
+    <Tag
+      className={JOURNEY_CHIP_CLASSES[journey]}
+      icon={<JourneyDots journey={journey} />}
+      data-testid="journey-chip"
+    >
       {JOURNEY_LABEL[journey]}
-    </Chip>
+    </Tag>
   );
 }
 
 export function QualificationChip({ state }: { state: QualificationState }) {
-  return <Chip className={QUALIFICATION_CHIP_CLASSES[state]}>{QUALIFICATION_LABEL[state]}</Chip>;
+  return <Tag className={QUALIFICATION_CHIP_CLASSES[state]}>{QUALIFICATION_LABEL[state]}</Tag>;
 }
 
 /** Nothing at all for `NONE`: an unmarked relationship needs no badge. */
@@ -38,8 +63,8 @@ export function MarkerBadge({
 }) {
   if (marker === 'NONE') return null;
   return (
-    <Chip className={MARKER_CHIP_CLASSES[marker]} title={reason ?? undefined}>
+    <Tag className={MARKER_CHIP_CLASSES[marker]} title={reason ?? undefined}>
       {MARKER_LABEL[marker]}
-    </Chip>
+    </Tag>
   );
 }

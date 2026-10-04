@@ -1,25 +1,28 @@
-import { Compass } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-import { buttonClasses } from './styles';
+import { LINK_CLASSES } from './styles';
 
-/** Any address the app does not know — never a blank page. */
+/** The heading every unknown — or forbidden — address shows; tests read it from here. */
+export const NOT_FOUND_TITLE = 'Nothing here.';
+
+/**
+ * Any address the app does not know, and any module a role may not use: the same
+ * component, copy and title for both (§4.3), so a forbidden URL reads exactly like
+ * one that does not exist. Never a blank page, never "you don't have access".
+ */
 export function NotFound({
-  title = 'Page not found',
+  title = NOT_FOUND_TITLE,
   children = 'The address may be mistyped, or the page may have moved.',
 }: {
   title?: string;
   children?: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center py-20 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-sunken text-ink-muted">
-        <Compass size={22} />
-      </div>
-      <h1 className="mt-4 text-lg font-semibold text-ink">{title}</h1>
-      <p className="mt-1 text-sm text-ink-muted">{children}</p>
-      <Link to="/" className={buttonClasses({ variant: 'primary', className: 'mt-6' })}>
-        Go to Home
+    <div className="max-w-xl py-16 sm:py-24">
+      <h1 className="font-display text-display-xl text-ink">{title}</h1>
+      <p className="mt-3 text-lead text-ink-2">{children}</p>
+      <Link to="/" className={`mt-6 inline-block text-body ${LINK_CLASSES}`}>
+        Back to your desk
       </Link>
     </div>
   );

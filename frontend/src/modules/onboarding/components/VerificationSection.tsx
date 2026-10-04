@@ -26,9 +26,9 @@
  *   read-only. The current cycle is the server's (`current_cycle` on the standing).
  */
 
-import { Activity, AlertTriangle, Building2, Info, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 
+import { Icon } from '@/design/icons';
 import { humanize } from '@/lib/format';
 
 import { useBackgroundCheck, useCheckCycles, useVerificationResults } from '../hooks';
@@ -74,7 +74,7 @@ function FilteredEmpty({ filter }: { filter: ResultFilter }) {
   return (
     <p
       data-testid="verification-filter-empty"
-      className="rounded-lg border border-dashed border-border-strong bg-surface-subtle px-4 py-6 text-center text-xs text-ink-muted"
+      className="rounded-lg border border-dashed border-line-strong bg-paper px-4 py-6 text-center text-xs text-ink-2"
     >
       {text}
     </p>
@@ -105,7 +105,7 @@ function EarlierCycle({
         {label} — {results.length} result{results.length === 1 ? '' : 's'}, read-only
       </button>
       {open && (
-        <div className="mt-2 rounded-lg border border-border px-4 opacity-90">
+        <div className="mt-2 rounded-lg border border-line px-4 opacity-90">
           {results.map((result) => (
             <VerificationResultRow
               key={result.id}
@@ -132,14 +132,14 @@ function MissingChecks({ results }: { results: VerificationResult[] }) {
   if (missing.length === 0) return null;
 
   return (
-    <div className="mt-4 rounded-lg border border-dashed border-border-strong bg-surface-subtle px-4 py-3">
+    <div className="mt-4 rounded-lg border border-dashed border-line-strong bg-paper px-4 py-3">
       <div className="flex items-start gap-2">
-        <Info size={14} className="mt-0.5 shrink-0 text-ink-faint" />
+        <Icon.info size={14} className="mt-0.5 shrink-0 text-ink-3" />
         <div className="min-w-0">
           <p className="text-xs font-medium text-ink">
             {missing.length} check {missing.length === 1 ? 'type has' : 'types have'} no result
           </p>
-          <p className="mt-0.5 text-xs leading-5 text-ink-muted">
+          <p className="mt-0.5 text-xs leading-5 text-ink-2">
             No provider integration runs these today. They appear once a result is recorded
             by hand or a provider is connected.
           </p>
@@ -147,7 +147,7 @@ function MissingChecks({ results }: { results: VerificationResult[] }) {
             {missing.map((type) => (
               <span
                 key={type}
-                className="inline-flex rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-faint"
+                className="inline-flex rounded-sm border border-line bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-3"
               >
                 {humanize(type)}
               </span>
@@ -161,10 +161,10 @@ function MissingChecks({ results }: { results: VerificationResult[] }) {
 
 function EmptyScreenings() {
   return (
-    <div className="rounded-lg border border-dashed border-border-strong bg-surface-subtle px-4 py-8 text-center">
-      <ShieldCheck className="mx-auto text-ink-faint" size={24} />
+    <div className="rounded-lg border border-dashed border-line-strong bg-paper px-4 py-8 text-center">
+      <Icon.backgroundCheck className="mx-auto text-ink-3" size={24} />
       <p className="mt-2 text-sm font-medium text-ink">No screening results yet</p>
-      <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-ink-muted">
+      <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-ink-2">
         No provider integration is connected, so no company screening has run for this
         exporter. A result recorded by hand appears here.
       </p>
@@ -211,14 +211,14 @@ export function VerificationSection({ customerId }: { customerId: string }) {
 
   return (
     <section data-extension="screenings" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="min-w-0 rounded-lg border border-border bg-surface p-5 shadow-card">
+      <div className="min-w-0 rounded-lg border border-line bg-surface p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <ShieldCheck size={18} className="text-brand-600" />
+              <Icon.backgroundCheck size={18} className="text-ink" />
               <h2 className="font-semibold text-ink">Screenings</h2>
             </div>
-            <p className="mt-1 text-sm text-ink-muted">
+            <p className="mt-1 text-sm text-ink-2">
               Check results, bank-monitoring signals and compliance review for this exporter.
             </p>
           </div>
@@ -226,7 +226,7 @@ export function VerificationSection({ customerId }: { customerId: string }) {
             <button
               type="button"
               onClick={() => setRecording(true)}
-              className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-ink-muted hover:bg-surface-subtle"
+              className="rounded-lg border border-line px-3 py-2 text-sm font-medium text-ink-2 hover:bg-paper"
             >
               Record a result
             </button>
@@ -243,21 +243,21 @@ export function VerificationSection({ customerId }: { customerId: string }) {
           />
         )}
 
-        <div className="mt-4 flex gap-6 border-b border-border">
+        <div className="mt-4 flex gap-6 border-b border-line">
           <button
             type="button"
             onClick={() => setTab('COMPANY')}
-            className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium ${tab === 'COMPANY' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-muted hover:text-ink'}`}
+            className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium ${tab === 'COMPANY' ? 'border-ink text-ink' : 'border-transparent text-ink-2 hover:text-ink'}`}
           >
-            <Building2 size={15} /> Company screenings{' '}
-            <span className="text-xs text-ink-faint">({results.length})</span>
+            <Icon.company size={15} /> Company screenings{' '}
+            <span className="text-xs text-ink-3">({results.length})</span>
           </button>
           <button
             type="button"
             onClick={() => setTab('BANK')}
-            className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium ${tab === 'BANK' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-muted hover:text-ink'}`}
+            className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium ${tab === 'BANK' ? 'border-ink text-ink' : 'border-transparent text-ink-2 hover:text-ink'}`}
           >
-            <Activity size={15} /> Bank activity
+            <Icon.activity size={15} /> Bank activity
           </button>
         </div>
 
@@ -266,13 +266,13 @@ export function VerificationSection({ customerId }: { customerId: string }) {
             <BankActivityPanel customerId={customerId} />
           ) : query.isLoading ? (
             <div data-testid="verification-loading" className="space-y-3">
-              <div className="h-20 animate-pulse rounded bg-surface-sunken" />
-              <div className="h-20 animate-pulse rounded bg-surface-sunken" />
+              <div className="h-20 animate-pulse rounded bg-sunken" />
+              <div className="h-20 animate-pulse rounded bg-sunken" />
             </div>
           ) : query.isError ? (
-            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div role="alert" className="rounded-lg border border-negative/30 bg-negative-tint px-4 py-3 text-sm text-negative">
               <div className="flex items-start gap-2">
-                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                <Icon.warning size={16} className="mt-0.5 shrink-0" />
                 <div>
                   Could not load screening results.{' '}
                   <button type="button" onClick={() => void query.refetch()} className="font-medium underline">
@@ -290,10 +290,10 @@ export function VerificationSection({ customerId }: { customerId: string }) {
                     type="button"
                     aria-pressed={filter === option.value}
                     onClick={() => setFilter(option.value)}
-                    className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                    className={`rounded-md border px-3 py-1 text-xs font-medium ${
                       filter === option.value
                         ? 'border-ink bg-ink text-surface'
-                        : 'border-border text-ink-muted hover:text-ink'
+                        : 'border-line text-ink-2 hover:text-ink'
                     }`}
                   >
                     {option.label}{' '}
@@ -308,7 +308,7 @@ export function VerificationSection({ customerId }: { customerId: string }) {
               ) : companyResults.length === 0 && filter === 'ALL' ? (
                 <EmptyScreenings />
               ) : companyResults.length === 0 ? null : (
-                <div className="rounded-lg border border-border px-4">
+                <div className="rounded-lg border border-line px-4">
                   {companyResults.map((result) => (
                     <VerificationResultRow
                       key={result.id}
@@ -323,11 +323,11 @@ export function VerificationSection({ customerId }: { customerId: string }) {
               {otherResults.length > 0 && (
                 <div data-testid="other-company-checks" className="mt-4">
                   <p className="text-xs font-semibold text-ink">Other checks on this company</p>
-                  <p className="mt-0.5 text-xs leading-5 text-ink-muted">
+                  <p className="mt-0.5 text-xs leading-5 text-ink-2">
                     Recorded on this company outside the screening set. They count toward the
                     background check like any other result.
                   </p>
-                  <div className="mt-2 rounded-lg border border-border px-4">
+                  <div className="mt-2 rounded-lg border border-line px-4">
                     {otherResults.map((result) => (
                       <VerificationResultRow
                         key={result.id}

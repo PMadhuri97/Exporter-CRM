@@ -19,9 +19,9 @@
  * no action, because the server would refuse it.
  */
 
-import { ArrowRight, Info } from 'lucide-react';
 
 import { Button } from '@/components';
+import { Icon } from '@/design/icons';
 
 export interface NotInPipelineNoticeProps {
   /** What is not available, in the words of the panel it replaces. */
@@ -35,23 +35,23 @@ export interface NotInPipelineNoticeProps {
 export function NotInPipelineNotice({ what, onBringIn, busy }: NotInPipelineNoticeProps) {
   return (
     <div
-      className="flex flex-col gap-3 rounded-lg border border-dashed border-border-strong bg-surface-subtle p-5 text-sm"
+      className="flex flex-col gap-3 rounded-lg border border-dashed border-line-strong bg-paper p-5 text-sm"
       data-testid="not-in-pipeline-notice"
     >
       <p className="flex items-start gap-2 font-medium text-ink">
-        <Info size={16} className="mt-0.5 shrink-0 text-ink-faint" />
+        <Icon.info size={16} className="mt-0.5 shrink-0 text-ink-3" />
         {what} is not needed: this company is not in the sales pipeline.
       </p>
-      <p className="text-ink-muted">
+      <p className="text-ink-2">
         It exists because it was the buyer on a deal, so nobody is selling to it. It is
         still a full company record — it can be screened and cleared like any other.
       </p>
       {onBringIn && (
         <div className="flex flex-wrap items-center gap-3">
           <Button size="sm" variant="secondary" onClick={onBringIn} disabled={busy}>
-            Bring into the pipeline <ArrowRight size={14} />
+            Bring into the pipeline <Icon.forward size={14} />
           </Button>
-          <span className="text-xs text-ink-faint">
+          <span className="text-xs text-ink-3">
             Do this if we are going to sell to them. Its journey starts at LEAD.
           </span>
         </div>

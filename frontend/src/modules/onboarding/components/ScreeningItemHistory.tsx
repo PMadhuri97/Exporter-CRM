@@ -7,9 +7,9 @@
  * as the server returns it.
  */
 
-import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 
+import { Icon } from '@/design/icons';
 import { formatDateTime } from '@/lib/format';
 
 import { useScreeningItemHistory } from '../hooks';
@@ -44,25 +44,25 @@ export function ScreeningItemHistory({
         aria-expanded={open}
         aria-label={`${open ? 'Hide' : 'Show'} history for ${label}`}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-muted hover:text-ink"
+        className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-2 hover:text-ink"
       >
-        {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        {open ? <Icon.caretUp size={12} /> : <Icon.caretDown size={12} />}
         {open ? 'Hide history' : 'History'}
       </button>
 
       {open && (
         <div data-testid={`screening-history-${itemKey}`} className="mt-2 text-[11px]">
           {query.isLoading ? (
-            <p className="text-ink-faint">Loading history…</p>
+            <p className="text-ink-3">Loading history…</p>
           ) : query.isError || !page ? (
-            <p role="alert" className="text-red-700">
+            <p role="alert" className="text-negative">
               The history could not be loaded.{' '}
               <button type="button" className="underline" onClick={() => void query.refetch()}>
                 Retry
               </button>
             </p>
           ) : page.total === 0 ? (
-            <p className="text-ink-faint">No decision has been recorded on this item yet.</p>
+            <p className="text-ink-3">No decision has been recorded on this item yet.</p>
           ) : (
             <>
               <ol className="space-y-1.5">
@@ -70,20 +70,20 @@ export function ScreeningItemHistory({
                   <li
                     key={entry.id}
                     data-testid="screening-history-entry"
-                    className="rounded border border-border bg-surface px-2 py-1.5"
+                    className="rounded border border-line bg-surface px-2 py-1.5"
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <VerificationStatusChip value={entry.status} />
-                      <span className="text-ink-muted">{entry.reviewed_by_name ?? formatReviewer(entry.reviewed_by)}</span>
-                      <span className="text-ink-faint">
+                      <span className="text-ink-2">{entry.reviewed_by_name ?? formatReviewer(entry.reviewed_by)}</span>
+                      <span className="text-ink-3">
                         {formatDateTime(entry.reviewed_at ?? entry.created_at)}
                       </span>
                     </div>
-                    {entry.comment && <p className="mt-1 text-ink-muted">{entry.comment}</p>}
+                    {entry.comment && <p className="mt-1 text-ink-2">{entry.comment}</p>}
                   </li>
                 ))}
               </ol>
-              <div className="mt-2 flex items-center justify-between gap-2 text-ink-faint">
+              <div className="mt-2 flex items-center justify-between gap-2 text-ink-3">
                 <span>
                   {page.offset + 1}–{page.offset + page.items.length} of {page.total}
                 </span>

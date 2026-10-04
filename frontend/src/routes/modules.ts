@@ -10,18 +10,13 @@
  *
  * The modules' own sub-routes gate their write screens the same way
  * (`modules/onboarding/routes.tsx`: add company, import, RXIL intake).
+ *
+ * Phase 2 (frontend-plan §7): the command bar's "Go to" list, the `g` shortcuts and
+ * the `?` sheet are generated from this table too, so a module appears in all of them
+ * or in none. Rail labels follow §7.2 — Desk, Companies, Agenda — and Pipeline is the
+ * Companies board now (`/pipeline` redirects there, so old links keep working).
  */
 
-import type { LucideIcon } from 'lucide-react';
-import {
-  Building2,
-  FileCheck,
-  Home,
-  Kanban,
-  ListChecks,
-  Settings,
-  SlidersHorizontal,
-} from 'lucide-react';
 import { lazy, type ComponentType } from 'react';
 
 import {
@@ -30,9 +25,11 @@ import {
   DealRequiredDocumentsPage,
   FollowUpsPage,
   LegacyExporterRoutes,
-  PipelinePage,
+  PipelineRedirect,
   QualificationCriteriaPage,
+  ReviewPage,
 } from '@/modules/onboarding';
+import type { IconName } from '@/design/icons';
 import { SettingsRoutes } from '@/modules/settings';
 import { can, type Capability } from '@/platform/access';
 
@@ -42,9 +39,11 @@ export interface NavRow {
   label: string;
   /** Where the row links; the module's `path` may be a splat. */
   to: string;
-  icon: LucideIcon;
+  icon: IconName;
   /** `main` rows sit at the top of the rail; `settings` rows at its foot. */
   group: 'main' | 'settings';
+  /** The key after `g` that goes here (`g c` → Companies). */
+  shortcut?: string;
 }
 
 export interface AppModule {
@@ -73,29 +72,32 @@ export const APP_MODULES: readonly AppModule[] = [
     requires: ['crm.read'],
     Screen: HomePage,
     denied: 'noWorkspace',
-    nav: { label: 'Home', to: '/', icon: Home, group: 'main' },
+    nav: { label: 'Desk', to: '/', icon: 'desk', group: 'main', shortcut: 'h' },
   },
   {
     id: 'companies',
     path: '/companies/*',
     requires: ['crm.read'],
     Screen: CompanyRoutes,
-    nav: { label: 'Companies', to: '/companies', icon: Building2, group: 'main' },
+    nav: { label: 'Companies', to: '/companies', icon: 'company', group: 'main', shortcut: 'c' },
   },
   {
     id: 'follow-ups',
     path: '/follow-ups',
     requires: ['crm.read'],
     Screen: FollowUpsPage,
-    nav: { label: 'Follow-ups', to: '/follow-ups', icon: ListChecks, group: 'main' },
+    nav: { label: 'Agenda', to: '/follow-ups', icon: 'agenda', group: 'main', shortcut: 'f' },
   },
+  // The compliance working day (frontend-plan §8.8). Absent for every other role.
   {
-    id: 'pipeline',
-    path: '/pipeline',
-    requires: ['crm.read'],
-    Screen: PipelinePage,
-    nav: { label: 'Pipeline', to: '/pipeline', icon: Kanban, group: 'main' },
+    id: 'review',
+    path: '/review',
+    requires: ['compliance.queue'],
+    Screen: ReviewPage,
+    nav: { label: 'Review', to: '/review', icon: 'review', group: 'main', shortcut: 'r' },
   },
+  // The Companies board's older address (no rail row: Companies is the row).
+  { id: 'pipeline', path: '/pipeline', requires: ['crm.read'], Screen: PipelineRedirect },
   { id: 'deal', path: '/deals/:dealId', requires: ['crm.read'], Screen: DealDetailPage },
   // The old `/exporters/*` addresses redirect into the CRM, so they need it too.
   {
@@ -110,7 +112,7 @@ export const APP_MODULES: readonly AppModule[] = [
     path: '/settings/*',
     requires: [],
     Screen: SettingsRoutes,
-    nav: { label: 'Settings', to: '/settings', icon: Settings, group: 'settings' },
+    nav: { label: 'Settings', to: '/settings', icon: 'settings', group: 'settings', shortcut: 's' },
   },
   // Static paths outrank the `/settings/*` splat in React Router, whatever the order.
   {
@@ -121,7 +123,7 @@ export const APP_MODULES: readonly AppModule[] = [
     nav: {
       label: 'Qualification criteria',
       to: '/settings/qualification-criteria',
-      icon: SlidersHorizontal,
+      icon: 'criteria',
       group: 'settings',
     },
   },
@@ -134,7 +136,7 @@ export const APP_MODULES: readonly AppModule[] = [
     nav: {
       label: 'Required documents',
       to: '/settings/deal-required-documents',
-      icon: FileCheck,
+      icon: 'requiredDocuments',
       group: 'settings',
     },
   },
@@ -145,4 +147,11 @@ export function navRowsFor(role: string | null | undefined): NavRow[] {
   return APP_MODULES.filter((module) => module.nav && can(role, module.requires)).map(
     (module) => module.nav as NavRow,
   );
+}
+
+/** The rail row a path belongs to — the most specific one (`/settings/x` over `/settings`). */
+export function navRowForPath(rows: readonly NavRow[], pathname: string): NavRow | undefined {
+  return rows
+    .filter((row) => (row.to === '/' ? pathname === '/' : pathname === row.to || pathname.startsWith(`${row.to}/`)))
+    .sort((a, b) => b.to.length - a.to.length)[0];
 }

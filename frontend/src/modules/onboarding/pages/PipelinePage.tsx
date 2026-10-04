@@ -9,47 +9,57 @@
  * left out by the server, as in the list.
  */
 
-import { Search } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { Input, PageHeader, Skeleton } from '@/components';
-import { cn } from '@/lib/cn';
+import { EmptyLine, Input, PageHeader, Skeleton } from '@/components';
+import { Icon } from '@/design/icons';
 
-import { JourneyChip, MarkerBadge, QualificationChip } from '../components';
+import { CompaniesViewSwitch, JourneyDots, Standing } from '../components';
 import { JOURNEY_LABEL, JOURNEY_STAGES } from '../constants';
-import { useExporterProfiles } from '../hooks';
+import { useExporterProfiles, usePrefetchCompany } from '../hooks';
+import { preloadExporterDetailPage } from '../lazyPages';
 import { paths } from '../paths';
 import type { ExporterJourney, ExporterProfileListItem } from '../types';
 
 const COLUMN_LIMIT = 100;
 
-/** The column's top rule, in the stage's colour. */
-const COLUMN_ACCENT: Record<ExporterJourney, string> = {
-  LEAD: 'border-t-journey-lead',
-  PROSPECT: 'border-t-journey-prospect',
-  CUSTOMER: 'border-t-journey-customer',
+/**
+ * What moves a company out of each column — said, because nothing on the board can
+ * move one (the journey is never moved by hand, architecture §4).
+ */
+const COLUMN_NOTE: Record<ExporterJourney, string> = {
+  LEAD: 'A qualification decision moves a lead to prospect.',
+  PROSPECT: 'A Clear background check makes a prospect a customer.',
+  CUSTOMER: 'Customers can open deals and hand them over.',
 };
 
-function PipelineCard({ profile }: { profile: ExporterProfileListItem }) {
+function PipelineCard({
+  profile,
+  onIntent,
+}: {
+  profile: ExporterProfileListItem;
+  onIntent: (id: string) => void;
+}) {
   return (
     <Link
       to={paths.company(profile.customer_id)}
       data-testid="pipeline-card"
-      className="block rounded-lg border border-border bg-surface p-3 shadow-card transition-colors hover:border-brand-500"
+      onMouseEnter={() => onIntent(profile.customer_id)}
+      onFocus={() => onIntent(profile.customer_id)}
+      className="block rounded-xl border border-line bg-surface p-3.5 transition-colors duration-quick hover:border-ink-3"
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-medium text-ink">
-          {profile.name ?? <span className="italic text-ink-faint">Unnamed lead</span>}
+        <span className="font-display text-lead leading-snug text-ink">
+          {profile.name ?? <span className="italic text-ink-3">Unnamed lead</span>}
         </span>
-        {profile.country && <span className="shrink-0 text-xs text-ink-faint">{profile.country}</span>}
+        {profile.country && <span className="shrink-0 text-caption text-ink-3">{profile.country}</span>}
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <QualificationChip state={profile.qualification} />
-        <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />
+      <div className="mt-2">
+        <Standing size="inline" qualification={profile.qualification} marker={profile.marker} />
       </div>
       {profile.relationship_manager && (
-        <div className="mt-2 text-xs text-ink-muted">{profile.relationship_manager}</div>
+        <div className="mt-2 text-caption text-ink-3">{profile.relationship_manager}</div>
       )}
     </Link>
   );
@@ -61,37 +71,41 @@ function PipelineColumn({ journey, name }: { journey: ExporterJourney; name: str
     name: name || undefined,
     limit: COLUMN_LIMIT,
   });
+  const prefetch = usePrefetchCompany();
+  // Ahead of the click: the dossier's code and the company's record.
+  const prepare = (customerId: string) => {
+    void preloadExporterDetailPage();
+    void prefetch(customerId);
+  };
   const profiles = data?.profiles ?? [];
 
   return (
-    <section
-      aria-label={JOURNEY_LABEL[journey]}
-      className={cn(
-        'flex min-w-0 flex-col rounded-lg border border-t-2 border-border bg-surface-sunken/60',
-        COLUMN_ACCENT[journey],
-      )}
-    >
-      <header className="flex items-center justify-between px-3 py-2.5">
-        <JourneyChip journey={journey} />
-        {!isLoading && !isError && (
-          <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium tabular-nums text-ink-muted">
-            {profiles.length}
-            {profiles.length === COLUMN_LIMIT ? '+' : ''}
-          </span>
-        )}
+    <section aria-label={JOURNEY_LABEL[journey]} className="flex min-w-0 flex-col">
+      <header className="border-b border-ink pb-2">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="flex items-center gap-2 font-display text-display-sm text-ink">
+            <JourneyDots journey={journey} />
+            {JOURNEY_LABEL[journey]}
+          </h2>
+          {!isLoading && !isError && (
+            <span className="font-display text-display-sm tabular-nums text-ink-2">
+              {profiles.length}
+              {profiles.length === COLUMN_LIMIT ? '+' : ''}
+            </span>
+          )}
+        </div>
+        <p className="mt-0.5 text-caption text-ink-3">{COLUMN_NOTE[journey]}</p>
       </header>
-      <div className="flex flex-col gap-2 px-3 pb-3">
-        {isLoading && Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
-        {isError && (
-          <div className="px-3 py-8 text-center text-xs text-status-failed">Couldn't load this stage.</div>
-        )}
+      <div className="flex flex-col gap-2 pt-3">
+        {isLoading && Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+        {isError && <p className="py-6 text-secondary text-negative">Couldn't load this stage.</p>}
         {!isLoading &&
           !isError &&
-          profiles.map((profile) => <PipelineCard key={profile.customer_id} profile={profile} />)}
+          profiles.map((profile) => (
+            <PipelineCard key={profile.customer_id} profile={profile} onIntent={prepare} />
+          ))}
         {!isLoading && !isError && profiles.length === 0 && (
-          <div className="rounded-lg border border-dashed border-border-strong px-3 py-8 text-center text-xs text-ink-faint">
-            No companies in this stage
-          </div>
+          <EmptyLine>No companies in this stage</EmptyLine>
         )}
       </div>
     </section>
@@ -105,8 +119,9 @@ export function PipelinePage() {
   return (
     <div>
       <PageHeader
-        title="Pipeline"
-        description="Companies by journey stage. Stages move on their own — a qualification decision moves a lead to prospect."
+        title="Companies"
+        meta={<CompaniesViewSwitch view="board" />}
+        description="The same companies as three journey columns. Nothing here moves a company: the journey moves on its own, when the decisions behind it are made."
         actions={
           <form
             role="search"
@@ -116,15 +131,17 @@ export function PipelinePage() {
               setNameFilter(searchInput.trim());
             }}
           >
-            <Search
+            <Icon.search
               size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
+              aria-hidden
             />
             <Input
               type="search"
+              data-page-search
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search by company name…"
+              placeholder="Search by name"
               aria-label="Search by company name"
               className="pl-9 sm:w-72"
             />
@@ -132,7 +149,7 @@ export function PipelinePage() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-6">
         {JOURNEY_STAGES.map((journey) => (
           <PipelineColumn key={journey} journey={journey} name={nameFilter} />
         ))}

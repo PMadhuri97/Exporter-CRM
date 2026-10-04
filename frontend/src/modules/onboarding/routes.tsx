@@ -17,7 +17,7 @@
  * code is never downloaded.
  */
 
-import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom';
 
 import { NotFound } from '@/components';
 import { Gate } from '@/platform/access';
@@ -28,14 +28,25 @@ import {
   ExporterDetailPage,
   ExportersListPage,
   IdentityCompletionPage,
+  PipelinePage,
   RxilIntakePage,
 } from './lazyPages';
 import { paths } from './paths';
 
+/**
+ * Companies has two views of one list (frontend-plan §8.3): the register (rows) and
+ * the board (three journey columns). `?view=board` picks the board, so a view is a
+ * URL that can be shared.
+ */
+function CompaniesIndex() {
+  const [params] = useSearchParams();
+  return params.get('view') === 'board' ? <PipelinePage /> : <ExportersListPage />;
+}
+
 export function CompanyRoutes() {
   return (
     <Routes>
-      <Route index element={<ExportersListPage />} />
+      <Route index element={<CompaniesIndex />} />
       <Route
         path="new"
         element={
@@ -78,6 +89,11 @@ function Redirect({ to }: { to: string }) {
 function CompanyRedirect({ documents = false }: { documents?: boolean }) {
   const { customerId = '' } = useParams();
   return <Redirect to={paths.company(customerId, documents ? 'documents' : undefined)} />;
+}
+
+/** `/pipeline` was its own screen until Phase 2 folded it into Companies as the board. */
+export function PipelineRedirect() {
+  return <Redirect to={paths.board} />;
 }
 
 function DealRedirect() {

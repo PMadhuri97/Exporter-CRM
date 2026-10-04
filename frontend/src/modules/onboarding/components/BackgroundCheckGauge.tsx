@@ -16,13 +16,25 @@
 
 import type { BackgroundCheckState } from '../types';
 
+// One meaning per value (frontend-plan §5.2): not started is idle, in review is
+// progress, more info is attention, clear is positive, flagged and on hold are
+// negative. The lamp in front repeats the state as a shape (§18.2).
 const STYLES: Record<BackgroundCheckState, string> = {
-  NOT_STARTED: 'bg-slate-100 text-slate-600 ring-slate-500/20',
-  IN_REVIEW: 'bg-blue-50 text-blue-700 ring-blue-700/20',
-  MORE_INFO: 'bg-amber-50 text-amber-800 ring-amber-600/20',
-  CLEAR: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  FLAGGED: 'bg-red-50 text-red-700 ring-red-600/20',
-  ON_HOLD: 'bg-orange-50 text-orange-800 ring-orange-600/30',
+  NOT_STARTED: 'bg-sunken text-ink-2',
+  IN_REVIEW: 'bg-progress-tint text-progress',
+  MORE_INFO: 'bg-attention-tint text-attention',
+  CLEAR: 'bg-positive-tint text-positive',
+  FLAGGED: 'bg-negative-tint text-negative',
+  ON_HOLD: 'bg-negative-tint text-negative',
+};
+
+const LAMP: Record<BackgroundCheckState, string> = {
+  NOT_STARTED: '◌',
+  IN_REVIEW: '◔',
+  MORE_INFO: '?',
+  CLEAR: '●',
+  FLAGGED: '▲',
+  ON_HOLD: '■',
 };
 
 const LABELS: Record<BackgroundCheckState, string> = {
@@ -59,14 +71,17 @@ export function BackgroundCheckGauge({
         <span
           data-testid="background-check-gauge"
           data-value={value}
-          className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-medium ring-1 ring-inset ${STYLES[value]}`}
+          className={`inline-flex w-fit items-center gap-1.5 rounded-sm px-2 py-1 text-body font-medium ${STYLES[value]}`}
         >
+          <span aria-hidden className="text-[0.8em] leading-none">
+            {LAMP[value]}
+          </span>
           {LABELS[value]}
         </span>
         {awaitingApproval && (
           <span
             data-testid="awaiting-approval-badge"
-            className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-600/20"
+            className="inline-flex items-center rounded-sm border border-dashed border-ink px-1.5 py-0.5 text-caption font-medium text-ink"
           >
             Awaiting approval
           </span>
@@ -74,13 +89,13 @@ export function BackgroundCheckGauge({
         {rekycDue && (
           <span
             data-testid="rekyc-due-badge"
-            className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20"
+            className="inline-flex items-center gap-1 rounded-sm bg-attention-tint px-1.5 py-0.5 text-caption font-medium text-attention"
           >
             Re-KYC due
           </span>
         )}
       </div>
-      <p className="text-xs text-slate-500">
+      <p className="text-secondary text-ink-3">
         {DESCRIPTIONS[value]}
         {awaitingApproval &&
           ' A proposed decision is waiting for a second compliance officer to approve it.'}

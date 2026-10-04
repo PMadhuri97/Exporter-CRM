@@ -45,10 +45,10 @@
  */
 
 import { useMutation } from '@tanstack/react-query';
-import { AlertTriangle, Search } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button, EmptySection, Input, Skeleton } from '@/components';
+import { Icon } from '@/design/icons';
 
 import { matchCompany } from '../api';
 import { useExporterProfiles } from '../hooks';
@@ -154,9 +154,9 @@ export function CompanyPicker({
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium text-ink">Find the company</span>
         <span className="relative">
-          <Search
+          <Icon.search
             size={15}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3"
           />
           <Input
             type="text"
@@ -173,7 +173,7 @@ export function CompanyPicker({
         </span>
       </label>
 
-      <details className="rounded-lg border border-border px-3 py-2">
+      <details className="rounded-lg border border-line px-3 py-2">
         <summary className="cursor-pointer text-sm font-medium text-ink">
           Search by identifier
         </summary>
@@ -188,10 +188,10 @@ export function CompanyPicker({
                   setIdentifierKind(kind);
                   match.reset();
                 }}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
                   identifierKind === kind
-                    ? 'border-brand-600 bg-brand-50 text-brand-700'
-                    : 'border-border text-ink-muted hover:bg-surface-subtle'
+                    ? 'border-ink bg-sunken text-ink'
+                    : 'border-line text-ink-2 hover:bg-paper'
                 }`}
               >
                 {IDENTIFIER_LABEL[kind]}
@@ -209,7 +209,7 @@ export function CompanyPicker({
               setCreating(false);
             }}
           />
-          <p className="text-xs text-ink-faint">
+          <p className="text-xs text-ink-3">
             {IDENTIFIER_HINT[identifierKind]}. Partial values are not accepted, and
             the identifier is never shown back to you.
           </p>
@@ -234,9 +234,9 @@ export function CompanyPicker({
       {matched?.kind === 'CONFLICT' ? (
         <div
           role="alert"
-          className="flex gap-2 rounded-lg border border-status-review/40 bg-status-review/10 p-3 text-sm text-ink"
+          className="flex gap-2 rounded-lg border border-attention/40 bg-attention-tint p-3 text-sm text-ink"
         >
-          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-status-review" />
+          <Icon.warning size={16} className="mt-0.5 shrink-0 text-attention" />
           <span>
             <span className="font-medium">These identifiers name more than one company.</span>{' '}
             {matched.reason} Check which one this buyer is before choosing.
@@ -245,7 +245,7 @@ export function CompanyPicker({
       ) : null}
 
       {matched?.kind === 'POSSIBLE_DUPLICATE' ? (
-        <p className="text-sm text-ink-muted">
+        <p className="text-sm text-ink-2">
           <span className="font-medium text-ink">Check these first.</span> {matched.reason}
         </p>
       ) : null}
@@ -268,8 +268,8 @@ export function CompanyPicker({
         />
       ) : onCreate &&
         (matched?.kind === 'NEW' || matched?.kind === 'POSSIBLE_DUPLICATE') ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-border px-4 py-3">
-          <span className="text-sm text-ink-muted">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-line px-4 py-3">
+          <span className="text-sm text-ink-2">
             {matched.kind === 'NEW'
               ? 'No company on file matches. Create the buyer as a company of its own.'
               : 'None of these is the buyer? Create it as a company of its own.'}
@@ -281,7 +281,7 @@ export function CompanyPicker({
       ) : null}
 
       {!ready && !matched ? (
-        <p className="text-xs text-ink-faint">
+        <p className="text-xs text-ink-3">
           Type at least two characters, or search by identifier.
         </p>
       ) : query.isLoading || match.isPending ? (
@@ -294,26 +294,26 @@ export function CompanyPicker({
           </EmptySection>
         )
       ) : byName.length > 0 ? (
-        <ul className="divide-y divide-border rounded-lg border border-border">
+        <ul className="divide-y divide-line rounded-lg border border-line">
           {byName.map((company: ExporterProfileListItem) => (
             <li key={company.customer_id}>
               <button
                 type="button"
                 onClick={() => onSelect(company.customer_id)}
-                className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-surface-subtle"
+                className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-paper"
               >
                 <span className="min-w-0">
                   <span className="font-medium text-ink">
                     {company.name ?? 'Unnamed company'}
                   </span>
-                  <span className="mt-0.5 block text-xs text-ink-muted">
+                  <span className="mt-0.5 block text-xs text-ink-2">
                     {company.country ?? '—'} ·{' '}
                     {company.pipeline_status === 'NOT_IN_PIPELINE'
                       ? 'Not in pipeline'
                       : company.journey}
                   </span>
                 </span>
-                <span className="text-xs font-medium text-brand-600">Select</span>
+                <span className="text-xs font-medium text-ink">Select</span>
               </button>
             </li>
           ))}
@@ -331,26 +331,26 @@ function CandidateList({
   onSelect(companyId: string): void;
 }) {
   return (
-    <ul className="divide-y divide-border rounded-lg border border-border" data-testid="match-candidates">
+    <ul className="divide-y divide-line rounded-lg border border-line" data-testid="match-candidates">
       {candidates.map((candidate) => (
         <li key={candidate.company_id}>
           <button
             type="button"
             onClick={() => onSelect(candidate.company_id)}
-            className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-surface-subtle"
+            className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-paper"
           >
             <span className="min-w-0">
               <span className="font-medium text-ink">
                 {candidate.name ?? 'Unnamed company'}
               </span>
-              <span className="mt-0.5 block text-xs text-ink-muted">
+              <span className="mt-0.5 block text-xs text-ink-2">
                 {candidate.country ?? '—'}
                 {candidate.pipeline_status === 'NOT_IN_PIPELINE'
                   ? ' · Not in pipeline — exists as a buyer'
                   : ''}
               </span>
             </span>
-            <span className="text-xs font-medium text-brand-600">Select</span>
+            <span className="text-xs font-medium text-ink">Select</span>
           </button>
         </li>
       ))}

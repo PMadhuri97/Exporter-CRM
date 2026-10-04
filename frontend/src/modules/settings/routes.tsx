@@ -1,7 +1,7 @@
 // modules/settings: route subtree, mounted by the app router as
-// `<Route path="/settings/*" element={<SettingsRoutes />} />`. Owning its own
-// nested `<Routes>` keeps later additions (an audit tab, a criteria screen)
-// inside this module, matching modules/onboarding's shape.
+// `<Route path="/settings/*" element={<SettingsRoutes />} />`. The page owns the
+// section routes (`profile`, `users`, `roles`) so the whole settings frame is one
+// lazily loaded chunk, matching modules/onboarding's shape.
 import { lazy } from 'react';
 import { Route, Routes } from 'react-router-dom';
 
@@ -13,7 +13,7 @@ const SettingsPage = lazy(() =>
 export function SettingsRoutes() {
   return (
     <Routes>
-      <Route index element={<SettingsPage />} />
+      <Route path="*" element={<SettingsPage />} />
     </Routes>
   );
 }

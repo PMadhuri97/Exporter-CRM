@@ -21,16 +21,16 @@ import { proposedMoveLabel } from './background-check-labels';
 const SHOWN = 5;
 
 const OUTCOME: Record<string, { verb: string; tone: string }> = {
-  APPROVED: { verb: 'Approved', tone: 'text-emerald-700' },
-  REJECTED: { verb: 'Rejected', tone: 'text-red-700' },
-  WITHDRAWN: { verb: 'Withdrawn', tone: 'text-slate-600' },
+  APPROVED: { verb: 'Approved', tone: 'text-positive' },
+  REJECTED: { verb: 'Rejected', tone: 'text-negative' },
+  WITHDRAWN: { verb: 'Withdrawn', tone: 'text-ink-2' },
 };
 
 function Resolved({ proposal }: { proposal: BackgroundCheckProposal }) {
-  const outcome = OUTCOME[proposal.status] ?? { verb: proposal.status, tone: 'text-slate-600' };
+  const outcome = OUTCOME[proposal.status] ?? { verb: proposal.status, tone: 'text-ink-2' };
   return (
-    <li data-testid="resolved-proposal" data-status={proposal.status} className="text-xs text-slate-600">
-      <span className="font-medium text-slate-900">{proposedMoveLabel(proposal.to_value)}</span>
+    <li data-testid="resolved-proposal" data-status={proposal.status} className="text-xs text-ink-2">
+      <span className="font-medium text-ink">{proposedMoveLabel(proposal.to_value)}</span>
       {' proposed by '}
       {actorLabel(proposal.proposed_by_name, proposal.proposed_by)}, {formatDateTime(proposal.proposed_at)}
       {' — '}
@@ -47,7 +47,7 @@ export function ProposalHistory({ customerId }: { customerId: string }) {
   if (query.isLoading) return null;
   if (query.isError) {
     return (
-      <p role="alert" className="text-xs text-red-700">
+      <p role="alert" className="text-xs text-negative">
         The proposals could not be loaded.
       </p>
     );
@@ -56,7 +56,7 @@ export function ProposalHistory({ customerId }: { customerId: string }) {
   if (resolved.length === 0) return null;
   return (
     <div data-testid="proposal-history">
-      <h4 className="text-sm font-semibold text-slate-900">Proposals</h4>
+      <h4 className="text-sm font-semibold text-ink">Proposals</h4>
       <ul className="mt-2 flex flex-col gap-1.5">
         {resolved.slice(0, SHOWN).map((proposal) => (
           <Resolved key={proposal.id} proposal={proposal} />

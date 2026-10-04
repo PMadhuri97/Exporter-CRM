@@ -1,4 +1,11 @@
 /**
+ * Add a company — smart entry (frontend-plan §8.4). One field first: an identifier
+ * (PAN, GSTIN, IEC, CIN) or the name. Its kind is detected, and once the name and
+ * the country are known the server is asked whether the company is already in Aner
+ * (`POST /companies/match`, read-only and audited). Then only what the create needs:
+ * name, country, source — and, outside India without a PAN, the registration number
+ * its own registrar issued (IQ-7). Everything else is added on the company itself.
+ *
  * Add a company — **owner: Developer 2** (L2-06, L2-14).
  *
  * Limited to `CreateExporterProfileRequest`'s real fields. The person adding
@@ -15,10 +22,10 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { Button, Card, Field, FormError, Input, PageHeader, Select } from '@/components';
+import { Button, Field, FormError, Input, PageHeader, Select } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 
-import { DuplicatePanMessage, duplicatePanHolder } from '../components';
+import { detectEntry, DuplicatePanMessage, duplicatePanHolder, SmartEntry } from '../components';
 import { useCreateExporterLead } from '../hooks';
 import { paths } from '../paths';
 
@@ -41,31 +48,10 @@ const addCompanySchema = z.object({
     'EVENT',
     'EXISTING_CUSTOMER',
   ]),
-  relationship_manager: z.string().max(255).optional().or(z.literal('')),
-  gstin: z.string().max(15).optional().or(z.literal('')),
-  pan: z.string().max(10).optional().or(z.literal('')),
-  iec: z.string().max(10).optional().or(z.literal('')),
-  cin: z.string().max(21).optional().or(z.literal('')),
-  industry: z.string().max(255).optional().or(z.literal('')),
   registration_number: z.string().max(100).optional().or(z.literal('')),
-  })
-  // Decision IQ-7: a company outside India is identified by the number its own
-  // registrar issued. Checked here as well as on the server so the person is told
-  // next to the field instead of by a 422 after submitting. A PAN is itself an
-  // identity, so a company holding one is never asked for a number.
-  .superRefine((values, ctx) => {
-    if (
-      values.country !== 'IN' &&
-      !values.pan?.trim() &&
-      !values.registration_number?.trim()
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['registration_number'],
-        message: 'Required for a company outside India',
-      });
-    }
-  });
+});
+// Decision IQ-7 (a company outside India is identified by its registrar's number unless
+// it holds a PAN) is checked in onSubmit: the PAN comes from the smart entry, not a field.
 
 type AddCompanyFormValues = z.infer<typeof addCompanySchema>;
 
@@ -89,30 +75,42 @@ export function AddExporterPage() {
   const navigate = useNavigate();
   const createLead = useCreateExporterLead();
   const [serverError, setServerError] = useState<ReactNode>(null);
+  const [entry, setEntry] = useState('');
+  const detected = detectEntry(entry);
 
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
+    getValues,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<AddCompanyFormValues>({
     resolver: zodResolver(addCompanySchema),
     defaultValues: { source: 'MANUAL' },
   });
+  const name = watch('name') ?? '';
+  const country = (watch('country') ?? '').trim().toUpperCase();
+  // A PAN — typed, or inside a GSTIN — is itself an identity (IQ-7).
+  const holdsPan = Boolean(detected.pan);
 
   const onSubmit = async (values: AddCompanyFormValues) => {
     setServerError(null);
+    // IQ-7: outside India and without a PAN, the registrar's number is the identity.
+    if (values.country !== 'IN' && !holdsPan && !values.registration_number?.trim()) {
+      setError('registration_number', { message: 'Required for a company outside India' });
+      return;
+    }
     try {
       const profile = await createLead.mutateAsync({
         name: values.name,
         country: values.country,
         source: values.source,
-        relationship_manager: emptyToUndefined(values.relationship_manager),
-        // One GSTIN from the form; a company may hold several (one per state).
-        gstins: values.gstin ? [values.gstin] : undefined,
-        pan: emptyToUndefined(values.pan),
-        iec: emptyToUndefined(values.iec),
-        cin: emptyToUndefined(values.cin),
-        industry: emptyToUndefined(values.industry),
+        pan: detected.pan,
+        gstins: detected.kind === 'GSTIN' ? [detected.value] : undefined,
+        iec: detected.kind === 'IEC' ? detected.value : undefined,
+        cin: detected.kind === 'CIN' ? detected.value : undefined,
         registration_number: emptyToUndefined(values.registration_number),
       });
       toast.success(`${values.name} added as a lead`);
@@ -133,113 +131,86 @@ export function AddExporterPage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl">
       <PageHeader
-        back={{ to: paths.companies, label: 'Companies' }}
-        title="Add company"
+        title="Add a company"
         description="Every company starts as a lead. Qualification moves it on from there."
       />
 
-      <Card className="p-6">
-        <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="space-y-6">
-          <FormError>{serverError}</FormError>
+      <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="space-y-6">
+        <SmartEntry
+          value={entry}
+          onChange={(next) => {
+            setEntry(next);
+            // A name typed here is the company's name, unless one is already set.
+            if (detectEntry(next).kind === 'name' && !getValues('name')) {
+              setValue('name', next.trim());
+            }
+          }}
+          label="Start with an identifier — PAN, GSTIN, IEC or CIN — or the name"
+          name={name}
+          country={country.length === 2 ? country : undefined}
+        />
 
-          <fieldset className="space-y-4">
-            <legend className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-faint">
-              Company
-            </legend>
-            <Field label="Company name" htmlFor="company-name" error={errors.name?.message} required>
-              <Input id="company-name" placeholder="e.g. Acme Exports Pvt Ltd" {...register('name')} />
+        <div className="space-y-4 border-t border-line pt-5">
+          <Field label="Company name" htmlFor="company-name" error={errors.name?.message} required>
+            <Input id="company-name" placeholder="e.g. Lakshmi Polymers Pvt Ltd" {...register('name')} />
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Country" htmlFor="company-country" error={errors.country?.message} required>
+              <Input
+                id="company-country"
+                className="uppercase"
+                placeholder="IN"
+                maxLength={2}
+                {...register('country')}
+              />
             </Field>
+            <Field label="Source" htmlFor="company-source" error={errors.source?.message} required>
+              <Select id="company-source" {...register('source')}>
+                {Object.entries(SOURCE_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Country" htmlFor="company-country" error={errors.country?.message} required>
-                <Input
-                  id="company-country"
-                  className="uppercase"
-                  placeholder="IN"
-                  maxLength={2}
-                  {...register('country')}
-                />
-              </Field>
-              <Field label="Source" htmlFor="company-source" error={errors.source?.message} required>
-                <Select id="company-source" {...register('source')}>
-                  {Object.entries(SOURCE_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-
+          {country.length === 2 && country !== 'IN' && !holdsPan && (
             <Field
-              label="Relationship manager"
-              htmlFor="company-rm"
-              error={errors.relationship_manager?.message}
+              label="Registration number"
+              htmlFor="company-registration-number"
+              error={errors.registration_number?.message}
+              hint="The number its own registrar issued — how a company outside India is identified."
+              required
             >
-              <Input id="company-rm" {...register('relationship_manager')} />
+              <Input
+                id="company-registration-number"
+                placeholder="e.g. KVK 12345678"
+                {...register('registration_number')}
+              />
             </Field>
-          </fieldset>
+          )}
+        </div>
 
-          <fieldset className="space-y-4">
-            <legend className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-faint">
-              Identifiers
-            </legend>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field
-                label="PAN"
-                htmlFor="company-pan"
-                error={errors.pan?.message}
-                hint="Unique — a PAN another company holds is refused."
-              >
-                <Input id="company-pan" placeholder="e.g. ABCDE1234F" {...register('pan')} />
-              </Field>
-              <Field label="GSTIN" htmlFor="company-gstin" error={errors.gstin?.message}>
-                <Input id="company-gstin" placeholder="e.g. 27ABCDE1234F1Z5" {...register('gstin')} />
-              </Field>
-              <Field label="IEC" htmlFor="company-iec" error={errors.iec?.message}>
-                <Input id="company-iec" {...register('iec')} />
-              </Field>
-              <Field label="CIN" htmlFor="company-cin" error={errors.cin?.message}>
-                <Input id="company-cin" {...register('cin')} />
-              </Field>
-              <Field
-                label="Registration number"
-                htmlFor="company-registration-number"
-                error={errors.registration_number?.message}
-                hint="For a company outside India — whatever its own registrar issued."
-              >
-                <Input
-                  id="company-registration-number"
-                  placeholder="e.g. KVK 12345678"
-                  {...register('registration_number')}
-                />
-              </Field>
-            </div>
-          </fieldset>
+        <FormError>{serverError}</FormError>
 
-          <fieldset className="space-y-4">
-            <legend className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-faint">
-              Business
-            </legend>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Industry" htmlFor="company-industry" error={errors.industry?.message}>
-                <Input id="company-industry" {...register('industry')} />
-              </Field>
-            </div>
-          </fieldset>
-
-          <div className="flex justify-end gap-2 border-t border-border pt-5">
-            <Button variant="ghost" onClick={() => navigate(paths.companies)}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
+          <p className="text-secondary text-ink-3">
+            Contacts, branches and industry are added on the company itself.
+          </p>
+          <div className="flex gap-2">
+            <Button variant="quiet" onClick={() => navigate(paths.companies)}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" loading={isSubmitting}>
-              Create company
+              Create lead
             </Button>
           </div>
-        </form>
-      </Card>
+        </div>
+      </form>
     </div>
   );
 }

@@ -23,11 +23,11 @@
  * is the point of the response carrying no identifiers in the first place.
  */
 
-import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { Chip, EmptySection, ErrorState, Skeleton } from '@/components';
+import { EmptySection, ErrorState, Skeleton, Tag } from '@/components';
+import { Icon } from '@/design/icons';
 import { formatDate } from '@/lib/format';
 
 import { useTradeRelationships } from '../hooks';
@@ -76,7 +76,7 @@ function Row({
           <p className="flex flex-wrap items-center gap-2">
             <Link
               to={paths.company(other.company_id)}
-              className="font-medium text-ink hover:text-brand-600 hover:underline"
+              className="font-medium text-ink hover:text-ink hover:underline"
             >
               {other.name ?? 'Unnamed company'}
             </Link>
@@ -84,12 +84,12 @@ function Row({
                 created from a deal's buyer. Worth saying: its page has no
                 qualification or conversation, and that is by design, not a gap. */}
             {other.pipeline_status === 'NOT_IN_PIPELINE' && (
-              <Chip tone="neutral" className="text-ink-faint">
+              <Tag tone="idle" className="text-ink-3">
                 Not in the pipeline
-              </Chip>
+              </Tag>
             )}
           </p>
-          <p className="mt-0.5 text-xs text-ink-muted">
+          <p className="mt-0.5 text-xs text-ink-2">
             {`${other.country ?? 'Country not recorded'} · ${
               count === 0
                 ? 'No invoices recorded'
@@ -104,7 +104,7 @@ function Row({
             <button
               type="button"
               onClick={() => setRecording(true)}
-              className="text-xs font-medium text-brand-600 hover:underline"
+              className="text-xs font-medium text-ink hover:underline"
             >
               Record past invoice
             </button>
@@ -115,19 +115,19 @@ function Row({
             <button
               type="button"
               onClick={() => setOpen((was) => !was)}
-              className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+              className="flex items-center gap-1 text-xs font-medium text-ink hover:underline"
               aria-expanded={open}
             >
               {open ? 'Hide invoices' : 'Invoices'}
-              {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              {open ? <Icon.caretDown size={13} /> : <Icon.caretRight size={13} />}
             </button>
           ) : (
             <Link
               to={paths.company(other.company_id)}
-              className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+              className="flex items-center gap-1 text-xs font-medium text-ink hover:underline"
             >
               Open company
-              <ChevronRight size={13} />
+              <Icon.caretRight size={13} />
             </Link>
           )}
         </div>
@@ -190,7 +190,7 @@ export function CompanyTradePanel({ companyId, as, canRecord = false }: CompanyT
   }
 
   return (
-    <ul className="divide-y divide-border">
+    <ul className="divide-y divide-line">
       {relationships.map((relationship) => (
         <Row key={relationship.id} relationship={relationship} as={as} canRecord={canRecord} />
       ))}

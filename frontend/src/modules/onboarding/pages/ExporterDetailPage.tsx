@@ -1,38 +1,37 @@
 /**
- * The company page — **shell, owner: Developer 2**.
+ * The company dossier — **shell, owner: Developer 2**, drawn as frontend-plan §8.5.
  *
- * A sticky summary header — who the company is and where it stands — over one
- * tab per part of the relationship. The selected tab is in the URL (`?tab=`),
- * so a link, a reload or the back button lands where the reader was.
+ * A serif header (the name, one line of facts, the identifiers, the marker menu the
+ * server allows), the **hero Standing** — journey, qualification, conversation and,
+ * for a role that may read it, the background check, side by side — and the
+ * chapters. The header compresses to a slim bar once it scrolls away. Chapters are a
+ * rail on a wide screen and tabs below that; the keys and `?tab=` are unchanged, so
+ * every old link lands where it did.
  *
- * Each tab renders one owner's panel:
- *
- *   Overview           panels/CompanyPanel.tsx          Developer 2
+ *   Profile            panels/CompanyPanel.tsx          Developer 2
  *   Qualification      panels/QualificationPanel.tsx    Developer 2
  *   Conversation       panels/ConversationPanel.tsx     Developer 3A
- *   Deals              panels/DealsPanel.tsx            Developer 3B
+ *   Deals & trade      panels/DealsPanel.tsx and trade  Developer 3B / 3
  *   Documents          panels/DocumentsPanel.tsx        Developer 3B
- *   Background check   panels/BackgroundCheckPanel.tsx  Developer 4
- *   History            components/HistoryTimeline.tsx   Developer 1
+ *   Background check   panels/BackgroundCheckPanel.tsx  Developer 4 / 1
+ *   Ledger             components/HistoryTimeline.tsx   Developer 1
  *
- * **The contact and activity queries stay here, not in the Conversation
- * panel.** They start with the profile on the first render, so opening the
- * Conversation tab shows them at once rather than starting a second round trip
- * then. The activity pagination state stays with them.
+ * **Now**, at the top of the profile, lists at most three next steps, each built only
+ * from what the server served for this company (`can_open_deal`, the background
+ * check's `allowed_moves`, `open_proposal.allowed_actions`, `rekyc_due`, the
+ * conversation's check-back) — nothing is worked out from rules held here.
  *
- * The header shows the company's three separate positions — journey,
- * qualification, marker — and offers only the marker moves the server listed.
- * The journey has no control: it is never moved by hand.
+ * The contact and activity queries stay here, not in the Conversation chapter: they
+ * start with the profile, so opening that chapter shows them at once.
  */
 
-import { CalendarClock } from 'lucide-react';
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import {
-  Panel,
+  Button,
   ErrorState,
-  PageHeader,
+  Panel,
   Skeleton,
   Tabs,
   TabsContent,
@@ -40,23 +39,29 @@ import {
   TabsTrigger,
   useSearchParamState,
 } from '@/components';
-import { formatDate, humanize } from '@/lib/format';
+import { Icon } from '@/design/icons';
+import { formatDate } from '@/lib/format';
+import { companyNameTransition } from '@/lib/viewTransition';
 import { useCan } from '@/platform/access';
-import { MaskedValue } from '@/platform/mask';
+import { useCurrentUser } from '@/platform/auth';
+import { Identifier } from '@/platform/mask';
+import { rememberCompany, useCommandActions, useCrumbs, usePageShortcuts } from '@/platform/shell';
 
 import {
-  GstRegistrationsSection,
   CompanyDealsList,
-  CompanyTradePanel,
-  IdentityGapNotice,
-  NotInPipelineNotice,
   CompanyHistory,
-  JourneyChip,
+  CompanyTradePanel,
+  GstRegistrationsSection,
+  IdentityGapNotice,
   MarkerBadge,
   MarkerControl,
-  QualificationChip,
+  NotInPipelineNotice,
+  Standing,
+  type StandingSegment,
 } from '../components';
+import { cycleKindLabel } from '../components/background-check-labels';
 import {
+  useBackgroundCheck,
   useBringIntoPipeline,
   useCompanyDeals,
   useExporterActivities,
@@ -66,6 +71,7 @@ import {
 } from '../hooks';
 import { COMPANY_TABS, paths, type CompanyTab } from '../paths';
 import type { ExporterActivityType, ExporterProfileDetail } from '../types';
+
 import { CompanyPanel } from './panels/CompanyPanel';
 import { ConversationPanel } from './panels/ConversationPanel';
 import { DealsPanel } from './panels/DealsPanel';
@@ -82,69 +88,59 @@ const BackgroundCheckPanel = lazy(() =>
 const ACTIVITY_PAGE_SIZE = 8;
 
 const TAB_LABEL: Record<CompanyTab, string> = {
-  overview: 'Overview',
+  overview: 'Profile',
   qualification: 'Qualification',
   conversation: 'Conversation',
-  deals: 'Deals',
+  deals: 'Deals & trade',
   documents: 'Documents',
   'background-check': 'Background check',
-  history: 'History',
+  history: 'Ledger',
+};
+
+/** Which chapter a hero segment opens. */
+const SEGMENT_TAB: Record<StandingSegment, CompanyTab> = {
+  journey: 'history',
+  qualification: 'qualification',
+  conversation: 'conversation',
+  'background-check': 'background-check',
 };
 
 function displayName(profile: ExporterProfileDetail): string {
   return profile.name ?? 'Unnamed company';
 }
 
-/** One labelled fact in the summary strip. */
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">{label}</dt>
-      <dd className="mt-0.5 truncate text-sm text-ink">{children}</dd>
-    </div>
-  );
+/** Today, as the `YYYY-MM-DD` the server's dates use. */
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function SummaryStrip({ profile }: { profile: ExporterProfileDetail }) {
-  const conversation = useExporterConversation(profile.customer_id);
-  const gauge = conversation.data;
+interface NowItem {
+  key: string;
+  text: ReactNode;
+  verb: string;
+  open: CompanyTab;
+}
 
-  return (
-    <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border pt-4 sm:grid-cols-3 lg:grid-cols-5">
-      <Fact label="PAN">
-        <MaskedValue value={profile.pan} />
-      </Fact>
-      <Fact label="GSTIN">
-        <MaskedValue value={profile.gstins[0] ?? null} />
-        {profile.gstins.length > 1 && (
-          <span className="ml-1 text-xs text-ink-faint">+{profile.gstins.length - 1}</span>
-        )}
-      </Fact>
-      <Fact label="Country">{profile.country ?? '—'}</Fact>
-      <Fact label="Owner">{profile.relationship_manager ?? '—'}</Fact>
-      <Fact label="Conversation">
-        {gauge ? (
-          <span className="inline-flex flex-wrap items-center gap-x-2">
-            {humanize(gauge.conversation)}
-            {gauge.check_back_on && (
-              <span className="inline-flex items-center gap-1 text-xs text-status-review">
-                <CalendarClock size={12} /> {formatDate(gauge.check_back_on)}
-              </span>
-            )}
-          </span>
-        ) : (
-          '—'
-        )}
-      </Fact>
-    </dl>
-  );
+/** True once `ref`'s element has scrolled out of view (and IntersectionObserver exists). */
+function useScrolledPast(ref: React.RefObject<HTMLElement>): boolean {
+  const [past, setPast] = useState(false);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(([entry]) => setPast(!entry!.isIntersecting), {
+      threshold: 0,
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return past;
 }
 
 export function ExporterDetailPage() {
   const { customerId } = useParams<{ customerId: string }>();
   // DEVELOPER reads the CRM (masked) but writes nothing and cannot load
   // verification results — the backend refuses those with 403 (D8) — so it gets no
-  // Background check tab at all rather than a tab that renders nothing.
+  // Background check chapter at all, and no request for one.
   const isStaff = useCan('crm.write');
   const canReadCompliance = useCan('compliance.read');
   // Flagging a branch stops trade through it, so it is a compliance decision and not
@@ -170,20 +166,57 @@ export function ExporterDetailPage() {
   );
   const activityQuery = useExporterActivities(customerId, activityParams);
   const dealsQuery = useCompanyDeals(customerId);
+  const conversation = useExporterConversation(customerId);
+  // Only for a role the background-check routes admit (D8): no request otherwise.
+  const check = useBackgroundCheck(canReadCompliance ? customerId : undefined);
   // Hooks run before the missing-id guard below; the mutation is only offered after it.
   const bringIntoPipeline = useBringIntoPipeline(customerId ?? '');
+  const header = useRef<HTMLDivElement>(null);
+  const compact = useScrolledPast(header);
+
+  // The shell (R-33 Phase 2): the trail, ⌘K's "Recent", and its chapters as commands.
+  const userId = String(useCurrentUser().id);
+  const name = profile ? displayName(profile) : null;
+  useCrumbs([{ label: 'Companies', to: paths.companies }, ...(name ? [{ label: name }] : [])]);
+  useEffect(() => {
+    if (customerId && name) rememberCompany(userId, { id: customerId, name });
+  }, [customerId, name, userId]);
+  // `l` logs an activity (staff, §7.5): it opens the Conversation chapter and its
+  // composer, the same one the Thread's button opens.
+  const [logRequested, setLogRequested] = useState(false);
+  const logActivity = () => {
+    setTab('conversation');
+    setLogRequested(true);
+  };
+  useCommandActions(
+    profile
+      ? [
+          ...(isStaff
+            ? [{ id: 'log-activity', label: 'Log an activity', shortcut: 'l', keywords: ['call', 'note', 'meeting'], run: logActivity }]
+            : []),
+          ...tabs
+            .filter((value) => value !== tab)
+            .map((value) => ({
+              id: `chapter-${value}`,
+              label: `Go to ${TAB_LABEL[value]}`,
+              run: () => setTab(value),
+            })),
+        ]
+      : [],
+  );
+  usePageShortcuts(profile && isStaff ? [{ key: 'l', label: 'Log an activity', run: logActivity }] : []);
 
   if (!customerId) {
-    return <p className="text-sm text-status-failed">Company id is missing.</p>;
+    return <p className="text-body text-negative">Company id is missing.</p>;
   }
 
   if (isLoading) {
     return (
-      <div className="space-y-5" aria-label="Loading company">
-        <Skeleton className="h-8 w-72" />
-        <Skeleton className="h-28 rounded-lg" />
-        <Skeleton className="h-10 w-full max-w-2xl" />
-        <Skeleton className="h-64 rounded-lg" />
+      <div className="max-w-reading space-y-5" aria-label="Loading company">
+        <Skeleton className="h-10 w-80" />
+        <Skeleton className="h-4 w-96 max-w-full" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     );
   }
@@ -192,7 +225,7 @@ export function ExporterDetailPage() {
     return (
       <ErrorState title="Couldn't load this company." onRetry={() => void refetch()}>
         The record may no longer exist or the request failed.{' '}
-        <Link to={paths.companies} className="font-medium text-brand-600 underline">
+        <Link to={paths.companies} className="font-medium text-ink underline">
           Back to companies
         </Link>
       </ErrorState>
@@ -206,160 +239,276 @@ export function ExporterDetailPage() {
   const hasNextActivityPage = activities.length === ACTIVITY_PAGE_SIZE;
   const dealCount = dealsQuery.data?.total;
   // A company that exists only because it was somebody's buyer: its journey and both
-  // gauges do not apply, and the server refuses them (plan P4-2, task 3.9). Read
-  // here, below the guards, because it needs the loaded profile.
+  // gauges do not apply, and the server refuses them (plan P4-2, task 3.9).
   const notInPipeline = profile.pipeline_status === 'NOT_IN_PIPELINE';
+  const gauge = conversation.data;
+  const standing = check.data;
+  const cycle = standing?.current_cycle;
+  const clearUntil =
+    standing?.compliance?.is_clear && standing.compliance.clear_expires_at
+      ? standing.compliance.clear_expires_at
+      : null;
+
+  // Now: only what the server served for this company, at most three.
+  const now: NowItem[] = [];
+  if (standing?.open_proposal?.allowed_actions?.some((action) => action !== 'WITHDRAW')) {
+    now.push({
+      key: 'proposal',
+      text: 'A background-check decision is waiting for your signature.',
+      verb: 'Review it',
+      open: 'background-check',
+    });
+  }
+  if (standing?.rekyc_due) {
+    now.push({ key: 'rekyc', text: 'Re-KYC is due on this company.', verb: 'Open the check', open: 'background-check' });
+  }
+  if (standing?.value === 'NOT_STARTED' && (standing.allowed_moves ?? []).length > 0) {
+    now.push({ key: 'start', text: 'No background check has been started.', verb: 'Start it', open: 'background-check' });
+  }
+  if (gauge?.conversation === 'READY_NOW' && dealsQuery.data?.can_open_deal) {
+    now.push({ key: 'deal', text: 'Ready now, and no open deal.', verb: 'Open a deal', open: 'deals' });
+  }
+  if (gauge?.conversation === 'NOT_NOW' && gauge.check_back_on && gauge.check_back_on <= today()) {
+    now.push({
+      key: 'checkback',
+      text: `Due a check-back (since ${formatDate(gauge.check_back_on)}).`,
+      verb: 'Open the conversation',
+      open: 'conversation',
+    });
+  }
+
+  const details: Partial<Record<StandingSegment, ReactNode>> = {
+    journey: `added ${formatDate(profile.date_added)}`,
+    'background-check': [
+      cycle ? `cycle ${cycle.number} · ${cycleKindLabel(cycle.kind)}` : null,
+      clearUntil ? `until ${formatDate(clearUntil)}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ') || undefined,
+  };
+
+  const facts = [
+    profile.industry,
+    profile.country,
+    profile.year_established ? `since ${profile.year_established}` : null,
+    profile.relationship_manager ? `RM ${profile.relationship_manager}` : null,
+  ].filter(Boolean);
 
   return (
-    // One `Tabs` root around the sticky header and the panels, so the triggers
-    // and the contents share its ids (the tab <-> tabpanel wiring).
+    // One `Tabs` root around the header and the chapters, so the triggers and the
+    // contents share its ids (the tab <-> tabpanel wiring).
     <Tabs value={tab} onValueChange={(next) => setTab(next as CompanyTab)}>
-      <div className="sticky -top-5 z-10 -mx-4 mb-5 border-b border-border bg-surface-subtle/95 px-4 pt-1 backdrop-blur sm:-top-6 sm:-mx-6 sm:px-6">
-        <PageHeader
-          back={{ to: paths.companies, label: 'Companies' }}
-          title={displayName(profile)}
-          meta={
-            <>
-              {/* A buyer-only company's `journey` reads LEAD because the column is
-                  NOT NULL, not because anyone judged it (plan P4-2). Showing the
-                  chip would claim a sales stage that does not exist, and the two
-                  gauges below do not apply either. */}
-              {notInPipeline ? (
-                <span className="rounded-full border border-border-strong bg-surface-subtle px-2 py-0.5 text-xs font-medium text-ink-muted">
-                  Not in pipeline
-                </span>
-              ) : (
-                <>
-                  <JourneyChip journey={profile.journey} />
-                  <QualificationChip state={profile.qualification} />
-                </>
-              )}
-              <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />
-            </>
-          }
-          description={
-            <>
-              Added {formatDate(profile.date_added)}
-              {profile.marker_reason ? ` · ${profile.marker_reason}` : ''}
-            </>
-          }
-          // Only the moves the server listed for this user; none, nothing.
-          actions={
-            <MarkerControl customerId={customerId} moves={profile.allowed_marker_moves ?? []} />
-          }
-        />
-        <SummaryStrip profile={profile} />
+      <div className="max-w-reading">
+        {/* The slim bar that replaces the header once it has scrolled away. */}
+        {compact && (
+          <div
+            aria-hidden
+            className="sticky -top-6 z-20 -mx-4 mb-2 flex h-11 items-center gap-4 border-b border-line bg-paper px-4 sm:-mx-8 sm:px-8"
+          >
+            <span className="truncate font-display text-[18px] text-ink">{displayName(profile)}</span>
+            <Standing
+              size="card"
+              journey={profile.journey}
+              qualification={profile.qualification}
+              conversation={gauge?.conversation}
+              backgroundCheck={standing?.value}
+              awaitingApproval={standing?.awaiting_approval}
+              rekycDue={standing?.rekyc_due}
+              marker={profile.marker}
+              outsidePipeline={notInPipeline}
+            />
+          </div>
+        )}
 
-        <TabsList aria-label="Company sections" className="mt-3 border-b-0">
+        <header ref={header} className="mb-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1
+                  data-company-title
+                  className="font-display text-display-lg text-ink [overflow-wrap:anywhere]"
+                  style={{ viewTransitionName: companyNameTransition(customerId) }}
+                >
+                  {displayName(profile)}
+                </h1>
+                <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />
+              </div>
+              <p className="mt-1 text-body text-ink-2">
+                {facts.join(' · ') || `Added ${formatDate(profile.date_added)}`}
+                {profile.marker_reason ? ` · ${profile.marker_reason}` : ''}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {/* Only the marker moves the server listed for this user; none, nothing. */}
+              <MarkerControl customerId={customerId} moves={profile.allowed_marker_moves ?? []} />
+              <dl className="flex flex-wrap items-center gap-x-4 gap-y-1 text-secondary text-ink-3">
+                <div className="flex items-center gap-1.5">
+                  <dt>PAN</dt>
+                  <dd>
+                    <Identifier kind="PAN" value={profile.pan} />
+                  </dd>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <dt>GSTIN</dt>
+                  <dd className="flex items-center gap-1">
+                    <Identifier kind="GSTIN" value={profile.gstins[0] ?? null} />
+                    {profile.gstins.length > 1 && <span>+{profile.gstins.length - 1}</span>}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+
+          <Standing
+            size="hero"
+            className="mt-5"
+            journey={profile.journey}
+            outsidePipeline={notInPipeline}
+            qualification={profile.qualification}
+            conversation={gauge?.conversation}
+            checkBackOn={gauge?.check_back_on}
+            backgroundCheck={standing?.value}
+            risk={standing?.risk_rating}
+            awaitingApproval={standing?.awaiting_approval}
+            rekycDue={standing?.rekyc_due}
+            details={details}
+            onOpen={(segment) => setTab(SEGMENT_TAB[segment])}
+          />
+        </header>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[12rem_minmax(0,1fr)]">
+        <TabsList
+          aria-label="Company chapters"
+          className="xl:sticky xl:top-0 xl:h-fit xl:flex-col xl:gap-0.5 xl:overflow-visible xl:border-b-0"
+        >
           {tabs.map((value) => (
-            <TabsTrigger key={value} value={value}>
+            <TabsTrigger
+              key={value}
+              value={value}
+              className="xl:-mb-0 xl:justify-between xl:rounded-md xl:border-b-0 xl:border-l-2 xl:py-2 xl:data-[state=active]:bg-surface"
+            >
               {TAB_LABEL[value]}
               {value === 'deals' && dealCount !== undefined && dealCount > 0 && (
-                <span className="rounded-full bg-surface-sunken px-1.5 text-xs tabular-nums text-ink-muted">
-                  {dealCount}
-                </span>
+                <span className="text-caption tabular-nums text-ink-3">{dealCount}</span>
+              )}
+              {value === 'background-check' && (standing?.awaiting_approval || standing?.rekyc_due) && (
+                <span aria-label="needs attention" className="h-1.5 w-1.5 rounded-full bg-attention-solid" />
               )}
             </TabsTrigger>
           ))}
         </TabsList>
-      </div>
 
-      <TabsContent value="overview">
-        <div className="flex flex-col gap-5">
-          {/* IQ-7's completion list, from the company's side (R-28). */}
-          {profile.identity_type === null ? (
-            <IdentityGapNotice country={profile.country} canEdit={isStaff} />
-          ) : null}
-          <CompanyPanel profile={profile} canEdit={isStaff} />
-          {/* The company's branches (task 3.13), replacing the comma-separated GSTIN
-              field that used to be inside the panel. Flagging one is COMPLIANCE's
-              decision, so it is gated separately from editing. */}
-          <GstRegistrationsSection
-            customerId={customerId}
-            canEdit={isStaff}
-            canFlag={canFlagBranches}
-          />
+        <div className="min-w-0 max-w-reading">
+          <TabsContent value="overview">
+            <div className="flex flex-col gap-6">
+              <section aria-label="Now" className="rounded-xl border border-line bg-surface px-4 py-3">
+                <h2 className="text-caption text-ink-3">Now</h2>
+                {now.length === 0 ? (
+                  <p className="mt-1 text-body text-ink-2">Nothing waiting on you here.</p>
+                ) : (
+                  <ul className="mt-1 divide-y divide-line">
+                    {now.slice(0, 3).map((item) => (
+                      <li key={item.key} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                        <span className="flex items-center gap-2 text-body text-ink">
+                          <Icon.forward size={15} className="text-ink-3" aria-hidden />
+                          {item.text}
+                        </span>
+                        <Button size="sm" variant="secondary" onClick={() => setTab(item.open)}>
+                          {item.verb}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              {/* IQ-7's completion list, from the company's side (R-28). */}
+              {profile.identity_type === null ? (
+                <IdentityGapNotice country={profile.country} canEdit={isStaff} />
+              ) : null}
+              <CompanyPanel profile={profile} canEdit={isStaff} />
+              {/* The company's branches (task 3.13). Flagging one is COMPLIANCE's
+                  decision, so it is gated separately from editing. */}
+              <GstRegistrationsSection customerId={customerId} canEdit={isStaff} canFlag={canFlagBranches} />
+            </div>
+          </TabsContent>
+          <TabsContent value="qualification">
+            {notInPipeline ? (
+              <NotInPipelineNotice
+                what="Qualification"
+                onBringIn={isStaff ? () => bringIntoPipeline.mutate({}) : undefined}
+                busy={bringIntoPipeline.isPending}
+              />
+            ) : (
+              <QualificationPanel customerId={customerId} />
+            )}
+          </TabsContent>
+          <TabsContent value="conversation">
+            {notInPipeline ? (
+              <NotInPipelineNotice
+                what="The conversation gauge"
+                onBringIn={isStaff ? () => bringIntoPipeline.mutate({}) : undefined}
+                busy={bringIntoPipeline.isPending}
+              />
+            ) : (
+              <ConversationPanel
+                customerId={customerId}
+                contacts={contacts}
+                contactsLoading={contactQuery.isLoading}
+                activities={activities}
+                activitiesLoading={activityQuery.isLoading}
+                activitiesFetching={activityQuery.isFetching}
+                activityType={activityType}
+                onActivityTypeChange={setActivityType}
+                activityPage={activityPage}
+                onActivityPageChange={setActivityPage}
+                hasNextActivityPage={hasNextActivityPage}
+                isStaff={isStaff}
+                logRequested={logRequested}
+                onLogHandled={() => setLogRequested(false)}
+              />
+            )}
+          </TabsContent>
+          <TabsContent value="deals">
+            {/* Both sides of this company's trade (task 3.9): selling, where a deal is
+                opened, and buying, a plain list. Then what came of it, invoice by
+                invoice — never totalled; amounts stay in their own currency (IQ-4). */}
+            <div className="flex flex-col gap-8">
+              <DealsPanel customerId={customerId} isStaff={isStaff} />
+              <Panel
+                title="Buying"
+                description="Deals where this company is the buyer. A company can be a buyer on one deal and a seller on another."
+              >
+                <CompanyDealsList companyId={customerId} as="buyer" />
+              </Panel>
+              <Panel
+                title="Trade — sold to"
+                description="Who this company has invoiced, and what became of each invoice. Nothing here is totalled: amounts stay in the currency they were invoiced in."
+              >
+                <CompanyTradePanel companyId={customerId} as="seller" canRecord={isStaff} />
+              </Panel>
+              <Panel
+                title="Trade — bought from"
+                description="Who has invoiced this company. The same pair in the other direction is a different relationship, with different invoices."
+              >
+                <CompanyTradePanel companyId={customerId} as="buyer" canRecord={isStaff} />
+              </Panel>
+            </div>
+          </TabsContent>
+          <TabsContent value="documents">
+            <DocumentsPanel customerId={customerId} isStaff={isStaff} />
+          </TabsContent>
+          <TabsContent value="background-check">
+            {/* Never rendered for a role without the chapter, so its code never loads (G7). */}
+            <Suspense fallback={<Skeleton className="h-40 rounded-xl" />}>
+              <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
+            </Suspense>
+          </TabsContent>
+          <TabsContent value="history">
+            <CompanyHistory customerId={customerId} />
+          </TabsContent>
         </div>
-      </TabsContent>
-      <TabsContent value="qualification">
-        {notInPipeline ? (
-          <NotInPipelineNotice
-            what="Qualification"
-            onBringIn={isStaff ? () => bringIntoPipeline.mutate({}) : undefined}
-            busy={bringIntoPipeline.isPending}
-          />
-        ) : (
-          <QualificationPanel customerId={customerId} />
-        )}
-      </TabsContent>
-      <TabsContent value="conversation">
-        {notInPipeline ? (
-          <NotInPipelineNotice
-            what="The conversation gauge"
-            onBringIn={isStaff ? () => bringIntoPipeline.mutate({}) : undefined}
-            busy={bringIntoPipeline.isPending}
-          />
-        ) : (
-        <ConversationPanel
-          customerId={customerId}
-          contacts={contacts}
-          contactsLoading={contactQuery.isLoading}
-          activities={activities}
-          activitiesLoading={activityQuery.isLoading}
-          activitiesFetching={activityQuery.isFetching}
-          activityType={activityType}
-          onActivityTypeChange={setActivityType}
-          activityPage={activityPage}
-          onActivityPageChange={setActivityPage}
-          hasNextActivityPage={hasNextActivityPage}
-          isStaff={isStaff}
-        />
-        )}
-      </TabsContent>
-      <TabsContent value="deals">
-        {/* Both sides of this company's trade (task 3.9). `DealsPanel` is the
-            seller side — it owns the "open a deal" control and shows each deal's
-            stage — and the buyer side is a plain list, because there is nothing to
-            open there: a deal is opened on the company that is selling. */}
-        <div className="flex flex-col gap-5">
-          <DealsPanel customerId={customerId} isStaff={isStaff} />
-          <Panel
-            title="Bought from"
-            description="Deals where this company is the buyer. A company can be a buyer on one deal and a seller on another."
-          >
-            <CompanyDealsList companyId={customerId} as="buyer" />
-          </Panel>
-          {/* Trade history, both sides (task 3.22, plan P5-7). It sits with the deals
-              because it answers the next question a reader of that list has — not
-              "who is this company dealing with" but "and how did it go". A deal is
-              what two companies are doing now; a relationship is what they have done,
-              invoice by invoice, which is the thing a lending decision reads. */}
-          <Panel
-            title="Sold to"
-            description="Who this company has invoiced, and what became of each invoice. Nothing here is totalled: amounts stay in the currency they were invoiced in."
-          >
-            <CompanyTradePanel companyId={customerId} as="seller" canRecord={isStaff} />
-          </Panel>
-          <Panel
-            title="Bought from, invoice by invoice"
-            description="Who has invoiced this company. The same pair in the other direction is a different relationship, with different invoices."
-          >
-            <CompanyTradePanel companyId={customerId} as="buyer" canRecord={isStaff} />
-          </Panel>
-        </div>
-      </TabsContent>
-      <TabsContent value="documents">
-        <DocumentsPanel customerId={customerId} isStaff={isStaff} />
-      </TabsContent>
-      <TabsContent value="background-check">
-        {/* Never rendered for a role without the tab, so its code never loads (G7). */}
-        <Suspense fallback={<Skeleton className="h-40 rounded-lg" />}>
-          <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
-        </Suspense>
-      </TabsContent>
-      <TabsContent value="history">
-        <CompanyHistory customerId={customerId} />
-      </TabsContent>
+      </div>
     </Tabs>
   );
 }

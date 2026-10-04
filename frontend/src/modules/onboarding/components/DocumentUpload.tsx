@@ -16,11 +16,11 @@
  * clean-up exists to prevent.
  */
 
-import { Upload } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button, Select } from '@/components';
+import { Icon } from '@/design/icons';
 import { humanize } from '@/lib/format';
 
 import { useDocumentCategories } from '../hooks';
@@ -57,6 +57,8 @@ interface DocumentUploadProps {
   onUpload: (input: UploadDocumentInput) => Promise<unknown>;
   isUploading: boolean;
   onDone?: () => void;
+  /** A file already chosen — dropped on the shelf (frontend-plan §6.8). */
+  initialFile?: File | null;
 }
 
 export function DocumentUpload({
@@ -64,11 +66,12 @@ export function DocumentUpload({
   onUpload,
   isUploading,
   onDone,
+  initialFile = null,
 }: DocumentUploadProps) {
   const { data, isLoading } = useDocumentCategories(owner);
   const [category, setCategory] = useState<DocumentCategory | ''>('');
   const [documentType, setDocumentType] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(initialFile);
   // The file input is uncontrolled, so clearing the state does not clear what it
   // shows: after an upload it kept displaying the old file name beside a disabled
   // button. The ref lets the element itself be reset.
@@ -109,7 +112,7 @@ export function DocumentUpload({
         <div>
           <label
             htmlFor="document-category"
-            className="mb-1 block text-xs font-medium text-ink-muted"
+            className="mb-1 block text-xs font-medium text-ink-2"
           >
             Category
           </label>
@@ -135,7 +138,7 @@ export function DocumentUpload({
         <div>
           <label
             htmlFor="document-type"
-            className="mb-1 block text-xs font-medium text-ink-muted"
+            className="mb-1 block text-xs font-medium text-ink-2"
           >
             Type
           </label>
@@ -160,7 +163,7 @@ export function DocumentUpload({
       <div>
         <label
           htmlFor="document-file"
-          className="mb-1 block text-xs font-medium text-ink-muted"
+          className="mb-1 block text-xs font-medium text-ink-2"
         >
           File
         </label>
@@ -188,12 +191,12 @@ export function DocumentUpload({
             }
             setFile(chosen);
           }}
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink file:mr-3 file:rounded-md file:border-0 file:bg-surface-sunken file:px-3 file:py-1 file:text-sm file:text-ink-muted"
+          className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink file:mr-3 file:rounded-md file:border-0 file:bg-sunken file:px-3 file:py-1 file:text-sm file:text-ink-2"
         />
       </div>
 
       {scannerName === 'pass-through' && (
-        <p className="rounded-lg border border-status-review/30 bg-status-review/5 px-3 py-2 text-xs text-ink-muted">
+        <p className="rounded-lg border border-attention/30 bg-attention-tint px-3 py-2 text-xs text-ink-2">
           <span className="font-medium text-ink">No malware scanning yet.</span> This
           build records a <span className="font-mono">pass-through</span> result
           instead of scanning, so an uploaded file is marked available without being
@@ -204,7 +207,7 @@ export function DocumentUpload({
 
       <div className="flex justify-end">
         <Button type="submit" variant="primary" disabled={!canSubmit} loading={isUploading}>
-          {!isUploading && <Upload size={15} />}
+          {!isUploading && <Icon.upload size={15} />}
           Upload
         </Button>
       </div>

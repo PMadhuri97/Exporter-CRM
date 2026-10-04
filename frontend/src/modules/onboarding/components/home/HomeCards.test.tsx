@@ -19,11 +19,10 @@ import type {
 } from '../../types';
 
 import {
-  CheckBacksDueCard,
-  FollowUpsDueCard,
   PipelineSummaryCard,
   ProposalsAwaitingMeCard,
   ReKycDueCard,
+  UpNextCard,
 } from './HomeCards';
 
 vi.mock('../../api', () => ({
@@ -86,7 +85,7 @@ beforeEach(() => {
 
 describe('Home cards', () => {
   it("shows the user's own overdue follow-ups first, and the team's on request", async () => {
-    renderCard(<FollowUpsDueCard userId="user-1" />);
+    renderCard(<UpNextCard userId="user-1" canComplete />);
     expect(await screen.findByText('Send the rate sheet')).toBeInTheDocument();
     expect(screen.getByTestId('overdue-count')).toHaveTextContent('3');
     expect(listFollowUps).toHaveBeenLastCalledWith(
@@ -101,8 +100,11 @@ describe('Home cards', () => {
     );
   });
 
-  it('lists the check-backs that are due, linking to the conversation', async () => {
-    renderCard(<CheckBacksDueCard />);
+  it('puts due check-backs in the same queue, as their own kind, linking to the conversation', async () => {
+    renderCard(<UpNextCard userId="user-1" />);
+    // One time-ordered queue; a check-back is never "completed" here.
+    expect(await screen.findAllByTestId('up-next-check-back')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /Done/ })).not.toBeInTheDocument();
     const link = await screen.findByRole('link', { name: /Aarav Textiles/ });
     expect(link).toHaveAttribute('href', `/companies/${CUSTOMER_ID}?tab=conversation`);
     expect(listFollowUps).toHaveBeenLastCalledWith(

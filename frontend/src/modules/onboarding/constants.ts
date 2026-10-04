@@ -32,9 +32,9 @@ export const JOURNEY_LABEL: Record<ExporterJourney, string> = {
  * in source.
  */
 export const JOURNEY_CHIP_CLASSES: Record<ExporterJourney, string> = {
-  LEAD: 'bg-journey-lead/10 text-journey-lead',
-  PROSPECT: 'bg-journey-prospect/10 text-journey-prospect',
-  CUSTOMER: 'bg-journey-customer/10 text-journey-customer',
+  LEAD: 'bg-transparent px-0 text-ink',
+  PROSPECT: 'bg-transparent px-0 text-ink',
+  CUSTOMER: 'bg-transparent px-0 text-ink',
 };
 
 export const QUALIFICATION_LABEL: Record<QualificationState, string> = {
@@ -44,9 +44,9 @@ export const QUALIFICATION_LABEL: Record<QualificationState, string> = {
 };
 
 export const QUALIFICATION_CHIP_CLASSES: Record<QualificationState, string> = {
-  NOT_YET_REVIEWED: 'bg-surface-sunken text-ink-muted',
-  QUALIFIED: 'bg-status-passed/10 text-status-passed',
-  NOT_QUALIFIED: 'bg-status-failed/10 text-status-failed',
+  NOT_YET_REVIEWED: 'bg-sunken text-ink-2',
+  QUALIFIED: 'bg-positive-tint text-positive',
+  NOT_QUALIFIED: 'bg-negative-tint text-negative',
 };
 
 export const MARKER_LABEL: Record<ExporterMarker, string> = {
@@ -57,8 +57,8 @@ export const MARKER_LABEL: Record<ExporterMarker, string> = {
 
 export const MARKER_CHIP_CLASSES: Record<ExporterMarker, string> = {
   NONE: '',
-  PAUSED: 'bg-marker-paused/10 text-marker-paused',
-  ENDED: 'bg-marker-ended/15 text-ink-muted',
+  PAUSED: 'bg-attention-tint text-attention',
+  ENDED: 'bg-idle-tint text-ink-2',
 };
 
 /** The verb for moving the marker to a value, for buttons. */
@@ -75,7 +75,7 @@ export const RESULT_LABEL: Record<CriterionResultValue, string> = {
 };
 
 export const RESULT_CLASSES: Record<CriterionResultValue, string> = {
-  PASS: 'text-status-passed',
-  FAIL: 'text-status-failed',
-  UNKNOWN: 'text-ink-muted',
+  PASS: 'text-positive',
+  FAIL: 'text-negative',
+  UNKNOWN: 'text-ink-2',
 };

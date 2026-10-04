@@ -1,3 +1,5 @@
+import type { TagTone } from '@/components';
+
 import type { AdminUser } from './types';
 
 type Role = AdminUser['role'];
@@ -33,14 +35,12 @@ export const ROLE_DESCRIPTION: Record<Role, string> = {
     'External or system callers. Reaches nothing in the CRM — the default for self-service sign-up.',
 };
 
-/** Chip colours reuse the existing semantic palette rather than introducing a
- * per-role hue: privileged roles read as "attention", ordinary staff as
- * neutral. Never the risk or verification colours, which must stay unambiguous
- * on screens that show them alongside. */
-export const ROLE_CHIP_CLASS: Record<Role, string> = {
-  ADMIN: 'bg-brand-50 text-brand-600',
-  COMPLIANCE: 'bg-brand-50 text-brand-600',
-  OPERATIONS: 'bg-surface-sunken text-ink-muted',
-  DEVELOPER: 'bg-surface-sunken text-ink-muted',
-  API_USER: 'bg-surface-sunken text-ink-faint',
+/** A role's tag: ink for the roles that sign decisions, quiet for the rest. Never a
+ * state colour — colour means a state (frontend-plan §5.1), and a role is not one. */
+export const ROLE_TAG_TONE: Record<Role, TagTone> = {
+  ADMIN: 'ink',
+  COMPLIANCE: 'ink',
+  OPERATIONS: 'idle',
+  DEVELOPER: 'idle',
+  API_USER: 'idle',
 };

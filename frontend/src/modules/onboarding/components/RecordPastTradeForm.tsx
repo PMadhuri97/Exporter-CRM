@@ -137,9 +137,9 @@ export function RecordPastTradeForm({
     <form
       onSubmit={submit}
       aria-label="Record past invoice"
-      className="mt-2 flex flex-col gap-3 rounded-lg border border-border bg-surface-subtle p-4"
+      className="mt-2 flex flex-col gap-3 rounded-lg border border-line bg-paper p-4"
     >
-      <p className="text-sm text-ink-muted">
+      <p className="text-sm text-ink-2">
         An invoice with <span className="font-medium text-ink">{counterpartyName}</span> from
         before either company came to us. It records no deal, and its outcome stays
         "claimed" until somebody has seen proof.
@@ -239,14 +239,14 @@ export function RecordPastTradeForm({
       {error ? (
         <p
           role="alert"
-          className="rounded-lg border border-status-failed/30 bg-status-failed/10 px-3 py-2 text-sm text-ink"
+          className="rounded-lg border border-negative/30 bg-negative-tint px-3 py-2 text-sm text-ink"
         >
           {error}
         </p>
       ) : null}
 
       <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={recordedInvoiceId ? onDone : onCancel} disabled={pending}>
+        <Button variant="quiet" onClick={recordedInvoiceId ? onDone : onCancel} disabled={pending}>
           {recordedInvoiceId ? 'Close' : 'Cancel'}
         </Button>
         <Button

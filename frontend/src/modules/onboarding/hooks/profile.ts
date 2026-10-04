@@ -6,7 +6,7 @@
  * too, because the detail embeds contacts and activities).
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   addGstRegistration,
@@ -43,7 +43,44 @@ export function useExporterProfiles(params: ExporterSearchParams) {
   return useQuery({
     queryKey: ['exporterProfiles', params],
     queryFn: () => searchExporterProfiles(params),
+    // A changed filter or a longer page keeps the rows on screen until the answer
+    // arrives, instead of flashing back to skeletons.
+    placeholderData: keepPreviousData,
   });
+}
+
+/** The most the list route returns in one page — the honest cap on a count. */
+export const COUNT_CAP = 200;
+
+/**
+ * How many companies stand at one journey stage, up to `COUNT_CAP`: the list route
+ * has no total yet (ask A2), so a full page reads "200+". Shares its cache with the
+ * desk's pipeline counts.
+ */
+export function useJourneyCount(journey: ExporterSearchParams['journey']) {
+  const query = useQuery({
+    queryKey: ['exporterProfiles', { journey, limit: COUNT_CAP }],
+    queryFn: () => searchExporterProfiles({ journey, limit: COUNT_CAP }),
+  });
+  return query.data ? query.data.profiles.length : undefined;
+}
+
+/**
+ * Loads a company's dossier ahead of a click — on hover or focus of its row (§12.3).
+ * Resolves `true` once the record is cached, so a morph can tell the dossier will
+ * draw at once; it never rejects.
+ */
+export function usePrefetchCompany() {
+  const queryClient = useQueryClient();
+  return async (customerId: string): Promise<boolean> => {
+    const queryKey = ['exporterProfile', customerId];
+    await queryClient.prefetchQuery({
+      queryKey,
+      queryFn: () => getExporterProfileDetail(customerId),
+      staleTime: 30_000,
+    });
+    return queryClient.getQueryData(queryKey) !== undefined;
+  };
 }
 
 export function useExporterProfileDetail(customerId: string | undefined) {

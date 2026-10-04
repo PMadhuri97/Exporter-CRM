@@ -34,27 +34,27 @@ export function AwaitingApproval({ proposal }: { proposal: BackgroundCheckPropos
   return (
     <div
       data-testid="awaiting-approval"
-      className="mt-3 rounded border border-violet-200 bg-violet-50/50 p-3"
+      className="mt-3 rounded-md border border-dashed border-ink/60 p-3"
     >
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-medium text-violet-800">Awaiting approval:</span>
-        <span className="font-medium text-slate-900">
+        <span className="font-medium text-ink">Awaiting approval:</span>
+        <span className="font-medium text-ink">
           {proposedMoveLabel(proposal.to_value)}
         </span>
         {proposal.risk_rating && <RiskChip risk={proposal.risk_rating} />}
       </div>
-      <p className="mt-1 text-xs text-slate-600">
+      <p className="mt-1 text-xs text-ink-2">
         Proposed by {actorLabel(proposal.proposed_by_name, proposal.proposed_by)},{' '}
         {formatDateTime(proposal.proposed_at)} — {proposal.reason}
       </p>
       {proposal.stale_reason && (
-        <p data-testid="proposal-stale" className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-800">
+        <p data-testid="proposal-stale" className="mt-2 rounded bg-attention-tint p-2 text-xs text-attention">
           This proposal is out of date ({proposal.stale_reason}). It can no longer be
           approved: reject or withdraw it, and record the decision again.
         </p>
       )}
       {actions.length === 0 && (
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-ink-3">
           A second compliance officer must approve or reject it.
         </p>
       )}
@@ -68,8 +68,8 @@ export function AwaitingApproval({ proposal }: { proposal: BackgroundCheckPropos
                 onClick={() => setAction(candidate)}
                 className={
                   BUTTONS[candidate].primary
-                    ? 'rounded bg-slate-900 px-3 py-1.5 text-sm text-white'
-                    : 'rounded border border-slate-300 bg-white px-3 py-1.5 text-sm'
+                    ? 'rounded bg-ink px-3 py-1.5 text-sm text-paper'
+                    : 'rounded border border-line-strong bg-surface px-3 py-1.5 text-sm'
                 }
               >
                 {BUTTONS[candidate].label}

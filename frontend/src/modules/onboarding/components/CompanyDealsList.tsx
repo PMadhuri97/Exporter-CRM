@@ -25,10 +25,10 @@
  * that renders wherever a company's deals in one role belong, panel or not.
  */
 
-import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { EmptySection, ErrorState, Skeleton } from '@/components';
+import { Icon } from '@/design/icons';
 import { formatDate } from '@/lib/format';
 
 import { useCompanyDeals } from '../hooks';
@@ -47,13 +47,13 @@ function Row({ deal, as }: { deal: DealListItem; as: DealSide }) {
     <li>
       <Link
         to={paths.deal(deal.id)}
-        className="group flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-surface-subtle"
+        className="group flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-paper"
       >
         <div className="min-w-0">
-          <span className="font-medium text-ink group-hover:text-brand-600">
+          <span className="font-medium text-ink group-hover:text-ink">
             {deal.reference}
           </span>
-          <p className="mt-0.5 text-xs text-ink-muted">
+          <p className="mt-0.5 text-xs text-ink-2">
             {/* The other party, whichever side this company is on: the server puts
                 it in `buyer_name` both ways (task 2.7). The fallback differs because
                 the two gaps mean different things — a seller's deal may genuinely
@@ -62,7 +62,7 @@ function Row({ deal, as }: { deal: DealListItem; as: DealSide }) {
             {`${deal.buyer_name ?? (as === 'seller' ? 'No buyer recorded yet' : 'Seller unknown')} · opened ${formatDate(deal.created_at)}`}
           </p>
         </div>
-        <ChevronRight size={15} className="text-ink-faint" />
+        <Icon.caretRight size={15} className="text-ink-3" />
       </Link>
     </li>
   );
@@ -96,7 +96,7 @@ export function CompanyDealsList({ companyId, as }: CompanyDealsListProps) {
   }
 
   return (
-    <ul className="divide-y divide-border">
+    <ul className="divide-y divide-line">
       {deals.map((deal) => (
         <Row key={deal.id} deal={deal} as={as} />
       ))}

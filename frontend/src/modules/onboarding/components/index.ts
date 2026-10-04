@@ -1,4 +1,5 @@
-export { JourneyChip, MarkerBadge, QualificationChip } from './CompanyChips';
+export { CompaniesViewSwitch } from './CompaniesViewSwitch';
+export { JourneyChip, JourneyDots, MarkerBadge, QualificationChip } from './CompanyChips';
 export { MarkerControl } from './MarkerControl';
 export { DuplicatePanMessage } from './DuplicatePanMessage';
 export { duplicatePanHolder } from './duplicate-pan';
@@ -7,7 +8,6 @@ export { VerificationSection } from './VerificationSection';
 export { BuyerChecks } from './BuyerChecks';
 // Developer 3A: the conversation gauge's move control, and the READY_NOW prompt
 // (seam S2), which opens a deal through Developer 3B's `OpenDealForm`.
-export { ConversationGaugeControl } from './ConversationGaugeControl';
 export { OpenDealPrompt } from './OpenDealPrompt';
 // Developer 3B: deals and documents. `DocumentUpload` and `DocumentList` are
 // shared by the company page's Documents tab and the deal page, because a
@@ -68,3 +68,4 @@ export type { InvoicingBranchPickerProps } from './InvoicingBranchPicker';
 // ── Compliance engine — owner: Developer 1 ──
 // Mounted by other lanes: Developer 2 on the deal page (seller and buyer company).
 export { CompanyComplianceSummary } from './CompanyComplianceSummary';
+export * from './standing';

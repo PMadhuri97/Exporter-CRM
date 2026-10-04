@@ -1,4 +1,9 @@
 /**
+ * Import companies (frontend-plan §8.4): a drop zone, a local preview of what will be
+ * sent, then the server's report as lines grouped by outcome — refused, possible
+ * duplicates, created or matched — each in the server's words. The client re-checks
+ * nothing.
+ *
  * Bulk company import — **owner: Developer 2** (L2-13, L2-14).
  *
  * Download the server's template, upload a CSV, read the per-row report. Every
@@ -8,25 +13,13 @@
  * duplicate is never merged: it is left for a person to settle.
  */
 
-import { Download, FileSpreadsheet } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState, type DragEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import {
-  Button,
-  Card,
-  Chip,
-  PageHeader,
-  Panel,
-  Table,
-  TBody,
-  Td,
-  Th,
-  THead,
-  Tr,
-  type ChipTone,
-} from '@/components';
+import { Button, Count, PageHeader, Tag, type TagTone } from '@/components';
+import { Icon } from '@/design/icons';
+import { cn } from '@/lib/cn';
 import { humanize } from '@/lib/format';
 
 import { getCompanyImportTemplate } from '../api';
@@ -34,11 +27,18 @@ import { useImportCompanies } from '../hooks';
 import { paths } from '../paths';
 import type { ImportReport } from '../types';
 
-const STATUS_TONE: Record<string, ChipTone> = {
-  accepted: 'success',
-  rejected: 'danger',
-  possible_duplicate: 'warning',
+const STATUS_TONE: Record<string, TagTone> = {
+  accepted: 'positive',
+  rejected: 'negative',
+  possible_duplicate: 'attention',
 };
+
+/** How the report groups its lines (frontend-plan §8.4): refusals first, they need a person. */
+const GROUPS: { status: string; title: string; glyph: 'error' | 'warning' | 'passed' }[] = [
+  { status: 'rejected', title: 'Refused', glyph: 'error' },
+  { status: 'possible_duplicate', title: 'Possible duplicates — a person should choose', glyph: 'warning' },
+  { status: 'accepted', title: 'Created or matched', glyph: 'passed' },
+];
 
 async function downloadTemplate() {
   try {
@@ -54,132 +54,195 @@ async function downloadTemplate() {
   }
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone?: string }) {
-  return (
-    <div className="rounded-lg border border-border px-4 py-3">
-      <div className={`text-xl font-semibold tabular-nums ${tone ?? 'text-ink'}`}>{value}</div>
-      <div className="text-xs text-ink-muted">{label}</div>
-    </div>
-  );
+/**
+ * What is about to be sent, so the person can see it is the right file: the header
+ * and the first five lines, read locally. Nothing here checks a value — every check
+ * is the server's, in the report that comes back (ask A8 would make this preview the
+ * server's own dry run).
+ */
+function usePreview(file: File | null) {
+  const [preview, setPreview] = useState<{ file: File; rows: string[][] } | null>(null);
+  useEffect(() => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = String(reader.result ?? '')
+        .split(/\r?\n/)
+        .filter((line) => line.trim() !== '')
+        .slice(0, 6)
+        .map((line) => line.split(','));
+      setPreview({ file, rows });
+    };
+    reader.readAsText(file.slice(0, 64 * 1024));
+    return () => reader.abort();
+  }, [file]);
+  return file && preview?.file === file ? preview : null;
 }
 
-function ReportTable({ report }: { report: ImportReport }) {
+function Report({ report }: { report: ImportReport }) {
   return (
-    <Panel
-      title="Report"
-      aria-label="Import report"
-      description={
-        <span data-testid="import-summary">
+    <section aria-label="Import report" className="space-y-6">
+      <div className="flex flex-wrap items-end gap-x-10 gap-y-4 border-t border-line pt-5">
+        <div>
+          <Count value={report.created} size="lg" />
+          <p className="text-caption text-ink-3">created</p>
+        </div>
+        <div>
+          <Count value={report.matched} size="lg" />
+          <p className="text-caption text-ink-3">matched</p>
+        </div>
+        <div>
+          <Count value={report.rejected} size="lg" className={report.rejected ? 'text-negative' : undefined} />
+          <p className="text-caption text-ink-3">refused</p>
+        </div>
+        <div>
+          <Count
+            value={report.possible_duplicates}
+            size="lg"
+            className={report.possible_duplicates ? 'text-attention' : undefined}
+          />
+          <p className="text-caption text-ink-3">possible duplicates</p>
+        </div>
+        <p data-testid="import-summary" className="text-secondary text-ink-3">
           {report.total_rows} rows · {report.created} created · {report.matched} matched ·{' '}
           {report.rejected} rejected · {report.possible_duplicates} possible duplicates
-        </span>
-      }
-      flush
-    >
-      <div className="grid grid-cols-2 gap-3 px-5 pb-4 sm:grid-cols-4">
-        <Stat label="Created" value={report.created} tone="text-status-passed" />
-        <Stat label="Matched" value={report.matched} />
-        <Stat label="Rejected" value={report.rejected} tone="text-status-failed" />
-        <Stat label="Possible duplicates" value={report.possible_duplicates} tone="text-status-review" />
+        </p>
       </div>
-      {report.rows.length > 0 && (
-        <Table>
-          <THead>
-            <tr>
-              <Th className="w-16">Line</Th>
-              <Th>Status</Th>
-              <Th>Company</Th>
-              <Th>Details</Th>
-            </tr>
-          </THead>
-          <TBody>
-            {report.rows.map((row) => (
-              <Tr key={row.line}>
-                <Td className="text-ink-muted">{row.line}</Td>
-                <Td>
-                  <Chip tone={STATUS_TONE[row.status] ?? 'neutral'}>{humanize(row.status)}</Chip>
-                  {row.action && <span className="ml-1.5 text-xs text-ink-muted">{row.action}</span>}
-                </Td>
-                <Td>
-                  {row.customer_id ? (
-                    <Link to={paths.company(row.customer_id)} className="text-brand-600 underline">
-                      Open
-                    </Link>
-                  ) : row.candidates.length > 0 ? (
-                    <span className="flex flex-wrap gap-2">
-                      {row.candidates.map((id, i) => (
-                        <Link key={id} to={paths.company(id)} className="text-brand-600 underline">
+
+      {GROUPS.map((group) => {
+        const rows = report.rows.filter((row) => row.status === group.status);
+        if (rows.length === 0) return null;
+        const Glyph = Icon[group.glyph];
+        return (
+          <div key={group.status} role="group" aria-label={group.title}>
+            <h2 className="flex items-center gap-2 text-lead font-semibold text-ink">
+              <Glyph size={17} className="text-ink-3" aria-hidden />
+              {group.title}
+              <span className="text-secondary font-normal tabular-nums text-ink-3">{rows.length}</span>
+            </h2>
+            <ul className="mt-2 divide-y divide-line">
+              {rows.map((row) => (
+                <li key={row.line} className="grid gap-x-4 gap-y-1 py-2.5 sm:grid-cols-[4.5rem_1fr_auto]">
+                  <span className="text-secondary tabular-nums text-ink-3">Line {row.line}</span>
+                  <div className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Tag tone={STATUS_TONE[row.status] ?? 'idle'}>{humanize(row.status)}</Tag>
+                      {row.action && <span className="text-secondary text-ink-2">{row.action}</span>}
+                    </span>
+                    {[...row.reasons, ...row.warnings].length > 0 && (
+                      <ul className="mt-1 space-y-0.5 text-secondary text-ink-2">
+                        {[...row.reasons, ...row.warnings].map((reason, i) => (
+                          <li key={`${reason.code}-${i}`}>{reason.message}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <span className="flex flex-wrap gap-3 text-secondary">
+                    {row.customer_id ? (
+                      <Link to={paths.company(row.customer_id)} className="font-medium text-ink underline underline-offset-[3px]">
+                        Open
+                      </Link>
+                    ) : (
+                      row.candidates.map((id, i) => (
+                        <Link key={id} to={paths.company(id)} className="font-medium text-ink underline underline-offset-[3px]">
                           Candidate {i + 1}
                         </Link>
-                      ))}
-                    </span>
-                  ) : (
-                    '—'
-                  )}
-                </Td>
-                <Td className="text-ink-muted">
-                  <ul className="space-y-0.5">
-                    {[...row.reasons, ...row.warnings].map((reason, i) => (
-                      <li key={`${reason.code}-${i}`}>{reason.message}</li>
-                    ))}
-                  </ul>
-                </Td>
-              </Tr>
-            ))}
-          </TBody>
-        </Table>
-      )}
-    </Panel>
+                      ))
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
 export function CompanyImportPage() {
   const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
   const mutation = useImportCompanies();
+  const preview = usePreview(file);
+
+  const onDrop = (event: DragEvent) => {
+    event.preventDefault();
+    setDragging(false);
+    const dropped = event.dataTransfer.files?.[0];
+    if (dropped) setFile(dropped);
+  };
 
   return (
-    <div className="space-y-5">
+    <div className="max-w-reading space-y-6">
       <PageHeader
-        back={{ to: paths.companies, label: 'Companies' }}
         title="Import companies"
         description="Each row is checked and matched like a company added by hand. New companies start as leads; possible duplicates are reported, never merged. Up to 1,000 rows per file."
-      />
-
-      <Card className="p-5">
-        <form
-          className="flex flex-col gap-4 sm:flex-row sm:items-center"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!file) return;
-            mutation.mutate(file, {
-              onSuccess: (report) =>
-                toast.success(`Import finished: ${report.created} created, ${report.matched} matched`),
-              onError: (error) => toast.error(error.message),
-            });
-          }}
-        >
-          <Button onClick={() => void downloadTemplate()}>
-            <Download size={15} />
+        actions={
+          <Button variant="quiet" onClick={() => void downloadTemplate()}>
+            <Icon.download size={15} aria-hidden />
             Download template
           </Button>
-          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border-strong px-4 py-2.5 text-sm text-ink-muted hover:border-brand-500">
-            <FileSpreadsheet size={18} className="shrink-0 text-ink-faint" />
-            <span className="truncate">{file ? file.name : 'Choose a CSV file…'}</span>
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              aria-label="CSV file"
-              className="sr-only"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
+        }
+      />
+
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!file) return;
+          mutation.mutate(file, {
+            onSuccess: (report) =>
+              toast.success(`Import finished: ${report.created} created, ${report.matched} matched`),
+            onError: (error) => toast.error(error.message),
+          });
+        }}
+      >
+        <label
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          className={cn(
+            'flex cursor-pointer flex-col items-start gap-1 rounded-xl border border-dashed px-5 py-6 transition-colors duration-quick',
+            dragging ? 'border-ink bg-sunken' : 'border-line-strong hover:border-ink-3',
+          )}
+        >
+          <span className="flex items-center gap-2.5 text-body font-medium text-ink">
+            <Icon.csv size={20} className="text-ink-3" aria-hidden />
+            {file ? file.name : 'Drop a CSV here, or choose one'}
+          </span>
+          <span className="text-secondary text-ink-3">
+            {file ? `${Math.max(1, Math.round(file.size / 1024))} KB — choose another to replace it` : 'Use the template’s columns.'}
+          </span>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            aria-label="CSV file"
+            className="sr-only"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+
+        {preview && preview.rows.length > 0 && (
+          <div role="group" aria-label="What will be sent" className="space-y-1">
+            <p className="text-caption text-ink-3">What will be sent — the header and the first lines, as read here</p>
+            <pre className="overflow-x-auto rounded-xl border border-line bg-surface p-3 font-mono text-data text-ink-2">
+              {preview.rows.map((cells) => cells.join('  ·  ')).join('\n')}
+            </pre>
+          </div>
+        )}
+
+        <div className="flex justify-end">
           <Button type="submit" variant="primary" disabled={!file} loading={mutation.isPending}>
             Import
           </Button>
-        </form>
-      </Card>
+        </div>
+      </form>
 
-      {mutation.data && <ReportTable report={mutation.data} />}
+      {mutation.data && <Report report={mutation.data} />}
     </div>
   );
 }

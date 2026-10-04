@@ -8,25 +8,32 @@
 
 import { cn } from '@/lib/cn';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'brand';
+/**
+ * `primary` is ink — the one filled button on a surface. `secondary` is a
+ * hairline outline, `quiet` text only. `destructive` is an outline in the
+ * negative colour: something that cannot be undone asks to be read, not hit.
+ * There is no brand variant: the chrome has no hue (frontend-plan §5.1).
+ */
+export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'destructive';
 export type ButtonSize = 'sm' | 'md';
 
 const BUTTON_BASE =
-  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition-colors ' +
-  'disabled:pointer-events-none disabled:opacity-50';
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium ' +
+  'transition-colors duration-quick ease-enter ' +
+  'disabled:pointer-events-none disabled:opacity-45';
 
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {
-  // `ink` inverts with the theme, so its text colour is `surface`, never `white`.
-  primary: 'bg-ink text-surface hover:bg-ink/85',
-  secondary: 'border border-border bg-surface text-ink hover:bg-surface-sunken',
-  ghost: 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
-  danger: 'bg-status-failed text-white hover:bg-status-failed/90',
-  brand: 'bg-brand-600 text-white hover:bg-brand-700 dark:text-surface',
+  // `ink` inverts with the theme, so its text is `paper`, never `white`.
+  primary: 'bg-ink text-paper hover:bg-ink/85 active:bg-ink/75',
+  secondary: 'border border-line-strong bg-surface text-ink hover:border-ink-3 hover:bg-sunken',
+  quiet: 'text-ink-2 hover:bg-sunken hover:text-ink',
+  destructive:
+    'border border-negative/40 bg-surface text-negative hover:border-negative hover:bg-negative-tint',
 };
 
 const BUTTON_SIZE: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-sm',
-  md: 'h-9 px-4 text-sm',
+  sm: 'h-8 px-3 text-secondary',
+  md: 'h-9 px-4 text-body',
 };
 
 export function buttonClasses({
@@ -38,20 +45,30 @@ export function buttonClasses({
 }
 
 /**
- * The semantic tones a chip can take. Each maps to one entry of the status
- * language in `tailwind.config.ts`; domain chips (journey, marker) pass their
- * own classes instead of a tone.
+ * The tones a tag can take: one per meaning (frontend-plan §5.2), plus `ink`
+ * for an emphasis that is not a state (a primary contact, "Required").
  */
-export type ChipTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'brand';
+export type TagTone = 'idle' | 'positive' | 'negative' | 'attention' | 'progress' | 'ink';
 
-export const CHIP_TONE_CLASSES: Record<ChipTone, string> = {
-  neutral: 'bg-surface-sunken text-ink-muted',
-  info: 'bg-status-info/10 text-status-info',
-  success: 'bg-status-passed/10 text-status-passed',
-  warning: 'bg-status-review/10 text-status-review',
-  danger: 'bg-status-failed/10 text-status-failed',
-  brand: 'bg-brand-50 text-brand-700',
+export const TAG_TONE_CLASSES: Record<TagTone, string> = {
+  idle: 'bg-sunken text-ink-2',
+  positive: 'bg-positive-tint text-positive',
+  negative: 'bg-negative-tint text-negative',
+  attention: 'bg-attention-tint text-attention',
+  progress: 'bg-progress-tint text-progress',
+  ink: 'border border-line-strong text-ink',
 };
 
-/** A text link in body copy. */
-export const LINK_CLASSES = 'font-medium text-brand-600 hover:underline';
+/** The dot a `Tag` may lead with — the meaning's solid, so it reads at a glance. */
+export const TAG_DOT_CLASSES: Record<TagTone, string> = {
+  idle: 'bg-idle-solid',
+  positive: 'bg-positive-solid',
+  negative: 'bg-negative-solid',
+  attention: 'bg-attention-solid',
+  progress: 'bg-progress-solid',
+  ink: 'bg-ink',
+};
+
+/** A text link in body copy: ink with a quiet underline that firms on hover. */
+export const LINK_CLASSES =
+  'font-medium text-ink underline decoration-line-strong underline-offset-[3px] transition-colors duration-quick hover:decoration-ink';

@@ -1,5 +1,6 @@
-import { Eye, EyeOff } from 'lucide-react';
 import { useId, useState } from 'react';
+
+import { Icon } from '@/design/icons';
 
 import { assessPassword } from '../passwordStrength';
 
@@ -15,12 +16,12 @@ interface PasswordFieldProps {
 }
 
 const BAR_COLOR = [
-  'bg-border-strong',
-  'bg-status-failed',
-  'bg-status-failed',
-  'bg-status-review',
-  'bg-brand-500',
-  'bg-status-passed',
+  'bg-line-strong',
+  'bg-negative-solid',
+  'bg-negative-solid',
+  'bg-attention-solid',
+  'bg-ink',
+  'bg-positive-solid',
 ] as const;
 
 export function PasswordField({
@@ -37,7 +38,7 @@ export function PasswordField({
 
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-xs font-medium text-ink-muted">
+      <label htmlFor={id} className="mb-1 block text-caption font-medium text-ink-2">
         {label}
       </label>
       <div className="relative">
@@ -48,15 +49,15 @@ export function PasswordField({
           required={required}
           autoComplete={autoComplete}
           onChange={(event) => onChange(event.target.value)}
-          className="w-full rounded-lg border border-border px-3 py-2 pr-10 text-sm text-ink outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+          className="input pr-10"
         />
         <button
           type="button"
           onClick={() => setVisible((shown) => !shown)}
           aria-label={visible ? 'Hide password' : 'Show password'}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-ink-faint transition-colors hover:text-ink"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-ink-3 transition-colors hover:text-ink"
         >
-          {visible ? <EyeOff size={15} /> : <Eye size={15} />}
+          {visible ? <Icon.conceal size={15} /> : <Icon.reveal size={15} />}
         </button>
       </div>
 
@@ -69,15 +70,15 @@ export function PasswordField({
                 className={`h-1 flex-1 rounded-full ${
                   step <= strength.score
                     ? BAR_COLOR[strength.score]
-                    : 'bg-surface-sunken'
+                    : 'bg-sunken'
                 }`}
               />
             ))}
           </div>
-          <p className="mt-1.5 text-xs text-ink-muted" aria-live="polite">
+          <p className="mt-1.5 text-caption text-ink-2" aria-live="polite">
             {strength.label}
             {strength.missing.length > 0 && (
-              <span className="text-ink-faint">
+              <span className="text-ink-3">
                 {' — still needs '}
                 {strength.missing.join(', ')}
               </span>

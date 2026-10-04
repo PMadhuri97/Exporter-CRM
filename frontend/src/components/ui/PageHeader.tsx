@@ -1,6 +1,7 @@
-import { ArrowLeft } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+
+import { Icon } from '@/design/icons';
 
 /** The title block every page starts with. */
 export function PageHeader({
@@ -19,23 +20,23 @@ export function PageHeader({
   meta?: ReactNode;
 }) {
   return (
-    <div className="mb-5">
+    <div className="mb-6">
       {back && (
         <Link
           to={back.to}
-          className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink"
+          className="mb-3 inline-flex items-center gap-1.5 text-secondary font-medium text-ink-3 transition-colors duration-quick hover:text-ink"
         >
-          <ArrowLeft size={15} />
+          <Icon.back size={14} aria-hidden />
           {back.label}
         </Link>
       )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
+            <h1 className="font-display text-display-lg text-ink">{title}</h1>
             {meta}
           </div>
-          {description && <p className="mt-1 max-w-3xl text-sm text-ink-muted">{description}</p>}
+          {description && <p className="mt-1.5 max-w-3xl text-body text-ink-2">{description}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
