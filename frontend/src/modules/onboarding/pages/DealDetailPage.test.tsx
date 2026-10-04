@@ -9,6 +9,7 @@ import {
   createDownloadLink,
   fetchDocumentBlob,
   getDeal,
+  listDealRequiredDocuments,
   getExporterProfileDetail,
   listDealDocuments,
   listDealHistory,
@@ -31,6 +32,7 @@ vi.mock('@/platform/auth', async (importOriginal) => ({
 }));
 vi.mock('../api', () => ({
   getDeal: vi.fn(),
+  listDealRequiredDocuments: vi.fn(),
   listDealDocuments: vi.fn(),
   createDownloadLink: vi.fn(),
   fetchDocumentBlob: vi.fn(),
@@ -141,6 +143,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   signedInAs('OPERATIONS');
   vi.mocked(getDeal).mockResolvedValue(deal());
+  // The shelf marks the categories a handover needs; none are required here.
+  vi.mocked(listDealRequiredDocuments).mockResolvedValue({ requirements: [], history: [], can_edit: false } as never);
   vi.mocked(getExporterProfileDetail).mockResolvedValue({
     name: 'Acme Exports Pvt Ltd',
   } as Awaited<ReturnType<typeof getExporterProfileDetail>>);

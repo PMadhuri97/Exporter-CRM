@@ -1,7 +1,8 @@
 export {
-  CheckBacksDueCard,
-  FollowUpsDueCard,
+  CompleteFollowUp,
   PipelineSummaryCard,
   ProposalsAwaitingMeCard,
   ReKycDueCard,
+  SetupCard,
+  UpNextCard,
 } from './HomeCards';

@@ -1,31 +1,32 @@
 /**
- * Home — "my work": what is late, who is due a call back, and how the pipeline
- * stands. Replaces the placeholder dashboard.
+ * The desk (frontend-plan §8.2) — one per role, answering "what is mine to do now?"
+ * for the person signed in rather than showing everyone the same numbers.
  *
- * Built from routes that already exist (follow-ups, company search); there is
- * no statistics endpoint, and this page does not pretend there is one. The
- * cards are the onboarding module's, reached through its public facade.
+ * - **RM**: Up next (overdue follow-ups and due check-backs, one queue), the pipeline
+ *   as three numerals, and the Re-KYC list to read.
+ * - **Compliance**: decisions awaiting your signature first, then everything an RM sees.
+ * - **Admin**: the Compliance desk plus one setup section.
+ * - **Developer**: "Read-only access. Identifiers are masked." — the pipeline and the
+ *   team's queue to read, nothing from compliance (D8).
  *
- * Compliance (Developer 1, plans P3-1c, P3-3c): "Proposals awaiting me" for COMPLIANCE
- * and ADMIN — the officers who approve — and "Re-KYC due" for all staff (the RM reads
- * it). Neither is shown to DEVELOPER, whom the background-check routes refuse (D8).
- *
- * Every card is chosen by capability (R-33, G2), so a card is never mounted — and its
- * request never sent — for a role the server would refuse. A user with no CRM
- * capability never reaches this page: the root renders No workspace instead.
+ * Every section is chosen by capability (R-33, G2), so a section is never mounted —
+ * and its request never sent — for a role the server would refuse. A section that
+ * needs a backend ask (A4's "In review", A5's "Deals in paperwork") is not shown at
+ * all until the ask lands: hidden, never empty. A user with no CRM capability never
+ * reaches this page: the root renders No workspace instead.
  */
 
-import { Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-import { buttonClasses, PageHeader } from '@/components';
+import { buttonClasses } from '@/components';
+import { Icon } from '@/design/icons';
 import {
-  CheckBacksDueCard,
-  FollowUpsDueCard,
   paths,
   PipelineSummaryCard,
   ProposalsAwaitingMeCard,
   ReKycDueCard,
+  SetupCard,
+  UpNextCard,
 } from '@/modules/onboarding';
 import { useCan } from '@/platform/access';
 import { roleLabel, useCurrentUser } from '@/platform/auth';
@@ -40,32 +41,46 @@ function greeting(now: Date): string {
 export function HomePage() {
   const user = useCurrentUser();
   const firstName = user.full_name?.split(' ')[0];
+  const canWrite = useCan('crm.write');
   const canCreateCompany = useCan('company.create');
   const canSeeQueue = useCan('compliance.queue');
   const canReadCompliance = useCan('compliance.read');
+  const canSetUp = useCan('settings.criteria');
+  const now = new Date();
 
   return (
-    <div>
-      <PageHeader
-        title={`${greeting(new Date())}${firstName ? `, ${firstName}` : ''}`}
-        description={`Signed in as ${roleLabel(user.role)}. Here is what needs attention.`}
-        actions={
-          canCreateCompany && (
-            <Link to={paths.newCompany} className={buttonClasses({ variant: 'primary' })}>
-              <Plus size={15} />
-              Add company
-            </Link>
-          )
-        }
-      />
+    <div className="max-w-reading space-y-10">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-secondary text-ink-3">
+            {now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+          <h1 className="mt-1 font-display text-display-xl text-ink">
+            {greeting(now)}
+            {firstName ? `, ${firstName}` : ''}
+          </h1>
+          <p className="mt-2 text-body text-ink-2">
+            {canWrite
+              ? `Signed in as ${roleLabel(user.role)}. Here is what is yours to do.`
+              : 'Read-only access. Identifiers are masked.'}
+          </p>
+        </div>
+        {canCreateCompany && (
+          <Link to={paths.newCompany} className={buttonClasses({ variant: 'primary' })}>
+            <Icon.add size={15} aria-hidden />
+            Add company
+          </Link>
+        )}
+      </header>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        {canSeeQueue && <ProposalsAwaitingMeCard />}
-        {canReadCompliance && <ReKycDueCard />}
-        <FollowUpsDueCard userId={String(user.id)} />
-        <CheckBacksDueCard />
-        <div className="lg:col-span-2">
+      {canSeeQueue && <ProposalsAwaitingMeCard />}
+
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <UpNextCard userId={String(user.id)} canComplete={canWrite} />
+        <div className="space-y-10">
           <PipelineSummaryCard />
+          {canReadCompliance && <ReKycDueCard />}
+          {canSetUp && <SetupCard />}
         </div>
       </div>
     </div>

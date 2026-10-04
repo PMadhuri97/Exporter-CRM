@@ -5,6 +5,7 @@
  * import from here.
  *
  *   profile.ts        company record and marker            Developer 2
+ *   finder.ts         the command bar's company search     (R-33 Phase 2)
  *   qualification.ts  criteria, results, outcomes          Developer 2
  *   intake.ts         RXIL intake, bulk CSV import          Developer 2
  *   history.ts        the shared history log               Developer 1
@@ -22,6 +23,7 @@
  */
 
 export * from './profile';
+export * from './finder';
 export * from './qualification';
 export * from './intake';
 export * from './history';

@@ -12,10 +12,10 @@
  * the viewer may review is the server's `capabilities.can_review`, passed in.
  */
 
-import { History, Info } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
 import { formatDateTime, humanize } from '@/lib/format';
 
@@ -31,19 +31,19 @@ import { formatReviewer, REVIEW_OUTCOMES } from './verification-labels';
 import { VerificationStatusChip } from './VerificationStatusChip';
 
 const FIELD =
-  'mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-brand-500 disabled:opacity-60';
+  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60';
 const SECONDARY_BUTTON =
-  'rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-ink-muted hover:bg-surface-subtle disabled:opacity-50';
+  'rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
 const PRIMARY_BUTTON =
-  'rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50';
+  'rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-paper disabled:opacity-50';
 
 /** Every review, first to current. Superseded reviews stay visible, as recorded. */
 export function ReviewChain({ reviews }: { reviews: VerificationReview[] }) {
   if (reviews.length === 0) return null;
   return (
     <div data-testid="review-chain" className="mt-3 text-xs">
-      <p className="flex items-center gap-1 text-ink-faint">
-        <History size={12} /> Reviews
+      <p className="flex items-center gap-1 text-ink-3">
+        <Icon.history size={12} /> Reviews
       </p>
       <ol className="mt-1 space-y-1.5">
         {reviews.map((review, index) => {
@@ -52,7 +52,7 @@ export function ReviewChain({ reviews }: { reviews: VerificationReview[] }) {
             <li
               key={review.id}
               data-testid="review-chain-entry"
-              className={current ? 'text-ink' : 'text-ink-faint'}
+              className={current ? 'text-ink' : 'text-ink-3'}
             >
               <div className="flex flex-wrap items-center gap-2">
                 <VerificationStatusChip value={review.review_status} />
@@ -93,8 +93,8 @@ export function ReviewDialog({
   // A PENDING result has no finding to accept or reject; the server refuses (422).
   if (result.status === 'PENDING') {
     return (
-      <p className="mt-3 flex items-start gap-2 text-xs text-ink-faint">
-        <Info size={14} className="mt-0.5 shrink-0" />
+      <p className="mt-3 flex items-start gap-2 text-xs text-ink-3">
+        <Icon.info size={14} className="mt-0.5 shrink-0" />
         {result.is_placeholder
           ? 'Placeholder record — no provider ran this check, so it cannot be reviewed.'
           : 'This check has no outcome yet, so it cannot be reviewed.'}
@@ -153,8 +153,8 @@ export function ReviewDialog({
   }
 
   return (
-    <div data-testid="review-form" className="mt-3 rounded-lg border border-border p-3 text-xs">
-      <label className="block text-ink-faint">
+    <div data-testid="review-form" className="mt-3 rounded-lg border border-line p-3 text-xs">
+      <label className="block text-ink-3">
         Verdict
         <select
           aria-label="Verdict"
@@ -171,7 +171,7 @@ export function ReviewDialog({
           ))}
         </select>
       </label>
-      <label className="mt-2 block text-ink-faint">
+      <label className="mt-2 block text-ink-3">
         {supersedes ? 'Why the verdict changes' : 'Note (optional)'}
         <textarea
           aria-label="Review note"
@@ -182,7 +182,7 @@ export function ReviewDialog({
         />
       </label>
       {error && (
-        <p role="alert" className="mt-2 text-red-700">
+        <p role="alert" className="mt-2 text-negative">
           {error}
         </p>
       )}

@@ -35,11 +35,11 @@ import type {
 import { isWebLink, MANUAL_OUTCOMES, RISK_LEVELS } from './verification-labels';
 
 const FIELD =
-  'mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-brand-500 disabled:opacity-60';
+  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60';
 const SECONDARY_BUTTON =
-  'rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-ink-muted hover:bg-surface-subtle disabled:opacity-50';
+  'rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
 const PRIMARY_BUTTON =
-  'rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50';
+  'rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-paper disabled:opacity-50';
 
 /** Whose documents may be evidence: the company's, or the buyer's deal's. */
 export type EvidenceDocumentOwner = { kind: 'company' | 'deal'; id: string };
@@ -127,12 +127,12 @@ export function ManualResultForm({
   return (
     <div
       data-testid="manual-result-form"
-      className="mt-4 rounded-lg border border-border p-4 text-xs"
+      className="mt-4 rounded-lg border border-line p-4 text-xs"
     >
       <p className="font-medium text-ink">Record a manual result</p>
-      <p className="mt-0.5 text-ink-faint">Recorded as a manual check by you.</p>
+      <p className="mt-0.5 text-ink-3">Recorded as a manual check by you.</p>
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <label className="block text-ink-faint">
+        <label className="block text-ink-3">
           Check
           <select
             aria-label="Check"
@@ -148,7 +148,7 @@ export function ManualResultForm({
             ))}
           </select>
         </label>
-        <label className="block text-ink-faint">
+        <label className="block text-ink-3">
           Outcome
           <select
             aria-label="Outcome"
@@ -165,7 +165,7 @@ export function ManualResultForm({
             ))}
           </select>
         </label>
-        <label className="block text-ink-faint">
+        <label className="block text-ink-3">
           Risk (optional)
           <select
             aria-label="Risk"
@@ -183,7 +183,7 @@ export function ManualResultForm({
           </select>
         </label>
       </div>
-      <label className="mt-3 block text-ink-faint">
+      <label className="mt-3 block text-ink-3">
         Evidence note
         <textarea
           aria-label="Evidence note"
@@ -194,15 +194,15 @@ export function ManualResultForm({
         />
       </label>
       <fieldset className="mt-3">
-        <legend className="text-ink-faint">
+        <legend className="text-ink-3">
           Evidence documents from this {documentOwner.kind === 'deal' ? 'deal' : 'company'}
         </legend>
         {documents.isLoading ? (
-          <p className="mt-1 text-ink-faint">Loading documents…</p>
+          <p className="mt-1 text-ink-3">Loading documents…</p>
         ) : documents.isError ? (
-          <p className="mt-1 text-ink-faint">Documents could not be loaded.</p>
+          <p className="mt-1 text-ink-3">Documents could not be loaded.</p>
         ) : available.length === 0 ? (
-          <p className="mt-1 text-ink-faint">No scanned-clean documents to attach.</p>
+          <p className="mt-1 text-ink-3">No scanned-clean documents to attach.</p>
         ) : (
           <div className="mt-1 space-y-1">
             {available.map((document) => (
@@ -219,7 +219,7 @@ export function ManualResultForm({
           </div>
         )}
       </fieldset>
-      <label className="mt-3 block text-ink-faint">
+      <label className="mt-3 block text-ink-3">
         Evidence link (optional)
         <input
           aria-label="Evidence link"
@@ -231,7 +231,7 @@ export function ManualResultForm({
         />
       </label>
       {error && (
-        <p role="alert" className="mt-2 text-red-700">
+        <p role="alert" className="mt-2 text-negative">
           {error}
         </p>
       )}

@@ -41,11 +41,11 @@ import {
 import type { TradePaymentStatus, TradeProofStatus } from '../types';
 
 const FIELD =
-  'mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-brand-500 disabled:opacity-60';
+  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60';
 const SECONDARY_BUTTON =
-  'rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-ink-muted hover:bg-surface-subtle disabled:opacity-50';
+  'rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
 const PRIMARY_BUTTON =
-  'rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50';
+  'rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-paper disabled:opacity-50';
 
 const PAYMENT_STATUSES: { value: TradePaymentStatus; label: string }[] = [
   { value: 'PAID', label: 'Paid' },
@@ -153,7 +153,7 @@ export function RecordDealOutcomeForm({
     return (
       <div
         data-testid="record-deal-outcome-form"
-        className="mt-4 rounded-lg border border-border p-4 text-xs"
+        className="mt-4 rounded-lg border border-line p-4 text-xs"
       >
         <Skeleton className="h-24 rounded" />
       </div>
@@ -163,19 +163,19 @@ export function RecordDealOutcomeForm({
   return (
     <div
       data-testid="record-deal-outcome-form"
-      className="mt-4 rounded-lg border border-border p-4 text-xs"
+      className="mt-4 rounded-lg border border-line p-4 text-xs"
     >
       <p className="font-medium text-ink">
         {head ? 'Correct the outcome' : 'Record how this was paid'}
       </p>
-      <p className="mt-0.5 text-ink-faint">
+      <p className="mt-0.5 text-ink-3">
         {head
           ? 'The outcome recorded now replaces the current one, which stays visible as superseded.'
           : 'A fact about the trade, not a change to the deal — the deal stays handed over.'}
       </p>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <label className="block text-ink-faint">
+        <label className="block text-ink-3">
           What happened
           <select
             aria-label="What happened"
@@ -192,7 +192,7 @@ export function RecordDealOutcomeForm({
             ))}
           </select>
         </label>
-        <label className="block text-ink-faint">
+        <label className="block text-ink-3">
           Proof
           <select
             aria-label="Proof"
@@ -208,7 +208,7 @@ export function RecordDealOutcomeForm({
             ))}
           </select>
         </label>
-        <label className="block text-ink-faint">
+        <label className="block text-ink-3">
           Amount paid (optional)
           <input
             aria-label="Amount paid"
@@ -222,12 +222,12 @@ export function RecordDealOutcomeForm({
       </div>
 
       {needsInvoice && (
-        <fieldset className="mt-3 rounded-md border border-border p-3">
-          <legend className="px-1 text-ink-faint">
+        <fieldset className="mt-3 rounded-md border border-line p-3">
+          <legend className="px-1 text-ink-3">
             This deal has no invoice yet — record it
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-ink-faint">
+            <label className="block text-ink-3">
               Invoice number
               <input
                 aria-label="Invoice number"
@@ -237,7 +237,7 @@ export function RecordDealOutcomeForm({
                 onChange={(event) => setInvoiceNumber(event.target.value)}
               />
             </label>
-            <label className="block text-ink-faint">
+            <label className="block text-ink-3">
               Invoice date
               <input
                 aria-label="Invoice date"
@@ -248,7 +248,7 @@ export function RecordDealOutcomeForm({
                 onChange={(event) => setInvoiceDate(event.target.value)}
               />
             </label>
-            <label className="block text-ink-faint">
+            <label className="block text-ink-3">
               Amount
               <input
                 aria-label="Amount"
@@ -259,7 +259,7 @@ export function RecordDealOutcomeForm({
                 onChange={(event) => setAmount(event.target.value)}
               />
             </label>
-            <label className="block text-ink-faint">
+            <label className="block text-ink-3">
               Currency
               <input
                 aria-label="Currency"
@@ -271,7 +271,7 @@ export function RecordDealOutcomeForm({
               />
             </label>
           </div>
-          <p className="mt-2 text-ink-faint">
+          <p className="mt-2 text-ink-3">
             {/* Said here because the record cannot be edited afterwards. */}
             An invoice's number, date, amount and currency are frozen once recorded. A
             mistake is corrected by recording the right invoice, not by changing this one.
@@ -279,7 +279,7 @@ export function RecordDealOutcomeForm({
         </fieldset>
       )}
 
-      <label className="mt-3 block text-ink-faint">
+      <label className="mt-3 block text-ink-3">
         Evidence note
         <textarea
           aria-label="Evidence note"
@@ -291,7 +291,7 @@ export function RecordDealOutcomeForm({
       </label>
 
       {error && (
-        <p role="alert" className="mt-2 text-red-700">
+        <p role="alert" className="mt-2 text-negative">
           {error}
         </p>
       )}

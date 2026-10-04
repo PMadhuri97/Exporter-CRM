@@ -30,6 +30,13 @@ export class ApiError extends Error {
    * shown as a link. Additive; `null` when the server sent none.
    */
   readonly context: Record<string, unknown> | null;
+  /**
+   * A 422's per-field messages, keyed by the field's path without `body`
+   * (`check_back_on`, `buyer.name`), so a form can place each one against its field
+   * (frontend-plan §9). `message` still carries them all joined. `null` when the
+   * refusal named no field. Additive (R-33 Phase 3).
+   */
+  readonly fieldErrors: Record<string, string> | null;
 
   constructor(
     status: number,
@@ -37,6 +44,7 @@ export class ApiError extends Error {
     errorCode: string | null = null,
     correlationId: string | null = null,
     context: Record<string, unknown> | null = null,
+    fieldErrors: Record<string, string> | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -44,7 +52,17 @@ export class ApiError extends Error {
     this.errorCode = errorCode;
     this.correlationId = correlationId;
     this.context = context;
+    this.fieldErrors = fieldErrors;
   }
+}
+
+function fieldErrorMap(errors: FieldError[]): Record<string, string> | null {
+  const map: Record<string, string> = {};
+  for (const error of errors) {
+    const path = error.loc.filter((part) => part !== 'body').join('.');
+    if (path && !(path in map)) map[path] = error.msg;
+  }
+  return Object.keys(map).length > 0 ? map : null;
 }
 
 function formatFieldErrors(errors: FieldError[]): string {
@@ -80,5 +98,6 @@ export async function parseErrorResponse(
     body.error_code ?? null,
     body.correlation_id ?? null,
     body.error_context ?? null,
+    Array.isArray(body.detail) ? fieldErrorMap(body.detail) : null,
   );
 }

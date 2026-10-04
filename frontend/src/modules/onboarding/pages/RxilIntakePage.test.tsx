@@ -42,7 +42,7 @@ function renderPage() {
 
 function submit(text: string) {
   fireEvent.change(screen.getByLabelText('RXIL package'), { target: { value: text } });
-  fireEvent.click(screen.getByRole('button', { name: 'Submit package' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Take in' }));
 }
 
 describe('RxilIntakePage — RXIL company intake (L2-12, L2-14)', () => {

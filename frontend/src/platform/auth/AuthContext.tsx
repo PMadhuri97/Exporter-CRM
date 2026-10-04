@@ -128,6 +128,21 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+/**
+ * A fixed, signed-in user for the dev-only style guide (frontend-plan §12.4), so its
+ * role-aware components can be shown as each role sees them. Signing in and out do
+ * nothing. Never used by the app's own routes.
+ */
+export function StaticAuthProvider({ user, children }: { user: User; children: ReactNode }) {
+  const value: AuthContextValue = {
+    status: 'authenticated',
+    user,
+    login: async () => undefined,
+    logout: async () => undefined,
+  };
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (context === null) {

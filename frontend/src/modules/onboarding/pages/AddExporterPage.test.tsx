@@ -10,7 +10,7 @@ import { createExporterLead } from '../api';
 import { AddExporterPage } from './AddExporterPage';
 
 // Hoisted above the imports by vitest, so the page's hook gets the mock.
-vi.mock('../api', () => ({ createExporterLead: vi.fn() }));
+vi.mock('../api', () => ({ createExporterLead: vi.fn(), matchCompany: vi.fn() }));
 
 function renderPage() {
   const client = new QueryClient({
@@ -57,6 +57,31 @@ describe('AddExporterPage — the company identity (L2-03)', () => {
     // The journey starts at LEAD on the server; the retired lifecycle is not sent.
     expect(payload).not.toHaveProperty('lifecycle_status');
     expect(payload).not.toHaveProperty('journey');
+  });
+
+  it('starts from one smart field: a GSTIN brings its PAN into the new lead', async () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText(/an identifier/i), { target: { value: '27aaapl1234c1zv' } });
+    expect(screen.getByTestId('entry-kind')).toHaveTextContent('GSTIN');
+    fireEvent.change(screen.getByLabelText(/company name/i), { target: { value: 'Lakshmi Polymers' } });
+    fireEvent.change(screen.getByLabelText(/country/i), { target: { value: 'IN' } });
+    fireEvent.submit(screen.getByLabelText(/company name/i).closest('form')!);
+    await waitFor(() => expect(createExporterLead).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(createExporterLead).mock.calls[0]?.[0]).toMatchObject({
+      name: 'Lakshmi Polymers',
+      gstins: ['27AAAPL1234C1ZV'],
+      pan: 'AAAPL1234C',
+    });
+  });
+
+  it('asks a company outside India for its registration number, unless it holds a PAN', async () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText(/company name/i), { target: { value: 'Hanse Metall GmbH' } });
+    fireEvent.change(screen.getByLabelText(/country/i), { target: { value: 'DE' } });
+    expect(await screen.findByLabelText(/registration number/i)).toBeInTheDocument();
+    fireEvent.submit(screen.getByLabelText(/company name/i).closest('form')!);
+    expect(await screen.findByText('Required for a company outside India')).toBeInTheDocument();
+    expect(createExporterLead).not.toHaveBeenCalled();
   });
 
   it('links to the company holding a duplicate PAN instead of printing its id', async () => {

@@ -3,6 +3,7 @@ import { lazy, Suspense } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NOT_FOUND_TITLE } from '@/components';
 import { useCurrentUser } from '@/platform/auth';
 
 import { Gate } from './Gate';
@@ -55,7 +56,7 @@ describe('Gate (R-33 Phase 0)', () => {
       signInAs(role);
       const { Screen, load } = lazyScreen();
       renderGate(<Screen />);
-      expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: NOT_FOUND_TITLE })).toBeInTheDocument();
       expect(screen.queryByText(/administrator/i)).not.toBeInTheDocument();
       expect(load).not.toHaveBeenCalled();
     },

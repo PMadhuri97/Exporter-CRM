@@ -7,8 +7,9 @@
  * (architecture §3.3): an administrator adds them and changes them here. A
  * criterion is never edited in place — every change, the label included, is a
  * new version, and results keep pointing at the version they were recorded
- * against. So this page offers "Add criterion" and "New version", and shows
- * every earlier version, but has no edit or delete anywhere.
+ * against. So this page offers "Add criterion" and "New version" — each a
+ * composer — and shows every earlier version as a trail on the rule's card, but
+ * has no edit or delete anywhere.
  *
  * Every rule (key format, a threshold for a number criterion, allowed values
  * for a list) is the server's; a refusal is shown as it worded it. Two admins
@@ -17,33 +18,27 @@
  * silently overwriting the first.
  */
 
-import { History as HistoryIcon, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
 import {
   Button,
-  Card,
-  Chip,
-  Dialog,
-  Drawer,
-  EmptySection,
+  Composer,
+  composerFieldError,
+  EmptyLine,
   ErrorState,
   Field,
-  FormError,
   Input,
   PageHeader,
   Select,
   Skeleton,
-  Table,
-  TBody,
-  Td,
-  Th,
-  THead,
-  Tr,
+  Tag,
 } from '@/components';
+import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
+import { cn } from '@/lib/cn';
 import { formatDateTime } from '@/lib/format';
+import { useCrumbs } from '@/platform/shell';
 
 import {
   useAddCriterionVersion,
@@ -57,6 +52,8 @@ import type {
   CriterionKind,
   ThresholdComparison,
 } from '../types';
+
+const FIELDS = ['key', 'label', 'kind', 'comparison', 'threshold', 'unit', 'allowed_values'] as const;
 
 const KIND_LABEL: Record<CriterionKind, string> = {
   NUMBER_THRESHOLD: 'Number threshold',
@@ -135,28 +132,33 @@ function definitionOf(draft: Draft): CriterionDefinitionRequest {
   };
 }
 
-/** Add a criterion, or add the next version of one. */
-function CriterionDialog({
-  open,
+/** Add a criterion, or the next version of one — a composer (frontend-plan §6.10). */
+function CriterionComposer({
   onClose,
   base,
 }: {
-  open: boolean;
   onClose: () => void;
   /** The current version when adding a new one; null when adding a criterion. */
   base: Criterion | null;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFrom(base));
-  const [error, setError] = useState<{ message: string; stale: boolean } | null>(null);
   const create = useCreateCriterion();
   const addVersion = useAddCriterionVersion(base?.key ?? '');
   const mutation = base ? addVersion : create;
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError(null);
+  // Two admins at once: the server refuses the second (409), and the composer says
+  // what to do about it rather than only that it failed.
+  const stale =
+    mutation.error instanceof ApiError && mutation.error.errorCode === 'QUALIFICATION_CRITERION_CHANGED';
+  const error = stale
+    ? new Error(
+        `${mutation.error?.message ?? ''} Someone else changed this criterion — close this and reopen it to start from their version.`,
+      )
+    : mutation.error;
+
+  const submit = async () => {
     try {
       if (base) {
         const saved = await addVersion.mutateAsync(definitionOf(draft));
@@ -166,268 +168,299 @@ function CriterionDialog({
         toast.success(`${saved.label} added`);
       }
       onClose();
-    } catch (caught) {
-      setError({
-        message: caught instanceof Error ? caught.message : 'Could not save the criterion.',
-        stale: caught instanceof ApiError && caught.errorCode === 'QUALIFICATION_CRITERION_CHANGED',
-      });
+    } catch {
+      // The refusal stays in the composer, in the server's words.
     }
   };
 
   return (
-    <Dialog
-      open={open}
+    <Composer
+      open
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      size="lg"
       title={base ? `New version of “${base.label}”` : 'Add criterion'}
       description={
         base
           ? `Version ${base.version} stays on the record; results already recorded keep pointing at it.`
           : 'Starts at version 1. Every later change is a new version.'
       }
+      submitLabel={base ? 'Save new version' : 'Add criterion'}
+      pending={mutation.isPending}
+      error={error}
+      fields={FIELDS}
+      onSubmit={() => void submit()}
     >
-      <form onSubmit={(event) => void submit(event)} className="space-y-4" aria-label="Criterion">
-        {error && (
-          <FormError>
-            {error.message}
-            {error.stale && ' Someone else changed this criterion — close this and reopen it to start from their version.'}
-          </FormError>
-        )}
-        <div className="grid gap-4 sm:grid-cols-2">
-          {!base && (
-            <Field label="Key" htmlFor="criterion-key" required hint="Permanent. Lower case with underscores, e.g. annual_exports.">
-              <Input id="criterion-key" value={draft.key} onChange={(e) => set('key', e.target.value)} required />
-            </Field>
-          )}
-          <Field label="Label" htmlFor="criterion-label" required className={base ? 'sm:col-span-2' : undefined}>
-            <Input id="criterion-label" value={draft.label} onChange={(e) => set('label', e.target.value)} required />
-          </Field>
-          <Field label="Kind" htmlFor="criterion-kind" required>
-            <Select id="criterion-kind" value={draft.kind} onChange={(e) => set('kind', e.target.value as CriterionKind)}>
-              {(Object.keys(KIND_LABEL) as CriterionKind[]).map((kind) => (
-                <option key={kind} value={kind}>
-                  {KIND_LABEL[kind]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          {draft.kind === 'NUMBER_THRESHOLD' && (
-            <>
-              <Field label="Comparison" htmlFor="criterion-comparison">
-                <Select
-                  id="criterion-comparison"
-                  value={draft.comparison}
-                  onChange={(e) => set('comparison', e.target.value as ThresholdComparison)}
-                >
-                  <option value="AT_LEAST">At least</option>
-                  <option value="AT_MOST">At most</option>
-                </Select>
-              </Field>
-              <Field label="Threshold" htmlFor="criterion-threshold" required>
-                <Input
-                  id="criterion-threshold"
-                  inputMode="decimal"
-                  value={draft.threshold}
-                  onChange={(e) => set('threshold', e.target.value)}
-                />
-              </Field>
-              <Field label="Unit" htmlFor="criterion-unit" hint="e.g. USD, years">
-                <Input id="criterion-unit" value={draft.unit} onChange={(e) => set('unit', e.target.value)} />
-              </Field>
-            </>
-          )}
-          {draft.kind === 'ALLOWED_VALUES' && (
-            <Field
-              label="Allowed values"
-              htmlFor="criterion-values"
+      <div className="grid gap-4 sm:grid-cols-2">
+        {!base && (
+          <Field
+            label="Key"
+            htmlFor="criterion-key"
+            required
+            hint="Permanent. Lower case with underscores, e.g. annual_exports."
+            error={composerFieldError(error, 'key')}
+            className="sm:col-span-2"
+          >
+            <Input
+              id="criterion-key"
+              className="font-mono"
+              value={draft.key}
+              onChange={(e) => set('key', e.target.value)}
               required
-              hint="Comma-separated."
-              className="sm:col-span-2"
+            />
+          </Field>
+        )}
+        <Field
+          label="Label"
+          htmlFor="criterion-label"
+          required
+          error={composerFieldError(error, 'label')}
+          className="sm:col-span-2"
+        >
+          <Input id="criterion-label" value={draft.label} onChange={(e) => set('label', e.target.value)} required />
+        </Field>
+        <Field label="Kind" htmlFor="criterion-kind" required className="sm:col-span-2">
+          <Select id="criterion-kind" value={draft.kind} onChange={(e) => set('kind', e.target.value as CriterionKind)}>
+            {(Object.keys(KIND_LABEL) as CriterionKind[]).map((kind) => (
+              <option key={kind} value={kind}>
+                {KIND_LABEL[kind]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {draft.kind === 'NUMBER_THRESHOLD' && (
+          <>
+            <Field label="Comparison" htmlFor="criterion-comparison">
+              <Select
+                id="criterion-comparison"
+                value={draft.comparison}
+                onChange={(e) => set('comparison', e.target.value as ThresholdComparison)}
+              >
+                <option value="AT_LEAST">At least</option>
+                <option value="AT_MOST">At most</option>
+              </Select>
+            </Field>
+            <Field
+              label="Threshold"
+              htmlFor="criterion-threshold"
+              required
+              error={composerFieldError(error, 'threshold')}
             >
               <Input
-                id="criterion-values"
-                value={draft.allowedValues}
-                onChange={(e) => set('allowedValues', e.target.value)}
+                id="criterion-threshold"
+                inputMode="decimal"
+                className="font-mono"
+                value={draft.threshold}
+                onChange={(e) => set('threshold', e.target.value)}
               />
             </Field>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-6">
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-brand-600"
-              checked={draft.required}
-              onChange={(e) => set('required', e.target.checked)}
+            <Field
+              label="Unit"
+              htmlFor="criterion-unit"
+              hint="e.g. USD, years"
+              error={composerFieldError(error, 'unit')}
+              className="sm:col-span-2"
+            >
+              <Input id="criterion-unit" value={draft.unit} onChange={(e) => set('unit', e.target.value)} />
+            </Field>
+          </>
+        )}
+        {draft.kind === 'ALLOWED_VALUES' && (
+          <Field
+            label="Allowed values"
+            htmlFor="criterion-values"
+            required
+            hint="Comma-separated."
+            error={composerFieldError(error, 'allowed_values')}
+            className="sm:col-span-2"
+          >
+            <Input
+              id="criterion-values"
+              value={draft.allowedValues}
+              onChange={(e) => set('allowedValues', e.target.value)}
             />
-            Required for a “Qualified” suggestion
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-brand-600"
-              checked={draft.active}
-              onChange={(e) => set('active', e.target.checked)}
-            />
-            Active
-          </label>
-        </div>
-        <div className="flex justify-end gap-2 border-t border-border pt-4">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={mutation.isPending}>
-            {base ? 'Save new version' : 'Add criterion'}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
+          </Field>
+        )}
+      </div>
+      <div className="space-y-2 border-t border-line pt-4">
+        <label className="flex items-center gap-2 text-body text-ink">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-ink"
+            checked={draft.required}
+            onChange={(e) => set('required', e.target.checked)}
+          />
+          Required for a “Qualified” suggestion
+        </label>
+        <label className="flex items-center gap-2 text-body text-ink">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-ink"
+            checked={draft.active}
+            onChange={(e) => set('active', e.target.checked)}
+          />
+          Active
+        </label>
+      </div>
+    </Composer>
   );
 }
 
-function VersionsDrawer({ criterionKey, onClose }: { criterionKey: string | null; onClose: () => void }) {
+/**
+ * Every version of one criterion, newest first, as a trail down its card. A version
+ * is never edited. Who saved it is a user id until the server names people (R-36).
+ */
+function VersionTrail({ criterionKey }: { criterionKey: string }) {
   const versions = useCriterionVersions(criterionKey);
   const rows = [...(versions.data?.criteria ?? [])].sort((a, b) => b.version - a.version);
 
+  if (versions.isLoading) return <Skeleton className="h-20" />;
+  if (versions.isError) {
+    return (
+      <p role="alert" className="text-secondary text-negative">
+        Couldn't load the versions.
+      </p>
+    );
+  }
   return (
-    <Drawer
-      open={criterionKey !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title={`Versions of ${criterionKey ?? ''}`}
-      description="Newest first. A version is never edited."
+    <ol className="ml-1.5 space-y-4 border-l border-line pl-5" aria-label={`Versions of ${criterionKey}`}>
+      {rows.map((version, index) => (
+        <li key={version.id} className="relative" data-testid="criterion-version">
+          <span
+            aria-hidden
+            className={cn(
+              'absolute -left-[1.6875rem] top-1 h-2.5 w-2.5 rounded-full border-2 border-surface',
+              index === 0 ? 'bg-ink' : 'bg-line-strong',
+            )}
+          />
+          <p className="flex flex-wrap items-center gap-2 text-secondary font-medium text-ink">
+            <span className="tabular-nums">v{version.version}</span> · {version.label}
+            {!version.active && <Tag>Inactive</Tag>}
+          </p>
+          <p className="text-secondary text-ink-2">
+            {KIND_LABEL[version.kind]} — {ruleOf(version)}
+            {version.required ? ' · required' : ''}
+          </p>
+          <p className="text-caption text-ink-3">
+            {formatDateTime(version.created_at)}
+            {version.created_by ? (
+              <>
+                {' · by user id '}
+                <span className="font-mono">{version.created_by}</span>
+              </>
+            ) : null}
+          </p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** One criterion as a card: the rule in words, its version, and its trail on demand. */
+function RuleCard({ criterion, onNewVersion }: { criterion: Criterion; onNewVersion: () => void }) {
+  const [showVersions, setShowVersions] = useState(false);
+  return (
+    <li
+      className={cn(
+        'flex min-w-0 flex-col gap-3 rounded-xl border bg-surface p-5',
+        criterion.active ? 'border-line' : 'border-dashed border-line-strong',
+      )}
+      data-testid="criterion-row"
     >
-      {versions.isLoading && <Skeleton className="h-32" />}
-      {versions.isError && <p className="text-sm text-status-failed">Couldn't load the versions.</p>}
-      <ol className="space-y-3">
-        {rows.map((version) => (
-          <li key={version.id} className="rounded-lg border border-border p-3" data-testid="criterion-version">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-ink">
-                v{version.version} · {version.label}
-              </span>
-              {!version.active && <Chip>Inactive</Chip>}
-            </div>
-            <p className="mt-1 text-sm text-ink-muted">
-              {KIND_LABEL[version.kind]} — {ruleOf(version)}
-              {version.required ? ' · required' : ''}
-            </p>
-            <p className="mt-1 text-xs text-ink-faint">
-              {formatDateTime(version.created_at)}
-              {version.created_by ? ` · ${version.created_by}` : ''}
-            </p>
-          </li>
-        ))}
-      </ol>
-    </Drawer>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-display text-display-sm text-ink">{criterion.label}</p>
+          <p className="font-mono text-caption text-ink-3">{criterion.key}</p>
+        </div>
+        <span className="shrink-0 font-mono text-secondary tabular-nums text-ink-2">v{criterion.version}</span>
+      </div>
+      <p className="text-lead text-ink">
+        <span className="block text-caption text-ink-3">{KIND_LABEL[criterion.kind]}</span>
+        {ruleOf(criterion)}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        <Tag tone={criterion.active ? 'positive' : 'idle'} dot>
+          {criterion.active ? 'Active' : 'Inactive'}
+        </Tag>
+        {criterion.required && <Tag tone="ink">Required</Tag>}
+      </div>
+      <div className="mt-auto flex items-center gap-1 border-t border-line pt-3">
+        <Button
+          size="sm"
+          variant="quiet"
+          aria-expanded={showVersions}
+          onClick={() => setShowVersions((shown) => !shown)}
+        >
+          <Icon.history size={14} aria-hidden />
+          Versions
+        </Button>
+        <Button
+          size="sm"
+          className="ml-auto"
+          onClick={onNewVersion}
+          aria-label={`New version of ${criterion.label}`}
+        >
+          New version
+        </Button>
+      </div>
+      {showVersions && <VersionTrail criterionKey={criterion.key} />}
+    </li>
   );
 }
 
 export function QualificationCriteriaPage() {
   const criteria = useCriteria();
-  // `dialogKey` remounts the dialog per open, so its draft always starts from
+  useCrumbs([{ label: 'Settings', to: '/settings' }, { label: 'Qualification criteria' }]);
+  // `composerKey` remounts the composer per open, so its draft always starts from
   // the version it was opened on.
-  const [dialog, setDialog] = useState<{ base: Criterion | null; dialogKey: number } | null>(null);
-  const [versionsOf, setVersionsOf] = useState<string | null>(null);
+  const [composer, setComposer] = useState<{ base: Criterion | null; composerKey: number } | null>(
+    null,
+  );
 
   const rows = criteria.data?.criteria ?? [];
-  const open = (base: Criterion | null) => setDialog({ base, dialogKey: Date.now() });
+  const open = (base: Criterion | null) => setComposer({ base, composerKey: Date.now() });
 
   return (
-    <div>
+    <div className="max-w-reading">
       <PageHeader
         title="Qualification criteria"
         description="What a lead is measured against before someone decides whether it qualifies. Every change is a new version; results keep the version they were recorded against."
         actions={
           <Button variant="primary" onClick={() => open(null)}>
-            <Plus size={15} />
+            <Icon.add size={15} aria-hidden />
             Add criterion
           </Button>
         }
       />
 
-      <Card>
-        {criteria.isError ? (
-          <ErrorState title="Couldn't load the criteria." className="m-4" onRetry={() => void criteria.refetch()} />
-        ) : criteria.isLoading ? (
-          <div className="space-y-2 p-4">
-            <Skeleton className="h-10" />
-            <Skeleton className="h-10" />
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="p-4">
-            <EmptySection>No criteria yet — add the first one.</EmptySection>
-          </div>
-        ) : (
-          <Table>
-            <THead>
-              <tr>
-                <Th>Criterion</Th>
-                <Th>Kind</Th>
-                <Th>Rule</Th>
-                <Th>Status</Th>
-                <Th className="text-right">Version</Th>
-                <Th>
-                  <span className="sr-only">Actions</span>
-                </Th>
-              </tr>
-            </THead>
-            <TBody>
-              {rows.map((criterion) => (
-                <Tr key={criterion.key} data-testid="criterion-row">
-                  <Td>
-                    <p className="font-medium text-ink">{criterion.label}</p>
-                    <p className="font-mono text-xs text-ink-faint">{criterion.key}</p>
-                  </Td>
-                  <Td className="text-ink-muted">{KIND_LABEL[criterion.kind]}</Td>
-                  <Td className="text-ink-muted">{ruleOf(criterion)}</Td>
-                  <Td>
-                    <span className="flex flex-wrap gap-1">
-                      <Chip tone={criterion.active ? 'success' : 'neutral'}>
-                        {criterion.active ? 'Active' : 'Inactive'}
-                      </Chip>
-                      {criterion.required && <Chip tone="info">Required</Chip>}
-                    </span>
-                  </Td>
-                  <Td className="text-right tabular-nums">v{criterion.version}</Td>
-                  <Td className="text-right">
-                    <span className="inline-flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => setVersionsOf(criterion.key)}>
-                        <HistoryIcon size={14} />
-                        Versions
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => open(criterion)}
-                        aria-label={`New version of ${criterion.label}`}
-                      >
-                        New version
-                      </Button>
-                    </span>
-                  </Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-        )}
-      </Card>
+      {criteria.isError ? (
+        <ErrorState title="Couldn't load the criteria." onRetry={() => void criteria.refetch()} />
+      ) : criteria.isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2" aria-hidden>
+          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-48 rounded-xl" />
+        </div>
+      ) : rows.length === 0 ? (
+        <EmptyLine>No criteria yet — add the first one.</EmptyLine>
+      ) : (
+        <ul className="grid items-start gap-4 md:grid-cols-2" aria-label="Criteria">
+          {rows.map((criterion) => (
+            <RuleCard key={criterion.key} criterion={criterion} onNewVersion={() => open(criterion)} />
+          ))}
+        </ul>
+      )}
 
-      <p className="mt-3 text-xs text-ink-faint">
+      <p className="mt-6 text-caption text-ink-3">
         Reason codes for “Not qualified” are managed on the server; there is no screen for them yet.
       </p>
 
-      {dialog && (
-        <CriterionDialog
-          key={dialog.dialogKey}
-          open
-          base={dialog.base}
-          onClose={() => setDialog(null)}
+      {composer && (
+        <CriterionComposer
+          key={composer.composerKey}
+          base={composer.base}
+          onClose={() => setComposer(null)}
         />
       )}
-      <VersionsDrawer criterionKey={versionsOf} onClose={() => setVersionsOf(null)} />
     </div>
   );
 }

@@ -3,165 +3,27 @@
 @tailwind utilities;
 
 /*
- * Colour tokens, as RGB triplets so Tailwind's opacity modifiers work — see
- * `tailwind.config.ts`. Light is the default; dark applies when <html> carries
- * `data-theme="dark"`, or when the viewer's system prefers dark and they have
- * not picked light explicitly.
+ * The colour, motion and shadow tokens live in `src/design/tokens.css`
+ * (imported first in `main.tsx`); `tailwind.config.ts` maps them to classes.
  */
 @layer base {
-  :root {
-    color-scheme: light;
-
-    --brand-50: 240 253 250;
-    --brand-100: 204 251 241;
-    --brand-200: 153 246 228;
-    --brand-400: 45 212 191;
-    --brand-500: 20 184 166;
-    --brand-600: 13 148 136;
-    --brand-700: 15 118 110;
-    --brand-900: 19 78 74;
-
-    --surface: 255 255 255;
-    --surface-subtle: 248 250 252;
-    --surface-sunken: 241 245 249;
-
-    --ink: 15 23 42;
-    --ink-muted: 71 85 105;
-    --ink-faint: 148 163 184;
-
-    --border: 226 232 240;
-    --border-strong: 203 213 225;
-
-    --journey-lead: 100 116 139;
-    --journey-prospect: 37 99 235;
-    --journey-customer: 22 163 74;
-
-    --marker-paused: 217 119 6;
-    --marker-ended: 100 116 139;
-
-    --status-passed: 22 163 74;
-    --status-failed: 220 38 38;
-    --status-review: 217 119 6;
-    --status-pending: 100 116 139;
-    --status-info: 37 99 235;
-
-    --risk-low: 22 163 74;
-    --risk-medium: 217 119 6;
-    --risk-high: 220 38 38;
-
-    --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
-    --shadow-overlay: 0 10px 30px -8px rgb(15 23 42 / 0.25), 0 2px 6px -2px rgb(15 23 42 / 0.12);
-  }
-
-  /* The dark palette, written once and applied by either selector below. */
-  :root[data-theme='dark'] {
-    color-scheme: dark;
-
-    --brand-50: 17 44 42;
-    --brand-100: 19 62 58;
-    --brand-200: 22 94 88;
-    --brand-400: 45 212 191;
-    --brand-500: 45 212 191;
-    --brand-600: 94 234 212;
-    --brand-700: 153 246 228;
-    --brand-900: 204 251 241;
-
-    --surface: 17 24 39;
-    --surface-subtle: 9 13 24;
-    --surface-sunken: 31 41 55;
-
-    --ink: 241 245 249;
-    --ink-muted: 156 168 186;
-    --ink-faint: 100 114 135;
-
-    --border: 36 46 64;
-    --border-strong: 55 67 88;
-
-    --journey-lead: 148 163 184;
-    --journey-prospect: 96 165 250;
-    --journey-customer: 74 222 128;
-
-    --marker-paused: 251 191 36;
-    --marker-ended: 148 163 184;
-
-    --status-passed: 74 222 128;
-    --status-failed: 248 113 113;
-    --status-review: 251 191 36;
-    --status-pending: 148 163 184;
-    --status-info: 96 165 250;
-
-    --risk-low: 74 222 128;
-    --risk-medium: 251 191 36;
-    --risk-high: 248 113 113;
-
-    --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-    --shadow-overlay: 0 10px 30px -8px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.4);
-  }
-
   html {
-    font-feature-settings:
-      'tnum' 1,
-      'lnum' 1,
-      'cv11' 1;
+    /* Tabular figures everywhere: counts, amounts and dates line up (§5.3).
+     * Instrument Sans carries `tnum`; the serif and mono faces ignore it. */
+    font-feature-settings: 'tnum' 1;
   }
 
   body {
-    @apply bg-surface-subtle text-ink antialiased;
+    @apply bg-paper font-sans text-body text-ink antialiased;
   }
 
+  /* §11: a 2px ink ring with a 2px paper offset on everything focusable. */
   :focus-visible {
-    @apply outline-none ring-2 ring-brand-500 ring-offset-1 ring-offset-surface;
+    @apply outline-none ring-2 ring-ink ring-offset-2 ring-offset-paper;
   }
-}
 
-/*
- * `system` theme: the dark palette above, applied by media query. Kept as a
- * duplicate block rather than a shared selector because the attribute form must
- * win over the media query when the viewer explicitly picks light.
- */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    color-scheme: dark;
-
-    --brand-50: 17 44 42;
-    --brand-100: 19 62 58;
-    --brand-200: 22 94 88;
-    --brand-400: 45 212 191;
-    --brand-500: 45 212 191;
-    --brand-600: 94 234 212;
-    --brand-700: 153 246 228;
-    --brand-900: 204 251 241;
-
-    --surface: 17 24 39;
-    --surface-subtle: 9 13 24;
-    --surface-sunken: 31 41 55;
-
-    --ink: 241 245 249;
-    --ink-muted: 156 168 186;
-    --ink-faint: 100 114 135;
-
-    --border: 36 46 64;
-    --border-strong: 55 67 88;
-
-    --journey-lead: 148 163 184;
-    --journey-prospect: 96 165 250;
-    --journey-customer: 74 222 128;
-
-    --marker-paused: 251 191 36;
-    --marker-ended: 148 163 184;
-
-    --status-passed: 74 222 128;
-    --status-failed: 248 113 113;
-    --status-review: 251 191 36;
-    --status-pending: 148 163 184;
-    --status-info: 96 165 250;
-
-    --risk-low: 74 222 128;
-    --risk-medium: 251 191 36;
-    --risk-high: 248 113 113;
-
-    --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-    --shadow-overlay: 0 10px 30px -8px rgb(0 0 0 / 0.6), 0 2px 6px -2px rgb(0 0 0 / 0.4);
+  ::selection {
+    @apply bg-ink text-paper;
   }
 }
 
@@ -169,24 +31,84 @@
   /* Shared text-input styling — every form field uses this (directly, or via
    * the `Input`/`Select`/`Textarea` primitives in `components/ui`). */
   .input {
-    @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-faint;
-    @apply focus:border-brand-500 focus:ring-1 focus:ring-brand-500;
-    @apply disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-muted;
+    @apply w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-body text-ink outline-none transition-colors duration-quick placeholder:text-ink-4;
+    @apply hover:border-ink-3 focus:border-ink focus:ring-1 focus:ring-ink;
+    @apply disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-3;
+  }
+
+  /* Identifiers, references and ids (§5.3: JetBrains Mono 12.5). */
+  .data {
+    @apply font-mono text-data;
+  }
+
+  /* CRITICAL risk's 45° hatch (§5.2) — over the solid negative fill. */
+  .hatch {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      rgb(255 255 255 / 0.18) 0 2px,
+      transparent 2px 6px
+    );
+  }
+}
+
+/* §5.4: a page that morphs (`lib/viewTransition`) moves at the travel pace; the
+   rest of the page cross-fades at the pop pace. */
+::view-transition-group(*) {
+  animation-duration: var(--dur-travel);
+  animation-timing-function: var(--ease-enter);
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-pop);
+}
+
+/* §5.4: under reduced motion, every transition and animation is instant — the
+   view-transition pseudo-elements included, which `*` does not reach. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }
 
 /*
- * Legacy primary buttons are `bg-ink text-white`. `ink` inverts in the dark
- * theme, so white text on it would vanish. `components/ui/Button` uses
- * `text-surface` instead; this keeps the one screen deliberately left
- * untouched in the refresh (`VerificationSection`, Developer 4's) legible
- * until it moves to the shared Button.
+ * sonner's toasts, on the tokens. Its own sheet is injected at runtime with
+ * `[data-sonner-toaster][data-theme]` selectors, so these carry one more
+ * element of specificity to win whatever the load order.
  */
-[data-theme='dark'] .bg-ink.text-white {
-  color: rgb(var(--surface));
+html [data-sonner-toaster][data-theme] {
+  --normal-bg: rgb(var(--raised));
+  --normal-border: rgb(var(--line));
+  --normal-text: rgb(var(--ink));
+  --gray1: rgb(var(--raised));
+  --gray2: rgb(var(--sunken));
+  --gray4: rgb(var(--line));
+  --gray5: rgb(var(--line-strong));
+  --gray12: rgb(var(--ink));
+  --border-radius: 10px;
+  font-family: inherit;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .bg-ink.text-white {
-    color: rgb(var(--surface));
-  }
+html [data-sonner-toaster] [data-sonner-toast] {
+  box-shadow: var(--shadow-float);
+}
+html [data-sonner-toast][data-type='success'] [data-icon] {
+  color: rgb(var(--positive));
+}
+html [data-sonner-toast][data-type='error'] [data-icon] {
+  color: rgb(var(--negative));
+}
+html [data-sonner-toast][data-type='warning'] [data-icon] {
+  color: rgb(var(--attention));
+}
+html [data-sonner-toast][data-type='info'] [data-icon] {
+  color: rgb(var(--progress));
 }

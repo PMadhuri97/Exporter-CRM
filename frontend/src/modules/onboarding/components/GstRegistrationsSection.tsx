@@ -29,12 +29,12 @@
  *   A reason is required both ways, and the form says why.
  */
 
-import { AlertTriangle, ExternalLink, Plus, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Button, EmptySection, Input, LINK_CLASSES, Panel, Skeleton } from '@/components';
+import { Icon } from '@/design/icons';
 import { formatDate } from '@/lib/format';
 
 import {
@@ -122,7 +122,7 @@ export function GstRegistrationsSection({
         canEdit &&
         !adding && (
           <Button size="sm" onClick={() => setAdding(true)}>
-            <Plus size={14} /> Add registration
+            <Icon.add size={14} /> Add registration
           </Button>
         )
       }
@@ -130,20 +130,20 @@ export function GstRegistrationsSection({
       {flaggedCount > 0 && (
         <div
           role="alert"
-          className="mb-3 flex items-center gap-2 rounded-lg border border-status-review/40 bg-status-review/10 p-3 text-sm text-ink"
+          className="mb-3 flex items-center gap-2 rounded-lg border border-attention/40 bg-attention-tint p-3 text-sm text-ink"
         >
-          <AlertTriangle size={15} className="shrink-0 text-status-review" />
+          <Icon.warning size={15} className="shrink-0 text-attention" />
           <span className="font-medium">
             {flaggedCount === 1 ? '1 branch flagged' : `${flaggedCount} branches flagged`}
           </span>
-          <span className="text-ink-muted">
+          <span className="text-ink-2">
             Deals invoiced through a flagged branch cannot be handed over.
           </span>
         </div>
       )}
 
       {adding && (
-        <div className="mb-4 flex flex-col gap-2 rounded-lg border border-border p-4">
+        <div className="mb-4 flex flex-col gap-2 rounded-lg border border-line p-4">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">GSTIN</span>
             <Input
@@ -156,12 +156,12 @@ export function GstRegistrationsSection({
             <span className="font-medium text-ink">Registered address (optional)</span>
             <Input value={address} onChange={(event) => setAddress(event.target.value)} />
           </label>
-          <p className="text-xs text-ink-faint">
+          <p className="text-xs text-ink-3">
             The state comes from the GSTIN, so there is nothing to choose. It must carry
             this company&apos;s PAN.
           </p>
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
+            <Button size="sm" variant="quiet" onClick={() => setAdding(false)}>
               Cancel
             </Button>
             <Button size="sm" variant="primary" onClick={submit} disabled={add.isPending}>
@@ -179,7 +179,7 @@ export function GstRegistrationsSection({
           there is one.
         </EmptySection>
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+        <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
           {registrations.map((registration) => (
             <Row
               key={registration.id}
@@ -236,7 +236,7 @@ function Row({
   const alsoHeldBy = registration.also_held_by ?? [];
 
   return (
-    <li className={`px-4 py-3 ${registration.active ? '' : 'bg-surface-subtle'}`}>
+    <li className={`px-4 py-3 ${registration.active ? '' : 'bg-paper'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2">
@@ -249,12 +249,12 @@ function Row({
                   : 'Unknown state')}
             </span>
             {flagged && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-status-review/40 bg-status-review/10 px-2 py-0.5 text-xs font-medium text-ink">
-                <ShieldAlert size={12} className="text-status-review" /> Flagged
+              <span className="inline-flex items-center gap-1 rounded-sm border border-attention/40 bg-attention-tint px-2 py-0.5 text-xs font-medium text-ink">
+                <Icon.flagged size={12} className="text-attention" /> Flagged
               </span>
             )}
             {!registration.active && (
-              <span className="rounded-full border border-border-strong px-2 py-0.5 text-xs text-ink-muted">
+              <span className="rounded-sm border border-line-strong px-2 py-0.5 text-xs text-ink-2">
                 Deactivated
                 {registration.deactivated_at
                   ? ` ${formatDate(registration.deactivated_at)}`
@@ -262,8 +262,8 @@ function Row({
               </span>
             )}
           </p>
-          <p className="mt-0.5 font-mono text-xs text-ink-muted">{registration.gstin}</p>
-          <p className="mt-0.5 text-xs text-ink-faint">
+          <p className="mt-0.5 font-mono text-xs text-ink-2">{registration.gstin}</p>
+          <p className="mt-0.5 text-xs text-ink-3">
             {STATUS_LABEL[registration.status]}
             {registration.address ? ` · ${registration.address}` : ''}
           </p>
@@ -274,7 +274,7 @@ function Row({
             </p>
           )}
           {alsoHeldBy.length > 0 && (
-            <p className="mt-1 text-xs text-ink-muted">
+            <p className="mt-1 text-xs text-ink-2">
               Also held by{' '}
               {alsoHeldBy.map((companyId, index) => (
                 <span key={companyId}>
@@ -299,24 +299,24 @@ function Row({
               rel="noreferrer"
               className={`inline-flex items-center gap-1 text-xs ${LINK_CLASSES}`}
             >
-              Verify on the GST portal <ExternalLink size={12} />
+              Verify on the GST portal <Icon.external size={12} />
             </a>
           )}
           {canFlag && registration.active && !reasoning && (
-            <Button size="sm" variant="ghost" onClick={() => setReasoning(true)}>
+            <Button size="sm" variant="quiet" onClick={() => setReasoning(true)}>
               {flagged ? (
                 <>
-                  <ShieldCheck size={14} /> Lift flag
+                  <Icon.backgroundCheck size={14} /> Lift flag
                 </>
               ) : (
                 <>
-                  <ShieldAlert size={14} /> Flag
+                  <Icon.flagged size={14} /> Flag
                 </>
               )}
             </Button>
           )}
           {canEdit && registration.active && (
-            <Button size="sm" variant="ghost" onClick={onDeactivate} disabled={busy}>
+            <Button size="sm" variant="quiet" onClick={onDeactivate} disabled={busy}>
               Deactivate
             </Button>
           )}
@@ -324,20 +324,20 @@ function Row({
       </div>
 
       {reasoning && (
-        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border p-3">
+        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-line p-3">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-ink">
               {flagged ? 'Why is the problem resolved?' : 'Why is this branch flagged?'}
             </span>
             <Input value={reason} onChange={(event) => setReason(event.target.value)} />
           </label>
-          <p className="text-xs text-ink-faint">
+          <p className="text-xs text-ink-3">
             {flagged
               ? 'Required: the flag’s own reason stops being readable on the row, and both stay in the company’s history.'
               : 'Required: this is what a blocked handover will say.'}
           </p>
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setReasoning(false)}>
+            <Button size="sm" variant="quiet" onClick={() => setReasoning(false)}>
               Cancel
             </Button>
             <Button

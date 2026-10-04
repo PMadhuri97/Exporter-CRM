@@ -5,9 +5,9 @@
  */
 
 import * as RadixDialog from '@radix-ui/react-dialog';
-import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { Icon } from '@/design/icons';
 import { cn } from '@/lib/cn';
 
 import { Button } from './Button';
@@ -33,10 +33,10 @@ export function Dialog({
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
-        <RadixDialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/40" />
+        <RadixDialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/35" />
         <RadixDialog.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 animate-pop-in overflow-y-auto rounded-xl border border-border bg-surface p-5 shadow-overlay',
+            'fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 animate-pop-in overflow-y-auto rounded-2xl border border-line bg-raised p-6 shadow-float',
             size === 'sm' && 'max-w-sm',
             size === 'md' && 'max-w-lg',
             size === 'lg' && 'max-w-2xl',
@@ -44,24 +44,24 @@ export function Dialog({
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <RadixDialog.Title className="text-base font-semibold text-ink">
+              <RadixDialog.Title className="font-display text-display-sm text-ink">
                 {title}
               </RadixDialog.Title>
               <RadixDialog.Description
-                className={description ? 'mt-1 text-sm text-ink-muted' : 'sr-only'}
+                className={description ? 'mt-1 text-body text-ink-2' : 'sr-only'}
               >
                 {description ?? title}
               </RadixDialog.Description>
             </div>
             <RadixDialog.Close
-              className="rounded-md p-1 text-ink-faint hover:bg-surface-sunken hover:text-ink"
+              className="rounded-md p-1 text-ink-3 transition-colors duration-quick hover:bg-sunken hover:text-ink"
               aria-label="Close"
             >
-              <X size={16} />
+              <Icon.close size={16} aria-hidden />
             </RadixDialog.Close>
           </div>
           {children && <div className="mt-4">{children}</div>}
-          {footer && <div className="mt-5 flex flex-wrap justify-end gap-2">{footer}</div>}
+          {footer && <div className="mt-6 flex flex-wrap justify-end gap-2">{footer}</div>}
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>
@@ -109,70 +109,80 @@ export function ConfirmDialog({
   );
 }
 
-/** A panel sliding in from the left edge — the sidebar on a narrow screen. */
+/**
+ * A surface sliding in from an edge (§6.10, §6.11): from the right beside a list
+ * on a wide screen, from the bottom on a narrow one, from the left for the main
+ * menu. It floats, so it carries the one shadow; the page behind stays put.
+ */
 export function Sheet({
   open,
   onOpenChange,
   title,
-  children,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
-      <RadixDialog.Portal>
-        <RadixDialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/40" />
-        <RadixDialog.Content className="fixed inset-y-0 left-0 z-50 flex w-60 max-w-[85vw] animate-slide-in-left flex-col bg-surface shadow-overlay">
-          <RadixDialog.Title className="sr-only">{title}</RadixDialog.Title>
-          <RadixDialog.Description className="sr-only">{title}</RadixDialog.Description>
-          {children}
-        </RadixDialog.Content>
-      </RadixDialog.Portal>
-    </RadixDialog.Root>
-  );
-}
-
-/** A panel sliding in from the right edge — for a record's detail beside a list. */
-export function Drawer({
-  open,
-  onOpenChange,
-  title,
   description,
+  side = 'right',
+  footer,
+  className,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: ReactNode;
   description?: ReactNode;
+  /** `left` is the menu: its title is for assistive tech only. */
+  side?: 'left' | 'right' | 'bottom';
+  footer?: ReactNode;
+  className?: string;
   children: ReactNode;
 }) {
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
-        <RadixDialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/40" />
-        <RadixDialog.Content className="fixed inset-y-0 right-0 z-50 flex w-[32rem] max-w-[92vw] animate-fade-in flex-col overflow-y-auto border-l border-border bg-surface p-5 shadow-overlay">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <RadixDialog.Title className="text-base font-semibold text-ink">
-                {title}
-              </RadixDialog.Title>
-              <RadixDialog.Description
-                className={description ? 'mt-1 text-sm text-ink-muted' : 'sr-only'}
-              >
-                {description ?? title}
-              </RadixDialog.Description>
-            </div>
-            <RadixDialog.Close
-              className="rounded-md p-1 text-ink-faint hover:bg-surface-sunken hover:text-ink"
-              aria-label="Close"
-            >
-              <X size={16} />
-            </RadixDialog.Close>
-          </div>
-          <div className="mt-4">{children}</div>
+        <RadixDialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/35" />
+        <RadixDialog.Content
+          className={cn(
+            'fixed z-50 flex flex-col bg-raised shadow-float',
+            side === 'left' && 'inset-y-0 left-0 w-60 max-w-[85vw] animate-slide-in-left',
+            side === 'right' &&
+              'inset-y-0 right-0 w-[32rem] max-w-[92vw] animate-slide-in-right overflow-y-auto border-l border-line p-6',
+            side === 'bottom' &&
+              'inset-x-0 bottom-0 max-h-[88vh] animate-slide-in-up overflow-y-auto rounded-t-2xl border-t border-line p-5',
+            className,
+          )}
+        >
+          {side === 'left' ? (
+            <>
+              <RadixDialog.Title className="sr-only">{title}</RadixDialog.Title>
+              <RadixDialog.Description className="sr-only">{description ?? title}</RadixDialog.Description>
+              {children}
+            </>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <RadixDialog.Title className="font-display text-display-sm text-ink">
+                    {title}
+                  </RadixDialog.Title>
+                  <RadixDialog.Description
+                    className={description ? 'mt-1 text-body text-ink-2' : 'sr-only'}
+                  >
+                    {description ?? title}
+                  </RadixDialog.Description>
+                </div>
+                <RadixDialog.Close
+                  className="rounded-md p-1 text-ink-3 transition-colors duration-quick hover:bg-sunken hover:text-ink"
+                  aria-label="Close"
+                >
+                  <Icon.close size={16} aria-hidden />
+                </RadixDialog.Close>
+              </div>
+              <div className="mt-5 flex-1">{children}</div>
+              {footer && (
+                <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+                  {footer}
+                </div>
+              )}
+            </>
+          )}
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>

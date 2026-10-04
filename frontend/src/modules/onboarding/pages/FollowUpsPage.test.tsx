@@ -113,7 +113,7 @@ describe('FollowUpsPage — L3-11a-ii', () => {
 
   it('shows a loading state before the list arrives', () => {
     renderPage();
-    expect(screen.getByRole('heading', { name: 'Follow-ups', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Agenda', level: 1 })).toBeInTheDocument();
     expect(screen.queryByTestId('follow-up-row')).not.toBeInTheDocument();
   });
 

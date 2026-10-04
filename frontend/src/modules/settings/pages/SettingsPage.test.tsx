@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NOT_FOUND_TITLE } from '@/components';
 import { useAuth, useCurrentUser } from '@/platform/auth';
 
 import {
@@ -79,12 +80,16 @@ function role(overrides: Partial<Role> = {}): Role {
 }
 
 /** Grant exactly these permissions to the signed-in user. */
-function signedInWith(permissions: PermissionRef[], roleName = 'Administrator') {
+function signedInWith(
+  permissions: PermissionRef[],
+  roleName = 'Administrator',
+  accountRole: 'ADMIN' | 'COMPLIANCE' = 'ADMIN',
+) {
   vi.mocked(useCurrentUser).mockReturnValue({
     id: SELF_ID,
     email: 'me@aner.example',
     full_name: 'Me Myself',
-    role: 'ADMIN',
+    role: accountRole,
     is_active: true,
   });
   vi.mocked(useAuth).mockReturnValue({
@@ -113,14 +118,17 @@ const ALL_ROLE_PERMISSIONS: PermissionRef[] = [
   { module: 'roles', action: 'delete' },
 ];
 
-function renderPage() {
+/** The settings frame at `path`, mounted the way the app router mounts it. */
+function renderPage(path = '/settings') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <SettingsPage />
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/settings/*" element={<SettingsPage />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -168,43 +176,95 @@ beforeEach(() => {
   });
 });
 
-describe('SettingsPage — tabs follow permissions, not role names', () => {
+describe('SettingsPage — sections follow permissions, not role names', () => {
   it('shows no admin tabs to someone with no permissions', async () => {
     signedInWith([], 'API user');
     renderPage();
 
     expect(await screen.findByText('Your details')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Users' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Roles' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Roles' })).not.toBeInTheDocument();
     // And it never asks for a list it cannot have.
     expect(listUsers).not.toHaveBeenCalled();
   });
 
-  it('shows the Users tab to any role granted users:view — the whole point of RBAC', async () => {
+  it('shows the Users section to any role granted users:view — the whole point of RBAC', async () => {
     // This is the case that used to need a code change: a non-ADMIN role with
     // the permission granted now gets the tab.
     signedInWith([{ module: 'users', action: 'view' }], 'Compliance');
     renderPage();
 
-    expect(await screen.findByRole('button', { name: 'Users' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Roles' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Users' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Roles' })).not.toBeInTheDocument();
   });
 
-  it('shows the Roles tab only with roles:view', async () => {
+  it('shows the Roles section only with roles:view', async () => {
     signedInWith(ALL_ROLE_PERMISSIONS);
     renderPage();
 
-    expect(await screen.findByRole('button', { name: 'Roles' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Users' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Roles' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
   });
 
-  it('renders no admin tab while permissions are still loading', () => {
+  it('renders no admin section while permissions are still loading', () => {
     signedInWith(ALL_USER_PERMISSIONS);
     // Never resolves: anything on screen was rendered without an answer.
     vi.mocked(getMyPermissions).mockReturnValue(new Promise(() => {}));
     renderPage();
 
-    expect(screen.queryByRole('button', { name: 'Users' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+  });
+
+  it('lands /settings on My profile', async () => {
+    signedInWith([]);
+    renderPage('/settings');
+    expect(await screen.findByText('Your details')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'My profile' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('shows the same NotFound for a section it may not open as for one that does not exist', async () => {
+    signedInWith([], 'API user');
+    renderPage('/settings/users');
+    expect(await screen.findByRole('heading', { name: NOT_FOUND_TITLE })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Settings sections' })).not.toBeInTheDocument();
+    expect(listUsers).not.toHaveBeenCalled();
+
+    signedInWith([], 'API user');
+    renderPage('/settings/nowhere');
+    expect(await screen.findAllByRole('heading', { name: NOT_FOUND_TITLE })).toHaveLength(2);
+  });
+
+  it('claims nothing about a gated section while permissions are loading', () => {
+    signedInWith(ALL_USER_PERMISSIONS);
+    vi.mocked(getMyPermissions).mockReturnValue(new Promise(() => {}));
+    renderPage('/settings/users');
+    expect(screen.queryByRole('heading', { name: NOT_FOUND_TITLE })).not.toBeInTheDocument();
+    expect(listUsers).not.toHaveBeenCalled();
+  });
+
+  it('opens a section straight from its address', async () => {
+    signedInWith(ALL_ROLE_PERMISSIONS);
+    renderPage('/settings/roles');
+    expect(await screen.findByText('Credit reviewer')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Roles' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('links the administrator to the rules, and no one else', async () => {
+    signedInWith(ALL_USER_PERMISSIONS);
+    const { unmount } = renderPage();
+    const sections = await screen.findByRole('navigation', { name: 'Settings sections' });
+    expect(within(sections).getByRole('link', { name: 'Qualification criteria' })).toHaveAttribute(
+      'href',
+      '/settings/qualification-criteria',
+    );
+    expect(within(sections).getByRole('link', { name: 'Required documents' })).toBeInTheDocument();
+    unmount();
+
+    signedInWith(ALL_USER_PERMISSIONS, 'Compliance', 'COMPLIANCE');
+    renderPage();
+    const theirs = await screen.findByRole('navigation', { name: 'Settings sections' });
+    expect(within(theirs).queryByRole('link', { name: 'Qualification criteria' })).not.toBeInTheDocument();
+    expect(within(theirs).queryByRole('link', { name: 'Required documents' })).not.toBeInTheDocument();
   });
 });
 
@@ -212,7 +272,7 @@ describe('UsersTab — write controls follow permissions', () => {
   it('hides every write control from a view-only user', async () => {
     signedInWith([{ module: 'users', action: 'view' }]);
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Users' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Users' }));
     await waitFor(() => expect(listUsers).toHaveBeenCalled());
 
     expect(await screen.findByText('colleague@aner.example')).toBeInTheDocument();
@@ -226,7 +286,7 @@ describe('UsersTab — write controls follow permissions', () => {
   it('offers no Deactivate control on your own row', async () => {
     signedInWith(ALL_USER_PERMISSIONS);
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Users' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Users' }));
     await waitFor(() => expect(listUsers).toHaveBeenCalled());
 
     // Exactly one row offers it — the colleague's — which is itself the
@@ -239,7 +299,7 @@ describe('UsersTab — write controls follow permissions', () => {
     signedInWith(ALL_USER_PERMISSIONS);
     vi.mocked(updateUser).mockReturnValue(new Promise(() => {}));
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Users' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Users' }));
     await waitFor(() => expect(listUsers).toHaveBeenCalled());
 
     fireEvent.click(await screen.findByRole('button', { name: 'Deactivate' }));
@@ -251,7 +311,7 @@ describe('UsersTab — write controls follow permissions', () => {
     signedInWith(ALL_USER_PERMISSIONS);
     vi.mocked(updateUser).mockRejectedValue(new Error('Refused'));
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Users' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Users' }));
     await waitFor(() => expect(listUsers).toHaveBeenCalled());
 
     fireEvent.click(await screen.findByRole('button', { name: 'Deactivate' }));
@@ -265,7 +325,7 @@ describe('UsersTab — write controls follow permissions', () => {
   it('never offers a role or permission-role picker for your own account', async () => {
     signedInWith(ALL_USER_PERMISSIONS);
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Users' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Users' }));
     await waitFor(() => expect(listUsers).toHaveBeenCalled());
 
     fireEvent.click(
@@ -283,7 +343,7 @@ describe('RolesTab', () => {
 
   it('lists roles, marks built-ins, and offers delete only for custom ones', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Roles' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Roles' }));
     await waitFor(() => expect(listRoles).toHaveBeenCalled());
 
     expect(await screen.findByText('RM (Relationship Manager)')).toBeInTheDocument();
@@ -302,7 +362,7 @@ describe('RolesTab', () => {
   it('hides create, edit and delete controls without those permissions', async () => {
     signedInWith([{ module: 'roles', action: 'view' }]);
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Roles' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Roles' }));
     await waitFor(() => expect(listRoles).toHaveBeenCalled());
 
     expect(await screen.findByText('RM (Relationship Manager)')).toBeInTheDocument();
@@ -317,7 +377,7 @@ describe('RolesTab', () => {
 
   it('says which permissions are not enforced yet, instead of implying they work', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Roles' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Roles' }));
     await waitFor(() => expect(listRoles).toHaveBeenCalled());
 
     fireEvent.click(

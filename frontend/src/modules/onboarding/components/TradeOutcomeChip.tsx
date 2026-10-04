@@ -17,19 +17,19 @@
  *   look the same, because a lending decision would read them differently.
  */
 
-import { Chip, type ChipTone } from '@/components';
+import { Tag, type TagTone } from '@/components';
 
 import type { TradePaymentStatus, TradeProofStatus } from '../types';
 
 const PAYMENT_LOOK: Record<
   TradePaymentStatus,
-  { label: string; tone: ChipTone; className?: string }
+  { label: string; tone: TagTone; className?: string }
 > = {
-  PAID: { label: 'Paid', tone: 'success' },
-  PARTIAL: { label: 'Part paid', tone: 'warning' },
-  UNPAID: { label: 'Unpaid', tone: 'warning' },
-  DISPUTED: { label: 'Disputed', tone: 'danger' },
-  UNKNOWN: { label: 'Not known', tone: 'neutral', className: 'text-ink-faint' },
+  PAID: { label: 'Paid', tone: 'positive' },
+  PARTIAL: { label: 'Part paid', tone: 'attention' },
+  UNPAID: { label: 'Unpaid', tone: 'attention' },
+  DISPUTED: { label: 'Disputed', tone: 'negative' },
+  UNKNOWN: { label: 'Not known', tone: 'idle', className: 'text-ink-3' },
 };
 
 /** `PROVEN` is deliberately silent: proof is the expectation, so saying so on every
@@ -49,13 +49,13 @@ export function TradeOutcomeChip({ paymentStatus, proofStatus }: TradeOutcomeChi
   const proof = PROOF_LABEL[proofStatus];
   return (
     <span className="flex flex-wrap items-center gap-1.5">
-      <Chip dot tone={look.tone} className={look.className}>
+      <Tag dot tone={look.tone} className={look.className}>
         {look.label}
-      </Chip>
+      </Tag>
       {proof && (
-        <Chip tone="neutral" className="text-ink-faint" title="Nobody has shown proof of this yet">
+        <Tag tone="idle" className="text-ink-3" title="Nobody has shown proof of this yet">
           {proof}
-        </Chip>
+        </Tag>
       )}
     </span>
   );
@@ -64,8 +64,8 @@ export function TradeOutcomeChip({ paymentStatus, proofStatus }: TradeOutcomeChi
 /** An invoice nobody has recorded an outcome for. Not `UNKNOWN`: nobody has looked. */
 export function NoOutcomeChip() {
   return (
-    <Chip tone="neutral" className="text-ink-faint">
+    <Tag tone="idle" className="text-ink-3">
       No outcome recorded
-    </Chip>
+    </Tag>
   );
 }

@@ -6,8 +6,8 @@ import { useAuth } from '@/platform/auth';
  * async state on purpose rather than defaulting to a bare loading indicator. */
 function AuthCheckingSkeleton() {
   return (
-    <div className="flex h-screen items-center justify-center bg-surface-subtle">
-      <div className="h-10 w-10 animate-pulse rounded-xl bg-brand-600/30" />
+    <div className="flex h-screen items-center justify-center bg-paper">
+      <div className="h-10 w-10 animate-pulse rounded-xl bg-ink/30" />
     </div>
   );
 }

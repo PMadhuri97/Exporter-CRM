@@ -117,19 +117,20 @@ describe('ExportersListPage — the journey, qualification and marker filters (L
     });
   });
 
-  it('shows the journey, qualification and marker as three separate chips', async () => {
+  it('shows the journey, qualification and marker as three separate marks, in rows not a table', async () => {
     renderPage();
     expect(await screen.findByText('Acme Exports')).toBeInTheDocument();
-    const table = screen.getByRole('table');
-    expect(within(table).getByTestId('journey-chip')).toHaveTextContent('Lead');
-    expect(within(table).getByText('Not yet reviewed')).toBeInTheDocument();
-    expect(within(table).getByText('Paused')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    const rows = screen.getByRole('list', { name: 'Companies' });
+    expect(within(rows).getByTestId('journey-chip')).toHaveTextContent('Lead');
+    expect(within(rows).getByText('Not yet reviewed')).toBeInTheDocument();
+    expect(within(rows).getByText('Paused')).toBeInTheDocument();
   });
 
   it('asks the server for one journey stage when a tab is chosen', async () => {
     renderPage();
     await screen.findByText('Acme Exports');
-    fireEvent.click(screen.getByRole('tab', { name: 'Prospect' }));
+    fireEvent.click(screen.getByRole('radio', { name: /^Prospect/ }));
     await waitFor(() =>
       expect(searchExporterProfiles).toHaveBeenLastCalledWith(
         expect.objectContaining({ journey: 'PROSPECT' }),

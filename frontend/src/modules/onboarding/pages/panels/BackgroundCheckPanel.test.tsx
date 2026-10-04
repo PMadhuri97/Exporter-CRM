@@ -111,7 +111,8 @@ describe('BackgroundCheckPanel — the gauge', () => {
 
     const gauge = await screen.findByTestId('background-check-gauge');
     expect(gauge).toHaveAttribute('data-value', 'NOT_STARTED');
-    expect(screen.getByText('Not started')).toBeInTheDocument();
+    // The runway draws every state too, so the gauge's own words are read from it.
+    expect(within(gauge).getByText('Not started')).toBeInTheDocument();
     // Never "pending" or "clear": no check has run, and the screen must not imply one has.
     expect(
       screen.getByText(/No background check has been started/),
@@ -153,9 +154,12 @@ describe('BackgroundCheckPanel — risk', () => {
 
     const chip = await screen.findByTestId('risk-chip');
     expect(chip).toHaveAttribute('data-risk', 'CRITICAL');
-    // Filled and bold, unlike LOW/MEDIUM/HIGH, which are tinted only.
-    expect(chip.className).toContain('bg-red-600');
+    // The one filled mark: solid negative, hatched and bold, with a leading "!" —
+    // LOW/MEDIUM/HIGH are tinted only (frontend-plan §5.2).
+    expect(chip.className).toContain('bg-negative-solid');
+    expect(chip.className).toContain('hatch');
     expect(chip.className).toContain('font-bold');
+    expect(chip).toHaveTextContent('!');
   });
 
   it('explains a risk shown on a company that is not clear', async () => {

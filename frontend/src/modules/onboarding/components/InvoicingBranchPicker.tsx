@@ -27,12 +27,11 @@
  *   stage moves.
  */
 
-import { ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
   Button,
-  Chip,
+  Tag,
   DetailRow,
   EmptySection,
   ErrorState,
@@ -40,6 +39,7 @@ import {
   Select,
   Skeleton,
 } from '@/components';
+import { Icon } from '@/design/icons';
 
 import { useGstRegistrations, useSetDealInvoicingBranch } from '../hooks';
 import type { GstRegistration } from '../types';
@@ -72,11 +72,11 @@ function BranchStatus({ registration }: { registration: GstRegistration }) {
   return (
     <>
       {registration.flag_status === 'FLAGGED' && (
-        <Chip tone="warning" icon={<ShieldAlert size={12} aria-hidden />}>
+        <Tag tone="attention" icon={<Icon.flagged size={12} aria-hidden />}>
           Flagged
-        </Chip>
+        </Tag>
       )}
-      {!registration.active && <Chip>Deactivated</Chip>}
+      {!registration.active && <Tag>Deactivated</Tag>}
     </>
   );
 }
@@ -188,7 +188,7 @@ export function InvoicingBranchPicker({
           {shownId !== null && (
             <Button
               size="sm"
-              variant="ghost"
+              variant="quiet"
               disabled={mutation.isPending}
               onClick={() => record(null)}
             >
@@ -202,7 +202,7 @@ export function InvoicingBranchPicker({
             {shown ? (
               <span className="inline-flex flex-wrap items-center gap-2">
                 <span className="font-medium text-ink">{stateName(shown)}</span>
-                <span className="font-mono text-xs text-ink-muted">{shown.gstin}</span>
+                <span className="font-mono text-xs text-ink-2">{shown.gstin}</span>
                 <BranchStatus registration={shown} />
               </span>
             ) : shownId !== null ? (
@@ -217,7 +217,7 @@ export function InvoicingBranchPicker({
       )}
 
       {editable && shown && (shown.flag_status === 'FLAGGED' || !shown.active) && (
-        <p className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+        <p className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
           <BranchStatus registration={shown} />
         </p>
       )}
@@ -225,10 +225,10 @@ export function InvoicingBranchPicker({
       {!closed && shownId === null && (
         <p
           role="status"
-          className="rounded-lg border border-status-review/30 bg-status-review/10 px-3 py-2 text-sm text-ink"
+          className="rounded-lg border border-attention/30 bg-attention-tint px-3 py-2 text-sm text-ink"
         >
           <span className="font-medium">Not recorded.</span>{' '}
-          <span className="text-ink-muted">
+          <span className="text-ink-2">
             The seller has an active GST registration, so a handover asks which one this
             deal is invoiced from.
           </span>
@@ -238,10 +238,10 @@ export function InvoicingBranchPicker({
       {!closed && shown?.flag_status === 'FLAGGED' && (
         <p
           role="status"
-          className="rounded-lg border border-status-review/30 bg-status-review/10 px-3 py-2 text-sm text-ink"
+          className="rounded-lg border border-attention/30 bg-attention-tint px-3 py-2 text-sm text-ink"
         >
           <span className="font-medium">This branch is flagged.</span>{' '}
-          <span className="text-ink-muted">
+          <span className="text-ink-2">
             A deal invoiced through it cannot be handed over: the flag is resolved on the
             seller's GST registrations, or the deal is invoiced from another branch.
           </span>
@@ -249,7 +249,7 @@ export function InvoicingBranchPicker({
       )}
 
       {closed && (
-        <p className="text-xs text-ink-faint">
+        <p className="text-xs text-ink-3">
           Frozen with the deal: a closed deal's invoicing branch no longer changes.
         </p>
       )}

@@ -21,10 +21,10 @@
  * - The catalogue is seven items since `website-reviewed` was retired (P2-4a).
  */
 
-import { AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
 import { formatDate, formatDateTime } from '@/lib/format';
 
@@ -64,11 +64,11 @@ function CyclePicker({
   const options = cycles.data?.cycles ?? [];
   if (options.length < 2) return null;
   return (
-    <label className="mt-2 flex items-center gap-2 text-xs text-ink-muted">
+    <label className="mt-2 flex items-center gap-2 text-xs text-ink-2">
       Cycle
       <select
         aria-label="Check cycle"
-        className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink"
+        className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink"
         value={value ?? ''}
         onChange={(event) => onChange(event.target.value || undefined)}
       >
@@ -124,14 +124,14 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
   return (
     <aside
       data-testid="screening-checklist"
-      className="rounded-lg border border-border bg-surface shadow-card"
+      className="rounded-lg border border-line bg-surface"
     >
-      <div className="border-b border-border px-4 py-4">
+      <div className="border-b border-line px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="font-semibold text-ink">Review checklist</h3>
             {!query.isLoading && !query.isError && (
-              <p className="mt-0.5 text-xs text-ink-muted">
+              <p className="mt-0.5 text-xs text-ink-2">
                 {completed}/{catalogue.length} items reviewed
                 {unrecognised.length > 0 && ` · ${unrecognised.length} unrecognised`}
               </p>
@@ -139,7 +139,7 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
           </div>
         </div>
         {cycle && (
-          <p data-testid="screening-cycle" className="mt-2 text-xs text-ink-muted">
+          <p data-testid="screening-cycle" className="mt-2 text-xs text-ink-2">
             Cycle {cycle.number} · {cycleKindLabel(cycle.kind)} · started {formatDate(cycle.started_at)}
             {!isCurrentCycle && ' · earlier cycle, read-only'}
           </p>
@@ -152,7 +152,7 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
             onChange={setCycleId}
           />
         )}
-        <p className="mt-3 rounded-md bg-surface-subtle px-3 py-2 text-xs leading-5 text-ink-faint">
+        <p className="mt-3 rounded-md bg-paper px-3 py-2 text-xs leading-5 text-ink-3">
           Decisions and comments are stored with reviewer and timestamp; every earlier
           decision stays in each item&apos;s history.
         </p>
@@ -160,9 +160,9 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
 
       <div className="max-h-[720px] space-y-4 overflow-y-auto p-4">
         {query.isLoading ? (
-          <div className="h-32 animate-pulse rounded bg-surface-sunken" />
+          <div className="h-32 animate-pulse rounded bg-sunken" />
         ) : query.isError ? (
-          <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+          <div role="alert" className="rounded-md border border-negative/30 bg-negative-tint p-3 text-xs text-negative">
             Could not load checklist.{' '}
             <button type="button" className="underline" onClick={() => void query.refetch()}>
               Retry
@@ -202,10 +202,10 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
 
         {!query.isLoading && !query.isError && unrecognised.length > 0 && (
           <div>
-            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
-              <AlertTriangle size={13} /> Unrecognised items
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-attention">
+              <Icon.warning size={13} /> Unrecognised items
             </p>
-            <p className="mb-2 text-[11px] leading-5 text-ink-muted">
+            <p className="mb-2 text-[11px] leading-5 text-ink-2">
               Stored against this exporter under a key the checklist does not define. Shown
               read-only so a persisted decision is never hidden.
             </p>
@@ -214,17 +214,17 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
                 <div
                   key={item.id}
                   data-testid="unrecognised-item"
-                  className="rounded-lg border border-dashed border-amber-300 bg-amber-50/40 px-3 py-2.5"
+                  className="rounded-lg border border-dashed border-attention/30 bg-attention-tint px-3 py-2.5"
                 >
                   <p className="break-all font-mono text-[11px] text-ink">{item.item_key}</p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
                     <VerificationStatusChip value={item.status} />
-                    <span className="text-[11px] text-ink-faint">
+                    <span className="text-[11px] text-ink-3">
                       {formatDateTime(item.reviewed_at)}
                     </span>
                   </div>
                   {item.comment && (
-                    <p className="mt-1.5 text-xs leading-5 text-ink-muted">{item.comment}</p>
+                    <p className="mt-1.5 text-xs leading-5 text-ink-2">{item.comment}</p>
                   )}
                 </div>
               ))}
@@ -280,11 +280,11 @@ function EvidencePicker({
   }
 
   return (
-    <div data-testid="screening-evidence-picker" className="mt-2 rounded-md border border-border p-2">
+    <div data-testid="screening-evidence-picker" className="mt-2 rounded-md border border-line p-2">
       {documents.isLoading ? (
-        <p className="text-[11px] text-ink-faint">Loading documents…</p>
+        <p className="text-[11px] text-ink-3">Loading documents…</p>
       ) : available.length === 0 ? (
-        <p className="text-[11px] text-ink-faint">No scanned-clean documents to attach.</p>
+        <p className="text-[11px] text-ink-3">No scanned-clean documents to attach.</p>
       ) : (
         <div className="space-y-1">
           {available.map((document) => (
@@ -304,7 +304,7 @@ function EvidencePicker({
         <input
           aria-label="Evidence link"
           type="url"
-          className="w-full rounded-md border border-border bg-surface px-2 py-1 text-[11px] text-ink"
+          className="w-full rounded-md border border-line bg-surface px-2 py-1 text-[11px] text-ink"
           placeholder="https://…"
           value={link}
           disabled={disabled}
@@ -312,7 +312,7 @@ function EvidencePicker({
         />
         <button
           type="button"
-          className="rounded-md border border-border px-2 py-1 text-[11px] text-ink-muted"
+          className="rounded-md border border-line px-2 py-1 text-[11px] text-ink-2"
           disabled={disabled || !link.trim()}
           onClick={addLink}
         >
@@ -320,7 +320,7 @@ function EvidencePicker({
         </button>
       </div>
       {refs.some((ref) => ref.type === 'url') && (
-        <ul className="mt-1 space-y-0.5 text-[11px] text-ink-muted">
+        <ul className="mt-1 space-y-0.5 text-[11px] text-ink-2">
           {refs
             .filter((ref) => ref.type === 'url')
             .map((ref) => (
@@ -331,7 +331,7 @@ function EvidencePicker({
         </ul>
       )}
       {error && (
-        <p role="alert" className="mt-1 text-[11px] text-red-700">
+        <p role="alert" className="mt-1 text-[11px] text-negative">
           {error}
         </p>
       )}
@@ -397,12 +397,12 @@ function ChecklistCard({
     <div
       data-testid="screening-item"
       data-item-key={item.key}
-      className="rounded-lg border border-border bg-surface-subtle px-3 py-2.5"
+      className="rounded-lg border border-line bg-paper px-3 py-2.5"
     >
-      <p className="text-xs leading-5 text-ink-muted">{item.label}</p>
+      <p className="text-xs leading-5 text-ink-2">{item.label}</p>
       <select
         aria-label={`${item.label} status`}
-        className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-brand-500 disabled:opacity-60"
+        className="mt-2 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60"
         value={status}
         disabled={disabled}
         onChange={(event) => setStatus(event.target.value as ScreeningChecklistStatus)}
@@ -414,7 +414,7 @@ function ChecklistCard({
       </select>
       <textarea
         aria-label={`${item.label} comment`}
-        className="mt-2 min-h-16 w-full resize-y rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-brand-500 disabled:opacity-60"
+        className="mt-2 min-h-16 w-full resize-y rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60"
         placeholder={canRecord ? 'Add review comment (optional)' : undefined}
         value={comment}
         disabled={disabled}
@@ -424,7 +424,7 @@ function ChecklistCard({
       {canRecord && !attaching && (
         <button
           type="button"
-          className="mt-2 text-[11px] font-medium text-brand-600 hover:underline disabled:opacity-50"
+          className="mt-2 text-[11px] font-medium text-ink hover:underline disabled:opacity-50"
           disabled={disabled}
           onClick={() => setAttaching(true)}
         >
@@ -444,7 +444,7 @@ function ChecklistCard({
           <button
             type="button"
             onClick={() => void save()}
-            className="rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-white"
+            className="rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-paper"
           >
             Save
           </button>

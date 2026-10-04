@@ -52,8 +52,8 @@ export function TabsList({
     <RadixTabs.List
       className={cn(
         variant === 'underline'
-          ? 'flex gap-1 overflow-x-auto border-b border-border'
-          : 'inline-flex flex-wrap gap-1 rounded-lg bg-surface-sunken p-1',
+          ? 'flex gap-1 overflow-x-auto border-b border-line'
+          : 'inline-flex flex-wrap gap-0.5 rounded-md bg-sunken p-0.5',
         className,
       )}
       {...rest}
@@ -76,10 +76,10 @@ export function TabsTrigger({
         if (!event.defaultPrevented && !rest.disabled) onValueChange(value);
       }}
       className={cn(
-        'inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-medium transition-colors',
+        'inline-flex items-center gap-1.5 whitespace-nowrap text-body font-medium transition-colors duration-quick',
         variant === 'underline'
-          ? '-mb-px border-b-2 border-transparent px-3 py-2.5 text-ink-muted hover:text-ink data-[state=active]:border-brand-600 data-[state=active]:text-ink'
-          : 'rounded-md px-3 py-1.5 text-ink-muted hover:text-ink data-[state=active]:bg-surface data-[state=active]:text-ink data-[state=active]:shadow-card',
+          ? '-mb-px border-b-2 border-transparent px-3 py-2.5 text-ink-3 hover:text-ink data-[state=active]:border-ink data-[state=active]:text-ink'
+          : 'rounded px-3 py-1 text-ink-2 hover:text-ink data-[state=active]:bg-surface data-[state=active]:text-ink data-[state=active]:ring-1 data-[state=active]:ring-line-strong',
         className,
       )}
       {...rest}

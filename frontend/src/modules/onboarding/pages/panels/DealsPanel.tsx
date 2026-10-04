@@ -9,14 +9,14 @@
  * is a place to see and to navigate.
  */
 
-import { ChevronRight, FileText, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button, buttonClasses, EmptySection, Panel, Skeleton } from '@/components';
+import { Icon } from '@/design/icons';
 import { formatDate } from '@/lib/format';
 
-import { DealStageChip, OpenDealForm } from '../../components';
+import { OpenDealForm, StageRoute } from '../../components';
 import { useCompanyDeals } from '../../hooks';
 import { paths } from '../../paths';
 import type { DealListItem } from '../../types';
@@ -26,17 +26,17 @@ function DealRow({ deal }: { deal: DealListItem }) {
     <li>
       <Link
         to={paths.deal(deal.id)}
-        className="group flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-surface-subtle"
+        className="group flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-paper"
       >
         <div className="min-w-0">
-          <span className="font-medium text-ink group-hover:text-brand-600">{deal.reference}</span>
-          <p className="mt-0.5 text-xs text-ink-muted">
+          <span className="font-medium text-ink group-hover:text-ink">{deal.reference}</span>
+          <p className="mt-0.5 text-xs text-ink-2">
             {deal.buyer_name ?? 'No buyer recorded yet'} · opened {formatDate(deal.created_at)}
           </p>
         </div>
         <span className="flex items-center gap-2">
-          <DealStageChip stage={deal.stage} />
-          <ChevronRight size={15} className="text-ink-faint" />
+          <StageRoute stage={deal.stage} compact />
+          <Icon.caretRight size={15} className="text-ink-3" />
         </span>
       </Link>
     </li>
@@ -64,14 +64,14 @@ export function DealsPanel({
       actions={
         <>
           <Link to={paths.company(customerId, 'documents')} className={buttonClasses({ size: 'sm' })}>
-            <FileText size={14} />
+            <Icon.document size={14} />
             Company documents
           </Link>
           {/* Offered only where the server would accept it: never to DEVELOPER, and
               never on a LEAD. */}
           {canOpen && !opening && (
             <Button size="sm" variant="primary" onClick={() => setOpening(true)}>
-              <Plus size={14} /> Open a deal
+              <Icon.add size={14} /> Open a deal
             </Button>
           )}
         </>
@@ -86,7 +86,7 @@ export function DealsPanel({
         </div>
       )}
 
-      {isError && <p className="text-sm text-status-failed">Could not load this company's deals.</p>}
+      {isError && <p className="text-sm text-negative">Could not load this company's deals.</p>}
 
       {!isLoading && !isError && deals.length === 0 && (
         <EmptySection>
@@ -97,7 +97,7 @@ export function DealsPanel({
       )}
 
       {deals.length > 0 && (
-        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+        <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
           {deals.map((deal) => (
             <DealRow key={deal.id} deal={deal} />
           ))}

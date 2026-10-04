@@ -10,13 +10,19 @@
  *
  * The expected sets are written out by hand from §4.1 and the server's route table,
  * not derived from the manifest, so a wrong manifest fails here.
+ *
+ * Phase 2 (§7): the rail, the command bar's "Go to" list, the `?` sheet and the `g`
+ * shortcuts are all generated from the module table — each is checked here against
+ * the same hand-written rows, so none can offer what another withholds.
  */
 
-import { render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { lazy } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NOT_FOUND_TITLE } from '@/components';
 import type { UserRole } from '@/lib/api/types';
 import { useAuth, useCurrentUser } from '@/platform/auth';
 
@@ -46,6 +52,7 @@ vi.mock('@/modules/onboarding/lazyPages', () => ({
   PipelinePage: stub('pipeline'),
   QualificationCriteriaPage: stub('criteria'),
   RxilIntakePage: stub('rxil-intake'),
+  ReviewPage: stub('review'),
 }));
 // The module table wraps this one in `lazy` itself.
 vi.mock('@/pages/HomePage', () => ({ HomePage: () => <Screen id="home" /> }));
@@ -67,12 +74,16 @@ const ID = '11111111-1111-4111-8111-111111111111';
 const SCREENS: [string, string, UserRole[]][] = [
   ['/', 'home', READERS],
   ['/companies', 'companies', READERS],
+  // The board is a view of Companies; `/pipeline` is its older address.
+  ['/companies?view=board', 'pipeline', READERS],
   ['/companies/new', 'add-company', STAFF],
   ['/companies/import', 'import-companies', STAFF],
   ['/companies/rxil-intake', 'rxil-intake', ADMIN],
   ['/companies/identity-completion', 'identity-completion', READERS],
   [`/companies/${ID}`, 'company', READERS],
   ['/follow-ups', 'follow-ups', READERS],
+  // The compliance queue: COMPLIANCE_OR_ADMIN, like the proposals route it reads.
+  ['/review', 'review', ['COMPLIANCE', 'ADMIN']],
   ['/pipeline', 'pipeline', READERS],
   [`/deals/${ID}`, 'deal', READERS],
   // The old addresses redirect into the CRM, so they are the CRM's too.
@@ -82,16 +93,18 @@ const SCREENS: [string, string, UserRole[]][] = [
   ['/settings/deal-required-documents', 'required-documents', ADMIN],
 ];
 
-/** [rail row, who sees it] — §7.2 on the current screens. */
-const RAIL: [string, UserRole[]][] = [
-  ['Home', READERS],
-  ['Companies', READERS],
-  ['Follow-ups', READERS],
-  ['Pipeline', READERS],
-  ['Settings', READERS],
-  ['Qualification criteria', ADMIN],
-  ['Required documents', ADMIN],
+/** [rail row, who sees it, its `g` key, where it goes] — §7.2. */
+const RAIL: [string, UserRole[], string | null, string][] = [
+  ['Desk', READERS, 'h', 'home'],
+  ['Companies', READERS, 'c', 'companies'],
+  ['Agenda', READERS, 'f', 'follow-ups'],
+  ['Review', ['COMPLIANCE', 'ADMIN'], 'r', 'review'],
+  ['Settings', READERS, 's', 'settings'],
+  ['Qualification criteria', ADMIN, null, 'criteria'],
+  ['Required documents', ADMIN, null, 'required-documents'],
 ];
+/** Rows that existed before Phase 2 and must never come back. */
+const RETIRED_ROWS = ['Home', 'Follow-ups', 'Pipeline'];
 
 function signInAs(role: string) {
   const user = {
@@ -111,10 +124,15 @@ function signInAs(role: string) {
 }
 
 function renderAt(url: string) {
+  // The command bar's company search is a query, so the shell needs a client; it
+  // stays idle until someone types, which is part of what is asserted below.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={[url]}>
-      <AppRoutes />
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[url]}>
+        <AppRoutes />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -157,7 +175,7 @@ describe('the route matrix: every role × every screen', () => {
       // Indistinguishable from a page that does not exist (§4.3): same component,
       // same words. Never "Administrators only".
       expect(mainContent()).toBe(notFound);
-      expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: NOT_FOUND_TITLE })).toBeInTheDocument();
       expect(screen.queryByText(/administrator/i)).not.toBeInTheDocument();
     }
     // Never rendered, so never imported, so nothing it would request was sent.
@@ -176,6 +194,61 @@ describe('the rail', () => {
       if (who.includes(role)) expect(row).toBeInTheDocument();
       else expect(row).not.toBeInTheDocument();
     }
+    for (const label of RETIRED_ROWS) {
+      expect(within(nav).queryByRole('link', { name: label })).not.toBeInTheDocument();
+    }
+  });
+});
+
+describe('the command bar, the shortcut sheet and the g keys (§7.4, §7.5)', { timeout: 30_000 }, () => {
+  const expected = (role: UserRole) => RAIL.filter(([, who]) => who.includes(role));
+
+  it.each(READERS)('offers %s the same modules in ⌘K as in the rail', async (role) => {
+    signInAs(role);
+    renderAt('/settings');
+    await screen.findByTestId('screen');
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    const goTo = await screen.findByTestId('command-go-to', {}, { timeout: 15_000 });
+    const offered = within(goTo)
+      .getAllByRole('option')
+      .map((option) => option.textContent?.replace(/g[a-z]$/, '').trim());
+    expect(offered).toEqual(expected(role).map(([label]) => label));
+  });
+
+  it.each(READERS)('lists only %s’s own keys in the ? sheet', async (role) => {
+    signInAs(role);
+    renderAt('/settings');
+    await screen.findByTestId('screen');
+    fireEvent.keyDown(window, { key: '?' });
+    const sheet = await screen.findByTestId('shortcut-sheet');
+    for (const [label, who, key] of RAIL) {
+      if (!key) continue;
+      const listed = within(sheet).queryByText(label);
+      if (who.includes(role)) expect(listed).toBeInTheDocument();
+      else expect(listed).not.toBeInTheDocument();
+    }
+  });
+
+  it.each(READERS)('lets %s use g to reach its modules, and no other', async (role) => {
+    signInAs(role);
+    renderAt('/settings');
+    await screen.findByTestId('screen');
+    for (const [, who, key, id] of RAIL) {
+      if (!key || !who.includes(role)) continue;
+      rendered.clear();
+      act(() => {
+        fireEvent.keyDown(window, { key: 'g' });
+        fireEvent.keyDown(window, { key });
+      });
+      expect(await screen.findByTestId('screen')).toHaveTextContent(id);
+    }
+    // A letter no module of this role owns goes nowhere.
+    rendered.clear();
+    act(() => {
+      fireEvent.keyDown(window, { key: 'g' });
+      fireEvent.keyDown(window, { key: 'z' });
+    });
+    expect([...rendered]).toEqual([]);
   });
 });
 
@@ -186,7 +259,7 @@ describe('a user with no workspace (G1)', () => {
     renderAt('/');
     expect(await screen.findByText(/doesn.t have access to a workspace/)).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
-    for (const word of ['Companies', 'Follow-ups', 'Pipeline', 'Qualification criteria']) {
+    for (const word of ['Desk', 'Companies', 'Agenda', 'Follow-ups', 'Pipeline', 'Qualification criteria']) {
       expect(screen.queryByText(word)).not.toBeInTheDocument();
     }
     expect(screen.getByRole('link', { name: 'My profile' })).toHaveAttribute('href', '/settings');
@@ -204,7 +277,7 @@ describe('a user with no workspace (G1)', () => {
   it('gets NotFound, not the CRM, from a CRM address', async () => {
     signInAs('AUDITOR');
     renderAt('/companies');
-    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: NOT_FOUND_TITLE })).toBeInTheDocument();
     expect([...rendered]).toEqual([]);
   });
 });

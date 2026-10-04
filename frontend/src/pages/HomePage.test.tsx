@@ -14,8 +14,8 @@ import { useCurrentUser } from '@/platform/auth';
 import { HomePage } from './HomePage';
 
 vi.mock('@/modules/onboarding', () => ({
-  CheckBacksDueCard: () => <div data-testid="card-check-backs" />,
-  FollowUpsDueCard: () => <div data-testid="card-follow-ups" />,
+  UpNextCard: () => <div data-testid="card-up-next" />,
+  SetupCard: () => <div data-testid="card-setup" />,
   PipelineSummaryCard: () => <div data-testid="card-pipeline" />,
   ProposalsAwaitingMeCard: () => <div data-testid="card-proposals" />,
   ReKycDueCard: () => <div data-testid="card-rekyc" />,
@@ -76,5 +76,23 @@ describe('HomePage — Add company by role (R-33, G2)', () => {
   it('offers DEVELOPER no Add company, which the server refuses it', () => {
     renderAs('DEVELOPER');
     expect(screen.queryByRole('link', { name: /Add company/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('HomePage — one desk per role (frontend-plan §8.2)', () => {
+  it('gives the administrator the setup section, and nobody else', () => {
+    renderAs('ADMIN');
+    expect(screen.getByTestId('card-setup')).toBeInTheDocument();
+  });
+
+  it.each<UserRole>(['OPERATIONS', 'COMPLIANCE', 'DEVELOPER'])('gives %s no setup section', (role) => {
+    renderAs(role);
+    expect(screen.queryByTestId('card-setup')).not.toBeInTheDocument();
+  });
+
+  it('tells a read-only role so, in one line', () => {
+    renderAs('DEVELOPER');
+    expect(screen.getByText('Read-only access. Identifiers are masked.')).toBeInTheDocument();
+    expect(screen.getByTestId('card-up-next')).toBeInTheDocument();
   });
 });

@@ -1,3 +1,5 @@
+
+import { Icon } from '@/design/icons';
 /**
  * "This company cannot be identified yet" — IQ-7's completion list, seen from the
  * company itself (`remaining-work.md` R-28).
@@ -10,7 +12,6 @@
  * (R-16). The edit itself is the company panel's, so this offers no second form.
  */
 
-import { Fingerprint } from 'lucide-react';
 
 export interface IdentityGapNoticeProps {
   country: string | null;
@@ -32,17 +33,17 @@ export function IdentityGapNotice({ country, canEdit }: IdentityGapNoticeProps) 
       data-testid="identity-gap-notice"
       className={`flex gap-3 rounded-lg border p-4 text-sm ${
         required
-          ? 'border-status-review/40 bg-status-review/10'
-          : 'border-dashed border-border-strong bg-surface-subtle'
+          ? 'border-attention/40 bg-attention-tint'
+          : 'border-dashed border-line-strong bg-paper'
       }`}
     >
-      <Fingerprint size={16} className="mt-0.5 shrink-0 text-ink-faint" />
+      <Icon.identity size={16} className="mt-0.5 shrink-0 text-ink-3" />
       <p className="text-ink">
         <span className="font-medium">
           This company cannot be identified yet: it holds no PAN and no registration
           number.
         </span>{' '}
-        <span className="text-ink-muted">
+        <span className="text-ink-2">
           It needs {needed}
           {required
             ? ' — required for a company outside India (IQ-7).'

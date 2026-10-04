@@ -14,11 +14,11 @@
  * a role that cannot edit sees the list and the company pages, not an edit control.
  */
 
-import { ArrowRight, Fingerprint } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { Button, Card, EmptySection, ErrorState, PageHeader, Skeleton } from '@/components';
+import { Button, EmptyLine, ErrorState, PageHeader, Skeleton } from '@/components';
+import { Icon } from '@/design/icons';
 import { formatDate } from '@/lib/format';
 
 import { useIdentityCompletion } from '../hooks';
@@ -41,22 +41,22 @@ function Row({ item }: { item: IdentityCompletionItem }) {
     <li data-testid="identity-completion-row">
       <Link
         to={paths.company(item.company_id)}
-        className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-surface-subtle"
+        className="group flex flex-wrap items-center justify-between gap-3 py-3"
       >
         <span className="min-w-0">
-          <span className="block truncate font-medium text-ink">
+          <span className="block truncate font-display text-display-sm text-ink underline-offset-4 group-hover:underline">
             {item.name ?? 'Unnamed company'}
           </span>
-          <span className="mt-0.5 block text-xs text-ink-muted">
+          <span className="mt-0.5 block text-secondary text-ink-3">
             {item.country ?? 'No country'}
             {item.pipeline_status === 'NOT_IN_PIPELINE' ? ' · Buyer only' : ''}
             {item.created_via === 'DEAL_BUYER' ? ' · Created from a deal buyer' : ''}
             {` · Added ${formatDate(item.created_at)}`}
           </span>
         </span>
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-ink">
+        <span className="inline-flex items-center gap-1.5 text-secondary font-medium text-attention">
           Needs: {MISSING_LABEL[item.missing]}
-          <ArrowRight size={13} className="text-ink-faint" />
+          <Icon.forward size={13} className="text-ink-3" aria-hidden />
         </span>
       </Link>
     </li>
@@ -74,18 +74,14 @@ function Group({
 }) {
   if (items.length === 0) return null;
   return (
-    <section aria-label={title} className="flex flex-col gap-2">
-      <div>
-        <h2 className="text-sm font-semibold text-ink">{title}</h2>
-        <p className="text-xs text-ink-muted">{description}</p>
-      </div>
-      <Card>
-        <ul className="divide-y divide-border">
-          {items.map((item) => (
-            <Row key={item.company_id} item={item} />
-          ))}
-        </ul>
-      </Card>
+    <section aria-label={title} className="flex flex-col gap-1 border-t border-line pt-4">
+      <h2 className="text-lead font-semibold text-ink">{title}</h2>
+      <p className="text-secondary text-ink-3">{description}</p>
+      <ul className="mt-1 divide-y divide-line">
+        {items.map((item) => (
+          <Row key={item.company_id} item={item} />
+        ))}
+      </ul>
     </section>
   );
 }
@@ -98,13 +94,7 @@ export function IdentityCompletionPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        back={{ to: paths.companies, label: 'Companies' }}
-        title={
-          <span className="inline-flex items-center gap-2">
-            <Fingerprint size={18} className="text-ink-faint" />
-            Identity to complete
-          </span>
-        }
+        title="Identity to complete"
         description="Companies the CRM cannot identify: they hold neither a PAN nor a registration number. Add the missing identifier on the company's page and it leaves this list."
       />
 
@@ -116,7 +106,7 @@ export function IdentityCompletionPage() {
           onRetry={() => void query.refetch()}
         />
       ) : items.length === 0 ? (
-        <EmptySection>Every company the CRM holds can be identified.</EmptySection>
+        <EmptyLine>Every company the CRM holds can be identified.</EmptyLine>
       ) : (
         <>
           <Group
@@ -130,7 +120,7 @@ export function IdentityCompletionPage() {
             items={items.filter((item) => !item.required)}
           />
           {query.data && query.data.total > items.length && limit < MAX_LIMIT ? (
-            <div className="flex items-center justify-between text-sm text-ink-muted">
+            <div className="flex items-center justify-between border-t border-line pt-3 text-secondary text-ink-3">
               <span>
                 Showing {items.length} of {query.data.total}
               </span>

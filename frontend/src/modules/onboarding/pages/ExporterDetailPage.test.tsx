@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useCurrentUser } from '@/platform/auth';
+import { ShellProvider, useShellState } from '@/platform/shell';
 
 import {
   getExporterProfileDetail,
@@ -144,15 +145,39 @@ function mockUser(role: string, id: string) {
 }
 
 /** Opens the company page, on `tab` when given (`?tab=`). */
-function renderPage(tab?: string) {
+/** The page's own keys as buttons, run the way the shell runs them. */
+function Keys() {
+  const { shortcuts } = useShellState();
+  return (
+    <div>
+      {shortcuts.map((shortcut) => (
+        <button key={shortcut.key} type="button" onClick={shortcut.run}>
+          key {shortcut.key}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function renderPage(tab?: string, withShell = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const url = `/companies/${DETAIL.customer_id}${tab ? `?tab=${tab}` : ''}`;
+  const routes = (
+    <Routes>
+      <Route path="/companies/:customerId" element={<ExporterDetailPage />} />
+    </Routes>
+  );
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[url]}>
-        <Routes>
-          <Route path="/companies/:customerId" element={<ExporterDetailPage />} />
-        </Routes>
+        {withShell ? (
+          <ShellProvider>
+            {routes}
+            <Keys />
+          </ShellProvider>
+        ) : (
+          routes
+        )}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -230,7 +255,7 @@ describe('ExporterDetailPage — E9', () => {
     mockUser('COMPLIANCE', 'someone-else');
     renderPage('conversation');
     expect(await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' })).toBeInTheDocument();
-    expect(screen.getByText('No contacts yet. Add the first person you work with.')).toBeInTheDocument();
+    expect(screen.getByText('No one recorded yet.')).toBeInTheDocument();
     expect(screen.getByText('No activity logged yet.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Background check' }));
     expect(await screen.findByText('No screening results yet')).toBeInTheDocument();
@@ -246,8 +271,26 @@ describe('ExporterDetailPage — E9', () => {
 
     renderPage('no-such-tab');
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: 'Company profile' })).toBeInTheDocument();
+  });
+
+  it('lets staff press l to log an activity, and gives DEVELOPER no such key', async () => {
+    mockUser('OPERATIONS', 'someone-else');
+    const { unmount } = renderPage(undefined, true);
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    fireEvent.click(await screen.findByRole('button', { name: 'key l' }));
+    expect(await screen.findByRole('dialog', { name: 'Log an activity' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Conversation', hidden: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    unmount();
+
+    mockUser('DEVELOPER', 'someone-else');
+    renderPage(undefined, true);
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    expect(screen.queryByRole('button', { name: 'key l' })).not.toBeInTheDocument();
   });
 
   it('gives DEVELOPER no Background check tab, since the server refuses it the results', async () => {
@@ -255,7 +298,7 @@ describe('ExporterDetailPage — E9', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
     expect(screen.queryByRole('tab', { name: 'Background check' })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'History' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Ledger' })).toBeInTheDocument();
   });
 
   it('shows the company history, with who changed what and why', async () => {
@@ -289,11 +332,14 @@ describe('ExporterDetailPage — E9', () => {
     expect(row).toHaveTextContent('“Seasonal break”');
     expect(row).toHaveTextContent('By user-7');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Journey' }));
+    // The lane chips are the lanes present (frontend-plan §6.5); choosing one asks
+    // the server for that dimension.
+    expect(screen.queryByRole('button', { name: 'Journey' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Relationship' }));
     await waitFor(() =>
       expect(listCompanyHistory).toHaveBeenLastCalledWith(
         DETAIL.customer_id,
-        expect.objectContaining({ dimension: 'journey', offset: 0 }),
+        expect.objectContaining({ dimension: 'marker', offset: 0 }),
       ),
     );
   });
@@ -365,7 +411,7 @@ describe('ExporterDetailPage — E9', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
 
-    expect(screen.getByText('Not in pipeline')).toBeInTheDocument();
+    expect(screen.getByText('Outside pipeline')).toBeInTheDocument();
     expect(screen.queryByTestId('journey-chip')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: /Qualification/ }));
@@ -444,12 +490,13 @@ describe('ExporterDetailPage — E9', () => {
     expect(screen.getByTestId('qualification-suggestion')).toHaveTextContent('Suggested: Qualified');
     expect(screen.queryByRole('form', { name: 'Record results' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Record:/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Profile' }));
     expect(await screen.findByRole('heading', { name: 'Company profile' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument();
+    // Facts are inline edits for staff (frontend-plan §8.5); a read-only role gets text.
+    expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
   });
 
-  it('starts every masked identifier empty in the edit form for OPERATIONS, CIN included', async () => {
+  it('starts every masked identifier empty when OPERATIONS edits it, CIN included', async () => {
     mockUser('OPERATIONS', 'someone-else');
     vi.mocked(getExporterProfileDetail).mockResolvedValue({
       ...DETAIL,
@@ -457,14 +504,13 @@ describe('ExporterDetailPage — E9', () => {
     });
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
-    const form = await screen.findByRole('form', { name: 'Edit profile' });
-    // `GSTINs (comma-separated)` is gone with task 3.13: a branch cannot be edited
-    // as a string, and the PATCH refuses the field.
+    // Each fact is edited in place; a masked one starts empty, never as its bullets.
     for (const label of ['PAN', 'IEC', 'CIN']) {
-      const input = within(form).getByLabelText(label);
+      fireEvent.click(screen.getByRole('button', { name: `Edit ${label}` }));
+      const input = await screen.findByRole('textbox', { name: label });
       expect(input).toHaveValue('');
       expect(input).toHaveAttribute('placeholder', 'Hidden — type to replace');
+      fireEvent.keyDown(input, { key: 'Escape' });
     }
   });
 
@@ -473,12 +519,10 @@ describe('ExporterDetailPage — E9', () => {
     vi.mocked(updateExporterProfile).mockResolvedValue(DETAIL);
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
-    const form = await screen.findByRole('form', { name: 'Edit profile' });
-    fireEvent.change(within(form).getByLabelText('Year established'), {
-      target: { value: 'twenty' },
-    });
-    fireEvent.click(within(form).getByRole('button', { name: 'Save profile' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Year established' }));
+    const input = await screen.findByRole('textbox', { name: 'Year established' });
+    fireEvent.change(input, { target: { value: 'twenty' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() =>
       expect(updateExporterProfile).toHaveBeenCalledWith(DETAIL.customer_id, {
         year_established: 'twenty',
@@ -569,8 +613,8 @@ describe('ExporterDetailPage — E9', () => {
     mockUser('COMPLIANCE', 'someone-else');
     renderPage('deals');
 
-    expect(await screen.findByText('Sold to')).toBeInTheDocument();
-    expect(screen.getByText('Bought from, invoice by invoice')).toBeInTheDocument();
+    expect(await screen.findByText('Trade — sold to')).toBeInTheDocument();
+    expect(screen.getByText('Trade — bought from')).toBeInTheDocument();
     await waitFor(() => {
       expect(listTradeRelationships).toHaveBeenCalledWith(DETAIL.customer_id, {
         as: 'seller',

@@ -25,9 +25,9 @@
  * its own: a 403 is shown as "not available to your role", never as an error.
  */
 
-import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
 import { formatDate } from '@/lib/format';
 
@@ -42,7 +42,7 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
 
   if (check.isLoading) {
     return (
-      <div data-testid="company-compliance-summary" className="text-sm text-slate-500">
+      <div data-testid="company-compliance-summary" className="text-sm text-ink-3">
         Loading compliance…
       </div>
     );
@@ -50,11 +50,11 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
   if (check.isError || !check.data) {
     const refused = check.error instanceof ApiError && check.error.status === 403;
     return (
-      <div data-testid="company-compliance-summary" className="text-sm text-slate-500">
+      <div data-testid="company-compliance-summary" className="text-sm text-ink-3">
         {refused ? (
           'Compliance details are not available to your role.'
         ) : (
-          <span role="alert" className="text-red-700">
+          <span role="alert" className="text-negative">
             Compliance details could not be loaded.
           </span>
         )}
@@ -78,7 +78,7 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
       {compliance.is_clear && compliance.clear_expires_at && (
         <p
           data-testid="compliance-expiry"
-          className={`text-xs ${compliance.is_clear_current ? 'text-slate-600' : 'font-medium text-red-700'}`}
+          className={`text-xs ${compliance.is_clear_current ? 'text-ink-2' : 'font-medium text-negative'}`}
         >
           {compliance.is_clear_current
             ? `Clear until ${formatDate(compliance.clear_expires_at)}`
@@ -92,10 +92,10 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
       <Link
         to={paths.company(companyId, 'background-check')}
         data-testid="compliance-panel-link"
-        className="inline-flex w-fit items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+        className="inline-flex w-fit items-center gap-1 text-xs font-medium text-ink hover:underline"
       >
         Open the background check
-        <ArrowRight size={12} />
+        <Icon.forward size={12} />
       </Link>
     </div>
   );

@@ -1,12 +1,14 @@
-import { Loader2 } from 'lucide-react';
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
+
+import { Icon } from '@/design/icons';
 
 import { buttonClasses, type ButtonSize, type ButtonVariant } from './styles';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
-  /** Shows a spinner and disables the button while a request is in flight. */
+  /** Shows its own pending state and disables the button while a request is in
+   * flight — "allowed, but not right now", the one use of disabled (§4.3). */
   loading?: boolean;
 }
 
@@ -23,7 +25,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={buttonClasses({ variant, size, className })}
       {...rest}
     >
-      {loading && <Loader2 size={14} className="animate-spin" aria-hidden />}
+      {loading && <Icon.spinner size={14} className="animate-spin" aria-hidden />}
       {children}
     </button>
   );

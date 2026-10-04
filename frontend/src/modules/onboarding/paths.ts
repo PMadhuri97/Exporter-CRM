@@ -33,7 +33,10 @@ export const paths = {
       ? `/companies/${customerId}?tab=${tab}`
       : `/companies/${customerId}`,
   deal: (dealId: string) => `/deals/${dealId}`,
+  /** Companies as a board of three journey columns (frontend-plan §8.3). */
+  board: '/companies?view=board',
   followUps: '/follow-ups',
+  /** The board's older address: it redirects to `board`, so links keep working. */
   pipeline: '/pipeline',
   qualificationCriteria: '/settings/qualification-criteria',
   /** Which paperwork a handover needs (plan P2-5a). ADMIN only. */

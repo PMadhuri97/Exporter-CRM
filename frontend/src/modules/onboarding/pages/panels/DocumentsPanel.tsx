@@ -11,14 +11,12 @@
  * different questions.
  */
 
-import { Upload } from 'lucide-react';
-import { useState } from 'react';
+import { Panel } from '@/components';
 
-import { Button, FormPanel, Panel } from '@/components';
-
-import { DocumentList, DocumentUpload } from '../../components';
+import { Shelf } from '../../components';
 import { useCompanyDocuments, useUploadCompanyDocument } from '../../hooks';
 
+/** The documents chapter: the company's shelf (frontend-plan §6.8), upload for staff. */
 export function DocumentsPanel({
   customerId,
   isStaff,
@@ -28,37 +26,25 @@ export function DocumentsPanel({
 }) {
   const documents = useCompanyDocuments(customerId);
   const upload = useUploadCompanyDocument(customerId);
-  const [uploading, setUploading] = useState(false);
 
   return (
     <Panel
       title="Company documents"
       description="Paperwork that belongs to the relationship rather than to one deal."
-      actions={
-        isStaff &&
-        !uploading && (
-          <Button size="sm" variant="primary" onClick={() => setUploading(true)}>
-            <Upload size={14} />
-            Upload a document
-          </Button>
-        )
-      }
     >
-      {uploading && (
-        <FormPanel title="Upload a document" onClose={() => setUploading(false)}>
-          <DocumentUpload
-            owner="COMPANY"
-            isUploading={upload.isPending}
-            onUpload={(input) => upload.mutateAsync(input)}
-            onDone={() => setUploading(false)}
-          />
-        </FormPanel>
-      )}
-
-      <DocumentList
+      <Shelf
         documents={documents.data?.documents ?? []}
         isLoading={documents.isLoading}
         emptyMessage="No company documents yet."
+        upload={
+          isStaff
+            ? {
+                owner: 'COMPANY',
+                isUploading: upload.isPending,
+                onUpload: (input) => upload.mutateAsync(input),
+              }
+            : undefined
+        }
       />
     </Panel>
   );

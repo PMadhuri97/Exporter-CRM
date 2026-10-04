@@ -12,9 +12,9 @@
  * name and whether it may be served; a refusal is shown, never worked around.
  */
 
-import { Download } from 'lucide-react';
 import { useState } from 'react';
 
+import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
 
 import { fetchDocumentBlob, getDocument } from '../api';
@@ -67,7 +67,7 @@ export function EvidenceList({
 
   return (
     <div data-testid="evidence" className="mt-3 text-xs">
-      <p className="text-ink-faint">Evidence</p>
+      <p className="text-ink-3">Evidence</p>
       {note && <p className="mt-0.5 whitespace-pre-wrap text-ink">{note}</p>}
       {refs.length > 0 && (
         <ul className="mt-1 space-y-1 text-ink">
@@ -78,12 +78,12 @@ export function EvidenceList({
                   <span>Document {ref.ref.slice(0, 8)}…</span>
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline disabled:opacity-50"
+                    className="inline-flex items-center gap-1 font-medium text-ink hover:underline disabled:opacity-50"
                     disabled={download.isPending}
                     onClick={() => void open(ref.ref)}
                     aria-label={`Download evidence document ${ref.ref}`}
                   >
-                    <Download size={12} /> Download
+                    <Icon.download size={12} /> Download
                   </button>
                 </span>
               ) : ref.type === 'url' && isWebLink(ref.ref) ? (
@@ -93,7 +93,7 @@ export function EvidenceList({
               ) : ref.type === 'url' ? (
                 // Not an http(s) link (e.g. `javascript:`): shown, never made clickable.
                 <span data-testid="evidence-unsafe-url">
-                  {ref.ref} <span className="text-ink-faint">(not a web link — not opened)</span>
+                  {ref.ref} <span className="text-ink-3">(not a web link — not opened)</span>
                 </span>
               ) : (
                 // A type this build does not know: shown as stored, not dropped.
@@ -104,7 +104,7 @@ export function EvidenceList({
         </ul>
       )}
       {error && (
-        <p role="alert" className="mt-1 text-red-700">
+        <p role="alert" className="mt-1 text-negative">
           {error}
         </p>
       )}

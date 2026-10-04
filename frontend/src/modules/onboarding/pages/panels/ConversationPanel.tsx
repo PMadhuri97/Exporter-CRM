@@ -51,24 +51,13 @@
  * the markup is built from the shared primitives in `@/components`.
  */
 
-import {
-  CalendarClock,
-  ChevronLeft,
-  ChevronRight,
-  Mail,
-  MessageSquarePlus,
-  Phone,
-  Plus,
-  Star,
-  UserRound,
-} from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import {
   Button,
-  Chip,
-  EmptySection,
+  Tag,
+  EmptyLine,
   FormPanel,
   Input,
   Panel,
@@ -76,9 +65,10 @@ import {
   Skeleton,
   Textarea,
 } from '@/components';
+import { Icon } from '@/design/icons';
 import { formatDate, formatDateTime, humanize } from '@/lib/format';
 
-import { ConversationGaugeControl, OpenDealPrompt, actorLabel } from '../../components';
+import { GaugeTrack, OpenDealPrompt, actorLabel } from '../../components';
 import {
   useAddExporterContact,
   useConversationHistory,
@@ -145,7 +135,7 @@ function AddContactForm({
   return (
     <form onSubmit={submit} className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2">
-        <label className="text-xs font-medium text-ink-muted">
+        <label className="text-xs font-medium text-ink-2">
           Name *
           <Input
             className="mt-1"
@@ -154,7 +144,7 @@ function AddContactForm({
             required
           />
         </label>
-        <label className="text-xs font-medium text-ink-muted">
+        <label className="text-xs font-medium text-ink-2">
           Role / title
           <Input
             className="mt-1"
@@ -162,7 +152,7 @@ function AddContactForm({
             onChange={(event) => setForm((prev) => ({ ...prev, role: event.target.value }))}
           />
         </label>
-        <label className="text-xs font-medium text-ink-muted">
+        <label className="text-xs font-medium text-ink-2">
           Email
           <Input
             type="email"
@@ -171,7 +161,7 @@ function AddContactForm({
             onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
           />
         </label>
-        <label className="text-xs font-medium text-ink-muted">
+        <label className="text-xs font-medium text-ink-2">
           Phone
           <Input
             className="mt-1"
@@ -179,7 +169,7 @@ function AddContactForm({
             onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
           />
         </label>
-        <label className="text-xs font-medium text-ink-muted md:col-span-2">
+        <label className="text-xs font-medium text-ink-2 md:col-span-2">
           Department
           <Input
             className="mt-1"
@@ -188,12 +178,12 @@ function AddContactForm({
           />
         </label>
       </div>
-      <label className="flex items-center gap-2 text-sm text-ink-muted">
+      <label className="flex items-center gap-2 text-sm text-ink-2">
         <input
           type="checkbox"
           checked={form.is_primary}
           onChange={(event) => setForm((prev) => ({ ...prev, is_primary: event.target.checked }))}
-          className="h-4 w-4 rounded border-border-strong accent-brand-600"
+          className="h-4 w-4 rounded border-line-strong accent-ink"
         />
         Make this the primary contact
       </label>
@@ -213,31 +203,31 @@ function AddContactForm({
 
 function ContactRow({ contact }: { contact: ExporterContact }) {
   return (
-    <div className="flex items-start gap-3 border-b border-border py-3 last:border-b-0">
-      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted">
-        <UserRound size={17} />
+    <div className="flex items-start gap-3 rounded-xl border border-line bg-surface p-3.5" data-testid="person-tile">
+      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunken font-display text-lead text-ink-2" aria-hidden>
+        {contact.name.trim().charAt(0).toUpperCase() || <Icon.person size={17} />}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="font-medium text-ink">{contact.name}</p>
+          <p className="font-medium text-ink [overflow-wrap:anywhere]">{contact.name}</p>
           {contact.is_primary_contact && (
-            <Chip tone="brand" icon={<Star size={11} />}>
+            <Tag tone="ink" icon={<Icon.primary size={11} />}>
               Primary
-            </Chip>
+            </Tag>
           )}
         </div>
-        <p className="mt-0.5 text-sm text-ink-muted">
+        <p className="mt-0.5 text-sm text-ink-2">
           {[contact.role, contact.department].filter(Boolean).join(' · ') || 'No role added'}
         </p>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-faint">
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
           {contact.email && (
             <a href={`mailto:${contact.email}`} className="inline-flex items-center gap-1 hover:text-ink">
-              <Mail size={12} /> {contact.email}
+              <Icon.email size={12} /> {contact.email}
             </a>
           )}
           {contact.phone && (
             <a href={`tel:${contact.phone}`} className="inline-flex items-center gap-1 hover:text-ink">
-              <Phone size={12} /> {contact.phone}
+              <Icon.phone size={12} /> {contact.phone}
             </a>
           )}
         </div>
@@ -282,7 +272,7 @@ function ActivityForm({
   return (
     <form onSubmit={submit} className="space-y-3">
       <div className="grid gap-3 md:grid-cols-[180px_1fr]">
-        <label className="text-xs font-medium text-ink-muted">
+        <label className="text-xs font-medium text-ink-2">
           Activity type
           <Select
             className="mt-1"
@@ -294,7 +284,7 @@ function ActivityForm({
             ))}
           </Select>
         </label>
-        <label className="text-xs font-medium text-ink-muted">
+        <label className="text-xs font-medium text-ink-2">
           Subject *
           <Input
             className="mt-1"
@@ -305,7 +295,7 @@ function ActivityForm({
           />
         </label>
       </div>
-      <label className="block text-xs font-medium text-ink-muted">
+      <label className="block text-xs font-medium text-ink-2">
         Notes
         <Textarea
           className="mt-1 min-h-24 resize-y"
@@ -315,7 +305,7 @@ function ActivityForm({
         />
       </label>
       {dueAllowed && (
-        <label className="block max-w-xs text-xs font-medium text-ink-muted">
+        <label className="block max-w-xs text-xs font-medium text-ink-2">
           Due date and time
           <Input
             type="datetime-local"
@@ -341,20 +331,20 @@ function ActivityForm({
 
 function ActivityRow({ activity }: { activity: ExporterActivity }) {
   return (
-    <div className="grid gap-2 border-b border-border py-4 last:border-b-0 md:grid-cols-[130px_1fr_auto]">
+    <div className="grid gap-2 border-b border-line py-4 last:border-b-0 md:grid-cols-[130px_1fr_auto]">
       <div>
-        <Chip>{humanize(activity.activity_type)}</Chip>
+        <Tag>{humanize(activity.activity_type)}</Tag>
       </div>
       <div className="min-w-0">
         <p className="font-medium text-ink">{activity.subject}</p>
-        {activity.notes && <p className="mt-1 whitespace-pre-wrap text-sm text-ink-muted">{activity.notes}</p>}
+        {activity.notes && <p className="mt-1 whitespace-pre-wrap text-sm text-ink-2">{activity.notes}</p>}
         {activity.due_at && (
-          <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-status-review">
-            <CalendarClock size={13} /> Due {formatDateTime(activity.due_at)}
+          <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-attention">
+            <Icon.followUp size={13} /> Due {formatDateTime(activity.due_at)}
           </p>
         )}
       </div>
-      <div className="text-left text-xs text-ink-faint md:text-right">
+      <div className="text-left text-xs text-ink-3 md:text-right">
         <p>{formatDateTime(activity.occurred_at)}</p>
         <p className="mt-1">By {actorLabel(activity.actor_name, activity.actor_id)}</p>
       </div>
@@ -364,7 +354,7 @@ function ActivityRow({ activity }: { activity: ExporterActivity }) {
 
 function ConversationHistoryRow({ entry }: { entry: HistoryEntry }) {
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border py-2.5 last:border-b-0">
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-line py-2.5 last:border-b-0">
       <p className="text-sm text-ink">
         {entry.from_value ? `${humanize(entry.from_value)} → ` : ''}
         <span className="font-medium">{humanize(entry.to_value)}</span>
@@ -373,15 +363,15 @@ function ConversationHistoryRow({ entry }: { entry: HistoryEntry }) {
           `details` rather than re-derived: the history row is the record of what
           was promised at the time, which the company's current date is not. */}
       {typeof entry.details?.check_back_on === 'string' && (
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-status-review">
-          <CalendarClock size={12} /> Check back {formatDate(entry.details.check_back_on)}
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-attention">
+          <Icon.followUp size={12} /> Check back {formatDate(entry.details.check_back_on)}
         </span>
       )}
-      <span className="ml-auto text-xs text-ink-faint">
+      <span className="ml-auto text-xs text-ink-3">
         {formatDateTime(entry.occurred_at)}
       </span>
       {entry.reason && (
-        <p className="w-full text-sm text-ink-muted">{entry.reason}</p>
+        <p className="w-full text-sm text-ink-2">{entry.reason}</p>
       )}
     </div>
   );
@@ -413,23 +403,23 @@ function ConversationSection({
       description="How the sales conversation is going — on its own, beside the journey."
       actions={
         conversation.data && (
-          <Chip tone="info" className="px-2.5 py-1 text-sm" data-testid="conversation-chip">
+          <Tag tone="progress" className="px-2.5 py-1 text-sm" data-testid="conversation-chip">
             {humanize(conversation.data.conversation)}
-          </Chip>
+          </Tag>
         )
       }
     >
       {conversation.isLoading ? (
         <Skeleton className="h-20" />
       ) : conversation.isError ? (
-        <p className="text-sm text-status-failed">
+        <p className="text-sm text-negative">
           Could not load the conversation. {conversation.error.message}
         </p>
       ) : conversation.data ? (
         <div className="space-y-4">
           {conversation.data.check_back_on && (
-            <p className="inline-flex items-center gap-1.5 text-sm font-medium text-status-review">
-              <CalendarClock size={14} /> Check back on{' '}
+            <p className="inline-flex items-center gap-1.5 text-sm font-medium text-attention">
+              <Icon.followUp size={14} /> Check back on{' '}
               {formatDate(conversation.data.check_back_on)}
             </p>
           )}
@@ -438,27 +428,30 @@ function ConversationSection({
             <OpenDealPrompt customerId={customerId} isStaff={isStaff} />
           )}
 
-          {isStaff && conversation.data.allowed_moves.length === 0 ? (
-            <p className="text-sm text-ink-muted">
+          {/* The track always shows where the conversation stands; only the moves the
+              server listed are buttons on it (frontend-plan §6.2). */}
+          <GaugeTrack
+            customerId={customerId}
+            value={conversation.data.conversation}
+            checkBackOn={conversation.data.check_back_on}
+            moves={conversation.data.allowed_moves}
+          />
+          {isStaff && conversation.data.allowed_moves.length === 0 && (
+            <p className="text-sm text-ink-2">
               {conversation.data.journey === 'LEAD'
                 ? 'The conversation gauge applies once this company is a prospect.'
                 : 'No conversation moves are available to you.'}
             </p>
-          ) : (
-            <ConversationGaugeControl
-              customerId={customerId}
-              moves={conversation.data.allowed_moves}
-            />
           )}
 
-          <div className="border-t border-border pt-3">
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+          <div className="border-t border-line pt-3">
+            <h3 className="mb-1 text-caption font-medium text-ink-3">
               History
             </h3>
             {history.isLoading ? (
               <Skeleton className="h-12" />
             ) : history.isError ? (
-              <p className="text-sm text-status-failed">
+              <p className="text-sm text-negative">
                 Could not load the conversation history. {history.error.message}
               </p>
             ) : history.data && history.data.entries.length > 0 ? (
@@ -468,9 +461,7 @@ function ConversationSection({
                 ))}
               </div>
             ) : (
-              <EmptySection>
-                No conversation changes recorded yet.
-              </EmptySection>
+              <EmptyLine>No conversation changes recorded yet.</EmptyLine>
             )}
           </div>
         </div>
@@ -492,6 +483,8 @@ export function ConversationPanel({
   onActivityPageChange,
   hasNextActivityPage,
   isStaff,
+  logRequested = false,
+  onLogHandled,
 }: {
   customerId: string;
   contacts: ExporterContact[];
@@ -508,58 +501,68 @@ export function ConversationPanel({
   hasNextActivityPage: boolean;
   /** DEVELOPER reads the CRM but writes nothing, so it gets no action buttons. */
   isStaff: boolean;
+  /** The dossier's `l` key: open the activity composer once, then say it was handled. */
+  logRequested?: boolean;
+  onLogHandled?: () => void;
 }) {
   const [showContactForm, setShowContactForm] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
+  useEffect(() => {
+    if (!logRequested) return;
+    if (isStaff) setShowActivityForm(true);
+    onLogHandled?.();
+  }, [logRequested, isStaff, onLogHandled]);
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[0.9fr_1.6fr]">
+    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
       {/* The gauge first: it is the answer to "how is this going", which is what
           someone opening this tab came for. Contacts and the activity log are the
           evidence behind it. */}
-      <ConversationSection customerId={customerId} isStaff={isStaff} />
+      <div className="xl:col-span-2">
+        <ConversationSection customerId={customerId} isStaff={isStaff} />
+      </div>
 
       <Panel
         data-extension="contacts"
-        title="Contacts"
-        description="People connected to this company."
+        title="People"
+        description="Who we deal with at this company."
         actions={
           isStaff && (
             <Button size="sm" onClick={() => setShowContactForm(true)}>
-              <Plus size={15} /> Add contact
+              <Icon.add size={15} aria-hidden /> Add a person
             </Button>
           )
         }
       >
 
-        {showContactForm && <FormPanel title="Add contact" onClose={() => setShowContactForm(false)}><AddContactForm customerId={customerId} onDone={() => setShowContactForm(false)} /></FormPanel>}
+        {showContactForm && <FormPanel title="Add a person" onClose={() => setShowContactForm(false)}><AddContactForm customerId={customerId} onDone={() => setShowContactForm(false)} /></FormPanel>}
 
         {contactsLoading ? (
           <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
         ) : contacts.length === 0 ? (
-          <EmptySection>No contacts yet. Add the first person you work with.</EmptySection>
+          <EmptyLine>No one recorded yet.</EmptyLine>
         ) : (
-          <div>{contacts.map((contact) => <ContactRow key={contact.id} contact={contact} />)}</div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">{contacts.map((contact) => <ContactRow key={contact.id} contact={contact} />)}</div>
         )}
       </Panel>
 
       <Panel
         data-extension="activities"
-        title="Activity"
-        description="Append-only relationship history and follow-ups."
+        title="Thread"
+        description="Calls, meetings, notes and follow-ups, newest first. Nothing here is edited later."
         actions={
           isStaff && (
             <Button size="sm" variant="primary" onClick={() => setShowActivityForm(true)}>
-              <MessageSquarePlus size={15} /> Log activity
+              <Icon.logActivity size={15} aria-hidden /> Log an activity
             </Button>
           )
         }
       >
 
-        {showActivityForm && <FormPanel title="Log activity" onClose={() => setShowActivityForm(false)}><ActivityForm customerId={customerId} onDone={() => { setShowActivityForm(false); onActivityPageChange(0); }} /></FormPanel>}
+        {showActivityForm && <FormPanel title="Log an activity" onClose={() => setShowActivityForm(false)}><ActivityForm customerId={customerId} onDone={() => { setShowActivityForm(false); onActivityPageChange(0); }} /></FormPanel>}
 
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
-          <label className="flex items-center gap-2 text-xs font-medium text-ink-muted">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
+          <label className="flex items-center gap-2 text-caption font-medium text-ink-2">
             Filter
             <Select
               value={activityType}
@@ -570,13 +573,13 @@ export function ConversationPanel({
               {ACTIVITY_TYPES.map((value) => <option key={value} value={value}>{humanize(value)}</option>)}
             </Select>
           </label>
-          <span className="text-xs text-ink-faint">Page {activityPage + 1}</span>
+          <span className="text-xs text-ink-3">Page {activityPage + 1}</span>
         </div>
 
         {activitiesLoading ? (
           <div className="space-y-3"><Skeleton className="h-20" /><Skeleton className="h-20" /></div>
         ) : activities.length === 0 ? (
-          <EmptySection>{activityPage > 0 ? 'No more activities on this page.' : activityType ? `No ${humanize(activityType).toLowerCase()} activity yet.` : 'No activity logged yet.'}</EmptySection>
+          <EmptyLine>{activityPage > 0 ? 'No more activities on this page.' : activityType ? `No ${humanize(activityType).toLowerCase()} activity yet.` : 'No activity logged yet.'}</EmptyLine>
         ) : (
           <div>{activities.map((activity) => <ActivityRow key={activity.id} activity={activity} />)}</div>
         )}
@@ -587,14 +590,14 @@ export function ConversationPanel({
             onClick={() => onActivityPageChange(Math.max(0, activityPage - 1))}
             disabled={activityPage === 0 || activitiesFetching}
           >
-            <ChevronLeft size={14} /> Previous
+            <Icon.caretLeft size={14} aria-hidden /> Newer
           </Button>
           <Button
             size="sm"
             onClick={() => onActivityPageChange(activityPage + 1)}
             disabled={!hasNextActivityPage || activitiesFetching}
           >
-            Next <ChevronRight size={14} />
+            Earlier <Icon.caretRight size={14} aria-hidden />
           </Button>
         </div>
       </Panel>

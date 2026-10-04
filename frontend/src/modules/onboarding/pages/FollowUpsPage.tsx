@@ -22,22 +22,15 @@
  * page's cards.
  */
 
-import {
-  CalendarClock,
-  CheckCheck,
-  ChevronRight,
-  ClipboardList,
-  PauseCircle,
-} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import {
   Button,
-  Chip,
-  EmptySection,
+  EmptyLine,
   Input,
+  Tag,
   PageHeader,
   Panel,
   Select,
@@ -47,9 +40,11 @@ import {
   TabsTrigger,
   Textarea,
 } from '@/components';
+import { Icon } from '@/design/icons';
 import { formatDate, formatDateTime, humanize } from '@/lib/format';
 import { useCan } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
+import { usePageShortcuts } from '@/platform/shell';
 
 import { actorLabel } from '../components';
 import { useCompleteFollowUp, useFollowUps } from '../hooks';
@@ -87,14 +82,14 @@ const OUTCOMES: FollowUpOutcome[] = ['DONE', 'NO_ANSWER', 'RESCHEDULED', 'CANCEL
 
 function StateBadge({ row }: { row: FollowUp }) {
   return (
-    <Chip
+    <Tag
       dot
-      tone={row.state === 'OVERDUE' ? 'danger' : row.state === 'DONE' ? 'success' : 'info'}
+      tone={row.state === 'OVERDUE' ? 'negative' : row.state === 'DONE' ? 'positive' : 'progress'}
       className="shrink-0"
       data-testid="follow-up-state"
     >
       {humanize(row.state)}
-    </Chip>
+    </Tag>
   );
 }
 
@@ -143,11 +138,11 @@ function CompleteForm({
   return (
     <form
       onSubmit={submit}
-      className="mt-3 space-y-3 rounded-lg border border-border bg-surface-subtle p-3"
+      className="mt-3 space-y-3 rounded-lg border border-line bg-paper p-3"
       data-extension="complete-follow-up"
     >
       <div className="grid gap-3 md:grid-cols-[180px_1fr]">
-        <label className="text-xs font-medium text-ink-muted">
+        <label className="text-xs font-medium text-ink-2">
           Outcome
           <Select
             className="mt-1"
@@ -163,7 +158,7 @@ function CompleteForm({
           </Select>
         </label>
         {needsNextDue && (
-          <label className="text-xs font-medium text-ink-muted">
+          <label className="text-xs font-medium text-ink-2">
             New due date and time
             <Input
               type="datetime-local"
@@ -175,7 +170,7 @@ function CompleteForm({
           </label>
         )}
       </div>
-      <label className="block text-xs font-medium text-ink-muted">
+      <label className="block text-xs font-medium text-ink-2">
         Note
         <Textarea
           className="mt-1 min-h-20 resize-y"
@@ -185,13 +180,13 @@ function CompleteForm({
         />
       </label>
       {needsNextDue && (
-        <p className="text-xs text-ink-faint">
+        <p className="text-xs text-ink-3">
           Rescheduling logs a new follow-up for the new date. This one stays on the
           record with the date it was promised for — an activity is never edited.
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onDone}>
+        <Button variant="quiet" size="sm" onClick={onDone}>
           Cancel
         </Button>
         <Button type="submit" variant="primary" size="sm" loading={mutation.isPending}>
@@ -206,50 +201,50 @@ function FollowUpRow({ row, isStaff }: { row: FollowUp; isStaff: boolean }) {
   const [completing, setCompleting] = useState(false);
 
   return (
-    <div className="border-b border-border py-4 first:pt-1 last:border-b-0" data-testid="follow-up-row">
+    <div className="py-3.5" data-testid="follow-up-row">
       <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
         <StateBadge row={row} />
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-ink">{row.subject}</p>
+          <p className="text-body font-medium text-ink">{row.subject}</p>
           <Link
             to={paths.company(row.customer_id)}
-            className="mt-0.5 inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink"
+            className="mt-0.5 inline-flex items-center gap-1 text-sm text-ink-2 hover:text-ink"
           >
             {row.exporter_display_name ?? 'Unnamed company'}
-            <ChevronRight size={13} />
+            <Icon.caretRight size={13} />
           </Link>
           {row.notes && (
-            <p className="mt-1 whitespace-pre-wrap text-sm text-ink-muted">{row.notes}</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-ink-2">{row.notes}</p>
           )}
         </div>
-        <div className="text-left text-xs text-ink-faint md:text-right">
+        <div className="text-left text-xs text-ink-3 md:text-right">
           <p
             className={`inline-flex items-center gap-1 font-medium ${
-              row.state === 'OVERDUE' ? 'text-status-failed' : ''
+              row.state === 'OVERDUE' ? 'text-negative' : ''
             }`}
           >
-            <CalendarClock size={12} /> Due {formatDateTime(row.due_at)}
+            <Icon.followUp size={12} /> Due {formatDateTime(row.due_at)}
           </p>
           <p className="mt-1">Logged by {actorLabel(row.actor_name, row.actor_id)}</p>
         </div>
       </div>
 
       {row.completion ? (
-        <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-lg bg-surface-sunken px-3 py-2">
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-lg bg-sunken px-3 py-2">
           <span className="inline-flex items-center gap-1 text-sm font-medium text-ink">
-            <CheckCheck size={13} /> {humanize(row.completion.outcome)}
+            <Icon.done size={13} /> {humanize(row.completion.outcome)}
           </span>
-          <span className="text-xs text-ink-faint">
+          <span className="text-xs text-ink-3">
             by {row.completion.completed_by ?? 'the platform'} on{' '}
             {formatDateTime(row.completion.completed_at)}
           </span>
           {row.completion.next_due_at && (
-            <span className="text-xs font-medium text-status-review">
+            <span className="text-xs font-medium text-attention">
               moved to {formatDateTime(row.completion.next_due_at)}
             </span>
           )}
           {row.completion.note && (
-            <p className="w-full text-sm text-ink-muted">{row.completion.note}</p>
+            <p className="w-full text-sm text-ink-2">{row.completion.note}</p>
           )}
         </div>
       ) : (
@@ -257,7 +252,7 @@ function FollowUpRow({ row, isStaff }: { row: FollowUp; isStaff: boolean }) {
         (completing ? (
           <CompleteForm row={row} onDone={() => setCompleting(false)} />
         ) : (
-          <Button size="sm" className="mt-2" onClick={() => setCompleting(true)}>
+          <Button size="sm" className="mt-2" data-complete onClick={() => setCompleting(true)}>
             Record outcome
           </Button>
         ))
@@ -268,30 +263,55 @@ function FollowUpRow({ row, isStaff }: { row: FollowUp; isStaff: boolean }) {
 
 function CheckBackRow({ row }: { row: CheckBack }) {
   return (
-    <div
-      className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-border py-3 first:pt-1 last:border-b-0"
-      data-testid="check-back-row"
-    >
-      <PauseCircle size={16} className="mt-0.5 shrink-0 text-ink-faint" />
+    <div className="flex flex-wrap items-start gap-x-3 gap-y-1 py-3" data-testid="check-back-row">
+      <Icon.pause size={16} className="mt-0.5 shrink-0 text-ink-3" />
       <div className="min-w-0 flex-1">
         <Link
           to={paths.company(row.customer_id, 'conversation')}
-          className="inline-flex items-center gap-1 font-medium text-ink hover:text-brand-600"
+          className="inline-flex items-center gap-1 font-medium text-ink hover:text-ink"
         >
           {row.exporter_display_name ?? 'Unnamed company'}
-          <ChevronRight size={13} />
+          <Icon.caretRight size={13} />
         </Link>
-        <p className="mt-0.5 text-sm text-ink-muted">
+        <p className="mt-0.5 text-sm text-ink-2">
           Said not now. Pick the conversation back up on this company's page.
         </p>
       </div>
       <p
-        className={`text-xs font-medium ${row.is_overdue ? 'text-status-failed' : 'text-status-review'}`}
+        className={`text-xs font-medium ${row.is_overdue ? 'text-negative' : 'text-attention'}`}
       >
         Check back {formatDate(row.check_back_on)}
       </p>
     </div>
   );
+}
+
+/** Today, as the `YYYY-MM-DD` of the viewer's day. */
+function localDay(offsetDays = 0): string {
+  const day = new Date();
+  day.setDate(day.getDate() + offsetDays);
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+}
+
+type Bucket = 'Overdue' | 'Today' | 'This week' | 'Later' | 'Done';
+const BUCKETS: Bucket[] = ['Overdue', 'Today', 'This week', 'Later', 'Done'];
+
+/**
+ * Which time bucket a row reads under (frontend-plan §8.7). Overdue and Done are the
+ * server's `state` — never worked out here; the rest only place an open row by its
+ * due date, which is presentation, not a rule.
+ */
+function bucketOf(row: FollowUp): Bucket {
+  if (row.state === 'DONE') return 'Done';
+  if (row.state === 'OVERDUE') return 'Overdue';
+  const due = row.due_at ? formatDayKey(row.due_at) : null;
+  if (due === null || due > localDay(6)) return 'Later';
+  return due === localDay() ? 'Today' : 'This week';
+}
+
+function formatDayKey(value: string): string {
+  const day = new Date(value);
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
 }
 
 /** Rows per page. The server's default, stated here so the pager and the request
@@ -319,10 +339,10 @@ function Pager({
   if (total <= PAGE_SIZE && offset === 0) return null;
   return (
     <div
-      className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3"
+      className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3"
       data-testid="follow-ups-pager"
     >
-      <span className="text-sm tabular-nums text-ink-muted">
+      <span className="text-sm tabular-nums text-ink-2">
         {offset + 1}–{offset + shown} of {total}
       </span>
       <div className="flex gap-2">
@@ -388,10 +408,23 @@ export function FollowUpsPage() {
     }
   }, [total, offset]);
 
+  // `c` records the outcome of the first open follow-up on screen (staff).
+  usePageShortcuts(
+    isStaff
+      ? [
+          {
+            key: 'c',
+            label: 'Record the next outcome',
+            run: () => document.querySelector<HTMLButtonElement>('[data-complete]')?.click(),
+          },
+        ]
+      : [],
+  );
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <PageHeader
-        title="Follow-ups"
+        title="Agenda"
         description="What we owe companies next, across every company — the whole team's list."
       />
 
@@ -405,7 +438,7 @@ export function FollowUpsPage() {
             ))}
           </TabsList>
         </Tabs>
-        <label className="flex items-center gap-2 text-sm text-ink-muted">
+        <label className="flex items-center gap-2 text-sm text-ink-2">
           <input
             type="checkbox"
             checked={mineOnly}
@@ -413,23 +446,24 @@ export function FollowUpsPage() {
               setMineOnly(event.target.checked);
               setOffset(0);
             }}
-            className="h-4 w-4 rounded border-border-strong accent-brand-600"
+            className="h-4 w-4 rounded border-line-strong accent-ink"
           />
           Only the ones I logged
         </label>
       </div>
 
+      <div className="grid gap-10 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
       <Panel
         data-extension="follow-ups"
         title={
           <span className="inline-flex items-center gap-2">
-            <ClipboardList size={16} className="text-ink-faint" />
+            <Icon.checklist size={16} className="text-ink-3" />
             Follow-ups
           </span>
         }
         actions={
           query.data && (
-            <span className="text-sm tabular-nums text-ink-faint">{query.data.follow_ups_total}</span>
+            <span className="text-sm tabular-nums text-ink-3">{query.data.follow_ups_total}</span>
           )
         }
       >
@@ -439,14 +473,31 @@ export function FollowUpsPage() {
             <Skeleton className="h-20" />
           </div>
         ) : query.isError ? (
-          <p className="text-sm text-status-failed">
+          <p className="text-sm text-negative">
             Could not load follow-ups. {query.error.message}
           </p>
         ) : query.data && query.data.follow_ups.length > 0 ? (
-          <div>
-            {query.data.follow_ups.map((row) => (
-              <FollowUpRow key={row.activity_id} row={row} isStaff={isStaff} />
-            ))}
+          <div className="space-y-6">
+            {BUCKETS.map((bucket) => {
+              const rows = query.data.follow_ups.filter((row) => bucketOf(row) === bucket);
+              if (rows.length === 0) return null;
+              return (
+                <section key={bucket} aria-label={bucket}>
+                  <h3
+                    className={`flex items-center gap-3 text-caption font-medium ${bucket === 'Overdue' ? 'text-negative' : 'text-ink-3'}`}
+                  >
+                    {bucket}
+                    <span aria-hidden className="h-px flex-1 bg-line" />
+                    <span className="tabular-nums">{rows.length}</span>
+                  </h3>
+                  <div className="divide-y divide-line">
+                    {rows.map((row) => (
+                      <FollowUpRow key={row.activity_id} row={row} isStaff={isStaff} />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
             <Pager
               offset={offset}
               shown={query.data.follow_ups.length}
@@ -455,33 +506,34 @@ export function FollowUpsPage() {
             />
           </div>
         ) : (
-          <EmptySection>
+          <EmptyLine>
             {tab === 'overdue'
               ? 'Nothing is overdue. '
               : tab === 'done'
                 ? 'Nothing has been recorded as dealt with yet. '
                 : 'No follow-ups here. '}
             A follow-up is an activity logged with a due date, on a company's page.
-          </EmptySection>
+          </EmptyLine>
         )}
       </Panel>
 
       {(tab === 'overdue' || tab === 'all') && (
         <Panel
+          className="xl:self-start"
           data-extension="check-backs"
           title={
             <span className="inline-flex items-center gap-2">
-              <PauseCircle size={16} className="text-ink-faint" />
+              <Icon.pause size={16} className="text-ink-3" />
               {tab === 'overdue' ? 'Check-backs due' : 'Check-backs'}
             </span>
           }
           actions={
             query.data && (
-              <span className="text-sm tabular-nums text-ink-faint">{query.data.check_backs_total}</span>
+              <span className="text-sm tabular-nums text-ink-3">{query.data.check_backs_total}</span>
             )
           }
         >
-          <p className="mb-3 text-sm text-ink-muted">
+          <p className="mb-3 text-sm text-ink-2">
             Companies that said not now
             {tab === 'overdue' ? ', due to be picked up today or earlier' : ''}. These are
             not completed here — move the conversation on the company's page and the
@@ -491,24 +543,25 @@ export function FollowUpsPage() {
           {query.isLoading ? (
             <Skeleton className="h-12" />
           ) : query.isError ? (
-            <p className="text-sm text-status-failed">
+            <p className="text-sm text-negative">
               Could not load check-backs. {query.error.message}
             </p>
           ) : query.data && query.data.check_backs.length > 0 ? (
-            <div>
+            <div className="divide-y divide-line">
               {query.data.check_backs.map((row) => (
                 <CheckBackRow key={row.customer_id} row={row} />
               ))}
             </div>
           ) : (
-            <EmptySection>
+            <EmptyLine>
               {tab === 'overdue'
                 ? 'No check-back is due yet.'
                 : 'No company is parked waiting for a check-back.'}
-            </EmptySection>
+            </EmptyLine>
           )}
         </Panel>
       )}
+      </div>
     </div>
   );
 }

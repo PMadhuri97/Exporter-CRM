@@ -26,9 +26,9 @@
  * company (P4-6) and `deal_buyer` writes are retired (P4-10), when it is removed.
  */
 
-import { ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 
+import { Icon } from '@/design/icons';
 import { formatDateTime, humanize } from '@/lib/format';
 
 import { useVerificationResults } from '../hooks';
@@ -41,7 +41,7 @@ import { BUYER_CHECK_TYPES, provenanceLabel } from './verification-labels';
 import { VerificationStatusChip } from './VerificationStatusChip';
 
 const SECONDARY_BUTTON =
-  'rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-ink-muted hover:bg-surface-subtle disabled:opacity-50';
+  'rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
 
 export function BuyerChecks({ dealId, dealBuyerId }: { dealId: string; dealBuyerId: string }) {
   const query = useVerificationResults('BUYER', dealBuyerId);
@@ -52,15 +52,15 @@ export function BuyerChecks({ dealId, dealBuyerId }: { dealId: string; dealBuyer
   return (
     <section
       data-testid="buyer-checks"
-      className="rounded-lg border border-border bg-surface p-5 shadow-card"
+      className="rounded-lg border border-line bg-surface p-5"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <ShieldCheck size={18} className="text-brand-600" />
+            <Icon.backgroundCheck size={18} className="text-ink" />
             <h2 className="font-semibold text-ink">Buyer checks</h2>
           </div>
-          <p className="mt-1 text-sm text-ink-muted">
+          <p className="mt-1 text-sm text-ink-2">
             Checks on this deal&apos;s buyer. They never change the company&apos;s background
             check.
           </p>
@@ -84,15 +84,15 @@ export function BuyerChecks({ dealId, dealBuyerId }: { dealId: string; dealBuyer
 
       <div className="mt-4">
         {query.isLoading ? (
-          <p className="text-sm text-ink-muted">Loading buyer checks…</p>
+          <p className="text-sm text-ink-2">Loading buyer checks…</p>
         ) : query.isError ? (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="text-sm text-negative">
             Buyer checks could not be loaded.
           </p>
         ) : results.length === 0 ? (
-          <p className="text-sm text-ink-muted">No checks have been recorded on this buyer yet.</p>
+          <p className="text-sm text-ink-2">No checks have been recorded on this buyer yet.</p>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-line">
             {results.map((result) => (
               <BuyerCheckRow
                 key={result.id}
@@ -128,7 +128,7 @@ function BuyerCheckRow({
         {result.risk_level && <VerificationStatusChip value={result.risk_level} />}
         {result.review_status && <VerificationStatusChip value={result.review_status} />}
       </div>
-      <p className="mt-1 text-xs text-ink-faint">
+      <p className="mt-1 text-xs text-ink-3">
         {result.is_placeholder ? 'Placeholder · no provider ran this check' : provenanceLabel(result)}
         {' · '}
         {formatDateTime(result.performed_at)}
@@ -149,23 +149,23 @@ function BuyerCheckRow({
 
 function SubjectSnapshot({ snapshot }: { snapshot: BuyerSnapshot }) {
   return (
-    <div data-testid="buyer-snapshot" className="mt-3 rounded-lg bg-surface-subtle p-3 text-xs">
-      <p className="text-ink-faint">Checked against the buyer as recorded at the time</p>
+    <div data-testid="buyer-snapshot" className="mt-3 rounded-lg bg-paper p-3 text-xs">
+      <p className="text-ink-3">Checked against the buyer as recorded at the time</p>
       <dl className="mt-1 grid gap-x-4 gap-y-1 sm:grid-cols-2">
         <div>
-          <dt className="inline text-ink-faint">Name </dt>
+          <dt className="inline text-ink-3">Name </dt>
           <dd className="inline text-ink">{snapshot.name}</dd>
         </div>
         <div>
-          <dt className="inline text-ink-faint">Country </dt>
+          <dt className="inline text-ink-3">Country </dt>
           <dd className="inline text-ink">{snapshot.country}</dd>
         </div>
         <div>
-          <dt className="inline text-ink-faint">Registration no. </dt>
+          <dt className="inline text-ink-3">Registration no. </dt>
           <dd className="inline break-all text-ink">{snapshot.registration_number ?? '—'}</dd>
         </div>
         <div>
-          <dt className="inline text-ink-faint">Tax id </dt>
+          <dt className="inline text-ink-3">Tax id </dt>
           <dd className="inline break-all text-ink">{snapshot.tax_id ?? '—'}</dd>
         </div>
       </dl>

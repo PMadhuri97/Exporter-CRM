@@ -28,18 +28,18 @@ export function Field({
 }) {
   return (
     <div className={className}>
-      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-ink">
+      <label htmlFor={htmlFor} className="mb-1 block text-caption font-medium text-ink-2">
         {label}
         {required && (
-          <span className="ml-0.5 text-status-failed" aria-hidden>
+          <span className="ml-0.5 text-ink-3" aria-hidden>
             *
           </span>
         )}
       </label>
       {children}
-      {hint && !error && <p className="mt-1 text-xs text-ink-faint">{hint}</p>}
+      {hint && !error && <p className="mt-1 text-caption text-ink-3">{hint}</p>}
       {error && (
-        <p className="mt-1 text-xs text-status-failed" role="alert">
+        <p className="mt-1 text-caption text-negative" role="alert">
           {error}
         </p>
       )}
@@ -73,7 +73,7 @@ export function FormError({ children }: { children?: ReactNode }) {
   return (
     <div
       role="alert"
-      className="rounded-lg border border-status-failed/30 bg-status-failed/10 px-3 py-2 text-sm text-status-failed"
+      className="flex items-start gap-2 rounded-md border-l-2 border-negative bg-negative-tint px-3 py-2 text-secondary text-negative"
     >
       {children}
     </div>

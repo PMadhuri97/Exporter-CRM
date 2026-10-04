@@ -941,16 +941,56 @@ Each phase merges on its own and leaves the app working. Gates for every phase: 
 - Codemod: every raw palette class in the 21 files (§3.2) moved to meaning tokens; `brand-*` and `status-info` retired; a lint rule (`no-restricted-syntax` on class strings matching `(slate|gray|zinc|violet|purple|indigo|emerald|teal|blue|red|amber|orange|green)-\d`) stops new ones.
 - Primitives (§6.11) and the dev-only style guide.
 - **Done when**: no raw palette class remains; both themes pass the axe check on the style guide; the current screens render in the new look with no behaviour change (the existing 435 tests pass).
+- **Status: built 5 October 2026** (worktree `feature/redesign`). Tokens in
+  `src/design/tokens.css`; a codemod moved 88 files to them; three ESLint selectors refuse the
+  raw palette, the retired token names and white/black fills. Deviations: (1) **three token
+  values changed** because `src/design/tokens.contrast.test.ts` (which reads the CSS and checks
+  every pair, as jsdom cannot) found them under AA — attention-solid light `#E0A526`→`#B07D0E`
+  and idle-solid light `#A7A193`→`#878275` (lamps under 3:1), negative-solid dark
+  `#E0493C`→`#C83A2E` (CRITICAL's white text under 4.5:1); (2) the primitives stay in
+  `src/components/ui` (one home, no import churn) and `src/design/` holds tokens, icons, the
+  brand mark and the style guide; (3) `axe-core` is called directly (`vitest-axe` predates
+  vitest 4); (4) Instrument Sans carries `tnum` (checked in the font file), so no mono
+  fallback for figures; ₹ is in none of the three faces and falls back to the system font;
+  (5) `tailwind-merge` is told the type scale (`lib/cn.ts`), or it drops `text-ink-2` next
+  to `text-secondary`. Tests: 55 files / 684.
 
 ### Phase 2: Shell
 
 - Rail, context bar and breadcrumbs, avatar menu (theme here), ⌘K, shortcuts and the `?` sheet, sign-in, No workspace, NotFound, the bottom bar on narrow screens. Pipeline folded into Companies as a view, with `/pipeline` as an alias.
 - **Done when**: every role's ⌘K, shortcuts and rail come from the module table (matrix test extended), and lucide is gone.
+- **Status: built 5 October 2026** (worktree `feature/redesign`). `layout/` holds `Rail`,
+  `ContextBar` (+ `AvatarMenu`), `CommandBar` (+ lazy `CommandBody`), `Shortcuts` and
+  `BottomBar`; what a page tells the shell (trail, ⌘K actions, page keys, recent companies)
+  goes through `src/platform/shell`, so no module imports the layout. The matrix test now also
+  proves, per role, that ⌘K's "Go to", the `?` sheet and the `g` keys equal the rail.
+  Deviations: (1) Phosphor's glyph modules carry six weights each (295 kB for our set), so
+  `scripts/build-icons.mjs` (`pnpm icons`) copies the regular weight — and fill for rail
+  icons — into `src/design/icon-paths.ts` (43 kB); Phosphor is a dev dependency only;
+  (2) the sign-in page and the command bar's body are lazy, which keeps the entry chunk at
+  444 kB (143 kB gzip) with no chunk warning; (3) a masked role's identifier-shaped query
+  sends nothing (`useCompanyFinder`), not even as a name search. Tests: 58 files / 719.
 
 ### Phase 3: Signature components
 
 - Standing (three sizes, role-aware), Gauge track, Check runway, Pre-flight (fallback mode), Ledger, Party card, Shelf, Smart entry, Composer variants.
 - **Done when**: each has unit tests for every state, including Developer's absent lamp, and a style-guide page.
+- **Status: built 5 October 2026** (worktree `feature/redesign`). In
+  `modules/onboarding/components/standing/`: `lamps.ts` (the §18.2 grammar as data), `Lamp`
+  (SVG shapes and the two overlays), `Standing` (inline / card / hero), `GaugeTrack`,
+  `CheckRunway`, `Preflight` (fallback, with a `conditions` prop ready for A3), `PartyCard`,
+  `Shelf`, `SmartEntry`; `Identifier` in `platform/mask`; `Composer` in `components/ui`, with
+  `ApiError.fieldErrors` added (additive) for per-field 422s. Re-skins were switched in at once
+  rather than twice: `HistoryTimeline` **is** the Ledger now (day rules, same-moment events,
+  lanes in ink, lane chips from the dimensions actually sent), `GaugeTrack` replaced
+  `ConversationGaugeControl`, `Identifier` replaced `MaskedValue`. Style guide: the onboarding
+  module's `OnboardingStyleGuide` with a "Seen as" role switch (`StaticAuthProvider`, dev only).
+  Deviations: (1) `POST /companies/match` needs a name and a country beside the identifier, so
+  Smart entry matches once those are known, not on the identifier alone; (2) **open question**:
+  Compliance/Admin read identifiers in full by decision ("never masks PAN for COMPLIANCE"), so the
+  eye §6.6 gives them changes nothing visible — either drop it or mask until revealed; kept as
+  it was; (3) party cards, shelf categories and the checklist are labelled groups, not landmark
+  regions (axe: duplicate landmarks). Tests: 62 files / 846.
 
 ### Phase 4: Screens
 
@@ -966,12 +1006,58 @@ In this order, because each step reuses the one before it:
 
 **Done when** (each screen): §15's checklist passes, and its old tests are updated in the same change. Accessible names and `data-testid`s are kept where tests rely on them, and changed deliberately where the structure changed.
 
+- **Status: built 5 October 2026** (worktree `feature/redesign`). Every screen is re-composed
+  from the Phase 3 parts and the existing hooks; no endpoint was added. (1) Companies: the
+  register (dossier rows, a journey lens with capped counts, qualification and relationship
+  lenses in the URL, "Show more" to 200, prefetch on hover and focus, `j`/`k`), the board as
+  `/companies?view=board`, Smart entry on Add company, a drop zone with a preview on Import, and
+  *Take in* on RXIL intake. (2) The dossier: a serif header that compresses on scroll, the hero
+  Standing opening its chapter, a chapter rail from 1280 px (tabs below it, the same `?tab=`
+  keys), *Now* from served fields, Profile facts as `Editable`, the Qualification scorecard,
+  the Conversation `GaugeTrack`, people and thread, the Documents `Shelf`, the Ledger, and `l`
+  to log an activity (staff). (3) Background check: `CheckRunway` opens the existing move
+  composer. (4) The deal room: route, pre-flight, party cards, branch picker on the seller,
+  buyer chosen in a sheet (R-24's create step included), the legacy buyer folded under its own
+  label, the paperwork shelf with required categories, the sealed receipt, and the deal Ledger.
+  (5) Desks for each role, and a new **Review** module (`/review`, `compliance.queue`, `g r`):
+  a queue on the left, the dossier's own Background check chapter on the right, and `a`/`x`
+  through the usual confirmation. (6) Agenda buckets with check-backs beside them, and `c`.
+  (7) Settings as sections at `/settings/profile|users|roles`; a section the server's
+  permissions do not grant is the same NotFound, and nothing shows while they load; people
+  tiles, role tiles with the permission grid in a composer, criteria as rule cards with a
+  version trail, and required documents as category rows with the history beneath. A 409
+  `DEAL_REQUIRED_DOCUMENT_CHANGED` says someone changed it. `Table`, `Drawer`, `Sidebar`,
+  `Chip`, `MaskedValue` and `ConversationGaugeControl` are deleted. `Panel` (a heading and a
+  hairline), `Card` (one object), and `FormPanel` (now a sheet) stay because they are used.
+  Deviations: (1) the three settings dialogs and the criteria and required-documents dialogs are
+  composers, and role delete uses `ConfirmDialog` instead of `window.confirm`; (2) `Editable`
+  takes `trigger="pencil"` for a value that has its own buttons (an `Identifier`), because a
+  button cannot hold buttons; (3) **not built**: the register's hover card (the row already
+  shows what it would), the Ledger's evidence hover card, `e` to edit the focused fact (every
+  fact is a button that Tab and Enter reach), and the screening checklist's `p`/`f`/`e`/`n`
+  keys (Dev 4's component is unchanged apart from tokens). *In review* (A4) and *Deals in
+  paperwork* (A5) are not rendered. Tests: 63 files / 868.
+
 ### Phase 5: Polish
 
 - View transitions (register to dossier name morph), lamp travel, settle animations, reduced-motion check.
 - Performance budget, prefetch on intent, font subsetting.
 - Optional Playwright visual snapshots: 5 roles × Desk, register, dossier (each chapter), deal room, agenda, settings, in light and dark, on the sample data (`demo.md` §1).
 - Each backend ask (§13) that has landed: switch its fallback off.
+- **Status: built 5 October 2026** (worktree `feature/redesign`). Motion: (1) the register's
+  company name travels into the dossier's title through the browser's View Transitions
+  (`lib/viewTransition.ts`; React Router's `viewTransition` prop needs a data router, and the
+  app mounts `<BrowserRouter>`), (2) the conversation's ring travels to its new node in 240 ms,
+  and (3) register rows settle when a lens brings a new set. Under reduced motion all of it is
+  instant, including the view-transition pseudo-elements, and `src/design/motion.test.ts` proves
+  it. Performance: the entry chunk is 448 kB (146 kB gzip) against the 250 kB gzip budget.
+  Instrument Serif regular and Instrument Sans (latin) are preloaded by a build plugin in
+  `vite.config.ts`, and every other subset loads on demand through `unicode-range`. Prefetch on
+  intent covers the register and board rows. None of A1, A3, A4 or A7 has landed, so every
+  fallback stays on. Playwright snapshots were skipped. Instead, a headless walk on a scratch
+  database covered 5 roles × 56 screens at 1440, 1024 and 390 px in light and dark, with no
+  console error, no failed API call, NotFound on every forbidden address, and no horizontal
+  scroll. Tests: 64 files / 877.
 
 **Ownership.** Shared frontend files (`lib/api`, `platform/auth`, `routes`, `layout`, the sidebar) belong to Developer 1 (architecture §10), so Phases 0 and 2 need Developer 1's review. Phase 4 screens touch every lane's panels, so each screen's change is reviewed by that panel's owner. The design work itself (tokens, primitives, signature components) belongs to whoever owns this plan.
 

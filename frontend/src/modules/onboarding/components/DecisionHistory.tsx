@@ -64,7 +64,7 @@ function EvidenceSummary({ decision }: { decision: BackgroundCheckDecision }) {
 
   if (decision.evidence.length === 0) {
     return (
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-ink-3">
         No evidence was recorded against this decision.
       </p>
     );
@@ -79,7 +79,7 @@ function EvidenceSummary({ decision }: { decision: BackgroundCheckDecision }) {
   ].filter(Boolean);
 
   return (
-    <p className="text-xs text-slate-500" data-testid="evidence-summary">
+    <p className="text-xs text-ink-3" data-testid="evidence-summary">
       Recorded against {parts.join(', ')}.
     </p>
   );
@@ -89,15 +89,15 @@ function ResolvedItem({ item }: { item: DecisionEvidenceItem }) {
   if (item.verification) {
     const check = item.verification;
     return (
-      <li data-testid="decision-evidence-check" className="rounded border border-slate-100 p-2">
+      <li data-testid="decision-evidence-check" className="rounded border border-line p-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-slate-900">
+          <span className="text-xs font-medium text-ink">
             {verificationTypeLabel(check.verification_type)} check
           </span>
           <VerificationStatusChip value={check.status} />
           {check.risk_level && <VerificationStatusChip value={check.risk_level} />}
         </div>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-ink-3">
           {check.is_placeholder
             ? 'Placeholder · no provider ran this check'
             : provenanceLabel(check)}
@@ -106,17 +106,17 @@ function ResolvedItem({ item }: { item: DecisionEvidenceItem }) {
           {check.recorded_by && ` · recorded by ${actorLabel(check.recorded_by_name, check.recorded_by)}`}
         </p>
         {check.pinned_review ? (
-          <p className="mt-1 text-xs text-slate-600">
+          <p className="mt-1 text-xs text-ink-2">
             Review relied on: {humanize(check.pinned_review.review_status)} by{' '}
             {actorLabel(check.pinned_review.reviewed_by_name, check.pinned_review.reviewed_by)},{' '}
             {formatDateTime(check.pinned_review.reviewed_at)}
             {check.pinned_review.note && ` — ${check.pinned_review.note}`}
           </p>
         ) : (
-          <p className="mt-1 text-xs text-slate-500">Not reviewed when the decision was taken.</p>
+          <p className="mt-1 text-xs text-ink-3">Not reviewed when the decision was taken.</p>
         )}
         {check.review_superseded && (
-          <p data-testid="review-superseded" className="mt-1 text-xs font-medium text-amber-700">
+          <p data-testid="review-superseded" className="mt-1 text-xs font-medium text-attention">
             A later review has been recorded since this decision.
           </p>
         )}
@@ -127,17 +127,17 @@ function ResolvedItem({ item }: { item: DecisionEvidenceItem }) {
   if (item.screening_item) {
     const answer = item.screening_item;
     return (
-      <li data-testid="decision-evidence-screening" className="rounded border border-slate-100 p-2">
+      <li data-testid="decision-evidence-screening" className="rounded border border-line p-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-900">{answer.label}</span>
+          <span className="text-xs text-ink">{answer.label}</span>
           <VerificationStatusChip value={answer.status} />
           {answer.retired && (
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+            <span className="rounded-sm bg-sunken px-2 py-0.5 text-[11px] text-ink-2">
               Retired item
             </span>
           )}
         </div>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-ink-3">
           Answered by {actorLabel(answer.reviewed_by_name, answer.reviewed_by)}
           {answer.reviewed_at && `, ${formatDateTime(answer.reviewed_at)}`} · Manual (person)
         </p>
@@ -148,12 +148,12 @@ function ResolvedItem({ item }: { item: DecisionEvidenceItem }) {
   if (item.document) {
     const document = item.document;
     return (
-      <li data-testid="decision-evidence-document" className="rounded border border-slate-100 p-2">
+      <li data-testid="decision-evidence-document" className="rounded border border-line p-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-slate-900">{document.file_name}</span>
+          <span className="text-xs font-medium text-ink">{document.file_name}</span>
           <VerificationStatusChip value={document.scan_status} />
         </div>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-ink-3">
           {humanize(document.category)} · uploaded {formatDateTime(document.uploaded_at)}
           {document.uploaded_by && ` by ${actorLabel(document.uploaded_by_name, document.uploaded_by)}`}
         </p>
@@ -164,7 +164,7 @@ function ResolvedItem({ item }: { item: DecisionEvidenceItem }) {
     );
   }
   return (
-    <li className="text-xs text-slate-500">
+    <li className="text-xs text-ink-3">
       A pinned {humanize(item.kind).toLowerCase()} could not be found.
     </li>
   );
@@ -179,18 +179,18 @@ function DecisionEvidenceDetail({
 }) {
   const evidence = useDecisionEvidence(customerId, decision.id, true);
   if (evidence.isLoading) {
-    return <p className="mt-2 text-xs text-slate-500">Loading the evidence…</p>;
+    return <p className="mt-2 text-xs text-ink-3">Loading the evidence…</p>;
   }
   if (evidence.isError || !evidence.data) {
     return (
-      <p role="alert" className="mt-2 text-xs text-red-700">
+      <p role="alert" className="mt-2 text-xs text-negative">
         The evidence could not be loaded.
       </p>
     );
   }
   return (
     <div data-testid="decision-evidence" className="mt-2">
-      <p className="text-xs text-slate-500">Taken under the {rulesLabel(evidence.data.rules_version)}.</p>
+      <p className="text-xs text-ink-3">Taken under the {rulesLabel(evidence.data.rules_version)}.</p>
       {evidence.data.items.length > 0 && (
         <ul className="mt-2 flex flex-col gap-2">
           {evidence.data.items.map((item, index) => (
@@ -211,15 +211,15 @@ function DecisionRow({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <li data-testid="decision-row" className="rounded border border-slate-200 p-3">
+    <li data-testid="decision-row" className="rounded border border-line p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-slate-900">
+        <span className="text-sm font-medium text-ink">
           {LABELS[decision.from_value]} → {LABELS[decision.to_value]}
         </span>
         <RiskChip risk={decision.risk_rating} />
       </div>
-      {decision.reason && <p className="mt-1 text-sm text-slate-700">{decision.reason}</p>}
-      <p className="mt-1 text-xs text-slate-500">
+      {decision.reason && <p className="mt-1 text-sm text-ink-2">{decision.reason}</p>}
+      <p className="mt-1 text-xs text-ink-3">
         {formatDateTime(decision.decided_at)}
         {decision.decided_by ? ` · ${actorLabel(decision.decided_by_name, decision.decided_by)}` : ''}
         {decision.approved_by && (
@@ -229,7 +229,7 @@ function DecisionRow({
         )}
       </p>
       {decision.to_value === 'CLEAR' && decision.expires_at && (
-        <p data-testid="decision-expires" className="text-xs text-slate-500">
+        <p data-testid="decision-expires" className="text-xs text-ink-3">
           Clear until {formatDate(decision.expires_at)}
         </p>
       )}
@@ -240,7 +240,7 @@ function DecisionRow({
             type="button"
             aria-expanded={open}
             onClick={() => setOpen((value) => !value)}
-            className="mt-1 text-xs font-medium text-brand-600 hover:underline"
+            className="mt-1 text-xs font-medium text-ink hover:underline"
           >
             {open ? 'Hide evidence' : 'Show evidence'}
           </button>
@@ -264,18 +264,18 @@ export function DecisionHistory({
   customerId?: string;
 }) {
   if (isLoading) {
-    return <p className="text-sm text-slate-500">Loading decisions…</p>;
+    return <p className="text-sm text-ink-3">Loading decisions…</p>;
   }
   if (isError) {
     return (
-      <p role="alert" className="text-sm text-red-700">
+      <p role="alert" className="text-sm text-negative">
         The decision history could not be loaded.
       </p>
     );
   }
   if (decisions.length === 0) {
     return (
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-ink-3">
         No decisions have been recorded for this company yet.
       </p>
     );
@@ -298,7 +298,7 @@ export function DecisionHistory({
     <div className="flex flex-col gap-4">
       {cycles.map((number) => (
         <section key={number ?? 'none'} data-testid="decision-cycle" data-cycle={number ?? ''}>
-          <h5 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <h5 className="mb-2 text-caption font-medium text-ink-3">
             {number === null ? 'Earlier decisions' : `Cycle ${number}`}
             {number === current && ' (current)'}
           </h5>

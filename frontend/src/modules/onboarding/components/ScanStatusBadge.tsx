@@ -17,38 +17,38 @@
  * verification providers follow (§7.5, decision D4).
  */
 
-import { AlertTriangle, CheckCircle2, Clock, ShieldAlert } from 'lucide-react';
 
-import { Chip } from '@/components';
+import { Tag } from '@/components';
+import { Icon, type IconComponent } from '@/design/icons';
 
 import type { DocumentScanStatus } from '../types';
 
 const LOOK: Record<
   DocumentScanStatus,
-  { label: string; className: string; icon: typeof Clock; title: string }
+  { label: string; className: string; icon: IconComponent; title: string }
 > = {
   PENDING_SCAN: {
     label: 'Pending scan',
-    className: 'bg-surface-sunken text-ink-muted',
-    icon: Clock,
+    className: 'bg-sunken text-ink-2',
+    icon: Icon.clock,
     title: 'Waiting on the scan step. It cannot be opened yet.',
   },
   AVAILABLE: {
     label: 'Available',
-    className: 'bg-status-passed/10 text-status-passed',
-    icon: CheckCircle2,
+    className: 'bg-positive-tint text-positive',
+    icon: Icon.passed,
     title: 'Passed the scan step and can be opened.',
   },
   QUARANTINED: {
     label: 'Quarantined',
-    className: 'bg-status-failed/10 text-status-failed',
-    icon: ShieldAlert,
+    className: 'bg-negative-tint text-negative',
+    icon: Icon.flagged,
     title: 'The scan step rejected this file. It is never served.',
   },
   SCAN_FAILED: {
     label: 'Scan failed',
-    className: 'bg-status-review/10 text-status-review',
-    icon: AlertTriangle,
+    className: 'bg-attention-tint text-attention',
+    icon: Icon.warning,
     title: 'The scan step could not decide, so the file is not served.',
   },
 };
@@ -63,16 +63,16 @@ export function ScanStatusBadge({
   scannerName?: string | null;
 }) {
   const look = LOOK[status];
-  const Icon = look.icon;
+  const Glyph = look.icon;
 
   return (
     <span className="inline-flex items-center gap-1.5">
-      <Chip title={look.title} className={look.className} icon={<Icon size={11} />}>
+      <Tag title={look.title} className={look.className} icon={<Glyph size={11} />}>
         {look.label}
-      </Chip>
+      </Tag>
       {scannerName && (
         <span
-          className="text-xs uppercase tracking-wide text-ink-faint"
+          className="text-xs uppercase tracking-wide text-ink-3"
           title={
             scannerName === 'pass-through'
               ? 'This build ships a labelled pass-through: no malware check was performed.'
