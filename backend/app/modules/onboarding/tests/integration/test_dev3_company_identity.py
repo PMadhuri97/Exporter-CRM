@@ -64,6 +64,7 @@ from app.modules.onboarding.infrastructure.rxil.company_package import (
 )
 from app.modules.onboarding.migrations.onboarding_0033_created_via import _CHANNEL_BY_SOURCE
 from app.modules.onboarding.tests.fixtures.auth import auth_header, user_with_role
+from app.modules.onboarding.tests.fixtures.deals import make_deal
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
@@ -469,7 +470,7 @@ async def test_a_migrated_buyer_may_have_neither_identifier():
     but a name and a country, because the rule cannot be met retroactively. It
     keeps `identity_type NULL` — the value the completion list is built on — and
     is **not** guessed as FOREIGN_REG from its country."""
-    deal_id = uuid.uuid4()
+    deal_id = await make_deal()
     async with db_services.AsyncSessionLocal() as db:
         company_id = await CompanyDirectoryService(db).create_buyer_company(
             BuyerCompanyDraft(

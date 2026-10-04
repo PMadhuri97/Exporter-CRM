@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.company_identity import registration_key
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
     ExporterJourney,
@@ -51,7 +52,7 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         normalised = func.upper(
             func.regexp_replace(ExporterProfile.registration_number, "[^A-Za-z0-9]", "", "g")
         )
-        wanted = "".join(ch for ch in registration_number if ch.isalnum()).upper()
+        wanted = registration_key(registration_number)
         result = await self.session.execute(
             select(ExporterProfile).where(
                 ExporterProfile.country == country.strip().upper(),

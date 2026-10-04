@@ -44,6 +44,7 @@ from app.modules.onboarding.application.compliance_facts import ComplianceFactsS
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions
 from app.modules.onboarding.domain.company_identity import (
+    CreatedVia,
     created_via_for_history_source,
     decide_identity_type,
     normalise_registration_number,
@@ -158,7 +159,9 @@ _NOT_CLEARABLE = frozenset({"name", "country"})
 #: shows a row's details to every CRM reader, including roles that only ever
 #: see these masked on the company itself, so a full value in the log would
 #: undo the company route's masking (company-record contract §6, O5).
-_MASKED_IN_HISTORY = frozenset({"gstins", "pan", "iec", "cin"})
+#: `registration_number` joined in R-15: masked like a CIN on the company since
+#: task 3.8, it had been written to history in full.
+_MASKED_IN_HISTORY = frozenset({"gstins", "pan", "iec", "cin", "registration_number"})
 
 #: History dimensions and event types this service writes
 #: (`docs/contracts/company-record.md` §6).
@@ -529,6 +532,27 @@ class ExporterProfileService:
                 wanted.get("country") or profile.country,  # type: ignore[arg-type]
                 customer_id,
             )
+        # IQ-7 on the company as it will be (R-16), whenever the edit touches what
+        # identifies it: moving a company abroad, clearing a foreign company's number,
+        # or clearing the PAN that made it Indian must leave it identifiable. A buyer
+        # the P4-6 migration created without a number keeps IQ-7's exception until
+        # one is added — an edit cannot meet the rule retroactively either.
+        identity_fields = {"country", "pan", "registration_number"}
+        if any(
+            field in wanted and wanted[field] != getattr(profile, field)
+            for field in identity_fields
+        ):
+            require_foreign_registration_number(
+                country=wanted.get("country", profile.country),  # type: ignore[arg-type]
+                pan=wanted.get("pan", profile.pan),  # type: ignore[arg-type]
+                registration_number=wanted.get(  # type: ignore[arg-type]
+                    "registration_number", profile.registration_number
+                ),
+                allow_missing=(
+                    profile.created_via == CreatedVia.DEAL_BUYER.value
+                    and profile.registration_number is None
+                ),
+            )
 
         edits: dict[str, tuple[object, object]] = {}
         for field in sorted(wanted):
@@ -559,6 +583,13 @@ class ExporterProfileService:
                     "to": _history_value(field, new_value),
                     "edit_id": edit_id,
                 },
+            )
+        # Derived from what the company holds, so it moves with the PAN and the
+        # registration number (R-16). It was set on create only, and went stale on
+        # exactly the edit IQ-7's completion flow makes.
+        if {"pan", "registration_number"} & set(edits):
+            profile.identity_type = decide_identity_type(
+                pan=profile.pan, registration_number=profile.registration_number
             )
 
         try:

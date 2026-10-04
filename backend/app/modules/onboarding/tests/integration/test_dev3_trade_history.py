@@ -53,6 +53,7 @@ from app.modules.onboarding.exceptions import (
     TradeRelationshipIsSelfError,
     TradeRelationshipNotFoundError,
 )
+from app.modules.onboarding.tests.fixtures.deals import make_deal_with_buyer_company
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
@@ -416,10 +417,15 @@ async def test_an_invoices_identity_is_frozen_in_raw_sql():
 async def test_a_past_trade_invoice_can_be_tied_to_a_deal_once():
     """``prevent_field_mutation_when_set`` allows ``NULL`` → a value once, which is
     what lets an invoice recorded as past trade later be tied to the deal that
-    produced it — and never re-tied."""
-    relationship_id, _seller, _buyer = await _relationship()
-    invoice_id = await _invoice(relationship_id)
-    deal_id, other_deal = uuid.uuid4(), uuid.uuid4()
+    produced it — and never re-tied. Two real deals between the pair, since 0042's
+    foreign key refuses an invented one."""
+    deal_id, seller, buyer = await make_deal_with_buyer_company()
+    other_deal, _seller, _buyer = await make_deal_with_buyer_company(seller, buyer)
+    async with db_services.AsyncSessionLocal() as db:
+        relationship = await TradeHistoryService(db).relationship_for_pair(
+            seller_company_id=seller, buyer_company_id=buyer
+        )
+    invoice_id = await _invoice(relationship.id)
 
     connection = _connect()
     try:

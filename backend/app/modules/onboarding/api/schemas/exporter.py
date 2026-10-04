@@ -174,6 +174,20 @@ class CreateExporterProfileRequest(BaseModel):
     #: Country of incorporation, ISO 3166-1 alpha-2 (`IN`).
     country: str | None = Field(default=None, max_length=2)
 
+    @field_validator("source")
+    @classmethod
+    def _not_a_deal_buyer(cls, value: ExporterSource) -> ExporterSource:
+        """``DEAL_BUYER`` (IQ-6) means "this company exists because it was somebody's
+        buyer": it is set by the buyer-company path, which creates the company
+        ``NOT_IN_PIPELINE``. Here it would make an in-pipeline lead with a journey
+        row — a buyer that is not one (R-21)."""
+        if value is ExporterSource.DEAL_BUYER:
+            raise ValueError(
+                "source DEAL_BUYER is set only when a company is created as a deal's "
+                "buyer; a company added here is a lead, so choose how it reached us"
+            )
+        return value
+
     @field_validator("name")
     @classmethod
     def _name_not_blank(cls, value: str | None) -> str | None:

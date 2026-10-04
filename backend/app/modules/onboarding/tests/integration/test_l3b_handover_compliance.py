@@ -357,3 +357,70 @@ async def test_a_handover_and_a_flag_on_the_buyer_do_not_interleave():
     finally:
         DealService._handover_snapshot = original  # type: ignore[method-assign]
         release.set()
+
+
+async def test_a_handover_and_a_flag_on_its_invoicing_branch_do_not_interleave():
+    """R-18: the same race, for the branch rule (P6-7). A flag used to lock only the
+    ``exporter_gstin`` row, so it completed while the handover held its share lock on
+    the seller — and the deal went to the lending team through a branch flagged a
+    moment before. The flag now takes the seller's row first, so it waits for the
+    handover; the next guard reads it.
+    """
+    from app.modules.onboarding.application.gst_registration_service import (
+        GstRegistrationService,
+    )
+
+    seller_id = await _cleared_customer()
+    letters = "".join(chr(65 + b % 26) for b in uuid.uuid4().bytes[:6])
+    pan = f"{letters[:5]}{uuid.uuid4().int % 10**4:04d}{letters[5]}"
+    async with db_services.AsyncSessionLocal() as db:
+        branch, _others = await GstRegistrationService(db).add(
+            seller_id, gstin=f"27{pan}1Z5", actor_id="t"
+        )
+    buyer_id = await make_company()
+    await record_required_checks(buyer_id, types=("SANCTIONS", "AML"))
+    deal_id = await _deal_ready(seller_id, buyer_company_id=buyer_id)
+    async with db_services.AsyncSessionLocal() as db:
+        await DealService(db).set_invoicing_branch(
+            deal_id, gst_registration_id=branch.id, actor_id="t"
+        )
+
+    guard_passed = asyncio.Event()
+    release = asyncio.Event()
+    original = DealService._handover_snapshot
+
+    async def paused(self, deal):
+        guard_passed.set()
+        await release.wait()
+        return await original(self, deal)
+
+    DealService._handover_snapshot = paused  # type: ignore[method-assign]
+    try:
+
+        async def hand_over():
+            async with db_services.AsyncSessionLocal() as db:
+                return await DealService(db).transition_stage(
+                    deal_id, DealStage.HANDED_OVER, actor_id="t"
+                )
+
+        async def flag_the_branch():
+            async with db_services.AsyncSessionLocal() as db:
+                flagged, _others = await GstRegistrationService(db).flag(
+                    branch.id, reason="Returns unfiled", actor_id="compliance-1"
+                )
+                return flagged.flag_status.value
+
+        handover = asyncio.create_task(hand_over())
+        await asyncio.wait_for(guard_passed.wait(), timeout=10)
+
+        flag = asyncio.create_task(flag_the_branch())
+        done, _ = await asyncio.wait({flag}, timeout=2)
+        assert not done, "a branch flag committed while a handover held its share lock"
+
+        release.set()
+        view = await asyncio.wait_for(handover, timeout=10)
+        assert view.stage is DealStage.HANDED_OVER
+        assert await asyncio.wait_for(flag, timeout=10) == "FLAGGED"
+    finally:
+        DealService._handover_snapshot = original  # type: ignore[method-assign]
+        release.set()

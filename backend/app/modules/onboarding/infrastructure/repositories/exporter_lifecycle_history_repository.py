@@ -48,14 +48,20 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         to be kept in step forever on an append-only table where a mistake cannot be
         edited out.
 
-        **Only the ``deal`` dimension**, and that restriction is the whole subtlety
-        here. Other dimensions carry a ``deal_id`` too — a ``conversation`` row when
-        seam S1 moves a seller to ``READY_NOW`` on opening a deal, a ``verification``
-        row for a check run in a deal's context — but those are about the *seller's*
-        own state and merely mention the deal. Admitting every row that carries the id
-        would put the seller's conversation gauge on the buyer's timeline, where it
-        would read as the buyer's own. The buyer's own rows, including its own checks,
-        already arrive through ``customer_id``.
+        **Only the ``deal`` and ``trade`` dimensions**, and that restriction is the
+        whole subtlety here. Other dimensions carry a ``deal_id`` too — a
+        ``conversation`` row when seam S1 moves a seller to ``READY_NOW`` on opening a
+        deal, a ``verification`` row for a check run in a deal's context — but those are
+        about the *seller's* own state and merely mention the deal. Admitting every row
+        that carries the id would put the seller's conversation gauge on the buyer's
+        timeline, where it would read as the buyer's own. The buyer's own rows,
+        including its own checks, already arrive through ``customer_id``.
+
+        ``trade`` rows are the other kind: an invoice for the deal and how it was paid
+        are about the trade between the two companies, so the buyer is a party to them
+        (``trade-history.md`` §6, plan P5-3/P5-4: "on the seller's timeline, and the
+        buyer's by read-side union"; R-23). Past trade recorded with no deal carries no
+        ``deal_id`` and stays on the seller's timeline.
 
         Used by both the page and its count, so the two cannot disagree about what
         the company's history is.
@@ -67,7 +73,9 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         if not include_deals_as_buyer:
             return own
         bought_on = and_(
-            ExporterLifecycleHistory.dimension == history_dimensions.DEAL,
+            ExporterLifecycleHistory.dimension.in_(
+                (history_dimensions.DEAL, history_dimensions.TRADE)
+            ),
             ExporterLifecycleHistory.deal_id.in_(
                 select(Deal.id).where(Deal.buyer_company_id == customer_id)
             ),

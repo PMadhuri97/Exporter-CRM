@@ -42,6 +42,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -350,12 +351,17 @@ class ExporterProfile(AnerModel):
     #: creation channel was previously recoverable only from the first history row's
     #: `event_metadata.source` (audit §3.1). Task 3.8 backfills it from there.
     created_via: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    #: The deal whose buyer this company was, when that is why it exists. A bare uuid
-    #: with no FK, like `exporter_lifecycle_history.deal_id`: the deal may be withdrawn
-    #: or (in a future cleanup) gone, and losing the company because of it would be
-    #: worse than losing the link.
+    #: The deal whose buyer this company was, when that is why it exists. A real deal
+    #: since 0042 (R-17), ``ON DELETE RESTRICT``: deals are never deleted (``WITHDRAWN``
+    #: is how one ends), so the company is never lost and the link never dangles.
     created_via_deal_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.deal.id",
+            name="fk_exporter_profile_created_via_deal_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
     )
 
     @property

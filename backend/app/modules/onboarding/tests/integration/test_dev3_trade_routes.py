@@ -29,6 +29,7 @@ from app.modules.onboarding.application.exporter_profile_service import Exporter
 from app.modules.onboarding.application.trade_history_service import TradeHistoryService
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.tests.fixtures.auth import auth_header, user_with_role
+from app.modules.onboarding.tests.fixtures.deals import make_deal, make_deal_with_buyer_company
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -439,10 +440,16 @@ async def test_an_invoice_may_name_the_deal_it_came_from_or_no_deal_at_all(
     client: AsyncClient,
 ):
     """`deal_id` omitted is past trade — what the two companies did before they came
-    to us, which is the evidence a new relationship cannot have (task 3.21)."""
-    relationship_id, _seller, _buyer = await _relationship()
+    to us, which is the evidence a new relationship cannot have (task 3.21). Given, it
+    is a deal between the two companies (R-17)."""
+    deal, seller, buyer = await make_deal_with_buyer_company()
+    async with db_services.AsyncSessionLocal() as db:
+        relationship = await TradeHistoryService(db).relationship_for_pair(
+            seller_company_id=seller, buyer_company_id=buyer
+        )
+    relationship_id = relationship.id
     _user_id, token = await user_with_role(client, UserRole.OPERATIONS)
-    deal_id = str(uuid.uuid4())
+    deal_id = str(deal)
 
     from_deal = await client.post(
         f"{BASE}/trade-relationships/{relationship_id}/invoices",
@@ -459,6 +466,41 @@ async def test_an_invoice_may_name_the_deal_it_came_from_or_no_deal_at_all(
     )
     assert past.status_code == 201, past.text
     assert past.json()["deal_id"] is None
+
+
+async def test_an_invoice_cannot_name_a_deal_that_does_not_exist_or_is_not_this_pairs(
+    client: AsyncClient,
+):
+    """R-17. ``deal_id`` is frozen once written and nothing else ties an invoice to a
+    deal, so a made-up id or another pair's deal would sit on the invoice for good."""
+    _deal, seller, buyer = await make_deal_with_buyer_company()
+    async with db_services.AsyncSessionLocal() as db:
+        relationship = await TradeHistoryService(db).relationship_for_pair(
+            seller_company_id=seller, buyer_company_id=buyer
+        )
+    # Same seller, another buyer company: a real deal, but not between these two.
+    other_pairs_deal, _s, _b = await make_deal_with_buyer_company(seller=seller)
+    # Same seller, buyer still a legacy row: not between two companies at all.
+    legacy_deal = await make_deal(seller)
+    _user_id, token = await user_with_role(client, UserRole.OPERATIONS)
+
+    def post(deal_id):
+        return client.post(
+            f"{BASE}/trade-relationships/{relationship.id}/invoices",
+            json=_invoice_body(deal_id=str(deal_id)),
+            headers=auth_header(token),
+        )
+
+    missing = await post(uuid.uuid4())
+    assert missing.status_code == 404, missing.text
+    for wrong in (other_pairs_deal, legacy_deal):
+        refused = await post(wrong)
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["error_code"] == "TRADE_INVOICE_DEAL_NOT_THIS_PAIR"
+
+    async with db_services.AsyncSessionLocal() as db:
+        recorded = await TradeHistoryService(db).list_invoices(relationship.id)
+    assert recorded == []
 
 
 async def test_the_service_and_the_route_agree_about_an_invoices_amount():

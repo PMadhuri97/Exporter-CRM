@@ -370,6 +370,19 @@ and only Developer 3's lane knows that a GSTIN's state is its first two characte
 branch, not the company (decision BQ-6): deals invoiced from the company's other
 branches proceed.
 
+**A branch deactivated after it was recorded neither blocks nor warns — undecided
+(D-04).** A deactivated branch cannot be *chosen* (`set_invoicing_branch` refuses it,
+422), but a deal that recorded a branch before it was deactivated is not re-checked:
+neither condition 6 nor 7 asks whether the recorded branch is still active, and the
+handover proceeds. Whether that should block, or only warn, is waiting on the lead
+(`remaining-work.md` D-04, R-19); until then this is the behaviour, stated rather than
+implied.
+
+Every write that changes what conditions 6 and 7 read — adding, deactivating, flagging
+or unflagging a branch — locks the owning company `FOR UPDATE` before the branch, so it
+waits for a handover that holds the company `FOR SHARE` and the next guard sees it
+(R-18; the background check's D10 for branches).
+
 **Condition 5 requires `PASSED`, not "not `FAILED`".** An unscreened buyer reads
 `MISSING` and blocks (BQ-4): "we have not checked" and "the check came back clean"
 must not collapse into one outcome. So a deal whose buyer has no sanctions and AML

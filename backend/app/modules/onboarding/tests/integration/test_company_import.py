@@ -239,6 +239,9 @@ async def test_a_gstin_held_elsewhere_is_a_warning_on_an_accepted_row():
         ({"country": ""}, "MISSING_COUNTRY"),
         ({"country": "India"}, "INVALID_COUNTRY"),
         ({"source": "RXIL"}, "INVALID_SOURCE"),
+        # A deal's buyer is created outside the pipeline by the buyer-company path; an
+        # import creates leads (R-21).
+        ({"source": "DEAL_BUYER"}, "INVALID_SOURCE"),
         ({"source": "CARRIER_PIGEON"}, "INVALID_SOURCE"),
     ],
 )

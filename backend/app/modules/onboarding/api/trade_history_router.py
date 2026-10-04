@@ -297,18 +297,22 @@ def _evidence_refs(body: RecordTradeOutcomeRequest) -> list[dict] | None:
         "Amounts come back as strings, because money is not a float and JSON numbers "
         "would invite adding two currencies together.\n\n"
         "`deal_id` is omitted for past trade — what the two companies did before they "
-        "came to us. One invoice number per relationship; the same number on another "
+        "came to us. When given, it must be a deal **between these two companies**: "
+        "the relationship's seller, selling to its buyer company. It is frozen once "
+        "written. One invoice number per relationship; the same number on another "
         "relationship is a different invoice."
     ),
     responses={
         201: {"model": TradeInvoiceResponse},
         401: {"description": "Unauthorized"},
         403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
-        404: {"description": "Trade relationship not found"},
+        404: {"description": "Trade relationship, or the deal named by deal_id, not found"},
         422: {
             "description": (
                 "A blank number, a non-positive amount, a currency that is not an ISO "
-                "4217 code, or a number this relationship already has"
+                "4217 code, a number this relationship already has, or a deal_id that is "
+                "not a deal between the relationship's two companies "
+                "(TRADE_INVOICE_DEAL_NOT_THIS_PAIR)"
             )
         },
     },

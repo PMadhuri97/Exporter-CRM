@@ -1249,7 +1249,7 @@ export interface paths {
          *
          *     The currency is stored as issued and **never converted** (decision IQ-4). Amounts come back as strings, because money is not a float and JSON numbers would invite adding two currencies together.
          *
-         *     `deal_id` is omitted for past trade — what the two companies did before they came to us. One invoice number per relationship; the same number on another relationship is a different invoice.
+         *     `deal_id` is omitted for past trade — what the two companies did before they came to us. When given, it must be a deal **between these two companies**: the relationship's seller, selling to its buyer company. It is frozen once written. One invoice number per relationship; the same number on another relationship is a different invoice.
          */
         post: operations["record_trade_invoice_api_v1_onboarding_trade_relationships__relationship_id__invoices_post"];
         delete?: never;
@@ -10266,14 +10266,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Trade relationship not found */
+            /** @description Trade relationship, or the deal named by deal_id, not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description A blank number, a non-positive amount, a currency that is not an ISO 4217 code, or a number this relationship already has */
+            /** @description A blank number, a non-positive amount, a currency that is not an ISO 4217 code, a number this relationship already has, or a deal_id that is not a deal between the relationship's two companies (TRADE_INVOICE_DEAL_NOT_THIS_PAIR) */
             422: {
                 headers: {
                     [name: string]: unknown;

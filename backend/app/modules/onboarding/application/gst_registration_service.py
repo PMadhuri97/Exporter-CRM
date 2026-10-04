@@ -200,7 +200,7 @@ class GstRegistrationService:
         no-op, because the second request asks for a state the row is already in and
         failing it would make a retry an error.
         """
-        registration = await self._lock_registration(registration_id)
+        registration = await self._lock_company_then_registration(registration_id)
         if not registration.active:
             return registration
 
@@ -244,7 +244,7 @@ class GstRegistrationService:
             # surfacing a constraint violation.
             raise ValidationError("a flag needs a reason: it is what the block will say")
 
-        registration = await self._lock_registration(registration_id)
+        registration = await self._lock_company_then_registration(registration_id)
         was = registration.flag_status
         registration.flag_status = GstRegistrationFlag.FLAGGED
         registration.flag_reason = cleaned
@@ -280,7 +280,7 @@ class GstRegistrationService:
         if not cleaned:
             raise ValidationError("lifting a flag needs a reason")
 
-        registration = await self._lock_registration(registration_id)
+        registration = await self._lock_company_then_registration(registration_id)
         was = registration.flag_status
         registration.flag_status = GstRegistrationFlag.NONE
         registration.flag_reason = None
@@ -351,6 +351,30 @@ class GstRegistrationService:
         if profile is None:
             raise ExporterProfileNotFoundError(customer_id)
         return profile
+
+    async def _lock_company_then_registration(
+        self, registration_id: uuid.UUID
+    ) -> ExporterGstin:
+        """Lock the owning company ``FOR UPDATE``, then the registration (R-18).
+
+        The handover guard reads a seller's branches under ``FOR SHARE`` on the
+        **company** row (D10, P4-7) — so a flag, an unflag or a deactivation that
+        locked only the branch could commit between the guard's read and the
+        handover's commit, and a deal would go to the lending team through a branch
+        flagged a moment before. Taking the company first makes such a write wait for
+        the handover, and the next guard read see it. Company then registration is the
+        order ``add`` already takes, so the two cannot deadlock each other.
+
+        The registration's company is read first, unlocked: a branch never changes
+        company, so that read cannot go stale.
+        """
+        customer_id = await self._db.scalar(
+            select(ExporterGstin.customer_id).where(ExporterGstin.id == registration_id)
+        )
+        if customer_id is None:
+            raise GstRegistrationNotFoundError(registration_id)
+        await self._lock_profile(customer_id)
+        return await self._lock_registration(registration_id)
 
     async def _lock_registration(self, registration_id: uuid.UUID) -> ExporterGstin:
         registration = await self._db.scalar(

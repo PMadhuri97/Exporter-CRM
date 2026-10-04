@@ -302,8 +302,9 @@ async def test_the_sellers_own_gauge_rows_do_not_leak_onto_the_buyers_timeline()
     carrying the id, which put the seller's conversation gauge on the buyer's
     timeline, where it reads as the buyer's own conversation.
 
-    So the buyer side admits the ``deal`` dimension and nothing else; the buyer's own
-    rows, its own checks included, arrive through ``customer_id`` as they always did.
+    So the buyer side admits the ``deal`` and ``trade`` dimensions and nothing else; the
+    buyer's own rows, its own checks included, arrive through ``customer_id`` as they
+    always did.
     """
     seller = await _named_seller(f"Leak Seller {uuid.uuid4().hex[:8]}")
     buyer = await _buyer_only_company(f"Leak Buyer {uuid.uuid4().hex[:8]}")
@@ -334,3 +335,66 @@ async def test_the_sellers_own_gauge_rows_do_not_leak_onto_the_buyers_timeline()
             buyer, dimension=history_dimensions.DEAL, limit=50
         )
     assert any(row.deal_id == deal_id for row in buyer_deals)
+
+
+async def test_a_buyer_companys_history_includes_the_trade_on_deals_it_buys_on():
+    """R-23, as ``trade-history.md`` §6 and plan P5-3/P5-4 specify: trade rows are
+    written once, on the seller's timeline, and reach the buyer company through the
+    same read-side union as its deals. An invoice for the deal and how it was paid
+    are about the trade between the two, so the buyer is a party. Past trade recorded
+    with no deal stays on the seller's timeline."""
+    from datetime import date
+    from decimal import Decimal
+
+    from app.modules.onboarding.application.trade_history_service import TradeHistoryService
+    from app.modules.onboarding.domain.entities.trade_enums import TradePaymentStatus
+
+    seller = await _named_seller(f"Trade Seller {uuid.uuid4().hex[:8]}")
+    buyer = await _buyer_only_company(f"Trade Buyer {uuid.uuid4().hex[:8]}")
+    deal_id = await _deal_with_buyer_company(seller=seller, buyer=buyer)
+
+    async with db_services.AsyncSessionLocal() as db:
+        service = TradeHistoryService(db)
+        relationship = await service.relationship_for_pair(
+            seller_company_id=seller, buyer_company_id=buyer
+        )
+        on_the_deal = await service.record_invoice(
+            relationship.id,
+            invoice_number=f"DEAL-{uuid.uuid4().hex[:6].upper()}",
+            invoice_date=date(2026, 4, 1),
+            amount=Decimal("100.00"),
+            currency="USD",
+            deal_id=deal_id,
+            actor_id="rm-1",
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        await TradeHistoryService(db).record_outcome(
+            on_the_deal.id, payment_status=TradePaymentStatus.PAID, actor_id="rm-1"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        await TradeHistoryService(db).record_invoice(
+            relationship.id,
+            invoice_number=f"PAST-{uuid.uuid4().hex[:6].upper()}",
+            invoice_date=date(2025, 1, 1),
+            amount=Decimal("50.00"),
+            currency="USD",
+            actor_id="rm-1",
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        rows, total = await HistoryService(db).list_for_company(
+            buyer, dimension=history_dimensions.TRADE, limit=50
+        )
+    assert sorted(row.event_type for row in rows) == [
+        "trade_invoice_recorded",
+        "trade_outcome_recorded",
+    ]
+    assert all(row.deal_id == deal_id for row in rows)
+    assert total == 2
+
+    async with db_services.AsyncSessionLocal() as db:
+        seller_rows, _total = await HistoryService(db).list_for_company(
+            seller, dimension=history_dimensions.TRADE, limit=50
+        )
+    # The seller keeps all three, the past-trade invoice included.
+    assert len(seller_rows) == 3

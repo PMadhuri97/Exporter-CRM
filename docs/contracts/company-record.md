@@ -60,7 +60,7 @@ writer of that field; everyone else reads it.
 | `gstins` | GST registrations | no (empty list) | Several per company, one per state. A duplicate across companies warns, never blocks — §4 |
 | `iec` | Importer-exporter code | no | §4 |
 | `cin` | Company registration number | no | §4 |
-| `source` | How the company reached us | **yes** | The existing `ExporterSource` values. **Immutable once set**, enforced by the service and by `trg_exporter_profile_source_immutability`. `RXIL` for RXIL intake |
+| `source` | How the company reached us | **yes** | The existing `ExporterSource` values. **Immutable once set**, enforced by the service and by `trg_exporter_profile_source_immutability`. `RXIL` for RXIL intake. `DEAL_BUYER` only for a company created as a deal's buyer, outside the pipeline: `POST /exporters` and the CSV import refuse it (R-21) |
 | `date_added` | When the record was created | server-set | Immutable |
 
 `legal_name` / `incorporation_country` on `onboarding_request`, and the
@@ -399,6 +399,19 @@ of export markets and a cleared field fit neither. `event_type` is passed
 explicitly because the shared writer would otherwise derive `profile_initial`
 from the `NULL` `from_status`. This settles open item O7.
 
+**Identifiers are masked in these rows**, for every reader: `pan`, `gstins`, `iec`,
+`cin` and `registration_number` are written masked (`registration_number` since R-15;
+before it the full value was written), and the history route masks them again when it
+serves a row, so a row written before R-15 is served masked too without being rewritten
+(the log is append-only).
+
+**`identity_type` follows the edit** (R-16): it is recomputed whenever `pan` or
+`registration_number` changes, by the same rule as on create. An edit that touches
+`country`, `pan` or `registration_number` must leave the company identifiable (IQ-7):
+moving a PAN-less company abroad without a number, or clearing a foreign company's
+number, is refused (422). A buyer the P4-6 migration created with no number keeps IQ-7's
+exception until one is added. Migration 0043 corrected the rows edited before this.
+
 **A tax identifier's old and new values are masked in the row itself** (PAN,
 GSTIN, IEC — last four characters visible), not just in the response. The
 history read route returns `details` to every CRM reader, including
@@ -475,7 +488,7 @@ Stated separately so nobody reads this contract as a description of the code.
 | `conversation`, `background_check` fields | **implemented** — Dev 3A's 0016 and Dev 4A's 0015 (see §2.4) |
 | The ORM declares every index and constraint 0014/0017 created (PAN unique, the outcome chain) | **implemented** — checked by `test_orm_matches_the_onboarding_schema.py` |
 | `website` | **retired** (R11, decision IQ-16, task 3.7). No write path accepts one — the request schemas refuse the field (422) and the CSV importer reads the old `website` column and ignores it — and no response carries one. The column and every stored value are kept: nothing is destroyed, nothing is shown |
-| `registration_number` | whatever the company's own registrar issued, for a company not identified by a PAN. **Required for a company outside India** that holds no PAN (decision IQ-7); stored as the registrar writes it and compared with punctuation and case removed, so one number cannot be entered twice per country (`uq_exporter_profile_country_registration_number`). A duplicate is refused with 409 `DUPLICATE_REGISTRATION_NUMBER` naming the holder, like a PAN — unlike a GSTIN, which stays warn-only (IQ-9). Masked like CIN |
+| `registration_number` | whatever the company's own registrar issued, for a company not identified by a PAN. **Required for a company outside India** that holds no PAN (decision IQ-7); stored as the registrar writes it and compared with everything but the ASCII letters and digits removed, upper-cased — exactly the unique index's expression, so a lookup and an insert can never disagree (R-20) — so one number cannot be entered twice per country (`uq_exporter_profile_country_registration_number`). A number with no ASCII letter or digit is refused (422). A duplicate is refused with 409 `DUPLICATE_REGISTRATION_NUMBER` naming the holder, like a PAN — unlike a GSTIN, which stays warn-only (IQ-9). Masked like CIN |
 | `profile` history on edits; clearing a field | **implemented** (L2-07) |
 | Real links from contacts, activities, screening items, GSTINs and history | **implemented** (0014, `ON DELETE RESTRICT`); `verification_result.entity_reference` deliberately has none |
 | `name` required by the database | **not built** — waits for the unnamed create path to go |

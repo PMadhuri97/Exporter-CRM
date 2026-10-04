@@ -58,6 +58,18 @@ moment it is written by `trg_trade_invoice_identity_immutability`. There is no e
 invoice whose amount could be changed afterwards is not evidence of anything, so a
 mistake is corrected by recording the right invoice and the wrong one stays visible.
 
+`deal_id`, when given, is a **deal between the relationship's two companies**: the
+relationship's seller selling to its buyer company. Anything else is refused — a deal
+that does not exist (404 `DEAL_NOT_FOUND`), or one between other companies or whose
+buyer is still a legacy `deal_buyer` row (422 `TRADE_INVOICE_DEAL_NOT_THIS_PAIR`) —
+because the value is frozen once written. Since 0042 the database also holds it to a
+real deal (`fk_trade_invoice_deal_id`, `ON DELETE RESTRICT`; deals are never deleted).
+
+**One invoice per deal is not a rule (D-03, open).** The deal route below creates one
+when the deal has none and refuses invoice details once it has one; the relationship
+route may still record a second against the same deal on purpose. When a deal has
+several, the deal route answers about the **earliest**.
+
 An **outcome** is one thing we learned about an invoice: `payment_status`,
 `amount_paid`, `proof_status`, `evidence_note`, `evidence_refs`, `recorded_by/at` and
 `supersedes_outcome_id`. `evidence_refs` is a list of `{type, ref}` in a verification
@@ -68,6 +80,12 @@ verification review. A partial unique index allows one head per invoice and one
 superseder per row, so the chain is a line and not a tree: two people cannot each
 correct the same outcome without seeing the other's. The service refuses to supersede
 anything but the current head, with the error the UI shows.
+
+**Concurrent outcomes.** Recording one locks the invoice row `FOR UPDATE` before the
+head is read, so two outcomes for one invoice are decided one after the other: the
+second sees the first as the head and is refused with 409 `TRADE_OUTCOME_STALE`. Two
+simultaneous first outcomes, or two corrections of the same head, never surface as a
+500.
 
 `is_current` in the API means *nothing supersedes this row* — not *the newest
 timestamp*. Two rows written in one transaction share a timestamp, so "newest" would
@@ -139,6 +157,14 @@ It creates the deal's invoice if it has none, in which case the four invoice fie
 required **together or not at all**, and refuses invoice details when one already exists
 (422 `TRADE_INVOICE_ALREADY_RECORDED`). Then it appends the outcome.
 
+**All or nothing.** The request is checked before anything is written, and the
+relationship, the invoice and the outcome are committed together, once. A refused
+request — a `PARTIAL` with no `amount_paid`, malformed evidence, a stale
+`supersedes_outcome_id` — leaves no invoice behind, so the corrected retry succeeds.
+**One request per deal at a time:** the deal row is locked `FOR UPDATE` first, so two
+first outcomes on a deal with no invoice cannot both create one; the second is told the
+invoice exists.
+
 **It is not a deal stage.** Handover is the end of the deal's own story; what happened to
 the money afterwards is a fact about the trade (architecture §3.3). Nothing about a deal
 changes here.
@@ -202,6 +228,8 @@ how many do before you try.
 | `TRADE_INVOICE_NOT_FOUND` | 404 | No such invoice |
 | `TRADE_OUTCOME_STALE` | 409 | `supersedes_outcome_id` is not the chain's head |
 | `TRADE_INVOICE_ALREADY_RECORDED` | 422 | Invoice details sent for a deal that already has one |
+| `TRADE_INVOICE_DEAL_NOT_THIS_PAIR` | 422 | An invoice's `deal_id` is not a deal between the relationship's two companies |
+| `DEAL_NOT_FOUND` | 404 | An invoice's `deal_id` names no deal |
 | `DEAL_NOT_HANDED_OVER` | 409 | A payment outcome on a deal that has not been handed over |
 | `DEAL_BUYER_IS_NOT_A_COMPANY` | 409 | The deal's buyer is still a legacy `deal_buyer` row |
 

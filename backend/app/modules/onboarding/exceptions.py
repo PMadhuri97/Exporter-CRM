@@ -2063,6 +2063,27 @@ class DealBuyerIsNotACompanyError(AnerBaseException):
         )
 
 
+class TradeInvoiceDealNotThisPairError(AnerBaseException):
+    """An invoice naming a deal between two other companies (R-17).
+
+    A relationship is one seller and one buyer company, and an invoice's ``deal_id``
+    says which of their deals it came from. A deal whose seller or buyer company is a
+    different one — or whose buyer is still a legacy ``deal_buyer`` row — is not a deal
+    between these two, and the value is frozen once written.
+    """
+
+    def __init__(self, deal_id: object, relationship_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Deal {deal_id} is not between trade relationship {relationship_id}'s "
+                "seller and buyer companies, so an invoice on that relationship cannot "
+                "name it."
+            ),
+            error_code="TRADE_INVOICE_DEAL_NOT_THIS_PAIR",
+            status_code=422,
+        )
+
+
 class TradeInvoiceAlreadyRecordedError(AnerBaseException):
     """Invoice details sent for a deal that already has an invoice.
 

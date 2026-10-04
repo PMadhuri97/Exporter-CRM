@@ -56,6 +56,7 @@ from app.modules.onboarding.exceptions import (
     DealNotHandedOverError,
     ExporterProfileNotFoundError,
     TradeInvoiceAlreadyRecordedError,
+    TradeInvoiceDealNotThisPairError,
     TradeInvoiceNotFoundError,
     TradeOutcomeStaleError,
     TradeRelationshipIsSelfError,
@@ -219,16 +220,69 @@ class TradeHistoryService:
         ``ck_trade_invoice_currency``, because a code nobody can look up is permanent
         nonsense in a column that is never recomputed.
 
+        ``deal_id``, when given, must be a deal **between this relationship's two
+        companies** — the seller's deal with this buyer company (R-17). The value is
+        frozen once written and nothing else ties an invoice to a deal, so a wrong id
+        would sit on the invoice for good.
+
         Raises:
             TradeRelationshipNotFoundError: no such relationship.
+            DealNotFoundError: ``deal_id`` names no deal.
+            TradeInvoiceDealNotThisPairError: the deal is not between these companies.
             ValidationError: a blank number, a non-positive amount, a malformed
                 currency, or a number this relationship already has.
         """
+        invoice = await self._write_invoice(
+            relationship_id,
+            invoice_number=invoice_number,
+            invoice_date=invoice_date,
+            amount=amount,
+            currency=currency,
+            deal_id=deal_id,
+            actor_id=actor_id,
+            source=source,
+            source_ref=source_ref,
+        )
+        await self._db.commit()
+        await self._db.refresh(invoice)
+        logger.info(
+            "trade_invoice.recorded",
+            invoice_id=str(invoice.id),
+            relationship_id=str(relationship_id),
+            currency=invoice.currency,
+        )
+        return invoice
+
+    async def _write_invoice(
+        self,
+        relationship_id: uuid.UUID,
+        *,
+        invoice_number: str,
+        invoice_date: date,
+        amount: Decimal,
+        currency: str,
+        deal_id: uuid.UUID | None,
+        actor_id: str | None,
+        source: str,
+        source_ref: str | None,
+    ) -> TradeInvoice:
+        """``record_invoice`` without the commit: flushed, with its history row, inside
+        the caller's transaction. ``record_outcome_for_deal`` needs the invoice and its
+        outcome to land together or not at all (R-12)."""
         relationship = await self._db.scalar(
             select(TradeRelationship).where(TradeRelationship.id == relationship_id)
         )
         if relationship is None:
             raise TradeRelationshipNotFoundError(relationship_id)
+        if deal_id is not None:
+            deal = await self._db.scalar(select(Deal).where(Deal.id == deal_id))
+            if deal is None:
+                raise DealNotFoundError(deal_id)
+            if (deal.company_id, deal.buyer_company_id) != (
+                relationship.seller_company_id,
+                relationship.buyer_company_id,
+            ):
+                raise TradeInvoiceDealNotThisPairError(deal_id, relationship_id)
 
         number = (invoice_number or "").strip()
         if not number:
@@ -275,14 +329,6 @@ class TradeHistoryService:
                 "currency": code,
             },
         )
-        await self._db.commit()
-        await self._db.refresh(invoice)
-        logger.info(
-            "trade_invoice.recorded",
-            invoice_id=str(invoice.id),
-            relationship_id=str(relationship_id),
-            currency=code,
-        )
         return invoice
 
     async def list_invoices(self, relationship_id: uuid.UUID) -> list[TradeInvoice]:
@@ -326,22 +372,109 @@ class TradeHistoryService:
         not receive, and a payment in another currency is a conversion, which IQ-4
         rules out — so there is one amount, in the invoice's own currency.
 
+        **Safe under concurrency** (R-13). The invoice row is locked ``FOR UPDATE``
+        before the head is read, so two outcomes for one invoice are decided one after
+        the other: the second sees the first as the head and is refused as stale, with
+        the 409 the route documents, rather than racing it into a unique index and a
+        500.
+
         Raises:
             TradeInvoiceNotFoundError: no such invoice.
             TradeOutcomeStaleError: ``supersedes_outcome_id`` is not the head.
             ValidationError: a missing ``amount_paid`` for ``PARTIAL``, a correction
                 with no note, or malformed evidence.
         """
-        invoice = await self._db.scalar(
-            select(TradeInvoice).where(TradeInvoice.id == invoice_id)
+        outcome = await self._write_outcome(
+            invoice_id,
+            payment_status=payment_status,
+            proof_status=proof_status,
+            amount_paid=amount_paid,
+            evidence_note=evidence_note,
+            evidence_refs=evidence_refs,
+            supersedes_outcome_id=supersedes_outcome_id,
+            actor_id=actor_id,
+            source=source,
+            source_ref=source_ref,
         )
-        if invoice is None:
-            raise TradeInvoiceNotFoundError(invoice_id)
+        await self._db.commit()
+        await self._db.refresh(outcome)
+        logger.info(
+            "trade_outcome.recorded",
+            invoice_id=str(invoice_id),
+            outcome_id=str(outcome.id),
+            payment_status=payment_status.value,
+            superseded=str(supersedes_outcome_id) if supersedes_outcome_id else None,
+        )
+        return outcome
 
+    @staticmethod
+    def _checked_outcome(
+        *,
+        payment_status: TradePaymentStatus,
+        amount_paid: Decimal | None,
+        evidence_note: str | None,
+        evidence_refs: list[dict] | None,
+    ) -> tuple[EvidenceRef, ...]:
+        """Everything about an outcome that can be checked without reading the
+        database — so ``record_outcome_for_deal`` can refuse a bad request before it
+        writes anything (R-12). Returns the parsed evidence references.
+
+        Raises:
+            ValidationError: a missing ``amount_paid`` for ``PARTIAL``, a negative
+                amount, or malformed evidence.
+        """
         if payment_status is TradePaymentStatus.PARTIAL and amount_paid is None:
             raise ValidationError("a PARTIAL outcome must say how much was paid")
         if amount_paid is not None and Decimal(amount_paid) < 0:
             raise ValidationError("amount_paid cannot be negative")
+        if not evidence_refs:
+            return ()
+        # The **shape** rule a verification result's evidence gets, reused rather than
+        # reimplemented so trade evidence and compliance evidence cannot drift: every
+        # reference names a known type and a non-blank ref, and a `url` is an http(s)
+        # link. Whether a referenced document belongs to the right subject is
+        # `VerificationService`'s own check and does not apply here — a trade invoice's
+        # proof may be the buyer's bank advice, which is nobody's company document.
+        try:
+            refs = tuple(
+                EvidenceRef(type=str(r.get("type", "")), ref=str(r.get("ref", "")))
+                for r in evidence_refs
+            )
+        except AttributeError as exc:
+            raise ValidationError(
+                "each evidence reference must be an object with a type and a ref"
+            ) from exc
+        check_evidence_shape(VerificationEvidence(note=evidence_note, refs=refs))
+        return refs
+
+    async def _write_outcome(
+        self,
+        invoice_id: uuid.UUID,
+        *,
+        payment_status: TradePaymentStatus,
+        proof_status: TradeProofStatus,
+        amount_paid: Decimal | None,
+        evidence_note: str | None,
+        evidence_refs: list[dict] | None,
+        supersedes_outcome_id: uuid.UUID | None,
+        actor_id: str | None,
+        source: str,
+        source_ref: str | None,
+    ) -> TradeInvoiceOutcome:
+        """``record_outcome`` without the commit: the invoice locked, the outcome
+        flushed with its history row, inside the caller's transaction."""
+        invoice = await self._db.scalar(
+            select(TradeInvoice).where(TradeInvoice.id == invoice_id).with_for_update()
+        )
+        if invoice is None:
+            raise TradeInvoiceNotFoundError(invoice_id)
+
+        refs = self._checked_outcome(
+            payment_status=payment_status,
+            amount_paid=amount_paid,
+            evidence_note=evidence_note,
+            evidence_refs=evidence_refs,
+        )
 
         head = await self._head_outcome(invoice_id)
         if head is None:
@@ -358,26 +491,6 @@ class TradeHistoryService:
                     "the outcome it replaces stays on the record"
                 )
 
-        refs: tuple[EvidenceRef, ...] = ()
-        if evidence_refs:
-            # The **shape** rule a verification result's evidence gets, reused rather
-            # than reimplemented so trade evidence and compliance evidence cannot
-            # drift: every reference names a known type and a non-blank ref, and a
-            # `url` is an http(s) link. Whether a referenced document belongs to the
-            # right subject is `VerificationService`'s own check and does not apply
-            # here — a trade invoice's proof may be the buyer's bank advice, which is
-            # nobody's company document.
-            try:
-                refs = tuple(
-                    EvidenceRef(type=str(r.get("type", "")), ref=str(r.get("ref", "")))
-                    for r in evidence_refs
-                )
-            except AttributeError as exc:
-                raise ValidationError(
-                    "each evidence reference must be an object with a type and a ref"
-                ) from exc
-            check_evidence_shape(VerificationEvidence(note=evidence_note, refs=refs))
-
         outcome = TradeInvoiceOutcome(
             invoice_id=invoice_id,
             payment_status=payment_status,
@@ -391,7 +504,17 @@ class TradeHistoryService:
             source_ref=source_ref,
         )
         self._db.add(outcome)
-        await self._db.flush()
+        try:
+            async with self._db.begin_nested():
+                await self._db.flush()
+        except IntegrityError as exc:
+            # `uq_trade_invoice_outcome_first` / `_supersedes`. The lock above makes
+            # this unreachable for writers that go through here; a writer that does not
+            # still gets the documented answer rather than a 500.
+            self._db.expunge(outcome)
+            raise TradeOutcomeStaleError(
+                invoice_id, supersedes_outcome_id, getattr(head, "id", None)
+            ) from exc
 
         relationship = await self._db.scalar(
             select(TradeRelationship).where(
@@ -414,15 +537,6 @@ class TradeHistoryService:
                 "currency": invoice.currency,
             },
             reason=outcome.evidence_note,
-        )
-        await self._db.commit()
-        await self._db.refresh(outcome)
-        logger.info(
-            "trade_outcome.recorded",
-            invoice_id=str(invoice_id),
-            outcome_id=str(outcome.id),
-            payment_status=payment_status.value,
-            superseded=str(supersedes_outcome_id) if supersedes_outcome_id else None,
         )
         return outcome
 
@@ -464,15 +578,79 @@ class TradeHistoryService:
         one, ``invoice`` must be omitted, because an invoice's identity is frozen and
         quietly ignoring new details would tell the caller they had been recorded.
 
+        **All or nothing** (R-12). The request is checked before anything is written,
+        and the relationship, the invoice and the outcome are written in one
+        transaction committed once at the end. A refused request leaves no invoice
+        behind, so the corrected retry is not refused for an invoice it never meant to
+        create.
+
+        **One request per deal at a time** (R-14). The deal row is locked ``FOR
+        UPDATE`` first, so two first outcomes on a deal with no invoice cannot both
+        create one: the second sees the first's invoice and is told so. Nothing more is
+        enforced — whether a deal may have more than one invoice is decision D-03, and
+        the relationship route still records a second one deliberately
+        (``TradeInvoiceAlreadyRecordedError``). When a deal has several, this route
+        answers about the earliest.
+
         Returns ``(invoice, outcome)``.
         """
-        deal = await self._db.scalar(select(Deal).where(Deal.id == deal_id))
+        try:
+            target, outcome, created_invoice = await self._outcome_for_deal(
+                deal_id,
+                payment_status=payment_status,
+                proof_status=proof_status,
+                amount_paid=amount_paid,
+                evidence_note=evidence_note,
+                evidence_refs=evidence_refs,
+                supersedes_outcome_id=supersedes_outcome_id,
+                invoice=invoice,
+                actor_id=actor_id,
+            )
+            await self._db.commit()
+        except Exception:
+            # Whatever the caller does next, nothing of this request survives it.
+            await self._db.rollback()
+            raise
+        await self._db.refresh(target)
+        await self._db.refresh(outcome)
+        logger.info(
+            "trade_outcome.recorded_for_deal",
+            deal_id=str(deal_id),
+            invoice_id=str(target.id),
+            outcome_id=str(outcome.id),
+            created_invoice=created_invoice,
+        )
+        return target, outcome
+
+    async def _outcome_for_deal(
+        self,
+        deal_id: uuid.UUID,
+        *,
+        payment_status: TradePaymentStatus,
+        proof_status: TradeProofStatus,
+        amount_paid: Decimal | None,
+        evidence_note: str | None,
+        evidence_refs: list[dict] | None,
+        supersedes_outcome_id: uuid.UUID | None,
+        invoice: DealInvoiceDraft | None,
+        actor_id: str | None,
+    ) -> tuple[TradeInvoice, TradeInvoiceOutcome, bool]:
+        """``record_outcome_for_deal``'s writes, uncommitted. Returns the invoice, the
+        outcome and whether the invoice was created here."""
+        deal = await self._db.scalar(select(Deal).where(Deal.id == deal_id).with_for_update())
         if deal is None:
             raise DealNotFoundError(deal_id)
         if deal.stage is not DealStage.HANDED_OVER:
             raise DealNotHandedOverError(deal_id, deal.stage.value)
         if deal.buyer_company_id is None:
             raise DealBuyerIsNotACompanyError(deal_id)
+        # Before any write: a request that can be refused on its own terms is.
+        self._checked_outcome(
+            payment_status=payment_status,
+            amount_paid=amount_paid,
+            evidence_note=evidence_note,
+            evidence_refs=evidence_refs,
+        )
 
         relationship, _created = await self.get_or_create_relationship(
             seller_company_id=deal.company_id,
@@ -483,10 +661,13 @@ class TradeHistoryService:
         )
 
         existing = await self._db.scalar(
-            select(TradeInvoice).where(
+            select(TradeInvoice)
+            .where(
                 TradeInvoice.relationship_id == relationship.id,
                 TradeInvoice.deal_id == deal_id,
             )
+            .order_by(TradeInvoice.created_at, TradeInvoice.id)
+            .limit(1)
         )
         if existing is not None:
             if invoice is not None:
@@ -498,7 +679,7 @@ class TradeHistoryService:
                     "this deal has no invoice yet, so recording how it was paid needs "
                     "the invoice's number, date, amount and currency"
                 )
-            target = await self.record_invoice(
+            target = await self._write_invoice(
                 relationship.id,
                 invoice_number=invoice.invoice_number,
                 invoice_date=invoice.invoice_date,
@@ -510,7 +691,7 @@ class TradeHistoryService:
                 source_ref=str(deal_id),
             )
 
-        outcome = await self.record_outcome(
+        outcome = await self._write_outcome(
             target.id,
             payment_status=payment_status,
             proof_status=proof_status,
@@ -522,14 +703,7 @@ class TradeHistoryService:
             source=SOURCE_DEAL_BUYER_RECORDED,
             source_ref=str(deal_id),
         )
-        logger.info(
-            "trade_outcome.recorded_for_deal",
-            deal_id=str(deal_id),
-            invoice_id=str(target.id),
-            outcome_id=str(outcome.id),
-            created_invoice=existing is None,
-        )
-        return target, outcome
+        return target, outcome, existing is None
 
     async def _head_outcome(self, invoice_id: uuid.UUID) -> TradeInvoiceOutcome | None:
         """The chain's current head: the outcome nothing supersedes.

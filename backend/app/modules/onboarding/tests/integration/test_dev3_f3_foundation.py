@@ -43,6 +43,7 @@ from app.modules.onboarding.domain.handover_conditions import BranchFlagReader
 from app.modules.onboarding.domain.tax_identifiers import IEC_RE
 from app.modules.onboarding.migrations.onboarding_0040_iec_format import IEC_PATTERN
 from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.deals import make_deal
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
 
@@ -196,7 +197,7 @@ async def test_create_buyer_company_makes_a_company_that_is_not_a_lead():
     """What Developer 2's buyer migration (2.6) calls. The company is real — it can be
     screened and cleared (Developer 1's P4-11) — but it is not in the pipeline, so it
     changes no LEAD count (plan §8, P4-2)."""
-    deal_id = uuid.uuid4()
+    deal_id = await make_deal()
     registration = _registration()
     draft = BuyerCompanyDraft(
         name="Rotterdam Trading BV",
@@ -225,7 +226,7 @@ async def test_create_buyer_company_makes_a_company_that_is_not_a_lead():
 async def test_creating_the_same_deals_buyer_twice_creates_one_company():
     """P4-6's "re-run creates nothing". Keyed on the deal, which is the only stable
     thing a `deal_buyer` row has."""
-    deal_id = uuid.uuid4()
+    deal_id = await make_deal()
     draft = BuyerCompanyDraft(name="Hanseatic GmbH", country="DE", created_via_deal_id=deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
@@ -246,7 +247,7 @@ async def test_a_buyer_with_a_pan_is_an_indian_company():
                 name="Chennai Spice Exports",
                 country="IN",
                 pan=pan,
-                created_via_deal_id=uuid.uuid4(),
+                created_via_deal_id=await make_deal(),
             ),
             actor_id="m",
         )
@@ -261,7 +262,7 @@ async def test_a_buyer_with_neither_identifier_leaves_the_question_open():
     async with db_services.AsyncSessionLocal() as db:
         company_id = await CompanyDirectoryService(db).create_buyer_company(
             BuyerCompanyDraft(
-                name="Gulf Fresh Foods LLC", country="AE", created_via_deal_id=uuid.uuid4()
+                name="Gulf Fresh Foods LLC", country="AE", created_via_deal_id=await make_deal()
             ),
             actor_id="m",
         )
@@ -292,7 +293,7 @@ async def test_match_finds_a_company_by_its_exact_pan():
         company_id = await CompanyDirectoryService(db).create_buyer_company(
             BuyerCompanyDraft(
                 name="Mumbai Textiles", country="IN", pan=pan,
-                created_via_deal_id=uuid.uuid4(),
+                created_via_deal_id=await make_deal(),
             ),
             actor_id="m",
         )
@@ -315,7 +316,7 @@ async def test_match_finds_a_company_by_its_normalised_registration_number():
             BuyerCompanyDraft(
                 name="Antwerp Shipping NV", country="BE",
                 registration_number=f"BE {bare[:4]}-{bare[4:]}",
-                created_via_deal_id=uuid.uuid4(),
+                created_via_deal_id=await make_deal(),
             ),
             actor_id="m",
         )
@@ -344,7 +345,7 @@ async def test_a_name_alone_is_never_a_match():
     async with db_services.AsyncSessionLocal() as db:
         company_id = await CompanyDirectoryService(db).create_buyer_company(
             BuyerCompanyDraft(
-                name="Rotterdam Trading BV", country="NL", created_via_deal_id=uuid.uuid4()
+                name="Rotterdam Trading BV", country="NL", created_via_deal_id=await make_deal()
             ),
             actor_id="m",
         )
@@ -377,7 +378,7 @@ async def test_match_reports_a_conflict_rather_than_picking_one():
         with_pan = await CompanyDirectoryService(db).create_buyer_company(
             BuyerCompanyDraft(
                 name="One Company", country="IN", pan=pan,
-                created_via_deal_id=uuid.uuid4(),
+                created_via_deal_id=await make_deal(),
             ),
             actor_id="m",
         )
@@ -386,7 +387,7 @@ async def test_match_reports_a_conflict_rather_than_picking_one():
             BuyerCompanyDraft(
                 name="Another Company", country="IN",
                 registration_number=registration,
-                created_via_deal_id=uuid.uuid4(),
+                created_via_deal_id=await make_deal(),
             ),
             actor_id="m",
         )

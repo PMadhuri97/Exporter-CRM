@@ -80,14 +80,17 @@ def created_via_for_history_source(history_source: str | None) -> CreatedVia | N
 
 def registration_key(registration_number: str) -> str:
     """The form ``uq_exporter_profile_country_registration_number`` compares:
-    alphanumerics only, upper-cased.
+    ASCII letters and digits only, upper-cased — the index's own
+    ``upper(regexp_replace(registration_number, '[^A-Za-z0-9]', '', 'g'))``.
 
-    Mirrors the index's SQL expression deliberately. A lookup that normalised
-    differently from the constraint would report "no such company" for a number
-    the insert then refuses as a duplicate — ``KVK 12.345`` and ``kvk-12345``
-    are one registration, and a registrar's punctuation is presentation.
+    Mirrors that expression **exactly**. A lookup that normalised differently from
+    the constraint would report "no such company" for a number the insert then
+    refuses as a duplicate — ``KVK 12.345`` and ``kvk-12345`` are one registration,
+    and a registrar's punctuation is presentation. It used to keep every Unicode
+    letter and digit (``str.isalnum``), which the index drops, so a number written
+    partly in another script matched nothing and then failed the insert (R-20).
     """
-    return "".join(ch for ch in registration_number if ch.isalnum()).upper()
+    return "".join(ch for ch in registration_number if ch.isascii() and ch.isalnum()).upper()
 
 
 def normalise_registration_number(value: str | None) -> str | None:
@@ -96,8 +99,8 @@ def normalise_registration_number(value: str | None) -> str | None:
 
     Stored as the registrar writes it — punctuation and case kept, unlike a PAN
     — because it is shown back to staff and printed on documents; only
-    *comparison* normalises (`registration_key`). A value with no alphanumerics
-    at all is refused rather than stored, since it could never match anything.
+    *comparison* normalises (`registration_key`). A value with no ASCII letter or
+    digit is refused rather than stored, since it could never match anything.
 
     Raises:
         ValidationError: the value is longer than the column, or carries no
@@ -111,7 +114,11 @@ def normalise_registration_number(value: str | None) -> str | None:
             f"registration_number must be at most {REGISTRATION_NUMBER_MAX} characters"
         )
     if not registration_key(cleaned):
-        raise ValidationError("registration_number must contain letters or digits")
+        # Nothing the index compares: every such number would collide on the empty key.
+        raise ValidationError(
+            "registration_number must contain letters or digits (A-Z, 0-9): those are "
+            "what identify it"
+        )
     return cleaned
 
 

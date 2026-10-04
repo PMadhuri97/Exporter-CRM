@@ -104,10 +104,14 @@ class TradeInvoice(AnerModel):
         nullable=False,
     )
     #: The deal this invoice came from, when it came from one. ``NULL`` for past trade
-    #: recorded against the relationship (task 3.21). A bare uuid with no FK, like
-    #: ``exporter_lifecycle_history.deal_id``: losing the invoice because a deal was
-    #: cleaned up would be worse than losing the link.
-    deal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: recorded against the relationship (task 3.21). A real deal between the
+    #: relationship's two companies: the service checks the pair, and 0042's
+    #: ``RESTRICT`` FK means a deal an invoice names is never deleted under it (R-17).
+    deal_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{SCHEMA}.deal.id", name="fk_trade_invoice_deal_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
 
     invoice_number: Mapped[str] = mapped_column(String(100), nullable=False)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)

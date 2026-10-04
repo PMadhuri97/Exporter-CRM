@@ -21,6 +21,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.onboarding.api.schemas.masking import mask_identifier
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
 )
@@ -96,6 +97,7 @@ class HistoryEntryResponse(BaseModel):
             for key, value in (row.event_metadata or {}).items()
             if key not in hidden_detail_keys
         }
+        _mask_identifier_edit(metadata)
         source = metadata.pop("source", None)
         return cls(
             id=row.id,
@@ -112,6 +114,26 @@ class HistoryEntryResponse(BaseModel):
             details=metadata or None,
             occurred_at=row.created_at,
         )
+
+
+#: Company fields whose values a history row never serves in full, for any reader —
+#: the same set the writer masks (`exporter_profile_service._MASKED_IN_HISTORY`).
+#: Masked again here because rows written before R-15 hold a registration number in
+#: full, and history is append-only: it cannot be rewritten, only served masked.
+#: Masking an already-masked value changes nothing.
+IDENTIFIER_FIELDS_IN_HISTORY = frozenset({"gstins", "pan", "iec", "cin", "registration_number"})
+
+
+def _mask_identifier_edit(details: dict) -> None:
+    """Mask ``from`` and ``to`` in place when the row records an identifier edit."""
+    if details.get("field") not in IDENTIFIER_FIELDS_IN_HISTORY:
+        return
+    for key in ("from", "to"):
+        value = details.get(key)
+        if isinstance(value, list):
+            details[key] = [mask_identifier(str(item)) for item in value]
+        elif value is not None:
+            details[key] = mask_identifier(str(value))
 
 
 class HistoryListResponse(BaseModel):

@@ -330,6 +330,23 @@ async def world(
     )
     world.ids["case_id"] = case["id"]
 
+    # Edits, so history holds identifier *changes* and not only creations (R-15). A
+    # GET-only sweep never saw that the registration number was written to history in
+    # full; the old value of each edit is a secret too, because history keeps it.
+    new_registration = f"KVK-{uuid.uuid4().hex[:8].upper()}"
+    await ok(
+        "PATCH",
+        f"/exporters/{buyer_company_id}",
+        compliance,
+        json={"registration_number": new_registration},
+    )
+    secrets["registration number before its edit"] = secrets["registration number"]
+    secrets["registration number"] = new_registration
+    new_iec = uuid.uuid4().hex[:10].upper()
+    await ok("PATCH", f"/exporters/{company_id}", compliance, json={"iec": new_iec})
+    secrets["IEC before its edit"] = secrets["IEC"]
+    secrets["IEC"] = new_iec
+
     world.buyer_company_id = buyer_company_id
     world.secrets = secrets
     world.masked = {

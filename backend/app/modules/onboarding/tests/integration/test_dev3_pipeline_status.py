@@ -35,6 +35,7 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
     QualificationOutcomeValue,
 )
 from app.modules.onboarding.tests.fixtures.auth import auth_header, user_with_role
+from app.modules.onboarding.tests.fixtures.deals import make_deal
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -153,7 +154,7 @@ async def test_a_buyer_company_starts_with_no_journey_history():
     `ck_exporter_profile_not_in_pipeline_start` requires it — but there is no
     journey *row*, because no sales process has begun. The company's one history
     row is on the `pipeline` dimension: how it came to exist."""
-    deal_id = uuid.uuid4()
+    deal_id = await make_deal()
     async with db_services.AsyncSessionLocal() as db:
         company_id = await CompanyDirectoryService(db).create_buyer_company(
             BuyerCompanyDraft(

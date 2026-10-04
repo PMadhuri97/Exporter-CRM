@@ -100,7 +100,12 @@ _KNOWN_COLUMNS: frozenset[str] = frozenset(
 MAX_ROWS = 1000
 
 #: Sources a row may give. `RXIL` companies arrive through RXIL intake only.
-_IMPORTABLE_SOURCES = {s.value: s for s in ExporterSource if s is not ExporterSource.RXIL}
+#: RXIL companies arrive through the partner intake, and DEAL_BUYER companies through
+#: the buyer-company path, which creates them outside the pipeline (R-21). An import
+#: creates leads, so neither is a source it can claim.
+_IMPORTABLE_SOURCES = {
+    s.value: s for s in ExporterSource if s not in (ExporterSource.RXIL, ExporterSource.DEAL_BUYER)
+}
 
 
 @dataclass

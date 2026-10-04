@@ -256,7 +256,7 @@ class CompanyDirectoryService:
         await AuditService(self._db).record(
             "company_directory.identifier_lookup",
             actor_id=_as_uuid(actor_id),
-            actor_type=ActorType.COMPLIANCE_OFFICER,
+            actor_type=actor_type_for_role(actor_role),
             payload={
                 "identifier_kinds": kinds,
                 "country": country.strip().upper(),
@@ -392,6 +392,28 @@ class CompanyDirectoryService:
         return profile.customer_id
 
 
+#: Staff roles: what `ActorType.COMPLIANCE_OFFICER` means. Its own definition is "internal
+#: staff acting with privileged authority (any role-gated back-office endpoint, incl.
+#: OPERATIONS/ADMIN)" — a class of principal, not the user's role, which the audit row
+#: records separately (`actor_role`).
+_STAFF_ROLES = frozenset({"OPERATIONS", "COMPLIANCE", "ADMIN"})
+
+
+def actor_type_for_role(role: str | None) -> ActorType:
+    """The audit `ActorType` for a caller with this role, by the audit module's own
+    definitions (R-22): staff are `COMPLIANCE_OFFICER`, an external caller
+    (`API_USER`) is `API_CLIENT`, and no role at all is the platform, `SYSTEM`.
+
+    A role outside those (DEVELOPER, which `/companies/match` refuses) is recorded as
+    `API_CLIENT`: it acts without privileged authority, and claiming staff authority
+    for it would be the wrong way round.
+    """
+    if role is None:
+        return ActorType.SYSTEM
+    name = getattr(role, "value", role)
+    return ActorType.COMPLIANCE_OFFICER if name in _STAFF_ROLES else ActorType.API_CLIENT
+
+
 #: The role a contact made from a buyer's details carries: what it is and where it came
 #: from, since there is no person's name or title to give it.
 BUYER_CONTACT_ROLE = "Buyer contact, from the deal's buyer details"
@@ -433,5 +455,6 @@ __all__ = [
     "BUYER_CONTACT_ROLE",
     "CREATED_VIA_DEAL_BUYER",
     "CompanyDirectoryService",
+    "actor_type_for_role",
     "buyer_contact",
 ]
