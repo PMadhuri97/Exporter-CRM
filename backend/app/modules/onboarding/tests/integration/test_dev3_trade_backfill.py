@@ -122,7 +122,9 @@ async def test_a_dry_run_names_the_pairs_and_writes_nothing():
 
     rendered = report.render()
     assert "relationships to create:    1" in rendered
-    assert " → " in rendered  # the pair reads as a pair, not as two uuids
+    # The pair reads as a pair, not as two uuids — and in ASCII, which a cp1252
+    # console can print (R-11).
+    assert " -> " in rendered and rendered.isascii()
 
     # A dry run is a read: `resolve` wrote nothing.
     assert await _relationships(seller, buyer) == []

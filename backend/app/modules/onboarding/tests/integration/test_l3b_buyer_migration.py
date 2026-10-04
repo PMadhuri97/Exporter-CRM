@@ -434,9 +434,11 @@ async def test_re_running_creates_nothing():
     second = await _apply_only(second_report, run_id="test-again-2")
     assert second == {
         "companies_created": 0,
+        "contacts_created": 0,
         "mapped": 0,
         "deals_linked": 0,
         "results_linked": 0,
+        "skipped_deal_changed": 0,
     }
 
 
@@ -517,7 +519,9 @@ async def test_the_validation_queries_run_and_report_counts():
     would otherwise be discovered on the night of the migration."""
     async with db_services.AsyncSessionLocal() as db:
         results = await validate(db)
-    assert len(results) == 7
+    # Seven from §17.2, and two from R-07: the map and the BUYER results agree with
+    # the deal's own buyer company.
+    assert len(results) == 9
     for label, count in results:
         assert isinstance(count, int), label
         assert count >= 0, label

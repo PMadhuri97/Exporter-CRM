@@ -202,22 +202,43 @@ A **command**, not an Alembic revision —
 `python -m app.modules.onboarding.migrate_deal_buyers` — because plan §17.2 puts a
 person between reading and writing: name-only duplicates are reported and confirmed by
 hand (IQ-8), and a revision has nowhere to pause for that. The sequence is `pg_dump`,
-`--dry-run`, read the report, confirm the duplicates, `--apply --run-id`, `--validate`.
+`--dry-run`, read the report, confirm what needs a person, `--apply --run-id`,
+`--validate`, and a second `--apply` that must create nothing. Run it with
+`LOG_LEVEL=WARNING DEBUG=false`; its output is ASCII, so a Windows console can show it.
 
-How a legacy buyer's identity is resolved, in order of confidence: a **PAN** (which may
-well join an existing *seller* — that is the point of unifying the two), then a
-**`(country, normalised registration number)`** pair, then a **new**
-`NOT_IN_PIPELINE` company. A **matching name with no identifier** is reported and
-never merged automatically; confirming one records `match_rule = NAME_CONFIRMED`, so
-the row says a human decided. Two cases are refused and reported rather than guessed:
-a buyer resolving to its own deal's seller, and a buyer whose PAN and registration
-number name *different* companies.
+How a legacy buyer's identity is resolved, in order of confidence:
+
+1. **A company it is already linked to** — the deal names a buyer company (task 2.4),
+   or its BUYER results already have a `subject_company_id`. Both are set once, so that
+   company is the answer (`match_rule = ALREADY_LINKED`, migration 0041) unless an
+   identifier on the legacy row contradicts it, or the links contradict each other.
+2. A **PAN** (which may well join an existing *seller* — that is the point of unifying
+   the two). A PAN that only GSTINs carry, on several companies, is a conflict.
+3. A **`(country, normalised registration number)`** pair. Rows sharing either
+   identifier are one company. A number with fewer than two letters or digits is not
+   an identity: it is reported, not used, and not stored on a created company.
+4. A **new** `NOT_IN_PIPELINE` company, **one per row** when the row has no
+   identifier. A **name is never a merge** (IQ-8): a name matching an existing
+   company needs a person, and identifier-less buyers sharing a name with each other
+   are kept separate and listed for review.
+
+Refused and reported rather than guessed: a buyer resolving to its own deal's seller;
+identifiers naming different companies; one identifier naming several; and rows
+already linked to *different* companies sharing one identifier (a contested identity
+maps nobody by rule — including rows mapped by an earlier run). A person resolves a
+refusal with `--confirm-name <deal_buyer_id>=<company_id>`, naming one of the
+candidates the report prints (`match_rule = NAME_CONFIRMED`, so the row says a human
+decided). Every confirmation is checked before anything is written: one bad line
+stops the run, not half of it.
 
 It writes `deal_buyer_company_map` (0038, append-only, keyed on `deal_buyer_id`, which
-is what makes a re-run a no-op), the created companies, `deal.buyer_company_id`, and
-`verification_result.subject_company_id` for the deal's BUYER results. It touches no
-`deal_buyer` row, no `entity_type`, no `entity_reference`, no `subject_snapshot` and no
-history row.
+is what makes a re-run a no-op), the created companies — each with one history row,
+`company_created_from_deal_buyer`, carrying `{run_id, deal_buyer_ids, deal_ids,
+match_rule}`, and the buyers' email and phone as non-primary contact records —
+`deal.buyer_company_id`, and `verification_result.subject_company_id` for the deal's
+BUYER results. It touches no `deal_buyer` row, no `entity_type`, no
+`entity_reference`, no `subject_snapshot` and no existing history row. `--validate`
+also checks that the map and the BUYER results agree with each deal's buyer company.
 
 **There is no logical rollback**, and `--rollback` writes nothing: it reports what a
 run did and names the dump. §17.2 allowed for one *"before enabling the freeze

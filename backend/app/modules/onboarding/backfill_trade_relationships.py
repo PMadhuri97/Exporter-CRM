@@ -5,6 +5,10 @@ Developer 3** (allocation task 3.23, plan P5-5).
     python -m app.modules.onboarding.backfill_trade_relationships --apply --run-id 2026-10-03a
     python -m app.modules.onboarding.backfill_trade_relationships --validate
 
+Run it with ``LOG_LEVEL=WARNING DEBUG=false``: with the development settings the
+engine echoes every statement and the report is lost in it. Its output is ASCII, so a
+Windows console can show it (``command_console``).
+
 **Run it only after Developer 2's buyer migration (P4-6) has been applied** — step 3
 of the operational order in `developer-allocation.md` §6. Before that, most deals have
 no ``buyer_company_id`` and this would create relationships for the few that do and
@@ -98,6 +102,7 @@ from app.modules.onboarding.application.trade_history_service import (
     SOURCE_BACKFILL,
     TradeHistoryService,
 )
+from app.modules.onboarding.command_console import prepare_console
 from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.trade_relationship import TradeRelationship
@@ -129,7 +134,7 @@ class Pair:
         seller = self.seller_name or str(self.seller_company_id)
         buyer = self.buyer_name or str(self.buyer_company_id)
         deals = f"{len(self.deal_ids)} deal" + ("s" if len(self.deal_ids) != 1 else "")
-        return f"{seller} → {buyer}  ({deals})"
+        return f"{seller} -> {buyer}  ({deals})"
 
 
 @dataclass
@@ -173,8 +178,8 @@ class Report:
         if self.looks_unapplied:
             lines += [
                 "",
-                "⚠ Most deals have no buyer company, so the buyer migration (P4-6) "
-                "looks unapplied.",
+                "WARNING: most deals have no buyer company, so the buyer migration "
+                "(P4-6) looks unapplied.",
                 "  This backfill is step 3 of the operational order; running it now "
                 "covers only the few",
                 "  deals already linked and the rest would need a second run. Apply "
@@ -185,12 +190,12 @@ class Report:
             lines += ["", f"To create ({len(self.to_create)}):"]
             lines += [f"  {p.label()}" for p in self.to_create[:show]]
             if len(self.to_create) > show:
-                lines.append(f"  … and {len(self.to_create) - show} more (--show-all)")
+                lines.append(f"  ... and {len(self.to_create) - show} more (--show-all)")
 
         if self.self_dealing:
             lines += [
                 "",
-                f"Refused — a company does not sell to itself ({len(self.self_dealing)}):",
+                f"Refused - a company does not sell to itself ({len(self.self_dealing)}):",
             ]
             for pair in self.self_dealing[:show]:
                 lines.append(f"  {pair.label()}")
@@ -199,14 +204,15 @@ class Report:
                     "    deals: " + ", ".join(str(d) for d in pair.deal_ids[:5])
                 )
             if len(self.self_dealing) > show:
-                lines.append(f"  … and {len(self.self_dealing) - show} more (--show-all)")
+                lines.append(f"  ... and {len(self.self_dealing) - show} more (--show-all)")
             lines += [
                 "",
                 "  These rows need correcting by hand: either the deal's buyer company "
                 "is wrong, or two",
                 "  records of one company were merged into one. The buyer migration "
                 "reports the same",
-                "  rows (§17.2's 'deals whose buyer company is their own seller'), so "
+                "  rows (plan section 17.2's 'deals whose buyer company is their own "
+                "seller'), so "
                 "this is the second",
                 "  time they have been named.",
             ]
@@ -521,6 +527,7 @@ def main() -> int:
 
     if (args.apply or args.report_run) and not args.run_id:
         parser.error("--run-id is required for --apply and --report-run")
+    prepare_console()
     return asyncio.run(_main(args))
 
 

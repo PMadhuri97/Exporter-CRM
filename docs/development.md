@@ -256,6 +256,33 @@ Rules (details in [`../backend/migrations/README.md`](../backend/migrations/READ
   `alembic upgrade head`. A lossy downgrade says so in its docstring.
 - **Add the row to the migration register.** The next free onboarding number is there.
 
+### 10.1 The two data commands (P4-6, P5-5)
+
+The buyer migration and the trade relationship backfill are commands, not revisions,
+because a person reads a report between reading and writing. Their order on a live
+database, and what must hold before each, is in
+[`remaining-work.md`](remaining-work.md) §7. Rehearse on a scratch copy first, never on
+the shared `aner_settlement`.
+
+```bash
+cd backend
+export LOG_LEVEL=WARNING DEBUG=false     # otherwise SQL and log lines bury the report
+pg_dump ...                              # the only way back: neither command can be undone in place
+python -m app.modules.onboarding.migrate_deal_buyers --dry-run            # writes nothing
+python -m app.modules.onboarding.migrate_deal_buyers --apply --run-id <id> \
+    [--confirm-name <deal_buyer_id>=<company_id> ...]                     # lines the report printed
+python -m app.modules.onboarding.migrate_deal_buyers --validate           # every count 0, else exit 1
+python -m app.modules.onboarding.migrate_deal_buyers --apply --run-id <id2>  # must create nothing
+python -m app.modules.onboarding.backfill_trade_relationships --dry-run | --apply --run-id <id> | --validate
+```
+
+- Both print ASCII and replace what a console cannot encode, so a Windows (cp1252)
+  console shows the report rather than crashing on it.
+- `--apply` checks every `--confirm-name` before writing anything; one bad line refuses
+  the whole run (exit 2).
+- Keep the dry-run report with the migration ticket. "Kept separate - review" and
+  "Migrates, but review" rows migrate; "Needs a person" rows do not until confirmed.
+
 ## 11. Where things are documented
 
 | Document | What it is |

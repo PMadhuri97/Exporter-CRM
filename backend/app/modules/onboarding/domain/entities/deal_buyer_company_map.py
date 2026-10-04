@@ -57,8 +57,15 @@ class BuyerMatchRule(str, enum.Enum):
     #: Steps 2–3 found nothing and no other buyer shares this identity: a new company.
     NEW = "NEW"
     #: Step 4 — same `(country, normalised name)` with no identifier, **confirmed by a
-    #: person** in the dry-run report. Never automatic (decision IQ-8).
+    #: person** in the dry-run report. Never automatic (decision IQ-8). Also the rule a
+    #: person's choice between conflicting candidates is recorded under: either way the
+    #: record says a human decided, not a rule.
     NAME_CONFIRMED = "NAME_CONFIRMED"
+    #: The row was already linked to this company before the migration ran — its deal
+    #: names it (task 2.4) or its BUYER results already have it as their subject
+    #: (P4-5) — and nothing on the legacy row contradicts it (migration 0041). Both
+    #: links are set once, so the legacy row can map nowhere else.
+    ALREADY_LINKED = "ALREADY_LINKED"
 
 
 class DealBuyerCompanyMap(AppendOnlyModel):

@@ -123,7 +123,12 @@ class CompanyDirectory(Protocol):
     ) -> MatchResult: ...
 
     async def create_buyer_company(
-        self, draft: BuyerCompanyDraft, *, actor_id: str | None
+        self,
+        draft: BuyerCompanyDraft,
+        *,
+        actor_id: str | None,
+        history_event_type: str | None = None,
+        history_details: dict | None = None,
     ) -> uuid.UUID: ...
 
 

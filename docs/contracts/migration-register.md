@@ -1,6 +1,6 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0040_iec_format`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0041_map_rule_link`
 
 The prototype's migrations, from four developers and one platform change, in one
 chain. This is the running order and the rules. Dev 1 keeps it current.
@@ -48,8 +48,9 @@ merged.
 | 0038 | Dev 2 (2.6) | `onboarding_0038_buyer_map`: `deal_buyer_company_map` — one append-only row per legacy `deal_buyer`, keyed on `deal_buyer_id` as its **primary key** (which is what makes re-running the buyer migration a no-op), carrying `company_id`, `match_rule` (`buyer_match_rule_enum`: PAN, REGISTRATION_NUMBER, NEW, NAME_CONFIRMED — the last says a person decided, IQ-8), `matched_by`, `matched_at` and `run_id`. Mutation refused by `public.prevent_mutation()`. Schema only; the migration itself is a command (§17.2), not a revision, because a person confirms the name-only duplicates. Lossy downgrade (the record of what each run decided) | `onboarding_0037_trade_history` |
 | 0039 | Dev 2 (2.6) | `onboarding_0039_closed_buyer`: `deal.buyer_company_id` moves out of `prevent_terminal_deal_change()`'s "any difference" list into its own `OLD.buyer_company_id IS NOT NULL` clause, so a **closed** deal's buyer company can be filled in once and never changed — 0029's precedent for `handover_snapshot`, which `buyer_company_id` had not been given. Without it §17.2 could not link a deal handed over before the migration, and its buyer's trade history and compliance results would stay unreachable from the deal that produced them. Found by writing 2.6's tests. Restates 0022's columns, 0029's snapshot block and 0036's branch column. Schema only. Downgrade restores 0036's body — **do not downgrade with a buyer migration pending**: terminal deals become permanently unlinkable | `onboarding_0038_buyer_map` |
 | 0040 | Dev 3 (inherited, `open-items.md` §2) | `onboarding_0040_iec_format`: `ck_exporter_profile_iec_format` — `iec IS NULL OR iec ~ '^[A-Z0-9]{10}$'`, the rule `IEC_RE` has always enforced in the service, restated as SQL so a bulk import, a fixture or a hand-written `UPDATE` cannot write past it. PAN, GSTIN, CIN and country have had such a check since 0014; the IEC was the one that did not. **No data**: written only after confirming `count(*) WHERE iec IS NOT NULL AND iec !~ '^[A-Z0-9]{10}$'` is 0 — were it not, this would have to be expand → backfill → contract, since adding a `CHECK` to a table with violating rows fails outright. Downgrade drops the constraint, losing nothing | `onboarding_0039_closed_buyer` |
+| 0041 | Dev 2 (2.6, `remaining-work.md` R-07) | `onboarding_0041_map_rule_link`: `buyer_match_rule_enum` gains `ALREADY_LINKED` — the legacy row maps to the company it was already linked to before the buyer migration ran: its deal names it (task 2.4) or its BUYER results already have it as their `subject_company_id` (P4-5). Both links are set once, so the row can map nowhere else, and none of 0038's four values says so truthfully. **No data.** Postgres cannot drop an enum value, so the downgrade rebuilds the type without it, and **refuses** while any mapping row uses it — restore the dump taken before that run instead | `onboarding_0040_iec_format` |
 
-**Next free onboarding number: 0041.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
+**Next free onboarding number: 0042.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
 32 characters at most (`docs/developer-allocation.md` §2.2, and §2 below).
 
 `auth_0003` and `auth_0004` belong to the platform's user-management work, not to the

@@ -65,6 +65,7 @@ from app.modules.onboarding.domain.company_directory import (
 )
 from app.modules.onboarding.domain.company_identity import CreatedVia
 from app.modules.onboarding.domain.company_names import name_key
+from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
     ExporterSource,
@@ -268,7 +269,12 @@ class CompanyDirectoryService:
     # ── create_buyer_company (complete) ─────────────────────────────────────
 
     async def create_buyer_company(
-        self, draft: BuyerCompanyDraft, *, actor_id: str | None
+        self,
+        draft: BuyerCompanyDraft,
+        *,
+        actor_id: str | None,
+        history_event_type: str | None = None,
+        history_details: dict | None = None,
     ) -> uuid.UUID:
         """Create a company for a buyer, and return its ``customer_id``.
 
@@ -281,6 +287,16 @@ class CompanyDirectoryService:
         one, so Developer 2's migration can be re-run without creating a second company
         for the same buyer (P4-6: "re-run creates nothing"). A draft with no deal falls
         back to a fresh key, because there is nothing stable to key on.
+
+        **The buyer's contact details become a contact record** (plan §17.2,
+        "Creation"), in the same transaction as the company: a draft's email and phone
+        were otherwise dropped. Not the primary contact: nobody chose a person, and the
+        record carries only what the deal's buyer details held (``BUYER_CONTACT_ROLE``).
+
+        ``history_event_type`` and ``history_details`` name the creation row for a
+        caller with more to say than "created" — the buyer migration writes §17.2's
+        ``company_created_from_deal_buyer`` with its run, its rows and its rule.
+        Without them the row is the plain ``pipeline_initial`` it always was.
         """
         from app.modules.onboarding.application.exporter_profile_service import (
             ExporterProfileService,
@@ -341,6 +357,8 @@ class CompanyDirectoryService:
             # The one history row this company starts with, in place of the journey
             # row it does not get: how it came to exist, on the dimension that
             # describes being outside the pipeline.
+            details = {"source_ref": draft.source_ref} if draft.source_ref else {}
+            details.update(history_details or {})
             await HistoryService(self._db).record(
                 profile.customer_id,
                 dimension=history_dimensions.PIPELINE,
@@ -348,8 +366,18 @@ class CompanyDirectoryService:
                 actor_id=actor_id,
                 source="company_directory.create_buyer_company",
                 deal_id=draft.created_via_deal_id,
-                details={"source_ref": draft.source_ref} if draft.source_ref else None,
+                details=details or None,
+                event_type=history_event_type,
             )
+            if draft.contact_email or draft.contact_phone:
+                self._db.add(
+                    buyer_contact(
+                        profile.customer_id,
+                        name=name,
+                        email=draft.contact_email,
+                        phone=draft.contact_phone,
+                    )
+                )
             await self._db.commit()
             await self._db.refresh(profile)
 
@@ -364,6 +392,31 @@ class CompanyDirectoryService:
         return profile.customer_id
 
 
+#: The role a contact made from a buyer's details carries: what it is and where it came
+#: from, since there is no person's name or title to give it.
+BUYER_CONTACT_ROLE = "Buyer contact, from the deal's buyer details"
+
+
+def buyer_contact(
+    company_id: uuid.UUID, *, name: str, email: str | None, phone: str | None
+) -> ExporterContact:
+    """A non-primary contact holding a buyer's email and phone.
+
+    Named after the company, because a legacy buyer row names no person; read back
+    masked for OPERATIONS and DEVELOPER like every other contact. Never primary:
+    ``deal-and-buyer.md`` §3.0 — inventing a primary contact would put a name in front
+    of people that nobody chose.
+    """
+    return ExporterContact(
+        customer_id=company_id,
+        name=name,
+        role=BUYER_CONTACT_ROLE,
+        email=(email or "").strip() or None,
+        phone=(phone or "").strip() or None,
+        is_primary_contact=False,
+    )
+
+
 def _as_uuid(value: str | None) -> uuid.UUID | None:
     """The actor id as the audit table wants it. Callers inside the CRM pass a user
     id, but a migration run passes a label (``"migration"``), and an audit row with
@@ -376,4 +429,9 @@ def _as_uuid(value: str | None) -> uuid.UUID | None:
         return None
 
 
-__all__ = ["CREATED_VIA_DEAL_BUYER", "CompanyDirectoryService"]
+__all__ = [
+    "BUYER_CONTACT_ROLE",
+    "CREATED_VIA_DEAL_BUYER",
+    "CompanyDirectoryService",
+    "buyer_contact",
+]
