@@ -412,6 +412,20 @@ moving a PAN-less company abroad without a number, or clearing a foreign company
 number, is refused (422). A buyer the P4-6 migration created with no number keeps IQ-7's
 exception until one is added. Migration 0043 corrected the rows edited before this.
 
+**The completion list** (R-28, plan §17.2: unidentified buyers go "to the completion
+list"). `GET /companies/identity-completion?limit=&offset=` (every CRM reader, DEVELOPER
+included; API_USER 403) lists the companies with `identity_type` NULL — neither a PAN
+nor a registration number — that are not `ENDED`. Each item says what the company lacks,
+`missing`: `COUNTRY` when it has none, `REGISTRATION_NUMBER` outside India, `PAN` in
+India; and `required`, which is true for the first two (IQ-7) and false for a PAN, which
+is only worth having. Required ones come first, then oldest first. An item carries
+`company_id`, `name`, `country`, `pipeline_status`, `created_via` and `created_at`, and
+**no identifier** (the companies have none), so nothing in it is masked. It is a work
+list, not a pipeline filter: completing a company is the ordinary edit on its own page,
+and because that edit recomputes `identity_type`, the company leaves the list at once.
+The company page shows the same gap as a notice while `identity_type` is NULL. Limit
+1–200, default 50.
+
 **A tax identifier's old and new values are masked in the row itself** (PAN,
 GSTIN, IEC — last four characters visible), not just in the response. The
 history read route returns `details` to every CRM reader, including

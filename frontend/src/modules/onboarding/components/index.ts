@@ -21,6 +21,7 @@ export { CompanyDealsList } from './CompanyDealsList';
 export { GstRegistrationsSection } from './GstRegistrationsSection';
 export type { GstRegistrationsSectionProps } from './GstRegistrationsSection';
 export { NotInPipelineNotice } from './NotInPipelineNotice';
+export { IdentityGapNotice } from './IdentityGapNotice';
 export type { NotInPipelineNoticeProps } from './NotInPipelineNotice';
 export type { CompanyDealsListProps } from './CompanyDealsList';
 export { DocumentList } from './DocumentList';
@@ -41,6 +42,7 @@ export { DecisionHistory } from './DecisionHistory';
 // trade history in 2.11). Both began as F3 stubs with final props, which is why
 // filling them (3.10, 3.22) changed no mounting.
 export { CompanyPicker } from './CompanyPicker';
+export { CreateBuyerCompanyForm } from './CreateBuyerCompanyForm';
 export type { CompanyPickerProps } from './CompanyPicker';
 export { TradeHistoryPanel } from './TradeHistoryPanel';
 export type { TradeHistoryPanelProps } from './TradeHistoryPanel';
@@ -55,6 +57,7 @@ export { NoOutcomeChip, TradeOutcomeChip } from './TradeOutcomeChip';
 // The one write on the deal page (P5-6): how a handed-over deal was paid. Staff only,
 // and only on a handed-over deal with a buyer company.
 export { RecordDealOutcomeForm } from './RecordDealOutcomeForm';
+export { RecordPastTradeForm } from './RecordPastTradeForm';
 export type { RecordDealOutcomeFormProps } from './RecordDealOutcomeForm';
 export type { TradeOutcomeChipProps } from './TradeOutcomeChip';
 // Which of the seller's GST branches a deal is invoiced from (task 2.8): the handover

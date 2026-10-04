@@ -105,15 +105,34 @@ As **OPERATIONS** unless noted.
    the Deals tab — opening one sets `READY_NOW` itself). On the deal page, record the
    buyer and move it to **gathering paperwork**.
 
-   **The buyer is a company record, not a set of details** (task 2.4). Use **Find the
-   buyer** and search by name or by a full PAN or GSTIN: the picker looks for a company
-   we already hold before offering to create one, which is what stops a second record
-   for the same company. Create one if it is genuinely new — a foreign buyer needs its
-   registration number (IQ-7) — then search again and show that it is now found as a
-   possible duplicate. The buyer company is **set once**: show that the picker
-   disappears afterwards and that the only correction is to withdraw the deal and open
-   another, so the change leaves a trail. Recording the buyer also creates the
-   **trade relationship** between the two companies, in the same step.
+   **The buyer is a company record, not a set of details** (task 2.4). Press **Choose
+   buyer company** and search by name, or by a full PAN, GSTIN or registration number
+   under **Search by identifier**: the picker looks for a company we already hold before
+   it offers to create one, which is what stops a second record for the same company.
+   Pick a buyer we hold with **Select**.
+
+   For a buyer that is **genuinely new**, the server answers "No company on file
+   matches" and the picker offers **Create buyer company** (R-24). The form asks only
+   what identifies the company: a name, a country, and for a foreign buyer its
+   **registration number**, which is required (IQ-7) — the button stays unavailable
+   until it is filled; an Indian buyer is asked for a PAN or GSTIN instead. The number
+   you searched with is already filled in. **Create buyer company** creates the
+   company and names it as this deal's buyer **in one step**. Show what it did *not*
+   do: the new company is **not in the pipeline** — it is no lead, has no journey, and
+   the Pipeline board is unchanged — and its page says it exists because it was the
+   buyer on a deal.
+
+   Show the two refusals too. Searching by a name that only *looks like* one on file
+   gives **Check these first** with the look-alikes and nothing preselected; "None of
+   these is the buyer?" still lets you create it, because a name is never an identity
+   (IQ-8). Typing an identifier that already belongs to a company instead is refused
+   in the server's words ("already known"), and the form offers **Use the company on
+   file** rather than a second record.
+
+   The buyer company is **set once**: show that the picker disappears afterwards and
+   that the only correction is to withdraw the deal and open another, so the change
+   leaves a trail. Recording the buyer also creates the **trade relationship** between
+   the two companies, in the same step.
 6. **Paperwork.** Upload the sample file to the deal in the **Pre-shipment** category
    (for example a proforma invoice). It is scanned before it can be opened; the scanner
    is labelled **pass-through** because it is a placeholder. Before the upload the deal
@@ -151,15 +170,17 @@ As **OPERATIONS** unless noted.
    expires (one year), and "became customer" is announced to the customers team's
    event (nobody receives it yet; §6).
 10. **Record the invoicing branch** (back as OPERATIONS), in the deal page's
-    **Invoicing branch** panel: choose under **Invoiced from** which of the seller's GST
-    registrations this deal is invoiced from. Each is listed by its state and its GSTIN
-    as the server sends it — masked for OPERATIONS, in full for COMPLIANCE and ADMIN —
-    and only active registrations are offered. The guard asks for it whenever the
-    seller has an active registration (task 2.9); the company added in step 1 has one,
-    so until you choose, the stage panel's refusal includes "the invoicing branch is not
-    recorded" and the Invoicing branch panel says why. The choice can be changed or
-    cleared until the handover; afterwards the panel shows it read-only, frozen with
-    the deal. A seller with no active registration is not asked, and the panel says so.
+    **Invoicing branch** panel. Until a branch is chosen the panel says **Not
+    recorded** — the seller has an active GST registration, so a handover asks which
+    one — and the stage panel's refusal includes "the invoicing branch is not
+    recorded" (task 2.9; the company added in step 1 has one). Choose under **Invoiced
+    from**: each active registration is listed by its state and its GSTIN as the server
+    sends it — masked for OPERATIONS, in full for COMPLIANCE and ADMIN — and a flagged
+    one is marked "— flagged". Choosing records it at once (a toast says "Invoiced from
+    …"); there is no separate save. **Clear** removes the choice, and a different branch
+    can be chosen, until the deal closes. After the handover the panel is read-only and
+    says the branch is **frozen with the deal**. A seller with no active registration
+    is not asked, and the panel says so instead of offering a choice.
 
     Worth showing alongside **flagging a branch** as COMPLIANCE (company B's Overview
     tab → GST registrations): a flagged branch blocks the deals invoiced through *that*
@@ -189,9 +210,11 @@ As **OPERATIONS** unless noted.
     - **Nothing is totalled.** Each row carries its own amount *and* its own currency,
       and there is no total anywhere — no reporting currency and no rate exist (IQ-4),
       so a total across currencies would be a number nobody could defend. (The deal
-      page records the deal's own invoice; adding a *past* invoice to the pair, which is
-      how a second currency appears, is `POST /trade-relationships/{id}/invoices` and has
-      no screen yet.)
+      page records the deal's own invoice. A *past* invoice — trade from before either
+      company came to us, which is how a second currency appears — is recorded on the
+      seller's Deals tab: **Record past invoice** on the buyer's row under *Sold to*,
+      with an outcome if anybody knows it, "claimed" unless proof has been seen. It
+      records no deal.)
 
     Then correct it: record a *new* outcome superseding the first. The old one stays
     visible under **Outcome history**, marked superseded, because an invoice corrected
@@ -226,7 +249,12 @@ As **OPERATIONS** unless noted.
 - **Roles and masking:** log in as OPERATIONS and then COMPLIANCE on the same company —
   PAN and GSTIN are masked for OPERATIONS and shown in full to COMPLIANCE. As DEVELOPER
   the CRM is read-only, identifiers are masked, and the background check is not shown
-  at all.
+  at all: Companies has no **Add company** or **Import CSV**, and typing
+  `/companies/new` gives the same "Page not found" as an address that does not exist.
+  Only ADMIN sees **Qualification criteria** and **Required documents** in the rail; for
+  anyone else those addresses are "Page not found" too, never "Administrators only". An
+  API user signing in gets no workspace at all: no rail, a short "ask an administrator"
+  page, and only My profile.
 
 ## 6. Say this plainly during the demo
 

@@ -15,6 +15,8 @@ import {
   listGstRegistrations,
   listTradeRelationships,
   listVerificationResults,
+  matchCompany,
+  searchExporterProfiles,
   setDealBuyer,
   setDealInvoicingBranch,
 } from '../api';
@@ -49,6 +51,9 @@ vi.mock('../api', () => ({
   // The invoicing branch (task 2.8): the seller's GST registrations, and the write.
   listGstRegistrations: vi.fn(),
   setDealInvoicingBranch: vi.fn(),
+  // The buyer picker (task 2.4) and creating a buyer company from it (R-24).
+  searchExporterProfiles: vi.fn(),
+  matchCompany: vi.fn(),
 }));
 
 const DEAL_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -832,5 +837,67 @@ describe('the invoicing branch', () => {
     expect(await screen.findByText('Maharashtra')).toBeInTheDocument();
     expect(screen.queryByLabelText('Invoiced from')).not.toBeInTheDocument();
     expect(setDealInvoicingBranch).not.toHaveBeenCalled();
+  });
+});
+
+// R-24: a buyer not on file is created as a company outside the pipeline, through the
+// deal's own buyer route, and named in the same request.
+describe('creating the buyer company', () => {
+  it('sends the create form to PUT /deals/{id}/buyer and closes the picker', async () => {
+    vi.mocked(getDeal).mockResolvedValue(deal({ buyer: null }));
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 });
+    vi.mocked(matchCompany).mockResolvedValue({
+      kind: 'NEW',
+      company_id: null,
+      reason: null,
+      needs_a_person: false,
+      candidates: [],
+    });
+    vi.mocked(setDealBuyer).mockResolvedValue(
+      deal({
+        buyer: null,
+        buyer_company: {
+          company_id: '99999999-9999-4999-8999-999999999999',
+          name: 'Brand New Buyer',
+          country: 'IN',
+          pipeline_status: 'NOT_IN_PIPELINE',
+          pan: null,
+          cin: null,
+        },
+      }),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose buyer company' }));
+    fireEvent.change(screen.getByPlaceholderText('Company name'), {
+      target: { value: 'Brand New Buyer' },
+    });
+    fireEvent.blur(screen.getByPlaceholderText('Company name'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create buyer company' }));
+    const form = screen.getByRole('form', { name: 'Create buyer company' });
+    fireEvent.click(within(form).getByRole('button', { name: 'Create buyer company' }));
+
+    await waitFor(() =>
+      expect(setDealBuyer).toHaveBeenCalledWith(DEAL_ID, {
+        create: {
+          name: 'Brand New Buyer',
+          country: 'IN',
+          pan: null,
+          gstin: null,
+          registration_number: null,
+        },
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('form', { name: 'Create buyer company' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('is not offered to a DEVELOPER, who cannot record a buyer at all', async () => {
+    signedInAs('DEVELOPER');
+    vi.mocked(getDeal).mockResolvedValue(deal({ buyer: null }));
+    renderPage();
+    await screen.findByText('Rotterdam shipment, March');
+    expect(screen.queryByRole('button', { name: 'Choose buyer company' })).not.toBeInTheDocument();
   });
 });

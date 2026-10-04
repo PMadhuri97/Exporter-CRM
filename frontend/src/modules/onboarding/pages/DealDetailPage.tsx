@@ -33,8 +33,7 @@ import {
   Textarea,
 } from '@/components';
 import { formatDateTime, humanize } from '@/lib/format';
-import { isAdminRole, isStaffRole, useCurrentUser } from '@/platform/auth';
-import { canReveal } from '@/platform/mask';
+import { useCan } from '@/platform/access';
 
 import {
   CompanyComplianceSummary,
@@ -348,8 +347,9 @@ function StageMoves({
 
 export function DealDetailPage() {
   const { dealId } = useParams<{ dealId: string }>();
-  const user = useCurrentUser();
-  const isStaff = isStaffRole(user.role);
+  const isStaff = useCan('crm.write');
+  const canReveal = useCan('identifiers.reveal');
+  const canSetRequiredDocuments = useCan('settings.requiredDocuments');
 
   const { data: deal, isLoading, isError, refetch } = useDeal(dealId);
   const company = useExporterProfileDetail(deal?.company_id);
@@ -463,6 +463,13 @@ export function DealDetailPage() {
                   // (`ck_deal_buyer_is_not_the_seller`); offering the choice and then
                   // failing is worse than not offering it.
                   excludeCompanyId={deal.company_id}
+                  // R-24: create the buyer as a company outside the pipeline and name
+                  // it, in one request. A refusal is shown inside the form.
+                  onCreate={async (draft) => {
+                    await setBuyerCompany.mutateAsync({ create: draft });
+                    setPickingCompany(false);
+                    toast.success('Buyer company created');
+                  }}
                   onSelect={(companyId) => {
                     setBuyerCompany.mutate(
                       { buyer_company_id: companyId },
@@ -504,7 +511,7 @@ export function DealDetailPage() {
                       }
                     : null
                 }
-                revealIdentifiers={canReveal(user.role)}
+                revealIdentifiers={canReveal}
                 onClose={() => setEditingBuyer(false)}
               />
             )}
@@ -688,7 +695,7 @@ export function DealDetailPage() {
                 can change it. The rule itself is served with the refusal reason,
                 so everyone else already sees *what* is missing; only an
                 administrator has anywhere to go from here. */}
-            {isAdminRole(user.role) && !isClosed && (
+            {canSetRequiredDocuments && !isClosed && (
               <p className="mb-3 text-xs text-ink-faint">
                 Which categories a handover needs is set in{' '}
                 <Link

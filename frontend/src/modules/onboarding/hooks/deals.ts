@@ -114,9 +114,13 @@ export function useSetDealBuyer(dealId: string, customerId?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: SetDealBuyerRequest) => setDealBuyer(dealId, body),
-    onSuccess: () => {
+    onSuccess: (_deal, body) => {
       void queryClient.invalidateQueries({ queryKey: ['deal', dealId] });
       void queryClient.invalidateQueries({ queryKey: ['dealHistory', dealId] });
+      if (body.create) {
+        // A company was created (R-24): it now exists for every company search.
+        void queryClient.invalidateQueries({ queryKey: ['exporterProfiles'] });
+      }
       if (customerId !== undefined) {
         // The list shows the buyer's name per row.
         void queryClient.invalidateQueries({ queryKey: ['deals', customerId] });

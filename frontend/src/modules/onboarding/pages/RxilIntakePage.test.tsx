@@ -51,15 +51,10 @@ describe('RxilIntakePage — RXIL company intake (L2-12, L2-14)', () => {
     mockRole('ADMIN');
   });
 
-  it.each(['OPERATIONS', 'COMPLIANCE', 'DEVELOPER'])(
-    'shows %s why it cannot submit, and no form — the server admits ADMIN only',
-    (role) => {
-      mockRole(role);
-      renderPage();
-      expect(screen.getByRole('note')).toHaveTextContent('Only an administrator');
-      expect(screen.queryByLabelText('RXIL package')).not.toBeInTheDocument();
-    },
-  );
+  // Who may open this screen is decided at the route now (R-33, G5): any other role
+  // gets the generic NotFound and never loads the page. That is asserted, role by
+  // role, in `src/routes/access.matrix.test.tsx`, which replaces the in-page
+  // "Only an administrator" checks that used to be here.
 
   it('refuses text that is not JSON without calling the server', () => {
     renderPage();

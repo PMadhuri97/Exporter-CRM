@@ -29,19 +29,19 @@
  * | `MATCHED` | one company, ready to select |
  * | `POSSIBLE_DUPLICATE` | "check these first" — candidates, nothing preselected |
  * | `CONFLICT` | a warning naming every company involved; the RM decides |
- * | `NEW` | "no company matches", and creating one is still elsewhere |
+ * | `NEW` | "no company matches" — and **Create buyer company** (R-24) |
  *
  * `POSSIBLE_DUPLICATE` and `CONFLICT` both set `needs_a_person`, and neither
  * preselects anything — picking one for the RM is how a deal ends up attached to
  * the wrong company (decision IQ-8).
  *
- * **Creating a company from here is deliberately still absent.** It needs the
- * buyer-create path (Developer 2's task 2.6 uses the same
- * `CompanyDirectory.create_buyer_company`), and a create button that made an
- * ordinary `IN_PIPELINE` lead instead of a `NOT_IN_PIPELINE` buyer company would
- * quietly inflate the sales pipeline — the precise failure P4-2 exists to prevent.
- * So it says where creating lives rather than offering a button that does the wrong
- * thing.
+ * **Creating** (R-24) is offered only when the caller passes `onCreate`, and only
+ * once the server has answered `NEW` — or `POSSIBLE_DUPLICATE` after the RM says none
+ * of the look-alikes is the buyer: a name is never an identity (IQ-8), but the RM
+ * must have seen them first. It creates a buyer company **outside the pipeline**
+ * through the deal's buyer route, never an ordinary lead — the failure P4-2 exists to
+ * prevent. `MATCHED` and `CONFLICT` never offer it: an identifier already names a
+ * company on file, and the server would refuse a duplicate anyway.
  */
 
 import { useMutation } from '@tanstack/react-query';
@@ -55,8 +55,11 @@ import { useExporterProfiles } from '../hooks';
 import type {
   CompanyMatch,
   CompanyMatchCandidate,
+  CreateBuyerCompanyRequest,
   ExporterProfileListItem,
 } from '../types';
+
+import { CreateBuyerCompanyForm } from './CreateBuyerCompanyForm';
 
 /** Which identifier the RM is holding. */
 type IdentifierKind = 'pan' | 'gstin' | 'registration_number';
@@ -88,16 +91,23 @@ export interface CompanyPickerProps {
    * country, so matching one without a country would be meaningless.
    */
   country?: string;
+  /**
+   * Create the buyer as a company outside the pipeline (R-24). Rejects with the
+   * server's refusal, which the form shows. Without it, nothing here creates.
+   */
+  onCreate?(draft: CreateBuyerCompanyRequest): Promise<unknown>;
 }
 
 export function CompanyPicker({
   onSelect,
   excludeCompanyId,
   country = 'IN',
+  onCreate,
 }: CompanyPickerProps) {
   const [term, setTerm] = useState('');
   const [identifierKind, setIdentifierKind] = useState<IdentifierKind>('pan');
   const [identifier, setIdentifier] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const trimmed = term.trim();
   // Only ask once the term is worth a query: a one-letter search returns most of the
@@ -156,6 +166,7 @@ export function CompanyPicker({
             onChange={(event) => {
               setTerm(event.target.value);
               match.reset();
+              setCreating(false);
             }}
             onBlur={lookUpName}
           />
@@ -195,6 +206,7 @@ export function CompanyPicker({
             onChange={(event) => {
               setIdentifier(event.target.value);
               match.reset();
+              setCreating(false);
             }}
           />
           <p className="text-xs text-ink-faint">
@@ -242,6 +254,32 @@ export function CompanyPicker({
         <CandidateList candidates={candidates} onSelect={onSelect} />
       ) : null}
 
+      {onCreate && creating ? (
+        <CreateBuyerCompanyForm
+          initial={{
+            name: trimmed,
+            country,
+            // The RM's own input, never a value the server sent back (BQ-2).
+            ...(identifier.trim() ? { [identifierKind]: identifier.trim() } : {}),
+          }}
+          onCreate={onCreate}
+          onChooseExisting={onSelect}
+          onCancel={() => setCreating(false)}
+        />
+      ) : onCreate &&
+        (matched?.kind === 'NEW' || matched?.kind === 'POSSIBLE_DUPLICATE') ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-border px-4 py-3">
+          <span className="text-sm text-ink-muted">
+            {matched.kind === 'NEW'
+              ? 'No company on file matches. Create the buyer as a company of its own.'
+              : 'None of these is the buyer? Create it as a company of its own.'}
+          </span>
+          <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
+            Create buyer company
+          </Button>
+        </div>
+      ) : null}
+
       {!ready && !matched ? (
         <p className="text-xs text-ink-faint">
           Type at least two characters, or search by identifier.
@@ -249,10 +287,12 @@ export function CompanyPicker({
       ) : query.isLoading || match.isPending ? (
         <Skeleton className="h-16 rounded-lg" />
       ) : byName.length === 0 && candidates.length === 0 && !match.isError ? (
-        <EmptySection>
-          No company on file matches that. Creating a buyer company from here arrives
-          with the buyer migration.
-        </EmptySection>
+        creating ? null : (
+          <EmptySection>
+            No company on file matches that.
+            {onCreate && !matched ? ' Finish typing the name to look it up.' : ''}
+          </EmptySection>
+        )
       ) : byName.length > 0 ? (
         <ul className="divide-y divide-border rounded-lg border border-border">
           {byName.map((company: ExporterProfileListItem) => (

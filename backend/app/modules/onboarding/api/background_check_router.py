@@ -993,6 +993,7 @@ async def list_rekyc_due(
                 expires_at=item.expires_at,
                 is_expired=item.is_expired,
                 current_cycle_number=item.current_cycle_number,
+                pipeline_status=item.pipeline_status,
             )
             for item in companies
         ],

@@ -20,8 +20,8 @@ import { toast } from 'sonner';
 
 import { Button, DetailRow, FormError, Input, Panel } from '@/components';
 import { formatDate, humanize } from '@/lib/format';
-import { useCurrentUser } from '@/platform/auth';
-import { MaskedValue, canReveal } from '@/platform/mask';
+import { useCan } from '@/platform/access';
+import { MaskedValue } from '@/platform/mask';
 
 import {
   DuplicatePanMessage,
@@ -141,8 +141,7 @@ function ProfileEditForm({
   onDone: () => void;
 }) {
   const mutation = useUpdateExporterProfile(profile.customer_id);
-  const { role } = useCurrentUser();
-  const reveal = canReveal(role);
+  const reveal = useCan('identifiers.reveal');
   const [initial] = useState(() => draftFrom(profile, reveal));
   const [draft, setDraft] = useState(initial);
   // The company already holding a PAN just typed, shown as a link in the form.

@@ -117,6 +117,28 @@ class DealSide(str, enum.Enum):
     BUYER = "buyer"
 
 
+class CreateBuyerCompanyRequest(BaseModel):
+    """A buyer company that does not exist yet (plan P4-3, R-24): created
+    ``NOT_IN_PIPELINE`` — not a lead — and named as this deal's buyer in one step.
+
+    The server matches first, as ``POST /companies/match`` does. An identifier that a
+    company on file already holds is refused (409 ``BUYER_COMPANY_ALREADY_KNOWN``,
+    naming it) rather than duplicated; a name that only resembles one is not an
+    identity (IQ-8), so it does not stop the create. A company outside India needs its
+    registration number unless it has a PAN (IQ-7) — the migration's exemption does not
+    apply to a buyer somebody is entering now.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    #: ISO 3166-1 alpha-2.
+    country: str = Field(min_length=2, max_length=2)
+    pan: Annotated[str | None, NotMasked] = Field(default=None, max_length=32)
+    gstin: Annotated[str | None, NotMasked] = Field(default=None, max_length=32)
+    registration_number: Annotated[str | None, NotMasked] = Field(default=None, max_length=100)
+
+
 class SetDealBuyerRequest(BaseModel):
     """Record the deal's buyer, in **one of two forms** (plan P4-4, task 2.4).
 
@@ -147,6 +169,9 @@ class SetDealBuyerRequest(BaseModel):
 
     #: The company form. When given, every other field must be absent.
     buyer_company_id: uuid.UUID | None = None
+    #: The create form (R-24): a buyer company that does not exist yet, created and
+    #: named as the buyer in one step. When given, every other field must be absent.
+    create: CreateBuyerCompanyRequest | None = None
 
     #: The legacy form. Required together, and only for that form.
     name: str | None = Field(default=None, min_length=1, max_length=500)
@@ -171,6 +196,13 @@ class SetDealBuyerRequest(BaseModel):
     @model_validator(mode="after")
     def _exactly_one_form(self) -> SetDealBuyerRequest:
         legacy_given = sorted(set(self._LEGACY_FIELDS) & self.model_fields_set)
+        if self.create is not None:
+            if self.buyer_company_id is not None or legacy_given:
+                raise ValueError(
+                    "send create (a new buyer company) on its own: buyer_company_id "
+                    "and the buyer's own details are the other two forms"
+                )
+            return self
         if self.buyer_company_id is not None:
             if legacy_given:
                 raise ValueError(
@@ -189,6 +221,10 @@ class SetDealBuyerRequest(BaseModel):
     @property
     def is_company_form(self) -> bool:
         return self.buyer_company_id is not None
+
+    @property
+    def is_create_form(self) -> bool:
+        return self.create is not None
 
     def fields_to_keep(self) -> frozenset[str]:
         """The masked fields the caller left out — their stored values stay."""

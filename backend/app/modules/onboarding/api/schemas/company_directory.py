@@ -11,13 +11,14 @@ carries a company's id, name, country and pipeline status, and never an identifi
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.onboarding.api.schemas.masking import NotMasked
 from app.modules.onboarding.domain.company_directory import MatchKind
-from app.modules.onboarding.domain.company_identity import REGISTRATION_NUMBER_MAX
+from app.modules.onboarding.domain.company_identity import REGISTRATION_NUMBER_MAX, IdentityGap
 from app.modules.onboarding.domain.entities.exporter_enums import CompanyPipelineStatus
 
 
@@ -129,3 +130,34 @@ __all__ = [
     "CompanyMatchRequest",
     "CompanyMatchResponse",
 ]
+
+
+class IdentityCompletionItem(BaseModel):
+    """One company the CRM cannot yet identify (IQ-7's completion list, R-28).
+
+    Carries **no identifier**: the company has none, which is why it is here. What it
+    lacks is ``missing``; ``required`` says whether a rule requires it (a foreign
+    company's registration number, IQ-7; any company's country) or it is only worth
+    doing (an Indian company's PAN).
+    """
+
+    company_id: uuid.UUID
+    name: str | None
+    country: str | None
+    pipeline_status: CompanyPipelineStatus
+    #: Which channel created it — `DEAL_BUYER` for the P4-6 migration's buyers.
+    created_via: str | None
+    missing: IdentityGap
+    required: bool
+    created_at: datetime
+
+
+class IdentityCompletionListResponse(BaseModel):
+    """Companies with no ``identity_type``, the ones a rule requires completing
+    first. Ended companies are left out: completing a record nobody works on is not
+    work. ``total`` counts the same filter."""
+
+    items: list[IdentityCompletionItem]
+    total: int
+    limit: int
+    offset: int

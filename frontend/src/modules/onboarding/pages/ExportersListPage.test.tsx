@@ -179,3 +179,33 @@ describe('ExportersListPage — RXIL intake link', () => {
     },
   );
 });
+
+describe('ExportersListPage — write screens by role (R-33, G3)', () => {
+  beforeEach(() => {
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
+  });
+
+  it.each(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s Add company and Import CSV', (role) => {
+    mockUser(role, 'user-1');
+    renderPage();
+    expect(screen.getByRole('link', { name: /Add company/ })).toHaveAttribute('href', '/companies/new');
+    expect(screen.getByRole('link', { name: /Import CSV/ })).toHaveAttribute('href', '/companies/import');
+  });
+
+  it.each(['DEVELOPER', 'API_USER'])(
+    'offers %s neither, since the server refuses both — absent, not disabled',
+    (role) => {
+      mockUser(role, 'user-1');
+      renderPage();
+      expect(screen.queryByRole('link', { name: /Add company/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /Import CSV/ })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Add company|Import CSV/)).not.toBeInTheDocument();
+    },
+  );
+
+  it('offers the identity completion list to a read-only role, which may read it', () => {
+    mockUser('DEVELOPER', 'user-1');
+    renderPage();
+    expect(screen.getByRole('link', { name: 'Identity to complete' })).toBeInTheDocument();
+  });
+});

@@ -116,19 +116,10 @@ describe('DealRequiredDocumentsPage', () => {
     expect(within(row).getByText('Required')).toBeInTheDocument();
   });
 
-  it('is refused to anyone but an administrator', async () => {
-    for (const role of ['OPERATIONS', 'COMPLIANCE', 'DEVELOPER']) {
-      signedInAs(role);
-      const { unmount } = renderPage();
-      expect(await screen.findByText('Administrators only')).toBeInTheDocument();
-      // No controls, and nothing from the rule leaks into the refusal.
-      expect(screen.queryByTestId('requirement-row')).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: /Require a category/ }),
-      ).not.toBeInTheDocument();
-      unmount();
-    }
-  });
+  // Who may open this screen is decided at the route now (R-33, G5): any other role
+  // gets the generic NotFound and never loads the page. That is asserted, role by
+  // role, in `src/routes/access.matrix.test.tsx`, which replaces the in-page
+  // "Administrators only" checks that used to be here.
 
   it('stops requiring a category by writing a version, never a delete', async () => {
     renderPage();

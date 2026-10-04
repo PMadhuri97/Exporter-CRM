@@ -213,6 +213,7 @@ describe('Home cards — compliance', () => {
           expires_at: '2026-09-20T00:00:00Z',
           is_expired: true,
           current_cycle_number: 1,
+          pipeline_status: 'IN_PIPELINE',
         },
         {
           company_id: 'other',
@@ -222,6 +223,7 @@ describe('Home cards — compliance', () => {
           expires_at: '2026-10-20T00:00:00Z',
           is_expired: false,
           current_cycle_number: 2,
+          pipeline_status: 'NOT_IN_PIPELINE',
         },
       ],
       total: 2,
@@ -235,6 +237,9 @@ describe('Home cards — compliance', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent(/Aarav Textiles.*Expired/);
     expect(rows[1]).toHaveTextContent(/Blue Harbour Foods.*Expires/);
+    // R-29: the buyer-only company is marked; the lead is not.
+    expect(rows[1]).toHaveTextContent('Buyer only');
+    expect(rows[0]).not.toHaveTextContent('Buyer only');
     expect(screen.getByTestId('rekyc-due-count')).toHaveTextContent('2');
     expect(within(rows[0] as HTMLElement).getByRole('link')).toHaveAttribute(
       'href',

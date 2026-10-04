@@ -143,11 +143,42 @@ So the buyer migration (P4-6) is a data migration, not a behaviour change: §6.1
 condition 5 decides the same thing either way. `deal_buyer` writes are retired in
 P4-10, after every environment has migrated; the table itself is kept.
 
-**Writing it (task 2.4).** `PUT /deals/{id}/buyer` takes either form, and exactly
-one per request: `{buyer_company_id}` names the company the buyer is, and the legacy
-`{name, country, …}` records a `deal_buyer` row. A body carrying both is refused
-(422) rather than merged — the two disagree about what a buyer *is*, and writing both
-would leave a deal whose company says one thing and whose row says another.
+**Writing it (task 2.4, R-24).** `PUT /deals/{id}/buyer` takes one of three forms,
+and exactly one per request: `{buyer_company_id}` names a company on file as the buyer;
+`{create: {name, country, pan?, gstin?, registration_number?}}` creates the buyer as a
+company and names it; and the legacy `{name, country, …}` records a `deal_buyer` row. A
+body carrying more than one is refused (422) rather than merged — they disagree about
+what a buyer *is*, and writing two would leave a deal whose company says one thing and
+whose row says another.
+
+**Creating the buyer company (R-24, plan P4-3, P4-4's "or creates one").** For a buyer
+not on file. Before it, the only ways in were the legacy form, which P4-10 retires, and
+Add company, which makes a **lead** and inflates the pipeline (P4-2). In order, and
+nothing is written until every check has passed:
+
+1. The deal is not closed (409 `DEAL_TERMINAL`) and names no buyer company yet (409
+   `DEAL_BUYER_COMPANY_ALREADY_SET`).
+2. **IQ-7, with no exception:** a company outside India that holds no PAN needs its
+   registration number (422). The P4-6 exemption is for rows that predate the rule; a
+   buyer entered now can meet it. GSTINs must carry the PAN given (422).
+3. **Match first** (`CompanyDirectory.match`, audited like every identifier lookup,
+   BQ-2). If an identifier names a company on file — `MATCHED`, or a `CONFLICT` between
+   several — it is refused, 409 `BUYER_COMPANY_ALREADY_KNOWN`, with `error_context`
+   `{match_kind, company_ids}`, so the caller can offer that company instead of a
+   duplicate. The audit row is committed before the refusal. A name that only
+   resembles a company (`POSSIBLE_DUPLICATE`) does **not** stop it: a name is never an
+   identity (IQ-8), and the caller has already been shown the look-alikes.
+
+The company is created by `CompanyDirectory.create_buyer_company`: `pipeline_status =
+NOT_IN_PIPELINE`, `source` and `created_via` `DEAL_BUYER`, `created_via_deal_id` this
+deal, one `pipeline` history row and **no journey row** — so the pipeline's counts do not
+move. It is then named through the same path as `{buyer_company_id}`, which writes the
+trade relationship and the `deal_buyer_company_set` history row. A retry after a failure
+between the two steps makes no second company: an identifier matches the first and is
+refused as already known; with none, the create is keyed on the deal. Roles: staff, as
+for every form (DEVELOPER 403, D8). The response is the deal, masked as below. The
+deal page offers it in the buyer picker once the match is `NEW`, or `POSSIBLE_DUPLICATE`
+after the person says none of the look-alikes is the buyer.
 
 `buyer_company_id` is **set once**: `trg_deal_buyer_company_set_once`
 (migration 0034) lets it go from `NULL` to a value and refuses every change after,
@@ -505,6 +536,8 @@ updates.
 | `DEAL_REQUIRED_DOCUMENT_CHANGED` | 409 | On `POST /settings/deal-required-documents`: another administrator changed the same requirement first; nothing was saved (§6.1.1). |
 | `DEAL_COMPANY_NOT_FOUND` | 404 | Opening a deal for a company that does not exist. |
 | `DEAL_COMPANY_NOT_READY` | 409 | Opening a deal for a company that is still a `LEAD` (§2). |
+| `DEAL_BUYER_COMPANY_ALREADY_SET` | 409 | Naming or creating a buyer company on a deal that already names a different one (§3.0). |
+| `BUYER_COMPANY_ALREADY_KNOWN` | 409 | Creating a buyer company whose identifier a company on file holds; `error_context` carries `match_kind` and `company_ids` (§3.0, R-24). |
 
 ---
 

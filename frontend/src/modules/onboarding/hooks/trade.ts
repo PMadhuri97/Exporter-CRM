@@ -89,6 +89,8 @@ export function useRecordTradeInvoice(relationshipId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['tradeRelationship', relationshipId] });
       void queryClient.invalidateQueries({ queryKey: ['tradeRelationships'] });
+      // The server writes a `trade` history row for the invoice too.
+      void queryClient.invalidateQueries({ queryKey: ['companyHistory'] });
     },
   });
 }

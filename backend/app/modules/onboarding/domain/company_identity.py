@@ -149,6 +149,34 @@ def decide_identity_type(
     return None
 
 
+class IdentityGap(StrEnum):
+    """What a company with no ``identity_type`` lacks (IQ-7's completion list, R-28)."""
+
+    #: Outside India, holding neither a PAN nor a registration number. IQ-7 requires
+    #: the number; only P4-6's migrated buyers were created without one.
+    REGISTRATION_NUMBER = "REGISTRATION_NUMBER"
+    #: Indian, with no PAN. Not required by a rule — a lead may start without one — but
+    #: the company cannot be matched by identifier until it has one.
+    PAN = "PAN"
+    #: No country at all (the older unnamed create path), so nothing says which
+    #: identifier it should carry.
+    COUNTRY = "COUNTRY"
+
+
+def identity_gap(country: str | None) -> IdentityGap:
+    """For a company holding neither identifier: what completing it needs."""
+    cleaned = (country or "").strip().upper()
+    if not cleaned:
+        return IdentityGap.COUNTRY
+    return IdentityGap.PAN if is_pan_country(cleaned) else IdentityGap.REGISTRATION_NUMBER
+
+
+def gap_is_required(gap: IdentityGap) -> bool:
+    """Whether a CRM rule requires the gap to be closed — IQ-7 for a foreign company,
+    and a country for any company — rather than it being worth doing."""
+    return gap is not IdentityGap.PAN
+
+
 def require_foreign_registration_number(
     *,
     country: str | None,

@@ -26,7 +26,7 @@
  */
 
 import { CalendarClock } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import {
@@ -41,13 +41,14 @@ import {
   useSearchParamState,
 } from '@/components';
 import { formatDate, humanize } from '@/lib/format';
-import { isStaffRole, useCurrentUser } from '@/platform/auth';
+import { useCan } from '@/platform/access';
 import { MaskedValue } from '@/platform/mask';
 
 import {
   GstRegistrationsSection,
   CompanyDealsList,
   CompanyTradePanel,
+  IdentityGapNotice,
   NotInPipelineNotice,
   CompanyHistory,
   JourneyChip,
@@ -65,12 +66,16 @@ import {
 } from '../hooks';
 import { COMPANY_TABS, paths, type CompanyTab } from '../paths';
 import type { ExporterActivityType, ExporterProfileDetail } from '../types';
-import { BackgroundCheckPanel } from './panels/BackgroundCheckPanel';
 import { CompanyPanel } from './panels/CompanyPanel';
 import { ConversationPanel } from './panels/ConversationPanel';
 import { DealsPanel } from './panels/DealsPanel';
 import { DocumentsPanel } from './panels/DocumentsPanel';
 import { QualificationPanel } from './panels/QualificationPanel';
+
+// The compliance chapter is its own chunk (G7): a role without the tab never loads it.
+const BackgroundCheckPanel = lazy(() =>
+  import('./panels/BackgroundCheckPanel').then((m) => ({ default: m.BackgroundCheckPanel })),
+);
 
 /** Rows per activity page. Lives here because the shell builds the query
  * params and decides whether a next page exists. */
@@ -137,12 +142,16 @@ function SummaryStrip({ profile }: { profile: ExporterProfileDetail }) {
 
 export function ExporterDetailPage() {
   const { customerId } = useParams<{ customerId: string }>();
-  const currentUser = useCurrentUser();
   // DEVELOPER reads the CRM (masked) but writes nothing and cannot load
-  // verification results — the backend refuses those with 403 — so it gets no
+  // verification results — the backend refuses those with 403 (D8) — so it gets no
   // Background check tab at all rather than a tab that renders nothing.
-  const isStaff = isStaffRole(currentUser.role);
-  const tabs = isStaff
+  const isStaff = useCan('crm.write');
+  const canReadCompliance = useCan('compliance.read');
+  // Flagging a branch stops trade through it, so it is a compliance decision and not
+  // a sales one (plan P6-5). The server refuses it for OPERATIONS; the screen does not
+  // offer it either, rather than showing a button that 403s.
+  const canFlagBranches = useCan('gst.flag');
+  const tabs = canReadCompliance
     ? COMPANY_TABS
     : COMPANY_TABS.filter((value) => value !== 'background-check');
   const { data: profile, isLoading, isError, refetch } = useExporterProfileDetail(customerId);
@@ -200,11 +209,6 @@ export function ExporterDetailPage() {
   // gauges do not apply, and the server refuses them (plan P4-2, task 3.9). Read
   // here, below the guards, because it needs the loaded profile.
   const notInPipeline = profile.pipeline_status === 'NOT_IN_PIPELINE';
-  // Flagging a branch stops trade through it, so it is a compliance decision and not
-  // a sales one (plan P6-5). The server refuses it for OPERATIONS; the screen does not
-  // offer it either, rather than showing a button that 403s.
-  const canFlagBranches =
-    currentUser.role === 'COMPLIANCE' || currentUser.role === 'ADMIN';
 
   return (
     // One `Tabs` root around the sticky header and the panels, so the triggers
@@ -262,6 +266,10 @@ export function ExporterDetailPage() {
 
       <TabsContent value="overview">
         <div className="flex flex-col gap-5">
+          {/* IQ-7's completion list, from the company's side (R-28). */}
+          {profile.identity_type === null ? (
+            <IdentityGapNotice country={profile.country} canEdit={isStaff} />
+          ) : null}
           <CompanyPanel profile={profile} canEdit={isStaff} />
           {/* The company's branches (task 3.13), replacing the comma-separated GSTIN
               field that used to be inside the panel. Flagging one is COMPLIANCE's
@@ -330,13 +338,13 @@ export function ExporterDetailPage() {
             title="Sold to"
             description="Who this company has invoiced, and what became of each invoice. Nothing here is totalled: amounts stay in the currency they were invoiced in."
           >
-            <CompanyTradePanel companyId={customerId} as="seller" />
+            <CompanyTradePanel companyId={customerId} as="seller" canRecord={isStaff} />
           </Panel>
           <Panel
             title="Bought from, invoice by invoice"
             description="Who has invoiced this company. The same pair in the other direction is a different relationship, with different invoices."
           >
-            <CompanyTradePanel companyId={customerId} as="buyer" />
+            <CompanyTradePanel companyId={customerId} as="buyer" canRecord={isStaff} />
           </Panel>
         </div>
       </TabsContent>
@@ -344,7 +352,10 @@ export function ExporterDetailPage() {
         <DocumentsPanel customerId={customerId} isStaff={isStaff} />
       </TabsContent>
       <TabsContent value="background-check">
-        <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
+        {/* Never rendered for a role without the tab, so its code never loads (G7). */}
+        <Suspense fallback={<Skeleton className="h-40 rounded-lg" />}>
+          <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
+        </Suspense>
       </TabsContent>
       <TabsContent value="history">
         <CompanyHistory customerId={customerId} />

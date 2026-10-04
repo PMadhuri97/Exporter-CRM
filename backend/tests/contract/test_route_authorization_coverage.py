@@ -171,6 +171,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # The response carries no identifiers for any role, and every identifier lookup is
     # audited.
     ("POST", f"{CRM}/companies/match"): STAFF,
+    ("GET", f"{CRM}/companies/identity-completion"): READERS,
     # GST registrations — a company's branches (tasks 3.12–3.17, plan P6-2, P6-5).
     # Reading is every CRM reader's, with the GSTIN masked per role and the portal link
     # withheld from a role that sees it masked (the link carries the GSTIN).

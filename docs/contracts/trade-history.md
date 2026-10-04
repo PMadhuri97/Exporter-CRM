@@ -131,7 +131,7 @@ round them. The frontend formats them and never parses them.
 | `GET /exporters/{id}/trade-relationships?as=seller\|buyer` | staff + DEVELOPER | Two sides, two lists. `invoice_count` per row |
 | `GET /trade-relationships/{id}` | staff + DEVELOPER | Invoices newest first, each with the outcome we currently believe |
 | `GET /trade-invoices/{id}` | staff + DEVELOPER | The **whole** outcome chain, oldest first |
-| `POST /trade-relationships/{id}/invoices` | staff | Identity frozen on write. **No screen yet** — this is how claimed past trade (P5-8) is recorded, so that is API-only for now (`open-items.md` §2) |
+| `POST /trade-relationships/{id}/invoices` | staff | Identity frozen on write. This is how claimed past trade (P5-8) is recorded: the company page's trade panel offers **Record past invoice** on each relationship row (R-27), sending no `deal_id`, then, if an outcome is chosen, `POST /trade-invoices/{id}/outcomes` with `proof_status` `CLAIMED` unless the person has seen proof. If the outcome is refused after the invoice is written, the form says so and sends only the outcome again. A pair with no relationship yet has nowhere to record it: no route creates a relationship on its own |
 | `POST /trade-invoices/{id}/outcomes` | staff | Append-only; `supersedes_outcome_id` must be the head |
 | `POST /deals/{id}/payment-outcome` | staff | §5 |
 

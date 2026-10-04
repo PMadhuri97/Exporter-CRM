@@ -1,5 +1,7 @@
 /**
- * Qualification criteria — **owner: Developer 2** (L2-09). ADMIN only.
+ * Qualification criteria — **owner: Developer 2** (L2-09). ADMIN only, guarded at
+ * the route (`settings.criteria`, R-33 G5): any other role gets the generic NotFound
+ * there and never loads this page, so it carries no "Administrators only" of its own.
  *
  * The criteria a lead is qualified against are settings, not code
  * (architecture §3.3): an administrator adds them and changes them here. A
@@ -30,7 +32,6 @@ import {
   Field,
   FormError,
   Input,
-  NotFound,
   PageHeader,
   Select,
   Skeleton,
@@ -43,7 +44,6 @@ import {
 } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 import { formatDateTime } from '@/lib/format';
-import { isAdminRole, useCurrentUser } from '@/platform/auth';
 
 import {
   useAddCriterionVersion,
@@ -327,20 +327,11 @@ function VersionsDrawer({ criterionKey, onClose }: { criterionKey: string | null
 }
 
 export function QualificationCriteriaPage() {
-  const { role } = useCurrentUser();
   const criteria = useCriteria();
   // `dialogKey` remounts the dialog per open, so its draft always starts from
   // the version it was opened on.
   const [dialog, setDialog] = useState<{ base: Criterion | null; dialogKey: number } | null>(null);
   const [versionsOf, setVersionsOf] = useState<string | null>(null);
-
-  if (!isAdminRole(role)) {
-    return (
-      <NotFound title="Administrators only">
-        Qualification criteria are managed by an administrator.
-      </NotFound>
-    );
-  }
 
   const rows = criteria.data?.criteria ?? [];
   const open = (base: Criterion | null) => setDialog({ base, dialogKey: Date.now() });

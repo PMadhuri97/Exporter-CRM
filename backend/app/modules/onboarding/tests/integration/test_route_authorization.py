@@ -214,6 +214,7 @@ GATED_ROUTES = [
     ("GET", f"{BASE}/verifications/{_ID}", None, STAFF),
     ("GET", f"{BASE}/verifications?entity_type=EXPORTER&entity_reference={_ID}", None, STAFF),
     ("GET", f"{BASE}/exporters", None, READERS),
+    ("GET", f"{BASE}/companies/identity-completion", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/contacts", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/activities", None, READERS),

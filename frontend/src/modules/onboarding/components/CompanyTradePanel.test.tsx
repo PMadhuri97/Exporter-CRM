@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getTradeRelationship, listTradeRelationships } from '../api';
+import { getTradeRelationship, listTradeRelationships, recordTradeInvoice } from '../api';
 import type {
   TradeInvoice,
   TradeRelationship,
@@ -17,6 +17,8 @@ vi.mock('../api', () => ({
   listTradeRelationships: vi.fn(),
   getTradeRelationship: vi.fn(),
   getTradeInvoice: vi.fn(),
+  recordTradeInvoice: vi.fn(),
+  recordTradeOutcome: vi.fn(),
   getDocument: vi.fn(),
   fetchDocumentBlob: vi.fn(),
   createDownloadLink: vi.fn(),
@@ -72,12 +74,12 @@ function detail(invoices: TradeInvoice[]): TradeRelationshipDetail {
   return { relationship: relationship(), invoices };
 }
 
-function renderPanel(as: 'seller' | 'buyer') {
+function renderPanel(as: 'seller' | 'buyer', canRecord = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <CompanyTradePanel companyId={COMPANY} as={as} />
+        <CompanyTradePanel companyId={COMPANY} as={as} canRecord={canRecord} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -175,4 +177,46 @@ it('shows no counterparty identifiers, whatever the role (IQ-19)', async () => {
   // The response carries none — that is the server's doing. This asserts the row
   // invents no identifier line of its own.
   expect(container.textContent).not.toMatch(/PAN|GSTIN|CIN|IEC/);
+});
+
+describe('recording past trade (R-27)', () => {
+  it('offers staff a past invoice on every relationship row', async () => {
+    renderPanel('seller', true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Record past invoice' }));
+    expect(screen.getByRole('form', { name: 'Record past invoice' })).toHaveTextContent(
+      'Rotterdam Trading BV',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('form', { name: 'Record past invoice' })).not.toBeInTheDocument();
+  });
+
+  it('offers a read-only role nothing to record (DEVELOPER, D8)', async () => {
+    renderPanel('seller', false);
+    await screen.findByText(/2 invoices/);
+    expect(screen.queryByRole('button', { name: 'Record past invoice' })).not.toBeInTheDocument();
+  });
+
+  it('says where past trade can go when there is no relationship yet', async () => {
+    vi.mocked(listTradeRelationships).mockResolvedValue(list([]));
+    renderPanel('seller', true);
+    expect(await screen.findByText(/once a deal names the other company/)).toBeInTheDocument();
+  });
+
+  it('opens the invoices once a past invoice is recorded', async () => {
+    vi.mocked(recordTradeInvoice).mockResolvedValue(invoice({ invoice_number: 'OLD-2024-17' }));
+    renderPanel('seller', true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Record past invoice' }));
+    fireEvent.change(screen.getByLabelText(/Invoice number/), { target: { value: 'OLD-2024-17' } });
+    fireEvent.change(screen.getByLabelText(/Invoice date/), { target: { value: '2024-11-02' } });
+    fireEvent.change(screen.getByLabelText(/^Amount/), { target: { value: '9200' } });
+    fireEvent.change(screen.getByLabelText(/Currency/), { target: { value: 'EUR' } });
+    fireEvent.click(
+      within(screen.getByRole('form', { name: 'Record past invoice' })).getByRole('button', {
+        name: 'Record past invoice',
+      }),
+    );
+
+    await waitFor(() => expect(getTradeRelationship).toHaveBeenCalledWith(RELATIONSHIP));
+    expect(screen.queryByRole('form', { name: 'Record past invoice' })).not.toBeInTheDocument();
+  });
 });

@@ -52,6 +52,7 @@ from app.modules.onboarding.domain.entities.background_check_enums import (
     BackgroundCheckRisk,
     BackgroundCheckState,
 )
+from app.modules.onboarding.domain.entities.exporter_enums import CompanyPipelineStatus
 
 
 class BackgroundCheckMoveResponse(BaseModel):
@@ -393,6 +394,9 @@ class ReKycDueCompanyResponse(BaseModel):
     expires_at: datetime
     is_expired: bool
     current_cycle_number: int | None
+    #: `IN_PIPELINE`, or `NOT_IN_PIPELINE` for a company that exists only as a buyer
+    #: (R-29) — so the list can say which renewals are for a buyer rather than a lead.
+    pipeline_status: CompanyPipelineStatus
 
 
 class ReKycDueListResponse(BaseModel):

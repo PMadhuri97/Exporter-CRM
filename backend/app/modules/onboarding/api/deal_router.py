@@ -233,7 +233,7 @@ async def transition_deal_stage(
     response_model=DealResponse,
     summary="Record the deal's buyer, as a company or as details",
     description=(
-        "Two forms, exactly one per request.\n\n"
+        "Three forms, exactly one per request.\n\n"
         "**`{buyer_company_id}`** names the company the buyer **is** (plan P4-4). "
         "Use this one. The buyer is then a full company record: it can be screened "
         "on its own timeline, the handover guard reads its sanctions and AML "
@@ -242,6 +242,14 @@ async def transition_deal_stage(
         "new one opened, so that the correction leaves a trail. Setting the same "
         "company again changes nothing and is not an error. The company must exist "
         "and must not be the seller on this deal.\n\n"
+        "**`{create: {name, country, pan?, gstin?, registration_number?}}`** creates "
+        "the buyer as a company that is **not in the pipeline** (not a lead) and names "
+        "it, in one step (plan P4-3). The server matches first, as "
+        "`POST /companies/match` does, and audits every identifier lookup: an "
+        "identifier a company on file holds is refused with 409 "
+        "`BUYER_COMPANY_ALREADY_KNOWN` naming that company, rather than duplicated. A "
+        "name that only resembles one does not stop it (IQ-8). A company outside India "
+        "needs its registration number unless it has a PAN (IQ-7).\n\n"
         "**`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer "
         "per deal, so it replaces that row rather than adding another (deal "
         "contract §3); `PUT` rather than `POST` for the same reason. Still accepted "
@@ -262,15 +270,17 @@ async def transition_deal_stage(
         404: {"description": "Deal not found, or no such buyer company"},
         409: {
             "description": (
-                "The deal is handed over or withdrawn, or it already names a "
-                "different buyer company"
+                "The deal is handed over or withdrawn, it already names a different "
+                "buyer company, or a buyer company to create carries an identifier a "
+                "company on file holds (BUYER_COMPANY_ALREADY_KNOWN)"
             )
         },
         422: {
             "description": (
-                "Both forms at once, neither form complete, a country that is not "
-                "ISO-3166-1 alpha-2, a buyer company that is the seller, or a "
-                "masked value sent back"
+                "More than one form, no form complete, a country that is not "
+                "ISO-3166-1 alpha-2, a buyer company that is the seller, a foreign "
+                "buyer company with no registration number and no PAN, or a masked "
+                "value sent back"
             )
         },
     },
@@ -282,7 +292,20 @@ async def set_deal_buyer(
     db: AsyncSession = Depends(get_db),
 ) -> DealResponse:
     service = DealService(db)
-    if body.is_company_form:
+    if body.is_create_form:
+        draft = body.create
+        assert draft is not None
+        view = await service.create_buyer_company(
+            deal_id,
+            name=draft.name,
+            country=draft.country,
+            pan=draft.pan,
+            gstin=draft.gstin,
+            registration_number=draft.registration_number,
+            actor_id=str(current_user.id),
+            actor_role=current_user.role.value,
+        )
+    elif body.is_company_form:
         # `SetDealBuyerRequest` has already refused a body carrying both forms, so
         # this branch cannot also write a `deal_buyer` row.
         view = await service.set_buyer_company(

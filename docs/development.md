@@ -256,32 +256,76 @@ Rules (details in [`../backend/migrations/README.md`](../backend/migrations/READ
   `alembic upgrade head`. A lossy downgrade says so in its docstring.
 - **Add the row to the migration register.** The next free onboarding number is there.
 
-### 10.1 The two data commands (P4-6, P5-5)
+### 10.1 The two data commands (P4-6, P5-5) — safe execution
 
-The buyer migration and the trade relationship backfill are commands, not revisions,
-because a person reads a report between reading and writing. Their order on a live
-database, and what must hold before each, is in
-[`remaining-work.md`](remaining-work.md) §7. Rehearse on a scratch copy first, never on
-the shared `aner_settlement`.
+The buyer migration (`migrate_deal_buyers`, P4-6) and the trade relationship backfill
+(`backfill_trade_relationships`, P5-5) are commands, not revisions, because a person reads
+a report between reading and writing. Their order on a live database, and what must hold
+before each, is [`remaining-work.md`](remaining-work.md) §7. This section is how to run
+them without hurting anything.
+
+**Rehearse on a scratch database first, every time.** Never on the shared
+`aner_settlement`, and never on a live database before the rehearsal on a copy of *that*
+database has passed. A scratch database for a rehearsal must be:
+
+1. **A copy of the environment you will run on**, not a development database. Take it with
+   `createdb -T <source> <scratch>` (it needs nobody connected to the source) or
+   `pg_dump <source> | psql <scratch>`. Numbers from another database prove nothing about
+   this one.
+2. **At head.** Point **both** `DATABASE_URL` and `DATABASE_SYNC_URL` at the scratch
+   database (the commands read the first, `alembic` the second) and run
+   `alembic upgrade head`; `alembic current` must print the head in
+   `contracts/migration-register.md`. Read the counts 0033 and 0035 print.
+3. **Clean of P2-7's precondition**: `SELECT count(*) FROM onboarding.deal WHERE stage =
+   'HANDED_OVER' AND handover_snapshot IS NULL` is 0. `--validate` counts it too, and the
+   migration does not repair it.
+4. **Yours alone** while it runs, and dropped afterwards (`dropdb <scratch>`). It holds a
+   copy of real company data, so it is treated like the source.
+
+**Quiet settings.** With the development `.env` (`DEBUG=true`, `LOG_LEVEL=DEBUG`) the
+engine echoes every statement and the report is lost in it; both commands say so on
+stderr if they see it. Set `LOG_LEVEL=WARNING` and `DEBUG=false` for the run.
+
+**Windows consoles.** Both commands print ASCII and replace anything the console cannot
+encode (a company name in another script) with an escape such as `\u0141` for `Ł`, so a cp1252
+console shows the report rather than crashing on it. For a report that keeps every name
+exactly, write it to a file as UTF-8: `$env:PYTHONIOENCODING = 'utf-8'` in PowerShell (or
+`PYTHONIOENCODING=utf-8` in Git Bash) and redirect the output to a file.
+
+**The order, on the rehearsal and then on the live database:**
 
 ```bash
 cd backend
-export LOG_LEVEL=WARNING DEBUG=false     # otherwise SQL and log lines bury the report
-pg_dump ...                              # the only way back: neither command can be undone in place
-python -m app.modules.onboarding.migrate_deal_buyers --dry-run            # writes nothing
+export LOG_LEVEL=WARNING DEBUG=false     # PowerShell: $env:LOG_LEVEL='WARNING'; $env:DEBUG='false'
+export DATABASE_URL=... DATABASE_SYNC_URL=...   # both at the database you mean; check twice
+
+pg_dump ... > before-p46.sql             # 1. the only way back: neither command undoes in place
+
+python -m app.modules.onboarding.migrate_deal_buyers --dry-run > p46-dry-run.txt   # 2. writes nothing
+#    3. Compliance reads the report: "Needs a person" rows are not migrated until
+#       confirmed; "Kept separate - review" and "Migrates, but review" rows are.
 python -m app.modules.onboarding.migrate_deal_buyers --apply --run-id <id> \
-    [--confirm-name <deal_buyer_id>=<company_id> ...]                     # lines the report printed
-python -m app.modules.onboarding.migrate_deal_buyers --validate           # every count 0, else exit 1
-python -m app.modules.onboarding.migrate_deal_buyers --apply --run-id <id2>  # must create nothing
-python -m app.modules.onboarding.backfill_trade_relationships --dry-run | --apply --run-id <id> | --validate
+    [--confirm-name <deal_buyer_id>=<company_id> ...]   # 4. lines as the report printed them
+python -m app.modules.onboarding.migrate_deal_buyers --validate            # 5. every count 0, else exit 1
+python -m app.modules.onboarding.migrate_deal_buyers --apply --run-id <id2> # 6. must create nothing
+
+python -m app.modules.onboarding.backfill_trade_relationships --dry-run    # 7. only after 5 passes
+python -m app.modules.onboarding.backfill_trade_relationships --apply --run-id <id3>
+python -m app.modules.onboarding.backfill_trade_relationships --validate
 ```
 
-- Both print ASCII and replace what a console cannot encode, so a Windows (cp1252)
-  console shows the report rather than crashing on it.
+- **Do not reorder.** The backfill creates a relationship for every deal that names a
+  buyer company, so before the buyer migration it would cover only the deals named on the
+  new deal page and miss the rest.
 - `--apply` checks every `--confirm-name` before writing anything; one bad line refuses
-  the whole run (exit 2).
-- Keep the dry-run report with the migration ticket. "Kept separate - review" and
-  "Migrates, but review" rows migrate; "Needs a person" rows do not until confirmed.
+  the whole run (exit 2). It re-reads each deal under a lock and skips one that has named
+  a company since the report.
+- `--validate` failing means stop: do not go on to the backfill, or to P4-10.
+- **`migrate_deal_buyers --rollback` writes nothing**; it reports what a run did. The dump
+  is the way back (decision D-02, open). The backfill's undo is one `DELETE`, which
+  `--report-run` prints, as long as no invoice points at the run's relationships.
+- Keep the dry-run report, the `--validate` output and the run ids with the migration
+  ticket.
 
 ## 11. Where things are documented
 

@@ -21,7 +21,7 @@ inferred from reading.
 | **Before merge** | Nothing open. R-01 – R-05 are done |
 | **Before the buyer migration runs anywhere** | R-06 – R-11 are fixed (§4, 4 October 2026). Still needed: the decisions in §4.1, and §7's checks on each live database |
 | **Bugs to fix soon** | §5: R-12 – R-23 fixed on 4 October 2026, except R-19, which waits on D-04 |
-| **Unbuilt** | §6: R-24 – R-33. Two of them are preconditions for retiring `deal_buyer`; R-33 points to the separate frontend plan |
+| **Unbuilt** | §6, as of the fourth pass (4 October 2026): **built** R-24, R-27, R-28, R-29 and R-33's Phase 0. **Blocked** R-25 (P4-6 has not run in any environment, §7 step 7) and so R-26. **Not started** R-30 (needs 3.2's reports), R-31, R-32, and R-33's Phases 1–5 |
 | **Waiting on the lead** | §8: D-01 – D-07 from this PR, plus the decisions already open |
 | **Next free migration number** | **0044** (`contracts/migration-register.md` §1). 0041 is R-07's `ALREADY_LINKED`, 0042 the deal FKs (R-17), 0043 the `identity_type` backfill (R-16) |
 
@@ -196,16 +196,16 @@ forced to cp1252. The scratch copy is kept for inspection.
 
 | Id | Item | Needs | Notes |
 |---|---|---|---|
-| **R-24** | **Create a buyer company** from the deal screen | — | Nothing creates a `NOT_IN_PIPELINE` company, though `demo.md` §4 step 5 tells the presenter to (`CompanyPicker.tsx:253` says it "arrives with the buyer migration"). Today's options are the legacy details form, which is being retired, or Add company, which makes a **lead** and inflates pipeline counts (P4-2). To build: a route over `CompanyDirectory.create_buyer_company` (match first; the IQ-7 number for foreign buyers; D8; an authorisation row; a masking test), and a "Create buyer company" step in the picker when the match is `NEW`. **A precondition for R-25** |
-| **R-25** | **2.10 / P4-10 — retire `deal_buyer` writes.** A trigger refuses INSERT/UPDATE (the table is kept). Drop the legacy `buyer` from the deal response after one release. Rewrite decision 9 in `architecture.md`, `deal-and-buyer.md` and `event-envelope.md` | §4 fixed; P4-6 run in **every** environment (§7); R-24 | This removes "Record details instead" and the legacy form of `PUT /deals/{id}/buyer` |
-| **R-26** | Delete `components/BuyerChecks.tsx`, its test, its export, and `BUYER_CHECK_TYPES` if nothing else uses it | R-25 | Until then it is the only place a legacy buyer's sanctions and AML can be recorded, which BQ-4 needs |
-| **R-27** | **Past-invoice form** on the company page's trade panel (claimed past trade, P5-8) | — | The API exists (`POST /trade-relationships/{id}/invoices`, `…/outcomes`); there is no screen |
-| **R-28** | **IQ-7 completion list:** companies whose `identity_type` is NULL (migrated buyers with no number, and legacy rows) | R-16 | Plan §17.2 sends such buyers "to the completion list"; only the `pipeline_status` filter exists |
-| **R-29** | Optional: `pipeline_status` on the Re-KYC due list and its Home card | — | Add it to `ReKycDueCompanyResponse` and regenerate the OpenAPI artifacts |
+| **R-24** | **Create a buyer company** from the deal screen | — | **Built 4 October 2026.** A third form of `PUT /deals/{id}/buyer`, `{create: {…}}` (`DealService.create_buyer_company`): refuses a closed deal or one already naming a buyer company; IQ-7 with no exemption; **matches first** and refuses an identifier a company holds with 409 `BUYER_COMPANY_ALREADY_KNOWN` (`match_kind`, `company_ids`); creates through `CompanyDirectory.create_buyer_company` (`NOT_IN_PIPELINE`, `DEAL_BUYER`, no journey row) and names it through `set_buyer_company`. Staff only, as the route already was; no new route, so the authorisation tables were unchanged. 17 tests (`test_l3b_deal_buyer_company_create.py`): the pipeline count is unchanged, roles, masking per role, each refusal. The picker offers **Create buyer company** on `NEW`, and on `POSSIBLE_DUPLICATE` as "None of these is the buyer?" (IQ-8: a name is never an identity; the server allows it too), prefilled with the identifier typed, and turns "already known" into **Use the company on file**. Contract `deal-and-buyer.md` §3.0, `demo.md` §4 step 5 |
+| **R-25** | **2.10 / P4-10 — retire `deal_buyer` writes.** A trigger refuses INSERT/UPDATE (the table is kept). Drop the legacy `buyer` from the deal response after one release. Rewrite decision 9 in `architecture.md`, `deal-and-buyer.md` and `event-envelope.md` | §4 fixed; P4-6 run in **every** environment (§7); R-24 | **Blocked — not built, on purpose (4 October 2026).** R-24 is done, but §7 step 7's precondition is not met: P4-6 has run in **no** environment. Checked read-only: `crm_release_audit` is at `onboarding_0022` and `aner_settlement` at `onboarding_0027`, so neither even has `deal_buyer_company_map`; `crm_uat_walk` and the demo database are not on this server. A revision adding the trigger would run at the next `alembic upgrade head`, i.e. *before* P4-6 in every environment — exactly what §7 forbids. This removes "Record details instead" and the legacy form of `PUT /deals/{id}/buyer` when it lands |
+| **R-26** | Delete `components/BuyerChecks.tsx`, its test, its export, and `BUYER_CHECK_TYPES` if nothing else uses it | R-25 | **Blocked on R-25.** Until then it is the only place a legacy buyer's sanctions and AML can be recorded, which BQ-4 needs |
+| **R-27** | **Past-invoice form** on the company page's trade panel (claimed past trade, P5-8) | — | **Built 4 October 2026.** `RecordPastTradeForm`, opened by **Record past invoice** on each relationship row of `CompanyTradePanel` (both sides), for staff only (`crm.write`; DEVELOPER gets no control). It uses the existing routes only: the invoice with no `deal_id`, then, if an outcome is chosen, the outcome (`proof_status` `CLAIMED` by default; `amount_paid` and a note when given). Every rule is the server's and its words are shown. If the outcome is refused after the invoice is written, the invoice's fields lock and only the outcome is sent again — an invoice's identity is frozen, so it is never re-sent. Success refreshes the relationship, both lists and the history, and opens the invoices. A pair with no relationship has nowhere to record it (no route creates one; the empty panel says so). 11 tests. `trade-history.md` §4, `demo.md` §4 step 12 |
+| **R-28** | **IQ-7 completion list:** companies whose `identity_type` is NULL (migrated buyers with no number, and legacy rows) | R-16 | **Built 4 October 2026.** `GET /companies/identity-completion` (READERS; API_USER 403; authorisation rows in both tables; the masking sweep reads it): each company not `ENDED` with no PAN and no registration number, what it lacks (`missing`) and whether a rule requires it (`required`: a country, or a foreign registration number; a PAN only worth having), required first; no identifiers. Screen **Identity to complete** (`/companies/identity-completion`, linked from Companies), grouped "Required" / "Worth completing"; the company page shows the gap as a notice. Completing is the company's ordinary edit, which recomputes `identity_type` (R-16), so the company leaves the list at once — tested end to end. `company-record.md` §6 |
+| **R-29** | Optional: `pipeline_status` on the Re-KYC due list and its Home card | — | **Built 4 October 2026** (no decision blocked it). `ReKycDueCompanyResponse.pipeline_status`; the Home card marks a buyer-only company "Buyer only". OpenAPI regenerated. `background-check.md` §12.7 |
 | **R-30** | Optional 3.16 / P6-4: PAN from GSTIN for PAN-less companies, with an audit table for rollback | 3.2's reports (§7 step 0) | Only if the reports say it is worth doing |
 | **R-31** | `name` / `country` `NOT NULL`: remove the unnamed `POST /exporters` path, then expand → backfill → contract | Nothing calls the unnamed path | Inherited from `open-items.md` §2 |
 | **R-32** | Name matching scans every company in the country, in Python, on each lookup (`company_directory._by_name`). The migration's step 4 does this **per buyer** | Only matters past about 50,000 companies in one country | Store a `name_key` column, maintained by `company_names.name_key` |
-| **R-33** | **Frontend redesign and fail-closed role access.** Planned separately in `docs/frontend-plan.md` (written 4 October, not yet committed), not repeated here. Its Phase 0 fixes seven role-visibility gaps (G1–G7) on today's screens, for example API_USER seeing the full navigation and DEVELOPER reaching the Add company and Import CSV forms by URL | — | Do Phase 0 before any visual work. Its deal-room and party-card designs should re-compose R-05's `InvoicingBranchPicker` (built 4 October; plan §8.6 puts it on the seller card) and include R-24's create-buyer step, rather than building either twice |
+| **R-33** | **Frontend redesign and fail-closed role access.** Planned separately in `docs/frontend-plan.md`, not repeated here. Its Phase 0 fixes seven role-visibility gaps (G1–G7) on today's screens | — | **Phase 0 built 4 October 2026; Phases 1–5 not started.** `src/platform/access`: one allowlist per role (`capabilities.ts`, mirroring the server's role groups; a role nobody listed has nothing), `useCan`, `Gate`, `NoWorkspace`. The module table is `src/routes/modules.ts` (the plan said `src/app/modules.tsx`; `src/routes` already held the router), and both the router and the rail are generated from it. G1: the rail is filtered by capability, and API_USER (or an unknown role) gets **No workspace** with no rail. G2: Home's cards and Add company by capability. G3: Add company / Import CSV / RXIL intake only for roles that may use them. G4/G5: `/companies/new`, `/companies/import`, RXIL intake, criteria and required documents are gated **at the route** and render the generic `NotFound`; the in-page "Administrators only" is gone. G6: every `role ===` and `is*Role` call moved to `useCan` (the helpers are deleted; masking's `canReveal` reads the manifest); an ESLint rule refuses a role literal comparison or `switch` outside `platform/access` (checked with deliberate violations). G7: every screen is `React.lazy` inside its gate, the compliance chapter too; the main bundle went from ~590 kB to 435 kB with no chunk warning. Tests: the matrix (5 roles × 14 screens through the real router: rail, route, nothing rendered or loaded when forbidden, NotFound identical to a missing page), the manifest against §4.1, `Gate` never importing a forbidden lazy screen, and per-role buttons. The server is unchanged and still enforces everything. Still to do with the redesign: the deal-room and party-card designs should re-compose R-05's `InvoicingBranchPicker` and R-24's create step, and the plan's server drift check waits on ask A7 |
 
 ---
 
@@ -263,9 +263,8 @@ This is not a coding dependency. It is the order things run in each environment:
 
 ### 8.2 Already open (`open-items.md` §1)
 
-- **Confirmed on 2 October 2026, but the record never reached the repo.** You confirmed
-  these as built. The write-up (`background-check.md` §14.2, and their removal from
-  `open-items.md` §1) never reached `main`, so it needs recording again:
+- **Confirmed on 2 October 2026 — recorded again on 4 October** in
+  `contracts/background-check.md` §14.2 and removed from `open-items.md` §1:
   - Developer 1's five: REVIEW + REJECTED reads `FAILED`; `CHECK_CYCLE_EMPTY`; the
     maker-checker details; the expiry backfill keyed on the last Clear; `BuyerChecks`
     kept until P4-10.
@@ -292,11 +291,11 @@ This is not a coding dependency. It is the order things run in each environment:
 
 | Document | What is wrong |
 |---|---|
-| `demo.md` §4 step 5 | It says the picker creates a buyer company (R-24), and that control does not exist. Step 10 was rewritten for R-05 on 4 October |
-| `open-items.md` §1 | Stale rows: §1.1 "the expiry condition … does not yet block a handover" (2.5 is done); "P4-11 rests on … not yet merged" (F3 is in). §1.2's BQ-4 row is now marked built but belongs out of "Undecided". Re-record the 2 October confirmations (§8.2) |
-| `contracts/migration-register.md` §1 | Blank lines after the 0032, 0034 and 0037 rows split the table, so each row after a gap renders as plain text |
-| `onboarding_0033_created_via.py` docstring | Names `test_dev3_f3_created_via.py`, but the test is in `test_dev3_company_identity.py` |
-| `development.md` | ~~No runbook for the two data commands~~ Added as §10.1 on 4 October |
+| ~~`demo.md` §4 step 5~~ | **Done 4 October 2026:** step 5 describes the real create step (R-24) and its refusals; step 10 the invoicing-branch panel as built; step 12 the past-invoice form; §5 the role behaviour |
+| ~~`open-items.md` §1~~ | **Done 4 October 2026:** the two stale §1.1 rows and the BQ-4 row removed; the 2 October confirmations recorded in `contracts/background-check.md` §14.2 and removed from §1; still-open rows kept; R-27's §2 row removed |
+| ~~`contracts/migration-register.md` §1~~ | **Done:** the three blank lines removed; the table is one table again |
+| ~~`onboarding_0033_created_via.py` docstring~~ | **Done:** names `test_dev3_company_identity.py` |
+| ~~`development.md`~~ | **Done:** §10.1 is now the safe execution procedure — scratch-database requirements, quiet settings, Windows console encoding, and the dry-run → apply → validate order for both commands |
 
 ---
 
@@ -350,6 +349,15 @@ Run as in `development.md` §7, against a scratch database at head. Never use th
 | `vitest run` | 45 files / 435 tests | **46 files / 455 tests** | 39 / 372 |
 | `vite build` alone | passes (chunk-size warning) | same | same |
 
+**After the fourth pass (R-24 – R-29, R-33 Phase 0; 4 October 2026, unstaged on `0713986`):**
+one head, `onboarding_0043_identity_type` (no migration added; next free 0044); upgrade from an
+empty database, `downgrade -3` and back, and `alembic check` all clean. CRM suite **2,711
+passed, 1 skipped, 0 failed** (53 min, `pr_f3_audit`; the skip is the Windows symlink test).
+`ruff` 16 (all pre-existing), `lint-imports` 19 kept / 0 broken, `tsc -b --noEmit` 0 errors,
+`eslint .` 0 errors / 2 warnings (AuthContext, pre-existing), `vitest` **51 files / 636
+tests**, `npm run build` passes with **no chunk-size warning** (main bundle 435 kB; every
+screen is its own chunk).
+
 **Removed on 4 October 2026:** the three lane documents (this file replaces them) and the
 outdated design PDF, `Exporter-CRM-Architecture-and-Plan.pdf`. Both are recoverable with
 `git show 451ef97:docs/<name>`. Every link to them now points here, at `architecture.md` or
@@ -362,7 +370,8 @@ at `plan.md`. Keep this file up to date as items close.
    code with tests.
 3. ~~§4 (R-06 – R-11)~~: done 4 October 2026 and rehearsed on a scratch copy (§4.1). What
    is left are §4.1's decisions, then §7.
-4. R-24, then the live runbook (§7) one environment at a time, then R-25 and R-26.
-5. R-16 with R-28, then R-27, then the rest of §5 and §6.
-6. R-33 (the frontend plan) can run alongside steps 2–5. Its Phase 0 access fixes are
-   small and independent of everything above.
+4. ~~R-24~~ (done 4 October 2026), then the live runbook (§7) one environment at a
+   time, then R-25 and R-26.
+5. ~~R-16 with R-28, then R-27~~ (done 4 October 2026); left in §5 and §6: R-19 (D-04),
+   R-30 – R-32.
+6. R-33: Phase 0 done 4 October 2026; Phases 1–5 (the redesign) next.

@@ -21,6 +21,7 @@ import type {
   ExporterProfileDetail,
   ExporterProfileListItem,
   ExporterSearchParams,
+  IdentityCompletionList,
   SetMarkerRequest,
   UpdateExporterProfileRequest,
 } from '../types';
@@ -119,6 +120,21 @@ export function setExporterMarker(
  * response never carries an identifier back, and every such lookup is audited.
  * Partial identifiers are refused: send the whole value or none.
  */
+/**
+ * The companies the CRM cannot identify yet: no PAN and no registration number
+ * (IQ-7's completion list, R-28). Required gaps first. Carries no identifiers.
+ */
+export function listIdentityCompletion(
+  params: { limit?: number; offset?: number } = {},
+): Promise<IdentityCompletionList> {
+  const query = new URLSearchParams();
+  query.set('limit', String(params.limit ?? 50));
+  query.set('offset', String(params.offset ?? 0));
+  return apiRequest<IdentityCompletionList>(
+    `/onboarding/companies/identity-completion?${query.toString()}`,
+  );
+}
+
 export function matchCompany(body: CompanyMatchRequest): Promise<CompanyMatch> {
   return apiRequest<CompanyMatch>('/onboarding/companies/match', {
     method: 'POST',

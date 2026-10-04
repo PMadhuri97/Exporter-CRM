@@ -83,6 +83,11 @@ from app.modules.onboarding.application.trade_history_service import (
     SOURCE_DEAL_BUYER_RECORDED,
     TradeHistoryService,
 )
+from app.modules.onboarding.domain.company_directory import BuyerCompanyDraft, MatchKind
+from app.modules.onboarding.domain.company_identity import (
+    normalise_registration_number,
+    require_foreign_registration_number,
+)
 from app.modules.onboarding.domain.deal_views import (
     BuyerCompanyView,
     DealBuyerView,
@@ -102,8 +107,15 @@ from app.modules.onboarding.domain.handover_conditions import (
     blocked_reason,
     state_name,
 )
+from app.modules.onboarding.domain.tax_identifiers import (
+    check_gstins_match_pan,
+    normalise_country,
+    normalise_gstins,
+    normalise_pan,
+)
 from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import (
+    BuyerCompanyAlreadyKnownError,
     DealBuyerCompanyAlreadySetError,
     DealBuyerIsTheSellerError,
     DealBuyerRequiredError,
@@ -618,6 +630,114 @@ class DealService:
             actor_id=actor_id,
         )
         return await self._to_view(deal)
+
+    async def create_buyer_company(
+        self,
+        deal_id: uuid.UUID,
+        *,
+        name: str,
+        country: str,
+        pan: str | None = None,
+        gstin: str | None = None,
+        registration_number: str | None = None,
+        actor_id: str | None,
+        actor_role: str | None,
+    ) -> DealView:
+        """Create the deal's buyer as a company and name it — plan P4-3 and P4-4's
+        "or creates one", ``remaining-work.md`` R-24.
+
+        A buyer that is not on file used to have two ways in: the legacy details form,
+        which is retiring (P4-10), or Add company, which makes a **lead** and inflates
+        the pipeline (P4-2). This creates the company the way a buyer should exist:
+        ``NOT_IN_PIPELINE``, ``source`` and ``created_via`` ``DEAL_BUYER``, created
+        from this deal, with one ``pipeline`` history row and no journey row
+        (``CompanyDirectory.create_buyer_company``).
+
+        In order, and nothing is written until every check has passed:
+
+        #. The deal may still take a buyer company: not closed, none named yet.
+        #. **IQ-7.** A company outside India needs its registration number unless it
+           holds a PAN. The P4-6 migration's exemption is for rows that predate the
+           rule; a buyer entered now can meet it.
+        #. **Match first** (``CompanyDirectory.match``, which audits every identifier
+           lookup, BQ-2). An identifier a company on file holds — ``MATCHED``, or a
+           ``CONFLICT`` between several — is refused with that company named, rather
+           than duplicated. A name that only resembles an existing company
+           (``POSSIBLE_DUPLICATE``) does not stop it: a name is never an identity
+           (IQ-8), and the person creating it has already been shown the look-alikes.
+
+        Then the company is created and named as the buyer through
+        ``set_buyer_company``, so the trade relationship and the history row are the
+        ones that path writes. A retry after a failure between the two steps makes no
+        second company: one with an identifier is matched first and refused as already
+        known, naming the company the first attempt created (the screen then offers
+        it); one with none reaches the create, which is keyed on the deal and returns
+        the same company.
+
+        Raises:
+            DealNotFoundError, DealTerminalError, DealBuyerCompanyAlreadySetError:
+                the deal cannot take a buyer company.
+            ValidationError: IQ-7, or a malformed identifier.
+            BuyerCompanyAlreadyKnownError: an identifier names a company on file.
+        """
+        from app.modules.onboarding.application.company_directory import (
+            CompanyDirectoryService,
+        )
+
+        deal = await self._lock_deal(deal_id)
+        if deal.stage.is_terminal:
+            raise DealTerminalError(deal_id, deal.stage.value)
+        if deal.buyer_company_id is not None:
+            raise DealBuyerCompanyAlreadySetError(deal_id, deal.buyer_company_id)
+
+        country = normalise_country(country) or ""
+        pan = normalise_pan(pan)
+        gstins = normalise_gstins([gstin] if gstin else [])
+        registration_number = normalise_registration_number(registration_number)
+        require_foreign_registration_number(
+            country=country, pan=pan, registration_number=registration_number
+        )
+        if pan and gstins:
+            check_gstins_match_pan(pan, gstins)
+
+        directory = CompanyDirectoryService(self._db)
+        result = await directory.match(
+            name=name,
+            country=country,
+            pan=pan,
+            gstin=gstins[0] if gstins else None,
+            registration_number=registration_number,
+            actor_role=actor_role,
+            actor_id=actor_id,
+        )
+        if result.kind in (MatchKind.MATCHED, MatchKind.CONFLICT):
+            # The identifier-lookup audit row is the one record of this request that
+            # must survive the refusal (BQ-2).
+            await self._db.commit()
+            raise BuyerCompanyAlreadyKnownError(result.kind.value, list(result.candidates))
+
+        company_id = await directory.create_buyer_company(
+            BuyerCompanyDraft(
+                name=name,
+                country=country,
+                pan=pan,
+                gstins=tuple(gstins),
+                registration_number=registration_number,
+                created_via_deal_id=deal_id,
+                source_ref=f"deal:{deal_id}",
+            ),
+            actor_id=actor_id,
+        )
+        logger.info(
+            "deal.buyer_company.created",
+            deal_id=str(deal_id),
+            buyer_company_id=str(company_id),
+            match_kind=result.kind.value,
+            actor_id=actor_id,
+        )
+        return await self.set_buyer_company(
+            deal_id, buyer_company_id=company_id, actor_id=actor_id
+        )
 
     async def set_buyer_company(
         self, deal_id: uuid.UUID, *, buyer_company_id: uuid.UUID, actor_id: str | None

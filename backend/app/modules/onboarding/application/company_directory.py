@@ -52,7 +52,7 @@ from __future__ import annotations
 import uuid
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.audit import ActorType, AuditService
@@ -68,6 +68,7 @@ from app.modules.onboarding.domain.company_names import name_key
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
+    ExporterMarker,
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
@@ -189,6 +190,44 @@ class CompanyDirectoryService:
             candidates=candidates,
             reason=f"a company on file holds this {', '.join(sorted(found))}",
         )
+
+    async def identity_completion(
+        self, *, limit: int = 50, offset: int = 0
+    ) -> tuple[list[ExporterProfile], int]:
+        """The companies the CRM cannot identify yet: ``identity_type`` is ``NULL``,
+        so they hold neither a PAN nor a registration number (IQ-7's completion list,
+        plan §17.2, R-28). Returns ``(companies, total)``.
+
+        Ordered by what the rules require first — a missing country, then a foreign
+        company's missing registration number, then an Indian company's missing PAN —
+        and oldest first within each, so the list is worked from the top. Ended
+        companies are left out. A company leaves the list the moment an edit gives it
+        an identifier, because ``update_profile`` recomputes ``identity_type`` (R-16).
+        """
+        country = func.upper(func.coalesce(ExporterProfile.country, ""))
+        urgency = case(
+            (country == "", 0),
+            (country != "IN", 1),
+            else_=2,
+        )
+        conditions = (
+            ExporterProfile.identity_type.is_(None),
+            ExporterProfile.marker != ExporterMarker.ENDED,
+        )
+        total = int(
+            await self._db.scalar(
+                select(func.count()).select_from(ExporterProfile).where(*conditions)
+            )
+            or 0
+        )
+        rows = await self._db.scalars(
+            select(ExporterProfile)
+            .where(*conditions)
+            .order_by(urgency, ExporterProfile.created_at, ExporterProfile.customer_id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(rows), total
 
     async def _by_name(self, *, name: str, country: str) -> MatchResult:
         """``POSSIBLE_DUPLICATE`` for companies in this country whose name differs

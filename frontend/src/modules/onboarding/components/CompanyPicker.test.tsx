@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { ApiError } from '@/lib/api/errors';
 
 import { matchCompany, searchExporterProfiles } from '../api';
 import type { CompanyMatch, CompanyMatchCandidate, ExporterProfileListItem } from '../types';
@@ -251,16 +253,166 @@ describe('CompanyPicker — the four answers', () => {
     expect(await screen.findByText(/exists as a buyer/)).toBeInTheDocument();
   });
 
-  it('says where creating a company lives, rather than offering a button that misfiles it', async () => {
+  it('creates nothing unless its caller supplies the buyer-company path', async () => {
+    // A create button that made an ordinary IN_PIPELINE lead would inflate the sales
+    // pipeline — the exact failure P4-2 exists to prevent. So without `onCreate`
+    // (the deal's buyer route) there is no button at all.
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 });
+    vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
     renderPicker();
 
     fireEvent.change(screen.getByPlaceholderText('Company name'), {
       target: { value: 'nobody' },
     });
+    fireEvent.blur(screen.getByPlaceholderText('Company name'));
 
-    // A create button here that made an ordinary IN_PIPELINE lead would inflate the
-    // sales pipeline — the exact failure P4-2 exists to prevent.
-    expect(await screen.findByText(/Creating a buyer company from here arrives/)).toBeInTheDocument();
+    expect(await screen.findByText(/No company on file matches/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create buyer company' })).not.toBeInTheDocument();
+  });
+});
+
+// ── R-24: creating the buyer as a company outside the pipeline ───────────────
+
+function renderWithCreate(
+  onCreate = vi.fn().mockResolvedValue(undefined),
+  { onSelect = vi.fn(), country }: { onSelect?: (companyId: string) => void; country?: string } = {},
+) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <CompanyPicker onSelect={onSelect} onCreate={onCreate} country={country} />
+    </QueryClientProvider>,
+  );
+  return { onCreate, onSelect };
+}
+
+async function searchByName(name: string) {
+  fireEvent.change(screen.getByPlaceholderText('Company name'), { target: { value: name } });
+  fireEvent.blur(screen.getByPlaceholderText('Company name'));
+}
+
+describe('CompanyPicker — creating a buyer company (R-24)', () => {
+  beforeEach(() => {
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 });
+  });
+
+  it('offers it when the server answers NEW, and sends what the form holds', async () => {
+    vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
+    const { onCreate } = renderWithCreate(undefined, { country: 'NL' });
+    await searchByName('Brand New Buyer BV');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create buyer company' }));
+    expect(screen.getByLabelText(/Company name/)).toHaveValue('Brand New Buyer BV');
+    expect(screen.getByLabelText(/Country/)).toHaveValue('NL');
+
+    // IQ-7: a buyer outside India needs its registration number before it can be sent.
+    const submit = screen.getByRole('button', { name: 'Create buyer company' });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/Registration number/), {
+      target: { value: 'KVK-12345678' },
+    });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({
+        name: 'Brand New Buyer BV',
+        country: 'NL',
+        pan: null,
+        gstin: null,
+        registration_number: 'KVK-12345678',
+      }),
+    );
+  });
+
+  it('asks an Indian buyer for a PAN and GSTIN, not a registration number', async () => {
+    vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
+    const { onCreate } = renderWithCreate();
+    await searchByName('Chennai Spices');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create buyer company' }));
+    const form = screen.getByRole('form', { name: 'Create buyer company' });
+    expect(within(form).queryByLabelText(/Registration number/)).not.toBeInTheDocument();
+    fireEvent.change(within(form).getByLabelText('PAN'), { target: { value: 'ABCDE1234F' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Create buyer company' }));
+
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ country: 'IN', pan: 'ABCDE1234F', registration_number: null }),
+      ),
+    );
+  });
+
+  it('carries over an identifier the RM looked up and nobody holds', async () => {
+    vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
+    renderWithCreate();
+    fireEvent.change(screen.getByLabelText('PAN'), { target: { value: 'ABCDE1234F' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create buyer company' }));
+    const form = screen.getByRole('form', { name: 'Create buyer company' });
+    expect(within(form).getByLabelText('PAN')).toHaveValue('ABCDE1234F');
+  });
+
+  it('is never offered when an identifier names a company on file', async () => {
+    vi.mocked(matchCompany).mockResolvedValue(
+      matchResult({ kind: 'MATCHED', company_id: ROTTERDAM, candidates: [candidate()] }),
+    );
+    renderWithCreate();
+    fireEvent.change(screen.getByLabelText('PAN'), { target: { value: 'ABCDE1234F' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+
+    expect(await screen.findByRole('button', { name: /Rotterdam Trading BV/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create buyer company' })).not.toBeInTheDocument();
+  });
+
+  it('is offered after look-alikes only as "none of these is the buyer" (IQ-8)', async () => {
+    vi.mocked(matchCompany).mockResolvedValue(
+      matchResult({ kind: 'POSSIBLE_DUPLICATE', needs_a_person: true, candidates: [candidate()] }),
+    );
+    renderWithCreate();
+    await searchByName('Rotterdam Trading');
+
+    expect(await screen.findByText(/None of these is the buyer/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create buyer company' })).toBeInTheDocument();
+  });
+
+  it('offers the company on file when the server says it already holds the identifier', async () => {
+    vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
+    const onCreate = vi.fn().mockRejectedValue(
+      new ApiError(
+        409,
+        'A company on file already holds these identifiers, so a new buyer company is not created: choose the existing one',
+        'BUYER_COMPANY_ALREADY_KNOWN',
+        null,
+        { match_kind: 'MATCHED', company_ids: [ANTWERP] },
+      ),
+    );
+    const { onSelect } = renderWithCreate(onCreate, { country: 'BE' });
+    await searchByName('Antwerp Shipping');
+    fireEvent.click(await screen.findByRole('button', { name: 'Create buyer company' }));
+    fireEvent.change(screen.getByLabelText(/Registration number/), { target: { value: 'BE-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create buyer company' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/already holds these identifiers/);
+    fireEvent.click(screen.getByRole('button', { name: 'Use the company on file' }));
+    expect(onSelect).toHaveBeenCalledWith(ANTWERP);
+  });
+
+  it("shows the server's refusal in its own words", async () => {
+    vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
+    const onCreate = vi.fn().mockRejectedValue(
+      new ApiError(422, 'registration_number is required for a company outside India'),
+    );
+    renderWithCreate(onCreate, { country: 'DE' });
+    await searchByName('Hamburg Imports');
+    fireEvent.click(await screen.findByRole('button', { name: 'Create buyer company' }));
+    fireEvent.change(screen.getByLabelText(/Registration number/), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create buyer company' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'registration_number is required for a company outside India',
+    );
+    expect(screen.queryByRole('button', { name: 'Use the company on file' })).not.toBeInTheDocument();
   });
 });

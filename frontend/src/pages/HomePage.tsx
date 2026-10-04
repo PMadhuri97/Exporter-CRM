@@ -9,6 +9,10 @@
  * Compliance (Developer 1, plans P3-1c, P3-3c): "Proposals awaiting me" for COMPLIANCE
  * and ADMIN — the officers who approve — and "Re-KYC due" for all staff (the RM reads
  * it). Neither is shown to DEVELOPER, whom the background-check routes refuse (D8).
+ *
+ * Every card is chosen by capability (R-33, G2), so a card is never mounted — and its
+ * request never sent — for a role the server would refuse. A user with no CRM
+ * capability never reaches this page: the root renders No workspace instead.
  */
 
 import { Plus } from 'lucide-react';
@@ -23,7 +27,8 @@ import {
   ProposalsAwaitingMeCard,
   ReKycDueCard,
 } from '@/modules/onboarding';
-import { isComplianceRole, isStaffRole, roleLabel, useCurrentUser } from '@/platform/auth';
+import { useCan } from '@/platform/access';
+import { roleLabel, useCurrentUser } from '@/platform/auth';
 
 function greeting(now: Date): string {
   const hour = now.getHours();
@@ -35,6 +40,9 @@ function greeting(now: Date): string {
 export function HomePage() {
   const user = useCurrentUser();
   const firstName = user.full_name?.split(' ')[0];
+  const canCreateCompany = useCan('company.create');
+  const canSeeQueue = useCan('compliance.queue');
+  const canReadCompliance = useCan('compliance.read');
 
   return (
     <div>
@@ -42,7 +50,7 @@ export function HomePage() {
         title={`${greeting(new Date())}${firstName ? `, ${firstName}` : ''}`}
         description={`Signed in as ${roleLabel(user.role)}. Here is what needs attention.`}
         actions={
-          isStaffRole(user.role) && (
+          canCreateCompany && (
             <Link to={paths.newCompany} className={buttonClasses({ variant: 'primary' })}>
               <Plus size={15} />
               Add company
@@ -52,8 +60,8 @@ export function HomePage() {
       />
 
       <div className="grid gap-5 lg:grid-cols-2">
-        {isComplianceRole(user.role) && <ProposalsAwaitingMeCard />}
-        {isStaffRole(user.role) && <ReKycDueCard />}
+        {canSeeQueue && <ProposalsAwaitingMeCard />}
+        {canReadCompliance && <ReKycDueCard />}
         <FollowUpsDueCard userId={String(user.id)} />
         <CheckBacksDueCard />
         <div className="lg:col-span-2">

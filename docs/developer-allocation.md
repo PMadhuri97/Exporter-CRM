@@ -6,6 +6,7 @@
 | Based on | The implementation plan ([`plan.md`](plan.md), audited at `main` @ `632a824`). Task ids such as P2-3a and section numbers such as §17.2 refer to that plan |
 | Decisions | A–K (30 Sep) and BQ/IQ answers (1 Oct, plan §19.0). Nothing here reopens them |
 | Purpose | Split the plan into three lanes a developer can finish without waiting for another developer's feature code |
+| Status | **Historical since 4 October 2026.** The three lanes are closed and one developer completes the project; what is still pending is in [`remaining-work.md`](remaining-work.md). Kept because the code, the contracts and the plan cite its sections ("allocation §2.2") |
 
 ---
 

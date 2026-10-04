@@ -34,6 +34,7 @@ import { useTradeRelationships } from '../hooks';
 import { paths } from '../paths';
 import type { DealSide, TradeRelationship } from '../types';
 
+import { RecordPastTradeForm } from './RecordPastTradeForm';
 import { TradeInvoiceList } from './TradeInvoiceList';
 
 export interface CompanyTradePanelProps {
@@ -41,6 +42,11 @@ export interface CompanyTradePanelProps {
   companyId: string;
   /** Which side of the trade this company is on, in these relationships. */
   as: DealSide;
+  /**
+   * Whether this viewer may record trade (OPERATIONS, COMPLIANCE, ADMIN — IQ-19).
+   * DEVELOPER reads trade history and writes nothing, so it gets no control (R-27).
+   */
+  canRecord?: boolean;
 }
 
 /** The other party, never this company: repeating the company whose page you are on
@@ -49,8 +55,17 @@ function counterparty(relationship: TradeRelationship, as: DealSide) {
   return as === 'seller' ? relationship.buyer : relationship.seller;
 }
 
-function Row({ relationship, as }: { relationship: TradeRelationship; as: DealSide }) {
+function Row({
+  relationship,
+  as,
+  canRecord,
+}: {
+  relationship: TradeRelationship;
+  as: DealSide;
+  canRecord: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
   const other = counterparty(relationship, as);
   const count = relationship.invoice_count;
 
@@ -82,28 +97,55 @@ function Row({ relationship, as }: { relationship: TradeRelationship; as: DealSi
             } · since ${formatDate(relationship.created_at)}`}
           </p>
         </div>
-        {/* Nothing to open when there are no invoices: the row already says so, and a
-            control that reveals an empty state is a control that wasted a click. */}
-        {count > 0 ? (
-          <button
-            type="button"
-            onClick={() => setOpen((was) => !was)}
-            className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
-            aria-expanded={open}
-          >
-            {open ? 'Hide invoices' : 'Invoices'}
-            {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-          </button>
-        ) : (
-          <Link
-            to={paths.company(other.company_id)}
-            className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
-          >
-            Open company
-            <ChevronRight size={13} />
-          </Link>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Past trade (R-27, P5-8): an invoice with no deal, recorded against this
+              pair. Staff only; the relationship is this row. */}
+          {canRecord && !recording ? (
+            <button
+              type="button"
+              onClick={() => setRecording(true)}
+              className="text-xs font-medium text-brand-600 hover:underline"
+            >
+              Record past invoice
+            </button>
+          ) : null}
+          {/* Nothing to open when there are no invoices: the row already says so, and a
+              control that reveals an empty state is a control that wasted a click. */}
+          {count > 0 ? (
+            <button
+              type="button"
+              onClick={() => setOpen((was) => !was)}
+              className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+              aria-expanded={open}
+            >
+              {open ? 'Hide invoices' : 'Invoices'}
+              {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            </button>
+          ) : (
+            <Link
+              to={paths.company(other.company_id)}
+              className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+            >
+              Open company
+              <ChevronRight size={13} />
+            </Link>
+          )}
+        </div>
       </div>
+
+      {recording && (
+        <div className="px-4 pb-4">
+          <RecordPastTradeForm
+            relationshipId={relationship.id}
+            counterpartyName={other.name ?? 'this company'}
+            onCancel={() => setRecording(false)}
+            onDone={() => {
+              setRecording(false);
+              setOpen(true);
+            }}
+          />
+        </div>
+      )}
 
       {open && (
         <div className="px-4 pb-4">
@@ -114,7 +156,7 @@ function Row({ relationship, as }: { relationship: TradeRelationship; as: DealSi
   );
 }
 
-export function CompanyTradePanel({ companyId, as }: CompanyTradePanelProps) {
+export function CompanyTradePanel({ companyId, as, canRecord = false }: CompanyTradePanelProps) {
   const query = useTradeRelationships(companyId, as);
 
   if (query.isLoading) return <Skeleton className="h-20 rounded-lg" />;
@@ -138,6 +180,11 @@ export function CompanyTradePanel({ companyId, as }: CompanyTradePanelProps) {
             // migration (P4-6) and the relationship backfill (P5-5) has none yet.
             'Nobody recorded as a buyer from this company yet. Deals recorded before trade history are linked by the buyer migration and the relationship backfill.'
           : 'Nobody recorded as a seller to this company yet.'}
+        {/* There is no route that creates a relationship on its own: a deal's buyer
+            does. So past trade has nowhere to go until one exists (R-27). */}
+        {canRecord
+          ? ' Past trade is recorded against a relationship, so it can be added once a deal names the other company.'
+          : ''}
       </EmptySection>
     );
   }
@@ -145,7 +192,7 @@ export function CompanyTradePanel({ companyId, as }: CompanyTradePanelProps) {
   return (
     <ul className="divide-y divide-border">
       {relationships.map((relationship) => (
-        <Row key={relationship.id} relationship={relationship} as={as} />
+        <Row key={relationship.id} relationship={relationship} as={as} canRecord={canRecord} />
       ))}
     </ul>
   );

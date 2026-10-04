@@ -10,8 +10,9 @@
  *
  * ADMIN only, as on the server: a package records a qualification decision as
  * RXIL's (source, method and confidence a person may never set by hand), so
- * only the role trusted to vouch that it came from RXIL may submit one. Every
- * other role sees why instead of a form the server would refuse.
+ * only the role trusted to vouch that it came from RXIL may submit one. Guarded at
+ * the route (`company.rxilIntake`, R-33 G5): every other role gets the generic
+ * NotFound there, and neither this page nor an explanation of it.
  */
 
 import { CheckCircle2 } from 'lucide-react';
@@ -19,13 +20,11 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button, Card, Chip, PageHeader, Panel, Textarea } from '@/components';
-import { isAdminRole, useCurrentUser } from '@/platform/auth';
 
 import { useSubmitRxilPackage } from '../hooks';
 import { paths } from '../paths';
 
 export function RxilIntakePage() {
-  const { role } = useCurrentUser();
   const [text, setText] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
   const mutation = useSubmitRxilPackage();
@@ -40,54 +39,47 @@ export function RxilIntakePage() {
         description="Take in a company RXIL has qualified. It arrives as a prospect, qualified by RXIL."
       />
 
-      {!isAdminRole(role) ? (
-        <Card role="note" className="p-5 text-sm text-ink-muted">
-          Only an administrator can take in an RXIL package: it records RXIL's qualification
-          decision, which no one may record by hand as RXIL's.
-        </Card>
-      ) : (
-        <Card className="p-5">
-          <form
-            className="space-y-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              let pkg: unknown;
-              try {
-                pkg = JSON.parse(text);
-              } catch {
-                setParseError('The package is not valid JSON.');
-                return;
-              }
-              setParseError(null);
-              mutation.mutate(pkg);
-            }}
-          >
-            <Textarea
-              aria-label="RXIL package"
-              className="min-h-[16rem] font-mono text-xs"
-              placeholder='{"package_id": "…", …}'
-              spellCheck={false}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
-            {(parseError ?? mutation.error) && (
-              <p role="alert" className="text-sm text-status-failed">
-                {parseError ?? mutation.error?.message}
-              </p>
-            )}
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={!text.trim()}
-                loading={mutation.isPending}
-              >
-                Submit package
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
+      <Card className="p-5">
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            let pkg: unknown;
+            try {
+              pkg = JSON.parse(text);
+            } catch {
+              setParseError('The package is not valid JSON.');
+              return;
+            }
+            setParseError(null);
+            mutation.mutate(pkg);
+          }}
+        >
+          <Textarea
+            aria-label="RXIL package"
+            className="min-h-[16rem] font-mono text-xs"
+            placeholder='{"package_id": "…", …}'
+            spellCheck={false}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          {(parseError ?? mutation.error) && (
+            <p role="alert" className="text-sm text-status-failed">
+              {parseError ?? mutation.error?.message}
+            </p>
+          )}
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!text.trim()}
+              loading={mutation.isPending}
+            >
+              Submit package
+            </Button>
+          </div>
+        </form>
+      </Card>
 
       {result && (
         <Panel

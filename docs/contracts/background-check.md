@@ -712,8 +712,10 @@ decision, proposal and cycle since records `rules_version = clear-2026-10-01-7it
   2.5), through the same facts.
 - **Re-KYC due** (P3-3c): `GET /background-check/due?before=…` (staff; DEVELOPER refused) lists the
   `CLEAR` companies whose Clear expires before `before` (default now +
-  `CRM_REKYC_DUE_WINDOW_DAYS`, 30) — expired first, then the soonest — with name, journey, expiry,
-  `is_expired` and the current cycle's number; never an identifier. A company whose Re-KYC has
+  `CRM_REKYC_DUE_WINDOW_DAYS`, 30) — expired first, then the soonest — with name, journey,
+  `pipeline_status` (R-29: a buyer-only company's renewal is for the trade it buys on, not a
+  sale, and the Home card says "Buyer only"), expiry, `is_expired` and the current cycle's
+  number; never an identifier. A company whose Re-KYC has
   started is not listed (the start reopened it). The read serves `rekyc_due`, shown as the gauge's
   "Re-KYC due" badge and the Home card.
 
@@ -826,6 +828,25 @@ at least one pinned id.**
 D5, D6, D8 and D10 were settled later the same day (table above). D11/U4/O3 was implemented as
 one transaction on 29 September (the lead to confirm), and D14's texts are now in
 `history-row.md` §4. Still open: D12.
+
+### 14.2 Confirmed by the programme lead on 2 October 2026
+
+These were built on a recommendation and listed in `open-items.md` §1 as awaiting
+confirmation or undecided. The lead confirmed each **as built** on 2 October 2026. The
+write-up made then never reached `main`, so it was recorded again here on 4 October 2026
+(`remaining-work.md` §8.2), and the rows left `open-items.md` §1. Nothing in the code
+changed: each is the behaviour already described in the section named.
+
+| Confirmed | As built | Where |
+|---|---|---|
+| **IQ-2 edge cases** | A `REVIEW` sanctions or AML result whose review is `REJECTED` reads as `FAILED`; a `PASSED` or `FAILED` result reads as its status whatever its review says | §12.4, `domain/compliance_facts.check_state` |
+| **No new cycle while the current one is empty** | Refused 409 `CHECK_CYCLE_EMPTY`. It makes two simultaneous starts produce one cycle; a wrongly chosen kind is replaced only once something is recorded | §12.3, `BackgroundCheckService.start_cycle` |
+| **Maker-checker details** | (a) the proposer may not reject their own proposal, only withdraw it (the database enforces it too); (b) while a proposal is open nothing else moves the check (409 `BACKGROUND_CHECK_PROPOSAL_OPEN`); (c) any change to what the decision would rest on makes the proposal stale; (d) the switch may be off only where `ENVIRONMENT` is `local` or `test`; (e) the approval queue is COMPLIANCE/ADMIN only, a company's proposals are readable by all staff; (f) `decided_by` names the proposer, `approved_by` the approver | §12.5 |
+| **Clear expiry backfill keyed on the last `CLEAR` decision** | BQ-5's "1 year from the last Clear" taken literally (migration 0027); a new `CLEAR`'s `decided_at` and `expires_at` come from one server timestamp read after the row lock | §12.7, `migration-register.md` |
+| **`BuyerChecks.tsx` kept for legacy deal buyers** | It stays, marked legacy, until the buyer migration (P4-6) has run everywhere and `deal_buyer` writes are retired (P4-10, `remaining-work.md` R-25); then it is deleted (R-26) | §12.2, §16 |
+| **D4, verification side** | Which documents may be evidence for a verification: the company's own, and for a buyer its deal's or its company's; only `AVAILABLE` ones | `verification-and-screening.md` §3, §11 |
+| **No D2 amendment for placeholders** | A placeholder result keeps blocking `CLEAR` in its own cycle. A company holding one is not stuck: COMPLIANCE or ADMIN starts a new cycle and the placeholder stays behind in the old one | §12.3, §14.1 (D2) |
+| **No document required to `CLEAR`** | "Evidence recorded" is met by the screening answers; rule B (§12.6) still needs KYB, AML and sanctions passed in the current cycle. **To be revisited** when gate §7.6 (a real scanner, S3 with Object Lock) makes real documents possible | §14.1 (D4), architecture §7, §12 |
 
 ---
 

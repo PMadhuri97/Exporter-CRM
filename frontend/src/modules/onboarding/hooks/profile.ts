@@ -17,6 +17,7 @@ import {
   bringExporterIntoPipeline,
   createExporterLead,
   getExporterProfileDetail,
+  listIdentityCompletion,
   searchExporterProfiles,
   setExporterMarker,
   updateExporterProfile,
@@ -28,6 +29,15 @@ import type {
   SetMarkerRequest,
   UpdateExporterProfileRequest,
 } from '../types';
+
+/** IQ-7's completion list (R-28). Keyed under `exporterProfiles` so an edit that
+ * completes a company — which invalidates the company queries — refreshes it too. */
+export function useIdentityCompletion(params: { limit?: number; offset?: number } = {}) {
+  return useQuery({
+    queryKey: ['exporterProfiles', 'identityCompletion', params],
+    queryFn: () => listIdentityCompletion(params),
+  });
+}
 
 export function useExporterProfiles(params: ExporterSearchParams) {
   return useQuery({

@@ -2063,6 +2063,34 @@ class DealBuyerIsNotACompanyError(AnerBaseException):
         )
 
 
+class BuyerCompanyAlreadyKnownError(AnerBaseException):
+    """A buyer company to create carries an identifier a company on file already holds
+    (R-24, plan P4-3).
+
+    Creating it would make a second record of one company — the thing the match step
+    exists to prevent. The company (or, for a conflict, the companies) is named so the
+    screen can offer it instead; its identifiers stay masked per role (BQ-2), and none
+    of the submitted values is echoed back.
+    """
+
+    def __init__(self, match_kind: str, company_ids: list[object]) -> None:
+        super().__init__(
+            detail=(
+                "A company on file already holds these identifiers, so a new buyer "
+                "company is not created: choose the existing one"
+                if match_kind == "MATCHED"
+                else "These identifiers name more than one company on file: a person "
+                "decides which one this buyer is"
+            ),
+            error_code="BUYER_COMPANY_ALREADY_KNOWN",
+            status_code=409,
+            extensions={
+                "match_kind": match_kind,
+                "company_ids": [str(c) for c in company_ids],
+            },
+        )
+
+
 class TradeInvoiceDealNotThisPairError(AnerBaseException):
     """An invoice naming a deal between two other companies (R-17).
 

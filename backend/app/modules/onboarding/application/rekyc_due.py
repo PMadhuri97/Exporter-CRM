@@ -46,6 +46,9 @@ class ReKycDueCompany:
     expires_at: datetime
     is_expired: bool
     current_cycle_number: int | None
+    #: Whether the company is in the sales pipeline or exists only as a buyer (R-29):
+    #: a buyer-only company's Re-KYC is about trade it is bought on, not a lead.
+    pipeline_status: str
 
 
 async def rekyc_due(
@@ -80,6 +83,7 @@ async def rekyc_due(
                 ExporterProfile.background_check,
                 expires,
                 current_cycle,
+                ExporterProfile.pipeline_status,
             )
             .where(*conditions)
             .order_by(expires.asc(), ExporterProfile.customer_id.asc())
@@ -100,6 +104,7 @@ async def rekyc_due(
                 expires_at=row[4],
                 is_expired=row[4] <= now,
                 current_cycle_number=row[5],
+                pipeline_status=str(getattr(row[6], "value", row[6])),
             )
             for row in rows
         ],

@@ -66,3 +66,15 @@ describe('HomePage — compliance cards by role', () => {
     expect(screen.getByTestId('card-pipeline')).toBeInTheDocument();
   });
 });
+
+describe('HomePage — Add company by role (R-33, G2)', () => {
+  it.each<UserRole>(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s Add company', (role) => {
+    renderAs(role);
+    expect(screen.getByRole('link', { name: /Add company/ })).toHaveAttribute('href', '/companies/new');
+  });
+
+  it('offers DEVELOPER no Add company, which the server refuses it', () => {
+    renderAs('DEVELOPER');
+    expect(screen.queryByRole('link', { name: /Add company/ })).not.toBeInTheDocument();
+  });
+});

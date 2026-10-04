@@ -14,7 +14,7 @@ on file the same answer, read from the one place that has it.
 
 Task 3.8's ``domain/company_identity.py`` maps ``history_source`` → channel for
 the live path. The ``CASE`` below is that same mapping expressed as SQL, and
-``test_dev3_f3_created_via.py`` asserts the two agree, so a new channel added to
+``test_dev3_company_identity.py`` asserts the two agree, so a new channel added to
 one and not the other fails a test rather than quietly backfilling ``NULL``.
 
 What it does

@@ -323,6 +323,46 @@ async def test_the_due_list_has_the_expired_and_the_soon_expiring_and_not_the_re
             await _reopen(company_id)
 
 
+async def test_the_due_list_says_which_renewals_are_for_a_buyer_only_company(
+    client: AsyncClient, tokens, monkeypatch
+):
+    """R-29: a company that exists only as a buyer is screened and renewed like any
+    other, and the list says it is not in the pipeline rather than reading as a lead."""
+    from app.modules.onboarding.application.company_directory import CompanyDirectoryService
+    from app.modules.onboarding.domain.company_directory import BuyerCompanyDraft
+    from app.modules.onboarding.tests.fixtures.deals import make_deal
+
+    lead = await _cleared_with_validity(monkeypatch, 1)
+    async with db_services.AsyncSessionLocal() as db:
+        buyer_only = await CompanyDirectoryService(db).create_buyer_company(
+            BuyerCompanyDraft(
+                name=f"Renewing Buyer {uuid.uuid4().hex[:6]}",
+                country="NL",
+                registration_number=f"KVK-{uuid.uuid4().hex[:8].upper()}",
+                created_via_deal_id=await make_deal(),
+            ),
+            actor_id="rm-1",
+        )
+    monkeypatch.setattr(config.settings, "CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS", 1)
+    await cleared_company(buyer_only)
+    monkeypatch.setattr(config.settings, "CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS", 365)
+    try:
+        now = clock.now() + timedelta(days=2)
+        with use_clock(FixedClock(now)):
+            response = await client.get(
+                f"{BASE}/background-check/due",
+                params={"before": (now + timedelta(days=5)).isoformat(), "limit": 100},
+                headers=auth_header(tokens[UserRole.OPERATIONS]),
+            )
+        assert response.status_code == 200, response.text
+        rows = {row["company_id"]: row for row in response.json()["companies"]}
+        assert rows[str(buyer_only)]["pipeline_status"] == "NOT_IN_PIPELINE"
+        assert rows[str(lead)]["pipeline_status"] == "IN_PIPELINE"
+    finally:
+        for company_id in (lead, buyer_only):
+            await _reopen(company_id)
+
+
 async def test_the_standing_serves_re_kyc_due(client: AsyncClient, tokens, monkeypatch):
     due = await _cleared_with_validity(monkeypatch, 5)
     fresh = await cleared_company(await make_company())

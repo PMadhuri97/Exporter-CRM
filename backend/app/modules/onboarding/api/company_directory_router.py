@@ -44,7 +44,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,8 +52,11 @@ from app.modules.onboarding.api.schemas.company_directory import (
     CompanyMatchCandidate,
     CompanyMatchRequest,
     CompanyMatchResponse,
+    IdentityCompletionItem,
+    IdentityCompletionListResponse,
 )
 from app.modules.onboarding.application.company_directory import CompanyDirectoryService
+from app.modules.onboarding.domain.company_identity import gap_is_required, identity_gap
 from app.modules.onboarding.domain.entities.exporter_enums import CompanyPipelineStatus
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.platform.authentication.models import User, UserRole
@@ -68,6 +71,60 @@ router = APIRouter(prefix="/companies", tags=["Exporter CRM"])
 #: identifier (``can_reveal_identifiers``), and it has no reason to be resolving a
 #: buyer. API_USER is excluded for the same reason as everywhere else in the CRM.
 _MATCHER = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+
+#: The completion list is a view of companies and carries no identifier, so it is read
+#: by everyone who reads the company list — DEVELOPER included, masked or not, since
+#: there is nothing to mask.
+_READER = require_role(
+    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
+)
+
+
+@router.get(
+    "/identity-completion",
+    response_model=IdentityCompletionListResponse,
+    summary="Companies the CRM cannot identify yet",
+    description=(
+        "IQ-7's completion list (R-28): every company with no `identity_type` — it "
+        "holds neither a PAN nor a registration number — except ended ones. Each "
+        "says what it is `missing`: a `REGISTRATION_NUMBER` (a company outside India, "
+        "which IQ-7 requires — the P4-6 migration's buyers are the expected case), a "
+        "`COUNTRY`, or a `PAN` (an Indian company; not required, but it cannot be "
+        "matched by identifier without one). `required` is true for the first two. "
+        "Required gaps come first, oldest first within each. A company leaves the "
+        "list as soon as an edit gives it an identifier. Carries no identifiers."
+    ),
+    responses={
+        200: {"model": IdentityCompletionListResponse},
+        401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+    },
+)
+async def list_identity_completion(
+    current_user: Annotated[User, Depends(_READER)],
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> IdentityCompletionListResponse:
+    companies, total = await CompanyDirectoryService(db).identity_completion(
+        limit=limit, offset=offset
+    )
+    items = []
+    for company in companies:
+        gap = identity_gap(company.country)
+        items.append(
+            IdentityCompletionItem(
+                company_id=company.customer_id,
+                name=company.name,
+                country=company.country,
+                pipeline_status=company.pipeline_status,
+                created_via=company.created_via,
+                missing=gap,
+                required=gap_is_required(gap),
+                created_at=company.created_at,
+            )
+        )
+    return IdentityCompletionListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.post(

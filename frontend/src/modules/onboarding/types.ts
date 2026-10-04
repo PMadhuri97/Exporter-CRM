@@ -179,6 +179,8 @@ export type DealList = Schemas['DealListResponse'];
 export type OpenDealRequest = Schemas['OpenDealRequest'];
 export type TransitionDealStageRequest = Schemas['TransitionDealStageRequest'];
 export type SetDealBuyerRequest = Schemas['SetDealBuyerRequest'];
+/** A buyer company to create and name in one step (R-24). */
+export type CreateBuyerCompanyRequest = Schemas['CreateBuyerCompanyRequest'];
 /** Which of the seller's GST registrations a deal is invoiced from; `null` clears it
  * (task 2.8, plan P6-6). */
 export type SetDealInvoicingBranchRequest = Schemas['SetDealInvoicingBranchRequest'];
@@ -217,6 +219,9 @@ export type DealSide = Schemas['DealSide'];
 export type CompanyMatchRequest = Schemas['CompanyMatchRequest'];
 export type CompanyMatch = Schemas['CompanyMatchResponse'];
 export type CompanyMatchCandidate = Schemas['CompanyMatchCandidate'];
+/** One company with no `identity_type` and what it lacks (IQ-7's completion list, R-28). */
+export type IdentityCompletionItem = Schemas['IdentityCompletionItem'];
+export type IdentityCompletionList = Schemas['IdentityCompletionListResponse'];
 /** MATCHED | POSSIBLE_DUPLICATE | CONFLICT | NEW. */
 export type CompanyMatchKind = CompanyMatch['kind'];
 

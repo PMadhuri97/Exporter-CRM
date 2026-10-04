@@ -1048,6 +1048,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/companies/identity-completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Companies the CRM cannot identify yet
+         * @description IQ-7's completion list (R-28): every company with no `identity_type` — it holds neither a PAN nor a registration number — except ended ones. Each says what it is `missing`: a `REGISTRATION_NUMBER` (a company outside India, which IQ-7 requires — the P4-6 migration's buyers are the expected case), a `COUNTRY`, or a `PAN` (an Indian company; not required, but it cannot be matched by identifier without one). `required` is true for the first two. Required gaps come first, oldest first within each. A company leaves the list as soon as an edit gives it an identifier. Carries no identifiers.
+         */
+        get: operations["list_identity_completion_api_v1_onboarding_companies_identity_completion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/companies/match": {
         parameters: {
             query?: never;
@@ -1476,9 +1496,11 @@ export interface paths {
         get?: never;
         /**
          * Record the deal's buyer, as a company or as details
-         * @description Two forms, exactly one per request.
+         * @description Three forms, exactly one per request.
          *
          *     **`{buyer_company_id}`** names the company the buyer **is** (plan P4-4). Use this one. The buyer is then a full company record: it can be screened on its own timeline, the handover guard reads its sanctions and AML (decision BQ-4), and the same company can be the seller on another deal. It is **set once** — a deal pointed at the wrong buyer is withdrawn and a new one opened, so that the correction leaves a trail. Setting the same company again changes nothing and is not an error. The company must exist and must not be the seller on this deal.
+         *
+         *     **`{create: {name, country, pan?, gstin?, registration_number?}}`** creates the buyer as a company that is **not in the pipeline** (not a lead) and names it, in one step (plan P4-3). The server matches first, as `POST /companies/match` does, and audits every identifier lookup: an identifier a company on file holds is refused with 409 `BUYER_COMPANY_ALREADY_KNOWN` naming that company, rather than duplicated. A name that only resembles one does not stop it (IQ-8). A company outside India needs its registration number unless it has a PAN (IQ-7).
          *
          *     **`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer per deal, so it replaces that row rather than adding another (deal contract §3); `PUT` rather than `POST` for the same reason. Still accepted because deals written before the buyer migration have one, and because a `deal_buyer`'s own sanctions and AML are the only thing BQ-4's rule can read for such a deal. These writes retire in P4-10.
          *
@@ -3311,6 +3333,30 @@ export interface components {
             allowed_moves: components["schemas"]["ConversationMoveResponse"][];
         };
         /**
+         * CreateBuyerCompanyRequest
+         * @description A buyer company that does not exist yet (plan P4-3, R-24): created
+         *     ``NOT_IN_PIPELINE`` — not a lead — and named as this deal's buyer in one step.
+         *
+         *     The server matches first, as ``POST /companies/match`` does. An identifier that a
+         *     company on file already holds is refused (409 ``BUYER_COMPANY_ALREADY_KNOWN``,
+         *     naming it) rather than duplicated; a name that only resembles one is not an
+         *     identity (IQ-8), so it does not stop the create. A company outside India needs its
+         *     registration number unless it has a PAN (IQ-7) — the migration's exemption does not
+         *     apply to a buyer somebody is entering now.
+         */
+        CreateBuyerCompanyRequest: {
+            /** Name */
+            name: string;
+            /** Country */
+            country: string;
+            /** Pan */
+            pan?: string | null;
+            /** Gstin */
+            gstin?: string | null;
+            /** Registration Number */
+            registration_number?: string | null;
+        };
+        /**
          * CreateCaseRequest
          * @description Create an onboarding case. The case is always created in `DRAFT`.
          *
@@ -4883,6 +4929,59 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /**
+         * IdentityCompletionItem
+         * @description One company the CRM cannot yet identify (IQ-7's completion list, R-28).
+         *
+         *     Carries **no identifier**: the company has none, which is why it is here. What it
+         *     lacks is ``missing``; ``required`` says whether a rule requires it (a foreign
+         *     company's registration number, IQ-7; any company's country) or it is only worth
+         *     doing (an Indian company's PAN).
+         */
+        IdentityCompletionItem: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string | null;
+            /** Country */
+            country: string | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
+            /** Created Via */
+            created_via: string | null;
+            missing: components["schemas"]["IdentityGap"];
+            /** Required */
+            required: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * IdentityCompletionListResponse
+         * @description Companies with no ``identity_type``, the ones a rule requires completing
+         *     first. Ended companies are left out: completing a record nobody works on is not
+         *     work. ``total`` counts the same filter.
+         */
+        IdentityCompletionListResponse: {
+            /** Items */
+            items: components["schemas"]["IdentityCompletionItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * IdentityGap
+         * @description What a company with no ``identity_type`` lacks (IQ-7's completion list, R-28).
+         * @enum {string}
+         */
+        IdentityGap: "REGISTRATION_NUMBER" | "PAN" | "COUNTRY";
         /** ImportReportResponse */
         ImportReportResponse: {
             /** Total Rows */
@@ -5306,6 +5405,7 @@ export interface components {
             is_expired: boolean;
             /** Current Cycle Number */
             current_cycle_number: number | null;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
         };
         /** ReKycDueListResponse */
         ReKycDueListResponse: {
@@ -5883,6 +5983,7 @@ export interface components {
         SetDealBuyerRequest: {
             /** Buyer Company Id */
             buyer_company_id?: string | null;
+            create?: components["schemas"]["CreateBuyerCompanyRequest"] | null;
             /** Name */
             name?: string | null;
             /** Country */
@@ -9762,6 +9863,52 @@ export interface operations {
             };
         };
     };
+    list_identity_completion_api_v1_onboarding_companies_identity_completion_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityCompletionListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     match_company_api_v1_onboarding_companies_match_post: {
         parameters: {
             query?: never;
@@ -10891,14 +11038,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The deal is handed over or withdrawn, or it already names a different buyer company */
+            /** @description The deal is handed over or withdrawn, it already names a different buyer company, or a buyer company to create carries an identifier a company on file holds (BUYER_COMPANY_ALREADY_KNOWN) */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Both forms at once, neither form complete, a country that is not ISO-3166-1 alpha-2, a buyer company that is the seller, or a masked value sent back */
+            /** @description More than one form, no form complete, a country that is not ISO-3166-1 alpha-2, a buyer company that is the seller, a foreign buyer company with no registration number and no PAN, or a masked value sent back */
             422: {
                 headers: {
                     [name: string]: unknown;

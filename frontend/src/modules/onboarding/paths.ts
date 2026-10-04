@@ -26,6 +26,8 @@ export const paths = {
   newCompany: '/companies/new',
   importCompanies: '/companies/import',
   rxilIntake: '/companies/rxil-intake',
+  /** IQ-7's completion list (R-28). */
+  identityCompletion: '/companies/identity-completion',
   company: (customerId: string, tab?: CompanyTab) =>
     tab && tab !== 'overview'
       ? `/companies/${customerId}?tab=${tab}`

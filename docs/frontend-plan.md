@@ -929,6 +929,11 @@ Each phase merges on its own and leaves the app working. Gates for every phase: 
 - Fix G1–G7: rail and Desk filtered by capability; API user gets No workspace; `Add company` / `Import CSV` and their routes gated on `company.create` / `company.import`; criteria, required documents and RXIL guarded **at the route**, rendering the generic `NotFound` (the in-page "Administrators only" goes); all `role ===` and `is*Role` call sites moved to `useCan`; lazy module loading.
 - Lint rule (§4.4) and the matrix tests (5 roles × every module: rail, route, no forbidden fetch, no forbidden text).
 - **Done when**: signed in as each of the five roles, the rail, the routes and the network tab match §4.1, and the matrix test proves it.
+- **Status: built 4 October 2026** (`remaining-work.md` R-33). One deviation: the module
+  table is `src/routes/modules.ts`, beside the router it drives, rather than a new
+  `src/app/modules.tsx`. The matrix test is `src/routes/access.matrix.test.tsx`. The
+  drift check against the server's table still waits on ask A7; until then
+  `capabilities.ts` lists the route-table rows it mirrors, as §4.4 says.
 
 ### Phase 1: Tokens, type, primitives
 

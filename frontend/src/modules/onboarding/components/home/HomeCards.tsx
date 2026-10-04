@@ -389,12 +389,19 @@ export function ReKycDueCard() {
               data-testid="rekyc-due-row"
               className="flex items-center justify-between gap-3 py-2.5 first:pt-0"
             >
-              <Link
-                to={paths.company(row.company_id, 'background-check')}
-                className="min-w-0 truncate text-sm font-medium text-ink hover:text-brand-600"
-              >
-                {row.company_name ?? 'Unnamed company'}
-              </Link>
+              <span className="flex min-w-0 items-center gap-2">
+                <Link
+                  to={paths.company(row.company_id, 'background-check')}
+                  className="min-w-0 truncate text-sm font-medium text-ink hover:text-brand-600"
+                >
+                  {row.company_name ?? 'Unnamed company'}
+                </Link>
+                {/* R-29: a renewal for a company that exists only as a buyer is not a
+                    lead's, and should not read as one. */}
+                {row.pipeline_status === 'NOT_IN_PIPELINE' ? (
+                  <span className="shrink-0 text-xs text-ink-muted">Buyer only</span>
+                ) : null}
+              </span>
               <span
                 className={`shrink-0 text-xs font-medium ${
                   row.is_expired ? 'text-status-failed' : 'text-status-review'
