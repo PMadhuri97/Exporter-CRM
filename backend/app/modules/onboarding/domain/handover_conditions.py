@@ -17,6 +17,7 @@ its background check is ``CLEAR``     nothing (the company row)
 the required documents are present    ``RequiredDocumentsPolicy``  (Dev 2, P2-5b)
 the seller's compliance is current    ``ComplianceFactsReader``    (Dev 1, P4-7)
 the buyer's sanctions and AML pass    ``ComplianceFactsReader``    (Dev 1, P4-7)
+the invoicing branch is recorded      ``BranchFlagReader``         (Dev 3, P6-7)
 the invoicing branch is not flagged   ``BranchFlagReader``         (Dev 3, P6-7)
 ====================================  ==========================================
 
@@ -34,19 +35,22 @@ what they decided before, and the other four are inert until the lane that owns
 their provider ships the real one. No condition is edited at that point — only
 which provider ``DealService`` hands in.
 
-The providers are ``Protocol``s, not base classes
--------------------------------------------------
-Structural typing, the same choice ``domain/ports.py`` made and for the same
-reason: Developer 1's published ``ComplianceFactsReader`` and Developer 3's
-``BranchFlagReader`` satisfy these without importing this module, so neither lane
-takes a dependency on the deal lane to be usable by it. If Developer 1's reader
-turns out to be synchronous, the adapter is a three-line class in
-``application/handover_providers.py`` and nothing here changes.
+Where each interface is declared
+-------------------------------
+``ComplianceFactsReader`` and ``PartyComplianceFacts`` are **Developer 1's**, imported
+from ``domain/compliance_facts.py``. This module declared its own structural copies
+while F1 was unmerged; they are gone, so the two cannot drift. ``CheckState`` is a
+``Literal`` of plain strings there, so the conditions compare the values directly.
 
-Enum-valued facts are compared **by name**, through :func:`state_name`, exactly as
-``_HANDOVER_JOURNEY`` compares the journey by name rather than importing another
-lane's enum member. A provider may hand back a ``str`` or an enum; both read the
-same here.
+``RequiredDocumentsPolicy`` and ``BranchFlagReader`` stay ``Protocol``s declared here:
+the first is this lane's own, and the second is satisfied by Developer 3's stub and
+later their real reader without either lane importing the other (the same structural
+choice ``domain/ports.py`` made).
+
+:func:`state_name` remains for the one value that really is an enum on the other side
+of a seam — ``exporter_profile.pipeline_status``, read by ``DealService`` for the
+buyer-company summary — and compares it by name rather than importing Developer 3's
+enum, exactly as ``_HANDOVER_JOURNEY`` compares the journey.
 """
 
 from __future__ import annotations
@@ -57,9 +61,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
+from app.modules.onboarding.domain.compliance_facts import (
+    ComplianceFactsReader,
+    PartyComplianceFacts,
+)
+
 __all__ = [
     "BranchFlagReader",
-    "ComplianceFactsReader",
     "HANDOVER_CONDITIONS",
     "HandoverProviders",
     "HandoverSubject",
@@ -136,39 +144,6 @@ class HandoverSubject:
 
 
 @runtime_checkable
-class PartyComplianceFacts(Protocol):
-    """One party's compliance, as Developer 1's F1 interface publishes it.
-
-    Only the fields the guard reads are named. ``sanctions`` and ``aml`` are
-    ``CheckState`` members there and are read here through :func:`state_name`, so
-    this module never imports that enum.
-    """
-
-    is_clear: bool
-    is_clear_current: bool
-    sanctions: Any
-    aml: Any
-
-
-@runtime_checkable
-class ComplianceFactsReader(Protocol):
-    """Developer 1's F1 interface, as the deal lane consumes it.
-
-    ``for_legacy_buyer`` is what keeps deals written before the buyer migration
-    (P4-6) working: their buyer is a ``deal_buyer`` row, not a company, and its
-    checks are keyed by ``entity_reference``.
-    """
-
-    async def for_company(
-        self, company_id: uuid.UUID, now: datetime
-    ) -> PartyComplianceFacts: ...
-
-    async def for_legacy_buyer(
-        self, deal_buyer_id: uuid.UUID, now: datetime
-    ) -> PartyComplianceFacts: ...
-
-
-@runtime_checkable
 class RequiredDocumentsPolicy(Protocol):
     """Which document categories a deal must have before handover (P2-5a).
 
@@ -182,11 +157,25 @@ class RequiredDocumentsPolicy(Protocol):
 
 @runtime_checkable
 class BranchFlagReader(Protocol):
-    """Developer 3's F3 interface: whether a GST registration is flagged (P6-5)."""
+    """Developer 3's interface to GST registrations, for the two branch rules (P6-7).
+
+    ``is_flagged`` answers about one registration and returns the state's name with
+    it, because the refusal quotes it — "the invoicing branch Maharashtra is flagged"
+    — and only Developer 3's lane knows that a GSTIN's state comes from its first two
+    characters.
+
+    ``has_active_registrations`` answers about the **company**, and exists for P6-7's
+    second rule: a deal with no invoicing branch recorded is blocked *only* when its
+    seller has a branch to record. A seller with no GST registration at all is not
+    asked for one, which is the difference between a rule and a nuisance — some
+    sellers legitimately have none.
+    """
 
     async def is_flagged(
         self, gst_registration_id: uuid.UUID
     ) -> tuple[bool, str | None]: ...
+
+    async def has_active_registrations(self, company_id: uuid.UUID) -> bool: ...
 
 
 class NoComplianceFacts:
@@ -208,6 +197,11 @@ class NoComplianceFacts:
     ) -> PartyComplianceFacts | None:
         return None
 
+    # Deliberately **not** a `ComplianceFactsReader`: that Protocol returns
+    # `PartyComplianceFacts`, never `None`. The `| None` here is what the conditions
+    # test for to decide "no provider, so this condition has nothing to say", and
+    # typing it honestly keeps anyone from mistaking this for a real reader.
+
 
 class NoRequiredDocuments:
     """The null ``RequiredDocumentsPolicy``: nothing is required, so nothing is
@@ -219,13 +213,23 @@ class NoRequiredDocuments:
 
 
 class NoBranchFlags:
-    """The null ``BranchFlagReader``: no branch is flagged. The same answer
-    Developer 3's own F3 stub gives until P6-5 lands."""
+    """The null ``BranchFlagReader``: no branch is flagged, and no seller is known to
+    have one.
+
+    Both answers are the ones that **add no refusal**, which is what a null provider
+    must do: a caller that has not injected a real reader gets the guard it had
+    before these rules existed. In particular ``has_active_registrations`` returning
+    ``False`` means "we cannot see any", so the "record the invoicing branch" rule
+    stays silent rather than blocking every deal on a question nobody can answer.
+    """
 
     async def is_flagged(
         self, gst_registration_id: uuid.UUID
     ) -> tuple[bool, str | None]:
         return (False, None)
+
+    async def has_active_registrations(self, company_id: uuid.UUID) -> bool:
+        return False
 
 
 @dataclass(frozen=True)
@@ -289,6 +293,13 @@ async def seller_compliance_is_current(
     """Plan P3-3b and P4-7: the seller's Clear must not have expired, and a
     ``FAILED`` sanctions or AML result on the seller blocks (BQ-3).
 
+    The expiry clause is gated on ``is_clear and not is_clear_current``, not on
+    ``not is_clear_current`` alone. A seller that is not ``CLEAR`` at all also has no
+    current Clear, and condition 2 already says so by name — reporting "expired" as
+    well would tell an operator to renew a check that was never passed. It names the
+    date, as P3-3b asks, because "expired" without a date leaves the reader to go
+    looking for when.
+
     Inert while :class:`NoComplianceFacts` is injected — "no facts" is not
     "everything passed".
     """
@@ -297,12 +308,22 @@ async def seller_compliance_is_current(
         return None
 
     unmet: list[str] = []
-    if not facts.is_clear_current:
-        unmet.append("the company's background check has expired")
+    if facts.is_clear and not facts.is_clear_current:
+        unmet.append(f"the background check expired on {_on(facts.clear_expires_at)}")
     for label, value in (("sanctions", facts.sanctions), ("AML", facts.aml)):
-        if state_name(value) == FAILED:
+        if value == FAILED:
             unmet.append(f"the company's {label} check has failed")
     return "; ".join(unmet) or None
+
+
+def _on(moment: datetime | None) -> str:
+    """A date an operator can act on, or an honest stand-in.
+
+    ``clear_expires_at`` is set on every Clear the facts report as expired, so the
+    fallback is unreachable in practice; it is here so a provider that omits the date
+    produces a readable message rather than the word ``None``.
+    """
+    return moment.date().isoformat() if moment is not None else "an unrecorded date"
 
 
 async def buyer_compliance_passes(
@@ -331,18 +352,49 @@ async def buyer_compliance_passes(
         return None
 
     unmet = [
-        f"the buyer's {label} check is {state_name(value) or 'not recorded'}, not {PASSED}"
+        f"the buyer's {label} check is {value}, not {PASSED}"
         for label, value in (("sanctions", facts.sanctions), ("AML", facts.aml))
-        if state_name(value) != PASSED
+        if value != PASSED
     ]
     return "; ".join(unmet) or None
+
+
+async def invoicing_branch_is_recorded(
+    subject: HandoverSubject, providers: HandoverProviders
+) -> str | None:
+    """Plan P6-7's second rule (task 2.9): a deal invoiced from somewhere must say
+    where.
+
+    Asked **only of a seller that has a branch to name**. A seller with no active GST
+    registration is not asked for one — some sellers legitimately have none, and
+    blocking them on a field they cannot fill would make the rule a nuisance rather
+    than a control. That is why the reader answers about the company and not just
+    about the deal.
+
+    Kept separate from the flag rule below rather than folded into it: the two have
+    different remedies — "record the branch" versus "resolve the flag or invoice from
+    another branch" — and a joined message that offered both for one deal would be
+    confusing.
+    """
+    if subject.seller_gst_registration_id is not None:
+        return None
+    if not await providers.branch_flags.has_active_registrations(
+        subject.seller_company_id
+    ):
+        return None
+    return "the invoicing branch is not recorded"
 
 
 async def invoicing_branch_is_not_flagged(
     subject: HandoverSubject, providers: HandoverProviders
 ) -> str | None:
-    """Plan P6-7. A deal with no branch recorded is not refused here; whether one
-    is *required* is P6-7's second rule and belongs to that task."""
+    """Plan P6-7's first rule. A deal with no branch recorded is not refused here —
+    that is ``invoicing_branch_is_recorded``'s question.
+
+    One branch, not the company (decision BQ-6): a company trading through five
+    states may have a problem in one of them, and deals invoiced from the other four
+    proceed.
+    """
     registration_id = subject.seller_gst_registration_id
     if registration_id is None:
         return None
@@ -362,6 +414,7 @@ HANDOVER_CONDITIONS: tuple[Condition, ...] = (
     required_documents_are_present,
     seller_compliance_is_current,
     buyer_compliance_passes,
+    invoicing_branch_is_recorded,
     invoicing_branch_is_not_flagged,
 )
 

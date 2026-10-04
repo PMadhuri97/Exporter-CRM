@@ -111,4 +111,46 @@ export default tseslint.config(
       ],
     },
   },
+  // Who may use what is decided in one place: `src/platform/access` (R-33 Phase 0,
+  // docs/frontend-plan.md §4.4). Anywhere else, comparing against a role name — or
+  // switching on one — is a second copy of the server's role groups that can drift
+  // from it, so it is refused here; ask `useCan(capability)` or wrap a route in
+  // `<Gate>` instead. Tests are exempt: a role matrix has to name the roles.
+  // Checked with a deliberate `user.role === 'ADMIN'` in a page: it errors.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/platform/access/**', '**/*.test.{ts,tsx}', 'src/test/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "BinaryExpression[operator=/^[!=]==?$/][right.type='Literal'][right.value=/^(OPERATIONS|COMPLIANCE|ADMIN|DEVELOPER|API_USER)$/]",
+          message: 'Role checks live in @/platform/access: use useCan(capability) or <Gate>.',
+        },
+        {
+          selector:
+            "BinaryExpression[operator=/^[!=]==?$/][left.type='Literal'][left.value=/^(OPERATIONS|COMPLIANCE|ADMIN|DEVELOPER|API_USER)$/]",
+          message: 'Role checks live in @/platform/access: use useCan(capability) or <Gate>.',
+        },
+        {
+          selector:
+            "SwitchCase > Literal.test[value=/^(OPERATIONS|COMPLIANCE|ADMIN|DEVELOPER|API_USER)$/]",
+          message: 'Role checks live in @/platform/access: use useCan(capability) or <Gate>.',
+        },
+      ],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@/platform/auth',
+              importNames: ['isStaffRole', 'isAdminRole', 'isComplianceRole'],
+              message: 'Replaced by useCan(capability) from @/platform/access (R-33).',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

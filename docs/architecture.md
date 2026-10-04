@@ -1,11 +1,11 @@
 # Exporter CRM — architecture
 
 What the CRM is, how it is put together, the rules each part enforces, and who owns
-what. It describes the code as it stands; the design it was built from is
-[`Exporter-CRM-Architecture-and-Plan.pdf`](Exporter-CRM-Architecture-and-Plan.pdf)
-(v1.0, 25 September 2026), and the exact shapes each part promises the others are
-the contracts in [`contracts/`](contracts/). Where this page says "§x.y" it means a
-section of that PDF.
+what. It describes the code as it stands, and the exact shapes each part promises the
+others are the contracts in [`contracts/`](contracts/). The design it was built from
+was `Exporter-CRM-Architecture-and-Plan.pdf` (v1.0, 25 September 2026), retired on 4 October 2026 as outdated; recover it with `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf`.
+Where this page says "§x.y" it means a section of that PDF; this page and
+[`plan.md`](plan.md) now stand in for it.
 
 ---
 
@@ -96,6 +96,14 @@ is unique across companies; a company may hold several GSTINs, and a GSTIN held 
 another company is a warning, not a refusal (decision 4). Contract:
 [`contracts/company-record.md`](contracts/company-record.md).
 
+A company created as a deal's buyer is **not in the pipeline** (`pipeline_status =
+NOT_IN_PIPELINE`, plan P4-1, P4-2): nobody is selling to it, so it has no journey history
+and stays out of the pipeline's lists until someone brings it in (P4-9). A company is
+identified by its PAN or, outside India, by its registration number (`identity_type`,
+IQ-7); one with neither is listed for completion. Each GSTIN is a **branch** of its
+company (P6-1): it is deactivated, never deleted, and Compliance may flag it, which blocks
+the deals invoiced through that branch only (BQ-6).
+
 ## 4. The state machines
 
 Each is enforced by its owner's service, and the allowed next moves are served to the
@@ -183,6 +191,18 @@ not apply to leads. Each deal has at most one buyer (its own row, `deal_buyer`),
 checks about a buyer attach to the buyer, never to the company (decision 9). Contract:
 [`contracts/deal-and-buyer.md`](contracts/deal-and-buyer.md).
 
+**A deal's buyer is becoming a company record** (P4-4): `deal.buyer_company_id` names
+the company the buyer *is*, set once, and the legacy `deal_buyer` row stays until every
+environment has run the buyer migration (P4-6). "A handover needs a buyer" is satisfied
+by either, so the migration is a data migration and not a behaviour change.
+
+**What two companies have traded** is separate from the deal between them, and separate
+from any judgement about it: a trade relationship is the ordered pair, its invoices are
+what was billed, and an outcome is what became of each invoice — recorded after the
+handover, because what happened to the money is not a deal stage. Amounts stay in the
+currency they were invoiced in and nothing is totalled (IQ-4). Contract:
+[`contracts/trade-history.md`](contracts/trade-history.md).
+
 ## 5. The move to CUSTOMER, and the handover
 
 **The move to `CUSTOMER` is one transaction** with the move that completes its
@@ -201,10 +221,15 @@ same moment make the move exactly once, and no committed state is ever `PROSPECT
 commit, announces `company.became_customer`. It is idempotent: a customer that is
 reopened and cleared again is not promoted or announced twice.
 
-**The handover guard** (assumption A5): a deal may be handed over only when its company
-is a `CUSTOMER` **and** its background check is `CLEAR`; until then the deal says why,
-naming every unmet condition. The guard share-locks the
-company row while the handover commits (D10), so a concurrent flag or reopen waits. The
+**The handover guard** (assumption A5, extended by plan P2-5b, P3-3b, P3-4, P4-7 and
+P6-7): a deal may be handed over only when its company is a `CUSTOMER` whose background
+check is `CLEAR` and not expired; its required documents are present and scanned clean;
+the seller has no `FAILED` sanctions or AML result (BQ-3); the buyer's sanctions and AML
+are both `PASSED` (BQ-4); and, when the seller has an active GST registration, the deal
+records an invoicing branch that is not flagged (IQ-20, BQ-6). Until then the deal names
+every unmet condition (`domain/handover_conditions.py`, contract `deal-and-buyer.md`
+§6.1). The guard share-locks both companies, in `customer_id` order, while the handover
+commits (D10), so a concurrent flag or reopen waits. The
 handover snapshots the deal's buyer and document ids, writes the history row, and after
 the commit announces `deal.handed_over` to the lending team.
 
@@ -307,8 +332,10 @@ browser: a caller reading the JSON directly must not get what the matrix hides. 
 identifiers show only their last four characters to roles that may not reveal them;
 contact emails and phones, and a deal buyer's identifiers and contact details, are
 masked the same way; a profile-history row stores identifiers already masked. An exact
-search by PAN, GSTIN or IEC is refused to those roles, because a match alone would say
-which company holds the identifier. DEVELOPER does not receive `background_check`,
+search of the company list by PAN, GSTIN or IEC is refused to those roles. Matching a
+buyer is the one exception (BQ-2): `POST /companies/match` names the company that holds a
+full PAN, GSTIN or registration number the user typed — never the identifier itself — and
+every such lookup is audited. DEVELOPER does not receive `background_check`,
 `verification` or `screening` history rows, nor the risk rating and clearing decision
 recorded on the `CUSTOMER` journey row, since D8 refuses it that data on those gauges'
 own routes; for the same reason a deal response gives DEVELOPER no stage moves and no
@@ -317,6 +344,12 @@ handover-blocked reason.
 **Design principle:** a role that cannot reveal a value gets no reveal control at all,
 not a disabled one — a disabled eye icon would still leak "this data exists, you're
 just not allowed".
+
+**The screens fail closed** (`frontend/src/platform/access`, R-33 Phase 0): each role's
+capabilities are an allowlist mirroring the groups above, and a role nobody listed has
+none. A screen or control a role may not use is absent, and its address shows the same
+"Page not found" as one that does not exist; the API user gets no workspace. This only
+avoids offering what the server would refuse — the server still enforces every rule.
 
 **Roles as data.** User and role management (`/api/v1/auth/users`,
 `/api/v1/auth/roles`, the Settings screen) is gated by permissions, and built-in roles
@@ -343,13 +376,16 @@ as the aborted fetch of a page being reloaded, leaves the token alone — and on
 stored token is still the one refused; if another tab has stored a newer one, it retries
 once with that. On the server, a refresh whose caller has already disconnected when it
 is about to commit is rolled back (`499`), so a page reloaded mid-refresh keeps a token
-that still works. The window this leaves is in [`open-items.md`](open-items.md) §1.2.
+that still works. The window this leaves is decision D-13 in
+[`remaining-work.md`](remaining-work.md).
 
 ## 10. Ownership
 
-Architecture §8–9 assigns each part to one developer; the contract for a part is
-changed only with the agreement of its owner and its users, and a shared file changes
-only through a review by its owner.
+Architecture §8–9 assigned each part to one developer; the contract for a part was
+changed only with the agreement of its owner and its users, and a shared file only
+through a review by its owner. The table is that pre-demo split, kept because the code
+and the contracts cite owners. Since 4 October 2026 one developer completes the project
+([`remaining-work.md`](remaining-work.md)).
 
 | Owner | Owns |
 |---|---|
@@ -373,18 +409,21 @@ Developer 2's promotion (`promote_to_customer_if_ready`).
   COMPLIANCE/ADMIN user may reopen a cleared check with a reason; the risk scale is
   `LOW`/`MEDIUM`/`HIGH`/`CRITICAL`; RXIL exporters arrive as qualified prospects; a
   rejected lead may be re-qualified; buyers live on deals and lending owns
-  transactions; other teams are told by events only; the compliance route exception;
+  transactions (decision 9, being replaced by buyer company records, P4-4 – P4-10; its
+  rewrite is R-25); other teams are told by events only; the compliance route exception;
   only COMPLIANCE and ADMIN see full tax IDs.
 - **Planning assumptions** A1–A14 (§6.3) — for example A5, the handover guard.
 - **Developer 4's decisions D1–D17** are recorded in `contracts/background-check.md`
   §14 and `contracts/verification-and-screening.md` §11. The PDF's §6.2 also lists an *earlier* plan's
   decisions under the same labels (for example its D8 is "storage: local disk first,
   relative keys only"); a code comment citing "D8" beside storage means that one.
-- **Implemented on the audit's recommendation, awaiting the lead's confirmation:**
-  U4 (the move to `CUSTOMER` is one transaction) and the rule that only a `PROSPECT` or
-  `CUSTOMER` may open a deal; also the D2 clarification and D5 amendment made in the
-  Developer 4A review, and Developer 4B's side of D4. These, and every decision still
-  open, are listed in [`open-items.md`](open-items.md).
+- **Implemented on the audit's recommendation, awaiting the lead's written
+  confirmation:** U4 (the move to `CUSTOMER` is one transaction), the rule that only a
+  `PROSPECT` or `CUSTOMER` may open a deal, and the D2 clarification and D5 amendment made
+  in the Developer 4A review (`remaining-work.md` D-08 – D-11). Developer 4B's side of D4
+  and Developer 1's compliance details were confirmed on 2 October 2026
+  (`contracts/background-check.md` §14.2). Every decision still open is in
+  [`remaining-work.md`](remaining-work.md) §4.
 
 ## 12. Known, intentional limitations
 
@@ -402,22 +441,24 @@ The prototype is built to be honest about what is not real yet.
   (`TEMPORAL_ENABLED=true` is unsupported), the case engine is not connected to
   background-check decisions (A6), and several modules are schema only
   ([`../RUNNING.md`](../RUNNING.md)).
-- **Open items the lead may change:** the `CLEAR` evidence rule is satisfied by the
-  screening answers alone, so a company can be cleared with no document and no
-  verification result; placeholder verification rows can never stop blocking `CLEAR`;
-  the handover snapshot includes deal documents whatever their scan status; masked roles
-  learn which company already holds a PAN from the duplicate refusal; changing a
-  `NOT_NOW` check-back date takes two moves; there are no cross-company deal or document
-  lists; documents cannot be deleted (seven-year retention argues against it, and the
-  database refuses it); there is no CI. [`open-items.md`](open-items.md) tracks each.
+- **Accepted, or open for the lead:** a company can be cleared with no document — the
+  screening answers and rule B's three passed checks (KYB, AML, sanctions) are enough
+  (confirmed 2 October, to be revisited before real data); a placeholder verification row
+  blocks `CLEAR` only within its own cycle, and a new cycle leaves it behind; the
+  handover snapshot includes deal documents whatever their scan status; masked roles are
+  told which company holds a full PAN or GSTIN they typed (BQ-2), and the shared-GSTIN
+  warnings name the other holder (D-07); changing a `NOT_NOW` check-back date takes two
+  moves; there are no cross-company deal or document lists; documents cannot be deleted
+  (seven-year retention argues against it, and the database refuses it); there is no CI.
+  [`remaining-work.md`](remaining-work.md) tracks each.
 
 ## 13. Further reading
 
-- What is still open, and who decides: [`open-items.md`](open-items.md).
 - The contracts: [`contracts/`](contracts/) — company record, criterion results,
-  engagement, deal and buyer, storage and documents, background check, verification and
-  screening, history row,
+  engagement, deal and buyer, trade history, storage and documents, background check,
+  verification and screening, history row,
   event envelope, migration register.
-- What each post-demo developer still has to do: [`dev1-remaining-work.md`](dev1-remaining-work.md) (compliance engine), [`dev2-remaining-work.md`](dev2-remaining-work.md) (deals, handover, buyer migration) and [`dev3-remaining-work.md`](dev3-remaining-work.md) (company record, settings, GST, trade history).
+- What is done, what is left and what needs a decision, in one list:
+  [`remaining-work.md`](remaining-work.md).
 - Running, testing and migrating: [`development.md`](development.md). The demo walk-through:
   [`demo.md`](demo.md).

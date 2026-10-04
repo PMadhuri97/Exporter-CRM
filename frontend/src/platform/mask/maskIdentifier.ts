@@ -1,4 +1,5 @@
 import type { UserRole } from '@/lib/api/types';
+import { can } from '@/platform/access';
 
 /**
  * Who may see a raw tax identifier:
@@ -20,15 +21,9 @@ import type { UserRole } from '@/lib/api/types';
  * changing the backend would produce a reveal control that reveals bullets.
  */
 export function canReveal(role: UserRole): boolean {
-  switch (role) {
-    case 'COMPLIANCE':
-    case 'ADMIN':
-      return true;
-    case 'OPERATIONS':
-    case 'DEVELOPER':
-    case 'API_USER':
-      return false;
-  }
+  // The `identifiers.reveal` capability (`platform/access`), so the role list lives in
+  // one place (R-33, G6). A role nobody listed reveals nothing.
+  return can(role, 'identifiers.reveal');
 }
 
 const VISIBLE_SUFFIX_LENGTH = 4;

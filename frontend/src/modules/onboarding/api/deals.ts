@@ -25,6 +25,7 @@ import type {
   DealRequiredDocuments,
   OpenDealRequest,
   SetDealBuyerRequest,
+  SetDealInvoicingBranchRequest,
   SetDealRequiredDocumentRequest,
   TransitionDealStageRequest,
 } from '../types';
@@ -49,13 +50,20 @@ export function openDeal(
 }
 
 /** One company's deals, newest first. Every stage unless `stages` narrows it —
- * withdrawn and handed-over deals are part of the company's record. */
+ * withdrawn and handed-over deals are part of the company's record.
+ *
+ * `as: 'buyer'` lists the deals this company **buys** on instead (task 2.7). On that
+ * side `buyer_name` carries the seller's name, because the company whose page this is
+ * would otherwise be repeated in every row. A deal whose buyer is still a legacy
+ * `deal_buyer` row does not appear there: nothing yet says that buyer is this company.
+ */
 export function listCompanyDeals(
   companyId: string,
   params: DealListParams = {},
 ): Promise<DealList> {
   const query = new URLSearchParams();
   for (const stage of params.stages ?? []) query.append('stage', stage);
+  if (params.as) query.set('as', params.as);
   query.set('limit', String(params.limit ?? 50));
   query.set('offset', String(params.offset ?? 0));
   return apiRequest<DealList>(
@@ -94,6 +102,22 @@ export function setDealBuyer(
   body: SetDealBuyerRequest,
 ): Promise<Deal> {
   return apiRequest<Deal>(`/onboarding/deals/${dealId}/buyer`, {
+    method: 'PUT',
+    body,
+  });
+}
+
+/**
+ * Record which of the seller's GST registrations the deal is invoiced from (task 2.8,
+ * plan P6-6). By the registration's id, never its GSTIN, so a shared GSTIN can only
+ * ever mean this seller's copy (IQ-9). It must be the seller's and active (422
+ * otherwise); `null` clears it. Changeable until the deal closes, then frozen (409).
+ */
+export function setDealInvoicingBranch(
+  dealId: string,
+  body: SetDealInvoicingBranchRequest,
+): Promise<Deal> {
+  return apiRequest<Deal>(`/onboarding/deals/${dealId}/invoicing-branch`, {
     method: 'PUT',
     body,
   });

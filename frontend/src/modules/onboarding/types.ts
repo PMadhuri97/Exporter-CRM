@@ -179,6 +179,11 @@ export type DealList = Schemas['DealListResponse'];
 export type OpenDealRequest = Schemas['OpenDealRequest'];
 export type TransitionDealStageRequest = Schemas['TransitionDealStageRequest'];
 export type SetDealBuyerRequest = Schemas['SetDealBuyerRequest'];
+/** A buyer company to create and name in one step (R-24). */
+export type CreateBuyerCompanyRequest = Schemas['CreateBuyerCompanyRequest'];
+/** Which of the seller's GST registrations a deal is invoiced from; `null` clears it
+ * (task 2.8, plan P6-6). */
+export type SetDealInvoicingBranchRequest = Schemas['SetDealInvoicingBranchRequest'];
 export type DealBuyer = Schemas['DealBuyerResponse'];
 /** One move this user may make from a deal's current stage — served by the API so
  * no screen keeps its own copy of the stage graph (§7.5). */
@@ -196,9 +201,29 @@ export type DocumentCategoryValue = Schemas['DocumentCategory'];
 export interface DealListParams {
   /** Repeatable: several stages narrow the list to those stages. */
   stages?: DealStage[];
+  /**
+   * Which side of its deals to list (task 2.7). `seller` (the default) is the deals
+   * this company sells on; `buyer` the ones it buys on. Two lists, never one: the
+   * same company can be seller on one deal and buyer on another, and `buyer_name`
+   * means "the other party", so a mixed list would read differently row by row.
+   */
+  as?: DealSide;
   limit?: number;
   offset?: number;
 }
+
+/** `seller` | `buyer` — which side of a deal a company is on. */
+export type DealSide = Schemas['DealSide'];
+
+/** "Do we already have this company?" — `POST /companies/match` (task 3.10). */
+export type CompanyMatchRequest = Schemas['CompanyMatchRequest'];
+export type CompanyMatch = Schemas['CompanyMatchResponse'];
+export type CompanyMatchCandidate = Schemas['CompanyMatchCandidate'];
+/** One company with no `identity_type` and what it lacks (IQ-7's completion list, R-28). */
+export type IdentityCompletionItem = Schemas['IdentityCompletionItem'];
+export type IdentityCompletionList = Schemas['IdentityCompletionListResponse'];
+/** MATCHED | POSSIBLE_DUPLICATE | CONFLICT | NEW. */
+export type CompanyMatchKind = CompanyMatch['kind'];
 
 export type CrmDocument = Schemas['DocumentResponse'];
 export type DocumentList = Schemas['DocumentListResponse'];
@@ -322,3 +347,42 @@ export type RequiredCheck = components['schemas']['RequiredCheckResponse'];
 /** A company whose Clear has expired or soon will (P3-3c). */
 export type ReKycDueCompany = components['schemas']['ReKycDueCompanyResponse'];
 export type ReKycDueList = components['schemas']['ReKycDueListResponse'];
+
+/** Bring a buyer-only company into the sales pipeline (task 3.11). */
+export type BringIntoPipelineRequest = Schemas['BringIntoPipelineRequest'];
+
+// ── GST registrations: a company's branches (tasks 3.12–3.17) ────────────────
+
+/** One branch: a state, an address, a portal status, and possibly a flag. */
+export type GstRegistration = Schemas['GstRegistrationResponse'];
+export type GstRegistrationList = Schemas['GstRegistrationListResponse'];
+export type AddGstRegistrationRequest = Schemas['AddGstRegistrationRequest'];
+export type FlagGstRegistrationRequest = Schemas['FlagGstRegistrationRequest'];
+/** UNVERIFIED | ACTIVE | CANCELLED | SUSPENDED — what the GST portal says. */
+export type GstRegistrationStatus = GstRegistration['status'];
+
+// ── Trade history: what two companies have invoiced and settled (3.18–3.22) ──
+
+/** The other party on a relationship: an id, a name, a country, a pipeline status.
+ * **No identifiers, for any role** — a counterparty's PAN or GSTIN is on its own
+ * company page, where D8's masking applies to it (IQ-19). */
+export type TradeCounterparty = Schemas['TradeCounterparty'];
+/** One ordered (seller, buyer) pair. A selling to B is not B selling to A. */
+export type TradeRelationship = Schemas['TradeRelationshipResponse'];
+export type TradeRelationshipList = Schemas['TradeRelationshipListResponse'];
+export type TradeRelationshipDetail = Schemas['TradeRelationshipDetailResponse'];
+/** One invoice, carrying the outcome we currently believe. `amount` is a **string**:
+ * money is `Numeric` server-side and a JSON number would round it. */
+export type TradeInvoice = Schemas['TradeInvoiceResponse'];
+/** An invoice and its whole outcome chain, oldest first. */
+export type TradeInvoiceDetail = Schemas['TradeInvoiceDetailResponse'];
+/** One thing we learned about an invoice. Never edited; superseded. */
+export type TradeOutcome = Schemas['TradeOutcomeResponse'];
+/** PAID | UNPAID | PARTIAL | DISPUTED | UNKNOWN. `UNKNOWN` is an answer, not a gap. */
+export type TradePaymentStatus = Schemas['TradePaymentStatus'];
+/** PROVEN | CLAIMED — whether anything backs the outcome up. */
+export type TradeProofStatus = Schemas['TradeProofStatus'];
+export type RecordTradeInvoiceRequest = Schemas['RecordTradeInvoiceRequest'];
+export type RecordTradeOutcomeRequest = Schemas['RecordTradeOutcomeRequest'];
+export type RecordDealPaymentOutcomeRequest = Schemas['RecordDealPaymentOutcomeRequest'];
+export type DealPaymentOutcome = Schemas['DealPaymentOutcomeResponse'];

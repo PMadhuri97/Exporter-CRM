@@ -6,12 +6,18 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.actor_names import actor_names
+from app.modules.onboarding.api.company_directory_router import (
+    router as company_directory_router,
+)
 from app.modules.onboarding.api.company_intake_router import router as company_intake_router
 from app.modules.onboarding.api.deal_router import router as deal_router
 from app.modules.onboarding.api.document_router import router as document_router
 from app.modules.onboarding.api.engagement_router import router as engagement_router
 from app.modules.onboarding.api.exporter_router import router as exporter_router
 from app.modules.onboarding.api.follow_up_router import router as follow_up_router
+from app.modules.onboarding.api.gst_registration_router import (
+    router as gst_registration_router,
+)
 from app.modules.onboarding.api.history_router import router as history_router
 from app.modules.onboarding.api.qualification_router import router as qualification_router
 from app.modules.onboarding.api.schemas.case import (
@@ -37,6 +43,9 @@ from app.modules.onboarding.api.schemas.verification import (
     reviewer_ids,
 )
 from app.modules.onboarding.api.screening_router import router as screening_router
+from app.modules.onboarding.api.trade_history_router import (
+    router as trade_history_router,
+)
 from app.modules.onboarding.application import (
     CaseService,
     OnboardingService,
@@ -83,6 +92,18 @@ router.include_router(screening_router)
 router.include_router(qualification_router)
 # RXIL company intake and bulk CSV import (L2-12, L2-13) — Developer 2's.
 router.include_router(company_intake_router)
+# "Which company is this?" (P4-3, task 3.10) — Developer 3's. Its own `/companies`
+# prefix, because the question is asked before any company id is known; see the
+# router's module docstring.
+router.include_router(company_directory_router)
+# GST registrations — a company's branches (P6-2, P6-5; tasks 3.13, 3.14, 3.17) —
+# Developer 3's. Absolute paths, because reading and adding one hangs off a company
+# while flagging one takes only the registration's own id.
+router.include_router(gst_registration_router)
+# Trade history — what two companies have traded (P5-3, P5-4; task 3.20) —
+# Developer 3's. Absolute paths: a relationship is the pair, not a sub-resource of
+# either company, though one company's relationships are read under `/exporters`.
+router.include_router(trade_history_router)
 
 # Shared CRM history log (L1-11) — Developer 1's, in its own file for the same
 # reason the Exporter CRM routes are in theirs, and included here so it

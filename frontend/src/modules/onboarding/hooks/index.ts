@@ -28,6 +28,7 @@ export * from './history';
 export * from './engagement';
 export * from './follow-ups';
 export * from './deals';
+export * from './trade';
 export * from './documents';
 export * from './verification';
 

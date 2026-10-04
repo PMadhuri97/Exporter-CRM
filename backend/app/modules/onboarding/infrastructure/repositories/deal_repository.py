@@ -54,20 +54,41 @@ class DealRepository(BaseRepository[Deal]):
     def _for_company(self, company_id: uuid.UUID) -> Select[tuple[Deal]]:
         return select(Deal).where(Deal.company_id == company_id)
 
+    def _for_buyer_company(self, company_id: uuid.UUID) -> Select[tuple[Deal]]:
+        """Deals this company is the **buyer** on (task 2.7).
+
+        Only ``buyer_company_id``, never the legacy ``deal_buyer`` row: a
+        ``deal_buyer`` is a set of details, not a company, so there is nothing to
+        match it to a company by. A deal the buyer migration has not reached yet
+        therefore does not appear here — correctly, because until it does, nothing
+        in the database says that buyer *is* this company.
+        """
+        return select(Deal).where(Deal.buyer_company_id == company_id)
+
     async def list_for_company(
         self,
         company_id: uuid.UUID,
         *,
         stages: tuple[DealStage, ...] | None = None,
+        as_buyer: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[Deal], int]:
         """One company's deals, newest first, with the total behind the page.
 
-        Newest first because the deal someone is working on is almost always the
-        one they just opened; ``ix_deal_company_recent`` serves exactly this.
+        ``as_buyer`` lists the deals it buys on instead of the ones it sells on.
+        Never both at once: a company could be seller on one deal and buyer on
+        another, and a single list mixing the two would show a stage and a buyer
+        name whose meaning flipped row by row. The two sides are separate questions
+        and the screen asks them separately.
+
+        Newest first because the deal someone is working on is almost always the one
+        they just opened; ``ix_deal_company_recent`` and
+        ``ix_deal_buyer_company_recent`` serve exactly these two queries.
         """
-        statement = self._for_company(company_id)
+        statement = (
+            self._for_buyer_company(company_id) if as_buyer else self._for_company(company_id)
+        )
         if stages:
             statement = statement.where(Deal.stage.in_(stages))
 

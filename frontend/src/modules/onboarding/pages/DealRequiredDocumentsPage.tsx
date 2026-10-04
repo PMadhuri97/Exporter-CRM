@@ -1,6 +1,7 @@
 /**
  * Required documents for a handover — **owner: Developer 2** (plan P2-5a).
- * ADMIN only.
+ * ADMIN only, guarded at the route (`settings.requiredDocuments`, R-33 G5): any other
+ * role gets the generic NotFound there and never loads this page.
  *
  * Which paperwork a deal must have before it goes to the lending team is a
  * setting, not code: an administrator adds and removes categories here, and the
@@ -31,7 +32,6 @@ import {
   ErrorState,
   Field,
   FormError,
-  NotFound,
   PageHeader,
   Select,
   Skeleton,
@@ -44,7 +44,6 @@ import {
 } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 import { formatDateTime } from '@/lib/format';
-import { isAdminRole, useCurrentUser } from '@/platform/auth';
 
 import {
   useDealRequiredDocuments,
@@ -216,21 +215,10 @@ function HistoryDrawer({
 }
 
 export function DealRequiredDocumentsPage() {
-  const { role } = useCurrentUser();
   const rule = useDealRequiredDocuments();
   const mutation = useSetDealRequiredDocument();
   const [adding, setAdding] = useState(false);
   const [showingHistory, setShowingHistory] = useState(false);
-
-  // The same gate the criteria page uses: the server refuses the write anyway,
-  // and a screen that offered it would be promising something it cannot do.
-  if (!isAdminRole(role)) {
-    return (
-      <NotFound title="Administrators only">
-        Which documents a handover needs is managed by an administrator.
-      </NotFound>
-    );
-  }
 
   const requirements = rule.data?.requirements ?? [];
   const history = rule.data?.history ?? [];

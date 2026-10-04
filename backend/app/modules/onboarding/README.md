@@ -1,6 +1,17 @@
 # onboarding
 
-Business domain. Public facade is `__init__.py` — the only import surface for other modules (ARCHITECTURE.md §6).
+**This module is the Exporter CRM**: its entities, migrations, services, routes and tests.
+The CRM is described in [`docs/architecture.md`](../../../../docs/architecture.md), its
+contracts in [`docs/contracts/`](../../../../docs/contracts/), and what is left in
+[`docs/remaining-work.md`](../../../../docs/remaining-work.md).
+
+The public facade is `__init__.py` — the only import surface for other modules (enforced
+by `backend/importlinter.ini`).
+
+The rest of this file documents the **legacy onboarding workflow** that shares the
+module: the `onboarding_request` path on Temporal. It is out of the CRM's scope, is not
+started (`TEMPORAL_ENABLED=true` is unsupported, architecture §12), and its tests run only
+in the whole suite (`docs/development.md` §7).
 
 ---
 

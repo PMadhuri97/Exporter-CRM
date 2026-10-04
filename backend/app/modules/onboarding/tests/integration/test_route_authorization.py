@@ -100,6 +100,71 @@ GATED_ROUTES = [
         STAFF,
     ),
     ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
+    # Trade history (task 3.20, decision IQ-19). Writes are STAFF; the reads are in
+    # the contract table — DEVELOPER may make them, which `GATED_ROUTES` here cannot
+    # express because every row of it is a write.
+    (
+        "POST",
+        f"{BASE}/trade-relationships/{_ID}/invoices",
+        {
+            "invoice_number": "INV-1",
+            "invoice_date": "2026-03-01",
+            "amount": "100.00",
+            "currency": "USD",
+        },
+        STAFF,
+    ),
+    (
+        "POST",
+        f"{BASE}/trade-invoices/{_ID}/outcomes",
+        {"payment_status": "UNKNOWN"},
+        STAFF,
+    ),
+    (
+        "POST",
+        f"{BASE}/deals/{_ID}/payment-outcome",
+        {"payment_status": "UNKNOWN"},
+        STAFF,
+    ),
+    # GST registrations (tasks 3.13, 3.14). Recording and deactivating a branch is a
+    # relationship manager's record; flagging one stops trade through it, so it is
+    # COMPLIANCE's — and that difference is what `_GST_FLAG_ROLES` below asserts.
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/gst-registrations",
+        {"gstin": "27AAAPL1234C1ZV"},
+        STAFF,
+    ),
+    ("POST", f"{BASE}/gst-registrations/{_ID}/deactivate", {}, STAFF),
+    (
+        "POST",
+        f"{BASE}/gst-registrations/{_ID}/flag",
+        {"reason": "Returns unfiled"},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    (
+        "POST",
+        f"{BASE}/gst-registrations/{_ID}/unflag",
+        {"reason": "Now filed"},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    # A deal's invoicing branch (task 2.8) — a routine CRM write, like its buyer.
+    ("PUT", f"{BASE}/deals/{_ID}/invoicing-branch", {"gst_registration_id": None}, STAFF),
+    # Bringing a buyer-only company into the sales pipeline (task 3.11). A
+    # commercial decision, so the roles that make commercial decisions; DEVELOPER is
+    # read-only throughout the CRM.
+    ("POST", f"{BASE}/exporters/{_ID}/pipeline", {}, STAFF),
+    # "Which company is this?" (task 3.10). STAFF, including OPERATIONS: recording a
+    # deal's buyer is a relationship manager's job, and decision BQ-2 was decided for
+    # exactly that case — a full identifier may name a company even for a role that
+    # sees identifiers masked. DEVELOPER is excluded: it may never reveal an
+    # identifier (`can_reveal_identifiers`) and has no buyer to resolve.
+    (
+        "POST",
+        f"{BASE}/companies/match",
+        {"name": "Rotterdam Trading BV", "country": "NL"},
+        STAFF,
+    ),
     # qualification
     (
         "POST",
@@ -149,6 +214,7 @@ GATED_ROUTES = [
     ("GET", f"{BASE}/verifications/{_ID}", None, STAFF),
     ("GET", f"{BASE}/verifications?entity_type=EXPORTER&entity_reference={_ID}", None, STAFF),
     ("GET", f"{BASE}/exporters", None, READERS),
+    ("GET", f"{BASE}/companies/identity-completion", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/contacts", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/activities", None, READERS),
@@ -693,13 +759,23 @@ async def test_write_responses_are_masked_too(client: AsyncClient, tokens: dict[
     assert resp.status_code == 201, resp.text
     assert resp.json()["pan"] == _masked(pan)
 
-    patched = await client.patch(
-        f"{BASE}/exporters/{resp.json()['customer_id']}",
-        json={"gstins": [gstin]},
+    # The same rule on the GST registrations route, which is where a GSTIN is written
+    # since task 3.13 — a PATCH no longer accepts `gstins`.
+    added = await client.post(
+        f"{BASE}/exporters/{resp.json()['customer_id']}/gst-registrations",
+        json={"gstin": gstin},
         headers=auth_header(token),
     )
-    assert patched.status_code == 200, patched.text
-    assert patched.json()["gstins"] == [_masked(gstin)]
+    assert added.status_code == 201, added.text
+    assert added.json()["gstin"] == _masked(gstin)
+    # And the portal link is withheld, because it would carry the full value (3.17).
+    assert added.json()["verify_url"] is None
+
+    # The company response masks it too, wherever it appears.
+    listed = await client.get(
+        f"{BASE}/exporters/{resp.json()['customer_id']}", headers=auth_header(token)
+    )
+    assert listed.json()["gstins"] == [_masked(gstin)]
 
 
 # ── Contact email/phone masking ──────────────────────────────────────────────

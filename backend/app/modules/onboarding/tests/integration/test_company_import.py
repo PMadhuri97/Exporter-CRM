@@ -239,6 +239,9 @@ async def test_a_gstin_held_elsewhere_is_a_warning_on_an_accepted_row():
         ({"country": ""}, "MISSING_COUNTRY"),
         ({"country": "India"}, "INVALID_COUNTRY"),
         ({"source": "RXIL"}, "INVALID_SOURCE"),
+        # A deal's buyer is created outside the pipeline by the buyer-company path; an
+        # import creates leads (R-21).
+        ({"source": "DEAL_BUYER"}, "INVALID_SOURCE"),
         ({"source": "CARRIER_PIGEON"}, "INVALID_SOURCE"),
     ],
 )
@@ -551,8 +554,11 @@ async def test_a_line_that_is_not_valid_csv_saves_nothing():
     pan = _pan()
     previous = csv.field_size_limit(64)
     try:
+        # Any cell longer than the limit will do; `industry` is the longest free-text
+        # column left now that `website` has retired (R11). The point is that the CSV
+        # reader itself gives up, before a single row is judged or saved.
         with pytest.raises(ValidationError, match="not valid CSV near line 3"):
-            await _import(_row(pan=pan), _row(website="https://example.com/" + "x" * 100))
+            await _import(_row(pan=pan), _row(industry="Textiles " + "x" * 100))
     finally:
         csv.field_size_limit(previous)
     assert await _count_with_pan(pan) == 0

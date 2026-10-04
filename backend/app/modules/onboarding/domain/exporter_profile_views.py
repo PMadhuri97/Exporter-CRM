@@ -26,6 +26,8 @@ from app.modules.onboarding.domain.engagement_views import (
     ExporterContactView,
 )
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    CompanyIdentityType,
+    CompanyPipelineStatus,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -72,7 +74,15 @@ class ExporterProfileDetail:
     export_markets: list | None
     products: list | None
     year_established: int | None
-    website: str | None
+    #: Whatever the company's own registrar issued, for a company not identified by
+    #: a PAN. Masked like CIN on the way out (task 3.8).
+    registration_number: str | None
+    #: Which registration identifies the company; ``None`` for a company that holds
+    #: neither identifier, which is a question left open rather than a guess.
+    identity_type: CompanyIdentityType | None
+    #: Whether this company is in the sales pipeline at all. A buyer-only company is
+    #: ``NOT_IN_PIPELINE``, and its journey and gauges do not apply (plan P4-2).
+    pipeline_status: CompanyPipelineStatus
     date_added: datetime
     created_at: datetime
     updated_at: datetime
@@ -107,6 +117,15 @@ class ExporterProfileListItem:
     marker_reason: str | None
     industry: str | None
     year_established: int | None
+    #: Whatever the company's own registrar issued, for a company not identified by
+    #: a PAN. Masked like CIN on the way out (task 3.8).
+    registration_number: str | None
+    #: Which registration identifies the company; ``None`` for a company that holds
+    #: neither identifier, which is a question left open rather than a guess.
+    identity_type: CompanyIdentityType | None
+    #: Whether this company is in the sales pipeline at all. A buyer-only company is
+    #: ``NOT_IN_PIPELINE``, and its journey and gauges do not apply (plan P4-2).
+    pipeline_status: CompanyPipelineStatus
     date_added: datetime
     created_at: datetime
     updated_at: datetime

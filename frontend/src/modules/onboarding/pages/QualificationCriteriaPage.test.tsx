@@ -75,15 +75,10 @@ beforeEach(() => {
 });
 
 describe('QualificationCriteriaPage (L2-09)', () => {
-  it.each(['OPERATIONS', 'COMPLIANCE', 'DEVELOPER'])(
-    'shows %s no criteria and no controls, since only ADMIN manages them',
-    (role) => {
-      signedInAs(role);
-      renderPage();
-      expect(screen.getByText('Administrators only')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /add criterion/i })).not.toBeInTheDocument();
-    },
-  );
+  // Who may open this screen is decided at the route now (R-33, G5): any other role
+  // gets the generic NotFound and never loads the page. That is asserted, role by
+  // role, in `src/routes/access.matrix.test.tsx`, which replaces the in-page
+  // "Administrators only" checks that used to be here.
 
   it('lists each criterion with its rule and version, and no edit or delete', async () => {
     renderPage();

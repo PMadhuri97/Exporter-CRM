@@ -33,15 +33,19 @@ import {
   Textarea,
 } from '@/components';
 import { formatDateTime, humanize } from '@/lib/format';
-import { isAdminRole, isStaffRole, useCurrentUser } from '@/platform/auth';
-import { canReveal } from '@/platform/mask';
+import { useCan } from '@/platform/access';
 
 import {
+  CompanyComplianceSummary,
+  CompanyPicker,
   BuyerChecks,
   DealHistory,
   DealStageChip,
   DocumentList,
   DocumentUpload,
+  InvoicingBranchPicker,
+  RecordDealOutcomeForm,
+  TradeHistoryPanel,
 } from '../components';
 import {
   useDeal,
@@ -61,6 +65,16 @@ const STAGE_ACTION_LABEL: Record<DealStage, string> = {
   WITHDRAWN: 'Withdraw',
 };
 
+/**
+ * `SetDealBuyerRequest`'s legacy form. The generated type is one shape for both forms,
+ * so every field in it is optional; in this form `name` and `country` are required
+ * together, and `buyer_company_id` belongs to the other form.
+ */
+type LegacyBuyerRequest = Omit<SetDealBuyerRequest, 'buyer_company_id' | 'name' | 'country'> & {
+  name: string;
+  country: string;
+};
+
 /** The buyer fields the server masks for OPERATIONS and DEVELOPER. */
 const MASKED_BUYER_FIELDS = ['registration_number', 'tax_id', 'contact_email', 'contact_phone'] as const;
 type MaskedBuyerField = (typeof MASKED_BUYER_FIELDS)[number];
@@ -74,7 +88,7 @@ function BuyerForm({
 }: {
   dealId: string;
   customerId?: string;
-  initial: SetDealBuyerRequest | null;
+  initial: LegacyBuyerRequest | null;
   /** COMPLIANCE and ADMIN receive the buyer in full; every other role receives
    * the masked fields masked. */
   revealIdentifiers: boolean;
@@ -84,14 +98,14 @@ function BuyerForm({
   // A role that sees masked values starts those fields empty rather than holding
   // bullets it could send back (the server refuses them). Left empty they are
   // left out of the request, which keeps the stored value; typed, they replace it.
-  const [form, setForm] = useState<SetDealBuyerRequest>(() => {
+  const [form, setForm] = useState<LegacyBuyerRequest>(() => {
     const start = initial ?? { name: '', country: '' };
     if (revealIdentifiers || initial === null) return start;
     const cleared = { ...start };
     for (const key of MASKED_BUYER_FIELDS) cleared[key] = null;
     return cleared;
   });
-  const hidden = (key: keyof SetDealBuyerRequest): key is MaskedBuyerField =>
+  const hidden = (key: keyof LegacyBuyerRequest): key is MaskedBuyerField =>
     !revealIdentifiers && initial !== null && (MASKED_BUYER_FIELDS as readonly string[]).includes(key);
 
   async function handleSubmit(event: React.FormEvent) {
@@ -113,7 +127,7 @@ function BuyerForm({
     }
   }
 
-  const field = (key: keyof SetDealBuyerRequest, label: string, required = false) => (
+  const field = (key: keyof LegacyBuyerRequest, label: string, required = false) => (
     <Field label={label} htmlFor={`buyer-${key}`} required={required}>
       <Input
         id={`buyer-${key}`}
@@ -333,8 +347,9 @@ function StageMoves({
 
 export function DealDetailPage() {
   const { dealId } = useParams<{ dealId: string }>();
-  const user = useCurrentUser();
-  const isStaff = isStaffRole(user.role);
+  const isStaff = useCan('crm.write');
+  const canReveal = useCan('identifiers.reveal');
+  const canSetRequiredDocuments = useCan('settings.requiredDocuments');
 
   const { data: deal, isLoading, isError, refetch } = useDeal(dealId);
   const company = useExporterProfileDetail(deal?.company_id);
@@ -345,7 +360,13 @@ export function DealDetailPage() {
   const documents = useDealDocuments(dealId);
   const upload = useUploadDealDocument(dealId ?? '');
   const [editingBuyer, setEditingBuyer] = useState(false);
+  const [pickingCompany, setPickingCompany] = useState(false);
+  // Task 2.4's write: the same `PUT /deals/{id}/buyer` route, in its company form.
+  const setBuyerCompany = useSetDealBuyer(dealId ?? '', deal?.company_id);
   const [uploading, setUploading] = useState(false);
+  // P5-6's write. Separate state because it is a different question from the deal's
+  // own: the deal is finished, and this is about what happened to the money.
+  const [recordingOutcome, setRecordingOutcome] = useState(false);
 
   if (isLoading) {
     return (
@@ -408,17 +429,72 @@ export function DealDetailPage() {
 
           <Panel
             title="Buyer"
-            description="Who this company is selling to. Checks about a buyer are recorded against the buyer, never against the company."
+            description="Who this company is selling to. A buyer is a company record of its own, so its checks are recorded against it and read back from it."
             actions={
               isStaff &&
-              !editingBuyer &&
               !isClosed && (
-                <Button size="sm" onClick={() => setEditingBuyer(true)}>
-                  {deal.buyer ? 'Edit buyer' : 'Add buyer'}
-                </Button>
+                <>
+                  {/* Choosing the company is the way in (task 2.4). Offered only
+                      while no company is named: `buyer_company_id` is set once, and
+                      a second choice is a 409 — a deal pointed at the wrong buyer is
+                      withdrawn and reopened, so the correction leaves a trail. */}
+                  {!deal.buyer_company && !pickingCompany && (
+                    <Button size="sm" variant="primary" onClick={() => setPickingCompany(true)}>
+                      Choose buyer company
+                    </Button>
+                  )}
+                  {/* The legacy `deal_buyer` form. Kept while deals written before
+                      the buyer migration still have one — and it is the only place
+                      such a deal's sanctions and AML can be recorded, which BQ-4's
+                      handover rule needs. Retires with P4-10. */}
+                  {!deal.buyer_company && !editingBuyer && (
+                    <Button size="sm" variant="ghost" onClick={() => setEditingBuyer(true)}>
+                      {deal.buyer ? 'Edit buyer details' : 'Record details instead'}
+                    </Button>
+                  )}
+                </>
               )
             }
           >
+            {pickingCompany && (
+              <div className="mb-4 rounded-lg border border-border p-4">
+                <CompanyPicker
+                  // The seller cannot be its own buyer
+                  // (`ck_deal_buyer_is_not_the_seller`); offering the choice and then
+                  // failing is worse than not offering it.
+                  excludeCompanyId={deal.company_id}
+                  // R-24: create the buyer as a company outside the pipeline and name
+                  // it, in one request. A refusal is shown inside the form.
+                  onCreate={async (draft) => {
+                    await setBuyerCompany.mutateAsync({ create: draft });
+                    setPickingCompany(false);
+                    toast.success('Buyer company created');
+                  }}
+                  onSelect={(companyId) => {
+                    setBuyerCompany.mutate(
+                      { buyer_company_id: companyId },
+                      {
+                        onSuccess: () => {
+                          setPickingCompany(false);
+                          toast.success('Buyer company recorded');
+                        },
+                        onError: (error) =>
+                          toast.error(
+                            error instanceof Error
+                              ? error.message
+                              : 'Could not record the buyer company',
+                          ),
+                      },
+                    );
+                  }}
+                />
+                <div className="mt-3 flex justify-end">
+                  <Button size="sm" variant="ghost" onClick={() => setPickingCompany(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
             {editingBuyer && (
               <BuyerForm
                 dealId={deal.id}
@@ -435,7 +511,7 @@ export function DealDetailPage() {
                       }
                     : null
                 }
-                revealIdentifiers={canReveal(user.role)}
+                revealIdentifiers={canReveal}
                 onClose={() => setEditingBuyer(false)}
               />
             )}
@@ -459,7 +535,7 @@ export function DealDetailPage() {
               </dl>
             )}
 
-            {deal.buyer ? (
+            {deal.buyer && !deal.buyer_company ? (
               <dl className="grid gap-x-8 sm:grid-cols-2">
                 <DetailRow label="Name">{deal.buyer.name}</DetailRow>
                 <DetailRow label="Country">{deal.buyer.country}</DetailRow>
@@ -470,22 +546,117 @@ export function DealDetailPage() {
               </dl>
             ) : (
               !editingBuyer &&
+              !pickingCompany &&
               !deal.buyer_company && (
                 <EmptySection>No buyer recorded yet. A deal cannot be handed over without one.</EmptySection>
               )
             )}
+
+            {/* Both parties' compliance, side by side (task 2.4). The handover guard
+                reads the seller's background check and the buyer's sanctions and AML
+                (decision BQ-4), so the screen that explains a blocked handover should
+                show the same two things the guard looked at. */}
+            {isStaff && (
+              <div className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">
+                    Seller
+                  </p>
+                  <CompanyComplianceSummary companyId={deal.company_id} />
+                </div>
+                {deal.buyer_company && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">
+                      Buyer
+                    </p>
+                    <CompanyComplianceSummary companyId={deal.buyer_company.company_id} />
+                  </div>
+                )}
+              </div>
+            )}
           </Panel>
+
+          {/* Which of the seller's GST branches this deal is invoiced from (task 2.8).
+              The guard asks for it whenever the seller has an active registration
+              (task 2.9), and this is the only screen that records it. Staff choose it
+              until the deal closes; after that, and for DEVELOPER, it is read-only. */}
+          <Panel
+            title="Invoicing branch"
+            description="Which of the seller's GST registrations this deal is invoiced from."
+          >
+            <InvoicingBranchPicker
+              dealId={deal.id}
+              sellerId={deal.company_id}
+              recordedId={deal.seller_gst_registration_id}
+              canEdit={isStaff}
+              closed={isClosed}
+            />
+          </Panel>
+
+          {/* What these two companies have traded before (task 2.11, plan P5-7).
+              Developer 3's panel, with the props their F3 stub fixed, so this
+              mounting did not change when 3.22 filled it in.
+
+              Only on a deal with a buyer **company**: the panel is about a pair of
+              company records, and a deal whose buyer is still a legacy `deal_buyer`
+              row has no second company to pair the seller with. Such a deal shows
+              nothing here rather than an empty panel implying the two have never
+              traded — the buyer migration (P4-6) is what gives it one. */}
+          {deal.buyer_company && (
+            <Panel
+              title="Trade history"
+              description="What these two companies have invoiced each other before, and how it was settled."
+              actions={
+                // Only after the handover, and only for staff: the server refuses a
+                // payment outcome on a deal that has not been handed over (409
+                // DEAL_NOT_HANDED_OVER), so offering the control earlier would be
+                // offering a refusal. DEVELOPER reads trade history and writes nothing.
+                isStaff &&
+                deal.stage === 'HANDED_OVER' &&
+                !recordingOutcome && (
+                  <Button size="sm" onClick={() => setRecordingOutcome(true)}>
+                    Record outcome
+                  </Button>
+                )
+              }
+            >
+              <TradeHistoryPanel
+                sellerId={deal.company_id}
+                buyerId={deal.buyer_company.company_id}
+                dealId={deal.id}
+              />
+              {recordingOutcome && (
+                <RecordDealOutcomeForm
+                  dealId={deal.id}
+                  sellerId={deal.company_id}
+                  buyerId={deal.buyer_company.company_id}
+                  onClose={() => setRecordingOutcome(false)}
+                />
+              )}
+            </Panel>
+          )}
 
           {/* What the lending team was given (P2-7). Shown only once it exists,
               which is only on a handed-over deal: a snapshot is a record of an
               event, so there is nothing to show before the event. */}
           {deal.handover_snapshot && <HandoverSnapshot snapshot={deal.handover_snapshot} />}
 
-          {/* Checks on the buyer (decision 9: they attach to the buyer, never the
-              company). Staff only: DEVELOPER is refused the verification routes (D8).
-              Whether recording is offered is the server's `capabilities` — closed on
-              a HANDED_OVER or WITHDRAWN deal (D17). */}
-          {isStaff && deal.buyer && <BuyerChecks dealId={deal.id} dealBuyerId={deal.buyer.id} />}
+          {/* Checks on a **legacy** buyer row only (task 2.4). Once a buyer company
+              is named, its checks live on that company's own panel and are shown
+              above by `CompanyComplianceSummary`; keeping this mounted as well would
+              offer two places to record the same thing, against two different
+              subjects, and BQ-4's handover rule reads the company.
+
+              Still mounted for a deal whose buyer is only a `deal_buyer` row,
+              because that is the single place such a deal's sanctions and AML can be
+              recorded at all (`background-check.md` §12.2). It goes with P4-10.
+
+              Staff only: DEVELOPER is refused the verification routes (D8). Whether
+              recording is offered is the server's `capabilities` — closed on a
+              HANDED_OVER or WITHDRAWN deal (D17). */}
+          {isStaff && deal.buyer && !deal.buyer_company && (
+            <BuyerChecks dealId={deal.id} dealBuyerId={deal.buyer.id} />
+          )}
 
           <Panel
             title="Paperwork"
@@ -524,7 +695,7 @@ export function DealDetailPage() {
                 can change it. The rule itself is served with the refusal reason,
                 so everyone else already sees *what* is missing; only an
                 administrator has anywhere to go from here. */}
-            {isAdminRole(user.role) && !isClosed && (
+            {canSetRequiredDocuments && !isClosed && (
               <p className="mb-3 text-xs text-ink-faint">
                 Which categories a handover needs is set in{' '}
                 <Link

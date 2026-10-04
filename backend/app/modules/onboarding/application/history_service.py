@@ -175,16 +175,28 @@ class HistoryService:
         interleaved — the company timeline. ``dimension`` narrows it to one
         gauge, which is what a gauge panel asks for. ``exclude_dimensions``
         leaves whole dimensions out of both the page and the total.
+
+        **The deals include the ones this company buys on** (task 2.7). A deal's
+        history rows are keyed to the selling company, so without this a buyer
+        company's timeline would show nothing of the deals it is a party to — and a
+        buyer-only company's timeline would be empty but for the row saying it was
+        created. Decision D8 still applies: ``exclude_dimensions`` is applied to
+        these rows exactly as to the company's own, so nothing becomes readable by
+        arriving through a deal.
         """
         rows = await self._history.list_by_customer(
             company_id,
             dimension=dimension,
             exclude_dimensions=exclude_dimensions,
+            include_deals_as_buyer=True,
             limit=limit,
             offset=offset,
         )
         total = await self._history.count_by_customer(
-            company_id, dimension=dimension, exclude_dimensions=exclude_dimensions
+            company_id,
+            dimension=dimension,
+            exclude_dimensions=exclude_dimensions,
+            include_deals_as_buyer=True,
         )
         return rows, total
 

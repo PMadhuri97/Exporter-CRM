@@ -62,8 +62,10 @@ class _Crm:
         self.checker = checker
 
     async def ok(self, method: str, path: str, token: str, **kwargs) -> dict:
-        resp = await self.client.request(method, f"{BASE}{path}", headers=auth_header(token),
-                                         **kwargs)
+        # Extra headers are merged rather than replacing the bearer token, so a call
+        # that needs an `Idempotency-Key` does not have to drop to the raw client.
+        headers = {**auth_header(token), **kwargs.pop("headers", {})}
+        resp = await self.client.request(method, f"{BASE}{path}", headers=headers, **kwargs)
         assert resp.status_code in (200, 201), f"{method} {path}: {resp.text}"
         return resp.json()
 
@@ -98,6 +100,42 @@ class _Crm:
                                 "payload": {"status": "PASSED"},
                                 "evidence_note": f"{check} checked manually."})
 
+    async def screen_the_buyer(self, deal_id: str) -> None:
+        """PASSED sanctions and AML on a deal's **legacy** buyer row (plan BQ-4).
+
+        Live since task 2.5 wired Developer 1's `ComplianceFactsReader`: the handover
+        requires the buyer's sanctions and AML to be `PASSED`, and a buyer nobody has
+        screened reads `MISSING` — "we have not checked" is not "clean".
+
+        Keyed to the `deal_buyer` row, where `for_legacy_buyer` reads them. The §4.2
+        path still walks this way on purpose, so the suite covers both kinds of buyer
+        end to end until P4-10 retires these writes; the main path uses a buyer
+        **company** and `screen_the_buyer_company` below.
+        """
+        deal = await self.deal(deal_id)
+        buyer_id = deal["buyer"]["id"]
+        for check in ("SANCTIONS", "AML"):
+            await self.ok("POST", "/verifications", self.compliance,
+                          json={"verification_type": check, "entity_type": "BUYER",
+                                "entity_reference": buyer_id,
+                                "payload": {"status": "PASSED"},
+                                "evidence_note": f"Buyer {check} checked manually."})
+
+    async def screen_the_buyer_company(self, buyer_company_id: str) -> None:
+        """The same BQ-4 rule, against a buyer that is a **company record**.
+
+        `EXPORTER` rather than `BUYER` as the entity type, because that is what the
+        subject is: a company. The guard reads it through `for_company`, and the same
+        two checks decide — which is the point of the buyer migration being a data
+        migration and not a behaviour change (`deal-and-buyer.md` §3.0).
+        """
+        for check in ("SANCTIONS", "AML"):
+            await self.ok("POST", "/verifications", self.compliance,
+                          json={"verification_type": check, "entity_type": "EXPORTER",
+                                "entity_reference": buyer_company_id,
+                                "payload": {"status": "PASSED"},
+                                "evidence_note": f"Buyer company {check} checked."})
+
     async def new_prospect_with_a_deal_ready_to_hand_over(self) -> tuple[str, str]:
         """Steps 1–7 of §4.1: a qualified company, a deal, its buyer and paperwork."""
         created = await self._create(_pan())
@@ -118,7 +156,29 @@ class _Crm:
                             "document_type": "proforma_invoice",
                             "source": "EXPORTER_UPLOAD"},
                       files={"file": ("proforma_invoice.pdf", PDF, "application/pdf")})
+        await self.record_the_invoicing_branch(company_id, deal["id"])
+        await self.screen_the_buyer(deal["id"])
         return company_id, deal["id"]
+
+    async def record_the_invoicing_branch(self, company_id: str, deal_id: str) -> None:
+        """Say which of the seller's GST branches this deal is invoiced from.
+
+        Part of the real path since task 2.8. The handover guard asks for it whenever
+        the seller has an active registration (plan P6-7), and this company is created
+        with one — so without this the handover is refused with "the invoicing branch
+        is not recorded", which is the rule working rather than a problem.
+        """
+        branches = await self.ok(
+            "GET", f"/exporters/{company_id}/gst-registrations", self.ops
+        )
+        active = [row for row in branches["registrations"] if row["active"]]
+        assert active, "this company was created with a GSTIN, so it has a branch"
+        await self.ok(
+            "PUT",
+            f"/deals/{deal_id}/invoicing-branch",
+            self.ops,
+            json={"gst_registration_id": active[0]["id"]},
+        )
 
     async def _create(self, pan: str) -> dict:
         resp = await self.client.post(
@@ -173,8 +233,34 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     deal_id = deal["id"]
     conversation = await crm.ok("GET", f"/exporters/{company_id}/conversation", crm.ops)
     assert conversation["conversation"] == "READY_NOW"
+
+    # 6b. The buyer is a **company record** (task 2.4), not a set of details. The RM
+    # looks for it first — `POST /companies/match` is how they avoid creating a second
+    # record for a company we already hold — and it is genuinely new here.
+    buyer_name = f"Rotterdam Trading BV {uuid.uuid4().hex[:6]}"
+    nothing_yet = await crm.ok("POST", "/companies/match", crm.ops,
+                               json={"name": buyer_name, "country": "NL"})
+    assert nothing_yet["kind"] == "NEW"
+    buyer = await crm.ok(
+        "POST", "/exporters", crm.ops,
+        json={"source": "SALES", "name": buyer_name, "country": "NL",
+              "registration_number": f"KVK-{uuid.uuid4().hex[:8].upper()}"},
+        headers={"Idempotency-Key": str(uuid.uuid4())},
+    )
+    buyer_company_id = buyer["customer_id"]
+    # Asking again now finds it, which is the whole point of the matcher.
+    found = await crm.ok("POST", "/companies/match", crm.ops,
+                         json={"name": buyer_name, "country": "NL"})
+    assert found["kind"] == "POSSIBLE_DUPLICATE"
+    assert buyer_company_id in [c["company_id"] for c in found["candidates"]]
+
     await crm.ok("PUT", f"/deals/{deal_id}/buyer", crm.ops,
-                 json={"name": "Rotterdam Trading BV", "country": "NL"})
+                 json={"buyer_company_id": buyer_company_id})
+    named = await crm.deal(deal_id)
+    assert named["buyer_company"]["company_id"] == buyer_company_id
+    # No legacy row was written: the two forms are exclusive.
+    assert named["buyer"] is None
+    await crm.record_the_invoicing_branch(company_id, deal_id)
     await crm.ok("POST", f"/deals/{deal_id}/transitions", crm.ops,
                  json={"to_stage": "GATHERING_PAPERWORK"})
 
@@ -209,6 +295,15 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
         (await crm.deal(deal_id))["handover_blocked_reason"] or ""
     )
 
+    # 7b. The buyer company is screened too (BQ-4, live since task 2.5), read through
+    # `for_company` now that the buyer is a company. Checked before and after, because
+    # this is the condition most easily satisfied by accident.
+    assert "the buyer's sanctions check is MISSING" in (
+        (await crm.deal(deal_id))["handover_blocked_reason"] or ""
+    )
+    await crm.screen_the_buyer_company(buyer_company_id)
+    assert "buyer's" not in ((await crm.deal(deal_id))["handover_blocked_reason"] or "")
+
     # 8. The background check: started by staff, its inputs recorded by compliance.
     await crm.decide(company_id, "IN_REVIEW", crm.ops)
     await crm.answer_screening(company_id)
@@ -236,21 +331,62 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     assert handed["stage"] == "HANDED_OVER"
     [handed_over] = _events(bus, EventType.DEAL_HANDED_OVER)
     assert set(handed_over.payload["document_ids"]) == {required["id"], document["id"]}
-    # And the handover is a record now, not only an announcement (P2-7).
+    # And the handover is a record now, not only an announcement (P2-7). Built from
+    # the buyer **company**, which is what the lending team is being handed.
     snapshot = handed["handover_snapshot"]
     assert snapshot["snapshot_source"] == "taken_at_handover"
-    assert snapshot["buyer"]["name"] == "Rotterdam Trading BV"
+    assert snapshot["buyer"]["name"] == buyer_name
+    assert snapshot["buyer_company_id"] == buyer_company_id
     assert set(snapshot["document_ids"]) == {required["id"], document["id"]}
 
-    # The whole story is in the one history log.
+    # 13. And then what actually happened: the deal was paid (task 3.21). This is the
+    # last question the CRM answers about a deal, and recording it creates the
+    # invoice, because this deal had none.
+    paid = await crm.ok(
+        "POST", f"/deals/{deal_id}/payment-outcome", crm.ops,
+        json={"payment_status": "PAID", "proof_status": "PROVEN",
+              "evidence_note": "Bank advice received from the exporter.",
+              "invoice_number": f"INV-{uuid.uuid4().hex[:8].upper()}",
+              "invoice_date": "2026-04-15", "amount": "48500.00", "currency": "USD"},
+    )
+    assert paid["invoice_created"] is True
+    assert paid["outcome"]["payment_status"] == "PAID"
+    assert paid["outcome"]["proof_status"] == "PROVEN"
+    # Stored and never converted (IQ-4), and exact: a string, not a float.
+    assert paid["invoice"]["amount"] == "48500.00"
+    assert paid["invoice"]["currency"] == "USD"
+
+    # The pair now has a trade relationship, reachable from either side, carrying the
+    # invoice and the outcome we believe.
+    as_seller = await crm.ok("GET", f"/exporters/{company_id}/trade-relationships", crm.ops)
+    [relationship] = as_seller["relationships"]
+    assert relationship["buyer"]["company_id"] == buyer_company_id
+    assert relationship["invoice_count"] == 1
+    as_buyer = await crm.ok("GET", f"/exporters/{buyer_company_id}/trade-relationships",
+                            crm.ops, params={"as": "buyer"})
+    assert [r["id"] for r in as_buyer["relationships"]] == [relationship["id"]]
+
+    detail = await crm.ok("GET", f"/trade-relationships/{relationship['id']}", crm.ops)
+    [invoice] = detail["invoices"]
+    assert invoice["deal_id"] == deal_id
+    assert invoice["current_outcome"]["payment_status"] == "PAID"
+
+    # The whole story is in the one history log, trade included.
     history = await crm.ok("GET", f"/exporters/{company_id}/history", crm.compliance,
                            params={"limit": 200})
     dimensions = {entry["dimension"] for entry in history["entries"]}
+    # No `gst_registration` row: this company's GSTIN arrived with its creation, and
+    # only the `gst-registrations` routes write that dimension (task 3.13). Asserting
+    # it here would be asserting a step this path does not take.
     assert {"journey", "qualification", "conversation", "deal", "background_check",
-            "screening"} <= dimensions
+            "screening", "trade"} <= dimensions
     journey = {(e["from_value"], e["to_value"]) for e in history["entries"]
                if e["dimension"] == "journey"}
     assert {("LEAD", "PROSPECT"), ("PROSPECT", "CUSTOMER")} <= journey
+    # The buyer company's own timeline carries the deal it bought on (task 2.7).
+    buyer_history = await crm.ok("GET", f"/exporters/{buyer_company_id}/history",
+                                 crm.compliance, params={"limit": 200})
+    assert deal_id in {e["deal_id"] for e in buyer_history["entries"] if e["deal_id"]}
 
 
 async def test_new_information_about_a_customer_flags_it_and_blocks_its_handovers(

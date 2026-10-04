@@ -26,10 +26,11 @@
  */
 
 import { CalendarClock } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import {
+  Panel,
   ErrorState,
   PageHeader,
   Skeleton,
@@ -40,10 +41,15 @@ import {
   useSearchParamState,
 } from '@/components';
 import { formatDate, humanize } from '@/lib/format';
-import { isStaffRole, useCurrentUser } from '@/platform/auth';
+import { useCan } from '@/platform/access';
 import { MaskedValue } from '@/platform/mask';
 
 import {
+  GstRegistrationsSection,
+  CompanyDealsList,
+  CompanyTradePanel,
+  IdentityGapNotice,
+  NotInPipelineNotice,
   CompanyHistory,
   JourneyChip,
   MarkerBadge,
@@ -51,6 +57,7 @@ import {
   QualificationChip,
 } from '../components';
 import {
+  useBringIntoPipeline,
   useCompanyDeals,
   useExporterActivities,
   useExporterContacts,
@@ -59,12 +66,16 @@ import {
 } from '../hooks';
 import { COMPANY_TABS, paths, type CompanyTab } from '../paths';
 import type { ExporterActivityType, ExporterProfileDetail } from '../types';
-import { BackgroundCheckPanel } from './panels/BackgroundCheckPanel';
 import { CompanyPanel } from './panels/CompanyPanel';
 import { ConversationPanel } from './panels/ConversationPanel';
 import { DealsPanel } from './panels/DealsPanel';
 import { DocumentsPanel } from './panels/DocumentsPanel';
 import { QualificationPanel } from './panels/QualificationPanel';
+
+// The compliance chapter is its own chunk (G7): a role without the tab never loads it.
+const BackgroundCheckPanel = lazy(() =>
+  import('./panels/BackgroundCheckPanel').then((m) => ({ default: m.BackgroundCheckPanel })),
+);
 
 /** Rows per activity page. Lives here because the shell builds the query
  * params and decides whether a next page exists. */
@@ -131,12 +142,16 @@ function SummaryStrip({ profile }: { profile: ExporterProfileDetail }) {
 
 export function ExporterDetailPage() {
   const { customerId } = useParams<{ customerId: string }>();
-  const currentUser = useCurrentUser();
   // DEVELOPER reads the CRM (masked) but writes nothing and cannot load
-  // verification results — the backend refuses those with 403 — so it gets no
+  // verification results — the backend refuses those with 403 (D8) — so it gets no
   // Background check tab at all rather than a tab that renders nothing.
-  const isStaff = isStaffRole(currentUser.role);
-  const tabs = isStaff
+  const isStaff = useCan('crm.write');
+  const canReadCompliance = useCan('compliance.read');
+  // Flagging a branch stops trade through it, so it is a compliance decision and not
+  // a sales one (plan P6-5). The server refuses it for OPERATIONS; the screen does not
+  // offer it either, rather than showing a button that 403s.
+  const canFlagBranches = useCan('gst.flag');
+  const tabs = canReadCompliance
     ? COMPANY_TABS
     : COMPANY_TABS.filter((value) => value !== 'background-check');
   const { data: profile, isLoading, isError, refetch } = useExporterProfileDetail(customerId);
@@ -155,6 +170,8 @@ export function ExporterDetailPage() {
   );
   const activityQuery = useExporterActivities(customerId, activityParams);
   const dealsQuery = useCompanyDeals(customerId);
+  // Hooks run before the missing-id guard below; the mutation is only offered after it.
+  const bringIntoPipeline = useBringIntoPipeline(customerId ?? '');
 
   if (!customerId) {
     return <p className="text-sm text-status-failed">Company id is missing.</p>;
@@ -188,6 +205,10 @@ export function ExporterDetailPage() {
   const activities = activityQuery.data?.activities ?? [];
   const hasNextActivityPage = activities.length === ACTIVITY_PAGE_SIZE;
   const dealCount = dealsQuery.data?.total;
+  // A company that exists only because it was somebody's buyer: its journey and both
+  // gauges do not apply, and the server refuses them (plan P4-2, task 3.9). Read
+  // here, below the guards, because it needs the loaded profile.
+  const notInPipeline = profile.pipeline_status === 'NOT_IN_PIPELINE';
 
   return (
     // One `Tabs` root around the sticky header and the panels, so the triggers
@@ -199,8 +220,20 @@ export function ExporterDetailPage() {
           title={displayName(profile)}
           meta={
             <>
-              <JourneyChip journey={profile.journey} />
-              <QualificationChip state={profile.qualification} />
+              {/* A buyer-only company's `journey` reads LEAD because the column is
+                  NOT NULL, not because anyone judged it (plan P4-2). Showing the
+                  chip would claim a sales stage that does not exist, and the two
+                  gauges below do not apply either. */}
+              {notInPipeline ? (
+                <span className="rounded-full border border-border-strong bg-surface-subtle px-2 py-0.5 text-xs font-medium text-ink-muted">
+                  Not in pipeline
+                </span>
+              ) : (
+                <>
+                  <JourneyChip journey={profile.journey} />
+                  <QualificationChip state={profile.qualification} />
+                </>
+              )}
               <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />
             </>
           }
@@ -232,12 +265,41 @@ export function ExporterDetailPage() {
       </div>
 
       <TabsContent value="overview">
-        <CompanyPanel profile={profile} canEdit={isStaff} />
+        <div className="flex flex-col gap-5">
+          {/* IQ-7's completion list, from the company's side (R-28). */}
+          {profile.identity_type === null ? (
+            <IdentityGapNotice country={profile.country} canEdit={isStaff} />
+          ) : null}
+          <CompanyPanel profile={profile} canEdit={isStaff} />
+          {/* The company's branches (task 3.13), replacing the comma-separated GSTIN
+              field that used to be inside the panel. Flagging one is COMPLIANCE's
+              decision, so it is gated separately from editing. */}
+          <GstRegistrationsSection
+            customerId={customerId}
+            canEdit={isStaff}
+            canFlag={canFlagBranches}
+          />
+        </div>
       </TabsContent>
       <TabsContent value="qualification">
-        <QualificationPanel customerId={customerId} />
+        {notInPipeline ? (
+          <NotInPipelineNotice
+            what="Qualification"
+            onBringIn={isStaff ? () => bringIntoPipeline.mutate({}) : undefined}
+            busy={bringIntoPipeline.isPending}
+          />
+        ) : (
+          <QualificationPanel customerId={customerId} />
+        )}
       </TabsContent>
       <TabsContent value="conversation">
+        {notInPipeline ? (
+          <NotInPipelineNotice
+            what="The conversation gauge"
+            onBringIn={isStaff ? () => bringIntoPipeline.mutate({}) : undefined}
+            busy={bringIntoPipeline.isPending}
+          />
+        ) : (
         <ConversationPanel
           customerId={customerId}
           contacts={contacts}
@@ -252,15 +314,48 @@ export function ExporterDetailPage() {
           hasNextActivityPage={hasNextActivityPage}
           isStaff={isStaff}
         />
+        )}
       </TabsContent>
       <TabsContent value="deals">
-        <DealsPanel customerId={customerId} isStaff={isStaff} />
+        {/* Both sides of this company's trade (task 3.9). `DealsPanel` is the
+            seller side — it owns the "open a deal" control and shows each deal's
+            stage — and the buyer side is a plain list, because there is nothing to
+            open there: a deal is opened on the company that is selling. */}
+        <div className="flex flex-col gap-5">
+          <DealsPanel customerId={customerId} isStaff={isStaff} />
+          <Panel
+            title="Bought from"
+            description="Deals where this company is the buyer. A company can be a buyer on one deal and a seller on another."
+          >
+            <CompanyDealsList companyId={customerId} as="buyer" />
+          </Panel>
+          {/* Trade history, both sides (task 3.22, plan P5-7). It sits with the deals
+              because it answers the next question a reader of that list has — not
+              "who is this company dealing with" but "and how did it go". A deal is
+              what two companies are doing now; a relationship is what they have done,
+              invoice by invoice, which is the thing a lending decision reads. */}
+          <Panel
+            title="Sold to"
+            description="Who this company has invoiced, and what became of each invoice. Nothing here is totalled: amounts stay in the currency they were invoiced in."
+          >
+            <CompanyTradePanel companyId={customerId} as="seller" canRecord={isStaff} />
+          </Panel>
+          <Panel
+            title="Bought from, invoice by invoice"
+            description="Who has invoiced this company. The same pair in the other direction is a different relationship, with different invoices."
+          >
+            <CompanyTradePanel companyId={customerId} as="buyer" canRecord={isStaff} />
+          </Panel>
+        </div>
       </TabsContent>
       <TabsContent value="documents">
         <DocumentsPanel customerId={customerId} isStaff={isStaff} />
       </TabsContent>
       <TabsContent value="background-check">
-        <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
+        {/* Never rendered for a role without the tab, so its code never loads (G7). */}
+        <Suspense fallback={<Skeleton className="h-40 rounded-lg" />}>
+          <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
+        </Suspense>
       </TabsContent>
       <TabsContent value="history">
         <CompanyHistory customerId={customerId} />

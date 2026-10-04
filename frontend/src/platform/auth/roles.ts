@@ -1,31 +1,13 @@
 /**
- * Which roles do what — the one client-side copy of the backend's role
- * groups (`_STAFF` and friends in `onboarding/api/router.py`).
+ * Role names, as people read them.
  *
- * The server enforces every one of these; the screen only uses them to hide a
- * control the server would refuse. An allowlist, never `role !== 'DEVELOPER'`:
- * a denylist lets through any role nobody thought of, `API_USER` included.
+ * What a role may *do* is not here: that is `@/platform/access` (`useCan`, `Gate`),
+ * the one client-side copy of the server's role groups (R-33, frontend plan §4.2).
+ * The `isStaffRole` / `isAdminRole` / `isComplianceRole` helpers that used to live in
+ * this file were replaced by its capabilities.
  */
 
 import type { UserRole } from '@/lib/api/types';
-
-/** OPERATIONS, COMPLIANCE and ADMIN: create, edit and move things in the CRM. */
-export function isStaffRole(role: UserRole): boolean {
-  return role === 'OPERATIONS' || role === 'COMPLIANCE' || role === 'ADMIN';
-}
-
-/** ADMIN only: qualification criteria and RXIL intake. */
-export function isAdminRole(role: UserRole): boolean {
-  return role === 'ADMIN';
-}
-
-/**
- * COMPLIANCE and ADMIN: the background-check decisions, their approval (maker-checker)
- * and new check cycles. The RM never approves compliance (plan §8).
- */
-export function isComplianceRole(role: UserRole): boolean {
-  return role === 'COMPLIANCE' || role === 'ADMIN';
-}
 
 /**
  * What a role is called on screen.

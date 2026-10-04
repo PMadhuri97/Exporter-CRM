@@ -1,0 +1,146 @@
+/**
+ * Companies the CRM cannot identify yet — IQ-7's completion list (`remaining-work.md`
+ * R-28, plan §17.2).
+ *
+ * A company with no `identity_type` holds neither a PAN nor a registration number, so
+ * nothing can match it by identifier and, outside India, it does not meet IQ-7. The
+ * buyers the P4-6 migration created without a number are the expected case. This is a
+ * work list, not a filter on the pipeline: it says **what** each company lacks, puts
+ * the ones a rule requires first, and a company leaves it as soon as its profile is
+ * corrected — completing one is done on the company's own page, with the same edit
+ * everyone else uses.
+ *
+ * It carries no identifier (the companies have none), so every CRM reader sees it;
+ * a role that cannot edit sees the list and the company pages, not an edit control.
+ */
+
+import { ArrowRight, Fingerprint } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+
+import { Button, Card, EmptySection, ErrorState, PageHeader, Skeleton } from '@/components';
+import { formatDate } from '@/lib/format';
+
+import { useIdentityCompletion } from '../hooks';
+import { paths } from '../paths';
+import type { IdentityCompletionItem } from '../types';
+
+const PAGE_SIZE = 50;
+/** `GET /companies/identity-completion` refuses a larger page. */
+const MAX_LIMIT = 200;
+
+/** What a company lacks, in the words a person completing it needs. */
+const MISSING_LABEL: Record<IdentityCompletionItem['missing'], string> = {
+  REGISTRATION_NUMBER: 'Registration number',
+  COUNTRY: 'Country',
+  PAN: 'PAN',
+};
+
+function Row({ item }: { item: IdentityCompletionItem }) {
+  return (
+    <li data-testid="identity-completion-row">
+      <Link
+        to={paths.company(item.company_id)}
+        className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-surface-subtle"
+      >
+        <span className="min-w-0">
+          <span className="block truncate font-medium text-ink">
+            {item.name ?? 'Unnamed company'}
+          </span>
+          <span className="mt-0.5 block text-xs text-ink-muted">
+            {item.country ?? 'No country'}
+            {item.pipeline_status === 'NOT_IN_PIPELINE' ? ' · Buyer only' : ''}
+            {item.created_via === 'DEAL_BUYER' ? ' · Created from a deal buyer' : ''}
+            {` · Added ${formatDate(item.created_at)}`}
+          </span>
+        </span>
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-ink">
+          Needs: {MISSING_LABEL[item.missing]}
+          <ArrowRight size={13} className="text-ink-faint" />
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+function Group({
+  title,
+  description,
+  items,
+}: {
+  title: string;
+  description: string;
+  items: IdentityCompletionItem[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section aria-label={title} className="flex flex-col gap-2">
+      <div>
+        <h2 className="text-sm font-semibold text-ink">{title}</h2>
+        <p className="text-xs text-ink-muted">{description}</p>
+      </div>
+      <Card>
+        <ul className="divide-y divide-border">
+          {items.map((item) => (
+            <Row key={item.company_id} item={item} />
+          ))}
+        </ul>
+      </Card>
+    </section>
+  );
+}
+
+export function IdentityCompletionPage() {
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const query = useIdentityCompletion({ limit, offset: 0 });
+  const items = query.data?.items ?? [];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        back={{ to: paths.companies, label: 'Companies' }}
+        title={
+          <span className="inline-flex items-center gap-2">
+            <Fingerprint size={18} className="text-ink-faint" />
+            Identity to complete
+          </span>
+        }
+        description="Companies the CRM cannot identify: they hold neither a PAN nor a registration number. Add the missing identifier on the company's page and it leaves this list."
+      />
+
+      {query.isLoading ? (
+        <Skeleton className="h-40 rounded-lg" />
+      ) : query.isError ? (
+        <ErrorState
+          title="Couldn't load the companies to complete."
+          onRetry={() => void query.refetch()}
+        />
+      ) : items.length === 0 ? (
+        <EmptySection>Every company the CRM holds can be identified.</EmptySection>
+      ) : (
+        <>
+          <Group
+            title="Required"
+            description="A company outside India must carry its registration number (IQ-7), and every company needs a country."
+            items={items.filter((item) => item.required)}
+          />
+          <Group
+            title="Worth completing"
+            description="Indian companies with no PAN. Not required, but they cannot be matched by identifier until they have one."
+            items={items.filter((item) => !item.required)}
+          />
+          {query.data && query.data.total > items.length && limit < MAX_LIMIT ? (
+            <div className="flex items-center justify-between text-sm text-ink-muted">
+              <span>
+                Showing {items.length} of {query.data.total}
+              </span>
+              <Button size="sm" variant="secondary" onClick={() => setLimit(Math.min(limit + PAGE_SIZE, MAX_LIMIT))}>
+                Show more
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}

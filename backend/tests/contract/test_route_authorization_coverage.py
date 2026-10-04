@@ -162,6 +162,43 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/exporters/{{customer_id}}/qualification"): READERS,
     ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/results"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/outcome"): STAFF,
+    # Into the sales pipeline (task 3.11): a commercial decision, so the roles that
+    # make them. A company already in the pipeline is a 409, not a 403.
+    ("POST", f"{CRM}/exporters/{{customer_id}}/pipeline"): STAFF,
+    # "Which company is this?" (task 3.10, decision BQ-2). STAFF rather than READERS:
+    # OPERATIONS needs it to record a deal's buyer — that is the case BQ-2 was decided
+    # for — while DEVELOPER may never reveal an identifier and has no buyer to resolve.
+    # The response carries no identifiers for any role, and every identifier lookup is
+    # audited.
+    ("POST", f"{CRM}/companies/match"): STAFF,
+    ("GET", f"{CRM}/companies/identity-completion"): READERS,
+    # GST registrations — a company's branches (tasks 3.12–3.17, plan P6-2, P6-5).
+    # Reading is every CRM reader's, with the GSTIN masked per role and the portal link
+    # withheld from a role that sees it masked (the link carries the GSTIN).
+    ("GET", f"{CRM}/exporters/{{customer_id}}/gst-registrations"): READERS,
+    # Recording and deactivating a branch is a record a relationship manager keeps.
+    ("POST", f"{CRM}/exporters/{{customer_id}}/gst-registrations"): STAFF,
+    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/deactivate"): STAFF,
+    # Flagging one stops handovers for every deal invoiced through it, so it is a
+    # compliance decision and not a sales one — the one place in these routes where
+    # OPERATIONS is refused.
+    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/flag"): COMPLIANCE_OR_ADMIN,
+    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/unflag"): COMPLIANCE_OR_ADMIN,
+    # A deal's invoicing branch (task 2.8): which of the seller's branches it invoices
+    # from. A routine CRM write, like recording its buyer.
+    ("PUT", f"{CRM}/deals/{{deal_id}}/invoicing-branch"): STAFF,
+    # Trade history (task 3.20, plan P5-3, P5-4; decision IQ-19). DEVELOPER **reads**:
+    # these responses carry no identifiers for anyone, which is what makes "reads
+    # masked" true without a masking pass, and the history log already serves `trade`
+    # rows to it. RM, Compliance and Admin record invoices and outcomes.
+    ("GET", f"{CRM}/exporters/{{customer_id}}/trade-relationships"): READERS,
+    ("GET", f"{CRM}/trade-relationships/{{relationship_id}}"): READERS,
+    ("GET", f"{CRM}/trade-invoices/{{invoice_id}}"): READERS,
+    ("POST", f"{CRM}/trade-relationships/{{relationship_id}}/invoices"): STAFF,
+    ("POST", f"{CRM}/trade-invoices/{{invoice_id}}/outcomes"): STAFF,
+    # How a handed-over deal was paid (task 3.21) — the same write role, recorded at
+    # the deal because that is what the person answering has in front of them.
+    ("POST", f"{CRM}/deals/{{deal_id}}/payment-outcome"): STAFF,
     # RXIL company intake and bulk import (L2-12, L2-13): both create companies.
     ("POST", f"{CRM}/rxil/company-intake"): ADMIN_ONLY,
     ("GET", f"{CRM}/imports/companies/template"): STAFF,

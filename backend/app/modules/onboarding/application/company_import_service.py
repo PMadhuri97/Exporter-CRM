@@ -1,10 +1,17 @@
 """``CompanyImportService`` — bulk CSV import of companies (L2-13, assumption
 A14). **Owner: Developer 2.**
 
-**The template** is fixed: ``TEMPLATE_COLUMNS``, one header row, UTF-8. A
-file that is not UTF-8, is not valid CSV, has a header other than exactly
-those columns, or holds more than ``MAX_ROWS`` rows is refused as a whole,
-and all of that is checked before any row is saved. ``gstins`` holds several GSTINs separated by ``;``. There is
+**The template** is ``TEMPLATE_COLUMNS``, one header row, UTF-8. A file that
+is not UTF-8, is not valid CSV, has a header other than an accepted set of
+columns, or holds more than ``MAX_ROWS`` rows is refused as a whole, and all of
+that is checked before any row is saved.
+
+**Two headers are accepted** (R11, decision IQ-16). ``website`` left the
+template, but a file somebody downloaded before that release still carries the
+column, and this importer refuses any header it does not recognise — so a
+header carrying ``website`` is still read, and the column's values are
+**ignored**. Nothing else about such a row changes. ``_ACCEPTED_HEADERS`` holds
+both spellings; drop the retired one once no such file is in circulation. ``gstins`` holds several GSTINs separated by ``;``. There is
 deliberately no column for who owns or entered a company: the signed-in user
 is the actor, and ownership is not imported.
 
@@ -48,18 +55,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.company_matching import CompanyMatcher
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
+from app.modules.onboarding.domain.company_identity import (
+    normalise_registration_number,
+    require_foreign_registration_number,
+)
 from app.modules.onboarding.domain.company_intake import MatchKind, Reason, check_identity
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
-from app.modules.onboarding.domain.web_links import is_web_link
 from app.modules.onboarding.exceptions import DuplicatePanError
 from app.shared.exceptions import AnerBaseException, ValidationError
 
 logger = structlog.get_logger(__name__)
 
-TEMPLATE_COLUMNS: tuple[str, ...] = (
-    "name", "country", "pan", "gstins", "iec", "cin", "source", "industry", "website",
+#: Columns every file must carry. A file missing one is refused whole: a header
+#: is cheap to fix, and importing a thousand rows with a column silently absent
+#: is not.
+_REQUIRED_COLUMNS: tuple[str, ...] = (
+    "name", "country", "pan", "gstins", "iec", "cin", "source", "industry",
 )
+
+#: Columns a file may carry. ``registration_number`` is new in task 3.8 and
+#: optional rather than required, so a file written against the older template
+#: still imports — the rule that actually matters (a foreign company carries a
+#: registration number, IQ-7) is enforced per row, where it can name the row.
+_OPTIONAL_COLUMNS: tuple[str, ...] = ("registration_number",)
+
+#: Columns the template used to carry, still read and **ignored**
+#: (module docstring).
+_RETIRED_COLUMNS: tuple[str, ...] = ("website",)
+
+#: What the downloaded template offers: everything a file may usefully carry.
+TEMPLATE_COLUMNS: tuple[str, ...] = _REQUIRED_COLUMNS + _OPTIONAL_COLUMNS
 TEMPLATE_CSV = ",".join(TEMPLATE_COLUMNS) + "\r\n"
+
+#: Every column this importer recognises at all.
+_KNOWN_COLUMNS: frozenset[str] = frozenset(
+    _REQUIRED_COLUMNS + _OPTIONAL_COLUMNS + _RETIRED_COLUMNS
+)
 
 #: Most data rows one file may hold. Rows are matched and saved one by one
 #: inside a single request, measured at about 46 ms a row on the app's pooled
@@ -69,7 +100,12 @@ TEMPLATE_CSV = ",".join(TEMPLATE_COLUMNS) + "\r\n"
 MAX_ROWS = 1000
 
 #: Sources a row may give. `RXIL` companies arrive through RXIL intake only.
-_IMPORTABLE_SOURCES = {s.value: s for s in ExporterSource if s is not ExporterSource.RXIL}
+#: RXIL companies arrive through the partner intake, and DEAL_BUYER companies through
+#: the buyer-company path, which creates them outside the pipeline (R-21). An import
+#: creates leads, so neither is a source it can claim.
+_IMPORTABLE_SOURCES = {
+    s.value: s for s in ExporterSource if s not in (ExporterSource.RXIL, ExporterSource.DEAL_BUYER)
+}
 
 
 @dataclass
@@ -178,16 +214,24 @@ class CompanyImportService:
                 f"source must be one of {sorted(_IMPORTABLE_SOURCES)} (RXIL companies arrive "
                 "through RXIL intake)",
             ))
-        for name, limit in (("industry", 255), ("website", 2048)):
-            if len(cell(name) or "") > limit:
-                reasons.append(Reason(f"INVALID_{name.upper()}", f"{name} is longer than {limit}"))
-        website = (cell("website") or "").strip()
-        if website and not is_web_link(website):
-            # The same rule `create_or_get_profile` applies; checked here too so
-            # the report names the column instead of rejecting the row late.
-            reasons.append(Reason(
-                "INVALID_WEBSITE", "website must be an absolute http:// or https:// link"
-            ))
+        if len(cell("industry") or "") > 255:
+            reasons.append(Reason("INVALID_INDUSTRY", "industry is longer than 255"))
+        # A `website` column, if the file still has one, is neither checked nor
+        # stored (R11): a value that would once have rejected the row no longer
+        # stops a company being imported.
+        try:
+            normalise_registration_number(cell("registration_number"))
+            # Decision IQ-7, checked here as well as in the service so the report
+            # names the row and the column instead of failing it late. `country`
+            # is read from the raw cell rather than from `identity`, which is
+            # `None` when the identity itself did not pass.
+            require_foreign_registration_number(
+                country=cell("country"),
+                pan=cell("pan"),
+                registration_number=cell("registration_number"),
+            )
+        except ValidationError as exc:
+            reasons.append(Reason("INVALID_REGISTRATION_NUMBER", exc.detail))
         if reasons:
             return RowResult(line, "rejected", reasons=reasons)
         assert identity is not None and source is not None
@@ -236,7 +280,7 @@ class CompanyImportService:
                     iec=identity.iec,
                     cin=identity.cin,
                     industry=cell("industry"),
-                    website=cell("website"),
+                    registration_number=cell("registration_number"),
                     actor_id=actor_id,
                     history_source="company_import.csv",
                 )
@@ -259,7 +303,12 @@ def _read_rows(lines: Iterable[str]) -> list[tuple[int, dict]]:
     reader = csv.DictReader(lines)
     try:
         header = [h.strip() for h in (reader.fieldnames or [])]
-        if tuple(sorted(header)) != tuple(sorted(TEMPLATE_COLUMNS)) or len(header) != len(set(header)):
+        missing = [c for c in _REQUIRED_COLUMNS if c not in header]
+        unknown = [c for c in header if c not in _KNOWN_COLUMNS]
+        if missing or unknown or len(header) != len(set(header)):
+            # One message naming the template, whichever way the header is wrong:
+            # the fix is the same, and listing the retired column as "accepted"
+            # would invite people to keep filling it in.
             raise ValidationError(
                 "the file's header must be exactly the template's columns: "
                 + ", ".join(TEMPLATE_COLUMNS)

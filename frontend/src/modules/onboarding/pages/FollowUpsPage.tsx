@@ -48,7 +48,8 @@ import {
   Textarea,
 } from '@/components';
 import { formatDate, formatDateTime, humanize } from '@/lib/format';
-import { isStaffRole, useCurrentUser } from '@/platform/auth';
+import { useCan } from '@/platform/access';
+import { useCurrentUser } from '@/platform/auth';
 
 import { actorLabel } from '../components';
 import { useCompleteFollowUp, useFollowUps } from '../hooks';
@@ -350,8 +351,8 @@ export function FollowUpsPage() {
   const currentUser = useCurrentUser();
   // DEVELOPER reads the CRM and writes nothing, so it gets no "Record outcome"
   // button. The server refuses it too — this only avoids offering it. The same
-  // helper every screen uses, so no two can disagree about who is staff.
-  const isStaff = isStaffRole(currentUser.role);
+  // capability every screen asks, so no two can disagree about who is staff.
+  const isStaff = useCan('crm.write');
 
   const [tab, setTab] = useState<TabKey>('overdue');
   const [mineOnly, setMineOnly] = useState(false);

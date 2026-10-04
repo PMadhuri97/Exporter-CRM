@@ -486,25 +486,34 @@ async def test_a_new_pan_must_fit_the_gstins_being_kept():
             )
 
 
-async def test_replacing_the_gstin_list_keeps_the_ones_that_stay():
+async def test_a_companys_gstins_are_no_longer_edited_as_a_list():
+    """Task 3.13 replaced the whole-list replace this used to test.
+
+    That replace deleted the row of every GSTIN dropped, which is why it needed care
+    to keep the rows that stayed. A GST registration is now a branch the company
+    traded through — named by any deal that invoiced from it — so dropping one is a
+    *deactivation*, and `trg_exporter_gstin_no_delete` refuses the delete outright.
+
+    Adding, deactivating and flagging a branch are `GstRegistrationService`'s, each
+    with its own history row; `test_dev3_gst_branch.py` covers them. What is left to
+    assert here is that the old door is shut.
+    """
     pan = _new_pan()
-    kept, dropped, added = _gstin(pan, "27"), _gstin(pan, "29"), _gstin(pan, "33")
     customer_id = uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).create_or_get_profile(
-            customer_id, source=ExporterSource.SALES, pan=pan, gstins=[kept, dropped]
+            customer_id, source=ExporterSource.SALES, pan=pan, gstins=[_gstin(pan, "27")]
         )
     async with db_services.AsyncSessionLocal() as db:
-        profile = await ExporterProfileService(db).update_profile(
-            customer_id, {"gstins": [kept, added]}, actor_id="rm-1"
-        )
-    assert sorted(profile.gstins) == sorted([kept, added])
+        with pytest.raises(ValidationError, match="gstins"):
+            await ExporterProfileService(db).update_profile(
+                customer_id, {"gstins": [_gstin(pan, "33")]}, actor_id="rm-1"
+            )
 
+    # Untouched, and still active.
     async with db_services.AsyncSessionLocal() as db:
-        rows, _total = await HistoryService(db).list_for_company(customer_id, dimension="profile")
-    [row] = rows
-    assert row.event_metadata["field"] == "gstins"  # masked values, as for every identifier
-    assert all(value.startswith("•") for value in row.event_metadata["to"])
+        profile = await ExporterProfileService(db)._require_profile(customer_id)
+    assert profile.gstins == [_gstin(pan, "27")]
 
 
 # ── The marker ────────────────────────────────────────────────────────────────
@@ -786,11 +795,16 @@ async def test_sample_data_reaches_the_three_example_companies():
     assert sorted(d.stage.value for d in b_deals) == ["GATHERING_PAPERWORK", "HANDED_OVER"]
     assert [d.stage.value for d in c_deals] == ["GATHERING_PAPERWORK"]
     assert "HANDED_OVER" not in {move.to.value for move in c_deal.allowed_stage_moves}
-    # And no pre-shipment document: `sample_data_deals` adds the one migration 0030
-    # requires only to deals it is about to hand over, so C's refusal names that too.
+    # Five clauses. C is a PROSPECT, its check is FLAGGED, its deal has no
+    # pre-shipment document, and its buyer is unscreened — `sample_data_deals`
+    # satisfies the paperwork and the buyer's screening only for deals it is about to
+    # hand over, so C keeps showing every reason it cannot go. The buyer's two are
+    # BQ-4, live since task 2.5 wired Developer 1's reader.
     assert c_deal.handover_blocked_reason == (
         "the company is PROSPECT, not CUSTOMER; the background check is FLAGGED, not CLEAR; "
-        "missing required documents: PRE_SHIPMENT"
+        "missing required documents: PRE_SHIPMENT; "
+        "the buyer's sanctions check is MISSING, not PASSED; "
+        "the buyer's AML check is MISSING, not PASSED"
     )
     assert "CLEAR" in {row.to_status for row in b_checks}
 
@@ -870,12 +884,10 @@ async def test_gstins_carrying_two_pans_are_refused_even_without_a_pan():
                 uuid.uuid4(), source=ExporterSource.SALES, name="Two PANs", country="IN",
                 gstins=[_gstin(first), _gstin(second)],
             )
-    customer_id = await _company_at()
-    async with db_services.AsyncSessionLocal() as db:
-        with pytest.raises(ValidationError, match="different PANs"):
-            await ExporterProfileService(db).update_profile(
-                customer_id, {"gstins": [_gstin(first), _gstin(second)]}, actor_id="rm-1"
-            )
+    # The edit half of this rule moved with task 3.13: a GSTIN is added one at a time
+    # now, and `GstRegistrationService.add` checks it against the company's PAN —
+    # `test_dev3_gst_branch.py::test_a_gstin_that_does_not_carry_the_companys_pan_is_refused`.
+    # Two GSTINs carrying different PANs can no longer be submitted together at all.
 
 
 async def test_a_name_search_takes_percent_and_underscore_literally():

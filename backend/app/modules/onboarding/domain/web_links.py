@@ -6,19 +6,20 @@ script run in the reader's session, where the refresh token lives. So only an
 absolute ``http`` or ``https`` link with a host counts as a web link.
 
 The rule was first written for a verification result's ``url`` evidence (Dev4B PR
-audit, 28 Sep 2026). It lives here, outside any one owner's module, because the
-company's ``website`` needs exactly the same rule and two copies would drift:
+audit, 28 Sep 2026), and was shared with the company's ``website`` so the two
+would not drift. The website retired in R11 (decision IQ-16), so today the only
+caller is ``domain/verification_evidence.py`` (Developer 4B) — ``url`` evidence
+references. The rule stays here rather than moving into that module: it is a
+property of a stored link, not of verification, and the next feature that
+renders staff-entered text as an ``<a href>`` needs it unchanged.
 
-* ``domain/verification_evidence.py`` (Developer 4B) — ``url`` evidence references;
-* ``application/exporter_profile_service.py`` (Developer 2) — the company website,
-  on every path that writes it (manual create and edit, CSV import, RXIL intake).
+``normalise_website`` went with the field. Nothing stores a website any more, so
+there is no normaliser for one; the column and its values are left untouched.
 """
 
 from __future__ import annotations
 
 from urllib.parse import urlsplit
-
-from app.shared.exceptions import ValidationError
 
 #: The only schemes a stored link may use (module docstring).
 URL_SCHEMES: frozenset[str] = frozenset({"http", "https"})
@@ -36,23 +37,4 @@ def is_web_link(value: str) -> bool:
     return parts.scheme.lower() in URL_SCHEMES and bool(parts.netloc)
 
 
-def normalise_website(value: str | None) -> str | None:
-    """A company website as stored: stripped, and ``None`` when blank.
-
-    Raises:
-        ValidationError: the value is not an absolute ``http``/``https`` link with a
-            host — ``www.example.com`` included, since a browser would treat it as a
-            path on this application rather than as another site.
-    """
-    cleaned = (value or "").strip()
-    if not cleaned:
-        return None
-    if not is_web_link(cleaned):
-        raise ValidationError(
-            "website must be an absolute http:// or https:// link, for example "
-            "https://www.example.com"
-        )
-    return cleaned
-
-
-__all__ = ["URL_SCHEMES", "is_web_link", "normalise_website"]
+__all__ = ["URL_SCHEMES", "is_web_link"]

@@ -1,8 +1,9 @@
 import { LogOut, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 
-import { Sheet } from '@/components';
+import { Sheet, Skeleton } from '@/components';
+import { NoWorkspaceFrame, useCan } from '@/platform/access';
 import { roleShortLabel, useAuth, useCurrentUser } from '@/platform/auth';
 import { ThemeToggle } from '@/platform/theme';
 
@@ -70,10 +71,28 @@ function TopBar({
   );
 }
 
+/** While a screen's code loads (each one is its own chunk, G7). */
+function ScreenLoading() {
+  return <Skeleton className="h-40 rounded-lg" />;
+}
+
 export function AppShell() {
   const { role } = useCurrentUser();
+  const hasWorkspace = useCan('crm.read');
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // The API user, or a role nobody listed: no rail and no CRM words (R-33, G1).
+  // The routes inside are still gated; only My profile renders here.
+  if (!hasWorkspace) {
+    return (
+      <NoWorkspaceFrame>
+        <Suspense fallback={<ScreenLoading />}>
+          <Outlet />
+        </Suspense>
+      </NoWorkspaceFrame>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-surface-subtle">
@@ -96,7 +115,9 @@ export function AppShell() {
         />
         <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
           <div className="mx-auto max-w-[90rem]">
-            <Outlet />
+            <Suspense fallback={<ScreenLoading />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>

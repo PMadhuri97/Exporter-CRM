@@ -10,28 +10,57 @@
  * `/deals/:dealId`, `/settings/qualification-criteria`) are single pages, so
  * the app router mounts them directly. Every URL is spelled once, in
  * `paths.ts`.
+ *
+ * The app router gates `/companies/*` on `crm.read`; the write screens below it are
+ * gated again on their own capability, **at the route** (R-33, G4): a role the server
+ * refuses gets the same `NotFound` as an address that does not exist, and the page's
+ * code is never downloaded.
  */
 
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 
 import { NotFound } from '@/components';
+import { Gate } from '@/platform/access';
 
 import {
   AddExporterPage,
   CompanyImportPage,
   ExporterDetailPage,
   ExportersListPage,
+  IdentityCompletionPage,
   RxilIntakePage,
-} from './pages';
+} from './lazyPages';
 import { paths } from './paths';
 
 export function CompanyRoutes() {
   return (
     <Routes>
       <Route index element={<ExportersListPage />} />
-      <Route path="new" element={<AddExporterPage />} />
-      <Route path="import" element={<CompanyImportPage />} />
-      <Route path="rxil-intake" element={<RxilIntakePage />} />
+      <Route
+        path="new"
+        element={
+          <Gate requires="company.create">
+            <AddExporterPage />
+          </Gate>
+        }
+      />
+      <Route
+        path="import"
+        element={
+          <Gate requires="company.import">
+            <CompanyImportPage />
+          </Gate>
+        }
+      />
+      <Route
+        path="rxil-intake"
+        element={
+          <Gate requires="company.rxilIntake">
+            <RxilIntakePage />
+          </Gate>
+        }
+      />
+      <Route path="identity-completion" element={<IdentityCompletionPage />} />
       <Route path=":customerId" element={<ExporterDetailPage />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

@@ -20,6 +20,7 @@ import {
   getExporterConversation,
   listConversationHistory,
   listCompanyDeals,
+  listTradeRelationships,
   listCompanyHistory,
 } from '../api';
 import type { ExporterProfileDetail, Qualification } from '../types';
@@ -62,6 +63,10 @@ vi.mock('../api', () => ({
   listCompanyDocuments: vi.fn(),
   getDocumentCategories: vi.fn(),
   listCompanyHistory: vi.fn(),
+  // The Deals tab's trade history, both sides (task 3.22).
+  listTradeRelationships: vi.fn(),
+  getTradeRelationship: vi.fn(),
+  getTradeInvoice: vi.fn(),
 }));
 
 const DETAIL: ExporterProfileDetail = {
@@ -84,7 +89,9 @@ const DETAIL: ExporterProfileDetail = {
   export_markets: ['US', 'GB'],
   products: ['Garments'],
   year_established: 2019,
-  website: 'https://example.com',
+  registration_number: null,
+  identity_type: 'IN_PAN',
+  pipeline_status: 'IN_PIPELINE',
   date_added: '2026-09-21T00:00:00Z',
   created_at: '2026-09-21T00:00:00Z',
   updated_at: '2026-09-21T00:00:00Z',
@@ -216,6 +223,7 @@ describe('ExporterDetailPage — E9', () => {
       can_open_deal: false,
     });
     vi.mocked(listCompanyHistory).mockResolvedValue({ entries: [], total: 0, limit: 25, offset: 0 });
+    vi.mocked(listTradeRelationships).mockResolvedValue({ relationships: [], total: 0 });
   });
 
   it('renders relationship sections safely with no contacts or activity', async () => {
@@ -315,30 +323,54 @@ describe('ExporterDetailPage — E9', () => {
     mockUser('COMPLIANCE', 'someone-else');
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    // PAN, GSTIN and IEC in the profile, plus PAN and GSTIN in the header strip.
-    expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(5);
+    // PAN and IEC in the profile, plus PAN and GSTIN in the header strip. `cin` and
+    // `registration_number` are null in this fixture, and a null value renders no
+    // reveal control — there is nothing to reveal.
+    //
+    // Four, not five: the panel's own GSTIN row went with task 3.13. The GSTINs are
+    // `GstRegistrationsSection` now, where each is a branch with a state, a status and
+    // possibly a flag rather than a bare value.
+    expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(4);
   });
 
-  it('links an http(s) website, and shows any other stored value as text, never as a link', async () => {
+  it('shows no website at all, whatever is stored', async () => {
+    // R11, decision IQ-16: the field retired. Stored values are kept — nothing is
+    // destroyed — and simply never shown. This replaces the test that proved an
+    // http(s) value became a link and anything else stayed text: with nothing
+    // rendered, the `javascript:` href that rule existed for cannot arise here.
     mockUser('COMPLIANCE', 'someone-else');
-    const { unmount } = renderPage();
-    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getByRole('link', { name: /https:\/\/example\.com/ })).toHaveAttribute(
-      'href',
-      'https://example.com',
-    );
-    unmount();
-
-    // A value stored before the server refused it: React 18 would render a
-    // `javascript:` href as written, so it must stay text.
     vi.mocked(getExporterProfileDetail).mockResolvedValue({
       ...DETAIL,
-      website: 'javascript:alert(document.cookie)',
-    });
+      // Still on the record, as a company created before the field retired has.
+      website: 'https://example.com',
+    } as never);
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getByText('javascript:alert(document.cookie)')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /javascript:/ })).not.toBeInTheDocument();
+
+    expect(screen.queryByText('Website')).not.toBeInTheDocument();
+    expect(screen.queryByText(/example\.com/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /example\.com/ })).not.toBeInTheDocument();
+  });
+
+  it('replaces the journey chip and both gauges for a buyer-only company', async () => {
+    // Its `journey` column reads LEAD because the column is NOT NULL, not because
+    // anyone judged it (plan P4-2) — and the server refuses to qualify it. Showing a
+    // Lead chip and an empty qualification form would invite exactly the action that
+    // 409s.
+    mockUser('COMPLIANCE', 'someone-else');
+    vi.mocked(getExporterProfileDetail).mockResolvedValue({
+      ...DETAIL,
+      pipeline_status: 'NOT_IN_PIPELINE',
+    } as never);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+
+    expect(screen.getByText('Not in pipeline')).toBeInTheDocument();
+    expect(screen.queryByTestId('journey-chip')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /Qualification/ }));
+    expect(await screen.findByTestId('not-in-pipeline-notice')).toBeInTheDocument();
+    expect(screen.getByText(/Qualification is not needed/)).toBeInTheDocument();
   });
 
   it('shows the journey, qualification and marker separately, with no journey control', async () => {
@@ -427,7 +459,9 @@ describe('ExporterDetailPage — E9', () => {
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
     fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }));
     const form = await screen.findByRole('form', { name: 'Edit profile' });
-    for (const label of ['PAN', 'GSTINs (comma-separated)', 'IEC', 'CIN']) {
+    // `GSTINs (comma-separated)` is gone with task 3.13: a branch cannot be edited
+    // as a string, and the PATCH refuses the field.
+    for (const label of ['PAN', 'IEC', 'CIN']) {
       const input = within(form).getByLabelText(label);
       expect(input).toHaveValue('');
       expect(input).toHaveAttribute('placeholder', 'Hidden — type to replace');
@@ -528,4 +562,27 @@ describe('ExporterDetailPage — E9', () => {
     );
   });
 
+  // Task 3.22's company-page half. Both sides are asked for, because a company can
+  // sell to one counterparty and buy from another, and one list mixing them would
+  // read differently row by row.
+  it('shows trade history on both sides, under the deals', async () => {
+    mockUser('COMPLIANCE', 'someone-else');
+    renderPage('deals');
+
+    expect(await screen.findByText('Sold to')).toBeInTheDocument();
+    expect(screen.getByText('Bought from, invoice by invoice')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(listTradeRelationships).toHaveBeenCalledWith(DETAIL.customer_id, {
+        as: 'seller',
+      });
+      expect(listTradeRelationships).toHaveBeenCalledWith(DETAIL.customer_id, {
+        as: 'buyer',
+      });
+    });
+    // An empty seller side says why it is empty rather than implying the company has
+    // never sold anything.
+    expect(
+      await screen.findByText(/Nobody recorded as a buyer from this company yet/),
+    ).toBeInTheDocument();
+  });
 });

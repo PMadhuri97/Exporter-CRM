@@ -34,7 +34,7 @@ import {
   Tr,
   useSearchParamState,
 } from '@/components';
-import { isAdminRole, useCurrentUser } from '@/platform/auth';
+import { useCan } from '@/platform/access';
 import { MaskedValue } from '@/platform/mask';
 
 import { JourneyChip, MarkerBadge, QualificationChip } from '../components';
@@ -70,7 +70,11 @@ function TableSkeletonRow() {
 }
 
 export function ExportersListPage() {
-  const { role } = useCurrentUser();
+  // Absent, not disabled, for a role the server refuses (R-33, G3): DEVELOPER reads
+  // the register and is offered no write screen.
+  const canCreate = useCan('company.create');
+  const canImport = useCan('company.import');
+  const canTakeInRxil = useCan('company.rxilIntake');
   const [searchInput, setSearchInput] = useState('');
   const [nameFilter, setNameFilter] = useState('');
   const [tab, setTabParam] = useSearchParamState<Tab>('journey', TABS, 'ALL');
@@ -103,20 +107,29 @@ export function ExportersListPage() {
         description="Find and manage company relationships. Ended relationships are hidden unless you search for them or filter by “Ended”."
         actions={
           <>
-            <Link to={paths.importCompanies} className={buttonClasses()}>
-              <Upload size={15} />
-              Import CSV
+            {/* IQ-7's completion list (R-28): work on the records themselves, kept
+                apart from the pipeline. */}
+            <Link to={paths.identityCompletion} className={buttonClasses({ variant: 'ghost' })}>
+              Identity to complete
             </Link>
+            {canImport && (
+              <Link to={paths.importCompanies} className={buttonClasses()}>
+                <Upload size={15} />
+                Import CSV
+              </Link>
+            )}
             {/* The server admits ADMIN only: intake records a decision as RXIL's. */}
-            {isAdminRole(role) && (
+            {canTakeInRxil && (
               <Link to={paths.rxilIntake} className={buttonClasses()}>
                 RXIL intake
               </Link>
             )}
-            <Link to={paths.newCompany} className={buttonClasses({ variant: 'primary' })}>
-              <Plus size={15} />
-              Add company
-            </Link>
+            {canCreate && (
+              <Link to={paths.newCompany} className={buttonClasses({ variant: 'primary' })}>
+                <Plus size={15} />
+                Add company
+              </Link>
+            )}
           </>
         }
       />

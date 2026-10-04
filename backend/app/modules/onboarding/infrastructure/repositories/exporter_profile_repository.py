@@ -5,10 +5,12 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.company_identity import registration_key
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    CompanyPipelineStatus,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -33,6 +35,30 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         """The company holding ``pan`` — at most one (``uq_exporter_profile_pan``)."""
         result = await self.session.execute(
             select(ExporterProfile).where(ExporterProfile.pan == pan)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_registration_number(
+        self, *, country: str, registration_number: str
+    ) -> ExporterProfile | None:
+        """The company holding this registration number in this country — at most
+        one (``uq_exporter_profile_country_registration_number``).
+
+        Matched through the index's own expression, written here as the same SQL,
+        so this finds exactly the row the constraint would refuse. Comparing the
+        stored text instead would miss ``KVK 12.345`` when asked for ``kvk-12345``
+        and report "no holder" for a number the insert then rejects.
+        """
+        normalised = func.upper(
+            func.regexp_replace(ExporterProfile.registration_number, "[^A-Za-z0-9]", "", "g")
+        )
+        wanted = registration_key(registration_number)
+        result = await self.session.execute(
+            select(ExporterProfile).where(
+                ExporterProfile.country == country.strip().upper(),
+                ExporterProfile.registration_number.isnot(None),
+                normalised == wanted,
+            )
         )
         return result.scalar_one_or_none()
 
@@ -105,7 +131,9 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         journey: ExporterJourney | None = None,
         qualification: QualificationState | None = None,
         marker: ExporterMarker | None = None,
+        pipeline_status: CompanyPipelineStatus | None = None,
         exclude_ended: bool = False,
+        exclude_not_in_pipeline: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfile]:
@@ -114,8 +142,9 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         ``name_contains`` is a case-insensitive partial match on the name,
         taken literally: ``%`` and ``_`` in it match only themselves.
         ``gstin`` matches any of a company's GSTINs. ``exclude_ended`` drops
-        ``ENDED`` companies — the service decides when (the default working
-        list); this query only applies it.
+        ``ENDED`` companies and ``exclude_not_in_pipeline`` drops buyer-only ones
+        — the service decides when (the default working list); this query only
+        applies them.
         """
         stmt = select(ExporterProfile)
         if gstin is not None:
@@ -143,6 +172,12 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
             stmt = stmt.where(ExporterProfile.marker == marker)
         elif exclude_ended:
             stmt = stmt.where(ExporterProfile.marker != ExporterMarker.ENDED)
+        if pipeline_status is not None:
+            stmt = stmt.where(ExporterProfile.pipeline_status == pipeline_status)
+        elif exclude_not_in_pipeline:
+            stmt = stmt.where(
+                ExporterProfile.pipeline_status != CompanyPipelineStatus.NOT_IN_PIPELINE
+            )
 
         # `customer_id` breaks ties: companies created in one transaction share
         # a `created_at`, and without it a page boundary could repeat or skip one.

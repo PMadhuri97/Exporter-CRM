@@ -13,7 +13,7 @@ evidence a manual result needs, the screening checklist and its history, checks 
 buyer, and the routes that serve them. The background check that *reads* these inputs, and the
 seam it reads them through, are `background-check.md` (§12 for the seam).
 
-**Source of truth.** `docs/Exporter-CRM-Architecture-and-Plan.pdf` §3.3, §3.5, §7.6, decisions
+**Source of truth.** The design PDF (retired on 4 October 2026 as outdated; recover it with `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf`) §3.3, §3.5, §7.6, decisions
 5, 9; the lead's decisions recorded in §10. Where this contract and the architecture disagree,
 the architecture wins.
 
@@ -136,7 +136,7 @@ review `INSERT`). Polling has no production caller; no scheduler exists.
   checks recorded on that company like any company's (`subject_company_id`), read through
   `company_inputs`. Developer 2's buyer migration (P4-6) maps legacy `BUYER` results onto their
   new companies by setting `subject_company_id` once. `BuyerChecks.tsx` stays for legacy buyers
-  until P4-10 (`dev1-remaining-work.md`).
+  until P4-10 (`remaining-work.md`, R-26).
 
 ## 7. Routes
 
@@ -161,7 +161,7 @@ The dev-only placeholder generator is gone. Existing placeholder rows
 (`normalized_result.stub = true`, no provider reference) are flagged, not deleted: the seam
 reports `is_placeholder = true` and the screen labels them. Under D2 a placeholder blocks
 `CLEAR` within its cycle; since check cycles, a company holding one starts a new cycle and the
-placeholder stays behind (`open-items.md` §1). No route creates a result nothing can resolve.
+placeholder stays behind (no D2 amendment: confirmed 2 October, `background-check.md` §14.2). No route creates a result nothing can resolve.
 
 ## 9. The screen
 
@@ -189,11 +189,11 @@ All decided by the programme lead on 28 September 2026 unless stated. Shared num
 | # | Decision | Where |
 |---|---|---|
 | D2 | "Pending" — `PENDING`, `REVIEW` and placeholders block `CLEAR`, except a `REVIEW` result whose latest review is `ACCEPTED` or `REJECTED`. This side must keep `latest_review_status` = the chain head's status | `background-check.md` §14.1; §1 |
-| D4 (4B side) | Which documents may be evidence: the subject's own (§3), `AVAILABLE` only. **Implemented; awaits the lead's written confirmation** (`open-items.md` §1) | `verification_service._check_evidence_documents` |
+| D4 (4B side) | Which documents may be evidence: the subject's own (§3), `AVAILABLE` only. **Implemented; confirmed by the lead on 2 October 2026** (`background-check.md` §14.2) | `verification_service._check_evidence_documents` |
 | D7 | Manual route is `manual` only; `rxil` refused there | `api/schemas/verification.py` |
 | D8 | DEVELOPER refused; `normalized_result` not masked | routers; `history_router.py` |
 | D9 | Screening decisions also go to the shared history log (`screening` dimension) | `screening_review_service.upsert_review_item` |
-| D12 | RXIL's package and results contract — **blocked** (RXIL); blocks RXIL results intake (former task 4B-8) | `open-items.md` §1 |
+| D12 | RXIL's package and results contract — **blocked** (RXIL); blocks RXIL results intake (former task 4B-8) | `remaining-work.md` §5 (P7-6) |
 | D15 | Checks on DIRECTOR / INVOICE / VESSEL / SHIPMENT write no history row (skipped and logged) | `verification_service._record_history` |
 | D16 | Manual `PASSED` needs a note or a reference; `FAILED` / `REVIEW` need none | `domain/verification_evidence.py` |
 | D17 | No new buyer check on a `HANDED_OVER` / `WITHDRAWN` deal (409 `DEAL_CLOSED`) | `verification_service._resolve_subject` |

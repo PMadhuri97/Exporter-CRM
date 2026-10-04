@@ -81,6 +81,99 @@ _KNOWN_FAILURE_NODEIDS = frozenset(
 )
 
 
+# ── The CRM suite: `pytest --crm` ─────────────────────────────────────────────
+#
+# This checkout is a pruned copy of a wider platform (RUNNING.md), and the CRM is
+# only the `exporter_profile` side of `onboarding` (docs/architecture.md §2).
+# `--crm` collects what a CRM change can break: the CRM's own tests and the
+# repository guards in tests/contract. It leaves out
+#   - every other module's tests: the module rule (docs/architecture.md §2) means a
+#     CRM change edits none of those modules;
+#   - the legacy path in `onboarding` itself — `onboarding_request` and its Temporal
+#     workflow, the KYC case state machine, the identity-provider framework and the
+#     S1/S5/S7 services built on them — which nothing in the CRM uses. The Temporal
+#     tests alone are most of the whole suite's run time.
+# A change outside `app/modules/onboarding` (platform, shared, app/main.py,
+# migrations/env.py, another module) or to a legacy file below still needs the
+# whole suite: plain `pytest`.
+_CRM_TEST_ROOTS = ("app/modules/onboarding/tests/", "tests/contract/")
+_LEGACY_ONBOARDING_TESTS = frozenset(
+    f"app/modules/onboarding/tests/{name}"
+    for name in (
+        "integration/test_case_model.py",
+        "integration/test_onboarding.py",
+        "integration/test_onboarding_0007_reg_optional_schema.py",
+        "integration/test_onboarding_transition_service.py",
+        "integration/test_onboarding_workflow.py",
+        "integration/test_onboarding_workflow_history.py",
+        "integration/test_onboarding_workflow_recovery.py",
+        "integration/test_onboarding_workflow_reliability.py",
+        "integration/test_onboarding_workflow_resume.py",
+        "integration/test_s1t1_orchestration_schema.py",
+        "integration/test_s1t4_kyb_vendor_registry.py",
+        "integration/test_s5t1_screening_result.py",
+        "integration/test_s5t2_risk_rating_assignment.py",
+        "integration/test_s7t1_onboarding_service_api.py",
+        "integration/test_s7t2_onboarding_query_interface.py",
+        "integration/test_state_machine_api.py",
+        "unit/test_onboarding_request_transitions.py",
+        "unit/test_onboarding_workflow_definition.py",
+        "unit/test_onboarding_workflow_dependencies.py",
+        "unit/test_provider_contract.py",
+        "unit/test_s1t2_document_requirements.py",
+        "unit/test_s5t2_risk_rating.py",
+        "unit/test_state_machine.py",
+    )
+)
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--crm",
+        action="store_true",
+        default=False,
+        help="collect only the CRM's tests and tests/contract (see backend/conftest.py)",
+    )
+
+
+def pytest_configure(config):
+    if not config.getoption("--crm"):
+        return
+    # A renamed or deleted legacy file would otherwise drop out of this list
+    # silently and start running again under --crm.
+    missing = sorted(p for p in _LEGACY_ONBOARDING_TESTS if not (config.rootpath / p).is_file())
+    if missing:
+        raise pytest.UsageError(
+            "conftest.py _LEGACY_ONBOARDING_TESTS names files that do not exist: "
+            + ", ".join(missing)
+        )
+
+
+def pytest_report_header(config):
+    if config.getoption("--crm"):
+        return "scope: CRM suite (--crm); other modules and legacy onboarding not collected"
+    return None
+
+
+def pytest_ignore_collect(collection_path, config):
+    if not config.getoption("--crm"):
+        return None
+    try:
+        path = collection_path.relative_to(config.rootpath).as_posix()
+    except ValueError:
+        return None
+    if path == ".":
+        return None
+    if collection_path.is_dir():
+        path += "/"
+    if path in _LEGACY_ONBOARDING_TESTS:
+        return True
+    # Keep the CRM roots, everything under them, and the directories above them.
+    if any(path.startswith(root) or root.startswith(path) for root in _CRM_TEST_ROOTS):
+        return None
+    return True
+
+
 def pytest_collection_modifyitems(config, items):
     marker = pytest.mark.xfail(
         strict=True,

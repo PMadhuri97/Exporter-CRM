@@ -14,7 +14,7 @@ each move and what it needs, the locked decision record behind every move, the e
 pinned to each decision, the CRM risk rating, the history row, and the read helper other
 developers consume.
 
-**Source of truth.** `docs/Exporter-CRM-Architecture-and-Plan.pdf` §3.3 ("Gauge 3: Background
+**Source of truth.** The design PDF (retired on 4 October 2026 as outdated; recover it with `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf`) §3.3 ("Gauge 3: Background
 check"), §3.5, §3.7, §3.8 and Figure 3, §4.1 steps 8–11, §4.2, decisions 5, 6, 9, 10, assumptions
 A1, A3, A5, A8. Where this contract and the architecture disagree, the architecture wins. Where the
 architecture is silent, the question is listed in §14 as an open decision and **this contract does
@@ -712,8 +712,10 @@ decision, proposal and cycle since records `rules_version = clear-2026-10-01-7it
   2.5), through the same facts.
 - **Re-KYC due** (P3-3c): `GET /background-check/due?before=…` (staff; DEVELOPER refused) lists the
   `CLEAR` companies whose Clear expires before `before` (default now +
-  `CRM_REKYC_DUE_WINDOW_DAYS`, 30) — expired first, then the soonest — with name, journey, expiry,
-  `is_expired` and the current cycle's number; never an identifier. A company whose Re-KYC has
+  `CRM_REKYC_DUE_WINDOW_DAYS`, 30) — expired first, then the soonest — with name, journey,
+  `pipeline_status` (R-29: a buyer-only company's renewal is for the trade it buys on, not a
+  sale, and the Home card says "Buyer only"), expiry, `is_expired` and the current cycle's
+  number; never an identifier. A company whose Re-KYC has
   started is not listed (the start reopened it). The read serves `rekyc_due`, shown as the gauge's
   "Re-KYC due" badge and the Home card.
 
@@ -769,7 +771,7 @@ Every answer is recorded here, with its date and who decided. Nothing below is g
 | D11 / U4 / O3 | **Transaction boundary and announcement for the customer move** | **Implemented 29 Sep 2026 as one transaction** (the audit's recommendation; **the programme lead to confirm in writing**): the completing move calls Developer 2's flush-only promotion before its commit and announces after it (§11.3) | lead, Developer 2, Dev4A | nothing |
 | D12 | **RXIL package / results contract**, including the actor of the automatic start | **Blocked** | RXIL, lead, Developer 2 | the automatic `NOT_STARTED → IN_REVIEW` only |
 | D13 | **Risk database type** | **Settled 28 Sep 2026 (Dev4 lead):** a Dev4A-owned `background_check_risk_enum` | — | nothing |
-| D14 | **`history-row.md` §4 omits two required texts** (`MORE_INFO → IN_REVIEW`, `CLEAR`) | **Open** — Dev4A enforces the architecture meanwhile | Developer 1 | the contract's text, before final merge |
+| D14 | **`history-row.md` §4 omits two required texts** (`MORE_INFO → IN_REVIEW`, `CLEAR`) | **Settled:** both rows are in `history-row.md` §4, citing D14 | Developer 1 | nothing |
 
 ### 14.1 D1–D4, as decided on 28 September 2026
 
@@ -826,6 +828,25 @@ at least one pinned id.**
 D5, D6, D8 and D10 were settled later the same day (table above). D11/U4/O3 was implemented as
 one transaction on 29 September (the lead to confirm), and D14's texts are now in
 `history-row.md` §4. Still open: D12.
+
+### 14.2 Confirmed by the programme lead on 2 October 2026
+
+These were built on a recommendation and listed as awaiting confirmation or undecided
+(in `open-items.md`, since merged into `remaining-work.md`). The lead confirmed each **as
+built** on 2 October 2026. The write-up made then never reached `main`, so it was recorded
+again here on 4 October 2026 (`remaining-work.md` §4). Nothing in the code changed: each
+is the behaviour already described in the section named.
+
+| Confirmed | As built | Where |
+|---|---|---|
+| **IQ-2 edge cases** | A `REVIEW` sanctions or AML result whose review is `REJECTED` reads as `FAILED`; a `PASSED` or `FAILED` result reads as its status whatever its review says | §12.4, `domain/compliance_facts.check_state` |
+| **No new cycle while the current one is empty** | Refused 409 `CHECK_CYCLE_EMPTY`. It makes two simultaneous starts produce one cycle; a wrongly chosen kind is replaced only once something is recorded | §12.3, `BackgroundCheckService.start_cycle` |
+| **Maker-checker details** | (a) the proposer may not reject their own proposal, only withdraw it (the database enforces it too); (b) while a proposal is open nothing else moves the check (409 `BACKGROUND_CHECK_PROPOSAL_OPEN`); (c) any change to what the decision would rest on makes the proposal stale; (d) the switch may be off only where `ENVIRONMENT` is `local` or `test`; (e) the approval queue is COMPLIANCE/ADMIN only, a company's proposals are readable by all staff; (f) `decided_by` names the proposer, `approved_by` the approver | §12.5 |
+| **Clear expiry backfill keyed on the last `CLEAR` decision** | BQ-5's "1 year from the last Clear" taken literally (migration 0027); a new `CLEAR`'s `decided_at` and `expires_at` come from one server timestamp read after the row lock | §12.7, `migration-register.md` |
+| **`BuyerChecks.tsx` kept for legacy deal buyers** | It stays, marked legacy, until the buyer migration (P4-6) has run everywhere and `deal_buyer` writes are retired (P4-10, `remaining-work.md` R-25); then it is deleted (R-26) | §12.2, §16 |
+| **D4, verification side** | Which documents may be evidence for a verification: the company's own, and for a buyer its deal's or its company's; only `AVAILABLE` ones | `verification-and-screening.md` §3, §11 |
+| **No D2 amendment for placeholders** | A placeholder result keeps blocking `CLEAR` in its own cycle. A company holding one is not stuck: COMPLIANCE or ADMIN starts a new cycle and the placeholder stays behind in the old one | §12.3, §14.1 (D2) |
+| **No document required to `CLEAR`** | "Evidence recorded" is met by the screening answers; rule B (§12.6) still needs KYB, AML and sanctions passed in the current cycle. **To be revisited** when gate §7.6 (a real scanner, S3 with Object Lock) makes real documents possible | §14.1 (D4), architecture §7, §12 |
 
 ---
 

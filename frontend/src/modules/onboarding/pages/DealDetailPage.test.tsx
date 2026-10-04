@@ -12,10 +12,15 @@ import {
   getExporterProfileDetail,
   listDealDocuments,
   listDealHistory,
+  listGstRegistrations,
+  listTradeRelationships,
   listVerificationResults,
+  matchCompany,
+  searchExporterProfiles,
   setDealBuyer,
+  setDealInvoicingBranch,
 } from '../api';
-import type { CrmDocument, Deal } from '../types';
+import type { CrmDocument, Deal, GstRegistration } from '../types';
 
 import { DealDetailPage } from './DealDetailPage';
 
@@ -38,6 +43,17 @@ vi.mock('../api', () => ({
   listDealHistory: vi.fn(),
   // Staff see the buyer's checks under the buyer.
   listVerificationResults: vi.fn(),
+  // Trade history (task 2.11), mounted only on a deal with a buyer company.
+  listTradeRelationships: vi.fn(),
+  getTradeRelationship: vi.fn(),
+  getTradeInvoice: vi.fn(),
+  recordDealPaymentOutcome: vi.fn(),
+  // The invoicing branch (task 2.8): the seller's GST registrations, and the write.
+  listGstRegistrations: vi.fn(),
+  setDealInvoicingBranch: vi.fn(),
+  // The buyer picker (task 2.4) and creating a buyer company from it (R-24).
+  searchExporterProfiles: vi.fn(),
+  matchCompany: vi.fn(),
 }));
 
 const DEAL_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -142,6 +158,8 @@ beforeEach(() => {
     limit: 50,
     offset: 0,
   });
+  // A seller with no GST registration is not asked for an invoicing branch.
+  vi.mocked(listGstRegistrations).mockResolvedValue({ registrations: [], flagged_count: 0 });
 });
 
 describe('DealDetailPage — the server decides what may happen next', () => {
@@ -191,7 +209,7 @@ describe('DealDetailPage — the server decides what may happen next', () => {
     expect(await screen.findByText('Rotterdam shipment, March')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Edit buyer' }),
+      screen.queryByRole('button', { name: 'Edit buyer details' }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Upload a document' }),
@@ -211,7 +229,7 @@ describe('DealDetailPage — the server decides what may happen next', () => {
 
     expect(await screen.findByText('Handed over')).toBeInTheDocument();
     // What the lending team was given must not be editable afterwards.
-    expect(screen.queryByRole('button', { name: 'Edit buyer' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit buyer details' })).not.toBeInTheDocument();
   });
 });
 
@@ -430,7 +448,7 @@ describe('DealDetailPage — editing a buyer whose details are masked', () => {
   it('starts the masked fields empty and leaves them out, so the stored values are kept', async () => {
     vi.mocked(getDeal).mockResolvedValue(MASKED);
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer details' }));
 
     const taxId = screen.getByLabelText('Tax identifier');
     expect(taxId).toHaveValue('');
@@ -458,7 +476,7 @@ describe('DealDetailPage — editing a buyer whose details are masked', () => {
   it('prefills and sends every field for COMPLIANCE, who sees them in full', async () => {
     signedInAs('COMPLIANCE');
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer details' }));
     expect(screen.getByLabelText('Registration number')).toHaveValue('NL-8899');
 
     fireEvent.click(screen.getByRole('button', { name: 'Save buyer' }));
@@ -597,5 +615,289 @@ describe('the buyer company', () => {
     const link = screen.getByRole('link', { name: 'Rotterdam Trading BV' });
     expect(link).toHaveAttribute('href', '/companies/99999999-9999-4999-8999-999999999999');
     expect(screen.getByText('••••••1234')).toBeInTheDocument();
+  });
+
+  // Task 2.11: Developer 3's panel, mounted only where it has two companies to
+  // pair. A deal whose buyer is still a `deal_buyer` row has one, so the panel is
+  // absent rather than empty — an empty panel would imply these two have never
+  // traded, when the truth is that nothing yet says who the buyer is.
+  it('shows trade history only once the buyer is a company', async () => {
+    vi.mocked(listTradeRelationships).mockResolvedValue({ relationships: [], total: 0 });
+
+    renderPage();
+    await screen.findByText('Rotterdam shipment, March');
+    expect(screen.queryByTestId('trade-history-panel')).not.toBeInTheDocument();
+    expect(listTradeRelationships).not.toHaveBeenCalled();
+
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        buyer_company: {
+          company_id: '99999999-9999-4999-8999-999999999999',
+          name: 'Rotterdam Trading BV',
+          country: 'NL',
+          pipeline_status: null,
+          pan: null,
+          cin: null,
+        },
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByTestId('trade-history-panel')).toBeInTheDocument();
+    // The seller's side of the pair is the deal's own company, not the buyer's.
+    await waitFor(() =>
+      expect(listTradeRelationships).toHaveBeenCalledWith(COMPANY_ID, { as: 'seller' }),
+    );
+  });
+
+  // P5-6. The server refuses a payment outcome on a deal that has not been handed
+  // over, so offering the control earlier would be offering a refusal.
+  it('offers "Record outcome" only after the handover', async () => {
+    vi.mocked(listTradeRelationships).mockResolvedValue({ relationships: [], total: 0 });
+    const buyerCompany = {
+      company_id: '99999999-9999-4999-8999-999999999999',
+      name: 'Rotterdam Trading BV',
+      country: 'NL',
+      pipeline_status: null,
+      pan: null,
+      cin: null,
+    };
+
+    vi.mocked(getDeal).mockResolvedValue(deal({ buyer_company: buyerCompany }));
+    renderPage();
+    await screen.findByTestId('trade-history-panel');
+    expect(screen.queryByRole('button', { name: 'Record outcome' })).not.toBeInTheDocument();
+
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        buyer_company: buyerCompany,
+        stage: 'HANDED_OVER',
+        handed_over_at: '2026-04-01T10:00:00Z',
+      }),
+    );
+    renderPage();
+    expect(
+      await screen.findByRole('button', { name: 'Record outcome' }),
+    ).toBeInTheDocument();
+  });
+});
+
+// R-05: the guard has asked for an invoicing branch since task 2.9 whenever the seller
+// has an active GST registration, and this panel is the only way to record one.
+describe('the invoicing branch', () => {
+  const MAHARASHTRA = 'mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm';
+  const KARNATAKA = 'kkkkkkkk-kkkk-4kkk-8kkk-kkkkkkkkkkkk';
+  const NOT_RECORDED = 'the invoicing branch is not recorded';
+
+  function branch(overrides: Partial<GstRegistration> = {}): GstRegistration {
+    return {
+      id: MAHARASHTRA,
+      customer_id: COMPANY_ID,
+      // Masked by the server for OPERATIONS; the page shows it as served.
+      gstin: '•••••••••••F1Z5',
+      state_code: '27',
+      state_name: 'Maharashtra',
+      status: 'ACTIVE',
+      address: null,
+      flag_status: 'NONE',
+      flag_reason: null,
+      active: true,
+      deactivated_at: null,
+      created_at: '2026-03-01T00:00:00Z',
+      verify_url: null,
+      also_held_by: [],
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.mocked(listGstRegistrations).mockResolvedValue({
+      registrations: [
+        branch(),
+        branch({
+          id: KARNATAKA,
+          gstin: '•••••••••••G1Z3',
+          state_code: '29',
+          state_name: 'Karnataka',
+        }),
+      ],
+      flagged_count: 0,
+    });
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        allowed_stage_moves: [{ to_stage: 'WITHDRAWN', reason_required: true }],
+        handover_blocked_reason: NOT_RECORDED,
+      }),
+    );
+  });
+
+  it("offers staff a choice of the seller's branches on an open deal", async () => {
+    renderPage();
+
+    const select = await screen.findByLabelText('Invoiced from');
+    // The seller's registrations — the deal's own company, not the buyer's.
+    expect(listGstRegistrations).toHaveBeenCalledWith(COMPANY_ID);
+    expect(
+      within(select).getByRole('option', { name: 'Maharashtra · •••••••••••F1Z5' }),
+    ).toBeInTheDocument();
+    expect(
+      within(select).getByRole('option', { name: 'Karnataka · •••••••••••G1Z3' }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the guard's message while it is missing, and says what it is asking for", async () => {
+    renderPage();
+
+    expect(await screen.findByText(/Not ready to hand over/)).toBeInTheDocument();
+    expect(screen.getByText(NOT_RECORDED)).toBeInTheDocument();
+    // The panel says the same from the guard's own facts, next to the remedy.
+    expect(await screen.findByRole('status')).toHaveTextContent(/handover asks which one/);
+  });
+
+  it('records the chosen branch through PUT /deals/{id}/invoicing-branch, and the handover opens', async () => {
+    vi.mocked(setDealInvoicingBranch).mockResolvedValue(
+      deal({
+        seller_gst_registration_id: KARNATAKA,
+        allowed_stage_moves: [
+          { to_stage: 'HANDED_OVER', reason_required: false },
+          { to_stage: 'WITHDRAWN', reason_required: true },
+        ],
+        handover_blocked_reason: null,
+      }),
+    );
+    renderPage();
+
+    fireEvent.change(await screen.findByLabelText('Invoiced from'), {
+      target: { value: KARNATAKA },
+    });
+
+    await waitFor(() =>
+      expect(setDealInvoicingBranch).toHaveBeenCalledWith(DEAL_ID, {
+        gst_registration_id: KARNATAKA,
+      }),
+    );
+    // The response is the deal as it now stands: the branch is recorded and the guard
+    // has nothing left to say.
+    expect(
+      await screen.findByRole('button', { name: 'Hand over to lending' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Invoiced from')).toHaveValue(KARNATAKA);
+    expect(screen.queryByText(NOT_RECORDED)).not.toBeInTheDocument();
+  });
+
+  it('shows the recorded branch as the current choice, with a way to clear it', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({ seller_gst_registration_id: MAHARASHTRA, handover_blocked_reason: null }),
+    );
+    renderPage();
+
+    expect(await screen.findByLabelText('Invoiced from')).toHaveValue(MAHARASHTRA);
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  });
+
+  it('shows a handed-over deal its branch read-only, because it is frozen with the deal', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        stage: 'HANDED_OVER',
+        handed_over_at: '2026-04-01T10:00:00Z',
+        seller_gst_registration_id: MAHARASHTRA,
+        allowed_stage_moves: [],
+        handover_blocked_reason: null,
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText('Maharashtra')).toBeInTheDocument();
+    expect(screen.getByText('•••••••••••F1Z5')).toBeInTheDocument();
+    expect(screen.getByText(/Frozen with the deal/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Invoiced from')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+  });
+
+  it('offers no choice on a withdrawn deal either', async () => {
+    vi.mocked(getDeal).mockResolvedValue(
+      deal({
+        stage: 'WITHDRAWN',
+        withdrawal_reason: 'Buyer went elsewhere',
+        allowed_stage_moves: [],
+        handover_blocked_reason: null,
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText('No invoicing branch was recorded.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Invoiced from')).not.toBeInTheDocument();
+  });
+
+  it('gives a DEVELOPER the recorded branch and no control', async () => {
+    signedInAs('DEVELOPER');
+    vi.mocked(getDeal).mockResolvedValue(deal({ seller_gst_registration_id: MAHARASHTRA }));
+    renderPage();
+
+    expect(await screen.findByText('Maharashtra')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Invoiced from')).not.toBeInTheDocument();
+    expect(setDealInvoicingBranch).not.toHaveBeenCalled();
+  });
+});
+
+// R-24: a buyer not on file is created as a company outside the pipeline, through the
+// deal's own buyer route, and named in the same request.
+describe('creating the buyer company', () => {
+  it('sends the create form to PUT /deals/{id}/buyer and closes the picker', async () => {
+    vi.mocked(getDeal).mockResolvedValue(deal({ buyer: null }));
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 });
+    vi.mocked(matchCompany).mockResolvedValue({
+      kind: 'NEW',
+      company_id: null,
+      reason: null,
+      needs_a_person: false,
+      candidates: [],
+    });
+    vi.mocked(setDealBuyer).mockResolvedValue(
+      deal({
+        buyer: null,
+        buyer_company: {
+          company_id: '99999999-9999-4999-8999-999999999999',
+          name: 'Brand New Buyer',
+          country: 'IN',
+          pipeline_status: 'NOT_IN_PIPELINE',
+          pan: null,
+          cin: null,
+        },
+      }),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose buyer company' }));
+    fireEvent.change(screen.getByPlaceholderText('Company name'), {
+      target: { value: 'Brand New Buyer' },
+    });
+    fireEvent.blur(screen.getByPlaceholderText('Company name'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create buyer company' }));
+    const form = screen.getByRole('form', { name: 'Create buyer company' });
+    fireEvent.click(within(form).getByRole('button', { name: 'Create buyer company' }));
+
+    await waitFor(() =>
+      expect(setDealBuyer).toHaveBeenCalledWith(DEAL_ID, {
+        create: {
+          name: 'Brand New Buyer',
+          country: 'IN',
+          pan: null,
+          gstin: null,
+          registration_number: null,
+        },
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('form', { name: 'Create buyer company' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('is not offered to a DEVELOPER, who cannot record a buyer at all', async () => {
+    signedInAs('DEVELOPER');
+    vi.mocked(getDeal).mockResolvedValue(deal({ buyer: null }));
+    renderPage();
+    await screen.findByText('Rotterdam shipment, March');
+    expect(screen.queryByRole('button', { name: 'Choose buyer company' })).not.toBeInTheDocument();
   });
 });

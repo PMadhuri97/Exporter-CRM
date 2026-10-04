@@ -60,7 +60,7 @@ writer of that field; everyone else reads it.
 | `gstins` | GST registrations | no (empty list) | Several per company, one per state. A duplicate across companies warns, never blocks — §4 |
 | `iec` | Importer-exporter code | no | §4 |
 | `cin` | Company registration number | no | §4 |
-| `source` | How the company reached us | **yes** | The existing `ExporterSource` values. **Immutable once set**, enforced by the service and by `trg_exporter_profile_source_immutability`. `RXIL` for RXIL intake |
+| `source` | How the company reached us | **yes** | The existing `ExporterSource` values. **Immutable once set**, enforced by the service and by `trg_exporter_profile_source_immutability`. `RXIL` for RXIL intake. `DEAL_BUYER` only for a company created as a deal's buyer, outside the pipeline: `POST /exporters` and the CSV import refuse it (R-21) |
 | `date_added` | When the record was created | server-set | Immutable |
 
 `legal_name` / `incorporation_country` on `onboarding_request`, and the
@@ -245,6 +245,57 @@ when there is nothing to warn about; the GSTIN in a warning is masked like
 every other identifier. Only the database's per-company uniqueness
 (`uq_exporter_gstin_customer_gstin`) exists — never a global one.
 
+### 4.1 A GST registration is a branch (task 3.12, plan P6-1)
+
+`exporter_gstin` grew in place rather than being copied into a `gst_registration`
+table. A row is now a **branch**: a GSTIN plus the state it was issued in, the GST
+portal's status, the registered address, a compliance flag, and whether the company
+still uses it.
+
+Three facts that are easy to confuse, kept apart:
+
+| Column | Whose answer it is |
+|---|---|
+| `status` (`UNVERIFIED` / `ACTIVE` / `CANCELLED` / `SUSPENDED`) | the **GST portal's**. `UNVERIFIED` is the default and means "nobody has checked", deliberately not `ACTIVE`, which would be a claim |
+| `active` | **ours** — whether we still use this branch |
+| `flag_status` (`NONE` / `FLAGGED`) | **compliance's** (task 3.14) |
+
+`state_code` and `state_name` are **derived** from the GSTIN's first two characters
+(`domain/gst_states.py`) and never entered: a typed state could contradict the GSTIN
+beside it. A state code this release does not know keeps `state_name = NULL` —
+recorded as unknown rather than guessed, because the format check accepts any two
+digits.
+
+**A registration is never deleted.** `trg_exporter_gstin_no_delete` refuses it, and
+`gstin_rows` no longer cascades `delete-orphan`. Before task 3.12 a company edit that
+dropped a GSTIN deleted its row; once a deal records its invoicing branch that delete
+hits `fk_deal_seller_gst_registration_id`'s `RESTRICT`, and where it succeeded it
+destroyed the record of a branch the company really traded through. Dropping one is a
+**deactivation**, and re-adding the same GSTIN reactivates that row rather than
+inserting a second — so there is one row per `(company, GSTIN)` forever.
+
+`PATCH /exporters/{id}` **no longer accepts `gstins`** (422, task 3.13). Adding,
+deactivating and flagging a branch are three decisions with three routes under
+`/exporters/{id}/gst-registrations` and `/gst-registrations/{id}`, each leaving its
+own `gst_registration` history row with the GSTIN masked. `company.gstins` means the
+**active** ones.
+
+**Flagging is per branch and per company.** A company trading through five states may
+have a problem in one of them, so a flag blocks handovers only for deals invoiced
+through *that* branch (decision BQ-6, task 2.9). A reason is required to flag **and**
+to unflag — the first is what the block will say, the second is why we decided the
+problem was resolved — and `ck_exporter_gstin_flag_reason` holds the first at the
+database. Because a GSTIN may legitimately sit on two companies (IQ-9), flagging one
+company's row does **not** touch the other's; the flag response names the other
+holders so nobody believes they have stopped trade that is still running (task 3.15).
+
+Flag and unflag are **COMPLIANCE and ADMIN only**. Recording and deactivating a
+branch stay with STAFF: which branches a company trades through is a record a
+relationship manager keeps.
+
+A "verify on the GST portal" link is served only to a role that sees the full GSTIN
+(task 3.17), because the link contains it.
+
 **Bulk import matching** (L2-13, assumption A14) matches an incoming row to an
 existing company on PAN, then GSTIN via its embedded PAN, then IEC, then CIN,
 and reports every row as accepted, rejected, or possible duplicate. It never
@@ -348,6 +399,33 @@ of export markets and a cleared field fit neither. `event_type` is passed
 explicitly because the shared writer would otherwise derive `profile_initial`
 from the `NULL` `from_status`. This settles open item O7.
 
+**Identifiers are masked in these rows**, for every reader: `pan`, `gstins`, `iec`,
+`cin` and `registration_number` are written masked (`registration_number` since R-15;
+before it the full value was written), and the history route masks them again when it
+serves a row, so a row written before R-15 is served masked too without being rewritten
+(the log is append-only).
+
+**`identity_type` follows the edit** (R-16): it is recomputed whenever `pan` or
+`registration_number` changes, by the same rule as on create. An edit that touches
+`country`, `pan` or `registration_number` must leave the company identifiable (IQ-7):
+moving a PAN-less company abroad without a number, or clearing a foreign company's
+number, is refused (422). A buyer the P4-6 migration created with no number keeps IQ-7's
+exception until one is added. Migration 0043 corrected the rows edited before this.
+
+**The completion list** (R-28, plan §17.2: unidentified buyers go "to the completion
+list"). `GET /companies/identity-completion?limit=&offset=` (every CRM reader, DEVELOPER
+included; API_USER 403) lists the companies with `identity_type` NULL — neither a PAN
+nor a registration number — that are not `ENDED`. Each item says what the company lacks,
+`missing`: `COUNTRY` when it has none, `REGISTRATION_NUMBER` outside India, `PAN` in
+India; and `required`, which is true for the first two (IQ-7) and false for a PAN, which
+is only worth having. Required ones come first, then oldest first. An item carries
+`company_id`, `name`, `country`, `pipeline_status`, `created_via` and `created_at`, and
+**no identifier** (the companies have none), so nothing in it is masked. It is a work
+list, not a pipeline filter: completing a company is the ordinary edit on its own page,
+and because that edit recomputes `identity_type`, the company leaves the list at once.
+The company page shows the same gap as a notice while `identity_type` is NULL. Limit
+1–200, default 50.
+
 **A tax identifier's old and new values are masked in the row itself** (PAN,
 GSTIN, IEC — last four characters visible), not just in the response. The
 history read route returns `details` to every CRM reader, including
@@ -423,7 +501,8 @@ Stated separately so nobody reads this contract as a description of the code.
 | `journey` (`LEAD`/`PROSPECT`/`CUSTOMER`) and `qualification` columns | **implemented** (0017); the old `lifecycle_status` beside it was dropped in 0020. Qualification moves it `LEAD` -> `PROSPECT` |
 | `conversation`, `background_check` fields | **implemented** — Dev 3A's 0016 and Dev 4A's 0015 (see §2.4) |
 | The ORM declares every index and constraint 0014/0017 created (PAN unique, the outcome chain) | **implemented** — checked by `test_orm_matches_the_onboarding_schema.py` |
-| `website` | an absolute `http(s)` link or nothing, on every write path (manual, CSV, RXIL); anything else is refused (422) |
+| `website` | **retired** (R11, decision IQ-16, task 3.7). No write path accepts one — the request schemas refuse the field (422) and the CSV importer reads the old `website` column and ignores it — and no response carries one. The column and every stored value are kept: nothing is destroyed, nothing is shown |
+| `registration_number` | whatever the company's own registrar issued, for a company not identified by a PAN. **Required for a company outside India** that holds no PAN (decision IQ-7); stored as the registrar writes it and compared with everything but the ASCII letters and digits removed, upper-cased — exactly the unique index's expression, so a lookup and an insert can never disagree (R-20) — so one number cannot be entered twice per country (`uq_exporter_profile_country_registration_number`). A number with no ASCII letter or digit is refused (422). A duplicate is refused with 409 `DUPLICATE_REGISTRATION_NUMBER` naming the holder, like a PAN — unlike a GSTIN, which stays warn-only (IQ-9). Masked like CIN |
 | `profile` history on edits; clearing a field | **implemented** (L2-07) |
 | Real links from contacts, activities, screening items, GSTINs and history | **implemented** (0014, `ON DELETE RESTRICT`); `verification_result.entity_reference` deliberately has none |
 | `name` required by the database | **not built** — waits for the unnamed create path to go |
