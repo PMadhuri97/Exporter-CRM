@@ -669,3 +669,97 @@ async def test_every_path_that_creates_a_registration_derives_its_state():
         )
     async with db_services.AsyncSessionLocal() as db:
         assert await BranchFlagService(db).is_flagged(row.id) == (True, "Karnataka")
+
+
+# ── R-47 (decision D-05, 4 October 2026): DEVELOPER is not served branch flags ──
+
+
+async def _flagged_and_deactivated_branches() -> tuple[uuid.UUID, str]:
+    """A company with a flagged branch and a deactivated one. Returns the company
+    and the flag's reason, which is the text DEVELOPER must never receive."""
+    customer_id, pan = await _company_with_pan()
+    reason = f"Returns unfiled {uuid.uuid4().hex[:8]}"
+    async with db_services.AsyncSessionLocal() as db:
+        flagged, _ = await GstRegistrationService(db).add(
+            customer_id, gstin=_gstin(pan, "27"), actor_id="rm-1"
+        )
+        closed, _ = await GstRegistrationService(db).add(
+            customer_id, gstin=_gstin(pan, "29"), actor_id="rm-1"
+        )
+        flagged_id, closed_id = flagged.id, closed.id
+    async with db_services.AsyncSessionLocal() as db:
+        await GstRegistrationService(db).flag(flagged_id, reason=reason, actor_id="compliance-1")
+    async with db_services.AsyncSessionLocal() as db:
+        await GstRegistrationService(db).deactivate(
+            closed_id, reason="Branch closed", actor_id="rm-1"
+        )
+    return customer_id, reason
+
+
+async def test_developer_gets_no_flag_status_reason_or_count(client: AsyncClient):
+    customer_id, reason = await _flagged_and_deactivated_branches()
+    _dev, dev_token = await user_with_role(client, UserRole.DEVELOPER)
+
+    response = await client.get(
+        f"{BASE}/exporters/{customer_id}/gst-registrations", headers=auth_header(dev_token)
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["flagged_count"] is None
+    assert len(body["registrations"]) == 2
+    for registration in body["registrations"]:
+        assert registration["flag_status"] is None
+        assert registration["flag_reason"] is None
+    # The branches themselves stay readable, deactivation included.
+    assert {r["active"] for r in body["registrations"]} == {True, False}
+    assert reason not in response.text
+    assert "FLAGGED" not in response.text
+
+
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.COMPLIANCE])
+async def test_staff_still_get_the_flag(client: AsyncClient, role: UserRole):
+    """OPERATIONS keeps the flag: it blocks the deals it is working on."""
+    customer_id, reason = await _flagged_and_deactivated_branches()
+    _user, token = await user_with_role(client, role)
+
+    response = await client.get(
+        f"{BASE}/exporters/{customer_id}/gst-registrations", headers=auth_header(token)
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["flagged_count"] == 1
+    flagged = [r for r in body["registrations"] if r["flag_status"] == "FLAGGED"]
+    assert len(flagged) == 1 and flagged[0]["flag_reason"] == reason
+
+
+async def test_developer_history_has_no_flag_rows_or_flag_details(client: AsyncClient):
+    customer_id, reason = await _flagged_and_deactivated_branches()
+    _dev, dev_token = await user_with_role(client, UserRole.DEVELOPER)
+    _ops, ops_token = await user_with_role(client, UserRole.OPERATIONS)
+    url = f"{BASE}/exporters/{customer_id}/history?dimension={HISTORY_DIMENSION_GST}"
+
+    dev = await client.get(url, headers=auth_header(dev_token))
+    ops = await client.get(url, headers=auth_header(ops_token))
+    assert dev.status_code == ops.status_code == 200
+
+    dev_events = [e["event_type"] for e in dev.json()["entries"]]
+    ops_events = [e["event_type"] for e in ops.json()["entries"]]
+    assert "gst_registration_flagged" in ops_events
+    assert "gst_registration_flagged" not in dev_events
+    # Adding and deactivating a branch stay readable, without the flag status.
+    assert sorted(dev_events) == [
+        "gst_registration_added",
+        "gst_registration_added",
+        "gst_registration_deactivated",
+    ]
+    assert all("flag_status" not in (e["details"] or {}) for e in dev.json()["entries"])
+    # The total agrees with the page, so paging does not promise rows it withholds.
+    assert dev.json()["total"] == len(dev_events)
+    assert reason not in dev.text
+
+    # The unfiltered timeline withholds them the same way.
+    timeline = await client.get(
+        f"{BASE}/exporters/{customer_id}/history", headers=auth_header(dev_token)
+    )
+    assert "gst_registration_flagged" not in timeline.text
+    assert reason not in timeline.text

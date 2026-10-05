@@ -399,3 +399,64 @@ async def test_lifting_the_flag_unblocks_the_handover():
     async with db_services.AsyncSessionLocal() as db:
         blocked = await DealService(db)._handover_blocked_reason(await _reload(deal_id))
     assert blocked is None, blocked
+
+
+# ── R-19 (decision D-04, 4 October 2026): a deactivated branch blocks ─────────
+
+
+async def test_a_deactivated_invoicing_branch_blocks_the_handover(client: AsyncClient):
+    """A branch can only be chosen while active, but it can be deactivated after a
+    deal recorded it. The deal then names a branch the company no longer invoices
+    from, and the lead decided that blocks rather than warns."""
+    seller, [maharashtra, karnataka] = await _seller_with_branches("27", "29")
+    deal_id = await _ready_to_hand_over(seller)
+    async with db_services.AsyncSessionLocal() as db:
+        await DealService(db).set_invoicing_branch(
+            deal_id, gst_registration_id=karnataka, actor_id="rm-1"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        await GstRegistrationService(db).deactivate(
+            karnataka, reason="Branch closed", actor_id="rm-1"
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(DealHandoverBlockedError) as caught:
+            await DealService(db).transition_stage(
+                deal_id, DealStage.HANDED_OVER, actor_id="rm-1"
+            )
+    assert "invoicing branch Karnataka is deactivated" in caught.value.detail
+    assert (await _reload(deal_id)).stage is DealStage.GATHERING_PAPERWORK
+
+    # The screen is told the same reason, and is offered no handover.
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    response = await client.get(f"{BASE}/deals/{deal_id}", headers=auth_header(token))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "invoicing branch Karnataka is deactivated" in body["handover_blocked_reason"]
+    assert "HANDED_OVER" not in {move["to_stage"] for move in body["allowed_stage_moves"]}
+
+    # The remedy is to invoice from an active branch, which clears the block.
+    async with db_services.AsyncSessionLocal() as db:
+        await DealService(db).set_invoicing_branch(
+            deal_id, gst_registration_id=maharashtra, actor_id="rm-1"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        blocked = await DealService(db)._handover_blocked_reason(await _reload(deal_id))
+    assert blocked is None, blocked
+
+
+async def test_deactivating_another_branch_leaves_the_deal_alone():
+    """Only the branch the deal is invoiced from counts (BQ-6's reasoning)."""
+    seller, [maharashtra, karnataka] = await _seller_with_branches("27", "29")
+    deal_id = await _ready_to_hand_over(seller)
+    async with db_services.AsyncSessionLocal() as db:
+        await DealService(db).set_invoicing_branch(
+            deal_id, gst_registration_id=maharashtra, actor_id="rm-1"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        await GstRegistrationService(db).deactivate(
+            karnataka, reason="Branch closed", actor_id="rm-1"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        blocked = await DealService(db)._handover_blocked_reason(await _reload(deal_id))
+    assert blocked is None, blocked

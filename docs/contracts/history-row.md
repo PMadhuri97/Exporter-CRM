@@ -87,7 +87,10 @@ from the page or the total — because decision D8 refuses DEVELOPER the same va
 reasons, review notes and screening comments on those gauges' own routes
 (`api/history_router.py`, `history_dimensions.HIDDEN_FROM_DEVELOPER`).
 `gst_registration`, `trade` and `pipeline` rows are served to DEVELOPER, so their
-writers store identifiers already masked (as `profile` rows do). `trade` rows carry
+writers store identifiers already masked (as `profile` rows do) — except a branch's
+`gst_registration_flagged` and `gst_registration_unflagged` rows, and the `flag_status`
+detail on the others, which DEVELOPER does not receive (R-47, decision D-05;
+`_EVENTS_HIDDEN_FROM_DEVELOPER` in `api/history_router.py`). `trade` rows carry
 none at all — an invoice number, a currency and a payment status say nothing about a
 company's identity, which is the same reason the trade routes serve no identifiers to
 any role (`trade-history.md` §4, IQ-19).

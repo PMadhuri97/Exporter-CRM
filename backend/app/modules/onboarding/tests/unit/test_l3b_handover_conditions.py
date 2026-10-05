@@ -22,6 +22,7 @@ from app.modules.onboarding.domain.handover_conditions import (
     HandoverSubject,
     blocked_reason,
     buyer_compliance_passes,
+    invoicing_branch_is_active,
     invoicing_branch_is_not_flagged,
     required_documents_are_present,
     seller_background_check_is_clear,
@@ -87,11 +88,15 @@ class _Requirements:
 
 
 class _Flags:
-    def __init__(self, flagged: bool, state: str | None = None) -> None:
+    def __init__(self, flagged: bool, state: str | None = None, *, active: bool = True) -> None:
         self._answer = (flagged, state)
+        self._active = (active, state)
 
     async def is_flagged(self, gst_registration_id):  # noqa: ANN001 - test double
         return self._answer
+
+    async def is_active(self, gst_registration_id):  # noqa: ANN001 - test double
+        return self._active
 
 
 # ── Assumption A5, the two conditions that decide today ──────────────────────
@@ -130,8 +135,12 @@ async def test_the_null_providers_report_nothing():
         seller_compliance_is_current,
         buyer_compliance_passes,
         invoicing_branch_is_not_flagged,
+        invoicing_branch_is_active,
     ):
         assert await condition(subject(), providers) is None, condition.__name__
+        assert (
+            await condition(subject(seller_gst_registration_id=_BRANCH), providers) is None
+        ), condition.__name__
 
     assert await blocked_reason(subject(), providers) is None
 
@@ -239,6 +248,30 @@ async def test_a_deal_with_no_branch_is_not_refused_by_the_branch_rule():
     assert await invoicing_branch_is_not_flagged(subject(), providers) is None
 
 
+async def test_a_deactivated_invoicing_branch_blocks_and_names_the_state():
+    """R-19, decision D-04 (4 October 2026): block, not warn."""
+    providers = HandoverProviders(branch_flags=_Flags(False, "Karnataka", active=False))
+    assert (
+        await invoicing_branch_is_active(subject(seller_gst_registration_id=_BRANCH), providers)
+        == "the invoicing branch Karnataka is deactivated"
+    )
+
+
+async def test_an_active_invoicing_branch_and_no_branch_pass_the_deactivation_rule():
+    providers = HandoverProviders(branch_flags=_Flags(False, "Karnataka", active=True))
+    recorded = subject(seller_gst_registration_id=_BRANCH)
+    assert await invoicing_branch_is_active(recorded, providers) is None
+    deactivated = HandoverProviders(branch_flags=_Flags(False, "Karnataka", active=False))
+    assert await invoicing_branch_is_active(subject(), deactivated) is None
+
+
+async def test_a_flagged_and_deactivated_branch_reports_both():
+    providers = HandoverProviders(branch_flags=_Flags(True, "Gujarat", active=False))
+    assert await blocked_reason(subject(seller_gst_registration_id=_BRANCH), providers) == (
+        "the invoicing branch Gujarat is flagged; the invoicing branch Gujarat is deactivated"
+    )
+
+
 # ── Every unmet condition at once ────────────────────────────────────────────
 
 
@@ -251,7 +284,7 @@ async def test_the_guard_reports_every_unmet_condition_in_order():
             legacy=party_facts(aml="FAILED"),
         ),
         required_documents=_Requirements("PRE_SHIPMENT"),
-        branch_flags=_Flags(True, "Gujarat"),
+        branch_flags=_Flags(True, "Gujarat", active=False),
     )
     reason = await blocked_reason(
         subject(
@@ -267,7 +300,8 @@ async def test_the_guard_reports_every_unmet_condition_in_order():
         "missing required documents: PRE_SHIPMENT; "
         "the background check expired on 2026-09-01; "
         "the buyer's AML check is FAILED, not PASSED; "
-        "the invoicing branch Gujarat is flagged"
+        "the invoicing branch Gujarat is flagged; "
+        "the invoicing branch Gujarat is deactivated"
     )
 
 

@@ -143,6 +143,58 @@ function BuyerSummary({ entry }: { entry: HistoryEntry }) {
   );
 }
 
+/**
+ * Rows whose `from → to` says nothing on its own: a buyer or branch row carries the
+ * deal's stage, an invoice row its currency, a branch row its state. Each line is
+ * built from the details keys the server writes for that event, and a row that lacks
+ * them falls back to the plain move.
+ */
+function eventLine(entry: HistoryEntry): { label: string; value?: string | null } | null {
+  const details = entry.details ?? {};
+  const state = text(details.state_name) ?? text(details.state_code);
+  switch (entry.event_type) {
+    case 'deal_buyer_company_set':
+      return { label: 'Buyer company recorded', value: text(details.buyer_name) };
+    case 'deal_invoicing_branch_set':
+      return details.gst_registration_id
+        ? { label: 'Invoicing branch recorded', value: state }
+        : { label: 'Invoicing branch cleared' };
+    case 'trade_invoice_recorded': {
+      const number = text(details.invoice_number);
+      const amount = text(details.amount);
+      const currency = text(details.currency);
+      return {
+        label: number ? `Invoice ${number} recorded` : 'Invoice recorded',
+        value: amount && currency ? `${amount} ${currency}` : null,
+      };
+    }
+    case 'trade_outcome_recorded': {
+      const proof = text(details.proof_status);
+      const status = humanize(text(details.payment_status) ?? entry.to_value);
+      return {
+        label: entry.from_value ? 'Payment outcome corrected' : 'Payment outcome recorded',
+        value: proof ? `${status} (${humanize(proof).toLowerCase()})` : status,
+      };
+    }
+    case 'gst_registration_added':
+      return { label: 'Branch added', value: state };
+    case 'gst_registration_reactivated':
+      return { label: 'Branch reactivated', value: state };
+    case 'gst_registration_deactivated':
+      return { label: 'Branch deactivated', value: state };
+    case 'gst_registration_flagged':
+      return { label: 'Branch flagged', value: state };
+    case 'gst_registration_unflagged':
+      return { label: 'Branch flag lifted', value: state };
+    case 'pipeline_initial':
+      return entry.to_value === 'NOT_IN_PIPELINE'
+        ? { label: "Created as a deal's buyer", value: 'not in the pipeline' }
+        : null;
+    default:
+      return null;
+  }
+}
+
 /** The thing a row is about, when it is one of several: an item, a criterion, a check. */
 function subjectOf(entry: HistoryEntry, labels: HistoryLabels): string | null {
   const details = entry.details ?? {};
@@ -173,6 +225,15 @@ function subjectOf(entry: HistoryEntry, labels: HistoryLabels): string | null {
 /** What changed, in one line. */
 function Summary({ entry, labels }: { entry: HistoryEntry; labels: HistoryLabels }) {
   if (entry.event_type === 'deal_buyer_changed') return <BuyerSummary entry={entry} />;
+  const line = eventLine(entry);
+  if (line) {
+    return (
+      <p className="text-sm text-ink">
+        <span className="font-medium">{line.label}</span>
+        {line.value && <span className="text-ink-2">: {line.value}</span>}
+      </p>
+    );
+  }
   if (entry.dimension === 'profile') {
     const field = text(entry.details?.field) ?? entry.to_value;
     const before = text(entry.details?.from);

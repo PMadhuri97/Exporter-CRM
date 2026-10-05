@@ -289,6 +289,12 @@ database. Because a GSTIN may legitimately sit on two companies (IQ-9), flagging
 company's row does **not** touch the other's; the flag response names the other
 holders so nobody believes they have stopped trade that is still running (task 3.15).
 
+**DEVELOPER is not served flags** (R-47, decision D-05 of 4 October 2026): a flag is a
+compliance judgement, withheld for D8's reason. On `GET …/gst-registrations` its
+`flag_status` and `flag_reason` are `null` and `flagged_count` is `null`; its history
+omits the flag and unflag rows and the `flag_status` detail. OPERATIONS keeps them —
+a flag blocks the deals it works on, and the refusal names it.
+
 Flag and unflag are **COMPLIANCE and ADMIN only**. Recording and deactivating a
 branch stay with STAFF: which branches a company trades through is a record a
 relationship manager keeps.

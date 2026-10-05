@@ -36,6 +36,7 @@ from app.modules.onboarding.api.schemas.gst_registration import (
     FlagGstRegistrationRequest,
     GstRegistrationListResponse,
     GstRegistrationResponse,
+    withholds_branch_flags,
 )
 from app.modules.onboarding.application.gst_registration_service import (
     GstRegistrationService,
@@ -73,7 +74,9 @@ def _response(registration, viewer: User, *, also_held_by=()) -> GstRegistration
         "GST portal's page for that GSTIN — is served only to a role that sees the "
         "full value, because the link contains it.\n\n"
         "`flagged_count` is how many active branches compliance has flagged, which "
-        "is what the company page's warning chip shows."
+        "is what the company page's warning chip shows.\n\n"
+        "DEVELOPER is not served flags: `flag_status`, `flag_reason` and "
+        "`flagged_count` are `null` for that role (R-47, decision D-05)."
     ),
     responses={
         200: {"model": GstRegistrationListResponse},
@@ -87,13 +90,18 @@ async def list_gst_registrations(
     db: AsyncSession = Depends(get_db),
 ) -> GstRegistrationListResponse:
     registrations = await GstRegistrationService(db).list_for_company(customer_id)
-    return GstRegistrationListResponse(
-        registrations=[_response(r, current_user) for r in registrations],
-        flagged_count=sum(
+    flagged_count = (
+        None
+        if withholds_branch_flags(current_user)
+        else sum(
             1
             for r in registrations
             if r.active and r.flag_status is GstRegistrationFlag.FLAGGED
-        ),
+        )
+    )
+    return GstRegistrationListResponse(
+        registrations=[_response(r, current_user) for r in registrations],
+        flagged_count=flagged_count,
     )
 
 

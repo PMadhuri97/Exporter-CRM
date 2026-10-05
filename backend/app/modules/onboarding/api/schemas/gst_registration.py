@@ -23,12 +23,23 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     GstRegistrationFlag,
     GstRegistrationStatus,
 )
-from app.platform.authentication.models import User
+from app.platform.authentication.models import User, UserRole
 
 #: The GST portal's own search page. The link is built per registration so a
 #: COMPLIANCE or ADMIN user can check a GSTIN against the source without copying it
 #: out by hand (task 3.17). Not an API we call: it is a page for a person.
 GST_PORTAL_SEARCH = "https://services.gst.gov.in/services/searchtp?tin="
+
+
+def withholds_branch_flags(viewer: User) -> bool:
+    """Whether a branch's flag status, reason and count are withheld from `viewer`.
+
+    DEVELOPER only (R-47, decision D-05 of 4 October 2026): a flag is a compliance
+    judgement, and D8 already refuses DEVELOPER the background check, its decisions
+    and the screening answers for the same reason. OPERATIONS keeps them — a flag
+    blocks the deals it is working on, and the refusal names it.
+    """
+    return viewer.role == UserRole.DEVELOPER
 
 
 class AddGstRegistrationRequest(BaseModel):
@@ -97,8 +108,10 @@ class GstRegistrationResponse(BaseModel):
     state_name: str | None
     status: GstRegistrationStatus
     address: str | None
-    flag_status: GstRegistrationFlag
-    #: Why it is flagged. `null` when it is not.
+    #: `null` for DEVELOPER: a flag is a compliance judgement, withheld from that role
+    #: like the background check itself (D8; R-47, decision D-05 of 4 October 2026).
+    flag_status: GstRegistrationFlag | None
+    #: Why it is flagged. `null` when it is not, and always `null` for DEVELOPER.
     flag_reason: str | None
     active: bool
     deactivated_at: datetime | None
@@ -115,9 +128,10 @@ class GstRegistrationResponse(BaseModel):
             return self.model_copy(
                 update={"verify_url": f"{GST_PORTAL_SEARCH}{self.gstin}"}
             )
-        return self.model_copy(
-            update={"gstin": mask_identifier(self.gstin), "verify_url": None}
-        )
+        update: dict[str, object] = {"gstin": mask_identifier(self.gstin), "verify_url": None}
+        if withholds_branch_flags(viewer):
+            update |= {"flag_status": None, "flag_reason": None}
+        return self.model_copy(update=update)
 
 
 class GstRegistrationListResponse(BaseModel):
@@ -131,7 +145,8 @@ class GstRegistrationListResponse(BaseModel):
     registrations: list[GstRegistrationResponse]
     #: How many **active** branches are flagged — what the company page's warning
     #: chip counts, served rather than recomputed so the screen and the guard agree.
-    flagged_count: int = 0
+    #: `null` for DEVELOPER, who is not served flags (R-47).
+    flagged_count: int | None = 0
 
 
 __all__ = [
@@ -141,4 +156,5 @@ __all__ = [
     "FlagGstRegistrationRequest",
     "GstRegistrationListResponse",
     "GstRegistrationResponse",
+    "withholds_branch_flags",
 ]

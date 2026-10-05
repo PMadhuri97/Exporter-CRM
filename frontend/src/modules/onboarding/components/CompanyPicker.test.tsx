@@ -296,6 +296,22 @@ describe('CompanyPicker — creating a buyer company (R-24)', () => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 });
   });
 
+  it('looks the name up on Enter, not only when the field loses focus', async () => {
+    vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
+    renderWithCreate();
+
+    const field = screen.getByPlaceholderText('Company name');
+    fireEvent.change(field, { target: { value: 'Elbe Garn Handels GmbH' } });
+    expect(await screen.findByText(/Press Enter to look the name up/)).toBeInTheDocument();
+    fireEvent.keyDown(field, { key: 'Enter' });
+
+    expect(await screen.findByRole('button', { name: 'Create buyer company' })).toBeInTheDocument();
+    expect(matchCompany).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(matchCompany).mock.calls[0]?.[0]).toMatchObject({
+      name: 'Elbe Garn Handels GmbH',
+    });
+  });
+
   it('offers it when the server answers NEW, and sends what the form holds', async () => {
     vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
     const { onCreate } = renderWithCreate(undefined, { country: 'NL' });

@@ -62,11 +62,27 @@ _HIDDEN_FROM_DEVELOPER = HIDDEN_FROM_DEVELOPER
 #: rating — background-check data D8 refuses DEVELOPER on the check's own route. The
 #: row itself stays: the journey is readable, and `CUSTOMER` already says the check
 #: cleared.
-_DETAILS_HIDDEN_FROM_DEVELOPER = frozenset({"risk_rating", "clearing_decision_id"})
+#: A GST registration's add and deactivate rows also carry the branch's
+#: `flag_status`, which DEVELOPER is not served (R-47, decision D-05).
+_DETAILS_HIDDEN_FROM_DEVELOPER = frozenset(
+    {"risk_rating", "clearing_decision_id", "flag_status"}
+)
+
+#: Rows DEVELOPER does not see inside a dimension it otherwise reads: flagging and
+#: unflagging a branch. Their from/to *is* the flag status and their reason the
+#: flag's reason — the compliance judgement R-47 (decision D-05, 4 October 2026)
+#: withholds from DEVELOPER on the registrations route as well.
+_EVENTS_HIDDEN_FROM_DEVELOPER = frozenset(
+    {"gst_registration_flagged", "gst_registration_unflagged"}
+)
 
 
 def _hidden_for(user: User) -> frozenset[str]:
     return _HIDDEN_FROM_DEVELOPER if user.role == UserRole.DEVELOPER else frozenset()
+
+
+def _hidden_events_for(user: User) -> frozenset[str]:
+    return _EVENTS_HIDDEN_FROM_DEVELOPER if user.role == UserRole.DEVELOPER else frozenset()
 
 
 def _hidden_details_for(user: User) -> frozenset[str]:
@@ -105,7 +121,8 @@ _ORDERING = (
         "`dimension`. DEVELOPER does not receive `background_check`, "
         "`verification`, `screening`, `check_cycle` or `background_check_approval` "
         "rows, nor a row's `risk_rating` or `clearing_decision_id` details "
-        "(decision D8). " + _ORDERING
+        "(decision D8), nor a branch's flag and unflag rows or its `flag_status` "
+        "detail (R-47). " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},
@@ -141,6 +158,7 @@ async def list_company_history(
         customer_id,
         dimension=dimension,
         exclude_dimensions=_hidden_for(current_user),
+        exclude_event_types=_hidden_events_for(current_user),
         limit=limit,
         offset=offset,
     )
@@ -155,7 +173,8 @@ async def list_company_history(
         "Every recorded change to one deal, including the changes it caused "
         "elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does "
         "not receive `background_check`, `verification` or `screening` rows, nor a "
-        "row's `risk_rating` or `clearing_decision_id` details (decision D8). " + _ORDERING
+        "row's `risk_rating` or `clearing_decision_id` details (decision D8), nor a "
+        "branch's flag and unflag rows or its `flag_status` detail (R-47). " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},
@@ -175,6 +194,10 @@ async def list_deal_history(
     There is no `dimension` filter: everything about a deal is the deal.
     """
     entries, total = await HistoryService(db).list_for_deal(
-        deal_id, exclude_dimensions=_hidden_for(current_user), limit=limit, offset=offset
+        deal_id,
+        exclude_dimensions=_hidden_for(current_user),
+        exclude_event_types=_hidden_events_for(current_user),
+        limit=limit,
+        offset=offset,
     )
     return await _page(db, current_user, entries, total, limit, offset)

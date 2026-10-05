@@ -166,6 +166,7 @@ class HistoryService:
         *,
         dimension: str | None = None,
         exclude_dimensions: Collection[str] = (),
+        exclude_event_types: Collection[str] = (),
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[Sequence[ExporterLifecycleHistory], int]:
@@ -174,7 +175,8 @@ class HistoryService:
         Unfiltered this returns the journey, every gauge and every deal
         interleaved — the company timeline. ``dimension`` narrows it to one
         gauge, which is what a gauge panel asks for. ``exclude_dimensions``
-        leaves whole dimensions out of both the page and the total.
+        leaves whole dimensions out of both the page and the total, and
+        ``exclude_event_types`` single kinds of row.
 
         **The deals include the ones this company buys on** (task 2.7). A deal's
         history rows are keyed to the selling company, so without this a buyer
@@ -188,6 +190,7 @@ class HistoryService:
             company_id,
             dimension=dimension,
             exclude_dimensions=exclude_dimensions,
+            exclude_event_types=exclude_event_types,
             include_deals_as_buyer=True,
             limit=limit,
             offset=offset,
@@ -196,6 +199,7 @@ class HistoryService:
             company_id,
             dimension=dimension,
             exclude_dimensions=exclude_dimensions,
+            exclude_event_types=exclude_event_types,
             include_deals_as_buyer=True,
         )
         return rows, total
@@ -205,6 +209,7 @@ class HistoryService:
         deal_id: uuid.UUID,
         *,
         exclude_dimensions: Collection[str] = (),
+        exclude_event_types: Collection[str] = (),
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[Sequence[ExporterLifecycleHistory], int]:
@@ -215,10 +220,16 @@ class HistoryService:
         up, and inventing a 404 would mean guessing.
         """
         rows = await self._history.list_by_deal(
-            deal_id, exclude_dimensions=exclude_dimensions, limit=limit, offset=offset
+            deal_id,
+            exclude_dimensions=exclude_dimensions,
+            exclude_event_types=exclude_event_types,
+            limit=limit,
+            offset=offset,
         )
         total = await self._history.count_by_deal(
-            deal_id, exclude_dimensions=exclude_dimensions
+            deal_id,
+            exclude_dimensions=exclude_dimensions,
+            exclude_event_types=exclude_event_types,
         )
         return rows, total
 

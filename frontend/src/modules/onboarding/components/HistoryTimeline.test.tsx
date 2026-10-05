@@ -236,3 +236,104 @@ describe('the ledger (frontend-plan §6.5)', () => {
     expect(within(filters).queryByRole('button', { name: 'Verification' })).not.toBeInTheDocument();
   });
 });
+
+describe('rows whose move alone says nothing', () => {
+  it('names the buyer company, the branch, the invoice and the outcome on a deal', async () => {
+    vi.mocked(listDealHistory).mockResolvedValue(
+      page([
+        entry({
+          deal_id: DEAL_ID,
+          dimension: 'trade',
+          event_type: 'trade_outcome_recorded',
+          from_value: 'PAID',
+          to_value: 'DISPUTED',
+          details: { payment_status: 'DISPUTED', proof_status: 'CLAIMED', currency: 'EUR' },
+          occurred_at: '2026-10-05T12:50:00Z',
+        }),
+        entry({
+          deal_id: DEAL_ID,
+          dimension: 'trade',
+          event_type: 'trade_outcome_recorded',
+          to_value: 'PAID',
+          details: { payment_status: 'PAID', proof_status: 'PROVEN', currency: 'EUR' },
+          occurred_at: '2026-10-05T12:49:00Z',
+        }),
+        entry({
+          deal_id: DEAL_ID,
+          dimension: 'trade',
+          event_type: 'trade_invoice_recorded',
+          to_value: 'EUR',
+          details: { invoice_number: 'DWT-2026-118', amount: '48250.00', currency: 'EUR' },
+          occurred_at: '2026-10-05T12:48:00Z',
+        }),
+        entry({
+          deal_id: DEAL_ID,
+          dimension: 'deal',
+          event_type: 'deal_invoicing_branch_set',
+          to_value: 'GATHERING_PAPERWORK',
+          details: { gst_registration_id: 'b1', state_name: 'Maharashtra', state_code: '27' },
+          occurred_at: '2026-10-05T12:47:00Z',
+        }),
+        entry({
+          deal_id: DEAL_ID,
+          dimension: 'deal',
+          event_type: 'deal_invoicing_branch_set',
+          to_value: 'GATHERING_PAPERWORK',
+          details: { gst_registration_id: null, state_name: null, state_code: null },
+          occurred_at: '2026-10-05T12:46:00Z',
+        }),
+        entry({
+          deal_id: DEAL_ID,
+          dimension: 'deal',
+          event_type: 'deal_buyer_company_set',
+          to_value: 'GATHERING_PAPERWORK',
+          details: { buyer_name: 'Elbe Garn Handels GmbH', had_legacy_buyer: false },
+          occurred_at: '2026-10-05T12:45:00Z',
+        }),
+        entry({
+          deal_id: DEAL_ID,
+          dimension: 'pipeline',
+          event_type: 'pipeline_initial',
+          to_value: 'NOT_IN_PIPELINE',
+          details: { source_ref: `deal:${DEAL_ID}` },
+          occurred_at: '2026-10-05T12:44:00Z',
+        }),
+      ]),
+    );
+    renderWith(<DealHistory dealId={DEAL_ID} />);
+    const text = (await rows()).map((row) => row.textContent);
+    expect(text[0]).toContain('Payment outcome corrected: Disputed (claimed)');
+    expect(text[1]).toContain('Payment outcome recorded: Paid (proven)');
+    expect(text[2]).toContain('Invoice DWT-2026-118 recorded: 48250.00 EUR');
+    expect(text[3]).toContain('Invoicing branch recorded: Maharashtra');
+    expect(text[4]).toContain('Invoicing branch cleared');
+    expect(text[5]).toContain('Buyer company recorded: Elbe Garn Handels GmbH');
+    expect(text[6]).toContain("Created as a deal's buyer: not in the pipeline");
+    for (const line of text) expect(line).not.toContain('Gathering Paperwork');
+  });
+
+  it('names the branch on GST registration rows', async () => {
+    vi.mocked(listCompanyHistory).mockResolvedValue(
+      page([
+        entry({
+          dimension: 'gst_registration',
+          event_type: 'gst_registration_deactivated',
+          to_value: 'Karnataka',
+          details: { state_name: 'Karnataka', state_code: '29' },
+          occurred_at: '2026-10-05T12:42:00Z',
+        }),
+        entry({
+          dimension: 'gst_registration',
+          event_type: 'gst_registration_added',
+          to_value: '42',
+          details: { state_name: null, state_code: '42' },
+          occurred_at: '2026-10-05T12:41:00Z',
+        }),
+      ]),
+    );
+    renderWith(<CompanyHistory customerId={COMPANY_ID} />);
+    const [deactivated, added] = await rows();
+    expect(deactivated).toHaveTextContent('Branch deactivated: Karnataka');
+    expect(added).toHaveTextContent('Branch added: 42');
+  });
+});

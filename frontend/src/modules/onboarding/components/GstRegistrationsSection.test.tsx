@@ -139,6 +139,20 @@ describe('GstRegistrationsSection', () => {
     expect(screen.getByText(/Returns unfiled/)).toBeInTheDocument();
   });
 
+  it('shows no flag and no count when the server withholds them (DEVELOPER, R-47)', async () => {
+    // The server sends `null` for a role it does not serve flags to; the screen
+    // renders what it is given and decides nothing about roles itself.
+    vi.mocked(listGstRegistrations).mockResolvedValue({
+      registrations: [registration({ flag_status: null, flag_reason: null })],
+      flagged_count: null,
+    });
+    renderSection({ canEdit: false, canFlag: false });
+    expect(await screen.findByText('Maharashtra')).toBeInTheDocument();
+    expect(screen.queryByText(/Flagged/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/branch flagged/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('requires a reason to flag, and says what the reason is for', async () => {
     renderSection();
     fireEvent.click(await screen.findByRole('button', { name: /Flag/ }));

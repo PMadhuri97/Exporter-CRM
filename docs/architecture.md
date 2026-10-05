@@ -226,7 +226,8 @@ P6-7): a deal may be handed over only when its company is a `CUSTOMER` whose bac
 check is `CLEAR` and not expired; its required documents are present and scanned clean;
 the seller has no `FAILED` sanctions or AML result (BQ-3); the buyer's sanctions and AML
 are both `PASSED` (BQ-4); and, when the seller has an active GST registration, the deal
-records an invoicing branch that is not flagged (IQ-20, BQ-6). Until then the deal names
+records an invoicing branch that is neither flagged (IQ-20, BQ-6) nor deactivated
+(R-19, decision D-04). Until then the deal names
 every unmet condition (`domain/handover_conditions.py`, contract `deal-and-buyer.md`
 §6.1). The guard share-locks both companies, in `customer_id` order, while the handover
 commits (D10), so a concurrent flag or reopen waits. The
@@ -339,7 +340,9 @@ every such lookup is audited. DEVELOPER does not receive `background_check`,
 `verification` or `screening` history rows, nor the risk rating and clearing decision
 recorded on the `CUSTOMER` journey row, since D8 refuses it that data on those gauges'
 own routes; for the same reason a deal response gives DEVELOPER no stage moves and no
-handover-blocked reason.
+handover-blocked reason. GST branch flags are withheld from DEVELOPER the same way (R-47, decision
+D-05): a registration's `flag_status` and `flag_reason`, the list's `flagged_count`, the
+flag and unflag history rows and the `flag_status` detail on the others.
 
 **Design principle:** a role that cannot reveal a value gets no reveal control at all,
 not a disabled one — a disabled eye icon would still leak "this data exists, you're

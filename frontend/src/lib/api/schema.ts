@@ -1102,6 +1102,8 @@ export interface paths {
          *     `state_code` and `state_name` are derived from each GSTIN, never entered. The GSTIN is masked for OPERATIONS and DEVELOPER, and `verify_url` — the GST portal's page for that GSTIN — is served only to a role that sees the full value, because the link contains it.
          *
          *     `flagged_count` is how many active branches compliance has flagged, which is what the company page's warning chip shows.
+         *
+         *     DEVELOPER is not served flags: `flag_status`, `flag_reason` and `flagged_count` are `null` for that role (R-47, decision D-05).
          */
         get: operations["list_gst_registrations_api_v1_onboarding_exporters__customer_id__gst_registrations_get"];
         put?: never;
@@ -1337,7 +1339,7 @@ export interface paths {
         };
         /**
          * A company's history
-         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details (decision D8). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
+         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details (decision D8), nor a branch's flag and unflag rows or its `flag_status` detail (R-47). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
          */
         get: operations["list_company_history_api_v1_onboarding_exporters__customer_id__history_get"];
         put?: never;
@@ -1357,7 +1359,7 @@ export interface paths {
         };
         /**
          * A deal's history
-         * @description Every recorded change to one deal, including the changes it caused elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does not receive `background_check`, `verification` or `screening` rows, nor a row's `risk_rating` or `clearing_decision_id` details (decision D8). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
+         * @description Every recorded change to one deal, including the changes it caused elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does not receive `background_check`, `verification` or `screening` rows, nor a row's `risk_rating` or `clearing_decision_id` details (decision D8), nor a branch's flag and unflag rows or its `flag_status` detail (R-47). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
          */
         get: operations["list_deal_history_api_v1_onboarding_deals__deal_id__history_get"];
         put?: never;
@@ -4751,7 +4753,7 @@ export interface components {
              * Flagged Count
              * @default 0
              */
-            flagged_count: number;
+            flagged_count: number | null;
         };
         /**
          * GstRegistrationResponse
@@ -4782,7 +4784,7 @@ export interface components {
             status: components["schemas"]["GstRegistrationStatus"];
             /** Address */
             address: string | null;
-            flag_status: components["schemas"]["GstRegistrationFlag"];
+            flag_status: components["schemas"]["GstRegistrationFlag"] | null;
             /** Flag Reason */
             flag_reason: string | null;
             /** Active */

@@ -169,6 +169,14 @@ export function CompanyPicker({
               setCreating(false);
             }}
             onBlur={lookUpName}
+            // Enter looks the name up too: waiting for the field to lose focus left
+            // the picker looking stuck to anyone who typed a name and pressed Enter.
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                lookUpName();
+              }
+            }}
           />
         </span>
       </label>
@@ -290,7 +298,7 @@ export function CompanyPicker({
         creating ? null : (
           <EmptySection>
             No company on file matches that.
-            {onCreate && !matched ? ' Finish typing the name to look it up.' : ''}
+            {onCreate && !matched ? ' Press Enter to look the name up.' : ''}
           </EmptySection>
         )
       ) : byName.length > 0 ? (

@@ -88,6 +88,7 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         *,
         dimension: str | None = None,
         exclude_dimensions: Collection[str] = (),
+        exclude_event_types: Collection[str] = (),
         include_deals_as_buyer: bool = False,
         limit: int | None = None,
         offset: int = 0,
@@ -113,6 +114,8 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
 
         ``exclude_dimensions`` leaves whole dimensions out — the history route
         uses it to keep from DEVELOPER what decision D8 keeps from it elsewhere.
+        ``exclude_event_types`` does the same for single kinds of row within a
+        dimension DEVELOPER otherwise reads (a branch's flag and unflag, R-47).
 
         ``include_deals_as_buyer`` adds the rows of deals this company buys on; see
         ``_about_company``. It composes with ``exclude_dimensions``, so D8 still
@@ -128,6 +131,8 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
             stmt = stmt.where(ExporterLifecycleHistory.dimension == dimension)
         if exclude_dimensions:
             stmt = stmt.where(ExporterLifecycleHistory.dimension.not_in(exclude_dimensions))
+        if exclude_event_types:
+            stmt = stmt.where(ExporterLifecycleHistory.event_type.not_in(exclude_event_types))
         stmt = stmt.order_by(
             ExporterLifecycleHistory.created_at.desc(),
             ExporterLifecycleHistory.id.desc(),
@@ -143,6 +148,7 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         *,
         dimension: str | None = None,
         exclude_dimensions: Collection[str] = (),
+        exclude_event_types: Collection[str] = (),
         include_deals_as_buyer: bool = False,
     ) -> int:
         """How many rows the matching `list_by_customer` call would return in
@@ -159,6 +165,8 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
             stmt = stmt.where(ExporterLifecycleHistory.dimension == dimension)
         if exclude_dimensions:
             stmt = stmt.where(ExporterLifecycleHistory.dimension.not_in(exclude_dimensions))
+        if exclude_event_types:
+            stmt = stmt.where(ExporterLifecycleHistory.event_type.not_in(exclude_event_types))
         return int(await self.session.scalar(stmt) or 0)
 
     async def list_by_deal(
@@ -166,6 +174,7 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         deal_id: uuid.UUID,
         *,
         exclude_dimensions: Collection[str] = (),
+        exclude_event_types: Collection[str] = (),
         limit: int | None = None,
         offset: int = 0,
     ) -> Sequence[ExporterLifecycleHistory]:
@@ -181,6 +190,8 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         stmt = select(ExporterLifecycleHistory).where(ExporterLifecycleHistory.deal_id == deal_id)
         if exclude_dimensions:
             stmt = stmt.where(ExporterLifecycleHistory.dimension.not_in(exclude_dimensions))
+        if exclude_event_types:
+            stmt = stmt.where(ExporterLifecycleHistory.event_type.not_in(exclude_event_types))
         stmt = stmt.order_by(
             ExporterLifecycleHistory.created_at.desc(),
             ExporterLifecycleHistory.id.desc(),
@@ -191,7 +202,11 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         return result.scalars().all()
 
     async def count_by_deal(
-        self, deal_id: uuid.UUID, *, exclude_dimensions: Collection[str] = ()
+        self,
+        deal_id: uuid.UUID,
+        *,
+        exclude_dimensions: Collection[str] = (),
+        exclude_event_types: Collection[str] = (),
     ) -> int:
         stmt = (
             select(func.count())
@@ -200,6 +215,8 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         )
         if exclude_dimensions:
             stmt = stmt.where(ExporterLifecycleHistory.dimension.not_in(exclude_dimensions))
+        if exclude_event_types:
+            stmt = stmt.where(ExporterLifecycleHistory.event_type.not_in(exclude_event_types))
         return int(await self.session.scalar(stmt) or 0)
 
     async def find_transition(

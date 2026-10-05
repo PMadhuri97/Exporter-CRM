@@ -12,9 +12,10 @@
 background check and compliance facts).
 
 **State.** All of it is built, and §6's handover works end to end. The guard is a list
-of conditions over injected providers (§6.1), and **all seven now decide**: the two
+of conditions over injected providers (§6.1), and **all eight now decide**: the two
 assumption-A5 conditions, the required documents (§6.1.1), both parties' compliance
-(P3-3b, P3-4, P4-7) and the two invoicing-branch rules (P6-7). The handover is
+(P3-3b, P3-4, P4-7), the two invoicing-branch rules (P6-7) and the deactivated-branch
+rule (R-19, decision D-04). The handover is
 persisted as well as announced (§6.2).
 
 Architecture §3.3 ("The deal"), §3.5 and §3.6 are the source.
@@ -361,6 +362,7 @@ move, so the screen explains instead of offering a button that 409s (§4.1).
 | 5 | the buyer's sanctions **and** AML are `PASSED` | `ComplianceFactsReader` | **live** (P3-4, P4-7) |
 | 6 | the invoicing branch is recorded, when the seller has one | `BranchFlagReader` | **live** (P6-7, task 2.9) |
 | 7 | the invoicing branch is not flagged | `BranchFlagReader` | **live** (P6-7, task 2.9) |
+| 8 | the invoicing branch is not deactivated | `BranchFlagReader` | **live** (R-19, decision D-04, 5 October 2026) |
 
 Conditions 1 and 2 are real: a company becomes a `CUSTOMER` when it is a `PROSPECT`
 with a `CLEAR` check (`company-record.md` §3.2), and the check is read through
@@ -368,7 +370,7 @@ Developer 4A's published helper (`background-check.md` §10) — this service ne
 creates or writes that column (`company-record.md` §2.4). A company never checked
 reads `NOT_STARTED`, and "not `CLEAR`" is never treated as "clear".
 
-Conditions 3–7 ask an **injected provider**, and all of them are now live. "No facts"
+Conditions 3–8 ask an **injected provider**, and all of them are now live. "No facts"
 is never read as "everything passed": the null providers (`NoComplianceFacts`,
 `NoRequiredDocuments`, `NoBranchFlags`) each answer the way that **adds no refusal**,
 so a caller that has not injected a real reader gets the guard it had before that
@@ -401,15 +403,18 @@ and only Developer 3's lane knows that a GSTIN's state is its first two characte
 branch, not the company (decision BQ-6): deals invoiced from the company's other
 branches proceed.
 
-**A branch deactivated after it was recorded neither blocks nor warns — undecided
-(D-04).** A deactivated branch cannot be *chosen* (`set_invoicing_branch` refuses it,
-422), but a deal that recorded a branch before it was deactivated is not re-checked:
-neither condition 6 nor 7 asks whether the recorded branch is still active, and the
-handover proceeds. Whether that should block, or only warn, is waiting on the lead
-(`remaining-work.md` D-04, R-19); until then this is the behaviour, stated rather than
-implied.
+**Condition 8: a branch deactivated after it was recorded blocks** (R-19; the lead
+decided "block, not warn" as D-04 on 4 October 2026). A deactivated branch cannot be
+*chosen* (`set_invoicing_branch` refuses it, 422), but it can be deactivated after a
+deal recorded it; that deal then names a branch the company no longer invoices from.
+The reader's `is_active` answers with the state's name, like `is_flagged`, so the
+message is "the invoicing branch Karnataka is deactivated". The remedy is to choose an
+active branch (the picker shows the recorded one as "— deactivated" and offers the
+active ones). A branch both flagged and deactivated reports both conditions. The null
+`NoBranchFlags` answers "active", so an un-injected reader adds no refusal. **On
+deploy**, a deal already invoiced from a branch deactivated earlier becomes blocked.
 
-Every write that changes what conditions 6 and 7 read — adding, deactivating, flagging
+Every write that changes what conditions 6–8 read — adding, deactivating, flagging
 or unflagging a branch — locks the owning company `FOR UPDATE` before the branch, so it
 waits for a handover that holds the company `FOR SHARE` and the next guard sees it
 (R-18; the background check's D10 for branches).

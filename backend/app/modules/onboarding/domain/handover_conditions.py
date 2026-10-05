@@ -19,6 +19,8 @@ the seller's compliance is current    ``ComplianceFactsReader``    (Dev 1, P4-7)
 the buyer's sanctions and AML pass    ``ComplianceFactsReader``    (Dev 1, P4-7)
 the invoicing branch is recorded      ``BranchFlagReader``         (Dev 3, P6-7)
 the invoicing branch is not flagged   ``BranchFlagReader``         (Dev 3, P6-7)
+the invoicing branch is not           ``BranchFlagReader``         (R-19, D-04)
+deactivated
 ====================================  ==========================================
 
 So the guard is a **list**, in a fixed order, and each provider is **injected**.
@@ -169,9 +171,17 @@ class BranchFlagReader(Protocol):
     seller has a branch to record. A seller with no GST registration at all is not
     asked for one, which is the difference between a rule and a nuisance — some
     sellers legitimately have none.
+
+    ``is_active`` answers about one registration, with its state's name for the same
+    reason as ``is_flagged``: a branch deactivated after a deal recorded it blocks
+    that deal's handover (R-19, decision D-04 of 4 October 2026).
     """
 
     async def is_flagged(
+        self, gst_registration_id: uuid.UUID
+    ) -> tuple[bool, str | None]: ...
+
+    async def is_active(
         self, gst_registration_id: uuid.UUID
     ) -> tuple[bool, str | None]: ...
 
@@ -216,7 +226,7 @@ class NoBranchFlags:
     """The null ``BranchFlagReader``: no branch is flagged, and no seller is known to
     have one.
 
-    Both answers are the ones that **add no refusal**, which is what a null provider
+    Every answer is the one that **adds no refusal**, which is what a null provider
     must do: a caller that has not injected a real reader gets the guard it had
     before these rules existed. In particular ``has_active_registrations`` returning
     ``False`` means "we cannot see any", so the "record the invoicing branch" rule
@@ -227,6 +237,11 @@ class NoBranchFlags:
         self, gst_registration_id: uuid.UUID
     ) -> tuple[bool, str | None]:
         return (False, None)
+
+    async def is_active(
+        self, gst_registration_id: uuid.UUID
+    ) -> tuple[bool, str | None]:
+        return (True, None)
 
     async def has_active_registrations(self, company_id: uuid.UUID) -> bool:
         return False
@@ -404,6 +419,26 @@ async def invoicing_branch_is_not_flagged(
     return f"the invoicing branch {state or 'registration'} is flagged"
 
 
+async def invoicing_branch_is_active(
+    subject: HandoverSubject, providers: HandoverProviders
+) -> str | None:
+    """R-19 (decision D-04, 4 October 2026: block, not warn). A branch can only be
+    *chosen* while active, but it can be deactivated after a deal recorded it; that
+    deal is then invoiced from a branch the company no longer trades through.
+
+    Kept apart from the flag rule for the same reason the recorded rule is: the
+    remedy differs — choose another active branch — and a branch can be both
+    flagged and deactivated, in which case both are reported.
+    """
+    registration_id = subject.seller_gst_registration_id
+    if registration_id is None:
+        return None
+    active, state = await providers.branch_flags.is_active(registration_id)
+    if active:
+        return None
+    return f"the invoicing branch {state or 'registration'} is deactivated"
+
+
 #: The guard, in reporting order: the seller's own standing first, then the
 #: paperwork, then the two parties' compliance, then the branch. Ordered so the
 #: cheapest and most fundamental refusals read first in a joined message — a
@@ -416,6 +451,7 @@ HANDOVER_CONDITIONS: tuple[Condition, ...] = (
     buyer_compliance_passes,
     invoicing_branch_is_recorded,
     invoicing_branch_is_not_flagged,
+    invoicing_branch_is_active,
 )
 
 

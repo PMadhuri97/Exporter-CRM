@@ -76,6 +76,28 @@ class BranchFlagService:
         flagged = found.flag_status is GstRegistrationFlag.FLAGGED
         return (flagged, found.state_name or found.state_code)
 
+    async def is_active(
+        self, gst_registration_id: uuid.UUID
+    ) -> tuple[bool, str | None]:
+        """Whether this registration is still active, and how to name its branch
+        (R-19, decision D-04).
+
+        ``(True, None)`` for a registration that does not exist, for the reason
+        ``is_flagged`` gives: a data error is not a reason to block a handover, and
+        the composite FK makes it unreachable from a real deal.
+        """
+        row = await self._db.execute(
+            select(
+                ExporterGstin.active,
+                ExporterGstin.state_name,
+                ExporterGstin.state_code,
+            ).where(ExporterGstin.id == gst_registration_id)
+        )
+        found = row.one_or_none()
+        if found is None:
+            return (True, None)
+        return (bool(found.active), found.state_name or found.state_code)
+
     async def has_active_registrations(self, company_id: uuid.UUID) -> bool:
         """Whether this company has any branch it could invoice from.
 
