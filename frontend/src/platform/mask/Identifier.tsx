@@ -1,5 +1,5 @@
 /**
- * An identifier — PAN, GSTIN, IEC, CIN, a registration number (frontend-plan §6.6).
+ * An identifier — PAN, GSTIN, IEC, CIN, a registration number (frontend-plan §6.14).
  * Replaces `MaskedValue` everywhere; the one component that owns the masking rule
  * on screen.
  *
@@ -13,7 +13,7 @@
  *
  * Open question (reported, not decided here): a role that may reveal
  * already reads identifiers in full, so its eye changes nothing visible. Either the
- * eye goes, or those roles read masked until they reveal (frontend-plan §6.6).
+ * eye goes, or those roles read masked until they reveal (frontend-plan §6.14).
  */
 
 import { useState } from 'react';
@@ -51,7 +51,7 @@ export function Identifier({
   const fullOnScreen = mayReveal;
 
   return (
-    <span className={cn('inline-flex items-center gap-1 font-mono text-data tabular-nums text-ink', className)}>
+    <span className={cn('inline-flex items-center gap-1 text-secondary tabular-nums text-ink', className)}>
       {/* Unchanged from MaskedValue: a role that may reveal reads the value in full
           ("never masks PAN for COMPLIANCE"); every other role reads it masked. */}
       <span>{shown ? value : maskIdentifier(value, { role })}</span>

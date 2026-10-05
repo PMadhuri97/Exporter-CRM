@@ -1,5 +1,5 @@
 export { CompaniesViewSwitch } from './CompaniesViewSwitch';
-export { JourneyChip, JourneyDots, MarkerBadge, QualificationChip } from './CompanyChips';
+export { MarkerBadge, QualificationChip } from './CompanyChips';
 export { MarkerControl } from './MarkerControl';
 export { DuplicatePanMessage } from './DuplicatePanMessage';
 export { duplicatePanHolder } from './duplicate-pan';
@@ -9,7 +9,7 @@ export { BuyerChecks } from './BuyerChecks';
 // The conversation gauge's READY_NOW prompt (seam S2), which opens a deal through
 // `OpenDealForm`.
 export { OpenDealPrompt } from './OpenDealPrompt';
-// Deals and documents. `DocumentUpload` and `DocumentList` are
+// Deals and documents. `DocumentUpload` and `DocumentsByCategory` are
 // shared by the company page's Documents tab and the deal page, because a
 // document row and an upload form read the same wherever they hang;
 // `ScanStatusBadge` says which "scanner" reached a verdict.
@@ -23,7 +23,6 @@ export { NotInPipelineNotice } from './NotInPipelineNotice';
 export { IdentityGapNotice } from './IdentityGapNotice';
 export type { NotInPipelineNoticeProps } from './NotInPipelineNotice';
 export type { CompanyDealsListProps } from './CompanyDealsList';
-export { DocumentList } from './DocumentList';
 export { DocumentUpload } from './DocumentUpload';
 export { ScanStatusBadge } from './ScanStatusBadge';
 // The shared history log, and who acted, by name.
@@ -66,4 +65,18 @@ export type { InvoicingBranchPickerProps } from './InvoicingBranchPicker';
 // ── Compliance engine ──
 // Also mounted on the deal page (seller and buyer company).
 export { CompanyComplianceSummary } from './CompanyComplianceSummary';
-export * from './standing';
+export * from './record';
+
+// The gauges as worded status badges (frontend-plan §6.4), one per gauge.
+export {
+  BackgroundCheckBadge,
+  ConversationBadge,
+  JourneyBadge,
+  MarkerStatusBadge,
+  OutsidePipelineBadge,
+  QualificationBadge,
+  RiskBadge,
+} from './StatusBadge';
+
+// The company record's right column: related records as cards (frontend-plan §6.6).
+export { CompanyRelatedCards } from './CompanyRelatedCards';

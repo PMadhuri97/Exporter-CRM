@@ -26,39 +26,16 @@ export const JOURNEY_LABEL: Record<ExporterJourney, string> = {
   CUSTOMER: 'Customer',
 };
 
-/**
- * Full, static Tailwind class strings — never built by interpolating a colour
- * name at runtime: Tailwind's JIT only generates classes it can see literally
- * in source.
- */
-export const JOURNEY_CHIP_CLASSES: Record<ExporterJourney, string> = {
-  LEAD: 'bg-transparent px-0 text-ink',
-  PROSPECT: 'bg-transparent px-0 text-ink',
-  CUSTOMER: 'bg-transparent px-0 text-ink',
-};
-
 export const QUALIFICATION_LABEL: Record<QualificationState, string> = {
   NOT_YET_REVIEWED: 'Not yet reviewed',
   QUALIFIED: 'Qualified',
   NOT_QUALIFIED: 'Not qualified',
 };
 
-export const QUALIFICATION_CHIP_CLASSES: Record<QualificationState, string> = {
-  NOT_YET_REVIEWED: 'bg-sunken text-ink-2',
-  QUALIFIED: 'bg-positive-tint text-positive',
-  NOT_QUALIFIED: 'bg-negative-tint text-negative',
-};
-
 export const MARKER_LABEL: Record<ExporterMarker, string> = {
   NONE: 'Active relationship',
   PAUSED: 'Paused',
   ENDED: 'Ended',
-};
-
-export const MARKER_CHIP_CLASSES: Record<ExporterMarker, string> = {
-  NONE: '',
-  PAUSED: 'bg-attention-tint text-attention',
-  ENDED: 'bg-idle-tint text-ink-2',
 };
 
 /** The verb for moving the marker to a value, for buttons. */

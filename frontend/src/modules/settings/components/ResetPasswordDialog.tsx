@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { Composer } from '@/components';
+import { SidePanel } from '@/components';
 
 import { useResetUserPassword } from '../hooks';
 import { assessPassword } from '../passwordStrength';
@@ -20,7 +20,7 @@ export function ResetPasswordDialog({ user, onClose }: ResetPasswordDialogProps)
   const mutation = useResetUserPassword();
 
   return (
-    <Composer
+    <SidePanel
       open
       onOpenChange={(open) => {
         if (!open) onClose();
@@ -54,6 +54,6 @@ export function ResetPasswordDialog({ user, onClose }: ResetPasswordDialogProps)
         Every active session for this account is revoked, so anyone already signed in as them
         is signed out.
       </p>
-    </Composer>
+    </SidePanel>
   );
 }

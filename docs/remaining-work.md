@@ -6,7 +6,9 @@ decision, and what is deliberately not being done.** Audited on **4 October 2026
 `main` @ `05b43eb` the same evening. The lead answered every open decision then (§4), and
 the work that follows from them is planned in §12. A UAT and demo-readiness audit on
 `main` @ `46097bd` (the redesign merged) on **5 October 2026** built R-19 and R-47 early,
-fixed four demo issues and rebuilt the demo database (§13).
+fixed four demo issues and rebuilt the demo database (§13). On **6 October 2026** the
+second frontend plan — a standard enterprise CRM look in place of the redesign's, which the
+TL rejected — was built on `feature/frontend-redesign` (R-57, §14).
 
 It replaces `open-items.md` (merged in here and deleted on 4 October 2026) and the three
 lane lists `dev1/dev2/dev3-remaining-work.md` (deleted earlier the same day). §11 says where
@@ -38,6 +40,7 @@ unhyphenated D1–D17 are in `contracts/background-check.md` §14 and
 | **Migration head** | One head, `onboarding_0043_identity_type`. Next free number **0044**. Upgrade from an empty database, `downgrade -3` and back, and `alembic check` are clean (re-run on `main`) |
 | **Merge readiness** | Merged. No blocker was found |
 | **Demo readiness** | **Ready — re-verified 5 October 2026 on the redesigned UI (§13).** Later that day, at the lead's request, `aner_settlement` was rebuilt clean as the **only** CRM database on the development server and every other one dropped, `crm_demo` included (§13.6); the paragraph that follows is the 4 October state. **4 October:** ready. Sign-in accounts on `crm_demo`: one ADMIN, two COMPLIANCE (maker-checker needs the second), one RM (OPERATIONS) and one DEVELOPER, each with a full name; passwords kept outside the repository. Demo database `crm_demo` built fresh at head with the sample companies (demo.md §1); `demo.md` §3 and §5 rehearsed against a copy of it through the API and, for 91 screens across four roles, in a headless browser on the production build: no error, no failed request, role gating as §5 says. `demo.md` corrected where the sample data had moved on |
+| **Frontend** | **R-57 built, not merged** (6 October 2026, §14): the enterprise look of `frontend-plan.md` (second version), all three phases, unstaged on `feature/frontend-redesign` off `b209cc7`. Waiting on the TL's sign-off of the style guide and the company record, then the formal `demo.md` walk. Decision D-22 is open |
 | **Release readiness** | **Not ready to release.** The buyer migration (P4-6) has run in no environment (§8). The rehearsal copy's "325 rows for a person" and "13 handed-over deals without a snapshot" turned out to be **test-suite debris**, not data problems (§8), so a real rehearsal on a copy of each environment is still owed. The decided work in §12 is not built. No real document or customer data may be stored yet (P7-7, §5) |
 
 ---
@@ -125,7 +128,7 @@ come before R-25 and R-26.
 
 | | |
 |---|---|
-| Status | **DONE — VERIFIED** (5 October 2026). Phases 1–5 merged to `main` in PR #19 (`a77725d`, `46097bd`); walked in the UAT of §13 |
+| Status | **DONE — VERIFIED** (5 October 2026). Phases 1–5 merged to `main` in PR #19 (`a77725d`, `46097bd`); walked in the UAT of §13. **Its look is superseded by R-57** (the TL rejected it as reading AI-generated); its structure — fail-closed access, lazy screens, the token mechanism, the shell registry, the component logic — is kept |
 | Priority | Medium |
 | Why it remains | — (kept for its record: tokens and primitives, shell, signature components, screens, polish) |
 | Source | `frontend-plan.md` §14 |
@@ -134,6 +137,21 @@ come before R-25 and R-26.
 | Validation | `frontend-plan.md` §15; the role-matrix test stays green |
 | Dependencies | None (A7 for the drift check) |
 | Decision required? | No |
+| Owner | The developer completing the project |
+
+#### R-57 — Frontend plan, second version: the enterprise look
+
+| | |
+|---|---|
+| Status | **BUILT, NOT MERGED** (6 October 2026). Phases 1–3 of `frontend-plan.md` §14 built and verified, unstaged on `feature/frontend-redesign` (§14 here) |
+| Priority | Medium |
+| Why it remains | The TL signs off the style guide (`/__design`) and the company record before it merges (`frontend-plan.md` §14, Phase 1 "done when"); the formal `demo.md` §3–§5 walk as each role at 1366 × 768 and 1440 × 900, with screenshots to the TL, is still owed (Phase 2 "done when"); D-22 is open |
+| Source | `frontend-plan.md` (second version, 5 October 2026) |
+| Affected code | `frontend/src` (about 200 files), `frontend/package.json` and `pnpm-lock.yaml`, `frontend/index.html`, `frontend/public/favicon.svg`; `docs/demo.md` §2–§5; `docs/frontend-plan.md` §14 status lines |
+| Required implementation | Built as the plan says. Backend asks A1, A3, A4 and A7 (R-46) are not needed for it: each screen ships its fallback and switches over when the ask lands |
+| Validation | `frontend-plan.md` §15; gates in §14.3 here; the role-matrix test stays green |
+| Dependencies | The TL's sign-off; D-22 |
+| Decision required? | D-22 (the identifier eye) |
 | Owner | The developer completing the project |
 
 #### Smaller items
@@ -195,7 +213,8 @@ changes with the code).
 | **D-17** *(new)* | Which databases are "every environment" for OPS-0 – OPS-6 and R-25? | **Only those holding data someone needs:** `crm_uat_walk` (on another server; the lead runs the steps there), `crm_release_audit`, the demo database. Development and test databases are rebuilt from empty plus sample data, never migrated through P4-6 | §8; R-25's precondition |
 | **D-18** *(new)* | R-31: what happens to companies that already have no name? | **Pre-check, then `NOT NULL`.** Code stops creating them now; the contract migration refuses while any exists and lands after OPS-0 shows none in scope. (A `NOT VALID` check was rejected: Postgres re-checks it on every update, and the gauges live on the company row.) | R-31 (PR-E, PR-L) |
 | **D-19** *(new)* | Which frontend-plan backend asks are built? | **A1, A3, A4, A7.** A6 and A8 deferred; A5 stays deferred (§5) | R-46 |
-| **D-20** *(new)* | Frontend plan §17 Q1–Q3 | **The designed defaults:** placeholder brand mark until a logo exists, a read-only Developer desk, Review in the Admin rail | R-33 Phases 1–4 as `frontend-plan.md` describes |
+| **D-20** *(new)* | Frontend plan §17 Q1–Q3 | **The designed defaults:** placeholder brand mark until a logo exists, a read-only Developer desk, Review in the Admin rail | R-33 Phases 1–4 as `frontend-plan.md` describes. Still applies under the second plan, with its names: a read-only Developer Home, Approvals for Admin |
+| **D-21** *(new, 5 October)* | The second frontend plan's §17 Q1 and Q4, and its font (§5.3) | **The plan's recommendations:** the placeholder brand blue `#0B5CAD` and the "Aner Labs" wordmark until Aner's brand colour and logo exist; the system UI font (Segoe UI), not IBM Plex Sans; light by default with dark in the user menu. To be confirmed by the TL with the style guide | R-57 |
 | — | Contract open items: `company-record.md` O1 (rename `customer_id`), O4 (mask CIN); `criterion-result.md` Q1 (range criteria), Q2 (`qualification_initial` row), Q3 (acknowledgement), Q4 (RXIL package) | **Closed:** O1 no rename; O4 CIN masked (architecture §9); Q1 not needed; **Q2 won't be built** (the column default stands for it); Q3 obsolete; Q4 is D12 (§5) | PR-A |
 | — | The DPDP meeting | **Nothing in the plan depends on it.** P7-4, P7-5 and P7-7 stay deferred, and only sample data is used | §5 |
 
@@ -206,7 +225,15 @@ the maker-checker details, the expiry backfill, keeping `BuyerChecks` until P4-1
 verification side, no D2 amendment for placeholders, and no document required to `CLEAR`
 (to be revisited with P7-7).
 
-**No decision is open.** A new one gets the next id, D-21.
+**One decision is open.**
+
+| Id | Question | Options | Blocks |
+|---|---|---|---|
+| **D-22** *(DECISION REQUIRED)* | The second frontend plan's §17 Q3: Compliance and Admin read identifiers in full by decision, so the identifier's eye changes nothing for them | Drop the eye; **or** mask identifiers for those roles too until revealed | Nothing; R-57 keeps today's behaviour until it is answered |
+
+`frontend-plan.md` §17 Q2 (the demo date) is a scheduling question for the lead, not a
+decision: if a demo comes first, the screens it walks are already built. A new decision
+gets the next id, D-23.
 
 ---
 
@@ -273,7 +300,7 @@ Not current work. Each starts only when its trigger happens.
 | R-30 | PAN from GSTIN (P6-4) | DEFERRED | §5 |
 | R-31 | `name`/`country` `NOT NULL` | STILL OPEN (D-18) | §3.2; §12 PR-E, PR-L |
 | R-32 | Name matching at scale | DEFERRED | §5 |
-| R-33 | Frontend plan | DONE — VERIFIED (5 October; PR #19) | §3.2; `access.matrix.test.tsx`; §13 |
+| R-33 | Frontend plan | DONE — VERIFIED (5 October; PR #19); look superseded by R-57 | §3.2; `access.matrix.test.tsx`; §13 |
 
 ### 6.2 Rows carried from `open-items.md` (deleted 4 October 2026)
 
@@ -460,7 +487,8 @@ number: **0044**.
 | 6 | PR-F Backend asks | R-46 (A1, A4, A7) | PR-B for A3 only | — |
 | 7 | PR-G Refresh-token reuse window | R-49 | — | possibly `auth_0006` |
 | 8 | PR-H CI | R-50 | the lead enables Actions | — |
-| 9 | PR-I1 – I5 Redesign | R-33 Phases 1 – 5 | PR-F for the asks' fallbacks to switch off | — |
+| 9 | PR-I1 – I5 Redesign | R-33 Phases 1 – 5 — **merged as PR #19**; its look superseded by PR-M | — | — |
+| 9a | PR-M Enterprise frontend | R-57 — **built** (§14) | The TL's sign-off; PR-F only to switch each ask's fallback off | — |
 | ops | OPS-0 – OPS-6 per environment (§8) | run by the lead | PR-A (inventory, notice) | — |
 | 10 | PR-J Retire `deal_buyer` writes | R-25 | OPS-5 passed in every environment in scope | **0044** |
 | 11 | PR-K Delete `BuyerChecks` | R-26 | PR-J | — |
@@ -633,7 +661,8 @@ not run in parallel (plan §16.1): PR-B is the only one here.
 
 ### PR-I1 – I5 — The redesign (R-33 Phases 1 – 5)
 
-As `frontend-plan.md` §14 lays out, one PR per phase and one per screen in Phase 4, with
+**Merged as PR #19 on 5 October 2026; its look is superseded by PR-M.** Kept for the record:
+as the first `frontend-plan.md` §14 laid out, one PR per phase and one per screen in Phase 4, with
 D-20's defaults. Phase 1 tokens, type and primitives (Ink & Paper; Instrument Serif/Sans and
 JetBrains Mono; the raw-palette lint rule; the 21 files of §3.2 moved to tokens); Phase 2 the
 shell (rail, context bar, ⌘K, shortcuts; Pipeline folded into Companies; lucide removed);
@@ -642,6 +671,16 @@ Phase 3 the signature components; Phase 4 the screens in §14's order, re-compos
 rebuilding them; Phase 5 polish, and each landed ask's fallback switched off. The role-matrix
 test stays green throughout and gains PR-F's drift check. Gates per phase: `frontend-plan.md`
 §15.
+
+### PR-M — The enterprise frontend (R-57)
+
+Built on `feature/frontend-redesign` (§14). One pull request or three (one per phase of the
+second `frontend-plan.md` §14), as the lead prefers; Phase 1 touches most of `frontend/src`,
+so it lands before any other frontend change. **Before merging:** the TL signs off
+`/__design` and the company record; the `demo.md` §3–§5 walk as RM, Compliance, Admin and
+Developer at 1366 × 768 and 1440 × 900 with screenshots to the TL; D-22 answered or left at
+today's behaviour. Gates: `frontend-plan.md` §15 and `development.md` §7 (frontend). No
+backend change, no migration.
 
 ### PR-J — Retire `deal_buyer` writes (R-25), after OPS-5 everywhere in scope
 
@@ -777,3 +816,42 @@ audit's scratch copies. The pre-rebuild `aner_settlement` is in the same folder.
 (`DATABASE_URL` and `DATABASE_SYNC_URL` both set), never against `aner_settlement`, which
 it would fill with test companies again. A dump restores with
 `pg_restore -U aner -d <new db> <file>.dump` into an empty database.
+
+---
+
+## 14. The enterprise frontend (6 October 2026)
+
+R-57: the second `frontend-plan.md` built on `feature/frontend-redesign`, branched from
+`main` @ `b209cc7`. Every change is unstaged, for the lead to review and commit. The
+developer reviewed each step in the browser as it was built: the style guide, then the
+shell, then each screen.
+
+### 14.1 What was built
+
+| Phase | What |
+|---|---|
+| 1. Look and shell | Tokens: neutral greys, the placeholder brand blue as four `accent` tokens, the status colours kept, light by default (D-21). The system UI font; the three bundled fonts removed. Fluent UI System Icons in place of Phosphor. Primitives: `Badge`, `Card` with a header row, `SidePanel` (was `Composer`), `Path`, `RecordHeader`, `RecordListItem`, `Breadcrumbs`, underlined `Tabs`. Shell: app header (wordmark, search, *+ New*, user menu), labelled side navigation with *Collapse* and a drawer under 1024 px, keyboard cut to `/`, Ctrl+K and Ctrl+/ (the `g` chords and single-letter keys removed). Names: Home, Companies, Pipeline, Follow-ups, Approvals (`/approvals`; `/review` redirects); tabs Details, Activity, Deals, History. Every status a worded badge; page morphs removed; the style guide rebuilt as the TL's review page |
+| 2. The demo's screens | Company record (header, journey path, right column of related cards, Activity tab with composer and timeline, Background check status card); deal record (stage moves as header actions, handover readiness, seller and buyer cards, history column); Companies list as record list items, Pipeline board, *New company* as a side panel; Home as a grid of work cards (*Items to approve*, *My follow-ups* with *Mark done*, *Check back on*, pipeline counts, Re-KYC due, setup, recent companies); Follow-ups by due-date cards; Approvals as a split view |
+| 3. The rest and clean-up | Import, RXIL intake, identity completion and Settings restyled; *Qualification criteria* and *Required documents* inside the Settings frame. Removed: `Lamp`, `lamps.ts` (wording kept in `components/record/status.ts`), the unused `DocumentList`, the motion helpers, the old shell (`Rail`, `ContextBar`, `CommandBar`, `BottomBar`, `Shortcuts`). Renamed per `frontend-plan.md` §18.1, with `components/standing/` now `components/record/`. Comments citing the first plan's sections updated. `demo.md` §2–§5 names updated |
+
+### 14.2 How it was verified
+
+Headless Chrome on this branch's development server, signed in through the sign-in form as
+four throwaway users (RM, Compliance, Admin, Developer) created in `aner_settlement` for the
+purpose — `ui-check-{operations,compliance,admin,developer}-*@aner-test.com`. Every screen
+was walked as the roles that reach it, at 1366 and 1440 px, and the main screens in dark:
+no console error and no failed request, and each role saw what `frontend-plan.md` §4.1
+says. **The four users were deactivated afterwards** (6 October 2026: `is_active` false, 15
+sessions revoked; sign-in now answers "Account is inactive"). No sample company was
+changed. The formal `demo.md` walk with screenshots for the TL is still owed (R-57).
+
+### 14.3 Gates (6 October 2026, `b209cc7` + the unstaged changes)
+
+| Gate | Result |
+|---|---|
+| TypeScript | 0 errors |
+| ESLint | 0 errors, 2 warnings (`AuthContext.tsx`, pre-existing) |
+| Frontend tests | 63 files, **880** passed. Tests were rewritten with the screens they cover; the tests for removed behaviour (the `g` chords, page single-letter keys, the command palette's actions, the page morph) were replaced by tests that those keys do nothing and by tests for the header search and the shortcut list |
+| Production build | Passes; entry 157 kB gzip (146 kB before; the new header menus and tooltips), within the plan's 250 kB budget. `/__design` is not in the build |
+| Backend | Not touched |
+

@@ -31,7 +31,7 @@ export function IdentityGapNotice({ country, canEdit }: IdentityGapNoticeProps) 
     <div
       role="status"
       data-testid="identity-gap-notice"
-      className={`flex gap-3 rounded-lg border p-4 text-sm ${
+      className={`flex gap-3 rounded-lg border p-4 text-body ${
         required
           ? 'border-attention/40 bg-attention-tint'
           : 'border-dashed border-line-strong bg-paper'

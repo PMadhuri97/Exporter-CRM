@@ -29,7 +29,7 @@ export function Tabs({
 }: {
   value: string;
   onValueChange: (value: string) => void;
-  /** `underline` for page sections, `pill` for filters inside a card. */
+  /** `underline` for a record's tabs, `pill` for a filter inside a card. */
   variant?: TabsVariant;
   className?: string;
   children: ReactNode;
@@ -53,7 +53,7 @@ export function TabsList({
       className={cn(
         variant === 'underline'
           ? 'flex gap-1 overflow-x-auto border-b border-line'
-          : 'inline-flex flex-wrap gap-0.5 rounded-md bg-sunken p-0.5',
+          : 'inline-flex flex-wrap gap-1',
         className,
       )}
       {...rest}
@@ -76,10 +76,11 @@ export function TabsTrigger({
         if (!event.defaultPrevented && !rest.disabled) onValueChange(value);
       }}
       className={cn(
-        'inline-flex items-center gap-1.5 whitespace-nowrap text-body font-medium transition-colors duration-quick',
+        'inline-flex items-center gap-1.5 whitespace-nowrap text-body transition-colors duration-quick',
+        // §6.15: underlined, with a brand-blue bar under the selected tab.
         variant === 'underline'
-          ? '-mb-px border-b-2 border-transparent px-3 py-2.5 text-ink-3 hover:text-ink data-[state=active]:border-ink data-[state=active]:text-ink'
-          : 'rounded px-3 py-1 text-ink-2 hover:text-ink data-[state=active]:bg-surface data-[state=active]:text-ink data-[state=active]:ring-1 data-[state=active]:ring-line-strong',
+          ? '-mb-px h-11 border-b-[3px] border-transparent px-3 pt-[3px] text-ink-2 hover:text-ink data-[state=active]:border-accent-solid data-[state=active]:font-semibold data-[state=active]:text-ink'
+          : 'h-7 rounded px-2.5 text-secondary text-ink-2 hover:bg-sunken hover:text-ink data-[state=active]:bg-accent-tint data-[state=active]:font-semibold data-[state=active]:text-accent',
         className,
       )}
       {...rest}

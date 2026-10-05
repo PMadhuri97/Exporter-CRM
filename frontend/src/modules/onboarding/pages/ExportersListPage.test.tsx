@@ -186,11 +186,11 @@ describe('ExportersListPage — write screens by role', () => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
   });
 
-  it.each(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s Add company and Import CSV', (role) => {
+  it.each(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s New company and Import companies', (role) => {
     mockUser(role, 'user-1');
     renderPage();
-    expect(screen.getByRole('link', { name: /Add company/ })).toHaveAttribute('href', '/companies/new');
-    expect(screen.getByRole('link', { name: /Import CSV/ })).toHaveAttribute('href', '/companies/import');
+    expect(screen.getByRole('link', { name: /New company/ })).toHaveAttribute('href', '/companies/new');
+    expect(screen.getByRole('link', { name: /Import companies/ })).toHaveAttribute('href', '/companies/import');
   });
 
   it.each(['DEVELOPER', 'API_USER'])(
@@ -198,9 +198,9 @@ describe('ExportersListPage — write screens by role', () => {
     (role) => {
       mockUser(role, 'user-1');
       renderPage();
-      expect(screen.queryByRole('link', { name: /Add company/ })).not.toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: /Import CSV/ })).not.toBeInTheDocument();
-      expect(screen.queryByText(/Add company|Import CSV/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /New company/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /Import companies/ })).not.toBeInTheDocument();
+      expect(screen.queryByText(/New company|Import companies/)).not.toBeInTheDocument();
     },
   );
 

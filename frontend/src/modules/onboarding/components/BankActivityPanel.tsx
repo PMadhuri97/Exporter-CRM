@@ -27,7 +27,7 @@ export function BankActivityPanel({ customerId }: { customerId: string }) {
   }
   if (query.isError || !data) {
     return (
-      <div role="alert" className="rounded-lg border border-negative/30 bg-negative-tint p-3 text-sm text-negative">
+      <div role="alert" className="rounded-lg border border-negative/30 bg-negative-tint p-3 text-body text-negative">
         Could not load bank activity.{' '}
         <button type="button" className="underline" onClick={() => void query.refetch()}>
           Retry
@@ -45,7 +45,7 @@ export function BankActivityPanel({ customerId }: { customerId: string }) {
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-ink">Bank-linked activity</h3>
+              <h3 className="text-body font-semibold text-ink">Bank-linked activity</h3>
               {data.provider_feed_connected ? (
                 <span className="rounded-sm bg-positive-tint px-2 py-1 text-caption font-medium text-positive">
                   Feed connected
@@ -59,7 +59,7 @@ export function BankActivityPanel({ customerId }: { customerId: string }) {
                 </span>
               )}
             </div>
-            <p className="mt-1 text-sm leading-6 text-ink-2">{data.provider_feed_message}</p>
+            <p className="mt-1 text-body leading-6 text-ink-2">{data.provider_feed_message}</p>
           </div>
         </div>
       </div>
@@ -73,7 +73,7 @@ export function BankActivityPanel({ customerId }: { customerId: string }) {
             ['Open suspicious activity flags', String(data.open_findings)],
           ].map(([label, value]) => (
             <div key={label} className="rounded-lg border border-line p-4">
-              <p className="text-xs text-ink-3">{label}</p>
+              <p className="text-caption text-ink-3">{label}</p>
               <p className="mt-1 text-lg font-semibold text-ink">{value}</p>
             </div>
           ))}
@@ -82,12 +82,12 @@ export function BankActivityPanel({ customerId }: { customerId: string }) {
 
       {data.findings.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line-strong px-4 py-6 text-center">
-          <p className="text-sm font-medium text-ink">
+          <p className="text-body font-medium text-ink">
             {data.provider_feed_connected
               ? 'No bank activity findings'
               : 'Bank activity is not being monitored'}
           </p>
-          <p className="mt-1 text-xs text-ink-2">
+          <p className="mt-1 text-caption text-ink-2">
             {data.provider_feed_connected
               ? 'The provider feed has reported no suspicious activity for this exporter.'
               : 'With no provider feed, there is nothing to report — this is not a clean result.'}
@@ -102,12 +102,12 @@ export function BankActivityPanel({ customerId }: { customerId: string }) {
                 <VerificationStatusChip value={finding.risk_level} />
                 <VerificationStatusChip value={finding.status} />
               </div>
-              <p className="mt-1 text-xs text-ink-3">
+              <p className="mt-1 text-caption text-ink-3">
                 {finding.provider} · {humanize(finding.finding_type)} ·{' '}
                 {formatDateTime(finding.detected_at)}
               </p>
               {finding.description && (
-                <p className="mt-2 text-sm text-ink-2">{finding.description}</p>
+                <p className="mt-2 text-body text-ink-2">{finding.description}</p>
               )}
             </div>
           ))}

@@ -34,7 +34,7 @@ export interface NotInPipelineNoticeProps {
 export function NotInPipelineNotice({ what, onBringIn, busy }: NotInPipelineNoticeProps) {
   return (
     <div
-      className="flex flex-col gap-3 rounded-lg border border-dashed border-line-strong bg-paper p-5 text-sm"
+      className="flex flex-col gap-3 rounded-lg border border-dashed border-line-strong bg-paper p-5 text-body"
       data-testid="not-in-pipeline-notice"
     >
       <p className="flex items-start gap-2 font-medium text-ink">
@@ -50,7 +50,7 @@ export function NotInPipelineNotice({ what, onBringIn, busy }: NotInPipelineNoti
           <Button size="sm" variant="secondary" onClick={onBringIn} disabled={busy}>
             Bring into the pipeline <Icon.forward size={14} />
           </Button>
-          <span className="text-xs text-ink-3">
+          <span className="text-caption text-ink-3">
             Do this if we are going to sell to them. Its journey starts at LEAD.
           </span>
         </div>

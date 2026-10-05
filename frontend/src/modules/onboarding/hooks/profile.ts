@@ -55,7 +55,7 @@ export const COUNT_CAP = 200;
 /**
  * How many companies stand at one journey stage, up to `COUNT_CAP`: the list route
  * has no total yet, so a full page reads "200+". Shares its cache with the
- * desk's pipeline counts.
+ * Home's pipeline counts.
  */
 export function useJourneyCount(journey: ExporterSearchParams['journey']) {
   const query = useQuery({
@@ -66,9 +66,8 @@ export function useJourneyCount(journey: ExporterSearchParams['journey']) {
 }
 
 /**
- * Loads a company's dossier ahead of a click — on hover or focus of its row (§12.3).
- * Resolves `true` once the record is cached, so a morph can tell the dossier will
- * draw at once; it never rejects.
+ * Loads a company's record ahead of a click — on hover or focus of its row (§12.3).
+ * Resolves `true` once the record is cached; it never rejects.
  */
 export function usePrefetchCompany() {
   const queryClient = useQueryClient();

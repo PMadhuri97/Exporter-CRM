@@ -52,17 +52,17 @@ export function OpenDealPrompt({ customerId, isStaff }: OpenDealPromptProps) {
         <Icon.trade size={16} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-ink">
+        <p className="text-body font-medium text-ink">
           This company has something they want financed
         </p>
-        <p className="mt-0.5 text-sm text-ink/80">
+        <p className="mt-0.5 text-body text-ink/80">
           {isStaff
             ? 'Open a deal to record what they want financed, then add the buyer and the paperwork.'
             : 'A staff member can open a deal for it.'}
         </p>
       </div>
       {isStaff && (
-        <Button size="sm" variant="primary" onClick={() => setOpening(true)}>
+        <Button size="sm" variant="secondary" onClick={() => setOpening(true)}>
           <Icon.add size={14} />
           Open a deal
         </Button>

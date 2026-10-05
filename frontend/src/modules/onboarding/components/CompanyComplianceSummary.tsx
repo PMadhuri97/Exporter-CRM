@@ -41,7 +41,7 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
 
   if (check.isLoading) {
     return (
-      <div data-testid="company-compliance-summary" className="text-sm text-ink-3">
+      <div data-testid="company-compliance-summary" className="text-body text-ink-3">
         Loading compliance…
       </div>
     );
@@ -49,7 +49,7 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
   if (check.isError || !check.data) {
     const refused = check.error instanceof ApiError && check.error.status === 403;
     return (
-      <div data-testid="company-compliance-summary" className="text-sm text-ink-3">
+      <div data-testid="company-compliance-summary" className="text-body text-ink-3">
         {refused ? (
           'Compliance details are not available to your role.'
         ) : (
@@ -77,7 +77,7 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
       {compliance.is_clear && compliance.clear_expires_at && (
         <p
           data-testid="compliance-expiry"
-          className={`text-xs ${compliance.is_clear_current ? 'text-ink-2' : 'font-medium text-negative'}`}
+          className={`text-caption ${compliance.is_clear_current ? 'text-ink-2' : 'font-medium text-negative'}`}
         >
           {compliance.is_clear_current
             ? `Clear until ${formatDate(compliance.clear_expires_at)}`
@@ -91,7 +91,7 @@ export function CompanyComplianceSummary({ companyId }: { companyId: string }) {
       <Link
         to={paths.company(companyId, 'background-check')}
         data-testid="compliance-panel-link"
-        className="inline-flex w-fit items-center gap-1 text-xs font-medium text-ink hover:underline"
+        className="inline-flex w-fit items-center gap-1 text-caption font-medium text-ink hover:underline"
       >
         Open the background check
         <Icon.forward size={12} />

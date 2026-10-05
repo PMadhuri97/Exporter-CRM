@@ -1,5 +1,5 @@
 /**
- * The design primitives (frontend-plan §6.11): each behaves as the screens will
+ * The design primitives (frontend-plan §6): each behaves as the screens will
  * rely on it — tones that carry a meaning, one choice always held, an edit that
  * saves on Enter and survives a refusal, an honest cap on a count.
  */
@@ -26,7 +26,7 @@ describe('Tag', () => {
     expect(tag).toHaveTextContent('Flagged');
     expect(tag.className).toContain('bg-negative-tint');
     expect(tag.className).toContain('text-negative');
-    expect(tag.className).toContain('rounded-sm');
+    expect(tag.className.split(' ')).toContain('rounded');
     expect(tag.querySelector('[aria-hidden]')?.className).toContain('bg-negative-solid');
   });
 
@@ -228,24 +228,24 @@ describe('Count, EmptyLine and InlineError', () => {
 
   it('announces an error and offers a retry', () => {
     const onRetry = vi.fn();
-    render(<InlineError onRetry={onRetry}>Couldn’t load the ledger.</InlineError>);
-    expect(screen.getByRole('alert')).toHaveTextContent('Couldn’t load the ledger.');
+    render(<InlineError onRetry={onRetry}>Couldn’t load the history.</InlineError>);
+    expect(screen.getByRole('alert')).toHaveTextContent('Couldn’t load the history.');
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onRetry).toHaveBeenCalled();
   });
 });
 
-describe('Composer', () => {
+describe('SidePanel', () => {
   it('submits with its verb, places a named refusal on its field, and the rest in the footer', async () => {
-    const { Composer } = await import('./Composer');
-    const { composerFieldError } = await import('./composerFieldError');
+    const { SidePanel } = await import('./SidePanel');
+    const { sidePanelFieldError } = await import('./sidePanelFieldError');
     const { ApiError } = await import('@/lib/api/errors');
     const onSubmit = vi.fn();
     const fieldRefusal = new ApiError(422, 'subject: Field required', null, null, null, {
       subject: 'Field required',
     });
     const { rerender } = render(
-      <Composer
+      <SidePanel
         open
         onOpenChange={vi.fn()}
         title="Log a call"
@@ -256,8 +256,8 @@ describe('Composer', () => {
       >
         <label htmlFor="subject">Subject</label>
         <input id="subject" />
-        <p role="alert">{composerFieldError(fieldRefusal, 'subject')}</p>
-      </Composer>,
+        <p role="alert">{sidePanelFieldError(fieldRefusal, 'subject')}</p>
+      </SidePanel>,
     );
     expect(screen.getByRole('dialog', { name: 'Log a call' })).toBeInTheDocument();
     expect(screen.getAllByRole('alert')).toHaveLength(1);
@@ -267,7 +267,7 @@ describe('Composer', () => {
     expect(onSubmit).toHaveBeenCalled();
 
     rerender(
-      <Composer
+      <SidePanel
         open
         onOpenChange={vi.fn()}
         title="Log a call"
@@ -276,7 +276,7 @@ describe('Composer', () => {
         error={new ApiError(409, 'Someone moved it; look again.')}
       >
         <input aria-label="Subject" />
-      </Composer>,
+      </SidePanel>,
     );
     expect(screen.getByRole('alert')).toHaveTextContent('Someone moved it; look again.');
   });

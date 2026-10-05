@@ -41,7 +41,7 @@ import { BUYER_CHECK_TYPES, provenanceLabel } from './verification-labels';
 import { VerificationStatusChip } from './VerificationStatusChip';
 
 const SECONDARY_BUTTON =
-  'rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
+  'rounded-lg border border-line px-2.5 py-1.5 text-caption font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
 
 export function BuyerChecks({ dealId, dealBuyerId }: { dealId: string; dealBuyerId: string }) {
   const query = useVerificationResults('BUYER', dealBuyerId);
@@ -60,7 +60,7 @@ export function BuyerChecks({ dealId, dealBuyerId }: { dealId: string; dealBuyer
             <Icon.backgroundCheck size={18} className="text-ink" />
             <h2 className="font-semibold text-ink">Buyer checks</h2>
           </div>
-          <p className="mt-1 text-sm text-ink-2">
+          <p className="mt-1 text-body text-ink-2">
             Checks on this deal&apos;s buyer. They never change the company&apos;s background
             check.
           </p>
@@ -84,13 +84,13 @@ export function BuyerChecks({ dealId, dealBuyerId }: { dealId: string; dealBuyer
 
       <div className="mt-4">
         {query.isLoading ? (
-          <p className="text-sm text-ink-2">Loading buyer checks…</p>
+          <p className="text-body text-ink-2">Loading buyer checks…</p>
         ) : query.isError ? (
-          <p role="alert" className="text-sm text-negative">
+          <p role="alert" className="text-body text-negative">
             Buyer checks could not be loaded.
           </p>
         ) : results.length === 0 ? (
-          <p className="text-sm text-ink-2">No checks have been recorded on this buyer yet.</p>
+          <p className="text-body text-ink-2">No checks have been recorded on this buyer yet.</p>
         ) : (
           <ul className="divide-y divide-line">
             {results.map((result) => (
@@ -128,7 +128,7 @@ function BuyerCheckRow({
         {result.risk_level && <VerificationStatusChip value={result.risk_level} />}
         {result.review_status && <VerificationStatusChip value={result.review_status} />}
       </div>
-      <p className="mt-1 text-xs text-ink-3">
+      <p className="mt-1 text-caption text-ink-3">
         {result.is_placeholder ? 'Placeholder · no provider ran this check' : provenanceLabel(result)}
         {' · '}
         {formatDateTime(result.performed_at)}
@@ -149,7 +149,7 @@ function BuyerCheckRow({
 
 function SubjectSnapshot({ snapshot }: { snapshot: BuyerSnapshot }) {
   return (
-    <div data-testid="buyer-snapshot" className="mt-3 rounded-lg bg-paper p-3 text-xs">
+    <div data-testid="buyer-snapshot" className="mt-3 rounded-lg bg-paper p-3 text-caption">
       <p className="text-ink-3">Checked against the buyer as recorded at the time</p>
       <dl className="mt-1 grid gap-x-4 gap-y-1 sm:grid-cols-2">
         <div>

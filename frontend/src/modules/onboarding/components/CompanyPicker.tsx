@@ -150,7 +150,7 @@ export function CompanyPicker({
 
   return (
     <div className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1 text-sm">
+      <label className="flex flex-col gap-1 text-body">
         <span className="font-medium text-ink">Find the company</span>
         <span className="relative">
           <Icon.search
@@ -181,7 +181,7 @@ export function CompanyPicker({
       </label>
 
       <details className="rounded-lg border border-line px-3 py-2">
-        <summary className="cursor-pointer text-sm font-medium text-ink">
+        <summary className="cursor-pointer text-body font-medium text-ink">
           Search by identifier
         </summary>
         <div className="mt-3 flex flex-col gap-2">
@@ -195,9 +195,9 @@ export function CompanyPicker({
                   setIdentifierKind(kind);
                   match.reset();
                 }}
-                className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
+                className={`rounded-md border px-3 py-1 text-caption font-medium transition-colors ${
                   identifierKind === kind
-                    ? 'border-ink bg-sunken text-ink'
+                    ? 'border-accent bg-accent-tint text-ink'
                     : 'border-line text-ink-2 hover:bg-paper'
                 }`}
               >
@@ -216,7 +216,7 @@ export function CompanyPicker({
               setCreating(false);
             }}
           />
-          <p className="text-xs text-ink-3">
+          <p className="text-caption text-ink-3">
             {IDENTIFIER_HINT[identifierKind]}. Partial values are not accepted, and
             the identifier is never shown back to you.
           </p>
@@ -241,7 +241,7 @@ export function CompanyPicker({
       {matched?.kind === 'CONFLICT' ? (
         <div
           role="alert"
-          className="flex gap-2 rounded-lg border border-attention/40 bg-attention-tint p-3 text-sm text-ink"
+          className="flex gap-2 rounded-lg border border-attention/40 bg-attention-tint p-3 text-body text-ink"
         >
           <Icon.warning size={16} className="mt-0.5 shrink-0 text-attention" />
           <span>
@@ -252,7 +252,7 @@ export function CompanyPicker({
       ) : null}
 
       {matched?.kind === 'POSSIBLE_DUPLICATE' ? (
-        <p className="text-sm text-ink-2">
+        <p className="text-body text-ink-2">
           <span className="font-medium text-ink">Check these first.</span> {matched.reason}
         </p>
       ) : null}
@@ -276,7 +276,7 @@ export function CompanyPicker({
       ) : onCreate &&
         (matched?.kind === 'NEW' || matched?.kind === 'POSSIBLE_DUPLICATE') ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-line px-4 py-3">
-          <span className="text-sm text-ink-2">
+          <span className="text-body text-ink-2">
             {matched.kind === 'NEW'
               ? 'No company on file matches. Create the buyer as a company of its own.'
               : 'None of these is the buyer? Create it as a company of its own.'}
@@ -288,7 +288,7 @@ export function CompanyPicker({
       ) : null}
 
       {!ready && !matched ? (
-        <p className="text-xs text-ink-3">
+        <p className="text-caption text-ink-3">
           Type at least two characters, or search by identifier.
         </p>
       ) : query.isLoading || match.isPending ? (
@@ -313,14 +313,14 @@ export function CompanyPicker({
                   <span className="font-medium text-ink">
                     {company.name ?? 'Unnamed company'}
                   </span>
-                  <span className="mt-0.5 block text-xs text-ink-2">
+                  <span className="mt-0.5 block text-caption text-ink-2">
                     {company.country ?? '—'} ·{' '}
                     {company.pipeline_status === 'NOT_IN_PIPELINE'
                       ? 'Not in pipeline'
                       : company.journey}
                   </span>
                 </span>
-                <span className="text-xs font-medium text-ink">Select</span>
+                <span className="text-caption font-medium text-ink">Select</span>
               </button>
             </li>
           ))}
@@ -350,14 +350,14 @@ function CandidateList({
               <span className="font-medium text-ink">
                 {candidate.name ?? 'Unnamed company'}
               </span>
-              <span className="mt-0.5 block text-xs text-ink-2">
+              <span className="mt-0.5 block text-caption text-ink-2">
                 {candidate.country ?? '—'}
                 {candidate.pipeline_status === 'NOT_IN_PIPELINE'
                   ? ' · Not in pipeline — exists as a buyer'
                   : ''}
               </span>
             </span>
-            <span className="text-xs font-medium text-ink">Select</span>
+            <span className="text-caption font-medium text-ink">Select</span>
           </button>
         </li>
       ))}

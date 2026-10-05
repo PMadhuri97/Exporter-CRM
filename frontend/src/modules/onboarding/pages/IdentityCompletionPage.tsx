@@ -15,10 +15,8 @@
  */
 
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 
-import { Button, EmptyLine, ErrorState, PageHeader, Skeleton } from '@/components';
-import { Icon } from '@/design/icons';
+import { Badge, Button, Card, EmptyLine, ErrorState, PageHeader, RecordListItem, Skeleton } from '@/components';
 import { formatDate } from '@/lib/format';
 
 import { useIdentityCompletion } from '../hooks';
@@ -38,28 +36,20 @@ const MISSING_LABEL: Record<IdentityCompletionItem['missing'], string> = {
 
 function Row({ item }: { item: IdentityCompletionItem }) {
   return (
-    <li data-testid="identity-completion-row">
-      <Link
-        to={paths.company(item.company_id)}
-        className="group flex flex-wrap items-center justify-between gap-3 py-3"
-      >
-        <span className="min-w-0">
-          <span className="block truncate font-display text-display-sm text-ink underline-offset-4 group-hover:underline">
-            {item.name ?? 'Unnamed company'}
-          </span>
-          <span className="mt-0.5 block text-secondary text-ink-3">
-            {item.country ?? 'No country'}
-            {item.pipeline_status === 'NOT_IN_PIPELINE' ? ' · Buyer only' : ''}
-            {item.created_via === 'DEAL_BUYER' ? ' · Created from a deal buyer' : ''}
-            {` · Added ${formatDate(item.created_at)}`}
-          </span>
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-secondary font-medium text-attention">
-          Needs: {MISSING_LABEL[item.missing]}
-          <Icon.forward size={13} className="text-ink-3" aria-hidden />
-        </span>
-      </Link>
-    </li>
+    <RecordListItem
+      to={paths.company(item.company_id)}
+      title={item.name ?? 'Unnamed company'}
+      data-testid="identity-completion-row"
+      facts={[
+        item.country ?? 'No country',
+        item.pipeline_status === 'NOT_IN_PIPELINE' ? 'Buyer only' : null,
+        item.created_via === 'DEAL_BUYER' ? 'Created from a deal buyer' : null,
+        `Added ${formatDate(item.created_at)}`,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
+      badges={<Badge tone={item.required ? 'negative' : 'attention'}>Missing: {MISSING_LABEL[item.missing]}</Badge>}
+    />
   );
 }
 
@@ -74,15 +64,13 @@ function Group({
 }) {
   if (items.length === 0) return null;
   return (
-    <section aria-label={title} className="flex flex-col gap-1 border-t border-line pt-4">
-      <h2 className="text-lead font-semibold text-ink">{title}</h2>
-      <p className="text-secondary text-ink-3">{description}</p>
-      <ul className="mt-1 divide-y divide-line">
+    <Card title={title} count={items.length} description={description} flush aria-label={title}>
+      <ul className="divide-y divide-line border-t border-line">
         {items.map((item) => (
           <Row key={item.company_id} item={item} />
         ))}
       </ul>
-    </section>
+    </Card>
   );
 }
 
@@ -92,21 +80,23 @@ export function IdentityCompletionPage() {
   const items = query.data?.items ?? [];
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       <PageHeader
         title="Identity to complete"
         description="Companies the CRM cannot identify: they hold neither a PAN nor a registration number. Add the missing identifier on the company's page and it leaves this list."
       />
 
       {query.isLoading ? (
-        <Skeleton className="h-40 rounded-lg" />
+        <Skeleton className="h-40" />
       ) : query.isError ? (
         <ErrorState
           title="Couldn't load the companies to complete."
           onRetry={() => void query.refetch()}
         />
       ) : items.length === 0 ? (
-        <EmptyLine>Every company the CRM holds can be identified.</EmptyLine>
+        <Card>
+          <EmptyLine className="py-0">Every company the CRM holds can be identified.</EmptyLine>
+        </Card>
       ) : (
         <>
           <Group
@@ -120,7 +110,7 @@ export function IdentityCompletionPage() {
             items={items.filter((item) => !item.required)}
           />
           {query.data && query.data.total > items.length && limit < MAX_LIMIT ? (
-            <div className="flex items-center justify-between border-t border-line pt-3 text-secondary text-ink-3">
+            <div className="flex items-center justify-between text-secondary text-ink-3">
               <span>
                 Showing {items.length} of {query.data.total}
               </span>

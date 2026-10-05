@@ -1,5 +1,5 @@
 /**
- * The profile chapter (frontend-plan §8.5): the company's facts as inline edits for
+ * The Details tab (frontend-plan §8.5): the company's facts as inline edits for
  * staff — click a fact, change it, Enter — and as plain text for everyone else. No
  * edit form. Each change is a one-field PATCH; the server's refusal stays under the
  * field in its words, and a duplicate PAN names its holder by link, never by id.
@@ -174,9 +174,9 @@ export function CompanyPanel({
         </section>
       )}
 
-      <section aria-labelledby="company-profile-heading">
+      <section aria-labelledby="company-profile-heading" className="rounded border border-line bg-surface p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 id="company-profile-heading" className="text-lead font-semibold text-ink">
+          <h2 id="company-profile-heading" className="text-heading font-semibold text-ink">
             Company profile
           </h2>
           {canEdit && <p className="text-secondary text-ink-3">Click a fact to change it.</p>}

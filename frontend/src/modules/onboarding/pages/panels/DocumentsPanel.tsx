@@ -13,10 +13,10 @@
 
 import { Panel } from '@/components';
 
-import { Shelf } from '../../components';
+import { DocumentsByCategory } from '../../components';
 import { useCompanyDocuments, useUploadCompanyDocument } from '../../hooks';
 
-/** The documents chapter: the company's shelf (frontend-plan §6.8), upload for staff. */
+/** The Documents tab: the company's documents by category (frontend-plan §8.5), upload for staff. */
 export function DocumentsPanel({
   customerId,
   isStaff,
@@ -32,7 +32,7 @@ export function DocumentsPanel({
       title="Company documents"
       description="Paperwork that belongs to the relationship rather than to one deal."
     >
-      <Shelf
+      <DocumentsByCategory
         documents={documents.data?.documents ?? []}
         isLoading={documents.isLoading}
         emptyMessage="No company documents yet."

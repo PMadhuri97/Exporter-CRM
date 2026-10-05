@@ -64,10 +64,10 @@ describe('IdentityCompletionPage', () => {
     const required = await screen.findByRole('region', { name: 'Required' });
     const optional = screen.getByRole('region', { name: 'Worth completing' });
     expect(within(required).getByText('Rotterdam Trading BV')).toBeInTheDocument();
-    expect(within(required).getByText(/Needs: Registration number/)).toBeInTheDocument();
+    expect(within(required).getByText(/Missing: Registration number/)).toBeInTheDocument();
     expect(within(required).getByText(/Buyer only/)).toBeInTheDocument();
     expect(within(required).getByText(/Created from a deal buyer/)).toBeInTheDocument();
-    expect(within(optional).getByText(/Needs: PAN/)).toBeInTheDocument();
+    expect(within(optional).getByText(/Missing: PAN/)).toBeInTheDocument();
     // Each row opens the company, where the edit that completes it lives.
     expect(within(required).getByRole('link')).toHaveAttribute(
       'href',

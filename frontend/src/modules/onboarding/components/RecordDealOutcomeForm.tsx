@@ -41,11 +41,11 @@ import {
 import type { TradePaymentStatus, TradeProofStatus } from '../types';
 
 const FIELD =
-  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60';
+  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-caption text-ink outline-none focus:border-accent disabled:opacity-60';
 const SECONDARY_BUTTON =
-  'rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
+  'rounded-lg border border-line px-2.5 py-1.5 text-caption font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
 const PRIMARY_BUTTON =
-  'rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-paper disabled:opacity-50';
+  'rounded-md bg-accent-solid px-2.5 py-1.5 text-caption font-medium text-white disabled:opacity-50';
 
 const PAYMENT_STATUSES: { value: TradePaymentStatus; label: string }[] = [
   { value: 'PAID', label: 'Paid' },
@@ -153,7 +153,7 @@ export function RecordDealOutcomeForm({
     return (
       <div
         data-testid="record-deal-outcome-form"
-        className="mt-4 rounded-lg border border-line p-4 text-xs"
+        className="mt-4 rounded-lg border border-line p-4 text-caption"
       >
         <Skeleton className="h-24 rounded" />
       </div>
@@ -163,7 +163,7 @@ export function RecordDealOutcomeForm({
   return (
     <div
       data-testid="record-deal-outcome-form"
-      className="mt-4 rounded-lg border border-line p-4 text-xs"
+      className="mt-4 rounded-lg border border-line p-4 text-caption"
     >
       <p className="font-medium text-ink">
         {head ? 'Correct the outcome' : 'Record how this was paid'}

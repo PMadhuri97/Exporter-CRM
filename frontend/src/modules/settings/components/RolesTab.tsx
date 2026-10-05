@@ -84,7 +84,7 @@ export function RolesTab() {
       {isLoading && (
         <div className="grid gap-3 md:grid-cols-2" aria-hidden>
           {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-32 rounded-xl" />
+            <Skeleton key={index} className="h-32 rounded" />
           ))}
         </div>
       )}
@@ -97,11 +97,11 @@ export function RolesTab() {
 
       <ul className="grid gap-3 md:grid-cols-2" aria-label="Roles">
         {roles.map((role) => (
-          <li key={role.id} className="flex min-w-0 flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+          <li key={role.id} className="flex min-w-0 flex-col gap-3 rounded border border-line bg-surface p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-display text-display-sm text-ink">{role.name}</p>
+                  <p className="text-heading font-semibold text-ink">{role.name}</p>
                   {role.is_builtin && (
                     <Tag tone="ink" icon={<Icon.shield size={11} aria-hidden />}>
                       Built-in
@@ -109,7 +109,7 @@ export function RolesTab() {
                   )}
                   {!role.is_assignable && <Tag tone="idle">Not assignable</Tag>}
                 </div>
-                <p className="font-mono text-caption text-ink-3">{role.slug}</p>
+                <p className="text-caption text-ink-3">{role.slug}</p>
               </div>
               <span className="shrink-0 text-caption tabular-nums text-ink-2">
                 {role.user_count} {role.user_count === 1 ? 'user' : 'users'}

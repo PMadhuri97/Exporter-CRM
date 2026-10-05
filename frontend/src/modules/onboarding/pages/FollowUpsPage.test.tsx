@@ -113,7 +113,7 @@ describe('FollowUpsPage', () => {
 
   it('shows a loading state before the list arrives', () => {
     renderPage();
-    expect(screen.getByRole('heading', { name: 'Agenda', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Follow-ups', level: 1 })).toBeInTheDocument();
     expect(screen.queryByTestId('follow-up-row')).not.toBeInTheDocument();
   });
 
@@ -156,12 +156,12 @@ describe('FollowUpsPage', () => {
     await screen.findByTestId('follow-up-row');
     // A second completion is refused by the server; not offering it is the screen's
     // half of that rule.
-    expect(screen.queryByRole('button', { name: 'Record outcome' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
   });
 
   it('records an outcome and sends no next due date for a closing one', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Record outcome' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark done' }));
     fireEvent.change(screen.getByLabelText(/^Note$/), {
       target: { value: 'Sent the terms' },
     });
@@ -178,7 +178,7 @@ describe('FollowUpsPage', () => {
 
   it('asks for a new due date only when rescheduling, and says what that does', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Record outcome' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark done' }));
     expect(screen.queryByLabelText(/New due date/)).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'RESCHEDULED' } });
@@ -190,7 +190,7 @@ describe('FollowUpsPage', () => {
 
   it('sends the new due date when rescheduling', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Record outcome' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark done' }));
     fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'RESCHEDULED' } });
     fireEvent.change(screen.getByLabelText(/New due date/), {
       target: { value: '2027-01-15T09:00' },
@@ -216,7 +216,7 @@ describe('FollowUpsPage', () => {
       new Error('Follow-up was already completed as DONE'),
     );
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Record outcome' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark done' }));
     fireEvent.click(screen.getByRole('button', { name: 'Record' }));
     // The form stays open on failure, so the person can see what happened and retry
     // rather than losing what they typed.
@@ -227,7 +227,7 @@ describe('FollowUpsPage', () => {
   it('narrows to one person without gating the list', async () => {
     renderPage();
     await screen.findByTestId('follow-up-row');
-    fireEvent.click(screen.getByLabelText(/Only the ones I logged/));
+    fireEvent.click(screen.getByRole('radio', { name: 'Mine' }));
     await waitFor(() =>
       expect(listFollowUps).toHaveBeenLastCalledWith(
         expect.objectContaining({ actorId: USER_ID }),
@@ -290,7 +290,7 @@ describe('FollowUpsPage', () => {
     expect(listFollowUps).toHaveBeenLastCalledWith(
       expect.objectContaining({ state: 'OVERDUE', checkBacksDueOnly: true }),
     );
-    expect(screen.getByRole('heading', { name: 'Check-backs due' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Check-backs due/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'All' }));
     await waitFor(() =>
@@ -340,7 +340,7 @@ describe('FollowUpsPage', () => {
     mockUser('DEVELOPER');
     renderPage();
     await screen.findByTestId('follow-up-row');
-    expect(screen.queryByRole('button', { name: 'Record outcome' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
   });
 
   it('links each row to its company', async () => {

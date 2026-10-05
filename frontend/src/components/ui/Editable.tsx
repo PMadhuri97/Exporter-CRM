@@ -9,7 +9,7 @@ export interface EditableOption {
 }
 
 /**
- * A fact you click to change, in place (§6.11) — the replacement for an edit
+ * A fact you click to change, in place (§6.10) — the replacement for an edit
  * form. Reading, it is text; a role that may edit gets a quiet pencil and the
  * whole value as one button ("Edit Industry"). Editing, Enter or leaving the
  * field saves a changed value, Escape puts the old one back. While the save is

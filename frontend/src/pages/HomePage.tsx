@@ -1,86 +1,93 @@
 /**
- * The desk (frontend-plan §8.2) — one per role, answering "what is mine to do now?"
- * for the person signed in rather than showing everyone the same numbers.
+ * Home (frontend-plan §8.2) — one per role, answering "what is mine to do now?" as a
+ * grid of work cards, two columns from 1280px.
  *
- * - **RM**: Up next (overdue follow-ups and due check-backs, one queue), the pipeline
- *   as three numerals, and the Re-KYC list to read.
- * - **Compliance**: decisions awaiting your signature first, then everything an RM sees.
- * - **Admin**: the Compliance desk plus one setup section.
+ * - **RM**: my follow-ups (with *Mark done*), check-backs due, the pipeline counts,
+ *   the Re-KYC list to read, and recent companies.
+ * - **Compliance**: items to approve first, then everything an RM sees.
+ * - **Admin**: the Compliance home plus a setup card.
  * - **Developer**: "Read-only access. Identifiers are masked." — the pipeline and the
- *   team's queue to read, nothing from compliance.
+ *   team's follow-ups to read, nothing from compliance.
  *
- * Every section is chosen by capability, so a section is never mounted —
- * and its request never sent — for a role the server would refuse. A section that
- * needs something the backend does not serve yet ("In review", "Deals in paperwork") is not shown at
- * all until the ask lands: hidden, never empty. A user with no CRM capability never
+ * Every card is chosen by capability, so a card is never mounted — and its request
+ * never sent — for a role the server would refuse. A card that needs something the
+ * backend does not serve yet ("In review", "Deals in paperwork") is not shown at all
+ * until the ask lands: hidden, never empty. A user with no CRM capability never
  * reaches this page: the root renders No workspace instead.
  */
 
 import { Link } from 'react-router-dom';
 
-import { buttonClasses } from '@/components';
-import { Icon } from '@/design/icons';
+import { Card, EmptyLine } from '@/components';
 import {
+  CheckBackCard,
+  MyFollowUpsCard,
   paths,
   PipelineSummaryCard,
   ProposalsAwaitingMeCard,
   ReKycDueCard,
   SetupCard,
-  UpNextCard,
 } from '@/modules/onboarding';
 import { useCan } from '@/platform/access';
-import { roleLabel, useCurrentUser } from '@/platform/auth';
+import { useCurrentUser } from '@/platform/auth';
+import { readRecentCompanies } from '@/platform/shell';
 
-function greeting(now: Date): string {
-  const hour = now.getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
+/** The last companies this viewer opened, kept per viewer in this browser. */
+function RecentCompaniesCard({ userId }: { userId: string }) {
+  const recent = readRecentCompanies(userId).slice(0, 5);
+  return (
+    <Card title="Recent companies">
+      {recent.length === 0 ? (
+        <EmptyLine className="py-0">Companies you open appear here.</EmptyLine>
+      ) : (
+        <ul className="-my-1.5 divide-y divide-line">
+          {recent.map((company) => (
+            <li key={company.id} className="py-1.5">
+              <Link
+                to={paths.company(company.id)}
+                className="text-body font-semibold text-accent underline-offset-2 hover:underline"
+              >
+                {company.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
 }
 
 export function HomePage() {
   const user = useCurrentUser();
-  const firstName = user.full_name?.split(' ')[0];
+  const userId = String(user.id);
   const canWrite = useCan('crm.write');
-  const canCreateCompany = useCan('company.create');
   const canSeeQueue = useCan('compliance.queue');
   const canReadCompliance = useCan('compliance.read');
   const canSetUp = useCan('settings.criteria');
-  const now = new Date();
 
   return (
-    <div className="max-w-reading space-y-10">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-secondary text-ink-3">
-            {now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
-          </p>
-          <h1 className="mt-1 font-display text-display-xl text-ink">
-            {greeting(now)}
-            {firstName ? `, ${firstName}` : ''}
-          </h1>
-          <p className="mt-2 text-body text-ink-2">
-            {canWrite
-              ? `Signed in as ${roleLabel(user.role)}. Here is what is yours to do.`
-              : 'Read-only access. Identifiers are masked.'}
-          </p>
-        </div>
-        {canCreateCompany && (
-          <Link to={paths.newCompany} className={buttonClasses({ variant: 'primary' })}>
-            <Icon.add size={15} aria-hidden />
-            Add company
-          </Link>
-        )}
+    <div className="space-y-4">
+      <header>
+        <h1 className="text-title font-semibold text-ink">Home</h1>
       </header>
+      {!canWrite && (
+        <p className="rounded border border-line bg-surface px-4 py-2.5 text-body text-ink-2">
+          Read-only access. Identifiers are masked.
+        </p>
+      )}
 
       {canSeeQueue && <ProposalsAwaitingMeCard />}
 
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <UpNextCard userId={String(user.id)} canComplete={canWrite} />
-        <div className="space-y-10">
+      <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
+        <div className="flex flex-col gap-4">
+          <MyFollowUpsCard userId={userId} canComplete={canWrite} />
+          <CheckBackCard />
+        </div>
+        <div className="flex flex-col gap-4">
           <PipelineSummaryCard />
           {canReadCompliance && <ReKycDueCard />}
           {canSetUp && <SetupCard />}
+          <RecentCompaniesCard userId={userId} />
         </div>
       </div>
     </div>

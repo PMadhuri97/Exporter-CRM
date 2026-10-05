@@ -65,7 +65,7 @@ export function EvidenceList({
   }
 
   return (
-    <div data-testid="evidence" className="mt-3 text-xs">
+    <div data-testid="evidence" className="mt-3 text-caption">
       <p className="text-ink-3">Evidence</p>
       {note && <p className="mt-0.5 whitespace-pre-wrap text-ink">{note}</p>}
       {refs.length > 0 && (

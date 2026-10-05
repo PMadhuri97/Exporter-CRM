@@ -8,7 +8,7 @@ import { Button } from './Button';
 import { Popover, PopoverContent, PopoverTrigger } from './Popover';
 
 /**
- * A date chosen in place (§6.11): the trigger shows the date, the popover holds
+ * A date chosen in place (§6.15): the trigger shows the date, the popover holds
  * a native date input — keyboard, screen-reader and locale behaviour for free —
  * and one verb to set it. Dates travel as `YYYY-MM-DD`. Limits like "not in the
  * past" are a hint here; the server is the one that checks them.

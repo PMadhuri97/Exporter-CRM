@@ -12,7 +12,7 @@ export interface SegmentedOption<T extends string> {
 }
 
 /**
- * One choice out of a few, side by side on a sunken track (§6.11) — a filter
+ * One choice out of a few, side by side in one outlined group (§6.15) — a filter
  * lens, a criterion's Pass / Fail / Unknown. Always exactly one value: clicking
  * the chosen segment again keeps it chosen (unless `onClear` is given). Arrow keys move
  * between segments.
@@ -46,7 +46,10 @@ export function Segmented<T extends string>({
         else onClear?.();
       }}
       aria-label={label}
-      className={cn('inline-flex flex-wrap items-center gap-0.5 rounded-md bg-sunken p-0.5', className)}
+      className={cn(
+        'inline-flex flex-wrap items-center gap-0.5 rounded border border-line-strong bg-surface p-0.5',
+        className,
+      )}
     >
       {options.map((option) => (
         <ToggleGroup.Item
@@ -54,10 +57,10 @@ export function Segmented<T extends string>({
           value={option.value}
           disabled={option.disabled}
           className={cn(
-            'inline-flex items-center gap-1.5 whitespace-nowrap rounded font-medium text-ink-2 transition-colors duration-quick',
-            'hover:text-ink disabled:pointer-events-none disabled:opacity-45',
-            'data-[state=on]:bg-surface data-[state=on]:text-ink data-[state=on]:ring-1 data-[state=on]:ring-line-strong',
-            size === 'sm' ? 'h-7 px-2 text-caption' : 'h-8 px-3 text-secondary',
+            'inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm text-ink-2 transition-colors duration-quick',
+            'hover:bg-sunken hover:text-ink disabled:pointer-events-none disabled:opacity-45',
+            'data-[state=on]:bg-accent-tint data-[state=on]:font-semibold data-[state=on]:text-accent',
+            size === 'sm' ? 'h-6 px-2 text-caption' : 'h-7 px-2.5 text-secondary',
           )}
         >
           {option.label}

@@ -74,7 +74,7 @@ function FilteredEmpty({ filter }: { filter: ResultFilter }) {
   return (
     <p
       data-testid="verification-filter-empty"
-      className="rounded-lg border border-dashed border-line-strong bg-paper px-4 py-6 text-center text-xs text-ink-2"
+      className="rounded-lg border border-dashed border-line-strong bg-paper px-4 py-6 text-center text-caption text-ink-2"
     >
       {text}
     </p>
@@ -100,7 +100,7 @@ function EarlierCycle({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="text-xs font-semibold text-ink"
+        className="text-caption font-semibold text-ink"
       >
         {label} — {results.length} result{results.length === 1 ? '' : 's'}, read-only
       </button>
@@ -136,10 +136,10 @@ function MissingChecks({ results }: { results: VerificationResult[] }) {
       <div className="flex items-start gap-2">
         <Icon.info size={14} className="mt-0.5 shrink-0 text-ink-3" />
         <div className="min-w-0">
-          <p className="text-xs font-medium text-ink">
+          <p className="text-caption font-medium text-ink">
             {missing.length} check {missing.length === 1 ? 'type has' : 'types have'} no result
           </p>
-          <p className="mt-0.5 text-xs leading-5 text-ink-2">
+          <p className="mt-0.5 text-caption leading-5 text-ink-2">
             No provider integration runs these today. They appear once a result is recorded
             by hand or a provider is connected.
           </p>
@@ -163,8 +163,8 @@ function EmptyScreenings() {
   return (
     <div className="rounded-lg border border-dashed border-line-strong bg-paper px-4 py-8 text-center">
       <Icon.backgroundCheck className="mx-auto text-ink-3" size={24} />
-      <p className="mt-2 text-sm font-medium text-ink">No screening results yet</p>
-      <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-ink-2">
+      <p className="mt-2 text-body font-medium text-ink">No screening results yet</p>
+      <p className="mx-auto mt-1 max-w-md text-caption leading-5 text-ink-2">
         No provider integration is connected, so no company screening has run for this
         exporter. A result recorded by hand appears here.
       </p>
@@ -218,7 +218,7 @@ export function VerificationSection({ customerId }: { customerId: string }) {
               <Icon.backgroundCheck size={18} className="text-ink" />
               <h2 className="font-semibold text-ink">Screenings</h2>
             </div>
-            <p className="mt-1 text-sm text-ink-2">
+            <p className="mt-1 text-body text-ink-2">
               Check results, bank-monitoring signals and compliance review for this exporter.
             </p>
           </div>
@@ -226,7 +226,7 @@ export function VerificationSection({ customerId }: { customerId: string }) {
             <button
               type="button"
               onClick={() => setRecording(true)}
-              className="rounded-lg border border-line px-3 py-2 text-sm font-medium text-ink-2 hover:bg-paper"
+              className="rounded-lg border border-line px-3 py-2 text-body font-medium text-ink-2 hover:bg-paper"
             >
               Record a result
             </button>
@@ -247,15 +247,15 @@ export function VerificationSection({ customerId }: { customerId: string }) {
           <button
             type="button"
             onClick={() => setTab('COMPANY')}
-            className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium ${tab === 'COMPANY' ? 'border-ink text-ink' : 'border-transparent text-ink-2 hover:text-ink'}`}
+            className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-body font-medium ${tab === 'COMPANY' ? 'border-accent-solid text-ink' : 'border-transparent text-ink-2 hover:text-ink'}`}
           >
             <Icon.company size={15} /> Company screenings{' '}
-            <span className="text-xs text-ink-3">({results.length})</span>
+            <span className="text-caption text-ink-3">({results.length})</span>
           </button>
           <button
             type="button"
             onClick={() => setTab('BANK')}
-            className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium ${tab === 'BANK' ? 'border-ink text-ink' : 'border-transparent text-ink-2 hover:text-ink'}`}
+            className={`flex items-center gap-2 border-b-2 px-1 pb-3 text-body font-medium ${tab === 'BANK' ? 'border-accent-solid text-ink' : 'border-transparent text-ink-2 hover:text-ink'}`}
           >
             <Icon.activity size={15} /> Bank activity
           </button>
@@ -270,7 +270,7 @@ export function VerificationSection({ customerId }: { customerId: string }) {
               <div className="h-20 animate-pulse rounded bg-sunken" />
             </div>
           ) : query.isError ? (
-            <div role="alert" className="rounded-lg border border-negative/30 bg-negative-tint px-4 py-3 text-sm text-negative">
+            <div role="alert" className="rounded-lg border border-negative/30 bg-negative-tint px-4 py-3 text-body text-negative">
               <div className="flex items-start gap-2">
                 <Icon.warning size={16} className="mt-0.5 shrink-0" />
                 <div>
@@ -290,9 +290,9 @@ export function VerificationSection({ customerId }: { customerId: string }) {
                     type="button"
                     aria-pressed={filter === option.value}
                     onClick={() => setFilter(option.value)}
-                    className={`rounded-md border px-3 py-1 text-xs font-medium ${
+                    className={`rounded-md border px-3 py-1 text-caption font-medium ${
                       filter === option.value
-                        ? 'border-ink bg-ink text-surface'
+                        ? 'border-accent-solid bg-accent-solid text-white'
                         : 'border-line text-ink-2 hover:text-ink'
                     }`}
                   >
@@ -322,8 +322,8 @@ export function VerificationSection({ customerId }: { customerId: string }) {
               )}
               {otherResults.length > 0 && (
                 <div data-testid="other-company-checks" className="mt-4">
-                  <p className="text-xs font-semibold text-ink">Other checks on this company</p>
-                  <p className="mt-0.5 text-xs leading-5 text-ink-2">
+                  <p className="text-caption font-semibold text-ink">Other checks on this company</p>
+                  <p className="mt-0.5 text-caption leading-5 text-ink-2">
                     Recorded on this company outside the screening set. They count toward the
                     background check like any other result.
                   </p>

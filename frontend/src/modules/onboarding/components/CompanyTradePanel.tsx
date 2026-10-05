@@ -89,7 +89,7 @@ function Row({
               </Tag>
             )}
           </p>
-          <p className="mt-0.5 text-xs text-ink-2">
+          <p className="mt-0.5 text-caption text-ink-2">
             {`${other.country ?? 'Country not recorded'} · ${
               count === 0
                 ? 'No invoices recorded'
@@ -104,7 +104,7 @@ function Row({
             <button
               type="button"
               onClick={() => setRecording(true)}
-              className="text-xs font-medium text-ink hover:underline"
+              className="text-caption font-medium text-ink hover:underline"
             >
               Record past invoice
             </button>
@@ -115,7 +115,7 @@ function Row({
             <button
               type="button"
               onClick={() => setOpen((was) => !was)}
-              className="flex items-center gap-1 text-xs font-medium text-ink hover:underline"
+              className="flex items-center gap-1 text-caption font-medium text-ink hover:underline"
               aria-expanded={open}
             >
               {open ? 'Hide invoices' : 'Invoices'}
@@ -124,7 +124,7 @@ function Row({
           ) : (
             <Link
               to={paths.company(other.company_id)}
-              className="flex items-center gap-1 text-xs font-medium text-ink hover:underline"
+              className="flex items-center gap-1 text-caption font-medium text-ink hover:underline"
             >
               Open company
               <Icon.caretRight size={13} />

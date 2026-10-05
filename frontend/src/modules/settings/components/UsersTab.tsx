@@ -121,7 +121,7 @@ export function UsersTab() {
             <option value="active">Active only</option>
             <option value="inactive">Inactive only</option>
           </Select>
-          <Button type="submit" variant="quiet">
+          <Button type="submit" variant="subtle">
             Search
           </Button>
         </form>
@@ -146,7 +146,7 @@ export function UsersTab() {
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-hidden>
           {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-36 rounded-xl" />
+            <Skeleton key={index} className="h-36 rounded" />
           ))}
         </div>
       ) : isError ? (
@@ -162,7 +162,7 @@ export function UsersTab() {
               <button
                 type="button"
                 onClick={() => setCreating(true)}
-                className="font-medium text-ink underline underline-offset-[3px]"
+                className="font-semibold text-accent underline-offset-2 hover:underline"
               >
                 Add a user
               </button>
@@ -177,7 +177,7 @@ export function UsersTab() {
               <li
                 key={user.id}
                 className={cn(
-                  'flex min-w-0 flex-col gap-3 rounded-xl border bg-surface p-4',
+                  'flex min-w-0 flex-col gap-3 rounded border bg-surface p-4',
                   user.is_active ? 'border-line' : 'border-dashed border-line-strong',
                 )}
               >
@@ -186,7 +186,7 @@ export function UsersTab() {
                     aria-hidden
                     className={cn(
                       'grid h-9 w-9 shrink-0 place-items-center rounded-full text-secondary font-semibold',
-                      user.is_active ? 'bg-ink text-paper' : 'bg-sunken text-ink-3',
+                      user.is_active ? 'bg-accent-solid text-white' : 'bg-sunken text-ink-3',
                     )}
                   >
                     {initials(user)}
@@ -198,7 +198,7 @@ export function UsersTab() {
                         <span className="ml-1.5 text-caption font-normal text-ink-3">(you)</span>
                       )}
                     </p>
-                    <p className="truncate font-mono text-caption text-ink-2">{user.email}</p>
+                    <p className="truncate text-caption text-ink-2">{user.email}</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -233,7 +233,7 @@ export function UsersTab() {
                     {!isSelf && (
                       <Button
                         size="sm"
-                        variant={user.is_active ? 'quiet' : 'secondary'}
+                        variant={user.is_active ? 'subtle' : 'secondary'}
                         className="ml-auto"
                         onClick={() => void toggleActive(user)}
                       >
@@ -256,7 +256,7 @@ export function UsersTab() {
           <div className="flex gap-2">
             <Button
               size="sm"
-              variant="quiet"
+              variant="subtle"
               disabled={page === 0}
               onClick={() => setPage((current) => Math.max(0, current - 1))}
             >
@@ -264,7 +264,7 @@ export function UsersTab() {
             </Button>
             <Button
               size="sm"
-              variant="quiet"
+              variant="subtle"
               disabled={showingTo >= total}
               onClick={() => setPage((current) => current + 1)}
             >

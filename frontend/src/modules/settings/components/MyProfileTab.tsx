@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { Button, Composer, DetailRow, Editable, EmptyLine, Panel, Skeleton, Tag } from '@/components';
+import { Button, SidePanel, DetailRow, Editable, EmptyLine, Panel, Skeleton, Tag } from '@/components';
 import { formatDateTime } from '@/lib/format';
 import { roleLabel, useAuth, useCurrentUser } from '@/platform/auth';
 
@@ -25,7 +25,7 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
   const ready = currentPassword.length > 0 && assessPassword(newPassword).meetsPolicy;
 
   return (
-    <Composer
+    <SidePanel
       open
       onOpenChange={(open) => {
         if (!open) onClose();
@@ -65,7 +65,7 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
         showStrength
         required
       />
-    </Composer>
+    </SidePanel>
   );
 }
 
@@ -82,11 +82,11 @@ export function MyProfileTab() {
   const sessions = sessionsQuery.data?.sessions ?? [];
 
   return (
-    <div className="max-w-reading space-y-10">
+    <div className="space-y-4">
       <Panel title="Your details" description="The name shown beside your sign-in.">
         <dl>
           <DetailRow label="Email">
-            <span className="font-mono text-secondary text-ink-2">{user.email}</span>
+            <span className="text-secondary text-ink-2">{user.email}</span>
           </DetailRow>
           <DetailRow label="Full name">
             <Editable
@@ -149,7 +149,7 @@ export function MyProfileTab() {
                 </div>
                 <Button
                   size="sm"
-                  variant="quiet"
+                  variant="subtle"
                   onClick={async () => {
                     try {
                       await revokeMutation.mutateAsync(session.id);

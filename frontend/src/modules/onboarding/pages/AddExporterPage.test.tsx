@@ -7,7 +7,7 @@ import { ApiError } from '@/lib/api/errors';
 
 import { createExporterLead } from '../api';
 
-import { AddExporterPage } from './AddExporterPage';
+import { NewCompanyPanel } from './AddExporterPage';
 
 // Hoisted above the imports by vitest, so the page's hook gets the mock.
 vi.mock('../api', () => ({ createExporterLead: vi.fn(), matchCompany: vi.fn() }));
@@ -19,13 +19,13 @@ function renderPage() {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <AddExporterPage />
+        <NewCompanyPanel onClose={() => {}} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-describe('AddExporterPage — the company identity', () => {
+describe('New company — the company identity', () => {
   beforeEach(() => {
     vi.mocked(createExporterLead).mockReset();
     vi.mocked(createExporterLead).mockResolvedValue({

@@ -57,13 +57,13 @@ function OutcomeChain({ outcomes }: { outcomes: TradeOutcome[] }) {
               proofStatus={outcome.proof_status}
             />
             {outcome.amount_paid && (
-              <span className="text-xs tabular-nums text-ink-2">
+              <span className="text-caption tabular-nums text-ink-2">
                 {outcome.amount_paid} paid
               </span>
             )}
-            {!outcome.is_current && <span className="text-xs text-ink-3">Superseded</span>}
+            {!outcome.is_current && <span className="text-caption text-ink-3">Superseded</span>}
           </div>
-          <p className="mt-0.5 text-xs text-ink-3">
+          <p className="mt-0.5 text-caption text-ink-3">
             {`${outcome.recorded_by ?? 'Unknown'} · ${formatDate(outcome.recorded_at)}`}
           </p>
           {/* The design asks for `EvidenceList` here. An outcome's references are stored
@@ -100,7 +100,7 @@ function InvoiceRow({ invoice, isThisDeal }: { invoice: TradeInvoice; isThisDeal
               </Tag>
             )}
           </p>
-          <p className="mt-0.5 text-xs text-ink-2">
+          <p className="mt-0.5 text-caption text-ink-2">
             {/* Amount and currency together, never converted. The amount is a
                 string because the server sends `Numeric` as one; it is shown as sent
                 and never parsed. */}
@@ -124,7 +124,7 @@ function InvoiceRow({ invoice, isThisDeal }: { invoice: TradeInvoice; isThisDeal
             <button
               type="button"
               onClick={() => setOpen((was) => !was)}
-              className="text-xs font-medium text-ink hover:underline"
+              className="text-caption font-medium text-ink hover:underline"
               aria-expanded={open}
             >
               {open ? 'Hide history' : 'Outcome history'}

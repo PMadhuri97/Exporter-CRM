@@ -10,7 +10,8 @@
  * A section is absent rather than disabled: a disabled link still announces that the
  * screen exists and they are not allowed, the leak the masking design rejects for the
  * reveal icon. Qualification criteria and Required documents are their own modules
- * (the module table gates them); the frame links to them for the role that has them.
+ * (the module table gates them), drawn inside this frame (`SettingsFrame` is exported
+ * for them), so every settings section has the same left list.
  */
 
 import type { ReactNode } from 'react';
@@ -26,12 +27,15 @@ import { RolesTab } from '../components/RolesTab';
 import { UsersTab } from '../components/UsersTab';
 import { usePermissions } from '../usePermissions';
 
-type Section = 'profile' | 'users' | 'roles';
+export type SettingsSection = 'profile' | 'users' | 'roles' | 'criteria' | 'requiredDocuments';
+type Section = SettingsSection;
 
 const SECTION_LABEL: Record<Section, string> = {
   profile: 'My profile',
   users: 'Users',
   roles: 'Roles',
+  criteria: 'Qualification criteria',
+  requiredDocuments: 'Required documents',
 };
 
 function SectionLink({ to, children }: { to: string; children: ReactNode }) {
@@ -40,12 +44,12 @@ function SectionLink({ to, children }: { to: string; children: ReactNode }) {
       to={to}
       className={({ isActive }) =>
         cn(
-          'relative block whitespace-nowrap rounded-md px-3 py-1.5 text-body transition-colors duration-quick',
-          isActive ? 'font-medium text-ink lg:bg-sunken' : 'text-ink-2 hover:text-ink',
-          // The active section carries an ink bar under it while the list runs
-          // across the page; down the side, the sunken fill marks it instead.
+          'relative block whitespace-nowrap rounded px-3 py-1.5 text-body transition-colors duration-quick',
+          isActive ? 'font-semibold text-accent lg:bg-accent-tint' : 'text-ink-2 hover:bg-sunken hover:text-ink',
+          // The current section carries a blue bar under it while the list runs
+          // across the page, and a tint with a bar on its left down the side.
           isActive &&
-            'after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-ink lg:after:hidden',
+            'after:absolute after:inset-x-3 after:-bottom-px after:h-0.5 after:bg-accent-solid lg:after:inset-x-auto lg:after:inset-y-1 lg:after:left-0 lg:after:h-auto lg:after:w-[3px]',
         )
       }
     >
@@ -54,7 +58,7 @@ function SectionLink({ to, children }: { to: string; children: ReactNode }) {
   );
 }
 
-function SettingsFrame({ section, children }: { section: Section; children: ReactNode }) {
+export function SettingsFrame({ section, children }: { section: Section; children: ReactNode }) {
   const { can, isLoading, roleName } = usePermissions();
   const canViewUsers = can('users', 'view');
   const canViewRoles = can('roles', 'view');
@@ -77,12 +81,12 @@ function SettingsFrame({ section, children }: { section: Section; children: Reac
           </>
         }
       />
-      <div className="grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)]">
         {/* A permission still loading renders no admin section speculatively: the
             links appear once the answer is in. */}
         <nav
           aria-label="Settings sections"
-          className="-mx-1 flex gap-1 overflow-x-auto border-b border-line px-1 lg:sticky lg:top-0 lg:mx-0 lg:h-fit lg:flex-col lg:gap-0.5 lg:overflow-visible lg:border-b-0 lg:px-0"
+          className="flex gap-1 overflow-x-auto rounded border border-line bg-surface p-1 lg:sticky lg:top-0 lg:h-fit lg:flex-col lg:gap-0.5 lg:overflow-visible lg:p-2"
         >
           <SectionLink to="/settings/profile">My profile</SectionLink>
           {canViewUsers && <SectionLink to="/settings/users">Users</SectionLink>}

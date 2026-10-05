@@ -209,7 +209,7 @@ describe('who acted', () => {
   });
 });
 
-describe('the ledger (frontend-plan §6.5)', () => {
+describe('the history timeline (frontend-plan §8.5)', () => {
   it('bundles rows written together into one "same moment" event, and keeps others apart', async () => {
     vi.mocked(listCompanyHistory).mockResolvedValue(
       page([
