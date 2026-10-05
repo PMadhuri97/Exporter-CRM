@@ -45,3 +45,29 @@ def environment_segment() -> str:
 #: standing between a leaked URL and a document: long enough to click, not long
 #: enough to pass around.
 DOWNLOAD_LINK_TTL = timedelta(minutes=5)
+
+
+def storage_backend() -> str:
+    """Which storage backend to use: 's3' or 'local'.
+
+    Defaults to 's3' if S3_DOCUMENT_BUCKET is set, otherwise 'local'.
+    """
+    configured = os.environ.get("STORAGE_BACKEND", "").strip().lower()
+    if configured:
+        return configured
+    return "s3" if os.environ.get("S3_DOCUMENT_BUCKET", "").strip() else "local"
+
+
+def s3_document_bucket() -> str:
+    """The configured S3 bucket name for documents."""
+    return os.environ.get("S3_DOCUMENT_BUCKET", "").strip()
+
+
+def s3_region_name() -> str:
+    """AWS Region for the S3 bucket."""
+    return (
+        os.environ.get("AWS_DEFAULT_REGION")
+        or os.environ.get("AWS_REGION")
+        or "ap-south-1"
+    ).strip()
+
