@@ -1,5 +1,5 @@
 /**
- * Record past trade on a relationship — `remaining-work.md` R-27 (plan P5-8).
+ * Record past trade on a relationship.
  *
  * What two companies traded before they came to us: an invoice with **no deal**,
  * and, if anybody knows, how it was paid. It is "claimed" until somebody has seen
@@ -101,7 +101,7 @@ export function RecordPastTradeForm({
             invoice_date: invoiceDate,
             amount: amount.trim(),
             currency: currency.trim().toUpperCase(),
-            // Past trade: no deal (P5-8).
+            // Past trade: no deal.
           });
           invoiceId = invoice.id;
         } catch (caught) {

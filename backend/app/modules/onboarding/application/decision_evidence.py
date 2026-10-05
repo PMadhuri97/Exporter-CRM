@@ -1,5 +1,4 @@
-"""``DecisionEvidenceReader`` — what a background-check decision rested on, readable —
-**owner: Developer 1** (plan P2-1a, allocation task 1.1).
+"""``DecisionEvidenceReader`` — what a background-check decision rested on, readable.
 
 A decision pins **ids** (``background_check_evidence``, contract §6): a verification
 result and the review its standing rested on, an exact screening row, a company
@@ -11,7 +10,7 @@ page and without a second system of record:
   and who recorded it, its evidence note and references, and the review that was
   pinned (with whether a later review has since superseded it);
 * a **screening row**: the item's key and label (a retired item keeps its label, so a
-  decision taken under the eight-item rules still reads — plan P2-4a), its status,
+  decision taken under the eight-item rules still reads), its status,
   comment, evidence references, and who answered it when;
 * a **document**: its name, category, type, scan status and whether it can be opened.
 
@@ -21,7 +20,7 @@ append-only or frozen once pinned, so what is shown is what the decision rested 
 **No identifiers.** None of these shapes carries a PAN, GSTIN, IEC, CIN, a buyer's tax
 id or a contact detail: a verification result's ``subject_snapshot``, ``raw_result`` and
 ``normalized_result`` are deliberately not resolved. Free text a person typed (a
-comment, a note, a reason) is, which is why the route admits no DEVELOPER (D8).
+comment, a note, a reason) is, which is why the route admits no DEVELOPER.
 
 Read-only: no lock, no flush, no commit.
 """
@@ -260,7 +259,7 @@ class DecisionEvidenceReader:
         self, company_id: uuid.UUID, results: list[VerificationResult]
     ) -> set[uuid.UUID]:
         """The timelines the results' "recorded" rows are on: the company's, and — for a
-        legacy deal-buyer result the deal-buyer migration mapped to this company (P4-5)
+        legacy deal-buyer result the deal-buyer migration mapped to this company
         — the seller's, where it was recorded with the deal as context."""
         buyer_ids = [
             result.entity_reference

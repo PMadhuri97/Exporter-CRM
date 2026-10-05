@@ -1,5 +1,4 @@
-"""Qualification records — **owner: Developer 2** (L2-09, L2-10,
-``docs/contracts/criterion-result.md``).
+"""Qualification records (``docs/contracts/criterion-result.md``).
 
 Four tables, from migration 0017:
 

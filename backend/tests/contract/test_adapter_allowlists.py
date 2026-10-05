@@ -2,7 +2,7 @@
 
 `kyb.domain.ports.ADAPTER_MODULE_ALLOWLIST` and
 `onboarding.domain.workflow_dependencies.ADAPTER_MODULE_ALLOWLIST` are
-deliberate copies — EXP-2 specifies the verification registry as a straight
+deliberate copies — the verification registry is a straight
 copy of kyb's, and neither module may import the other's internals. Nothing but
 this test stops one from being widened without the other.
 """

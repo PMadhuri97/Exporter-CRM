@@ -1,14 +1,14 @@
-"""EXP-2: generalized verification results (`onboarding.verification_result`)
+"""Generalized verification results (`onboarding.verification_result`)
 
-Adds the new, broader results table the EXP-2 plan calls for: one row per
+Adds the new, broader results table the CRM calls for: one row per
 check ever run — KYC on a director, a bank-account check on an exporter, a
 shipment/vessel check, or anything not yet anticipated — through the
 generalized `VerificationAdapter` protocol
 (`app.modules.onboarding.domain.workflow_dependencies`).
 
 `kyb_vendor_result` is left exactly as it is: unmigrated, still written by
-`kyb`'s existing path. This is confirmed in the EXP-2 plan as an
-implementation-time call — `verification_result` is additive, for everything
+`kyb`'s existing path. This was an implementation-time call —
+`verification_result` is additive, for everything
 `kyb_vendor_result` doesn't cover, not a replacement for it.
 
 Reused trigger function
@@ -22,14 +22,14 @@ one with this table's column names.
 
 Fork note (parallel-worktree migration, expected and now reconciled):
 this revision originally chained onto `onboarding_0004_screening_fix`
-directly, the same parent EXP-1's `onboarding_0005_exporter_crm` chained
+directly, the same parent `onboarding_0005_exporter_crm` chained
 onto independently in its own worktree — both built against the same
 starting point without knowledge of each other. Unlike the `2807a84d72ba`
 precedent this docstring used to cite (`gateway`'s migration, already
-merged into master before EXP-1/EXP-2 existed, reconciled with a proper
+merged into master before either existed, reconciled with a proper
 no-op merge revision because both sides were already real, on-branch
 history), neither `onboarding_0005_exporter_crm` nor this revision had
-been applied anywhere but a disposable, per-ticket test container at
+been applied anywhere but a disposable test container at
 reconciliation time — so this fork was resolved with a direct, in-place
 edit of `down_revision` below (now `onboarding_0005_exporter_crm`) rather
 than a new merge revision. `2807a84d72ba` itself turned out to still be a sibling of

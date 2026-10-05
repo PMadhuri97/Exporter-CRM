@@ -1,16 +1,15 @@
-"""The compliance engine's settings, read at call time — **owner: Developer 1**
-(allocation §3; plan P3-1b, P3-3a, P3-3c; IQ-17).
+"""The compliance engine's settings, read at call time.
 
 Three settings in ``platform.configuration.Settings``:
 
 * ``CRM_BACKGROUND_CHECK_MAKER_CHECKER`` — whether a ``CLEAR``, ``FLAGGED`` or
-  ``ON_HOLD`` needs a second person (decision A, IQ-1). **On by default.** IQ-17
-  (answered 1 October 2026): "always on; a switch may turn it off only in
+  ``ON_HOLD`` needs a second person. **On by default.** Decided
+  1 October 2026: "always on; a switch may turn it off only in
   local/test; the server refuses 'off' elsewhere". :func:`enforce_compliance_settings`
   runs at start-up and refuses to start the application with it off in any other
   environment.
 * ``CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS`` — how long a new ``CLEAR`` stays
-  current (decision E; default 365 days). Each ``CLEAR`` stores its own
+  current (default 365 days). Each ``CLEAR`` stores its own
   ``expires_at``, so a change applies to Clears recorded after it, never to existing
   ones.
 * ``CRM_REKYC_DUE_WINDOW_DAYS`` — how far ahead "Re-KYC due" looks (default 30).
@@ -25,7 +24,7 @@ from datetime import timedelta
 
 from app.platform.configuration.config import Settings, settings
 
-#: Where maker-checker may be switched off (IQ-17: "local/test", taken literally).
+#: Where maker-checker may be switched off ("local/test", taken literally).
 #: ``development`` is deliberately absent: it is ``Settings.ENVIRONMENT``'s default and
 #: what ``.env.example`` — and so the docker-compose stack a UAT runs on — sets, so
 #: allowing it would leave the start-up guard inert on any server nobody remembered to
@@ -66,7 +65,7 @@ def rekyc_due_window(override: Settings | None = None) -> timedelta:
 
 
 def enforce_compliance_settings(override: Settings | None = None) -> None:
-    """Refuse to start with settings the compliance rules forbid (IQ-17).
+    """Refuse to start with settings the compliance rules forbid.
 
     Called from the application's start-up (``app/main.py``). Raising there aborts the
     start, which is the point: a UAT or production server that would let one person
@@ -85,7 +84,7 @@ def enforce_compliance_settings(override: Settings | None = None) -> None:
         raise RuntimeError(
             "CRM_BACKGROUND_CHECK_MAKER_CHECKER is off in the "
             f"{current.ENVIRONMENT!r} environment. It may be turned off only in "
-            f"{', '.join(sorted(MAKER_CHECKER_OFF_ALLOWED_ENVIRONMENTS))} (IQ-17): every "
+            f"{', '.join(sorted(MAKER_CHECKER_OFF_ALLOWED_ENVIRONMENTS))}: every "
             "other environment requires a second approver for CLEAR, FLAGGED and ON_HOLD."
         )
     try:

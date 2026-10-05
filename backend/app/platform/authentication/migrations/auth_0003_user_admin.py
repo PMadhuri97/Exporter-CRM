@@ -1,6 +1,6 @@
 """Add the columns administrator-facing user management needs
 
-Phase 1 of user management (an admin-managed user list, self-service profile
+User management (an admin-managed user list, self-service profile
 and password changes) needs four facts about an account that the `auth.users`
 row cannot currently express:
 
@@ -16,8 +16,7 @@ row cannot currently express:
   into removing the accounts they created.
 * `deactivated_at` — when `is_active` last went false, cleared again on
   reactivation. Deliberately a current-state column, not a log; who
-  deactivated whom belongs in the shared history log (task L1-11 of the
-  architecture plan), not here.
+  deactivated whom belongs in the shared history log, not here.
 
 All four are nullable or defaulted, so existing rows upgrade without a
 backfill and the downgrade is a clean drop.

@@ -1,9 +1,9 @@
 /**
- * Documents and their content — **owner: Developer 3B** (L3-09).
+ * Documents and their content.
  *
- * Created as a stub in the seam commit, together with its
+ * Created as a stub, together with its
  * `export * from './documents'` line in `api/index.ts`, and filled here — so the
- * barrel, which every owner shares, was never opened twice.
+ * barrel, which every area shares, was never opened twice.
  *
  * Uploads go through `apiRequest` like everything else. An earlier version of this
  * file called `fetch` directly, with a comment claiming `apiRequest` would force a

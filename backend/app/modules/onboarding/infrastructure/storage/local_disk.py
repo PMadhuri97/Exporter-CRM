@@ -1,7 +1,7 @@
-"""Local-disk storage — **owner: Developer 3B** (L3-07).
+"""Local-disk storage.
 
 One implementation of ``StoragePort`` (contract §1). S3 with Object Lock and KMS
-is a second implementation of the same port, later (decision D8, gate §7.6);
+is a second implementation of the same port, later (gate §7.6);
 local disk stays for development and tests either way.
 
 **Every key is validated against the real root before any I/O** (contract §2.1).
@@ -114,7 +114,7 @@ class LocalDiskStorage:
         return await asyncio.to_thread(_read)
 
     async def exists(self, key: str) -> bool:
-        """Not part of the port — a convenience for tests and for Phase 3's
+        """Not part of the port — a convenience for tests and for the document
         delete path, which should not have to read a whole object to find out
         whether it is there."""
         path = self._resolve(key)
@@ -155,7 +155,7 @@ class LocalDiskStorage:
 
 # ── Link signing ────────────────────────────────────────────────────────────
 #
-# Module-level so Phase 3's download route can verify what this class issued
+# Module-level so the document download route can verify what this class issued
 # without holding a storage instance.
 
 

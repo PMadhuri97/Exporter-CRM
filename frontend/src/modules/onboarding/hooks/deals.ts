@@ -1,10 +1,10 @@
 /**
- * React Query hooks for deals — **owner: Developer 3B** (L3-05, L3-06).
+ * React Query hooks for deals.
  *
- * Created as a stub in the seam commit with its barrel line in `hooks/index.ts`,
+ * Created as a stub with its barrel line in `hooks/index.ts`,
  * and filled here, so the barrel was never opened twice.
  *
- * **Seam S2**: Developer 3A's Conversation panel calls `useOpenDeal` through the
+ * **Seam S2**: the Conversation panel calls `useOpenDeal` through the
  * barrel when the gauge is `READY_NOW`. That is why opening a deal invalidates the
  * conversation keys as well as the deal ones — see `useOpenDeal`.
  */
@@ -59,11 +59,11 @@ export function useDeal(dealId: string | undefined) {
  * - `exporterProfile` for the company — its `updated_at` moves.
  * - `exporterConversation` **and** `conversationHistory` for the company — the
  *   server moved the gauge to `READY_NOW` as part of this request (architecture
- *   §3.3, seam S1) and wrote a history row for it. Without these, Developer 3A's
+ *   §3.3, seam S1) and wrote a history row for it. Without these, the Conversation
  *   panel would keep showing the old value until something else refetched it, and
  *   the screen would disagree with the database.
  *
- * Those two key names are 3A's, copied from `hooks/engagement.ts` rather than
+ * Those two key names are engagement's, copied from `hooks/engagement.ts` rather than
  * guessed: a query key is a string, so a wrong one type-checks perfectly and
  * simply never invalidates anything. Invalidating them is exactly what the seam is
  * for — the write is theirs, the cause is ours.
@@ -118,7 +118,7 @@ export function useSetDealBuyer(dealId: string, customerId?: string) {
       void queryClient.invalidateQueries({ queryKey: ['deal', dealId] });
       void queryClient.invalidateQueries({ queryKey: ['dealHistory', dealId] });
       if (body.create) {
-        // A company was created (R-24): it now exists for every company search.
+        // A company was created: it now exists for every company search.
         void queryClient.invalidateQueries({ queryKey: ['exporterProfiles'] });
       }
       if (customerId !== undefined) {
@@ -130,7 +130,7 @@ export function useSetDealBuyer(dealId: string, customerId?: string) {
 }
 
 /**
- * Record, change or clear the deal's invoicing branch (task 2.8).
+ * Record, change or clear the deal's invoicing branch.
  *
  * The response is the deal as this user reads it, so it replaces the cached one at
  * once: the select shows the new branch without snapping back while a refetch runs,
@@ -150,7 +150,7 @@ export function useSetDealInvoicingBranch(dealId: string, customerId: string) {
   });
 }
 
-// ── Which paperwork a handover needs (plan P2-5a) ────────────────────────────
+// ── Which paperwork a handover needs ────────────────────────────
 
 /** The handover rule. Any CRM reader may read it; `can_edit` says who may
  * change it. */

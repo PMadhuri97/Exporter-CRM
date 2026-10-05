@@ -1,5 +1,4 @@
-"""``QualificationService`` — criteria, results, outcomes and re-review
-(L2-09, L2-10). **Owner: Developer 2.**
+"""``QualificationService`` — criteria, results, outcomes and re-review.
 
 Qualification answers *did this company meet our requirements?* It is its own
 gauge (``docs/contracts/criterion-result.md``), with nothing borrowed from the
@@ -26,8 +25,8 @@ and a ``CLEAR`` landing at the same moment waits on the same lock, so the move t
 ``PROSPECT`` in the same transaction. If the company's background check is
 already ``CLEAR`` — cleared first, qualified second — the same transaction goes on
 to ``CUSTOMER`` through ``ExporterProfileService.promote_to_customer_if_ready``
-(L2-11; decision 2, company-record §3.2), and ``company.became_customer`` is
-announced after the commit. The other order is Developer 4A's ``CLEAR``, which
+(company-record §3.2), and ``company.became_customer`` is
+announced after the commit. The other order is the background check's ``CLEAR``, which
 calls the same method.
 """
 
@@ -232,7 +231,7 @@ class QualificationService:
         `QUALIFIED` lead, the journey — to match. All in one transaction.
 
         Allowed from `NOT_YET_REVIEWED` and, as a re-review, from
-        `NOT_QUALIFIED`; `QUALIFIED` is final (assumption A2). A re-review is a
+        `NOT_QUALIFIED`; `QUALIFIED` is final. A re-review is a
         new outcome that supersedes the previous one; the previous one, and
         every result, stay exactly as they were.
 
@@ -503,7 +502,7 @@ class QualificationService:
             )
             # Cleared first, qualified second (company-record §3.2): the check is
             # already CLEAR, so this outcome completes the condition and the company
-            # moves straight through to CUSTOMER, in this transaction (U4). A no-op
+            # moves straight through to CUSTOMER, in this transaction. A no-op
             # unless the check is CLEAR.
             announcement = await ExporterProfileService(self._db).promote_to_customer_if_ready(
                 profile,
@@ -595,7 +594,7 @@ class QualificationService:
         profile = result.scalar_one_or_none()
         if profile is None:
             raise ExporterProfileNotFoundError(customer_id)
-        # A buyer-only company is not being sold to (plan P4-1). Refused on the
+        # A buyer-only company is not being sold to. Refused on the
         # locking path, which every write in this service goes through, rather
         # than once per route: a QUALIFIED outcome moves the journey to PROSPECT,
         # which `ck_exporter_profile_not_in_pipeline_start` would then refuse as a

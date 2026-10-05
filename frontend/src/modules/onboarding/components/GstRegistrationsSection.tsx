@@ -1,6 +1,5 @@
 /**
- * A company's GST registrations — its branches — **owner: Developer 3**
- * (allocation tasks 3.13, 3.14, 3.15, 3.17).
+ * A company's GST registrations — its branches.
  *
  * Replaces the comma-separated "GSTINs" field that used to sit in `CompanyPanel`.
  * That field edited a list of strings and a save replaced the whole list, which
@@ -16,13 +15,13 @@
  * * **Deactivated branches, greyed out.** They are how a deal handed over through
  *   them is explained; hiding them would make that deal's invoicing branch look as
  *   though it came from nowhere.
- * * **"Also on another company"** when a GSTIN is shared. Allowed (decision IQ-9), so
+ * * **"Also on another company"** when a GSTIN is shared. Allowed, so
  *   it is a warning. It matters most beside a flag: flagging this company's row does
  *   **not** flag theirs, and somebody who did not know that would believe they had
  *   stopped trade that is still running.
  * * **A "verify on the GST portal" link**, only when the server sent one — it
- *   contains the GSTIN, so a role that sees the value masked does not get the link
- *   (task 3.17). The component does not build the URL itself for exactly that reason:
+ *   contains the GSTIN, so a role that sees the value masked does not get the link.
+ *   The component does not build the URL itself for exactly that reason:
  *   the decision about who may see a GSTIN belongs on the server.
  * * **Flag and unflag only for a role that may.** A flag stops trade through the
  *   branch, so it is COMPLIANCE's decision; `canFlag` comes from the caller's role.
@@ -291,7 +290,7 @@ function Row({
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {/* Only when the server sent one: the link contains the GSTIN, so a role
-              that sees it masked does not get it (task 3.17). */}
+              that sees it masked does not get it. */}
           {registration.verify_url && (
             <a
               href={registration.verify_url}

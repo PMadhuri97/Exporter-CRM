@@ -5,9 +5,8 @@ import { paths } from '../paths';
 /**
  * "This PAN is already held by another company — open it."
  *
- * Says no more than the refusal did: the holder's id, as a link, not its name. BQ-2
- * (plan §19.0) lets a masked role be told the holder when refusing a duplicate
- * (`docs/remaining-work.md` D-07).
+ * Says no more than the refusal did: the holder's id, as a link, not its name. A
+ * masked role may be told the holder when refusing a duplicate.
  */
 export function DuplicatePanMessage({ holderId }: { holderId: string }) {
   return (

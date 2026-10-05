@@ -6,7 +6,7 @@
  *
  * The same rule as the server's `domain/web_links.py`. Its one caller today is a
  * verification result's `url` evidence; the company website, which this rule was
- * also written for, retired in R11 (decision IQ-16).
+ * also written for, is retired.
  */
 export function isWebLink(value: string): boolean {
   try {

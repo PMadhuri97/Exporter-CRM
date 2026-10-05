@@ -1,8 +1,8 @@
-"""Enums for deals — **owner: Developer 3B** (L3-05).
+"""Enums for deals.
 
-Its own file, deliberately. Not ``exporter_enums.py`` (Developer 2's company
-values) and not ``engagement_enums.py`` (Developer 3A's conversation gauge): the
-prompt's §2 gives each developer their own enum module so two people adding a
+Its own file, deliberately. Not ``exporter_enums.py`` (the company's
+values) and not ``engagement_enums.py`` (the conversation gauge): each area has
+its own enum module so two people adding a
 value never share a hunk.
 
 The database type these map to is ``onboarding.deal_stage_enum`` (migration
@@ -19,7 +19,7 @@ class DealStage(str, enum.Enum):
 
     One thing only: whether there is a real, current financing need and how far
     the paperwork has got. Not the sales conversation (``ExporterConversation``),
-    not whether the company is safe to lend to (Developer 4's background check),
+    not whether the company is safe to lend to (the background check),
     and not whether the company met our requirements (``QualificationState``).
 
     **Unlike the conversation gauge, any-value-to-any-value is not allowed.** A
@@ -35,7 +35,7 @@ class DealStage(str, enum.Enum):
     GATHERING_PAPERWORK = "GATHERING_PAPERWORK"
     #: Complete, and passed to the lending team. Terminal.
     HANDED_OVER = "HANDED_OVER"
-    #: The deal fell through. Terminal, and needs a reason (assumption A7).
+    #: The deal fell through. Terminal, and needs a reason.
     WITHDRAWN = "WITHDRAWN"
 
     @property

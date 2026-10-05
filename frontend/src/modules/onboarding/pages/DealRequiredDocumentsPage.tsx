@@ -1,6 +1,6 @@
 /**
- * Required documents for a handover — **owner: Developer 2** (plan P2-5a).
- * ADMIN only, guarded at the route (`settings.requiredDocuments`, R-33 G5): any other
+ * Required documents for a handover.
+ * ADMIN only, guarded at the route (`settings.requiredDocuments`): any other
  * role gets the generic NotFound there and never loads this page.
  *
  * Which paperwork a deal must have before it goes to the lending team is a

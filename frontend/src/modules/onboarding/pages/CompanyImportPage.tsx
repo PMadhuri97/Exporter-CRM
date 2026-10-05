@@ -4,7 +4,7 @@
  * duplicates, created or matched — each in the server's words. The client re-checks
  * nothing.
  *
- * Bulk company import — **owner: Developer 2** (L2-13, L2-14).
+ * Bulk company import.
  *
  * Download the server's template, upload a CSV, read the per-row report. Every
  * check and every match is the server's — the same rules as adding a company
@@ -57,8 +57,8 @@ async function downloadTemplate() {
 /**
  * What is about to be sent, so the person can see it is the right file: the header
  * and the first five lines, read locally. Nothing here checks a value — every check
- * is the server's, in the report that comes back (ask A8 would make this preview the
- * server's own dry run).
+ * is the server's, in the report that comes back (a server-side dry run would make this
+ * preview the server's own).
  */
 function usePreview(file: File | null) {
   const [preview, setPreview] = useState<{ file: File; rows: string[][] } | null>(null);

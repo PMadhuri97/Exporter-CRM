@@ -1,11 +1,10 @@
 /**
- * Verification results, the screening checklist and bank activity —
- * **owner: Developer 4**.
+ * Verification results, the screening checklist and bank activity.
  *
  * Split out of the single `hooks/index.ts`; the barrel re-exports everything,
  * so no component changed. Mechanical move — every hook below is
  * byte-identical to the one it replaced, query keys and invalidations
- * included — except `useScreeningItemHistory`, added by Developer 4B (4B-7).
+ * included — except `useScreeningItemHistory`, added later.
  * Recording a decision invalidates the item histories too, so an open history
  * shows the new decision. Every write also refreshes what it feeds
  * (`invalidateWhatAWriteFeeds`).
@@ -31,19 +30,19 @@ import type {
 } from '../types';
 
 /**
- * What a verification or screening write changes beyond its own list (Developer 4B).
+ * What a verification or screening write changes beyond its own list.
  *
  * A company's results and screening decisions are the inputs to its background
- * check (background-check.md §12), and Developer 4A's panel shows what still blocks `CLEAR` —
+ * check (background-check.md §12), and the background-check panel shows what still blocks `CLEAR` —
  * and disables `CLEAR` — from the `['backgroundCheck', id]` query. Without this, a
  * finished checklist or an accepted review left `CLEAR` disabled until the page was
  * reloaded. Each write also adds a history row: on the company for an `EXPORTER`
  * subject, on the deal's company and deal for a `BUYER` (whose ids this hook does not
  * know, so every history list refreshes). DIRECTOR, INVOICE, VESSEL and SHIPMENT
- * subjects feed neither (D15).
+ * subjects feed neither.
  *
- * The keys are Developer 4A's (`hooks/background-check.ts`) and Developer 1's
- * (`hooks/history.ts`), used as prefixes.
+ * The keys are the background check's (`hooks/background-check.ts`) and the history
+ * log's (`hooks/history.ts`), used as prefixes.
  */
 function invalidateWhatAWriteFeeds(
   queryClient: QueryClient,
@@ -113,7 +112,7 @@ export function useReviewVerification(
   });
 }
 
-/** The checklist in the current check cycle, or in `cycleId` (read-only; P2-3d). */
+/** The checklist in the current check cycle, or in `cycleId` (read-only). */
 export function useScreeningReview(customerId: string | undefined, cycleId?: string) {
   return useQuery({
     queryKey: ['screeningReview', customerId, cycleId ?? 'current'],
@@ -134,7 +133,7 @@ export function useUpdateScreeningReviewItem(customerId: string) {
       itemKey: string;
       status: ScreeningChecklistStatus;
       comment: string | null;
-      /** Optional evidence (P2-1b, IQ-14). */
+      /** Optional evidence. */
       evidenceRefs?: VerificationEvidenceRef[];
     }) =>
       updateScreeningReviewItem(customerId, itemKey, {
@@ -145,7 +144,7 @@ export function useUpdateScreeningReviewItem(customerId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['screeningReview', customerId] });
       void queryClient.invalidateQueries({ queryKey: ['screeningItemHistory', customerId] });
-      // A screening decision is a background-check input on the company (D9 history row).
+      // A screening decision is a background-check input on the company (and a history row).
       invalidateWhatAWriteFeeds(queryClient, 'EXPORTER', customerId);
     },
   });

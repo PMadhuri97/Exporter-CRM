@@ -5,10 +5,10 @@ Pure: no I/O. A value stored as a URL is later rendered to other staff as
 script run in the reader's session, where the refresh token lives. So only an
 absolute ``http`` or ``https`` link with a host counts as a web link.
 
-The rule was first written for a verification result's ``url`` evidence (Dev4B PR
-audit, 28 Sep 2026), and was shared with the company's ``website`` so the two
-would not drift. The website retired in R11 (decision IQ-16), so today the only
-caller is ``domain/verification_evidence.py`` (Developer 4B) — ``url`` evidence
+The rule was first written for a verification result's ``url`` evidence (28 Sep
+2026), and was shared with the company's ``website`` so the two
+would not drift. The website field is retired, so today the only
+caller is ``domain/verification_evidence.py`` — ``url`` evidence
 references. The rule stays here rather than moving into that module: it is a
 property of a stored link, not of verification, and the next feature that
 renders staff-entered text as an ``<a href>`` needs it unchanged.

@@ -1,5 +1,4 @@
-"""Enums for qualification — **owner: Developer 2** (L2-09, L2-10,
-``docs/contracts/criterion-result.md``).
+"""Enums for qualification (``docs/contracts/criterion-result.md``).
 
 Qualification is its own gauge. None of these values is shared with the
 screening checklist (``NEEDS_REVIEW``/``PASSED``/``FAILED``/``EXEMPT``) or the

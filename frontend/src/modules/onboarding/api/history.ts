@@ -1,5 +1,5 @@
 /**
- * The shared CRM history log — read side. Developer 1 owns the routes.
+ * The shared CRM history log — read side.
  *
  * Every recorded change to a company — its journey, each gauge, its marker,
  * profile edits and its deals — interleaved, newest first; or one deal's own

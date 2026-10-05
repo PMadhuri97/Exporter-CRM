@@ -2,7 +2,7 @@
  * The rail (frontend-plan §7.1–7.2) highlights exactly one row — the most specific
  * one that matches — shows the settings rows to ADMIN only, keeps every row's name
  * while narrow, and remembers being pinned. Ported from the sidebar's tests when the
- * rail replaced it (R-33 Phase 2): Home is Desk, Follow-ups is Agenda, and Pipeline
+ * rail replaced it: Home is Desk, Follow-ups is Agenda, and Pipeline
  * is no longer a row (it is the Companies board).
  */
 

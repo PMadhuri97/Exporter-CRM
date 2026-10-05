@@ -1,4 +1,4 @@
-"""Repository for ``exporter_activity`` rows (EXP-1, Piece 2). Append-only:
+"""Repository for ``exporter_activity`` rows. Append-only:
 ``AppendOnlyRepository`` exposes no update or delete, and
 ``trg_exporter_activity_append_only`` enforces the same rule at the
 database — mirroring ``OnboardingEventRepository``'s sibling pattern.
@@ -51,7 +51,7 @@ class ExporterActivityRepository(AppendOnlyRepository[ExporterActivity]):
         """Every activity that carries a `due_at` (the append-only log's own
         stand-in for "this is a follow-up item"), across every exporter,
         optionally scoped to one `actor_id` — the cross-exporter
-        pending/follow-up list (Piece 2).
+        pending/follow-up list.
 
         Returns `(activity, exporter_display_name)` pairs in one query: the
         display name is the company's own `exporter_profile.name`, joined

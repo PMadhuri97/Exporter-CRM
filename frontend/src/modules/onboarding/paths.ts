@@ -26,7 +26,7 @@ export const paths = {
   newCompany: '/companies/new',
   importCompanies: '/companies/import',
   rxilIntake: '/companies/rxil-intake',
-  /** IQ-7's completion list (R-28). */
+  /** The identity completion list. */
   identityCompletion: '/companies/identity-completion',
   company: (customerId: string, tab?: CompanyTab) =>
     tab && tab !== 'overview'
@@ -39,6 +39,6 @@ export const paths = {
   /** The board's older address: it redirects to `board`, so links keep working. */
   pipeline: '/pipeline',
   qualificationCriteria: '/settings/qualification-criteria',
-  /** Which paperwork a handover needs (plan P2-5a). ADMIN only. */
+  /** Which paperwork a handover needs. ADMIN only. */
   dealRequiredDocuments: '/settings/deal-required-documents',
 } as const;

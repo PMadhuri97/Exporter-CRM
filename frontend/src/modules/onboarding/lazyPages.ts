@@ -1,5 +1,5 @@
 /**
- * Every onboarding screen, loaded on first use (`docs/frontend-plan.md` §4.3, G7).
+ * Every onboarding screen, loaded on first use (`docs/frontend-plan.md` §4.3).
  *
  * Each page is its own chunk, imported from its own file — never through
  * `./pages/index.ts`, which would pull every page into whichever chunk reached it

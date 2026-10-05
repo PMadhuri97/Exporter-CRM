@@ -1,5 +1,4 @@
-"""Backfill ``exporter_profile.created_via`` — **owner: Developer 3**
-(allocation task 3.8, plan P4-1).
+"""Backfill ``exporter_profile.created_via``.
 
 Revision ID: onboarding_0033_created_via
 Revises: onboarding_0032_company_identity
@@ -14,12 +13,12 @@ on file the same answer, read from the one place that has it.
 
 Task 3.8's ``domain/company_identity.py`` maps ``history_source`` → channel for
 the live path. The ``CASE`` below is that same mapping expressed as SQL, and
-``test_dev3_company_identity.py`` asserts the two agree, so a new channel added to
+``test_company_identity_create_paths.py`` asserts the two agree, so a new channel added to
 one and not the other fails a test rather than quietly backfilling ``NULL``.
 
 What it does
 ------------
-#. **Normalises** any ``created_via`` already written. F3 shipped the buyer path
+#. **Normalises** any ``created_via`` already written. 0032 shipped the buyer path
    writing the lower-case ``'deal_buyer'`` before ``CreatedVia`` settled on
    upper-case names; one ``upper()`` makes both spellings read the same, and it
    is a no-op on a database where only this release has run.
@@ -28,7 +27,7 @@ What it does
    ``background_check_service.clear``, which say how a company progressed rather
    than how it arrived. Two dimensions count as a creation row — ``journey``, which
    every company entered into the pipeline starts with, and ``pipeline``, which is
-   what a buyer-only company gets *instead* (plan P4-6: a company that exists only
+   what a buyer-only company gets *instead* (a company that exists only
    because it was somebody's buyer has no journey yet, so it has no journey row to
    read). Looking only at ``journey`` would leave exactly the buyer companies
    ``DEAL_BUYER`` was added for reading ``NULL``.
@@ -38,7 +37,7 @@ What it does
    handful of such rows is expected — early seed and test data.
 
 ``identity_type`` is **not** touched: 0032 set it for every company holding a
-PAN, which is the only case that can be inferred, and task 3.8 sets it on the
+PAN, which is the only case that can be inferred, and the create paths set it on the
 way in from here on.
 
 Rollback
@@ -89,7 +88,7 @@ def _case_expression() -> str:
 def upgrade() -> None:
     bind = op.get_bind()
 
-    # 1. One spelling. See the module docstring: F3 wrote 'deal_buyer'.
+    # 1. One spelling. See the module docstring: the buyer path wrote 'deal_buyer'.
     bind.execute(
         sa.text(
             f"UPDATE {SCHEMA}.exporter_profile "

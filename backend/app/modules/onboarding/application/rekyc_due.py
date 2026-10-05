@@ -1,22 +1,21 @@
-"""The "Re-KYC due" list — companies whose Clear has expired or soon will — **owner:
-Developer 1** (compliance engine; plan P3-3c, allocation §1 adjustment 3).
+"""The "Re-KYC due" list — companies whose Clear has expired or soon will.
 
-Its own read, in the background-check area, rather than a filter on Developer 3's
-``search_profiles`` (allocation §1, adjustment 3).
+Its own read, in the background-check area, rather than a filter on the company
+record's ``search_profiles``.
 
 **What it lists.** Companies whose background check is ``CLEAR`` and whose current
 Clear expires before ``before``: the ones already expired first, then the soonest. It
 reads ``exporter_profile.background_check_expires_at`` — the current value
 ``BackgroundCheckService`` sets on every ``CLEAR`` and clears on every move away, and
-migration 0027 backfilled for the companies already cleared (BQ-5) — through its
+migration 0027 backfilled for the companies already cleared — through its
 partial index.
 
 **Company- and cycle-aware.** One row per company (the subject of the check, whatever
 role it plays in a deal), with the number of its current check cycle. A company whose
-Re-KYC has started is not listed: starting a cycle on a ``CLEAR`` company reopens it
-(IQ-3), which clears the expiry.
+Re-KYC has started is not listed: starting a cycle on a ``CLEAR`` company reopens it,
+which clears the expiry.
 
-**No automatic move.** An expired Clear stays ``CLEAR`` (P3-3b); this list, the
+**No automatic move.** An expired Clear stays ``CLEAR``; this list, the
 company's gauge badge and the facts its consumers read are how it shows.
 
 Read-only: never commits, flushes, writes or locks. No identifier is read: the
@@ -46,7 +45,7 @@ class ReKycDueCompany:
     expires_at: datetime
     is_expired: bool
     current_cycle_number: int | None
-    #: Whether the company is in the sales pipeline or exists only as a buyer (R-29):
+    #: Whether the company is in the sales pipeline or exists only as a buyer:
     #: a buyer-only company's Re-KYC is about trade it is bought on, not a lead.
     pipeline_status: str
 

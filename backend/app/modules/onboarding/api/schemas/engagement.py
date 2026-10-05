@@ -1,14 +1,13 @@
-"""Request/response schemas for contacts and the activity log — **owner:
-Developer 3** (architecture §8.1, §9.3).
+"""Request/response schemas for contacts and the activity log (architecture §8.1, §9.3).
 
-Split out of `exporter.py` (L2-01) so the company shapes and the engagement
+Split out of `exporter.py` so the company shapes and the engagement
 shapes stop sharing one file. The contact and activity classes are unchanged from
 that split; the class names are what the OpenAPI document and the frontend's
 generated types key on, so they stay exactly as they were.
 
-The conversation shapes (L3-03) are added at the end, under their own heading.
-Phase 2 adds **no** class here: its completion shapes live in its own
-`api/schemas/follow_up.py` (phase agreement §6.3).
+The conversation shapes are added at the end, under their own heading.
+Follow-ups add **no** class here: their completion shapes live in
+`api/schemas/follow_up.py`.
 """
 
 from __future__ import annotations
@@ -118,7 +117,7 @@ class ExporterActivityListResponse(BaseModel):
 
 
 class PendingActivityResponse(BaseModel):
-    """One row of the cross-exporter pending/follow-up list (Piece 2). Unlike
+    """One row of the cross-exporter pending/follow-up list. Unlike
     `ExporterActivityResponse`, this always carries `exporter_display_name`
     and `is_overdue` — there is no per-exporter context to fall back on, since
     this response spans every exporter."""
@@ -144,7 +143,7 @@ class PendingActivityListResponse(BaseModel):
     offset: int
 
 
-# ── Conversation gauge (L3-03, L3-04a) ────────────────────────────────────
+# ── Conversation gauge ────────────────────────────────────────────────────
 
 
 class ConversationMoveResponse(BaseModel):

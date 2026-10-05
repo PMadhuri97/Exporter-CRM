@@ -1,5 +1,5 @@
 /**
- * One company's paperwork — **owner: Developer 3B** (L3-09, L3-11b).
+ * One company's paperwork.
  *
  * The company page's Documents tab. (It was a route of its own,
  * `/exporters/:customerId/documents`, while the company page was one long

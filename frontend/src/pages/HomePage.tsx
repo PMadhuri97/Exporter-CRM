@@ -7,11 +7,11 @@
  * - **Compliance**: decisions awaiting your signature first, then everything an RM sees.
  * - **Admin**: the Compliance desk plus one setup section.
  * - **Developer**: "Read-only access. Identifiers are masked." — the pipeline and the
- *   team's queue to read, nothing from compliance (D8).
+ *   team's queue to read, nothing from compliance.
  *
- * Every section is chosen by capability (R-33, G2), so a section is never mounted —
+ * Every section is chosen by capability, so a section is never mounted —
  * and its request never sent — for a role the server would refuse. A section that
- * needs a backend ask (A4's "In review", A5's "Deals in paperwork") is not shown at
+ * needs something the backend does not serve yet ("In review", "Deals in paperwork") is not shown at
  * all until the ask lands: hidden, never empty. A user with no CRM capability never
  * reaches this page: the root renders No workspace instead.
  */

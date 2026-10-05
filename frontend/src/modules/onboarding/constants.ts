@@ -1,5 +1,5 @@
 /**
- * Display vocabulary for the company record — **owner: Developer 2**.
+ * Display vocabulary for the company record.
  *
  * Labels and chip colours only. There is deliberately **no transition graph
  * here**: the journey is never moved by hand (a qualification outcome moves
@@ -7,7 +7,7 @@
  * served by the API with each company (`allowed_marker_moves`,
  * `allowed_outcomes`, `can_record_results`). The ten-status lifecycle and the
  * hand-copied `PERMITTED_LIFECYCLE_TRANSITIONS` that used to live here were
- * retired in L2-04.
+ * retired.
  */
 
 import type {

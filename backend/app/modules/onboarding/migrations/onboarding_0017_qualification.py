@@ -1,11 +1,10 @@
-"""Qualification: criteria, results, outcomes — and the journey they move
-(L2-09, L2-10).
+"""Qualification: criteria, results, outcomes — and the journey they move.
 
 Revision ID: onboarding_0017_qualification
 Revises: onboarding_0014_company_record
 
 Numbered 0017 per the migration register. Its parent is 0014 because 0015
-(Dev 4) and 0016 (Dev 3) have not been written yet; whichever of them merges
+and 0016 have not been written yet; whichever of them merges
 after this re-parents onto it (a one-line ``down_revision`` change, register
 §2), keeping one head.
 
@@ -14,7 +13,7 @@ What it adds, all in the ``onboarding`` schema:
 * ``exporter_profile.journey`` — ``LEAD``/``PROSPECT``/``CUSTOMER``, default
   ``LEAD``. The three-stage journey qualification moves (decided by the
   programme lead for this phase: add the column now, beside the ten old
-  ``lifecycle_status`` values, which L2-04 retires).
+  ``lifecycle_status`` values, which migration 0020 retires).
 * ``exporter_profile.qualification`` — the gauge's current value, default
   ``NOT_YET_REVIEWED``.
 * ``qualification_criterion`` — one **immutable** row per version of each

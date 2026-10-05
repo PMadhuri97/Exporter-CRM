@@ -1,5 +1,4 @@
-"""Request/response schemas for deals and buyers — **owner: Developer 3B**
-(L3-05, L3-06).
+"""Request/response schemas for deals and buyers.
 
 Contract: ``docs/contracts/deal-and-buyer.md``.
 
@@ -53,7 +52,7 @@ from app.platform.authentication.models import User, UserRole
 #: Who may move a deal — the roles `_STAFF` admits on the move routes
 #: (`deal_router.py`). Anyone else is served no moves and no blocked reason: they
 #: could not act on either, and the reason names the company's background check,
-#: which decision D8 keeps from DEVELOPER.
+#: which is kept from DEVELOPER.
 _MOVING_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
 
 #: The buyer fields a masked role never sees in full, and which a buyer request
@@ -80,7 +79,7 @@ class OpenDealRequest(BaseModel):
 
 
 class TransitionDealStageRequest(BaseModel):
-    """Move a deal's stage. ``reason`` is required for ``WITHDRAWN`` (A7) and
+    """Move a deal's stage. ``reason`` is required for ``WITHDRAWN`` and
     refused for anything else."""
 
     model_config = ConfigDict(extra="forbid")
@@ -90,14 +89,13 @@ class TransitionDealStageRequest(BaseModel):
 
 
 class SetDealInvoicingBranchRequest(BaseModel):
-    """Which of the seller's GST branches this deal is invoiced from (task 2.8).
+    """Which of the seller's GST branches this deal is invoiced from.
 
     ``null`` clears it: a branch recorded by mistake can be un-recorded, and the
     handover guard will ask for one again if the seller has any.
 
     The registration's id, never its GSTIN — which is what makes it impossible to
-    point a deal at the other company's copy of a shared GSTIN (plan P6-3's
-    consequence, decision IQ-9).
+    point a deal at the other company's copy of a shared GSTIN.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -106,7 +104,7 @@ class SetDealInvoicingBranchRequest(BaseModel):
 
 
 class DealSide(str, enum.Enum):
-    """Which side of its deals a company is being listed on (task 2.7).
+    """Which side of its deals a company is being listed on.
 
     An enum rather than a boolean query parameter, because ``?as=buyer`` reads as
     what it means and ``?as_buyer=true`` does not — and because a third side is
@@ -118,14 +116,14 @@ class DealSide(str, enum.Enum):
 
 
 class CreateBuyerCompanyRequest(BaseModel):
-    """A buyer company that does not exist yet (plan P4-3, R-24): created
+    """A buyer company that does not exist yet: created
     ``NOT_IN_PIPELINE`` — not a lead — and named as this deal's buyer in one step.
 
     The server matches first, as ``POST /companies/match`` does. An identifier that a
     company on file already holds is refused (409 ``BUYER_COMPANY_ALREADY_KNOWN``,
     naming it) rather than duplicated; a name that only resembles one is not an
-    identity (IQ-8), so it does not stop the create. A company outside India needs its
-    registration number unless it has a PAN (IQ-7) — the migration's exemption does not
+    identity, so it does not stop the create. A company outside India needs its
+    registration number unless it has a PAN — the migration's exemption does not
     apply to a buyer somebody is entering now.
     """
 
@@ -140,20 +138,20 @@ class CreateBuyerCompanyRequest(BaseModel):
 
 
 class SetDealBuyerRequest(BaseModel):
-    """Record the deal's buyer, in **one of two forms** (plan P4-4, task 2.4).
+    """Record the deal's buyer, in **one of two forms**.
 
     *The company form* — ``{"buyer_company_id": "..."}`` — names the company the
     buyer **is**. This is the form to use. The buyer is then a full company record:
-    it can be screened on its own timeline, the handover guard asks about it
-    (BQ-4), and the same company can be a seller on another deal. It is **set
+    it can be screened on its own timeline, the handover guard asks about it,
+    and the same company can be a seller on another deal. It is **set
     once**; see ``DealBuyerCompanyAlreadySetError``.
 
     *The legacy form* — ``{"name": ..., "country": ..., ...}`` — records a
     ``deal_buyer`` row: a set of details with no record of its own. It is still
-    accepted because deals written before the buyer migration (P4-6) have one, and
-    because a ``deal_buyer``'s sanctions and AML are the only place BQ-4's rule can
-    read for such a deal (``background-check.md`` §12.2). These writes retire in
-    P4-10, and the table is kept.
+    accepted because deals written before the buyer migration have one, and
+    because a ``deal_buyer``'s sanctions and AML are the only place the buyer-compliance
+    rule can read for such a deal (``background-check.md`` §12.2). These writes will
+    retire, and the table is kept.
 
     **Exactly one form per request.** Mixing them is refused rather than merged:
     the two disagree about what a buyer *is*, and silently writing both would leave
@@ -169,7 +167,7 @@ class SetDealBuyerRequest(BaseModel):
 
     #: The company form. When given, every other field must be absent.
     buyer_company_id: uuid.UUID | None = None
-    #: The create form (R-24): a buyer company that does not exist yet, created and
+    #: The create form: a buyer company that does not exist yet, created and
     #: named as the buyer in one step. When given, every other field must be absent.
     create: CreateBuyerCompanyRequest | None = None
 
@@ -259,14 +257,14 @@ class DealBuyerResponse(BaseModel):
 
 
 class BuyerCompanyResponse(BaseModel):
-    """The deal's buyer as a company record (plan P4-4), summarised.
+    """The deal's buyer as a company record, summarised.
 
     `pan` and `cin` are masked for OPERATIONS and DEVELOPER by exactly the rule
     the company response uses — the buyer being a company does not make its
     identifiers more visible than the seller's.
 
-    `pipeline_status` is `null` until Developer 3's F3 column exists. The field is
-    in the shape from F2 on purpose: the company screens are built against this
+    `pipeline_status` is `null` on a database before migration 0032. The field is
+    in the shape on purpose: the company screens are built against this
     response, and adding a field to it later would be a contract change.
     """
 
@@ -363,11 +361,11 @@ class DealResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     buyer: DealBuyerResponse | None
-    #: The buyer as a company record (P4-4). `null` on every deal whose buyer is
-    #: still a `deal_buyer` row, which is every deal until P4-6 runs.
+    #: The buyer as a company record. `null` on every deal whose buyer is
+    #: still a `deal_buyer` row, which is every deal until the buyer migration runs.
     buyer_company: BuyerCompanyResponse | None
-    #: What the lending team was given, frozen at the moment of the handover
-    #: (P2-7): `{buyer, buyer_company_id, document_ids, snapshot_source,
+    #: What the lending team was given, frozen at the moment of the handover:
+    #: `{buyer, buyer_company_id, document_ids, snapshot_source,
     #: snapshot_at}`. `null` until the deal is handed over. The buyer's
     #: identifiers inside it are masked by the same rule as `buyer`'s.
     #:
@@ -384,12 +382,12 @@ class DealResponse(BaseModel):
     #:
     #: Typed as `HandoverSnapshot` rather than `dict`: see that alias for why.
     handover_snapshot: HandoverSnapshot | None
-    #: The seller's GST registration this deal is invoiced from (P6-6). `null` on
-    #: every deal until that task records one.
+    #: The seller's GST registration this deal is invoiced from. `null` on
+    #: every deal until one is recorded.
     seller_gst_registration_id: uuid.UUID | None
     allowed_stage_moves: list[DealStageMoveResponse]
     #: Present when the handover is legal by the stage graph but blocked by
-    #: assumption A5's guard; it names every unmet condition, journey first.
+    #: the handover guard; it names every unmet condition, journey first.
     handover_blocked_reason: str | None
 
     @classmethod
@@ -466,7 +464,7 @@ class SetDealRequiredDocumentRequest(BaseModel):
 
     There is no delete: the table is append-only, so "stop requiring it" is
     `active: false`, which writes a new version. The record of what was required
-    when is part of the point (plan P2-5a).
+    when is part of the point.
     """
 
     model_config = ConfigDict(extra="forbid")

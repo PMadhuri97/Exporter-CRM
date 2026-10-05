@@ -10,7 +10,7 @@
  * segmented choices, popovers, sheets, dialogs, inline edits and form fields —
  * so a screen composes them rather than repeating long class strings that
  * drift apart one edit at a time. The tokens they draw with, the icon map and
- * the brand mark live in `src/design/` (frontend-plan §5, R-33 Phase 1).
+ * the brand mark live in `src/design/` (frontend-plan §5).
  */
 
 export { DetailRow } from './DetailRow';

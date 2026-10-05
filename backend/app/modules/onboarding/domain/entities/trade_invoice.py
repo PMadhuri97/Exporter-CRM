@@ -1,5 +1,5 @@
 """``TradeInvoice`` and ``TradeInvoiceOutcome`` — what a pair has traded, and how it
-went — **owner: Developer 3** (allocation task 3.19, plan P5-2).
+went.
 
 An invoice is a **fact about the past**: it was issued, for an amount, in a currency,
 on a date. Its *identity* — which relationship, which number, which date, how much —
@@ -9,8 +9,8 @@ changes is its **outcome**, and that is an append-only superseding chain, exactl
 shape ``verification_review`` uses for the same reason: a payment story is a sequence
 of things we learned, and the earlier belief is part of the record.
 
-Currency is stored and never converted (decision IQ-4)
-------------------------------------------------------
+Currency is stored and never converted
+--------------------------------------
 An invoice in AED stays in AED. No conversion, no reporting currency, no stored rate.
 A converted figure is only as good as the rate and the date behind it, and a trade
 history that quietly reported everything in USD would invite comparisons between
@@ -19,8 +19,8 @@ to decide the rate themselves, which is the honest position.
 
 ``deal_id`` is nullable
 -----------------------
-Past trade — what the two companies did before they came to us — has no deal
-(task 3.21). That is the point of recording it: a relationship with a settled history
+Past trade — what the two companies did before they came to us — has no deal.
+That is the point of recording it: a relationship with a settled history
 is worth more than a new one, and the evidence for it predates us.
 """
 
@@ -85,7 +85,7 @@ class TradeInvoice(AnerModel):
         # note or a mistake, and neither is this table's subject.
         CheckConstraint("amount > 0", name="ck_trade_invoice_amount_positive"),
         Index("ix_trade_invoice_relationship", "relationship_id", text("invoice_date DESC")),
-        # The deals that produced an invoice, for the deal page's panel (task 3.22).
+        # The deals that produced an invoice, for the deal page's panel.
         Index(
             "ix_trade_invoice_deal",
             "deal_id",
@@ -104,9 +104,9 @@ class TradeInvoice(AnerModel):
         nullable=False,
     )
     #: The deal this invoice came from, when it came from one. ``NULL`` for past trade
-    #: recorded against the relationship (task 3.21). A real deal between the
+    #: recorded against the relationship. A real deal between the
     #: relationship's two companies: the service checks the pair, and 0042's
-    #: ``RESTRICT`` FK means a deal an invoice names is never deleted under it (R-17).
+    #: ``RESTRICT`` FK means a deal an invoice names is never deleted under it.
     deal_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{SCHEMA}.deal.id", name="fk_trade_invoice_deal_id", ondelete="RESTRICT"),
@@ -118,11 +118,11 @@ class TradeInvoice(AnerModel):
     #: The invoiced amount, exact. ``Numeric`` and never a float: money compared or
     #: summed as binary floating point is money reported wrongly.
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
-    #: ISO 4217, stored as issued and **never converted** (decision IQ-4).
+    #: ISO 4217, stored as issued and **never converted**.
     currency: Mapped[str] = mapped_column(String(CURRENCY_LENGTH), nullable=False)
 
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    #: BQ-7: how this row came to exist.
+    #: Provenance: how this row came to exist.
     source: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
@@ -220,7 +220,7 @@ class TradeInvoiceOutcome(AppendOnlyModel):
     )
     #: How much was paid, when that is known. Required for ``PARTIAL``. Same currency
     #: as the invoice — there is no second currency column, because a payment in
-    #: another currency is a conversion and IQ-4 says we do not do those.
+    #: another currency is a conversion and the CRM does not do those.
     amount_paid: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     proof_status: Mapped[TradeProofStatus] = mapped_column(
         Enum(
@@ -253,8 +253,7 @@ class TradeInvoiceOutcome(AppendOnlyModel):
 
 @dataclass(frozen=True)
 class DealInvoiceDraft:
-    """The identity of an invoice being created alongside a deal's payment outcome
-    (task 3.21).
+    """The identity of an invoice being created alongside a deal's payment outcome.
 
     A plain value rather than the request schema, so the service does not import the
     API layer — and so the buyer migration or a script can call the same method.

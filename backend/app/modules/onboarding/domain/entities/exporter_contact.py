@@ -1,4 +1,4 @@
-"""``ExporterContact`` — a contact person for an exporter relationship (EXP-1).
+"""``ExporterContact`` — a contact person for an exporter relationship.
 
 ``customer_id`` points at a company that exists: migration 0014 added
 ``fk_exporter_contact_customer_id`` (its ``_LINKED`` tuple, step 4), a real
@@ -12,7 +12,7 @@ FK", on the reasoning that a contact could be recorded for a Lead before any
 company record became the CRM's own table (``docs/contracts/company-record.md``
 §1): a company *is* an ``exporter_profile`` row from the moment it is created,
 Lead or not, so there is no state in which a contact has a company id but no
-company. Corrected in L3-02, which added the constraint's direct-SQL test; the
+company. The constraint has its own direct-SQL test; the
 constraint itself was already there, and 0016 does not re-add it.
 
 At most one contact per ``customer_id`` may have ``is_primary_contact=True`` —

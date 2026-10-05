@@ -1,4 +1,4 @@
-"""Indian GST state codes — **owner: Developer 3** (allocation task 3.12, plan P6-1).
+"""Indian GST state codes.
 
 Pure data and two lookups, no I/O. The first two characters of a GSTIN are the
 state code issued by the GST Network, so a registration's state is **derivable**

@@ -1,4 +1,4 @@
-"""The injectable clock — "now" for new code (plan P0-5; allocation §2.2).
+"""The injectable clock — "now" for new code.
 
 New code that needs the current time asks this module instead of calling
 ``datetime.now(...)`` inline, so a test can move "now" — past a Clear's expiry, for

@@ -1,38 +1,37 @@
-"""The deal's new columns — **owner: Developer 2** (allocation F2).
+"""The deal's new columns.
 
 Revision ID: onboarding_0028_deal_foundation
-Revises: onboarding_0027_dev1_expiry
+Revises: onboarding_0027_clear_expiry
 
 ``onboarding_0028_deal_foundation`` is 31 characters, inside the register's
 32-character limit on ``alembic_version.version_num``.
 
-**Numbered 0028, after Developer 1's 0023–0027.** This was first written as 0025
-on ``onboarding_0022_integrity``, before Developer 1's compliance PR merged with
-0023–0027 of its own. Merged as it was, the chain had two heads and two files
-labelled 0025, 0026 and 0027, so Developer 1's handover had the next lane to
-merge renumber from 0028 and parent on the head at that moment,
-``onboarding_0027_dev1_expiry``. 0029 and 0030 follow it.
+**Numbered 0028, after the compliance migrations 0023–0027.** This was first written
+as 0025 on ``onboarding_0022_integrity``, before the compliance migrations merged with
+0023–0027 of their own. Merged as it was, the chain would have had two heads and two
+files labelled 0025, 0026 and 0027, so it was renumbered from 0028 and parented on the
+head at that moment, ``onboarding_0027_clear_expiry``. 0029 and 0030 follow it.
 
 What it adds, all on ``onboarding.deal``
 ----------------------------------------
 * ``buyer_company_id`` — nullable FK to ``exporter_profile.customer_id``
-  (``RESTRICT``, like the seller's): the buyer becomes an ordinary company record
-  (plan P4-4). Nullable because every deal in the database today has its buyer in
-  ``deal_buyer`` instead, and the migration that fills this column is P4-6.
+  (``RESTRICT``, like the seller's): the buyer becomes an ordinary company record.
+  Nullable because every deal in the database today has its buyer in
+  ``deal_buyer`` instead, and the buyer migration is what fills this column.
   ``ck_deal_buyer_is_not_the_seller`` refuses a deal a company sells to itself on.
 * ``handover_snapshot JSONB`` — what the lending team was given, written at the
-  moment of the handover (plan P2-7). Filled and frozen by 0029; this revision
+  moment of the handover. Filled and frozen by 0029; this revision
   only makes the column exist.
 * ``seller_gst_registration_id`` — nullable FK to ``exporter_gstin.id``, the
-  branch a deal is invoiced from (plan P6-6). **Verified before writing this:**
+  branch a deal is invoiced from. **Verified before writing this:**
   ``exporter_gstin`` inherits ``AnerModel``, so ``id`` is a real UUID primary key
-  and no key had to be agreed with Developer 3.
+  and no new key was needed.
 
 **No trigger change here.** ``prevent_terminal_deal_change()`` is extended once
-per column that needs freezing, by the task that starts writing it: 0029 for
-``handover_snapshot``, P4-4 for ``buyer_company_id`` and P6-6 for
+per column that needs freezing, by the migration that starts writing it: 0029 for
+``handover_snapshot``, 0034 for ``buyer_company_id`` and 0036 for
 ``seller_gst_registration_id``. Freezing a column nothing writes yet would only
-make the backfills in those tasks harder.
+make the backfills in those migrations harder.
 
 Additive and reversible: downgrade drops the three columns and loses whatever was
 in them. Nothing writes them until 0029, so a downgrade run immediately after this
@@ -48,7 +47,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "onboarding_0028_deal_foundation"
-down_revision: str | None = "onboarding_0027_dev1_expiry"
+down_revision: str | None = "onboarding_0027_clear_expiry"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -107,7 +106,7 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_deal_buyer_is_not_the_seller", "deal", _NOT_THE_SELLER, schema=SCHEMA
     )
-    # "This company's deals as the buyer, newest first" — the read P4-8 serves,
+    # "This company's deals as the buyer, newest first" — the deals-as-buyer read,
     # the mirror of `ix_deal_company_recent`.
     op.create_index(
         "ix_deal_buyer_company_recent",

@@ -356,7 +356,7 @@ async def my_permissions(
     repo = RoleRepository(db)
     # The same row `resolve_permissions` read: the assigned role, else the built-in
     # row for the enum — whose name an administrator may have changed, and which
-    # for OPERATIONS reads "RM (Relationship Manager)" (auth_0005, IQ-13).
+    # for OPERATIONS reads "RM (Relationship Manager)" (auth_0005).
     role = (
         await repo.get_by_id(current_user.role_id)
         if current_user.role_id is not None

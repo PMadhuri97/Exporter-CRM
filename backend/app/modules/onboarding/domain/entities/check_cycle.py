@@ -1,28 +1,27 @@
-"""``CheckCycle`` — one round of a company's background check — **owner: Developer 1**
-(compliance engine; plan P2-3a, decision E, IQ-3).
+"""``CheckCycle`` — one round of a company's background check.
 
 A cycle groups the inputs one KYC/KYB round rests on — verification results,
 screening answers and the decisions taken on them — so a second round (a Re-KYC or
 Re-KYB) can run while the first stays readable exactly as it was. The background
-check decides on the **current** cycle only (plan P2-3b): the company's cycle with
+check decides on the **current** cycle only: the company's cycle with
 the highest ``number``.
 
 **Append-only**, like every record a compliance decision rests on:
 ``trg_check_cycle_append_only`` runs ``public.prevent_mutation()`` on ``UPDATE`` and
-``DELETE`` (migration ``onboarding_0025_dev1_check_cycle``), and the repository
+``DELETE`` (migration ``onboarding_0025_check_cycle``), and the repository
 exposes neither.
 
 Legacy rows are never updated
 -----------------------------
 Inputs and decisions recorded before cycles existed carry ``cycle_id IS NULL``. By
-the documented read rule they belong to the company's **cycle 1** (allocation §2.3,
-plan §17.1). The migration inserts one cycle-1 row per company that already had an
+the documented read rule they belong to the company's **cycle 1**. The migration
+inserts one cycle-1 row per company that already had an
 input, dated at its earliest input; it never updates an input row. A company whose
 first input arrives later gets its cycle 1 then, from the writer that records the
 input (``CheckCycleRepository.current_or_initial``).
 
-Provenance (BQ-7)
------------------
+Provenance
+----------
 Every new table carries ``created_by``, ``created_at``, ``source`` and
 ``source_ref``. Here ``created_by`` is who started the cycle (or the migration's
 actor for a backfilled cycle 1), ``source`` the code path or ``MIGRATION``, and
@@ -56,13 +55,13 @@ SCHEMA = "onboarding"
 
 
 class CheckCycleKind(str, enum.Enum):
-    """Why a cycle was started (IQ-3).
+    """Why a cycle was started.
 
     ``INITIAL`` is cycle 1 and only cycle 1 (``ck_check_cycle_initial_first``).
     ``RE_KYC`` and ``RE_KYB`` are the two re-check buttons. ``FULL`` is reserved by
     the plan for a complete re-check; the database accepts it, the API does not offer
-    it yet. Every new cycle starts empty whatever its kind (IQ-3's default: screening
-    resets), so the kind is a label on the round, not a different rule set.
+    it yet. Every new cycle starts empty whatever its kind (screening resets), so the
+    kind is a label on the round, not a different rule set.
     """
 
     INITIAL = "INITIAL"

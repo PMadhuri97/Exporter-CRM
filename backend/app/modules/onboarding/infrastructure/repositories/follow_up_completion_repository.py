@@ -1,5 +1,4 @@
-"""Repository for ``follow_up_completion``, and the due/overdue read query
-(L3-04b). **Owner: Developer 3A, Phase 2.**
+"""Repository for ``follow_up_completion``, and the due/overdue read query.
 
 Append-only: ``AppendOnlyRepository`` exposes no ``update`` and no ``delete``, and
 ``trg_follow_up_completion_append_only`` enforces the same rule at the database —
@@ -8,9 +7,9 @@ the same pair of guarantees ``ExporterActivityRepository`` has.
 **Why the due/overdue query lives here and not in the activity repository.** It
 selects across ``exporter_activity``, ``follow_up_completion`` and
 ``exporter_profile``, so it *could* sit in any of the three. It sits here because
-``exporter_activity_repository.py`` is Phase 1's file and the phase agreement (§6.3)
-says Phase 2 adds no method to it. A read repository that selects across two tables
-is ordinary; reaching into another owner's repository for one method is what creates
+``exporter_activity_repository.py`` belongs to the activity log, and follow-ups add no
+method to it. A read repository that selects across two tables
+is ordinary; reaching into another area's repository for one method is what creates
 the conflict the phase split exists to avoid.
 
 **There is no status column, and there must never be one.** "Outstanding" is the
@@ -127,7 +126,7 @@ class FollowUpCompletionRepository(AppendOnlyRepository[FollowUpCompletion]):
             stmt = stmt.where(ExporterActivity.customer_id == customer_id)
         if actor_id is not None:
             # Filtering *by* a person, never a permission: follow-ups are the whole
-            # team's (decision D2), so this narrows the list and does not gate it.
+            # team's, so this narrows the list and does not gate it.
             stmt = stmt.where(ExporterActivity.actor_id == actor_id)
         if activity_type is not None:
             stmt = stmt.where(ExporterActivity.activity_type == activity_type)
@@ -203,8 +202,8 @@ class FollowUpCompletionRepository(AppendOnlyRepository[FollowUpCompletion]):
     #
     # Read-only, and read straight off the company record. `ConversationService` is
     # the only writer of `conversation_check_back_on`
-    # (`docs/contracts/engagement.md` §2.1), and Phase 2 never writes it — the same
-    # rule that stops Developer 3B writing `conversation`.
+    # (`docs/contracts/engagement.md` §2.1), and follow-ups never write it — the same
+    # rule that stops deals writing `conversation`.
 
     def _check_back_query(self, *, customer_id: uuid.UUID | None, due_on_or_before: date | None):
         stmt = select(ExporterProfile).where(

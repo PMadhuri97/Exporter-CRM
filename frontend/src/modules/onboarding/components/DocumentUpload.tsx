@@ -1,5 +1,5 @@
 /**
- * Upload a document against a company or a deal — **owner: Developer 3B** (L3-11b).
+ * Upload a document against a company or a deal.
  *
  * One component for both owners: the only differences are which categories the
  * server offers and which upload hook runs, and both are passed in.
@@ -12,7 +12,7 @@
  * **It says the scanner is a placeholder.** The catalogue returns `scanner_name`,
  * and while that reads `pass-through` this form says so in as many words: gate §7.6
  * blocks real exporter documents until a real scanner is behind the interface, and a
- * form that implied one had run would be the exact failure Developer 4's placeholder
+ * form that implied one had run would be the exact failure the placeholder
  * clean-up exists to prevent.
  */
 

@@ -115,18 +115,18 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{V1}/auth/roles/{{role_id}}"): ADMIN_ONLY,
     ("PATCH", f"{V1}/auth/roles/{{role_id}}"): ADMIN_ONLY,
     ("DELETE", f"{V1}/auth/roles/{{role_id}}"): ADMIN_ONLY,
-    # ── notifications (L1-06) ────────────────────────────────────────────────
+    # ── notifications ────────────────────────────────────────────────────────
     ("GET", f"{V1}/notifications/"): STAFF,
     ("POST", f"{V1}/notifications/process-pending"): STAFF,
-    # ── audit (L1-07) — the platform-wide record of who did what ─────────────
+    # ── audit — the platform-wide record of who did what ─────────────────────
     ("GET", f"{V1}/audit/events"): COMPLIANCE_OR_ADMIN,
     ("GET", f"{V1}/audit/events/{{event_id}}"): COMPLIANCE_OR_ADMIN,
     ("GET", f"{V1}/audit/transactions/{{transaction_id}}"): COMPLIANCE_OR_ADMIN,
     ("GET", f"{V1}/audit/correlations/{{correlation_id}}"): COMPLIANCE_OR_ADMIN,
-    # ── workflows (L1-07) ────────────────────────────────────────────────────
+    # ── workflows ────────────────────────────────────────────────────────────
     ("GET", f"{V1}/workflows/{{transaction_id}}"): STAFF,
     ("POST", f"{V1}/workflows/{{transaction_id}}/start"): STAFF,
-    # ── compliance (L1-08, the one documented module-rule exception) ─────────
+    # ── compliance (the one documented module-rule exception) ────────────────
     #
     # The two POSTs are COMPLIANCE-only: `require_role(UserRole.COMPLIANCE)`,
     # with no ADMIN. That is pre-existing and is recorded here as enforced
@@ -152,7 +152,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/exporters/{{customer_id}}"): READERS,
     ("PATCH", f"{CRM}/exporters/{{customer_id}}"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/marker"): STAFF,
-    # qualification (L2-09, L2-10): ADMIN manages criteria, staff record results
+    # qualification: ADMIN manages criteria, staff record results
     # and outcomes, every CRM reader reads.
     ("GET", f"{CRM}/qualification/criteria"): READERS,
     ("POST", f"{CRM}/qualification/criteria"): ADMIN_ONLY,
@@ -162,17 +162,17 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/exporters/{{customer_id}}/qualification"): READERS,
     ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/results"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/outcome"): STAFF,
-    # Into the sales pipeline (task 3.11): a commercial decision, so the roles that
+    # Into the sales pipeline: a commercial decision, so the roles that
     # make them. A company already in the pipeline is a 409, not a 403.
     ("POST", f"{CRM}/exporters/{{customer_id}}/pipeline"): STAFF,
-    # "Which company is this?" (task 3.10, decision BQ-2). STAFF rather than READERS:
-    # OPERATIONS needs it to record a deal's buyer — that is the case BQ-2 was decided
+    # "Which company is this?" STAFF rather than READERS:
+    # OPERATIONS needs it to record a deal's buyer — that is the case the disclosure rule was decided
     # for — while DEVELOPER may never reveal an identifier and has no buyer to resolve.
     # The response carries no identifiers for any role, and every identifier lookup is
     # audited.
     ("POST", f"{CRM}/companies/match"): STAFF,
     ("GET", f"{CRM}/companies/identity-completion"): READERS,
-    # GST registrations — a company's branches (tasks 3.12–3.17, plan P6-2, P6-5).
+    # GST registrations — a company's branches.
     # Reading is every CRM reader's, with the GSTIN masked per role and the portal link
     # withheld from a role that sees it masked (the link carries the GSTIN).
     ("GET", f"{CRM}/exporters/{{customer_id}}/gst-registrations"): READERS,
@@ -184,10 +184,10 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # OPERATIONS is refused.
     ("POST", f"{CRM}/gst-registrations/{{registration_id}}/flag"): COMPLIANCE_OR_ADMIN,
     ("POST", f"{CRM}/gst-registrations/{{registration_id}}/unflag"): COMPLIANCE_OR_ADMIN,
-    # A deal's invoicing branch (task 2.8): which of the seller's branches it invoices
+    # A deal's invoicing branch: which of the seller's branches it invoices
     # from. A routine CRM write, like recording its buyer.
     ("PUT", f"{CRM}/deals/{{deal_id}}/invoicing-branch"): STAFF,
-    # Trade history (task 3.20, plan P5-3, P5-4; decision IQ-19). DEVELOPER **reads**:
+    # Trade history. DEVELOPER **reads**:
     # these responses carry no identifiers for anyone, which is what makes "reads
     # masked" true without a masking pass, and the history log already serves `trade`
     # rows to it. RM, Compliance and Admin record invoices and outcomes.
@@ -196,10 +196,10 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/trade-invoices/{{invoice_id}}"): READERS,
     ("POST", f"{CRM}/trade-relationships/{{relationship_id}}/invoices"): STAFF,
     ("POST", f"{CRM}/trade-invoices/{{invoice_id}}/outcomes"): STAFF,
-    # How a handed-over deal was paid (task 3.21) — the same write role, recorded at
+    # How a handed-over deal was paid — the same write role, recorded at
     # the deal because that is what the person answering has in front of them.
     ("POST", f"{CRM}/deals/{{deal_id}}/payment-outcome"): STAFF,
-    # RXIL company intake and bulk import (L2-12, L2-13): both create companies.
+    # RXIL company intake and bulk import: both create companies.
     ("POST", f"{CRM}/rxil/company-intake"): ADMIN_ONLY,
     ("GET", f"{CRM}/imports/companies/template"): STAFF,
     ("POST", f"{CRM}/imports/companies"): STAFF,
@@ -208,7 +208,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("POST", f"{CRM}/exporters/{{customer_id}}/activities"): STAFF,
     ("GET", f"{CRM}/exporters/{{customer_id}}/activities"): READERS,
     ("GET", f"{CRM}/exporters/activities/pending"): READERS,
-    # ── Shared CRM history log (L1-11) ───────────────────────────────────────
+    # ── Shared CRM history log ───────────────────────────────────────────────
     # "See companies, contacts, deals, history" in the role matrix (§3.7):
     # staff yes, DEVELOPER read-only, API_USER no. Read-only routes; there is
     # no write surface for history and there should never be one.
@@ -226,21 +226,18 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/verifications"): STAFF,
     ("GET", f"{CRM}/verifications/{{verification_result_id}}"): STAFF,
     ("POST", f"{CRM}/verifications/{{verification_result_id}}/review"): COMPLIANCE_OR_ADMIN,
-    # ══ Section 9.3 — anchor blocks for Developers 3A and 3B ══════════════════
+    # ══ Area blocks ═══════════════════════════════════════════════════════════
     #
-    # An unclassified route fails this file by construction, so every §9.3 route
-    # adds a row here. Three people add them — 3A in each of its two phases, and
-    # 3B — and one shared append point at the end of this dict is one conflicting
-    # hunk every time. So the seam commit cuts the tail into owned blocks, and
-    # each owner adds rows only inside its own. The block headers are what keeps
-    # two owners' rows in different hunks: git's three lines of context reach a
-    # header rather than the neighbouring owner's last row.
+    # An unclassified route fails this file by construction, so every route adds a
+    # row here. Several areas add them, and one shared append point at the end of
+    # this dict is one conflicting hunk every time. So the tail is cut into one
+    # block per area, and each area adds rows only inside its own. The block headers
+    # are what keeps two areas' rows in different hunks: git's three lines of context
+    # reach a header rather than the neighbouring area's last row.
     #
-    # ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
-    # (3A appends here; 3B does not.)
-    # Cut into the two phase sub-anchors below — phase agreement §6.3.
+    # ── Conversation and follow-ups ──
     #
-    # ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
+    # ── Conversation gauge ──
     # Reads admit DEVELOPER, like every other CRM read; setting the gauge is
     # OPERATIONS/COMPLIANCE/ADMIN (engagement contract §3). A refused role also
     # gets an empty `allowed_moves` from the reads, so no screen offers a button
@@ -249,8 +246,8 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/exporters/{{customer_id}}/conversation/moves"): READERS,
     ("POST", f"{CRM}/exporters/{{customer_id}}/conversation"): STAFF,
     #
-    # ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
-    # Follow-ups are the whole team's (decision D2), so the list is a reader
+    # ── Follow-ups ──
+    # Follow-ups are the whole team's, so the list is a reader
     # route: no default owner filter, and `actor_id` narrows it rather than gating
     # it. Completing one is a routine CRM write, so the three staff roles — the
     # same three that may set the conversation gauge (engagement contract §5.5).
@@ -259,8 +256,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/follow-ups"): READERS,
     ("POST", f"{CRM}/follow-ups/{{activity_id}}/completion"): STAFF,
     #
-    # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
-    # (3B appends here; 3A does not.)
+    # ── Deals, buyers, storage and documents ──
     #
     # Opening a deal, moving its stage and recording its buyer are routine CRM
     # writes by internal staff (architecture §3.7) — the same three roles that may
@@ -273,15 +269,15 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("POST", f"{CRM}/deals/{{deal_id}}/transitions"): STAFF,
     ("PUT", f"{CRM}/deals/{{deal_id}}/buyer"): STAFF,
     #
-    # Which paperwork a handover needs (plan P2-5a). A settings rule about every
+    # Which paperwork a handover needs. A settings rule about every
     # deal rather than a property of one, so it sits under `/settings/` and is
     # gated like `/qualification/criteria`: any CRM reader may see the rule — it
-    # carries no identifiers and nothing decision D8 protects — and only ADMIN may
+    # carries no identifiers and nothing the DEVELOPER rule protects — and only ADMIN may
     # change it, because changing it changes which deals can be handed over.
     ("GET", f"{CRM}/settings/deal-required-documents"): READERS,
     ("POST", f"{CRM}/settings/deal-required-documents"): ADMIN_ONLY,
     #
-    # Documents (L3-09). Uploading is a staff write; reading, the catalogue and
+    # Documents. Uploading is a staff write; reading, the catalogue and
     # minting a download link are reader routes. `GET /documents/content` is a
     # reader route **and** needs a valid signature over the key and the expiry, and
     # refuses any document that has not passed the scan step — to every role, by
@@ -294,46 +290,42 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/deals/{{deal_id}}/documents"): READERS,
     ("GET", f"{CRM}/documents/{{document_id}}"): READERS,
     ("POST", f"{CRM}/documents/{{document_id}}/download-link"): READERS,
-    # ══ Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0) ══
+    # ══ Compliance blocks ══
     #
-    # The same cut as the §9.3 blocks above, for the two Dev4 pull requests that run
-    # in parallel: each owner adds rows only inside its own block. Dev4B may also
-    # edit the existing "compliance workspace" and "verification results" sections
-    # above; Dev4A may not.
+    # The same cut as the area blocks above: each area adds rows only inside its
+    # own block.
     #
-    # ── Background check — owner: Developer 4A ──
-    # (4A appends here; 4B does not.)
+    # ── Background check ──
     #
     # `STAFF`, not `READERS`: DEVELOPER is deliberately **not** admitted to any of
     # these, including the two reads. Whether DEVELOPER may see the gauge, the
-    # decision reasons and the evidence ids is D8 (`background-check.md` §14),
-    # settled on 28 September 2026: no widening. A decision's reason is free
+    # decision reasons and the evidence ids was settled (`background-check.md` §14)
+    # on 28 September 2026: no widening. A decision's reason is free
     # text a compliance officer wrote about a company, so admitting DEVELOPER "for
-    # now" would be deciding D8 by omission.
+    # now" would be deciding it by omission.
     ("GET", f"{CRM}/exporters/{{company_id}}/background-check"): STAFF,
     ("POST", f"{CRM}/exporters/{{company_id}}/background-check/decisions"): STAFF,
     ("GET", f"{CRM}/exporters/{{company_id}}/background-check/decisions"): STAFF,
     #
-    # ── Verification and screening — owner: Developer 4B ──
-    # (4B appends here; 4A does not.)
+    # ── Verification and screening ──
     (
         "GET",
         f"{CRM}/exporters/{{customer_id}}/screening-review/{{item_key}}/history",
     ): STAFF,
     #
-    # ── Compliance engine — owner: Developer 1 (allocation §3; lane rows only) ──
-    # DEVELOPER is refused on all three (D8): the evidence carries reasons, comments and
+    # ── Compliance engine ──
+    # DEVELOPER is refused on all three: the evidence carries reasons, comments and
     # review notes; a cycle carries the reason a Re-KYC was started.
     (
         "GET",
         f"{CRM}/exporters/{{company_id}}/background-check/decisions/{{decision_id}}/evidence",
-    ): STAFF,  # P2-1a
-    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): STAFF,  # P2-3d
-    # P2-3c: IQ-3 — compliance and admin start a cycle; the RM does not.
+    ): STAFF,
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): STAFF,
+    # Compliance and admin start a cycle; the RM does not.
     ("POST", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): COMPLIANCE_OR_ADMIN,
-    # P3-1b/c — maker-checker (decision A). Staff read a company's proposals; only
+    # Maker-checker. Staff read a company's proposals; only
     # compliance and admin approve, reject or withdraw, and read the approval queue —
-    # the RM never approves compliance (plan §8).
+    # the RM never approves compliance.
     ("GET", f"{CRM}/exporters/{{company_id}}/background-check/proposals"): STAFF,
     (
         "POST",
@@ -348,7 +340,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
         f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/withdraw",
     ): COMPLIANCE_OR_ADMIN,
     ("GET", f"{CRM}/background-check/proposals"): COMPLIANCE_OR_ADMIN,
-    # P3-3c — the Re-KYC due list: compliance and admin act on it, the RM reads it.
+    # The Re-KYC due list: compliance and admin act on it, the RM reads it.
     ("GET", f"{CRM}/background-check/due"): STAFF,
 }
 
@@ -539,7 +531,7 @@ async def test_an_allowed_role_still_reaches_a_gated_route(
 
 
 def test_api_user_reaches_nothing_in_the_crm():
-    """Planning assumption A10, asserted as an invariant rather than as a
+    """"API_USER reaches nothing in the CRM", asserted as an invariant rather than as a
     coincidence.
 
     Public sign-up stays open and grants `API_USER`, on the understanding that
@@ -562,6 +554,6 @@ def test_api_user_reaches_nothing_in_the_crm():
         if path.startswith(CRM) and UserRole.API_USER in allowed
     )
     assert not reachable, (
-        "These CRM routes admit API_USER, which assumption A10 says must reach "
+        "These CRM routes admit API_USER, which must reach "
         "nothing in the CRM:\n  " + "\n  ".join(f"{m} {p}" for m, p in reachable)
     )

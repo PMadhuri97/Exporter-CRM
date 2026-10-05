@@ -1,6 +1,6 @@
 /**
- * The compliance screening checklist — **owner: Developer 4B** (verification-and-screening.md §5,
- * §9; 4B-7); evidence and cycles by **Developer 1** (plans P2-1b/c, P2-3d).
+ * The compliance screening checklist (verification-and-screening.md §5, §9), with
+ * evidence and cycles.
  *
  * Rendered from the server: the items, their labels, sections and order come from
  * `catalogue` (the one backend catalogue, `SCREENING_CATALOGUE_ITEMS`), and whether
@@ -10,15 +10,15 @@
  * Screening is a compliance list inside the background check. It is not
  * qualification, and not a gauge (architecture §5.5).
  *
- * Developer 1, 1 October 2026:
- * - **Evidence** (P2-1b/c): each answer shows the evidence it was given (`EvidenceList`),
+ * Since 1 October 2026:
+ * - **Evidence**: each answer shows the evidence it was given (`EvidenceList`),
  *   and a new answer may carry some — the company's scanned-clean documents or an
- *   http(s) link. Optional (IQ-14). Answers are append-only, so evidence belongs to the
+ *   http(s) link. Optional. Answers are append-only, so evidence belongs to the
  *   answer it was given with; a new answer starts with none attached.
- * - **Cycles** (P2-3d): the list is one check cycle's — the current one, where answers
+ * - **Cycles**: the list is one check cycle's — the current one, where answers
  *   are recorded; an earlier one, read-only, when chosen. Whether the viewer may record
  *   still comes only from `capabilities`, which the server sets false on earlier cycles.
- * - The catalogue is seven items since `website-reviewed` was retired (P2-4a).
+ * - The catalogue is seven items since `website-reviewed` was retired.
  */
 
 import { useState } from 'react';

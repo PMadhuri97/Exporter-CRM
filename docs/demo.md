@@ -16,16 +16,17 @@ directly). A demo on it shows noise and impossible records, and so does a demo
 database somebody rehearsed on. Rebuild it from empty, and never run the test suite
 against it.
 
-On this machine the demo database is `crm_demo` on the `aner-postgres` container
-(port 5433); the backend on `:8000` and the preview on `:4173` serve it. To rebuild
-it, with `DATABASE_URL` **and** `DATABASE_SYNC_URL` pointing at a new, empty database
-(alembic reads the second):
+On this machine the one CRM database is `aner_settlement` on the `aner-postgres`
+container (port 5433), rebuilt clean on 5 October 2026; `backend/.env` points at it, so
+a plain start of the backend on `:8000` serves it. **Do not run the test suite against
+it** — create a throwaway database for that. To rebuild it, with `DATABASE_URL` **and**
+`DATABASE_SYNC_URL` pointing at a new, empty database (alembic reads the second):
 
 ```bash
 cd backend
 python -m alembic upgrade head
 python -m app.modules.onboarding.sample_data                  # the §3 companies
-python -m uvicorn app.main:app --port 8000
+python -m uvicorn app.main:app --port 8000                     # add --reload only off-demo
 
 cd ../frontend
 pnpm install --frozen-lockfile                               # the redesign added packages
@@ -41,9 +42,12 @@ server does. Opening several tabs at once is safe; reloading several times withi
 second can still sign you out (a reload that lands while a token refresh is answering
 — R-49 in `remaining-work.md`), so reload once and let the page settle.
 
-**Logins.** One per role you will show. `crm_demo` has five, each with a full name
-(history, decisions and activities show who acted by name); the passwords are in
-`C:/Users/ArshadMughal/crm_demo_accounts.txt`, never in this file.
+**Logins.** One per role you will show. `aner_settlement` has one per role and two
+COMPLIANCE (maker-checker needs the second), each with a full name (history, decisions
+and activities show who acted by name); the passwords are in
+`C:/Users/ArshadMughal/crm_demo_accounts.txt`, never in this file. After a rebuild,
+copy the `auth.users` rows across (their hashes keep the passwords) or create the
+accounts again.
 
 | Account | Role | Used for |
 |---|---|---|
@@ -52,6 +56,7 @@ second can still sign you out (a reload that lands while a token refresh is answ
 | `compliance2@aner.com` (Compliance Approver) | COMPLIANCE | the second signature |
 | `admin@aner.com` (Admin) | ADMIN | settings |
 | `dev@aner.com` (Developer) | DEVELOPER | read-only and masking |
+| `apiuser@aner.com` (API User) | API_USER | "no workspace" — reaches nothing in the CRM |
 
 A new account must use a real-looking address (`ops@example.com`), never `.local` or
 `.test`: the sign-in form refuses those, and so do `bootstrap` and `promote`.

@@ -1,4 +1,4 @@
-"""Background-check routes — **owner: Developer 4A** (L4-03, L4-13).
+"""Background-check routes.
 
 Contract: ``docs/contracts/background-check.md`` §3, §13. Three routes: read the
 standing, record a move, list the decisions.
@@ -15,25 +15,25 @@ because one route serves nine moves and OPERATIONS may make only two of them. Th
 route-level check alone would let an operations user flag a company.
 
 **DEVELOPER is not admitted.** Unlike the deal and document reads, these routes admit
-only OPERATIONS, COMPLIANCE and ADMIN: **D8**, settled 28 September 2026, refuses
+only OPERATIONS, COMPLIANCE and ADMIN: the rule settled 28 September 2026 refuses
 DEVELOPER the gauge, the decision reasons and the evidence ids, reads included. A
 decision's reason is free text a compliance officer typed about a real company.
 
-**Developer 1 (compliance engine), 1 October 2026.** The standing also serves the
-company's compliance facts (F1), its current check cycle and the cycles this caller may
-start (P2-3c/d). Three routes were added, under the same D8 rule: one decision's
-evidence resolved into readable items (P2-1a), the company's cycles, and starting a
+**Compliance facts and cycles (1 October 2026).** The standing also serves the
+company's compliance facts, its current check cycle and the cycles this caller may
+start. Three routes were added, under the same DEVELOPER rule: one decision's
+evidence resolved into readable items, the company's cycles, and starting a
 Re-KYC / Re-KYB (COMPLIANCE and ADMIN only).
 
-**Developer 1, tranche 2 (plans P3-1b/c, P3-2, P3-3c).** Maker-checker: with it on, a
+**Maker-checker, required checks and expiry.** Maker-checker: with it on, a
 ``POST …/decisions`` to ``CLEAR``, ``FLAGGED`` or ``ON_HOLD`` records a **proposal**
 (202) instead of moving the check, and a different COMPLIANCE or ADMIN user approves or
 rejects it (``…/proposals/{id}/approve`` / ``reject``); the proposer may withdraw it.
 The standing serves the open proposal and what *this user* may do with it, the
-verification types ``CLEAR`` requires and their state (rule B), and whether the Clear
+verification types ``CLEAR`` requires and their state, and whether the Clear
 is due for Re-KYC. Two cross-company reads feed the Home cards:
 ``GET /background-check/proposals?status=open`` (COMPLIANCE, ADMIN) and
-``GET /background-check/due?before=…`` (staff). DEVELOPER is refused on all (D8).
+``GET /background-check/due?before=…`` (staff). DEVELOPER is refused on all.
 """
 
 from __future__ import annotations
@@ -117,10 +117,10 @@ from app.shared.exceptions import ValidationError
 
 router = APIRouter(tags=["Exporter CRM"])
 
-#: Compliance work by internal staff (architecture §3.7). DEVELOPER is absent (D8).
+#: Compliance work by internal staff (architecture §3.7). DEVELOPER is absent.
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
-#: Who may start a check cycle (IQ-3) and who proposes, approves or rejects a
-#: background-check decision (decision A; never the RM). The service enforces the same
+#: Who may start a check cycle and who proposes, approves or rejects a
+#: background-check decision (never the RM). The service enforces the same
 #: rule.
 _COMPLIANCE_OR_ADMIN = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
 _RESOLVER_ROLES = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
@@ -486,7 +486,7 @@ async def list_background_check_decisions(
     )
 
 
-# ── One decision's evidence, resolved (Developer 1, P2-1a) ──────────────────
+# ── One decision's evidence, resolved ───────────────────────────────────────
 
 
 def _evidence_response(
@@ -608,7 +608,7 @@ def _evidence_actor_ids(view: DecisionEvidenceView) -> list[str | None]:
         "What is shown is what the decision rested on: every pinned row is append-only "
         "or frozen. A screening item since retired from the checklist keeps its label "
         "(`retired: true`). No identifier (PAN, GSTIN, IEC, CIN, tax id or contact) is "
-        "carried. DEVELOPER is refused (D8)."
+        "carried. DEVELOPER is refused."
     ),
     responses={
         401: {"description": "Unauthorized"},
@@ -633,7 +633,7 @@ async def get_background_check_decision_evidence(
     return _evidence_response(view, dict(names))
 
 
-# ── Check cycles (Developer 1, P2-3c/d) ─────────────────────────────────────
+# ── Check cycles ────────────────────────────────────────────────────────────
 
 
 @router.get(
@@ -644,7 +644,7 @@ async def get_background_check_decision_evidence(
         "Every KYC/KYB round of this company's background check, cycle 1 first. The "
         "check decides on the current cycle (the highest number); earlier cycles stay "
         "readable exactly as they were. Inputs and decisions recorded before cycles "
-        "existed belong to cycle 1. DEVELOPER is refused (D8)."
+        "existed belong to cycle 1. DEVELOPER is refused."
     ),
     responses={
         401: {"description": "Unauthorized"},
@@ -728,7 +728,7 @@ async def start_check_cycle(
     )
 
 
-# ── Maker-checker (Developer 1, P3-1b/c) ────────────────────────────────────
+# ── Maker-checker ───────────────────────────────────────────────────────────
 
 
 @router.get(
@@ -739,7 +739,7 @@ async def start_check_cycle(
         "Every proposed CLEAR, FLAGGED or ON_HOLD on this company, newest first, with "
         "how each ended: approved (and the decision it wrote), rejected (and why) or "
         "withdrawn. An open one carries what **this caller** may do with it. Proposals "
-        "and their resolutions are append-only. DEVELOPER is refused (D8)."
+        "and their resolutions are append-only. DEVELOPER is refused."
     ),
     responses={
         401: {"description": "Unauthorized"},
@@ -947,7 +947,7 @@ async def list_proposals_across_companies(
     )
 
 
-# ── Re-KYC due (Developer 1, P3-3c) ─────────────────────────────────────────
+# ── Re-KYC due ──────────────────────────────────────────────────────────────
 
 
 @router.get(
@@ -960,7 +960,7 @@ async def list_proposals_across_companies(
         "the soonest. An expired Clear still reads CLEAR (nothing moves the gauge "
         "automatically) but no longer promotes the company or lets its deals be handed "
         "over. A company whose Re-KYC has started is not listed: starting it reopens the "
-        "check. Names only, never an identifier. Staff; DEVELOPER is refused (D8)."
+        "check. Names only, never an identifier. Staff; DEVELOPER is refused."
     ),
     responses={
         401: {"description": "Unauthorized"},

@@ -1,8 +1,8 @@
 """The one rule for a stored link (``domain/web_links.py``), without a database.
 
-``test_l4b_verification_integrity_rules.py`` covers the same rule applied to a
+``test_verification_integrity_rules.py`` covers the same rule applied to a
 verification result's ``url`` evidence, which is its one caller since the company
-website retired in R11 (decision IQ-16). ``test_company_website.py`` proves the
+website retired. ``test_company_website.py`` proves the
 field is gone from every write path.
 """
 

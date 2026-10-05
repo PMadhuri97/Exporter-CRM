@@ -1057,7 +1057,7 @@ export interface paths {
         };
         /**
          * Companies the CRM cannot identify yet
-         * @description IQ-7's completion list (R-28): every company with no `identity_type` — it holds neither a PAN nor a registration number — except ended ones. Each says what it is `missing`: a `REGISTRATION_NUMBER` (a company outside India, which IQ-7 requires — the P4-6 migration's buyers are the expected case), a `COUNTRY`, or a `PAN` (an Indian company; not required, but it cannot be matched by identifier without one). `required` is true for the first two. Required gaps come first, oldest first within each. A company leaves the list as soon as an edit gives it an identifier. Carries no identifiers.
+         * @description The identity completion list: every company with no `identity_type` — it holds neither a PAN nor a registration number — except ended ones. Each says what it is `missing`: a `REGISTRATION_NUMBER` (a company outside India, which the CRM requires — the buyer migration's companies are the expected case), a `COUNTRY`, or a `PAN` (an Indian company; not required, but it cannot be matched by identifier without one). `required` is true for the first two. Required gaps come first, oldest first within each. A company leaves the list as soon as an edit gives it an identifier. Carries no identifiers.
          */
         get: operations["list_identity_completion_api_v1_onboarding_companies_identity_completion_get"];
         put?: never;
@@ -1079,7 +1079,7 @@ export interface paths {
         put?: never;
         /**
          * Find the company a name and identifiers belong to
-         * @description Answers MATCHED, POSSIBLE_DUPLICATE, CONFLICT or NEW. A full PAN, GSTIN or (country, registration_number) names the company that holds it — including for a role that sees identifiers masked (decision BQ-2) — and every such lookup is audited. Partial or prefix identifier search is not offered. Without an identifier, companies in the same country whose name differs only in punctuation, spacing, case or legal form come back as POSSIBLE_DUPLICATE candidates for a person to choose between; a GSTIN held by two companies does the same (decision IQ-9). The response names candidates by id, name and country, and never carries an identifier. Nothing is created or changed.
+         * @description Answers MATCHED, POSSIBLE_DUPLICATE, CONFLICT or NEW. A full PAN, GSTIN or (country, registration_number) names the company that holds it — including for a role that sees identifiers masked — and every such lookup is audited. Partial or prefix identifier search is not offered. Without an identifier, companies in the same country whose name differs only in punctuation, spacing, case or legal form come back as POSSIBLE_DUPLICATE candidates for a person to choose between; a GSTIN held by two companies does the same. The response names candidates by id, name and country, and never carries an identifier. Nothing is created or changed.
          */
         post: operations["match_company_api_v1_onboarding_companies_match_post"];
         delete?: never;
@@ -1103,7 +1103,7 @@ export interface paths {
          *
          *     `flagged_count` is how many active branches compliance has flagged, which is what the company page's warning chip shows.
          *
-         *     DEVELOPER is not served flags: `flag_status`, `flag_reason` and `flagged_count` are `null` for that role (R-47, decision D-05).
+         *     DEVELOPER is not served flags: `flag_status`, `flag_reason` and `flagged_count` are `null` for that role.
          */
         get: operations["list_gst_registrations_api_v1_onboarding_exporters__customer_id__gst_registrations_get"];
         put?: never;
@@ -1113,7 +1113,7 @@ export interface paths {
          *
          *     A GSTIN this company **deactivated** earlier reactivates that row rather than adding a second one, so there is one row per company and GSTIN forever — which keeps a handed-over deal's invoicing branch pointing at the branch it really used. Re-adding an **active** one is a 409.
          *
-         *     A GSTIN another company also holds is **allowed** and reported in `also_held_by` (decision IQ-9: duplicates stay warn-only), never refused.
+         *     A GSTIN another company also holds is **allowed** and reported in `also_held_by` (duplicates stay warn-only), never refused.
          */
         post: operations["add_gst_registration_api_v1_onboarding_exporters__customer_id__gst_registrations_post"];
         delete?: never;
@@ -1157,9 +1157,9 @@ export interface paths {
          * Flag a branch (COMPLIANCE, ADMIN)
          * @description A reason is required: it is what a blocked handover will say, so without it whoever hits the block has nothing to act on.
          *
-         *     Flagging a branch blocks a handover for deals invoiced **through that branch** and leaves the company's other branches alone (decision BQ-6) — a company trading through five states may have a problem in one of them.
+         *     Flagging a branch blocks a handover for deals invoiced **through that branch** and leaves the company's other branches alone — a company trading through five states may have a problem in one of them.
          *
-         *     The flag belongs to **this** company's row. When another company holds the same GSTIN (allowed, decision IQ-9), `also_held_by` names it: that copy is **not** flagged, and whoever flags this one needs to know trade may still be running on the other.
+         *     The flag belongs to **this** company's row. When another company holds the same GSTIN (allowed), `also_held_by` names it: that copy is **not** flagged, and whoever flags this one needs to know trade may still be running on the other.
          */
         post: operations["flag_gst_registration_api_v1_onboarding_gst_registrations__registration_id__flag_post"];
         delete?: never;
@@ -1269,7 +1269,7 @@ export interface paths {
          * Record an invoice against a trade relationship
          * @description A fact about the past: its identity — the relationship, number, date, amount and currency — is frozen once written, so there is no edit route. A mistake is corrected by recording the right invoice; the wrong one stays visible.
          *
-         *     The currency is stored as issued and **never converted** (decision IQ-4). Amounts come back as strings, because money is not a float and JSON numbers would invite adding two currencies together.
+         *     The currency is stored as issued and **never converted**. Amounts come back as strings, because money is not a float and JSON numbers would invite adding two currencies together.
          *
          *     `deal_id` is omitted for past trade — what the two companies did before they came to us. When given, it must be a deal **between these two companies**: the relationship's seller, selling to its buyer company. It is frozen once written. One invoice number per relationship; the same number on another relationship is a different invoice.
          */
@@ -1339,7 +1339,7 @@ export interface paths {
         };
         /**
          * A company's history
-         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details (decision D8), nor a branch's flag and unflag rows or its `flag_status` detail (R-47). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
+         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details, nor a branch's flag and unflag rows or its `flag_status` detail. Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
          */
         get: operations["list_company_history_api_v1_onboarding_exporters__customer_id__history_get"];
         put?: never;
@@ -1359,7 +1359,7 @@ export interface paths {
         };
         /**
          * A deal's history
-         * @description Every recorded change to one deal, including the changes it caused elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does not receive `background_check`, `verification` or `screening` rows, nor a row's `risk_rating` or `clearing_decision_id` details (decision D8), nor a branch's flag and unflag rows or its `flag_status` detail (R-47). Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
+         * @description Every recorded change to one deal, including the changes it caused elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does not receive `background_check`, `verification` or `screening` rows, nor a row's `risk_rating` or `clearing_decision_id` details, nor a branch's flag and unflag rows or its `flag_status` detail. Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
          */
         get: operations["list_deal_history_api_v1_onboarding_deals__deal_id__history_get"];
         put?: never;
@@ -1379,7 +1379,7 @@ export interface paths {
         };
         /**
          * What we owe exporters next, across every company
-         * @description Two lists. **Follow-ups** are activities with a due date: outstanding while no completion row points at them, overdue while outstanding and past due, and done once one does — derived from the completion, never from a status column on the activity, which is append-only. **Check-backs** are companies parked at NOT_NOW, due to be picked up on their check-back date; they are not completable and are dealt with by moving the conversation gauge. Soonest-due first, so overdue items sort to the front. Visible to the whole team (decision D2): pass `actor_id` to narrow the list to one person, which filters and never gates.
+         * @description Two lists. **Follow-ups** are activities with a due date: outstanding while no completion row points at them, overdue while outstanding and past due, and done once one does — derived from the completion, never from a status column on the activity, which is append-only. **Check-backs** are companies parked at NOT_NOW, due to be picked up on their check-back date; they are not completable and are dealt with by moving the conversation gauge. Soonest-due first, so overdue items sort to the front. Visible to the whole team: pass `actor_id` to narrow the list to one person, which filters and never gates.
          */
         get: operations["list_follow_ups_api_v1_onboarding_follow_ups_get"];
         put?: never;
@@ -1421,9 +1421,9 @@ export interface paths {
          * List a company's deals, as seller or as buyer
          * @description Newest first. `stage` may be repeated to filter to several stages; omitted, every stage is returned, including withdrawn and handed-over deals — a company's deal history is part of its record.
          *
-         *     `as` chooses which side: `seller` (the default) lists the deals this company sells on, `buyer` the deals it buys on (task 2.7). The two are separate lists on purpose — the same company can be the seller on one deal and the buyer on another, and one list mixing them would show rows whose meaning changed line by line. On the buyer side, `buyer_name` carries **the seller's** name, because the company whose page this is would otherwise be repeated in every row.
+         *     `as` chooses which side: `seller` (the default) lists the deals this company sells on, `buyer` the deals it buys on. The two are separate lists on purpose — the same company can be the seller on one deal and the buyer on another, and one list mixing them would show rows whose meaning changed line by line. On the buyer side, `buyer_name` carries **the seller's** name, because the company whose page this is would otherwise be repeated in every row.
          *
-         *     The buyer side matches `buyer_company_id` only. A deal whose buyer is still a legacy `deal_buyer` row does not appear, because nothing yet says that buyer is this company; the buyer migration (P4-6) is what makes it appear.
+         *     The buyer side matches `buyer_company_id` only. A deal whose buyer is still a legacy `deal_buyer` row does not appear, because nothing yet says that buyer is this company; the buyer migration is what makes it appear.
          *
          *     `can_open_deal` says whether this caller may open another deal on the company now — always about selling, whichever side is listed.
          */
@@ -1433,7 +1433,7 @@ export interface paths {
          * Open a deal on a company
          * @description Opens a deal at `OPEN` and sets the company's conversation to `READY_NOW` in the same transaction (architecture §3.3). A company may have any number of deals.
          *
-         *     Only a `PROSPECT` or a `CUSTOMER` may have a deal opened: the conversation gauge applies from `PROSPECT` onward (assumption A4), so a `LEAD` is refused with 409 `DEAL_COMPANY_NOT_READY` and nothing is written.
+         *     Only a `PROSPECT` or a `CUSTOMER` may have a deal opened: the conversation gauge applies from `PROSPECT` onward, so a `LEAD` is refused with 409 `DEAL_COMPANY_NOT_READY` and nothing is written.
          *
          *     The stage is not a field on this request: a deal always starts at `OPEN`, and accepting one would let a caller skip every stage guard.
          */
@@ -1453,7 +1453,7 @@ export interface paths {
         };
         /**
          * Get one deal, its buyer, and the moves allowed from here
-         * @description `allowed_stage_moves` is what **this** deal may do next, as data, so the screen does not keep its own copy of the stage graph (§7.5). A handover that is legal by the graph but blocked by assumption A5's guard is absent from that list, and `handover_blocked_reason` says why.
+         * @description `allowed_stage_moves` is what **this** deal may do next, as data, so the screen does not keep its own copy of the stage graph (§7.5). A handover that is legal by the graph but blocked by the handover guard is absent from that list, and `handover_blocked_reason` says why.
          */
         get: operations["get_deal_api_v1_onboarding_deals__deal_id__get"];
         put?: never;
@@ -1475,9 +1475,9 @@ export interface paths {
         put?: never;
         /**
          * Move a deal to another stage
-         * @description The only way a deal's stage changes. The move must be one the stage graph allows (deal contract §1.1); `WITHDRAWN` requires a reason (assumption A7) and every other stage refuses one.
+         * @description The only way a deal's stage changes. The move must be one the stage graph allows (deal contract §1.1); `WITHDRAWN` requires a reason and every other stage refuses one.
          *
-         *     `HANDED_OVER` additionally requires a buyer, and every condition of the handover guard (deal contract §6.1). Live today: the company must be a `CUSTOMER` with a `CLEAR` background check (assumption A5), and the deal must have an `AVAILABLE` document in every category `/settings/deal-required-documents` requires.
+         *     `HANDED_OVER` additionally requires a buyer, and every condition of the handover guard (deal contract §6.1). Live today: the company must be a `CUSTOMER` with a `CLEAR` background check, and the deal must have an `AVAILABLE` document in every category `/settings/deal-required-documents` requires.
          *
          *     A refusal is 409 `DEAL_HANDOVER_BLOCKED` and names **every** unmet condition, not the first — so an operator does not have to fix one to discover the next.
          */
@@ -1500,11 +1500,11 @@ export interface paths {
          * Record the deal's buyer, as a company or as details
          * @description Three forms, exactly one per request.
          *
-         *     **`{buyer_company_id}`** names the company the buyer **is** (plan P4-4). Use this one. The buyer is then a full company record: it can be screened on its own timeline, the handover guard reads its sanctions and AML (decision BQ-4), and the same company can be the seller on another deal. It is **set once** — a deal pointed at the wrong buyer is withdrawn and a new one opened, so that the correction leaves a trail. Setting the same company again changes nothing and is not an error. The company must exist and must not be the seller on this deal.
+         *     **`{buyer_company_id}`** names the company the buyer **is**. Use this one. The buyer is then a full company record: it can be screened on its own timeline, the handover guard reads its sanctions and AML, and the same company can be the seller on another deal. It is **set once** — a deal pointed at the wrong buyer is withdrawn and a new one opened, so that the correction leaves a trail. Setting the same company again changes nothing and is not an error. The company must exist and must not be the seller on this deal.
          *
-         *     **`{create: {name, country, pan?, gstin?, registration_number?}}`** creates the buyer as a company that is **not in the pipeline** (not a lead) and names it, in one step (plan P4-3). The server matches first, as `POST /companies/match` does, and audits every identifier lookup: an identifier a company on file holds is refused with 409 `BUYER_COMPANY_ALREADY_KNOWN` naming that company, rather than duplicated. A name that only resembles one does not stop it (IQ-8). A company outside India needs its registration number unless it has a PAN (IQ-7).
+         *     **`{create: {name, country, pan?, gstin?, registration_number?}}`** creates the buyer as a company that is **not in the pipeline** (not a lead) and names it, in one step. The server matches first, as `POST /companies/match` does, and audits every identifier lookup: an identifier a company on file holds is refused with 409 `BUYER_COMPANY_ALREADY_KNOWN` naming that company, rather than duplicated. A name that only resembles one does not stop it. A company outside India needs its registration number unless it has a PAN.
          *
-         *     **`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer per deal, so it replaces that row rather than adding another (deal contract §3); `PUT` rather than `POST` for the same reason. Still accepted because deals written before the buyer migration have one, and because a `deal_buyer`'s own sanctions and AML are the only thing BQ-4's rule can read for such a deal. These writes retire in P4-10.
+         *     **`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer per deal, so it replaces that row rather than adding another (deal contract §3); `PUT` rather than `POST` for the same reason. Still accepted because deals written before the buyer migration have one, and because a `deal_buyer`'s own sanctions and AML are the only thing the buyer-compliance rule can read for such a deal. These writes will retire.
          *
          *     A buyer's problems stay on the buyer: a failed buyer check is recorded against the buyer and never against the selling company (architecture §3.5).
          *
@@ -1528,11 +1528,11 @@ export interface paths {
         get?: never;
         /**
          * Record which of the seller's GST branches this deal is invoiced from
-         * @description The registration's id, never its GSTIN — which is what makes it impossible to point a deal at another company's copy of a shared GSTIN (decision IQ-9). It must be one of **this deal's seller's** registrations and must be active; `fk_deal_seller_gst_registration_id` is composite and would refuse another company's anyway.
+         * @description The registration's id, never its GSTIN — which is what makes it impossible to point a deal at another company's copy of a shared GSTIN. It must be one of **this deal's seller's** registrations and must be active; `fk_deal_seller_gst_registration_id` is composite and would refuse another company's anyway.
          *
-         *     May be set and changed freely before handover (decision IQ-20) and is frozen with the deal afterwards. `null` clears it.
+         *     May be set and changed freely before handover and is frozen with the deal afterwards. `null` clears it.
          *
-         *     Two handover rules read it (plan P6-7): a deal invoiced through a **flagged** branch is blocked, and a deal whose seller has an active registration but names none is asked to name one. A seller with no registration at all is not asked.
+         *     Two handover rules read it: a deal invoiced through a **flagged** branch is blocked, and a deal whose seller has an active registration but names none is asked to name one. A seller with no registration at all is not asked.
          */
         put: operations["set_deal_invoicing_branch_api_v1_onboarding_deals__deal_id__invoicing_branch_put"];
         post?: never;
@@ -1583,7 +1583,7 @@ export interface paths {
          * Which categories may be filed here, and the types each accepts
          * @description Architecture §3.4: the ten categories are fixed and each belongs to a company, a deal, or both, so a screen asks which are valid where the user is standing rather than keeping a copy. The **types** inside each category are settings — adding one is a GitOps change, not a release.
          *
-         *     `scanner_name` is the scanner that will judge an upload. It is `pass-through` in the prototype: a labelled placeholder that checks nothing, and a screen must say so (assumption A9).
+         *     `scanner_name` is the scanner that will judge an upload. It is `pass-through` in the prototype: a labelled placeholder that checks nothing, and a screen must say so.
          */
         get: operations["list_document_categories_api_v1_onboarding_documents_categories_get"];
         put?: never;
@@ -1656,7 +1656,7 @@ export interface paths {
         put?: never;
         /**
          * Upload a document against a deal
-         * @description As for a company, except the category must be one that belongs on a deal (architecture §3.4). These are the documents a handover's snapshot will list (Phase 4).
+         * @description As for a company, except the category must be one that belongs on a deal (architecture §3.4). These are the documents a handover's snapshot will list.
          */
         post: operations["upload_deal_document_api_v1_onboarding_deals__deal_id__documents_post"];
         delete?: never;
@@ -1771,7 +1771,7 @@ export interface paths {
          * Read what one background-check decision rested on
          * @description Resolves each id the decision pinned into a readable item: a verification result (type, status, provenance, who recorded it and when, its evidence and the review the decision rested on), a screening answer (the item, its status, comment, evidence and who answered it) or a document (name, category, scan status and whether it can be opened).
          *
-         *     What is shown is what the decision rested on: every pinned row is append-only or frozen. A screening item since retired from the checklist keeps its label (`retired: true`). No identifier (PAN, GSTIN, IEC, CIN, tax id or contact) is carried. DEVELOPER is refused (D8).
+         *     What is shown is what the decision rested on: every pinned row is append-only or frozen. A screening item since retired from the checklist keeps its label (`retired: true`). No identifier (PAN, GSTIN, IEC, CIN, tax id or contact) is carried. DEVELOPER is refused.
          */
         get: operations["get_background_check_decision_evidence_api_v1_onboarding_exporters__company_id__background_check_decisions__decision_id__evidence_get"];
         put?: never;
@@ -1791,7 +1791,7 @@ export interface paths {
         };
         /**
          * List a company's check cycles
-         * @description Every KYC/KYB round of this company's background check, cycle 1 first. The check decides on the current cycle (the highest number); earlier cycles stay readable exactly as they were. Inputs and decisions recorded before cycles existed belong to cycle 1. DEVELOPER is refused (D8).
+         * @description Every KYC/KYB round of this company's background check, cycle 1 first. The check decides on the current cycle (the highest number); earlier cycles stay readable exactly as they were. Inputs and decisions recorded before cycles existed belong to cycle 1. DEVELOPER is refused.
          */
         get: operations["list_check_cycles_api_v1_onboarding_exporters__company_id__background_check_cycles_get"];
         put?: never;
@@ -1819,7 +1819,7 @@ export interface paths {
         };
         /**
          * List a company's background-check proposals
-         * @description Every proposed CLEAR, FLAGGED or ON_HOLD on this company, newest first, with how each ended: approved (and the decision it wrote), rejected (and why) or withdrawn. An open one carries what **this caller** may do with it. Proposals and their resolutions are append-only. DEVELOPER is refused (D8).
+         * @description Every proposed CLEAR, FLAGGED or ON_HOLD on this company, newest first, with how each ended: approved (and the decision it wrote), rejected (and why) or withdrawn. An open one carries what **this caller** may do with it. Proposals and their resolutions are append-only. DEVELOPER is refused.
          */
         get: operations["list_background_check_proposals_api_v1_onboarding_exporters__company_id__background_check_proposals_get"];
         put?: never;
@@ -1919,7 +1919,7 @@ export interface paths {
         };
         /**
          * Companies due for Re-KYC
-         * @description CLEAR companies whose Clear has expired or expires before `before` (default: now + the Re-KYC window, 30 days unless configured) — the expired first, then the soonest. An expired Clear still reads CLEAR (nothing moves the gauge automatically) but no longer promotes the company or lets its deals be handed over. A company whose Re-KYC has started is not listed: starting it reopens the check. Names only, never an identifier. Staff; DEVELOPER is refused (D8).
+         * @description CLEAR companies whose Clear has expired or expires before `before` (default: now + the Re-KYC window, 30 days unless configured) — the expired first, then the soonest. An expired Clear still reads CLEAR (nothing moves the gauge automatically) but no longer promotes the company or lets its deals be handed over. A company whose Re-KYC has started is not listed: starting it reopens the check. Names only, never an identifier. Staff; DEVELOPER is refused.
          */
         get: operations["list_rekyc_due_api_v1_onboarding_background_check_due_get"];
         put?: never;
@@ -2090,7 +2090,7 @@ export interface paths {
         put?: never;
         /**
          * Trigger a verification check
-         * @description Resolves `provider` (default `manual`) to a `VerificationAdapter` via the EXP-2 registry, runs the check, and persists the outcome as a new `VerificationResult`. The exact same call handles every `verification_type`/`entity_type` combination — there is no per-type branching. Only `provider=manual` is accepted here. An `EXPORTER` subject must be an existing company and a `BUYER` subject an existing deal buyer (`deal_buyer.id`) whose deal is not `HANDED_OVER` or `WITHDRAWN`. A manual `PASSED` needs evidence (a note or at least one reference); a manual `PENDING` is refused. `document` evidence must belong to the subject and be `AVAILABLE` (scanned clean); `url` evidence must be an `http://` or `https://` link.
+         * @description Resolves `provider` (default `manual`) to a `VerificationAdapter` via the generalized registry, runs the check, and persists the outcome as a new `VerificationResult`. The exact same call handles every `verification_type`/`entity_type` combination — there is no per-type branching. Only `provider=manual` is accepted here. An `EXPORTER` subject must be an existing company and a `BUYER` subject an existing deal buyer (`deal_buyer.id`) whose deal is not `HANDED_OVER` or `WITHDRAWN`. A manual `PASSED` needs evidence (a note or at least one reference); a manual `PENDING` is refused. `document` evidence must belong to the subject and be `AVAILABLE` (scanned clean); `url` evidence must be an `http://` or `https://` link.
          */
         post: operations["trigger_verification_api_v1_onboarding_verifications_post"];
         delete?: never;
@@ -2200,7 +2200,7 @@ export interface components {
         };
         /**
          * AddGstRegistrationRequest
-         * @description Record a GST registration for a company (task 3.13).
+         * @description Record a GST registration for a company.
          *
          *     **No state.** ``state_code`` and ``state_name`` come from the GSTIN's first two
          *     characters (``domain/gst_states.py``); accepting them here would let someone
@@ -2633,7 +2633,7 @@ export interface components {
              */
             company_id: string;
             value: components["schemas"]["BackgroundCheckState"];
-            /** @description The risk of the most recent CLEAR decision (only CLEAR carries one). Read `value` before trusting it: a company cleared at LOW and then reopened still reports LOW while it sits at IN_REVIEW — the last recorded risk, to be labelled as such (D6). */
+            /** @description The risk of the most recent CLEAR decision (only CLEAR carries one). Read `value` before trusting it: a company cleared at LOW and then reopened still reports LOW while it sits at IN_REVIEW — the last recorded risk, to be labelled as such. */
             risk_rating?: components["schemas"]["BackgroundCheckRisk"] | null;
             /** Latest Decision Id */
             latest_decision_id?: string | null;
@@ -2671,7 +2671,7 @@ export interface components {
             open_proposal?: components["schemas"]["BackgroundCheckProposalResponse"] | null;
             /**
              * Required Checks
-             * @description The verification types CLEAR requires (KYB, AML, SANCTIONS — rule B) and the state of each in the current cycle.
+             * @description The verification types CLEAR requires (KYB, AML, SANCTIONS) and the state of each in the current cycle.
              */
             required_checks?: components["schemas"]["RequiredCheckResponse"][];
             /**
@@ -2685,9 +2685,9 @@ export interface components {
          * BackgroundCheckRisk
          * @description The CRM risk scale (decision 6), set by compliance on a decision.
          *
-         *     ``onboarding.background_check_risk_enum`` — a type Developer 4A owns (D13, settled
-         *     28 Sep 2026). It is deliberately **not** ``VerificationRiskLevel`` /
-         *     ``verification_risk_level_enum``, which is Developer 4B's, so neither Dev4
+         *     ``onboarding.background_check_risk_enum`` — a type the background check owns
+         *     (settled 28 Sep 2026). It is deliberately **not** ``VerificationRiskLevel`` /
+         *     ``verification_risk_level_enum``, which belongs to verification, so neither
          *     migration depends on the other's schema. "Prohibited" is not a risk; it is
          *     ``FLAGGED``.
          * @enum {string}
@@ -2818,7 +2818,7 @@ export interface components {
         };
         /**
          * BringIntoPipelineRequest
-         * @description Bring a buyer-only company into the sales pipeline (task 3.11).
+         * @description Bring a buyer-only company into the sales pipeline.
          *
          *     Only a reason, and it is optional: the decision is the request itself, and
          *     there is nothing to choose — a company is either in the pipeline or not, and
@@ -2832,14 +2832,14 @@ export interface components {
         };
         /**
          * BuyerCompanyResponse
-         * @description The deal's buyer as a company record (plan P4-4), summarised.
+         * @description The deal's buyer as a company record, summarised.
          *
          *     `pan` and `cin` are masked for OPERATIONS and DEVELOPER by exactly the rule
          *     the company response uses — the buyer being a company does not make its
          *     identifiers more visible than the seller's.
          *
-         *     `pipeline_status` is `null` until Developer 3's F3 column exists. The field is
-         *     in the shape from F2 on purpose: the company screens are built against this
+         *     `pipeline_status` is `null` on a database before migration 0032. The field is
+         *     in the shape on purpose: the company screens are built against this
          *     response, and adding a field to it later would be a contract change.
          */
         BuyerCompanyResponse: {
@@ -3156,16 +3156,15 @@ export interface components {
         };
         /**
          * CompanyIdentityType
-         * @description Which kind of registration identifies this company — **owner: Developer 3**
-         *     (allocation F3, plan P4-1).
+         * @description Which kind of registration identifies this company.
          *
          *     An Indian company is identified by its PAN; a foreign one by whatever its own
          *     jurisdiction issues, which ``registration_number`` carries. The distinction has to
          *     be a column rather than "has a PAN?", because a buyer company created by the
-         *     migration may have neither yet (IQ-7 excuses migrated buyers from the requirement)
+         *     migration may have neither yet (migrated buyers are excused from the requirement)
          *     and "we do not know which" must not read as "foreign".
          *
-         *     Nullable on ``exporter_profile``: every company created before F3 predates the
+         *     Nullable on ``exporter_profile``: every company created before 0032 predates the
          *     question. Migration 0032 sets ``IN_PAN`` wherever a PAN is already stored, which is
          *     the only case it can infer safely.
          * @enum {string}
@@ -3239,18 +3238,17 @@ export interface components {
         };
         /**
          * CompanyPipelineStatus
-         * @description Whether this company is in the sales pipeline at all — **owner: Developer 3**
-         *     (allocation F3, plan P4-1, P4-2).
+         * @description Whether this company is in the sales pipeline at all.
          *
          *     A company that exists only because it was somebody's buyer is not a lead, and must
-         *     not appear in pipeline counts or be chased by sales (plan §8: buyers become leads
+         *     not appear in pipeline counts or be chased by sales (buyers become leads
          *     only when someone onboards them). It is still a full company record: it can be
-         *     screened, cleared and have checks recorded against it (Developer 1's P4-11).
+         *     screened, cleared and have checks recorded against it (full-depth buyer checks).
          *
          *     ``NOT_IN_PIPELINE`` implies the journey has not started — `LEAD`, with
          *     qualification `NOT_YET_REVIEWED` and conversation `NOT_CONTACTED` — and migration
          *     0032 enforces that with a check constraint. `POST /exporters/{id}/pipeline`
-         *     (task 3.11) is the one way out, and it starts the journey properly.
+         *     is the one way out, and it starts the journey properly.
          * @enum {string}
          */
         CompanyPipelineStatus: "IN_PIPELINE" | "NOT_IN_PIPELINE";
@@ -3336,14 +3334,14 @@ export interface components {
         };
         /**
          * CreateBuyerCompanyRequest
-         * @description A buyer company that does not exist yet (plan P4-3, R-24): created
+         * @description A buyer company that does not exist yet: created
          *     ``NOT_IN_PIPELINE`` — not a lead — and named as this deal's buyer in one step.
          *
          *     The server matches first, as ``POST /companies/match`` does. An identifier that a
          *     company on file already holds is refused (409 ``BUYER_COMPANY_ALREADY_KNOWN``,
          *     naming it) rather than duplicated; a name that only resembles one is not an
-         *     identity (IQ-8), so it does not stop the create. A company outside India needs its
-         *     registration number unless it has a PAN (IQ-7) — the migration's exemption does not
+         *     identity, so it does not stop the create. A company outside India needs its
+         *     registration number unless it has a PAN — the migration's exemption does not
          *     apply to a buyer somebody is entering now.
          */
         CreateBuyerCompanyRequest: {
@@ -3436,7 +3434,7 @@ export interface components {
          *
          *     `customer_id` is optional: when omitted, the API mints a fresh one.
          *
-         *     `website` is **not** a field here any more (R11, decision IQ-16): with
+         *     `website` is **not** a field here any more: with
          *     `extra="forbid"`, sending one is a 422. The column and every value already
          *     stored stay as they are — nothing is destroyed, and nothing is shown.
          *     Only the CSV importer still tolerates the old header, because those files
@@ -3750,7 +3748,7 @@ export interface components {
         };
         /**
          * DealSide
-         * @description Which side of its deals a company is being listed on (task 2.7).
+         * @description Which side of its deals a company is being listed on.
          *
          *     An enum rather than a boolean query parameter, because ``?as=buyer`` reads as
          *     what it means and ``?as_buyer=true`` does not — and because a third side is
@@ -3765,7 +3763,7 @@ export interface components {
          *
          *     One thing only: whether there is a real, current financing need and how far
          *     the paperwork has got. Not the sales conversation (``ExporterConversation``),
-         *     not whether the company is safe to lend to (Developer 4's background check),
+         *     not whether the company is safe to lend to (the background check),
          *     and not whether the company met our requirements (``QualificationState``).
          *
          *     **Unlike the conversation gauge, any-value-to-any-value is not allowed.** A
@@ -4007,7 +4005,7 @@ export interface components {
          *
          *     ``scanner_name`` rides along so a screen can label the upload control with the
          *     scanner that will actually judge the file — ``"pass-through"`` today, which the
-         *     screen must say out loud (assumption A9, gate §7.6).
+         *     screen must say out loud (gate §7.6).
          */
         DocumentCategoryListResponse: {
             /** Categories */
@@ -4088,7 +4086,7 @@ export interface components {
          *
          *     Lives here rather than in ``document_enums.py`` because the scanner port
          *     returns it and the port must not import the document entity's module — the
-         *     dependency runs the other way. Phase 3's ``crm_document`` imports it from
+         *     dependency runs the other way. ``crm_document`` imports it from
          *     here for its column.
          * @enum {string}
          */
@@ -4274,7 +4272,7 @@ export interface components {
          *
          *     One thing only. Not the journey (`ExporterJourney`), not whether the company
          *     met our requirements (`QualificationState`), not whether it is safe to lend
-         *     to (Developer 4's background check), and not a commercial pause
+         *     to (the background check), and not a commercial pause
          *     (`ExporterMarker`). Collapsing those into one line is what the retired
          *     ten-status `ExporterLifecycleStatus` did.
          *
@@ -4288,7 +4286,7 @@ export interface components {
          *     Two rules deliberately do **not** live in this enum, and must not be
          *     inferred from the order of its members:
          *
-         *     * The gauge applies **from `PROSPECT` onward** (assumption A4). A `LEAD`
+         *     * The gauge applies **from `PROSPECT` onward**. A `LEAD`
          *       reads `NOT_CONTACTED` because the column is `NOT NULL`, not because
          *       anyone judged its conversation.
          *     * `NOT_NOW` carries a reason **and** a check-back date
@@ -4305,7 +4303,7 @@ export interface components {
          *     background-check decision (``docs/contracts/company-record.md`` §3.1).
          *
          *     Added in migration 0017; the ten-status ``ExporterLifecycleStatus`` it
-         *     replaces was retired in L2-04 (migration 0020).
+         *     replaces was retired in migration 0020.
          * @enum {string}
          */
         ExporterJourney: "LEAD" | "PROSPECT" | "CUSTOMER";
@@ -4523,7 +4521,7 @@ export interface components {
         ExporterSource: "MANUAL" | "SALES" | "REFERRAL" | "RXIL" | "PARTNER" | "API" | "BROKER" | "EVENT" | "EXISTING_CUSTOMER" | "DEAL_BUYER";
         /**
          * FlagGstRegistrationRequest
-         * @description Flag or unflag a branch (task 3.14). The reason is **required** both ways.
+         * @description Flag or unflag a branch. The reason is **required** both ways.
          *
          *     Flagging: the reason is what the blocked handover will say, so without it the
          *     person who hits the block has nothing to act on. Unflagging: "why we decided the
@@ -4621,8 +4619,8 @@ export interface components {
          * FollowUpOutcome
          * @description How a follow-up was dealt with — ``docs/contracts/engagement.md`` §5.3.
          *
-         *     Lives here rather than in ``engagement_enums.py`` because that file is Phase
-         *     1's and the phase agreement (§6.3) gives no file to both phases. Phase 1 created
+         *     Lives here rather than in ``engagement_enums.py`` because that file holds the
+         *     conversation gauge's values. Migration 0016 created
          *     the Postgres type ``onboarding.follow_up_outcome_enum`` and no Python enum; this
          *     is it.
          *
@@ -4724,13 +4722,12 @@ export interface components {
         };
         /**
          * GstRegistrationFlag
-         * @description Whether compliance has flagged this branch — **owner: Developer 3**
-         *     (allocation task 3.14, plan P6-5).
+         * @description Whether compliance has flagged this branch.
          *
          *     One branch, not the company: a company trading through five states may have a
          *     problem in one of them, and flagging the company would stop the other four
-         *     (decision BQ-6). A flagged branch blocks a handover only for deals invoiced
-         *     *through that branch* (task 2.9).
+         *     A flagged branch blocks a handover only for deals invoiced
+         *     *through that branch*.
          *
          *     `FLAGGED` always carries a reason — `ck_exporter_gstin_flag_reason` requires it —
          *     because the reason is what the person reading the block needs, and a flag whose
@@ -4761,7 +4758,7 @@ export interface components {
          *
          *     ``gstin`` is masked for a role that may not reveal identifiers, by the same rule
          *     as the company's own. ``verify_url`` is served **only** to a role that sees the
-         *     full GSTIN (task 3.17): the link contains the GSTIN, so sending it to a masked
+         *     full GSTIN: the link contains the GSTIN, so sending it to a masked
          *     role would hand over the value the masking exists to withhold.
          */
         GstRegistrationResponse: {
@@ -4803,8 +4800,7 @@ export interface components {
         };
         /**
          * GstRegistrationStatus
-         * @description What the GST portal says about a registration — **owner: Developer 3**
-         *     (allocation task 3.12, plan P6-1).
+         * @description What the GST portal says about a registration.
          *
          *     `UNVERIFIED` is the default and means exactly that: somebody recorded the GSTIN
          *     and nobody has checked it against the portal. It is deliberately **not** called
@@ -4812,7 +4808,7 @@ export interface components {
          *     the column is to tell "we believe this is live" apart from "nobody has looked".
          *
          *     `CANCELLED` and `SUSPENDED` come from the portal. Neither deactivates the row by
-         *     itself (`active` is a separate, local decision, task 3.12): a cancelled
+         *     itself (`active` is a separate, local decision): a cancelled
          *     registration is still part of the company's record, and the two questions — "is
          *     this registration live at the GST portal?" and "do we still use it?" — have
          *     different answers and different owners.
@@ -4933,11 +4929,11 @@ export interface components {
         };
         /**
          * IdentityCompletionItem
-         * @description One company the CRM cannot yet identify (IQ-7's completion list, R-28).
+         * @description One company the CRM cannot yet identify (the identity completion list).
          *
          *     Carries **no identifier**: the company has none, which is why it is here. What it
          *     lacks is ``missing``; ``required`` says whether a rule requires it (a foreign
-         *     company's registration number, IQ-7; any company's country) or it is only worth
+         *     company's registration number; any company's country) or it is only worth
          *     doing (an Indian company's PAN).
          */
         IdentityCompletionItem: {
@@ -4980,7 +4976,7 @@ export interface components {
         };
         /**
          * IdentityGap
-         * @description What a company with no ``identity_type`` lacks (IQ-7's completion list, R-28).
+         * @description What a company with no ``identity_type`` lacks (the identity completion list).
          * @enum {string}
          */
         IdentityGap: "REGISTRATION_NUMBER" | "PAN" | "COUNTRY";
@@ -5066,7 +5062,7 @@ export interface components {
         };
         /**
          * MatchKind
-         * @description How confident the directory is, in the four words the plan uses (P4-3).
+         * @description How confident the directory is, in four words.
          * @enum {string}
          */
         MatchKind: "MATCHED" | "POSSIBLE_DUPLICATE" | "CONFLICT" | "NEW";
@@ -5236,7 +5232,7 @@ export interface components {
         };
         /**
          * PendingActivityResponse
-         * @description One row of the cross-exporter pending/follow-up list (Piece 2). Unlike
+         * @description One row of the cross-exporter pending/follow-up list. Unlike
          *     `ExporterActivityResponse`, this always carries `exporter_display_name`
          *     and `is_overdue` — there is no per-exporter context to fall back on, since
          *     this response spans every exporter.
@@ -5484,7 +5480,7 @@ export interface components {
          *
          *     Four fields, and `extra="forbid"`. The actor comes from the login session, the
          *     source and decided-by kind are the server's, and the evidence snapshot is
-         *     assembled by the server from the 4A ↔ 4B seam and Developer 3B's documents. A
+         *     assembled by the server from the compliance-inputs seam and the CRM's documents. A
          *     request naming any of them is refused (422) rather than quietly ignored.
          */
         RecordBackgroundCheckDecisionRequest: {
@@ -5502,7 +5498,7 @@ export interface components {
         };
         /**
          * RecordDealPaymentOutcomeRequest
-         * @description How a handed-over deal was actually paid (task 3.21).
+         * @description How a handed-over deal was actually paid.
          *
          *     The outcome fields of `RecordTradeOutcomeRequest`, plus the invoice's identity —
          *     **required only when this deal has no invoice yet**, and refused when it already
@@ -5648,7 +5644,7 @@ export interface components {
         };
         /**
          * RequiredCheckResponse
-         * @description One verification type CLEAR requires (rule B), and its state in the current cycle.
+         * @description One verification type CLEAR requires, and its state in the current cycle.
          */
         RequiredCheckResponse: {
             /** Verification Type */
@@ -5957,20 +5953,20 @@ export interface components {
         };
         /**
          * SetDealBuyerRequest
-         * @description Record the deal's buyer, in **one of two forms** (plan P4-4, task 2.4).
+         * @description Record the deal's buyer, in **one of two forms**.
          *
          *     *The company form* — ``{"buyer_company_id": "..."}`` — names the company the
          *     buyer **is**. This is the form to use. The buyer is then a full company record:
-         *     it can be screened on its own timeline, the handover guard asks about it
-         *     (BQ-4), and the same company can be a seller on another deal. It is **set
+         *     it can be screened on its own timeline, the handover guard asks about it,
+         *     and the same company can be a seller on another deal. It is **set
          *     once**; see ``DealBuyerCompanyAlreadySetError``.
          *
          *     *The legacy form* — ``{"name": ..., "country": ..., ...}`` — records a
          *     ``deal_buyer`` row: a set of details with no record of its own. It is still
-         *     accepted because deals written before the buyer migration (P4-6) have one, and
-         *     because a ``deal_buyer``'s sanctions and AML are the only place BQ-4's rule can
-         *     read for such a deal (``background-check.md`` §12.2). These writes retire in
-         *     P4-10, and the table is kept.
+         *     accepted because deals written before the buyer migration have one, and
+         *     because a ``deal_buyer``'s sanctions and AML are the only place the buyer-compliance
+         *     rule can read for such a deal (``background-check.md`` §12.2). These writes will
+         *     retire, and the table is kept.
          *
          *     **Exactly one form per request.** Mixing them is refused rather than merged:
          *     the two disagree about what a buyer *is*, and silently writing both would leave
@@ -6001,14 +5997,13 @@ export interface components {
         };
         /**
          * SetDealInvoicingBranchRequest
-         * @description Which of the seller's GST branches this deal is invoiced from (task 2.8).
+         * @description Which of the seller's GST branches this deal is invoiced from.
          *
          *     ``null`` clears it: a branch recorded by mistake can be un-recorded, and the
          *     handover guard will ask for one again if the seller has any.
          *
          *     The registration's id, never its GSTIN — which is what makes it impossible to
-         *     point a deal at the other company's copy of a shared GSTIN (plan P6-3's
-         *     consequence, decision IQ-9).
+         *     point a deal at the other company's copy of a shared GSTIN.
          */
         SetDealInvoicingBranchRequest: {
             /** Gst Registration Id */
@@ -6021,7 +6016,7 @@ export interface components {
          *
          *     There is no delete: the table is append-only, so "stop requiring it" is
          *     `active: false`, which writes a new version. The record of what was required
-         *     when is part of the point (plan P2-5a).
+         *     when is part of the point.
          */
         SetDealRequiredDocumentRequest: {
             category: components["schemas"]["DocumentCategory"];
@@ -6294,7 +6289,7 @@ export interface components {
         TransactionStatus: "INITIATED" | "VALIDATED" | "UNDER_REVIEW" | "APPROVED" | "FUNDED" | "DIGITAL_ASSET_SETTLED" | "SETTLING" | "SETTLED" | "RECONCILED" | "VALIDATION_FAILED" | "BLOCKED" | "DECLINED" | "FAILED" | "RECALLED_VIA_COMPENSATION";
         /**
          * TransitionDealStageRequest
-         * @description Move a deal's stage. ``reason`` is required for ``WITHDRAWN`` (A7) and
+         * @description Move a deal's stage. ``reason`` is required for ``WITHDRAWN`` and
          *     refused for anything else.
          */
         TransitionDealStageRequest: {
@@ -6316,7 +6311,7 @@ export interface components {
          * @description Ask `trigger_verification` to run one check.
          *
          *     `provider` defaults to `"manual"` (`ManualEntryAdapter`) and, on this route,
-         *     is limited to it (`ManualRouteProvider`, decision D7) — the value is resolved
+         *     is limited to it (`ManualRouteProvider`) — the value is resolved
          *     to a module path, so anything else must be refused here at the boundary
          *     rather than reaching the registry. `payload` is
          *     opaque here by design: its shape is between the caller and whichever
@@ -6327,7 +6322,7 @@ export interface components {
          *     `BUYER` — never a company or deal id for a buyer.
          *
          *     Evidence (`evidence_note`, `evidence_refs`) is what the outcome rests on, in the
-         *     qualification contract's shape. A manual `PASSED` needs some (D16: a note or at
+         *     qualification contract's shape. A manual `PASSED` needs some (a note or at
          *     least one reference). A `document` reference must belong to the subject and be
          *     `AVAILABLE` (scanned clean); a `url` reference must be an http(s) link.
          */
@@ -6380,10 +6375,10 @@ export interface components {
          *     `source`, the journey, the qualification gauge and the marker are
          *     deliberately not fields on this model at all — with `extra="forbid"`, sending any of them is
          *     rejected at the API boundary (422). The marker has its own route. `website`
-         *     joined them in R11 (decision IQ-16): it can no longer be set or cleared
+         *     joined them when the website field was retired: it can no longer be set or cleared
          *     here, and a stored value is left untouched.
          *
-         *     **`gstins` joined them in task 3.13.** It used to replace the company's whole
+         *     **`gstins` joined them.** It used to replace the company's whole
          *     list, which deleted the row of every GSTIN dropped — and a GST registration is a
          *     branch the company traded through, named by any deal that invoiced from it.
          *     Adding one, deactivating one and flagging one are now three decisions with three
@@ -6456,7 +6451,7 @@ export interface components {
             comment?: string | null;
             /**
              * Evidence Refs
-             * @description Optional (IQ-14). A `document` must be one of the company's own documents and `AVAILABLE` (scanned clean); a `url` must be an http(s) link.
+             * @description Optional. A `document` must be one of the company's own documents and `AVAILABLE` (scanned clean); a `url` must be an http(s) link.
              */
             evidence_refs?: components["schemas"]["VerificationEvidenceRefModel"][];
         };
@@ -6536,7 +6531,7 @@ export interface components {
          *     Prefixed because OpenAPI schema names are global: qualification already has an
          *     `EvidenceRefModel` / `EvidenceRefOut` (`schemas/qualification.py`), and a second
          *     class of the same name makes FastAPI rename *both* to module-qualified names,
-         *     silently changing Developer 2's generated types.
+         *     silently changing the frontend's generated types.
          */
         VerificationEvidenceRefModel: {
             /**

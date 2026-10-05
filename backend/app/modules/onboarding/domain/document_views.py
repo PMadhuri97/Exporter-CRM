@@ -1,4 +1,4 @@
-"""Read-model view types for documents — **owner: Developer 3B** (L3-09).
+"""Read-model view types for documents.
 
 Pure data structures — no I/O, no session — the same pattern as ``deal_views.py``
 and ``engagement_views.py``. ``DocumentService`` assembles them.
@@ -26,8 +26,8 @@ from app.modules.onboarding.domain.storage import DocumentScanStatus
 class DocumentView:
     """One document row.
 
-    Carries no storage key and no link. The key is an internal address (decision
-    D8) and a link is a separate, deliberate request — handing one out with every
+    Carries no storage key and no link. The key is an internal address
+    and a link is a separate, deliberate request — handing one out with every
     list would mint credentials nobody asked for.
     """
 

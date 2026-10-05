@@ -1,5 +1,5 @@
 /**
- * Qualification — **owner: Developer 2** (L2-09, L2-10, L2-14).
+ * Qualification.
  *
  * Shows where each criterion stands, the server's suggestion and the decisions
  * people have recorded, and lets a permitted user record results and an

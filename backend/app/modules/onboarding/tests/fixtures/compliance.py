@@ -1,7 +1,7 @@
-"""Two compliance users, ``approve_as`` and rule B's checks — the maker-checker test
-utilities (plan P0-5, P3-1d; allocation F1, task 1.13). **Owner: Developer 1.**
+"""Two compliance users, ``approve_as`` and the required checks — the maker-checker
+test utilities.
 
-Decision A (maker-checker, plan P3-1) makes every ``CLEAR``, ``FLAGGED`` and
+Maker-checker makes every ``CLEAR``, ``FLAGGED`` and
 ``ON_HOLD`` a two-person act: one COMPLIANCE or ADMIN user proposes, a *different* one
 approves. With maker-checker on (the default, and what the suite runs with), no single
 call can take a company there, so tests use these:
@@ -11,16 +11,16 @@ call can take a company there, so tests use these:
   for a test that only needs "another compliance officer");
 * ``approve_as(checker, company_id, maker=…)`` — takes a company to a background-check
   value with ``maker`` proposing and ``checker`` approving, **in one call**, through
-  ``BackgroundCheckService.propose`` and ``.approve`` (since P3-1b);
+  ``BackgroundCheckService.propose`` and ``.approve``;
 * ``propose_and_approve(client, company_id, maker_token=…, checker_token=…)`` — the
   same through the HTTP routes;
-* ``record_required_checks(company_id)`` — rule B (plan P3-2): a ``CLEAR`` needs KYB,
+* ``record_required_checks(company_id)`` — the required checks: a ``CLEAR`` needs KYB,
   AML and sanctions each **passed** in the current cycle, so a test that clears a
-  company records them first (manual results, through Developer 4B's service);
+  company records them first (manual results, through ``VerificationService``);
 * ``StaticComplianceFactsReader`` and ``party_facts(...)`` — a fake of the published
-  ``ComplianceFactsReader`` for a **consumer's** tests: Developer 2's handover guard is
-  specified "with a fake reader: each rule blocks with its own message" (allocation
-  task 2.5), and this is that fake, answering exactly the facts a test gives it.
+  ``ComplianceFactsReader`` for a **consumer's** tests: the handover guard is
+  tested "with a fake reader: each rule blocks with its own message", and this is
+  that fake, answering exactly the facts a test gives it.
 
 For "now" in tests, use ``app.shared.clock.use_clock(FixedClock(...))``.
 """
@@ -97,7 +97,7 @@ async def record_required_checks(
     types: tuple[str, ...] = REQUIRED_CHECK_TYPES,
     actor_id: str = "compliance-checks",
 ) -> list[Any]:
-    """Record a manual ``status`` result of each of ``types`` on the company — rule B's
+    """Record a manual ``status`` result of each of ``types`` on the company — the required
     KYB, AML and sanctions by default — through ``VerificationService``. Each lands in
     the company's current check cycle."""
     from app.modules.onboarding.application.verification_service import VerificationService

@@ -51,9 +51,9 @@ vi.mock('../api', () => ({
   getScreeningReview: vi.fn(),
   updateScreeningReviewItem: vi.fn(),
   getBankActivity: vi.fn(),
-  // Developer 3A, L3-03. `ConversationPanel` calls these itself rather than
-  // taking them as props — the shell was never given the gauge to hold, and
-  // Developer 3 does not edit this page. The factory has to list them, because
+  // `ConversationPanel` calls these itself rather than
+  // taking them as props — the shell was never given the gauge to hold.
+  // The factory has to list them, because
   // `vi.mock` with a factory replaces the whole module: a function left out is
   // `undefined` at the call site, not a passthrough.
   getExporterConversation: vi.fn(),
@@ -64,7 +64,7 @@ vi.mock('../api', () => ({
   listCompanyDocuments: vi.fn(),
   getDocumentCategories: vi.fn(),
   listCompanyHistory: vi.fn(),
-  // The Deals tab's trade history, both sides (task 3.22).
+  // The Deals tab's trade history, both sides.
   listTradeRelationships: vi.fn(),
   getTradeRelationship: vi.fn(),
   getTradeInvoice: vi.fn(),
@@ -183,7 +183,7 @@ function renderPage(tab?: string, withShell = false) {
   );
 }
 
-describe('ExporterDetailPage — E9', () => {
+describe('ExporterDetailPage — screening review', () => {
   beforeEach(() => {
     vi.mocked(getExporterProfileDetail).mockResolvedValue(DETAIL);
     vi.mocked(listExporterContacts).mockResolvedValue({
@@ -373,14 +373,14 @@ describe('ExporterDetailPage — E9', () => {
     // `registration_number` are null in this fixture, and a null value renders no
     // reveal control — there is nothing to reveal.
     //
-    // Four, not five: the panel's own GSTIN row went with task 3.13. The GSTINs are
+    // Four, not five: the panel's own GSTIN row went with the branch routes. The GSTINs are
     // `GstRegistrationsSection` now, where each is a branch with a state, a status and
     // possibly a flag rather than a bare value.
     expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(4);
   });
 
   it('shows no website at all, whatever is stored', async () => {
-    // R11, decision IQ-16: the field retired. Stored values are kept — nothing is
+    // The field retired. Stored values are kept — nothing is
     // destroyed — and simply never shown. This replaces the test that proved an
     // http(s) value became a link and anything else stayed text: with nothing
     // rendered, the `javascript:` href that rule existed for cannot arise here.
@@ -400,7 +400,7 @@ describe('ExporterDetailPage — E9', () => {
 
   it('replaces the journey chip and both gauges for a buyer-only company', async () => {
     // Its `journey` column reads LEAD because the column is NOT NULL, not because
-    // anyone judged it (plan P4-2) — and the server refuses to qualify it. Showing a
+    // anyone judged it — and the server refuses to qualify it. Showing a
     // Lead chip and an empty qualification form would invite exactly the action that
     // 409s.
     mockUser('COMPLIANCE', 'someone-else');

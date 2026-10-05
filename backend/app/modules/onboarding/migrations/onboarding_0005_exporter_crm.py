@@ -1,6 +1,6 @@
-"""EXP-1: Exporter CRM Profile, Contacts, and Activities.
+"""Exporter CRM Profile, Contacts, and Activities.
 
-Three new tables in the existing ``onboarding`` schema (this ticket extends
+Three new tables in the existing ``onboarding`` schema (this migration extends
 ``onboarding`` in place, per the confirmed plan — no new module/schema):
 
   onboarding.exporter_profile   — one enduring profile per exporter/customer
@@ -15,11 +15,11 @@ Three new tables in the existing ``onboarding`` schema (this ticket extends
 Chains onto ``onboarding_0004_screening_fix``, the onboarding sub-chain's own
 current head *in this worktree* (not the repo-wide Alembic head,
 ``2807a84d72ba``, which already merged ``onboarding_0004_screening_fix`` with
-``gateway_0001_baseline`` — see that revision). A sibling ticket (EXP-2) also
+``gateway_0001_baseline`` — see that revision). A sibling migration (verification results) also
 chains its own migration onto ``onboarding_0004_screening_fix`` independently
 in a parallel worktree, so this revision creates a second fork off that same
 parent — the exact situation ``2807a84d72ba`` and
-``e849a8d1c41e_merge_al_669_with_develop_heads`` already document precedent
+``e849a8d1c41e_merge_kyb_result_with_develop_heads`` already document precedent
 for in this codebase's history. Reconciling the resulting multi-head graph
 (a no-op merge revision, once both forks exist in one tree) is out of scope
 here.
@@ -52,8 +52,8 @@ Design decisions worth stating once, not rediscovered per reviewer:
   ``iec``) and CRM free-text fields carry no PII-encryption annotation: unlike
   ``onboarding_request.tax_identification_number``, none of these are treated
   as sensitive-at-rest in the approved plan, so no documented-gap comment is
-  needed here (contrast ``verification_result.raw_result`` in the EXP-2
-  ticket, which does carry one).
+  needed here (contrast ``verification_result.raw_result`` in
+  ``onboarding_0006_verif_result``, which does carry one).
 
 Revision ID: onboarding_0005_exporter_crm
 Revises: onboarding_0004_screening_fix

@@ -1,4 +1,4 @@
-"""E9: persist exporter screening checklist and bank-activity findings.
+"""Persist exporter screening checklist and bank-activity findings.
 
 Revision ID: onboarding_0010_screen_review
 Revises: onboarding_0009_rm_user_id

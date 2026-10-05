@@ -1,6 +1,6 @@
 /**
- * Which Home cards each role sees — Developer 1's compliance cards (plans P3-1c,
- * P3-3c). The cards themselves are tested in `HomeCards.test.tsx`; here they are stubs,
+ * Which Home cards each role sees — the compliance cards. The cards themselves are
+ * tested in `HomeCards.test.tsx`; here they are stubs,
  * so only the page's choice of cards is under test.
  */
 
@@ -59,7 +59,7 @@ describe('HomePage — compliance cards by role', () => {
     expect(screen.getByTestId('card-rekyc')).toBeInTheDocument();
   });
 
-  it('shows DEVELOPER neither (the background-check routes refuse it, D8)', () => {
+  it('shows DEVELOPER neither (the background-check routes refuse it)', () => {
     renderAs('DEVELOPER');
     expect(screen.queryByTestId('card-proposals')).not.toBeInTheDocument();
     expect(screen.queryByTestId('card-rekyc')).not.toBeInTheDocument();
@@ -67,7 +67,7 @@ describe('HomePage — compliance cards by role', () => {
   });
 });
 
-describe('HomePage — Add company by role (R-33, G2)', () => {
+describe('HomePage — Add company by role', () => {
   it.each<UserRole>(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s Add company', (role) => {
     renderAs(role);
     expect(screen.getByRole('link', { name: /Add company/ })).toHaveAttribute('href', '/companies/new');

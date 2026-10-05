@@ -1,5 +1,4 @@
-"""``DealBuyerCompanyMap`` — which company each legacy deal buyer turned out to be
-— **owner: Developer 2** (allocation task 2.6, plan P4-6, §17.2).
+"""``DealBuyerCompanyMap`` — which company each legacy deal buyer turned out to be.
 
 One row per ``deal_buyer``, written by the buyer migration. It is the migration's
 **record of its own reasoning**, and it is why the migration is re-runnable: a
@@ -49,7 +48,7 @@ class BuyerMatchRule(str, enum.Enum):
     """
 
     #: Step 2 — an Indian buyer whose `tax_id` is a PAN or GSTIN, matched to a company
-    #: holding that PAN. The R1 case: it may well be an existing *seller*.
+    #: holding that PAN. The case that matters most: it may well be an existing *seller*.
     PAN = "PAN"
     #: Step 3 — a foreign buyer matched on `(country, normalised registration number)`,
     #: either to another deal buyer or to an existing company.
@@ -57,13 +56,13 @@ class BuyerMatchRule(str, enum.Enum):
     #: Steps 2–3 found nothing and no other buyer shares this identity: a new company.
     NEW = "NEW"
     #: Step 4 — same `(country, normalised name)` with no identifier, **confirmed by a
-    #: person** in the dry-run report. Never automatic (decision IQ-8). Also the rule a
+    #: person** in the dry-run report. Never automatic. Also the rule a
     #: person's choice between conflicting candidates is recorded under: either way the
     #: record says a human decided, not a rule.
     NAME_CONFIRMED = "NAME_CONFIRMED"
     #: The row was already linked to this company before the migration ran — its deal
-    #: names it (task 2.4) or its BUYER results already have it as their subject
-    #: (P4-5) — and nothing on the legacy row contradicts it (migration 0041). Both
+    #: names it or its BUYER results already have it as their subject
+    #: — and nothing on the legacy row contradicts it (migration 0041). Both
     #: links are set once, so the legacy row can map nowhere else.
     ALREADY_LINKED = "ALREADY_LINKED"
 

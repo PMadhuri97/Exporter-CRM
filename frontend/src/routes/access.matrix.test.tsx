@@ -1,5 +1,5 @@
 /**
- * The role matrix — R-33 Phase 0 (`docs/frontend-plan.md` §4.1, §4.3, §4.4).
+ * The role matrix (`docs/frontend-plan.md` §4.1, §4.3, §4.4).
  *
  * Every role × every screen, through the real router, shell and rail: whether the rail
  * offers it, and whether its URL renders it or the generic `NotFound`. Each screen is a
@@ -11,7 +11,7 @@
  * The expected sets are written out by hand from §4.1 and the server's route table,
  * not derived from the manifest, so a wrong manifest fails here.
  *
- * Phase 2 (§7): the rail, the command bar's "Go to" list, the `?` sheet and the `g`
+ * The shell (§7): the rail, the command bar's "Go to" list, the `?` sheet and the `g`
  * shortcuts are all generated from the module table — each is checked here against
  * the same hand-written rows, so none can offer what another withholds.
  */
@@ -103,7 +103,7 @@ const RAIL: [string, UserRole[], string | null, string][] = [
   ['Qualification criteria', ADMIN, null, 'criteria'],
   ['Required documents', ADMIN, null, 'required-documents'],
 ];
-/** Rows that existed before Phase 2 and must never come back. */
+/** Rows that existed before the redesign and must never come back. */
 const RETIRED_ROWS = ['Home', 'Follow-ups', 'Pipeline'];
 
 function signInAs(role: string) {
@@ -252,7 +252,7 @@ describe('the command bar, the shortcut sheet and the g keys (§7.4, §7.5)', { 
   });
 });
 
-describe('a user with no workspace (G1)', () => {
+describe('a user with no workspace', () => {
   // API_USER, and a role the manifest has never heard of: both fail closed.
   it.each(['API_USER', 'AUDITOR'])('%s gets no rail and no CRM words', async (role) => {
     signInAs(role);

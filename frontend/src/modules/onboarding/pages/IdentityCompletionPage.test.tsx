@@ -40,7 +40,7 @@ function renderPage() {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('IdentityCompletionPage (R-28)', () => {
+describe('IdentityCompletionPage', () => {
   it('groups what a rule requires apart from what is only worth doing', async () => {
     vi.mocked(listIdentityCompletion).mockResolvedValue({
       items: [
@@ -93,8 +93,8 @@ describe('IdentityCompletionPage (R-28)', () => {
   });
 });
 
-describe('IdentityGapNotice (R-28)', () => {
-  it('asks a foreign company for its registration number, as IQ-7 requires', () => {
+describe('IdentityGapNotice', () => {
+  it('asks a foreign company for its registration number, as the CRM requires', () => {
     render(<IdentityGapNotice country="NL" canEdit />);
     const notice = screen.getByTestId('identity-gap-notice');
     expect(notice).toHaveTextContent(/registration number its own registrar issued/);

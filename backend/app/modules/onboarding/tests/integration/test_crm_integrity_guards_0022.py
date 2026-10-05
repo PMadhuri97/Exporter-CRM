@@ -12,7 +12,7 @@ import psycopg2.errors
 import pytest
 
 from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
-from app.modules.onboarding.tests.integration._l4b_support import (
+from app.modules.onboarding.tests.integration._verification_support import (
     insert_document,
     insert_result,
     open_deal,

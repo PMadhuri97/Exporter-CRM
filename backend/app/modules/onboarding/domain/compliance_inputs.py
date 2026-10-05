@@ -1,28 +1,28 @@
-"""The compliance-inputs contract (seam **v2**) — **owner: Developer 1** (compliance
-engine, allocation §2.1; built as the 4A ↔ 4B seam by Developer 4B in 4B-0).
+"""The compliance-inputs contract (seam **v2**) between verification and screening
+and the background check.
 
 Pure data structures and one ``Protocol`` — no I/O, no session — the same pattern
 as ``deal_views.py`` and ``engagement_views.py``.
 ``application/compliance_inputs.py::ComplianceInputsService`` implements the
 Protocol.
 
-Developer 4A reads the inputs to a background-check decision through this and
+The background check reads the inputs to a decision through this and
 nothing else: the eight screening items and the verification results whose
-subject is the company. Dev4A imports this module and the service; it never
-reads or imports Dev4B's tables, repositories or services directly
+subject is the company. It imports this module and the service; it never
+reads or imports verification's tables, repositories or services directly
 (``docs/contracts/background-check.md`` §12.1 invariant 6).
 
 **Facts, not judgements.** Every field is a stored fact: a status, an id, a
 timestamp. There is deliberately no ``is_clear_ready``, no "pending" verdict and
-no "answered" verdict — what those mean is Dev4A's rule and decision gates D1–D3.
+no "answered" verdict — what those mean is the background check's ``ClearPolicy``.
 A judgement field here would be a contract change.
 
 **The output shape is frozen** (§12.1 invariant 7). The reader may change how the
 values are read; it may not add, remove, rename or retype a field without the
 agreement of the seam's owner and its consumers.
 
-Seam v2 — the one deliberate revision (plan P0-2, allocation F1)
------------------------------------------------------------------
+Seam v2 — the one deliberate revision
+-------------------------------------
 Recorded in ``docs/contracts/background-check.md`` §12. Three fields were added, each
 at the end of its type with a ``None`` default, so every v1 construction still builds:
 
@@ -33,18 +33,18 @@ at the end of its type with a ``None`` default, so every v1 construction still b
 * ``CompanyComplianceInputs.current_cycle_id`` — the cycle the inputs are scoped to:
   the company's highest-numbered cycle, or ``None`` before it has one.
 
-What the reads mean in v2 (plan P2-3b):
+What the reads mean in v2:
 
 * ``company_inputs(company_id)`` returns the inputs of the **current cycle** only. The
-  argument is the *subject company*: the company the checks are about. Since plan P4-5
-  that is ``subject_company_id = company_id`` (set on every company-subject result,
+  argument is the *subject company*: the company the checks are about. Since checks
+  became company-keyed that is ``subject_company_id = company_id`` (set on every company-subject result,
   and on a deal-buyer result the deal-buyer migration maps to a company), with a row
   recorded before then still found by ``entity_type = EXPORTER`` and
   ``entity_reference = company_id`` — a change to how the value is read, not to its
   shape. One set of checks per company, whatever role it plays in a deal.
 * ``buyer_checks(deal_buyer_id)`` is **legacy**: it serves deals whose buyer is still a
   ``deal_buyer`` row, and is replaced by ``company_inputs(buyer_company_id)`` once a
-  deal names a buyer company (P4-4/P4-5). Legacy buyers have no background check and
+  deal names a buyer company. Legacy buyers have no background check and
   no cycles, so its rows carry ``cycle_id = None``.
 """
 

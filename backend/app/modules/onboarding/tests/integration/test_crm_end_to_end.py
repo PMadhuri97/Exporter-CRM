@@ -1,7 +1,7 @@
 """The CRM's main path, end to end, through the API as the people in it would walk it
 (architecture §4.1), and the §4.2 path that only a customer can take.
 
-Nothing is substituted: real routes and roles, the real 4A ↔ 4B reader, the shipped
+Nothing is substituted: real routes and roles, the real compliance-inputs reader, the shipped
 ``CLEAR_POLICY``, the pass-through scanner behind the real upload route, and the
 in-memory event bus captured so both announcements can be seen. This is milestone
 M5's automated test (architecture §7.3): a Prospect whose check is recorded ``CLEAR``
@@ -57,7 +57,7 @@ class _Crm:
 
     def __init__(self, client: AsyncClient, ops: str, compliance: str, checker: str) -> None:
         self.client, self.ops, self.compliance = client, ops, compliance
-        # Maker-checker (Developer 1, plan P3-1d): a second compliance officer approves
+        # Maker-checker: a second compliance officer approves
         # what `compliance` proposes.
         self.checker = checker
 
@@ -92,7 +92,7 @@ class _Crm:
         for key in SCREENING_CATALOGUE:
             await self.ok("PUT", f"/exporters/{company_id}/screening-review/{key}",
                           self.compliance, json={"status": "PASSED"})
-        # Rule B (plan P3-2): KYB, AML and sanctions passed in the current cycle.
+        # Rule B: KYB, AML and sanctions passed in the current cycle.
         for check in ("KYB", "AML", "SANCTIONS"):
             await self.ok("POST", "/verifications", self.compliance,
                           json={"verification_type": check, "entity_type": "EXPORTER",
@@ -101,15 +101,15 @@ class _Crm:
                                 "evidence_note": f"{check} checked manually."})
 
     async def screen_the_buyer(self, deal_id: str) -> None:
-        """PASSED sanctions and AML on a deal's **legacy** buyer row (plan BQ-4).
+        """PASSED sanctions and AML on a deal's **legacy** buyer row.
 
-        Live since task 2.5 wired Developer 1's `ComplianceFactsReader`: the handover
+        Live since the guard reads `ComplianceFactsReader`: the handover
         requires the buyer's sanctions and AML to be `PASSED`, and a buyer nobody has
         screened reads `MISSING` — "we have not checked" is not "clean".
 
         Keyed to the `deal_buyer` row, where `for_legacy_buyer` reads them. The §4.2
         path still walks this way on purpose, so the suite covers both kinds of buyer
-        end to end until P4-10 retires these writes; the main path uses a buyer
+        end to end until these writes retire; the main path uses a buyer
         **company** and `screen_the_buyer_company` below.
         """
         deal = await self.deal(deal_id)
@@ -122,7 +122,7 @@ class _Crm:
                                 "evidence_note": f"Buyer {check} checked manually."})
 
     async def screen_the_buyer_company(self, buyer_company_id: str) -> None:
-        """The same BQ-4 rule, against a buyer that is a **company record**.
+        """The same buyer rule, against a buyer that is a **company record**.
 
         `EXPORTER` rather than `BUYER` as the entity type, because that is what the
         subject is: a company. The guard reads it through `for_company`, and the same
@@ -149,7 +149,7 @@ class _Crm:
         await self.ok("POST", f"/deals/{deal['id']}/transitions", self.ops,
                       json={"to_stage": "GATHERING_PAPERWORK"})
         # PRE_SHIPMENT, not SHIPPING: migration 0030 requires a pre-shipment
-        # document before a handover (P2-5b, IQ-10), so this is the upload that
+        # document before a handover, so this is the upload that
         # makes the guard passable rather than just paperwork on the deal.
         await self.ok("POST", f"/deals/{deal['id']}/documents", self.ops,
                       data={"category": "PRE_SHIPMENT",
@@ -163,8 +163,8 @@ class _Crm:
     async def record_the_invoicing_branch(self, company_id: str, deal_id: str) -> None:
         """Say which of the seller's GST branches this deal is invoiced from.
 
-        Part of the real path since task 2.8. The handover guard asks for it whenever
-        the seller has an active registration (plan P6-7), and this company is created
+        Part of the real path. The handover guard asks for it whenever
+        the seller has an active registration, and this company is created
         with one — so without this the handover is refused with "the invoicing branch
         is not recorded", which is the rule working rather than a problem.
         """
@@ -234,7 +234,7 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     conversation = await crm.ok("GET", f"/exporters/{company_id}/conversation", crm.ops)
     assert conversation["conversation"] == "READY_NOW"
 
-    # 6b. The buyer is a **company record** (task 2.4), not a set of details. The RM
+    # 6b. The buyer is a **company record**, not a set of details. The RM
     # looks for it first — `POST /companies/match` is how they avoid creating a second
     # record for a company we already hold — and it is genuinely new here.
     buyer_name = f"Rotterdam Trading BV {uuid.uuid4().hex[:6]}"
@@ -266,7 +266,7 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
 
     # 7. Paperwork, scanned before it can be opened.
     #
-    # The handover needs a PRE_SHIPMENT document (migration 0030, P2-5b), and the
+    # The handover needs a PRE_SHIPMENT document (migration 0030), and the
     # guard says so while it is missing — checked here, before the upload, because
     # "the rule is configured" and "the rule is enforced" are different claims.
     missing_paperwork = await crm.deal(deal_id)
@@ -295,7 +295,7 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
         (await crm.deal(deal_id))["handover_blocked_reason"] or ""
     )
 
-    # 7b. The buyer company is screened too (BQ-4, live since task 2.5), read through
+    # 7b. The buyer company is screened too, read through
     # `for_company` now that the buyer is a company. Checked before and after, because
     # this is the condition most easily satisfied by accident.
     assert "the buyer's sanctions check is MISSING" in (
@@ -331,7 +331,7 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     assert handed["stage"] == "HANDED_OVER"
     [handed_over] = _events(bus, EventType.DEAL_HANDED_OVER)
     assert set(handed_over.payload["document_ids"]) == {required["id"], document["id"]}
-    # And the handover is a record now, not only an announcement (P2-7). Built from
+    # And the handover is a record now, not only an announcement. Built from
     # the buyer **company**, which is what the lending team is being handed.
     snapshot = handed["handover_snapshot"]
     assert snapshot["snapshot_source"] == "taken_at_handover"
@@ -339,7 +339,7 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     assert snapshot["buyer_company_id"] == buyer_company_id
     assert set(snapshot["document_ids"]) == {required["id"], document["id"]}
 
-    # 13. And then what actually happened: the deal was paid (task 3.21). This is the
+    # 13. And then what actually happened: the deal was paid. This is the
     # last question the CRM answers about a deal, and recording it creates the
     # invoice, because this deal had none.
     paid = await crm.ok(
@@ -352,7 +352,7 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     assert paid["invoice_created"] is True
     assert paid["outcome"]["payment_status"] == "PAID"
     assert paid["outcome"]["proof_status"] == "PROVEN"
-    # Stored and never converted (IQ-4), and exact: a string, not a float.
+    # Stored and never converted, and exact: a string, not a float.
     assert paid["invoice"]["amount"] == "48500.00"
     assert paid["invoice"]["currency"] == "USD"
 
@@ -376,14 +376,14 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
                            params={"limit": 200})
     dimensions = {entry["dimension"] for entry in history["entries"]}
     # No `gst_registration` row: this company's GSTIN arrived with its creation, and
-    # only the `gst-registrations` routes write that dimension (task 3.13). Asserting
+    # only the `gst-registrations` routes write that dimension. Asserting
     # it here would be asserting a step this path does not take.
     assert {"journey", "qualification", "conversation", "deal", "background_check",
             "screening", "trade"} <= dimensions
     journey = {(e["from_value"], e["to_value"]) for e in history["entries"]
                if e["dimension"] == "journey"}
     assert {("LEAD", "PROSPECT"), ("PROSPECT", "CUSTOMER")} <= journey
-    # The buyer company's own timeline carries the deal it bought on (task 2.7).
+    # The buyer company's own timeline carries the deal it bought on.
     buyer_history = await crm.ok("GET", f"/exporters/{buyer_company_id}/history",
                                  crm.compliance, params={"limit": 200})
     assert deal_id in {e["deal_id"] for e in buyer_history["entries"] if e["deal_id"]}
@@ -392,8 +392,8 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
 async def test_new_information_about_a_customer_flags_it_and_blocks_its_handovers(
     client: AsyncClient, bus: InMemoryEventBus
 ):
-    """§4.2: a cleared customer is reopened, then flagged. It stays a CUSTOMER (A5 —
-    a flag is not a demotion), its deals cannot be handed over meanwhile, and
+    """§4.2: a cleared customer is reopened, then flagged. It stays a CUSTOMER (a flag
+    is not a demotion), its deals cannot be handed over meanwhile, and
     reassessing and clearing it again does not announce a second "became customer"."""
     crm = await _crm(client)
     company_id, deal_id = await crm.new_prospect_with_a_deal_ready_to_hand_over()

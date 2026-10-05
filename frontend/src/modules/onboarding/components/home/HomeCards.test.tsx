@@ -132,7 +132,7 @@ describe('Home cards', () => {
   });
 });
 
-// ── Developer 1: maker-checker (P3-1c) and Re-KYC due (P3-3c) ──────────────
+// ── Maker-checker and Re-KYC due ───────────────────────────
 
 const PROPOSAL: BackgroundCheckProposal = {
   id: 'p1',
@@ -239,7 +239,7 @@ describe('Home cards — compliance', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent(/Aarav Textiles.*Expired/);
     expect(rows[1]).toHaveTextContent(/Blue Harbour Foods.*Expires/);
-    // R-29: the buyer-only company is marked; the lead is not.
+    // The buyer-only company is marked; the lead is not.
     expect(rows[1]).toHaveTextContent('Buyer only');
     expect(rows[0]).not.toHaveTextContent('Buyer only');
     expect(screen.getByTestId('rekyc-due-count')).toHaveTextContent('2');

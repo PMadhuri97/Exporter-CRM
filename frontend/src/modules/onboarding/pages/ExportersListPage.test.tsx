@@ -69,7 +69,7 @@ function renderPage() {
   );
 }
 
-describe('ExportersListPage — PAN/GSTIN masking (EXP-F2 acceptance criterion)', () => {
+describe('ExportersListPage — PAN/GSTIN masking', () => {
   beforeEach(() => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({
       profiles: [PROFILE],
@@ -106,7 +106,7 @@ describe('ExportersListPage — PAN/GSTIN masking (EXP-F2 acceptance criterion)'
   });
 });
 
-describe('ExportersListPage — the journey, qualification and marker filters (L2-14)', () => {
+describe('ExportersListPage — the journey, qualification and marker filters', () => {
   beforeEach(() => {
     mockUser('OPERATIONS', 'someone-else');
     vi.mocked(searchExporterProfiles).mockReset();
@@ -181,7 +181,7 @@ describe('ExportersListPage — RXIL intake link', () => {
   );
 });
 
-describe('ExportersListPage — write screens by role (R-33, G3)', () => {
+describe('ExportersListPage — write screens by role', () => {
   beforeEach(() => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
   });

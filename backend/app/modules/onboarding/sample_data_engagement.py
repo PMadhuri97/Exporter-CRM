@@ -1,11 +1,10 @@
-"""Sample data for the conversation gauge — **owner: Developer 3A, Phase 1**
-(L3-03).
+"""Sample data for the conversation gauge.
 
-A hook, called once from ``sample_data.py``'s ``load_sample_data``, so Developer
-2's file gained one call site in the seam commit and is never edited again.
+A hook, called once from ``sample_data.py``'s ``load_sample_data``, so that file
+gained one call site and is never edited for this again.
 
 **What it seeds.** Architecture §3.9 gives each sample company a conversation
-value, recorded on ``SampleCompany.target["conversation"]`` by Developer 2 for
+value, recorded on ``SampleCompany.target["conversation"]`` in ``sample_data.py`` for
 exactly this moment. This reads that target rather than keeping a second copy of
 it: §3.9 is the source, and a company whose target changes needs no edit here.
 
@@ -20,12 +19,12 @@ a ``LEAD``, the history row in the same transaction. Two consequences worth
 naming:
 
 * A company whose journey is still ``LEAD`` is **skipped**, not forced. The gauge
-  applies from ``PROSPECT`` onward (assumption A4) and sample data does not get a
+  applies from ``PROSPECT`` onward and sample data does not get a
   private exemption from the rules it exists to demonstrate.
 * Company B's §3.9 target is ``READY_NOW`` with two deals. The deals are
-  Developer 3B's (``sample_data_deals.py``), so this sets the gauge directly
+  seeded by ``sample_data_deals.py``, so this sets the gauge directly
   rather than through seam S1 — the honest thing to do while there is no deal to
-  open. When 3B's seeder lands, opening those deals finds the gauge already
+  open. When the deals seeder runs, opening those deals finds the gauge already
   ``READY_NOW`` and its seam call is a no-op, which is what makes S1 idempotent.
 
 History rows carry ``actor_id = None`` — the platform acting on its own, per the

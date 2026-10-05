@@ -1,7 +1,7 @@
-"""The document rule for evidence — **owner: Developer 1** (compliance engine).
+"""The document rule for evidence.
 
 One rule, used wherever a compliance record carries ``{type, ref}`` evidence: a
-verification result (Developer 4B's 4B-4, now Developer 1's) and, since plan P2-1b, a
+verification result and a
 screening answer. Moved here out of ``VerificationService`` so the two cannot drift.
 
 A ``document`` reference must name a ``crm_document`` that exists, belongs to the

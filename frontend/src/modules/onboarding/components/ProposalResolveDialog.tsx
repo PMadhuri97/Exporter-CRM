@@ -1,6 +1,5 @@
 /**
- * Approve, reject or withdraw a proposed background-check decision — **owner:
- * Developer 1** (maker-checker, plan P3-1c).
+ * Approve, reject or withdraw a proposed background-check decision (maker-checker).
  *
  * The second click of "approve from Home in two clicks": the first opens this, with
  * what was proposed, by whom, when and why; the second confirms. Rejecting needs a

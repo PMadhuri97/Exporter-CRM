@@ -1,9 +1,9 @@
 /**
- * Company record — **owner: Developer 2**.
+ * Company record.
  *
  * The journey has no request here on purpose: it is never moved by hand. A
  * qualification outcome moves it (`api/qualification.ts`), and the move to
- * CUSTOMER will follow the background check (L2-11).
+ * CUSTOMER will follow the background check.
  */
 
 import { apiRequest } from '@/lib/api/client';
@@ -106,7 +106,7 @@ export function setExporterMarker(
   });
 }
 
-// ── "Do we already have this company?" (task 3.10, plan P4-3) ────────────────
+// ── "Do we already have this company?" ────────────────
 
 /**
  * Find the company a name and identifiers belong to.
@@ -116,13 +116,13 @@ export function setExporterMarker(
  * for exactly the values the rest of the CRM masks.
  *
  * A full PAN, GSTIN or `(country, registration_number)` names the company that
- * holds it, even for a role that sees identifiers masked (decision BQ-2); the
+ * holds it, even for a role that sees identifiers masked; the
  * response never carries an identifier back, and every such lookup is audited.
  * Partial identifiers are refused: send the whole value or none.
  */
 /**
  * The companies the CRM cannot identify yet: no PAN and no registration number
- * (IQ-7's completion list, R-28). Required gaps first. Carries no identifiers.
+ * (the identity completion list). Required gaps first. Carries no identifiers.
  */
 export function listIdentityCompletion(
   params: { limit?: number; offset?: number } = {},
@@ -142,7 +142,7 @@ export function matchCompany(body: CompanyMatchRequest): Promise<CompanyMatch> {
   });
 }
 
-// ── Into the sales pipeline (task 3.11) ──────────────────────────────────────
+// ── Into the sales pipeline ──────────────────────────────────────
 
 /**
  * Bring a buyer-only company into the sales pipeline: the one way in.
@@ -167,7 +167,7 @@ export function bringExporterIntoPipeline(
   });
 }
 
-// ── GST registrations: a company's branches (tasks 3.13, 3.14, 3.17) ─────────
+// ── GST registrations: a company's branches ─────────
 
 /** A company's branches, newest last, deactivated ones included. */
 export function listGstRegistrations(customerId: string): Promise<GstRegistrationList> {
@@ -179,7 +179,7 @@ export function listGstRegistrations(customerId: string): Promise<GstRegistratio
 /**
  * Record a GST registration. The state is derived from the GSTIN by the server and
  * is not sent; a GSTIN another company also holds comes back in `also_held_by` as a
- * warning, never a refusal (decision IQ-9).
+ * warning, never a refusal.
  */
 export function addGstRegistration(
   customerId: string,

@@ -1,8 +1,8 @@
 /**
- * The Follow-ups screen — **owner: Developer 3A, Phase 2** (L3-11a-ii).
+ * The Follow-ups screen.
  *
- * What we owe companies next, and whether we did it. **The whole team's list**
- * (decision D2): no owner filter is applied by default, and the "mine" filter is a
+ * What we owe companies next, and whether we did it. **The whole team's list**:
+ * no owner filter is applied by default, and the "mine" filter is a
  * convenience, not a permission — the server would serve the same rows either way.
  *
  * **Two sections, because there are two different things.** A *follow-up* is an

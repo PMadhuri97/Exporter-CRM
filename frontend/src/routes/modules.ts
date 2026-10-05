@@ -1,6 +1,6 @@
 /**
  * The module table: every top-level screen, declared once (`docs/frontend-plan.md`
- * §4.2, `remaining-work.md` R-33 Phase 0).
+ * §4.2).
  *
  * The router (`AppRouter`) and the rail (`layout/Sidebar`) are both generated from
  * this, so neither can offer what the other refuses. A module carries the capabilities
@@ -11,7 +11,7 @@
  * The modules' own sub-routes gate their write screens the same way
  * (`modules/onboarding/routes.tsx`: add company, import, RXIL intake).
  *
- * Phase 2 (frontend-plan §7): the command bar's "Go to" list, the `g` shortcuts and
+ * The shell (frontend-plan §7): the command bar's "Go to" list, the `g` shortcuts and
  * the `?` sheet are generated from this table too, so a module appears in all of them
  * or in none. Rail labels follow §7.2 — Desk, Companies, Agenda — and Pipeline is the
  * Companies board now (`/pipeline` redirects there, so old links keep working).
@@ -128,7 +128,7 @@ export const APP_MODULES: readonly AppModule[] = [
     },
   },
   {
-    // Which paperwork a deal must have before handover (plan P2-5a).
+    // Which paperwork a deal must have before handover.
     id: 'required-documents',
     path: '/settings/deal-required-documents',
     requires: ['settings.requiredDocuments'],

@@ -1,5 +1,4 @@
-"""``CrmDocument`` — one piece of paperwork, on a company or on a deal —
-**owner: Developer 3B** (L3-09).
+"""``CrmDocument`` — one piece of paperwork, on a company or on a deal.
 
 Contract: ``docs/contracts/storage-and-documents.md`` §5. Architecture §3.4,
 migration 0019.
@@ -9,7 +8,7 @@ migration 0019.
 company-wide paperwork *or* paperwork for one deal (architecture §3.4), never
 both and never neither. Both halves are tested by direct SQL.
 
-**Only the relative storage key is stored** (decision D8) — no bucket, no host,
+**Only the relative storage key is stored** — no bucket, no host,
 no ``s3://``. Changing provider must not require touching a row. The original
 file name and content type are columns here and never appear in the key: a
 user-supplied name inside a path is a traversal surface and a rename hazard
@@ -136,7 +135,7 @@ class CrmDocument(AnerModel):
     )
     #: Which scanner reached the verdict — ``"pass-through"`` in the prototype,
     #: stored lowercase exactly as a provider is stored ``"manual"``. A reader can
-    #: always tell that nothing was actually scanned (assumption A9).
+    #: always tell that nothing was actually scanned.
     scanner_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    #: **Relative** only (decision D8).
+    #: **Relative** only.
     storage_key: Mapped[str] = mapped_column(String(500), nullable=False)

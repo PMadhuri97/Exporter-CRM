@@ -1,6 +1,6 @@
 /**
- * One company verification result in the workspace — **owner: Developer 4B**
- * (verification-and-screening.md §4, §8, §9; 4B-7).
+ * One company verification result in the workspace
+ * (verification-and-screening.md §4, §8, §9).
  *
  * Provenance and placeholder status are the server's (`provenance`, `is_placeholder`)
  * and are never inferred here: a stub is labelled as the RXIL stub, not RXIL, and a
@@ -63,7 +63,7 @@ export function VerificationResultRow({
             {formatDateTime(result.performed_at)}
           </p>
           {result.entity_type === 'BUYER' && (
-            // Company-keyed checks (P4-5): a check recorded on a deal, against that
+            // Company-keyed checks: a check recorded on a deal, against that
             // deal's buyer, before the buyer was a company — now one of its checks.
             <p data-testid="recorded-as-buyer-check" className="mt-0.5 text-xs text-ink-3">
               Recorded on a deal as the buyer&apos;s check

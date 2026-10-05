@@ -1,10 +1,10 @@
 /**
- * The journey pipeline — **owner: Developer 2** (L2-14).
+ * The journey pipeline.
  *
  * Three columns, one per journey stage, each filled by its own server query
  * (`journey=`). There is no drag and no "move to" here on purpose: the
  * journey is never moved by hand. A QUALIFIED outcome moves a lead to
- * prospect, and the move to customer follows the background check (L2-11).
+ * prospect, and the move to customer follows the background check.
  * PAUSED companies stay in their column with a badge; ENDED companies are
  * left out by the server, as in the list.
  */

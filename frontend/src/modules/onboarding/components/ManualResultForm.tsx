@@ -1,14 +1,13 @@
 /**
- * Record a manual verification result — **owner: Developer 4B** (verification-and-screening.md §3,
- * §9; L4-07; 4B-7).
+ * Record a manual verification result (verification-and-screening.md §3, §9).
  *
  * A person records what they checked, with its real outcome and what it rests on:
  *
- * - `provider` is always `manual`. The route accepts nothing else (D7), and the form
+ * - `provider` is always `manual`. The route accepts nothing else, and the form
  *   offers no choice, so nobody can record a result as RXIL's.
  * - Outcomes are `PASSED`, `FAILED` and `REVIEW`. `PENDING` is never offered: nothing
  *   would ever resolve a manual pending result (§8).
- * - A `PASSED` needs evidence — a note, a document or a link (D16). Checked here to
+ * - A `PASSED` needs evidence — a note, a document or a link. Checked here to
  *   save a round trip; the server checks it too, and its refusal is shown as worded.
  * - Only documents the subject owns and that are `AVAILABLE` are offered: nothing
  *   else can be opened, and the server refuses it.
@@ -103,7 +102,7 @@ export function ManualResultForm({
     }
     if (link) refs.push({ type: 'url', ref: link });
     const trimmedNote = note.trim();
-    // D16: a manual PASSED needs a note or at least one reference.
+    // A manual PASSED needs a note or at least one reference.
     if (outcome === 'PASSED' && !trimmedNote && refs.length === 0) {
       setError('A passed check needs evidence: a note, a document or a link.');
       return;
@@ -119,7 +118,7 @@ export function ManualResultForm({
       toast.success('Check recorded');
       onClose();
     } catch (caught) {
-      // The server's words: a 422 on evidence, or a 409 DEAL_CLOSED on a buyer (D17).
+      // The server's words: a 422 on evidence, or a 409 DEAL_CLOSED on a buyer.
       setError(caught instanceof ApiError ? caught.message : 'Could not record the check.');
     }
   }

@@ -1,6 +1,5 @@
 """``PartnerIntakeService`` — a company handed over by a partner, created or
-matched and recorded as qualified by that partner (L2-12). **Owner:
-Developer 2.**
+matched and recorded as qualified by that partner.
 
 Knows nothing about any partner's format. The RXIL adapter
 (``infrastructure/rxil/company_package.py``) translates a package into a
@@ -31,14 +30,13 @@ Knows nothing about any partner's format. The RXIL adapter
    ``QualificationService.record_partner_decision``: its results and its
    outcome, exactly as supplied, in one transaction, which moves the ``LEAD``
    to ``PROSPECT``. A company already ``QUALIFIED`` is left as it is — the
-   decision is final (A2) and history is never rewritten.
+   decision is final and history is never rewritten.
 
 Steps 3 and 4 are two commits, each atomic with its own history rows. The
 company in between is a ``LEAD`` with no qualification — a state every
 invariant allows — and a repeated delivery finishes the job: it matches the
 company by its PAN and records the decision it is missing. No transaction
-policy beyond what the services already do is assumed (decision U4 stays
-open).
+policy beyond what the services already do is assumed.
 """
 
 from __future__ import annotations

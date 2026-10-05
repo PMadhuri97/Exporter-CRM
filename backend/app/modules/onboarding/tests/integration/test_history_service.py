@@ -171,12 +171,12 @@ async def test_a_dimension_nobody_has_built_yet_is_accepted():
 
     async with db_services.AsyncSessionLocal() as db:
         await HistoryService(db).record(
-            company_id, dimension="something_dev5_invents", to_value="NEW",
+            company_id, dimension="something_nobody_listed", to_value="NEW",
             actor_id=None, source="test",
         )
         await db.commit()
 
-    assert (await _rows_for(company_id))[0].dimension == "something_dev5_invents"
+    assert (await _rows_for(company_id))[0].dimension == "something_nobody_listed"
 
 
 # ── The transaction rule (Task 4) ────────────────────────────────────────────
@@ -301,7 +301,7 @@ async def test_state_and_history_commit_together():
 
 async def test_the_journey_still_records_what_it_always_did():
     """The journey's rows keep their shape and event types — a downstream
-    consumer polls them. Since L2-04 the values are the three-stage journey's,
+    consumer polls them. Since migration 0020 the values are the three-stage journey's,
     and the move is made by a qualification outcome, not a transition call."""
     company_id = uuid.uuid4()
 
@@ -329,8 +329,8 @@ async def test_the_journey_still_records_what_it_always_did():
 
 
 async def test_the_terminal_flag_is_false_until_customer():
-    """ANER-4.2-S1T2's completion hook filters on `terminal`. In the new model
-    it marks the move to CUSTOMER (architecture §5.6), which only L2-11 makes;
+    """A downstream completion hook filters on `terminal`. In the new model
+    it marks the move to CUSTOMER (architecture §5.6), which only the promotion makes;
     a new company's creation row is not terminal."""
     company_id = uuid.uuid4()
 

@@ -1,10 +1,9 @@
-"""Enums for contacts and the activity log — **owner: Developer 3**
-(architecture §8.1, §9.3).
+"""Enums for contacts and the activity log (architecture §8.1, §9.3).
 
-Split out of `exporter_enums.py` (L2-01), which now holds only the company's
-own values (Developer 2). `ExporterConversation` belongs here for the same
+Split out of `exporter_enums.py`, which now holds only the company's
+own values. `ExporterConversation` belongs here for the same
 reason, and is deliberately **not** added to that file: the conversation gauge is
-Developer 3's, and `exporter_enums.py` is where Developer 2's company values
+engagement, and `exporter_enums.py` is where the company record's values
 live.
 
 The database enums these map to are `onboarding.exporter_activity_type_enum`
@@ -31,7 +30,7 @@ class ExporterConversation(str, enum.Enum):
 
     One thing only. Not the journey (`ExporterJourney`), not whether the company
     met our requirements (`QualificationState`), not whether it is safe to lend
-    to (Developer 4's background check), and not a commercial pause
+    to (the background check), and not a commercial pause
     (`ExporterMarker`). Collapsing those into one line is what the retired
     ten-status `ExporterLifecycleStatus` did.
 
@@ -45,7 +44,7 @@ class ExporterConversation(str, enum.Enum):
     Two rules deliberately do **not** live in this enum, and must not be
     inferred from the order of its members:
 
-    * The gauge applies **from `PROSPECT` onward** (assumption A4). A `LEAD`
+    * The gauge applies **from `PROSPECT` onward**. A `LEAD`
       reads `NOT_CONTACTED` because the column is `NOT NULL`, not because
       anyone judged its conversation.
     * `NOT_NOW` carries a reason **and** a check-back date

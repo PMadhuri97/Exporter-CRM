@@ -6,7 +6,7 @@
  * so the stage counts are the length of one capped search per stage, shown as
  * "200+" when the cap is hit — the same honesty the pipeline's "100+" uses.
  *
- * Developer 1 (compliance engine, plans P3-1c and P3-3c) adds two: "Proposals awaiting
+ * The compliance engine adds two: "Proposals awaiting
  * me" — background-check decisions proposed by another officer, approvable from here in
  * two clicks (Approve, then confirm) — and "Re-KYC due", the companies whose Clear has
  * expired or soon will. Both are server lists (`GET /background-check/proposals`,
@@ -320,7 +320,7 @@ export function SetupCard() {
   );
 }
 
-// ── Developer 1: maker-checker (P3-1c) and Re-KYC due (P3-3c) ──────────────
+// ── Maker-checker and Re-KYC due ───────────────────────────
 
 function CountChip({ count, alert, testId }: { count: number; alert: boolean; testId: string }) {
   return (
@@ -476,7 +476,7 @@ export function ReKycDueCard() {
                 >
                   {row.company_name ?? 'Unnamed company'}
                 </Link>
-                {/* R-29: a renewal for a company that exists only as a buyer is not a
+                {/* A renewal for a company that exists only as a buyer is not a
                     lead's, and should not read as one. */}
                 {row.pipeline_status === 'NOT_IN_PIPELINE' ? (
                   <span className="shrink-0 text-xs text-ink-2">Buyer only</span>

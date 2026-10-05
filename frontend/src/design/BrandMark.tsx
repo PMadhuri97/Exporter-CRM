@@ -3,8 +3,8 @@ import { cn } from '@/lib/cn';
 /**
  * The brand mark (frontend-plan §5.7): a solid ink square with a lower-case
  * italic serif *a* knocked out in paper, beside "Aner Labs" in the sans at 600.
- * No hue and no gradient. A placeholder until the business supplies a logo
- * (D-20); the favicon (`public/favicon.svg`) is the square alone.
+ * No hue and no gradient. A placeholder until the business supplies a logo;
+ * the favicon (`public/favicon.svg`) is the square alone.
  */
 export function BrandMark({
   wordmark = true,

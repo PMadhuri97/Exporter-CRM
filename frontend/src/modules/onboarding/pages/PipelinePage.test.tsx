@@ -61,7 +61,7 @@ function renderPage() {
   );
 }
 
-describe('PipelinePage — the three-column journey (L2-14)', () => {
+describe('PipelinePage — the three-column journey', () => {
   beforeEach(() => {
     vi.mocked(useCurrentUser).mockReturnValue({
       id: 'u1',

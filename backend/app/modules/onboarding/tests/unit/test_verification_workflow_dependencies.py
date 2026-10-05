@@ -1,4 +1,4 @@
-"""Unit tests for EXP-2's `VerificationAdapter` Protocol, its dataclasses, and
+"""Unit tests for the `VerificationAdapter` Protocol, its dataclasses, and
 the generalized registry in `workflow_dependencies.py`.
 
 Deliberately does not import `ManualEntryAdapter` here — these tests exercise

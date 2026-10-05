@@ -1,5 +1,5 @@
 /**
- * A deal's stage — **owner: Developer 3B**.
+ * A deal's stage.
  *
  * The status language applied to a deal: neutral while it is open, blue while
  * paperwork is being gathered, green once handed over, muted once withdrawn —

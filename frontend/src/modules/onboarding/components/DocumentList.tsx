@@ -1,6 +1,5 @@
 /**
- * A list of documents, with a download control per row — **owner: Developer 3B**
- * (L3-11b).
+ * A list of documents, with a download control per row.
  *
  * Shared by the company documents page and the deal detail page, because a document
  * row reads the same wherever it hangs.

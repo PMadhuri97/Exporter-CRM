@@ -1,16 +1,15 @@
-"""Repository for ``background_check_decision`` and ``background_check_evidence`` —
-**owner: Developer 4A** (L4-04, L4-06).
+"""Repository for ``background_check_decision`` and ``background_check_evidence``.
 
 Append-only: ``AppendOnlyRepository`` exposes no ``update`` and no ``delete``, and
 both tables' triggers refuse them at the database whatever code tries.
 
 **Flushes, never commits.** ``record`` adds one decision and its evidence and
-flushes, so the caller — ``BackgroundCheckService``, phase 4A-3 — can assign the
+flushes, so the caller — ``BackgroundCheckService`` — can assign the
 company's current value and write the history row in the same transaction and
 commit once (``history-row.md`` §5; ``background-check.md`` §9).
 
-Reads here are of Dev4A's own two tables only. Nothing in this module reads
-Developer 4B's tables; the evidence rows merely carry their ids.
+Reads here are of the background check's own two tables only. Nothing in this module
+reads verification's tables; the evidence rows merely carry their ids.
 """
 
 from __future__ import annotations

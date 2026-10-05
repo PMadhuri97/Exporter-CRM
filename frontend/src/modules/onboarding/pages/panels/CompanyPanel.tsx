@@ -4,7 +4,7 @@
  * edit form. Each change is a one-field PATCH; the server's refusal stays under the
  * field in its words, and a duplicate PAN names its holder by link, never by id.
  *
- * The company record — **owner: Developer 2** (architecture §8.1, §9.2).
+ * The company record (architecture §8.1, §9.2).
  *
  * The company's own attributes: identity, identifiers, industry and
  * footprint, where it stands (journey, qualification, marker) and the
@@ -13,7 +13,7 @@
  * server refuses them on this route.
  *
  * The onboarding-history table that used to sit below the conversation panel
- * is gone (L2-03). The company's name was taken from it; the name is now part
+ * is gone. The company's name was taken from it; the name is now part
  * of the company's own identity, shown in the page header, and the legacy
  * onboarding path's records stay with that path.
  */
@@ -203,7 +203,7 @@ export function CompanyPanel({
                 <Identifier value={profile.registration_number} />,
               )}
             </Fact>
-            {/* The GSTINs themselves are the branches below (task 3.13); the count
+            {/* The GSTINs themselves are the branches below; the count
                 stays, because "how many states" belongs in the summary. */}
             <Fact label="GST registrations">
               {profile.gstins.length === 0

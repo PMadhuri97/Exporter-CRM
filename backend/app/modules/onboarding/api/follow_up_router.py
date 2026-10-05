@@ -1,10 +1,9 @@
-"""Follow-up and completion routes — **owner: Developer 3A, Phase 2** (L3-04b).
+"""Follow-up and completion routes.
 
-Mounted by `router.py` in the seam commit, empty, so that neither Phase 2 nor
-Developer 3B has to touch the router index again. These routes appear simply by being
-added here; `api/router.py` is not opened.
+Mounted by `router.py`, so these routes appear simply by being added here;
+`api/router.py` is not opened.
 
-**The paths are absolute, not under `/exporters/{customer_id}`.** The seam commit's
+**The paths are absolute, not under `/exporters/{customer_id}`.** The original
 stub carried `prefix="/exporters"` as a placeholder. It is dropped here, for two
 reasons:
 
@@ -14,14 +13,14 @@ reasons:
 2. With that prefix, `GET /exporters/follow-ups` would be matched by
    `GET /exporters/{customer_id}` first — `exporter_router` is included before this
    one — and FastAPI would try to parse the literal `follow-ups` as a UUID and return
-   422. Phase 1's cross-company route avoided that by using two segments
+   422. The cross-company pending route avoided that by using two segments
    (`/exporters/activities/pending`); this avoids it by not being under `/exporters`
    at all, which is also the truer description of what these routes are.
 
 So the paths are `/onboarding/follow-ups` and
 `/onboarding/follow-ups/{activity_id}/completion`.
 
-**Follow-ups are the whole team's** (decision D2), so the list is a reader route with
+**Follow-ups are the whole team's**, so the list is a reader route with
 no default owner filter. `actor_id` is a query parameter that narrows the list; it is
 never a permission.
 
@@ -79,7 +78,7 @@ _READER = require_role(
         "at NOT_NOW, due to be picked up on their check-back date; they are not "
         "completable and are dealt with by moving the conversation gauge. "
         "Soonest-due first, so overdue items sort to the front. Visible to the whole "
-        "team (decision D2): pass `actor_id` to narrow the list to one person, which "
+        "team: pass `actor_id` to narrow the list to one person, which "
         "filters and never gates."
     ),
     responses={

@@ -1,11 +1,10 @@
-"""Read-model view types for follow-ups — **owner: Developer 3A, Phase 2**
-(L3-04b).
+"""Read-model view types for follow-ups.
 
 Pure data structures — no I/O, no session — the same pattern as
 ``engagement_views.py`` and ``qualification_views.py``.
 
-**These live here rather than in ``engagement_views.py``**, which is Phase 1's file:
-the phase agreement (§6.3) gives no file to both phases, and a read model that spans
+**These live here rather than in ``engagement_views.py``**, which holds the
+conversation gauge's views: a read model that spans
 two tables is ordinary while reaching into another owner's module for one type is
 what creates the conflict the split exists to avoid.
 
@@ -24,7 +23,7 @@ different services, only one of them has a completion record, and only one of th
 has an activity — a single type would be half-null on every row and would invite
 code that treats a check-back as a completable thing. It is not: a check-back date
 moves only through ``ConversationService`` (``docs/contracts/engagement.md`` §2.1),
-and Phase 2 never writes it.
+and the follow-ups code never writes it.
 """
 
 from __future__ import annotations
@@ -130,8 +129,8 @@ class CheckBackView:
 
     Not a follow-up and not completable. It is dealt with by moving the conversation
     gauge — ``POST /exporters/{id}/conversation`` — which clears the date in the same
-    transaction (``docs/contracts/engagement.md`` §2.3). **Phase 2 never writes
-    this date**, exactly as Developer 3B never writes ``conversation``.
+    transaction (``docs/contracts/engagement.md`` §2.3). **The follow-ups code never
+    writes this date**, exactly as the deals code never writes ``conversation``.
 
     ``conversation`` is carried even though it is always ``NOT_NOW`` today, because
     ``ck_exporter_profile_conversation_check_back`` is what makes that true and this

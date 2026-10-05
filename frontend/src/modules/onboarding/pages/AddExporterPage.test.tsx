@@ -25,7 +25,7 @@ function renderPage() {
   );
 }
 
-describe('AddExporterPage — the company identity (L2-03)', () => {
+describe('AddExporterPage — the company identity', () => {
   beforeEach(() => {
     vi.mocked(createExporterLead).mockReset();
     vi.mocked(createExporterLead).mockResolvedValue({

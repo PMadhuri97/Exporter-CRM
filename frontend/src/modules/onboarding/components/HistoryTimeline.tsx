@@ -1,6 +1,6 @@
 /**
- * The ledger — the company's story, from the shared history log (architecture §3.1,
- * L1-11; drawn as frontend-plan §6.5 lays out).
+ * The ledger — the company's story, from the shared history log (architecture §3.1;
+ * drawn as frontend-plan §6.5 lays out).
  *
  * Days are separated by a dated rule; each event has its time, its lane (the row's
  * dimension) and one line saying what changed. **Rows the server wrote together —
@@ -55,7 +55,7 @@ const DIMENSION_LOOK: Record<string, { label: string; icon: IconComponent }> = {
   profile: { label: 'Profile', icon: Icon.profile },
   verification: { label: 'Verification', icon: Icon.backgroundCheck },
   screening: { label: 'Screening', icon: Icon.checklist },
-  // The five F1 dimensions (`history-row.md` §2), added once for every lane.
+  // The five newer dimensions (`history-row.md` §2), added together.
   check_cycle: { label: 'Check cycle', icon: Icon.backgroundCheck },
   background_check_approval: { label: 'Approval', icon: Icon.shield },
   gst_registration: { label: 'GST registration', icon: Icon.branch },
@@ -211,7 +211,7 @@ function subjectOf(entry: HistoryEntry, labels: HistoryLabels): string | null {
     const subject = onBuyer ? `Buyer ${check.charAt(0).toLowerCase()}${check.slice(1)}` : check;
     return entry.event_type === 'verification_reviewed' ? `${subject} reviewed` : subject;
   }
-  // Developer 1's dimensions: a proposal's status means nothing without the move it
+  // The compliance engine's dimensions: a proposal's status means nothing without the move it
   // proposes ("Clear proposal: Open → Approved"), and a cycle row names its kind.
   if (entry.dimension === 'background_check_approval' && typeof details.to_value === 'string') {
     return `${proposedMoveLabel(details.to_value)} proposal`;

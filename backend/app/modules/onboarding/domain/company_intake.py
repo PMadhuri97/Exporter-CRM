@@ -1,6 +1,5 @@
 """The internal contract for companies arriving from outside the CRM's own
-screens — RXIL intake (L2-12) and bulk CSV import (L2-13). **Owner:
-Developer 2.**
+screens — RXIL intake and bulk CSV import.
 
 Every external format is translated into these shapes by its own adapter
 (``infrastructure/rxil/company_package.py`` for RXIL, the CSV reader in
@@ -169,7 +168,7 @@ class PartnerQualification:
 
     outcome: QualificationOutcomeValue
     #: Whether the partner's decision was a person's or a computer's, as the
-    #: partner states it (criterion-result contract Q4).
+    #: partner states it (criterion-result contract).
     decided_by_kind: DecidedByKind = DecidedByKind.MANUAL
     #: Criterion-level results, each keeping the partner's own
     #: ``decided_by_kind``, evidence, reason and confidence.
@@ -189,7 +188,7 @@ class PartnerCompanyIntake:
     external_reference: str | None = None
     industry: str | None = None
     #: Whatever the exporter's own registrar issued, when it is not identified by a
-    #: PAN. Required for a foreign company (decision IQ-7), checked by the partner's
+    #: PAN. Required for a foreign company, checked by the partner's
     #: own parser so the problem names the package's field.
     registration_number: str | None = None
 

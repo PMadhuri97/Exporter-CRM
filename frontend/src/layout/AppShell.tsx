@@ -21,7 +21,7 @@ import { Rail } from './Rail';
 import { ShortcutSheet } from './Shortcuts';
 import { useGlobalShortcuts } from './useGlobalShortcuts';
 
-/** While a screen's code loads (each one is its own chunk, G7): shaped, not a spinner. */
+/** While a screen's code loads (each one is its own chunk): shaped, not a spinner. */
 function ScreenLoading() {
   return (
     <div className="space-y-3" aria-hidden>
@@ -68,7 +68,7 @@ function Workspace() {
 export function AppShell() {
   const hasWorkspace = useCan('crm.read');
 
-  // The API user, or a role nobody listed: no rail and no CRM words (R-33, G1).
+  // The API user, or a role nobody listed: no rail and no CRM words.
   // The routes inside are still gated; only My profile renders here.
   if (!hasWorkspace) {
     return (

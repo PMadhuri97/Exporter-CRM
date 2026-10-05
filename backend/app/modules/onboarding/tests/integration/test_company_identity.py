@@ -1,4 +1,4 @@
-"""L2-03 — a company's identity (name and country) belongs to the company.
+"""A company's identity (name and country) belongs to the company.
 
 What these prove:
 
@@ -58,8 +58,8 @@ async def _create_named(
 ):
     body = {"source": "SALES", "name": name, "country": country}
     if country.upper() != "IN":
-        # A foreign company must carry a registration number (decision IQ-7,
-        # task 3.8), so one is supplied here rather than at each call site.
+        # A foreign company must carry a registration number, so one is supplied
+        # here rather than at each call site.
         body["registration_number"] = registration_number or f"REG-{uuid.uuid4().hex[:10].upper()}"
     return await client.post(
         f"{BASE}/exporters",
@@ -237,7 +237,7 @@ _COMPANY_FILES = [
     "application/exporter_profile_service.py",
     "domain/exporter_profile_views.py",
     "infrastructure/repositories/exporter_profile_repository.py",
-    # Developer 3's pending list, repointed to the company's own name in 0014.
+    # The pending list, repointed to the company's own name in 0014.
     "infrastructure/repositories/exporter_activity_repository.py",
 ]
 

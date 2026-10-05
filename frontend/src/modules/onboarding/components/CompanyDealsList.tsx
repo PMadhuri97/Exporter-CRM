@@ -1,8 +1,7 @@
 /**
- * A company's deals, in either role — **owner: Developer 2** (allocation F2,
- * plan P4-8).
+ * A company's deals, in either role.
  *
- * Both sides are live (task 2.7): `as="seller"` lists the deals this company sells
+ * Both sides are live: `as="seller"` lists the deals this company sells
  * on, `as="buyer"` the ones it buys on, each from
  * `GET /exporters/{id}/deals?as=...`.
  *
@@ -15,13 +14,13 @@
  * **An empty buyer-side list is not the same as "no record yet".** A deal whose
  * buyer is still a legacy `deal_buyer` row does not appear here, because nothing
  * in the database yet says that buyer *is* this company — the buyer migration
- * (P4-6) is what makes it appear. So the empty state says that, rather than
+ * is what makes it appear. So the empty state says that, rather than
  * implying the company has never bought anything. "No deals" and "we cannot see
  * them yet" must not look the same, which is the same reason
  * `handover_blocked_reason` exists.
  *
  * Deliberately **not** `DealsPanel`: that panel is the company page's Deals tab,
- * owns the "open a deal" control, and is Developer 3B's. This is a plain list
+ * owns the "open a deal" control. This is a plain list
  * that renders wherever a company's deals in one role belong, panel or not.
  */
 
@@ -55,7 +54,7 @@ function Row({ deal, as }: { deal: DealListItem; as: DealSide }) {
           </span>
           <p className="mt-0.5 text-xs text-ink-2">
             {/* The other party, whichever side this company is on: the server puts
-                it in `buyer_name` both ways (task 2.7). The fallback differs because
+                it in `buyer_name` both ways. The fallback differs because
                 the two gaps mean different things — a seller's deal may genuinely
                 have no buyer recorded yet, while a deal reached through
                 `buyer_company_id` always has a seller. */}

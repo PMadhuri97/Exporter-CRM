@@ -1,6 +1,5 @@
 /**
- * The "Awaiting approval" state of the background check — **owner: Developer 1**
- * (maker-checker, plan P3-1c).
+ * The "Awaiting approval" state of the background check (maker-checker).
  *
  * A proposed CLEAR, FLAGGED or ON_HOLD, served as `open_proposal` on the background-
  * check read. The gauge has not moved; nothing else moves it until a second compliance

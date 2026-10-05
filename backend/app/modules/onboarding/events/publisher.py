@@ -119,9 +119,9 @@ class OnboardingEventPublisher:
     # fail, roll back, or lose its change by anything the bus does.
     #
     # Their callers: `company_became_customer` through
-    # `exporter_profile_service.announce_became_customer` (Developer 2's move to
+    # `exporter_profile_service.announce_became_customer` (the move to
     # CUSTOMER, after the commit of the CLEAR or QUALIFIED that completed it), and
-    # `deal_handed_over` from `DealService.transition_stage` (Developer 3B), after
+    # `deal_handed_over` from `DealService.transition_stage`, after
     # the handover commits. Both go through here so the envelope and payload are
     # the event contract's and nobody else's.
 

@@ -6,11 +6,11 @@
  * "Not ready to hand over: …". It does **not** split the sentence on ";" to fake a
  * list: the rows would be the client's guess at the server's structure.
  *
- * **With ask A3** (structured `handover_conditions`, PR-B): pass `conditions` and
+ * **With structured `handover_conditions`**: pass `conditions` and
  * each one becomes a row — met or not, in the server's words, with an optional link
  * to where it is fixed. Nothing else changes for the callers.
  *
- * Nothing at all is drawn for a role the server gives no reason to (Developer, D8):
+ * Nothing at all is drawn for a role the server gives no reason to (Developer):
  * no reason, no callout.
  */
 

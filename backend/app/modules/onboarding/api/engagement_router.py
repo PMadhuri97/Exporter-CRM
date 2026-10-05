@@ -1,20 +1,18 @@
-"""Contacts and activity-log routes — **owner: Developer 3** (architecture
-§8.1, §9.3).
+"""Contacts and activity-log routes (architecture §8.1, §9.3).
 
-Split out of `exporter_router.py` (L2-01) so the company routes and the
+Split out of `exporter_router.py` so the company routes and the
 engagement routes stop sharing one file. That split moved every contact and
 activity route unchanged — same path, method, function name, roles, response model
 and description — so the OpenAPI document did not move for it. The conversation
-routes below are new in L3-03 and do move the document, which is why
+routes below are newer and do move the document, which is why
 `frontend/openapi.json` and `src/lib/api/schema.ts` are regenerated with them
-(plan §7.7: regenerate, never merge).
+(regenerate, never merge).
 
 Mounted by `router.py` beside `exporter_router`, with the same `/exporters`
 prefix and `Exporter CRM` tag, so every path stays `/onboarding/exporters/...`.
 
-The conversation-gauge routes (L3-03, L3-04a) are added at the end. Phase 2 adds
-**no** route here: its completion routes live in its own `follow_up_router.py`,
-which the seam commit already mounted (phase agreement §6.3).
+The conversation-gauge routes are added at the end. Follow-ups add
+**no** route here: their completion routes live in `follow_up_router.py`.
 """
 
 from __future__ import annotations
@@ -196,7 +194,7 @@ async def list_exporter_activities(
     )
 
 
-# ── Pending activities (Piece 2: cross-exporter follow-up list) ─────────────
+# ── Pending activities (cross-exporter follow-up list) ──────────────────────
 #
 # Deliberately `/activities/pending`, not nested under `/{customer_id}` — this
 # route spans every exporter, unlike every other `/exporters` route. Two path
@@ -249,7 +247,7 @@ async def list_pending_exporter_activities(
     )
 
 
-# ── Conversation gauge (L3-03, L3-04a) ──────────────────────────────────
+# ── Conversation gauge ──────────────────────────────────────────────────
 #
 # Under `/{customer_id}/conversation`, beside the company's other gauges: the
 # conversation is a field on the company record, and every route here is about one

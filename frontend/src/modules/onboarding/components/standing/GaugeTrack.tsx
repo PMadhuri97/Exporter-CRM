@@ -1,6 +1,6 @@
 /**
- * The conversation as something you move along (frontend-plan §6.2) — **owner:
- * Developer 3A** (L3-03, L3-04a), replacing `ConversationGaugeControl`.
+ * The conversation as something you move along (frontend-plan §6.2), replacing
+ * `ConversationGaugeControl`.
  *
  *   Not contacted ── Reaching out ── Spoke to them ── Interested ── Ready now
  *                                                         └── Not now  ‖ check back 12 Nov

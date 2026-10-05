@@ -1,5 +1,4 @@
-"""Sample data for deals, buyers and documents — **owner: Developer 3B**
-(L3-05 … L3-10).
+"""Sample data for deals, buyers and documents.
 
 Called from ``sample_data.py``'s hooks, after every sample company exists (a deal
 hangs off a company) and after the background-check hook (company B must be a
@@ -10,7 +9,7 @@ open deal that cannot be handed over because its background check is flagged —
 each sample company's target is recorded on ``SampleCompany.target``.
 
 **Every state is reached through the service, never written.** B's deal is handed
-over by ``DealService.transition_stage``, so assumption A5's guard really passes (B
+over by ``DealService.transition_stage``, so the handover guard really passes (B
 is a ``CUSTOMER`` and ``CLEAR``) and the handover writes its history row and its
 announcement like any other. C's deal stays ``OPEN``; the guard would refuse it.
 
@@ -44,7 +43,7 @@ logger = structlog.get_logger(__name__)
 _SAMPLE_PDF = b"%PDF-1.4 sample proforma invoice"
 
 #: The document every deal bound for ``HANDED_OVER`` needs, because migration 0030
-#: requires a ``PRE_SHIPMENT`` document before a handover (plan P2-5b, IQ-10).
+#: requires a ``PRE_SHIPMENT`` document before a handover.
 #: Without it ``hand_over_sample_deals`` would log "handover_blocked" and company B
 #: would never reach the §3.9 state the sample data exists to produce.
 _REQUIRED_DOCUMENT_TYPE = "proforma_invoice"
@@ -131,13 +130,13 @@ async def _ensure_invoicing_branch(company_id: uuid.UUID, deal_id: uuid.UUID) ->
     """Record the seller's first active GST registration as this deal's invoicing
     branch, if it has one and the deal has none.
 
-    Without it the handover guard refuses with "the invoicing branch is not recorded"
-    (task 2.9, plan P6-7), and the sample data exists to show a CRM whose deals can
+    Without it the handover guard refuses with "the invoicing branch is not recorded",
+    and the sample data exists to show a CRM whose deals can
     actually be handed over — a demo in which every deal is blocked on an unfilled
     field shows the wrong thing.
 
     Applied to deals this run *finds* as well as ones it creates, so a database seeded
-    before task 2.8 converges instead of keeping an outdated state — the same promise
+    before invoicing branches existed converges instead of keeping an outdated state — the same promise
     `_ensure_deal` already makes about the stage. Sellers with no registration are left
     alone, as the rule intends.
     """
@@ -223,7 +222,7 @@ async def _ensure_deal(company_id: uuid.UUID, sample: _SampleDeal) -> bool:
 
 async def hand_over_sample_deals() -> int:
     """Hand over every sample deal whose target is ``HANDED_OVER`` and that is ready
-    for it — through ``DealService``, so assumption A5's guard decides.
+    for it — through ``DealService``, so the handover guard decides.
 
     Returns the number of deals handed over by this run — ``0`` on a repeat run. A
     deal the guard refuses (its company not yet a ``CUSTOMER`` with a ``CLEAR`` check)
@@ -274,7 +273,7 @@ async def _ensure_required_document(deal_id: uuid.UUID) -> None:
     Converges like the rest of this file: a repeat run finds the document already
     there and adds nothing. Uploaded through ``DocumentService`` so it goes past
     the real scanner seam and lands ``AVAILABLE`` — only ``AVAILABLE`` documents
-    satisfy a requirement (IQ-11), so a row written directly would not count.
+    satisfy a requirement, so a row written directly would not count.
     """
     async with db_services.AsyncSessionLocal() as db:
         existing, _ = await DocumentService(db).list_for_deal(
@@ -300,7 +299,7 @@ async def _ensure_required_document(deal_id: uuid.UUID) -> None:
 async def _ensure_buyer_screened(deal_id: uuid.UUID) -> None:
     """PASSED sanctions and AML on the deal's buyer, if they are not there already.
 
-    Required since task 2.5 wired Developer 1's reader: BQ-4 wants the buyer's
+    Required since the handover guard reads compliance: it wants the buyer's
     sanctions **and** AML ``PASSED``, and an unscreened buyer reads ``MISSING``. Without
     this, company B could never reach the ``HANDED_OVER`` state architecture §3.9 gives
     it, and `hand_over_sample_deals` would log "handover_blocked" instead.

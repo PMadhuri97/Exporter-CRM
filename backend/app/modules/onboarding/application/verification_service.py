@@ -1,17 +1,17 @@
-"""`VerificationService` — EXP-2's application service for `VerificationResult`.
+"""`VerificationService` — the application service for `VerificationResult`.
 
-The whole point of this ticket: triggering a `KYC` check against a
+The whole point of this service: triggering a `KYC` check against a
 `DIRECTOR` and a `BANK_ACCOUNT` check against an `EXPORTER` both go through
 `trigger_verification` below, and `trigger_verification` never inspects
 `verification_type` to decide what to do. It resolves `provider` to an
 adapter class via `workflow_dependencies.get_adapter` (the generalized
-registry — see that module's EXP-2 section), asks the adapter to `.verify()`
+registry — see that module's `VerificationAdapter` section), asks the adapter to `.verify()`
 the request, and persists whatever `VerificationOutcome` comes back. Adding a
 new check type is a new `VerificationType` member plus, where a real vendor
 is involved, a new adapter — never a new branch here.
 `tests/unit/test_verification_service_no_branching.py` proves this
 structurally (an AST scan of this method's source); `tests/integration/
-test_exp2_verification_service.py::test_kyc_director_and_bank_account_
+test_verification_service.py::test_kyc_director_and_bank_account_
 exporter_share_identical_code_path` proves it behaviourally.
 
 `provider` fidelity
@@ -25,8 +25,8 @@ the caller passed as `provider=` (which need not be the same string; see
 `ManualEntryAdapter`'s module docstring for why they happen to coincide for
 that one adapter) or to anything else.
 
-Integrity (Developer 4B, verification-and-screening.md)
----------------------------------------
+Integrity (verification-and-screening.md)
+-----------------------------------------
 * **Subjects are real** (§3, §6). An `EXPORTER` reference must be a company
   (404, `ExporterProfileNotFoundError`); a `BUYER` reference must be a
   `deal_buyer.id` (404, `ComplianceInputsBuyerNotFoundError`) — never a company id
@@ -37,8 +37,8 @@ Integrity (Developer 4B, verification-and-screening.md)
 * **Evidence** (§3). `evidence_note` / `evidence_refs` are stored on the result.
   `document` references must exist, belong to the subject (the company for
   EXPORTER; the buyer's deal or its company for BUYER) and be `AVAILABLE` (scanned
-  clean), read through Developer 3B's `CrmDocumentRepository`. What a *manual* outcome must carry is
-  `domain.verification_evidence.check_manual_outcome` (D16, decided: a note or at
+  clean), read through `CrmDocumentRepository`. What a *manual* outcome must carry is
+  `domain.verification_evidence.check_manual_outcome` (decided: a note or at
   least one reference), applied by `ManualEntryAdapter`.
 * **Reviews supersede** (§1). `record_review` appends a `verification_review`
   that must name the current review; nothing is edited.
@@ -48,14 +48,14 @@ Integrity (Developer 4B, verification-and-screening.md)
   result, a polled status change and every review write one row, in the same
   transaction as the change: on the company for EXPORTER; on the deal's company
   with `deal_id` set for BUYER. DIRECTOR, INVOICE, VESSEL and SHIPMENT subjects
-  have no company to hang a row on — **D15** (lead, 28 Sep 2026): no row is written
+  have no company to hang a row on — decided 28 Sep 2026: no row is written
   for them, and that is logged.
-* **Terminal deals** (D17, lead, 28 Sep 2026). A new BUYER check on a HANDED_OVER
+* **Terminal deals** (decided 28 Sep 2026). A new BUYER check on a HANDED_OVER
   or WITHDRAWN deal is refused (409, `DEAL_CLOSED`).
 * **Company lock** (background-check.md §12.1 invariant 5). Writers of company-scoped inputs (EXPORTER
   subjects) take `FOR SHARE` on the company after any provider call and before the
   write. Buyer checks are not company inputs and never touch `background_check`.
-* **Cycles** (Developer 1, plan P2-3a). Under that lock, a new EXPORTER result is
+* **Cycles**. Under that lock, a new EXPORTER result is
   stamped with the company's current check cycle (cycle 1 is created on the company's
   first input), so a Re-KYC's results are its own. BUYER results — legacy deal
   buyers, which have no background check — carry no cycle.
@@ -142,7 +142,7 @@ def _company_subjects(
 ) -> list[uuid.UUID]:
     """The company ids among `(entity_type, entity_reference)` pairs.
 
-    A result whose subject is the company (`EXPORTER`) is an input to Developer 4A's
+    A result whose subject is the company (`EXPORTER`) is an input to the
     background-check decision, so its writer takes `FOR SHARE` on the company row
     first (background-check.md §12.1 invariant 5; `company_input_lock.py`). Other subjects —
     BUYER, DIRECTOR, INVOICE, VESSEL, SHIPMENT — are not company-scoped inputs and
@@ -157,7 +157,7 @@ def _company_subjects(
 
 def _subject_companies(result: VerificationResult) -> list[uuid.UUID]:
     """The company to share-lock before changing an existing result (a poll or a
-    review): the company it is about (P4-5) — for a legacy ``BUYER`` result the
+    review): the company it is about — for a legacy ``BUYER`` result the
     deal-buyer migration mapped to a company, that company, whose background check
     now reads it. None for a subject with no company."""
     company = result.subject_company
@@ -169,10 +169,10 @@ class _Subject:
     """What a result's subject resolves to.
 
     `company_id` / `deal_id` place its history rows; `None` company means the subject
-    has no company link (D15). `snapshot` is the BUYER identity to store.
-    `subject_company_id` is the company the result is *about* (P4-5): the company itself
+    has no company link. `snapshot` is the BUYER identity to store.
+    `subject_company_id` is the company the result is *about*: the company itself
     for an `EXPORTER` subject; `None` for a legacy deal buyer (its company, if any, is
-    set by the deal-buyer migration, P4-6) and for subjects with no company.
+    set by the deal-buyer migration) and for subjects with no company.
     """
 
     company_id: uuid.UUID | None
@@ -208,7 +208,7 @@ class VerificationResultView:
 # a VESSEL check on a DIRECTOR or a GST lookup on a SHIPMENT.
 #
 # Kept as a table rather than `if` branches on purpose: `trigger_verification`
-# must stay free of `verification_type` branching (EXP-2's central acceptance
+# must stay free of `verification_type` branching (the service's central acceptance
 # criterion, proven structurally by
 # `tests/unit/test_verification_service_no_branching.py`). The service calls
 # `_validate_type_pair` and never inspects the type itself.
@@ -354,17 +354,16 @@ def _result_from_outcome(
 
     `raw_result` is the request payload the caller supplied to the adapter —
     the closest thing to "the provider's original response, unmodified" that
-    exists in this ticket's exact `VerificationOutcome` shape, which carries
+    exists in the `VerificationOutcome` shape, which carries
     no raw-response field of its own (unlike `KYBVerificationResult.
-    raw_response_reference`). A real vendor adapter (RxilAdapter, the next
-    ticket) is free to echo its own raw vendor payload back inside
+    raw_response_reference`). A real vendor adapter (a future RxilAdapter)
+    is free to echo its own raw vendor payload back inside
     `VerificationOutcome.normalized_result` under a convention of its own
-    choosing; nothing here prevents that. Flagged as a judgment call — see
-    this ticket's report.
+    choosing; nothing here prevents that. A judgment call.
 
-    `evidence` and `subject_snapshot` (Dev4B) are facts about the moment of
+    `evidence` and `subject_snapshot` are facts about the moment of
     recording and are frozen once written. The legacy `evidence_reference`,
-    `reviewed_by` and `review_status` are never written. `subject_company_id` (P4-5)
+    `reviewed_by` and `review_status` are never written. `subject_company_id`
     is the company the result is about, frozen once set.
     """
     return VerificationResult(
@@ -405,14 +404,14 @@ class VerificationService:
         """Check the subject exists and find where its history belongs.
 
         `new_check` is true when a check is being recorded (not reviewed or polled):
-        only then does D17's terminal-deal rule apply.
+        only then does the terminal-deal rule apply.
 
         Raises:
             ExporterProfileNotFoundError: an EXPORTER reference that is not a company.
             ComplianceInputsBuyerNotFoundError: a BUYER reference that is not a
                 `deal_buyer.id` — including a company id or a deal id.
             VerificationBuyerDealClosedError: a new check on a buyer whose deal is
-                HANDED_OVER or WITHDRAWN (D17).
+                HANDED_OVER or WITHDRAWN.
         """
         if entity_type == VerificationEntityType.EXPORTER:
             exists = await self._db.scalar(
@@ -422,7 +421,7 @@ class VerificationService:
             )
             if exists is None:
                 raise ExporterProfileNotFoundError(reference)
-            # Any company — a seller, a buyer-only company, both (P4-5, P4-11).
+            # Any company — a seller, a buyer-only company, both.
             return _Subject(company_id=reference, subject_company_id=reference)
         if entity_type == VerificationEntityType.BUYER:
             buyer = await DealBuyerRepository(self._db).get(reference)
@@ -431,7 +430,7 @@ class VerificationService:
             deal = await DealRepository(self._db).get_by_id(buyer.deal_id)
             if deal is None:  # pragma: no cover — deal_buyer.deal_id is a NOT NULL FK
                 raise ComplianceInputsBuyerNotFoundError(reference)
-            # D17 (lead, 28 Sep 2026): no new check on a buyer of a HANDED_OVER or
+            # Decided 28 Sep 2026: no new check on a buyer of a HANDED_OVER or
             # WITHDRAWN deal. Existing checks stay readable and reviewable.
             if new_check and deal.stage.is_terminal:
                 raise VerificationBuyerDealClosedError(
@@ -450,17 +449,17 @@ class VerificationService:
                 },
             )
         # DIRECTOR, INVOICE, VESSEL, SHIPMENT: no table to validate against and no
-        # company link. D15 (lead, 28 Sep 2026): they get no history row.
+        # company link. Decided 28 Sep 2026: they get no history row.
         return _Subject(company_id=None)
 
     async def _history_target(self, result: VerificationResult) -> _Subject:
         """Where a later history row for `result` goes. A BUYER whose row has since
-        disappeared (or a pre-4B-5 row naming no real buyer) has no target."""
+        disappeared (or an old row naming no real buyer) has no target."""
         try:
             subject = await self._resolve_subject(result.entity_type, result.entity_reference)
         except (ExporterProfileNotFoundError, ComplianceInputsBuyerNotFoundError):
             subject = _Subject(company_id=None)
-        # P4-5: a legacy buyer result the deal-buyer migration mapped to a company is
+        # A legacy buyer result the deal-buyer migration mapped to a company is
         # that company's input now, so what happens to it next goes on that company's
         # timeline, with the deal as context (history carries no deal-company FK).
         if result.subject_company_id is not None and subject.company_id != result.subject_company_id:
@@ -477,12 +476,13 @@ class VerificationService:
         `AVAILABLE`.
 
         EXPORTER: a document of that company. BUYER: a document of the buyer's deal
-        or of the deal's company (verification-and-screening.md §3; which of those Dev4A's evidence
-        snapshot may use is its D4). Subjects with no company link cannot own a
+        or of the deal's company (verification-and-screening.md §3; which of those the
+        background check's evidence snapshot may use is its own rule). Subjects with no
+        company link cannot own a
         document, so a document reference on one is refused. A document that is not
         `AVAILABLE` (`PENDING_SCAN`, `QUARANTINED`, `SCAN_FAILED`) is refused: it can
         never be opened (`storage-and-documents.md` §4), so it cannot be what an
-        outcome rests on — the same scan gate as Dev4A's evidence snapshot (D4).
+        outcome rests on — the same scan gate as the background check's evidence snapshot.
         """
         await check_evidence_documents(
             self._db,
@@ -506,10 +506,10 @@ class VerificationService:
     ) -> None:
         """One `verification` history row, flushed in the caller's transaction."""
         if subject.company_id is None:
-            # D15 (lead, 28 Sep 2026): no company to write a history row against.
+            # Decided 28 Sep 2026: no company to write a history row against.
             logger.info(
                 "verification.history.skipped_no_company",
-                reason="D15: subject has no company link",
+                reason="subject has no company link",
                 **{k: v for k, v in details.items() if isinstance(v, str)},
             )
             return
@@ -557,7 +557,7 @@ class VerificationService:
     ) -> VerificationResult:
         """Run one verification check and persist its outcome.
 
-        Resolves `provider` to an adapter class via the EXP-2 registry
+        Resolves `provider` to an adapter class via the generalized registry
         (`workflow_dependencies.get_adapter`), builds a `VerificationRequest`,
         calls `.verify()`, and stores the returned `VerificationOutcome` as a
         new `VerificationResult` row. This method's own source contains no
@@ -648,7 +648,7 @@ class VerificationService:
         )
         return result
 
-    # ── Batch trigger (Exporter CRM Piece 3) ────────────────────────────────
+    # ── Batch trigger ───────────────────────────────────────────────────────
 
     async def trigger_verification_batch(
         self,
@@ -660,9 +660,9 @@ class VerificationService:
         """Run a batch of checks submitted together as one payload and
         persist one `VerificationResult` per check, all in a single
         transaction — the "one payload produces many `VerificationResult`
-        rows" shape a real RXIL integration will need (the EXP-2 plan's point
-        6), proven here end-to-end against `StubRxilAdapter`. RXIL results
-        intake itself is BLOCKED on the RXIL package contract (D12); this has
+        rows" shape a real RXIL integration will need, proven here end-to-end
+        against `StubRxilAdapter`. RXIL results
+        intake itself is BLOCKED on the RXIL package contract; this has
         no production caller.
 
         Resolves `provider` via the exact same registry
@@ -779,7 +779,7 @@ class VerificationService:
         `.verify()` — its `get_verification_status` raises rather than being
         reached here for a normal caller.
 
-        **A reviewed result is never changed** (verification-and-screening.md §2, L4-02): once it
+        **A reviewed result is never changed** (verification-and-screening.md §2): once it
         has any review, a different provider answer is logged
         (`verification.status_polled.ignored_reviewed`, with the provider's new
         values) and the row is returned untouched. The provider is asked first,
@@ -892,8 +892,8 @@ class VerificationService:
         """Every check ever run against one exporter/buyer/director/invoice/
         vessel/shipment, most recent first (ties broken by `created_at`, `id`).
 
-        A company (`EXPORTER`) is read by the company-keyed rule (P4-5,
-        `about_company`): its own results, and a deal buyer's results the deal-buyer
+        A company (`EXPORTER`) is read by the company-keyed rule
+        (`about_company`): its own results, and a deal buyer's results the deal-buyer
         migration mapped to it — one set of checks per company, wherever the company
         appears. A `BUYER` reference still lists that deal buyer's own results (legacy
         deals)."""
@@ -922,7 +922,7 @@ class VerificationService:
         self, entity_type: VerificationEntityType, entity_reference: uuid.UUID | str
     ) -> bool:
         """Whether a new check may be recorded on this subject now: false for a
-        buyer whose deal is ``HANDED_OVER`` or ``WITHDRAWN`` (D17), so the served
+        buyer whose deal is ``HANDED_OVER`` or ``WITHDRAWN``, so the served
         ``can_record_result`` agrees with the 409 ``trigger_verification`` would
         give. Any other subject — including one that does not exist, whose write
         would be a 404 rather than a closed door — answers true."""

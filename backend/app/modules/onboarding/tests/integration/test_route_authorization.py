@@ -5,7 +5,7 @@ PAN/GSTIN/IEC and contact email/phone.
 Every gated route gets a negative test per refused role asserting 403 — the
 gate runs as a dependency, so a 403 also proves the handler never ran.
 
-Reveal rule as of L1-10: COMPLIANCE and ADMIN see raw PAN/GSTIN/IEC and raw
+Reveal rule: COMPLIANCE and ADMIN see raw PAN/GSTIN/IEC and raw
 contact email/phone; every other role sees them masked, including the assigned
 relationship manager (architecture decision 12 defers ownership-scoped reveal
 until after the prototype). The same two roles are the only ones that may use
@@ -57,12 +57,12 @@ def _trigger_body(entity_reference: str | None = None) -> dict:
         # KYC/EXPORTER pair (422) before the route gate under test matters.
         "verification_type": "KYB",
         "entity_type": "EXPORTER",
-        # Since Dev4B 4B-4 the subject must be a real company (a random id is a
+        # The subject must be a real company (a random id is a
         # 404) — the gate tests never reach the handler, so any id does there.
         "entity_reference": entity_reference or str(uuid.uuid4()),
         "provider": "manual",
         "payload": {"status": "PASSED"},
-        # A manual PASSED needs evidence since 4B-4 (D16: a note suffices).
+        # A manual PASSED needs evidence (a note suffices).
         "evidence_note": "Registry extract checked.",
     }
 
@@ -100,7 +100,7 @@ GATED_ROUTES = [
         STAFF,
     ),
     ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
-    # Trade history (task 3.20, decision IQ-19). Writes are STAFF; the reads are in
+    # Trade history. Writes are STAFF; the reads are in
     # the contract table — DEVELOPER may make them, which `GATED_ROUTES` here cannot
     # express because every row of it is a write.
     (
@@ -126,7 +126,7 @@ GATED_ROUTES = [
         {"payment_status": "UNKNOWN"},
         STAFF,
     ),
-    # GST registrations (tasks 3.13, 3.14). Recording and deactivating a branch is a
+    # GST registrations. Recording and deactivating a branch is a
     # relationship manager's record; flagging one stops trade through it, so it is
     # COMPLIANCE's — and that difference is what `_GST_FLAG_ROLES` below asserts.
     (
@@ -148,14 +148,14 @@ GATED_ROUTES = [
         {"reason": "Now filed"},
         COMPLIANCE_OR_ADMIN,
     ),
-    # A deal's invoicing branch (task 2.8) — a routine CRM write, like its buyer.
+    # A deal's invoicing branch — a routine CRM write, like its buyer.
     ("PUT", f"{BASE}/deals/{_ID}/invoicing-branch", {"gst_registration_id": None}, STAFF),
-    # Bringing a buyer-only company into the sales pipeline (task 3.11). A
+    # Bringing a buyer-only company into the sales pipeline. A
     # commercial decision, so the roles that make commercial decisions; DEVELOPER is
     # read-only throughout the CRM.
     ("POST", f"{BASE}/exporters/{_ID}/pipeline", {}, STAFF),
-    # "Which company is this?" (task 3.10). STAFF, including OPERATIONS: recording a
-    # deal's buyer is a relationship manager's job, and decision BQ-2 was decided for
+    # "Which company is this?". STAFF, including OPERATIONS: recording a
+    # deal's buyer is a relationship manager's job, and the disclosure rule was decided for
     # exactly that case — a full identifier may name a company even for a role that
     # sees identifiers masked. DEVELOPER is excluded: it may never reveal an
     # identifier (`can_reveal_identifiers`) and has no buyer to resolve.
@@ -226,19 +226,17 @@ GATED_ROUTES = [
     ("GET", f"{BASE}/qualification/reason-codes", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/qualification", None, READERS),
     ("GET", f"{BASE}/imports/companies/template", None, STAFF),
-    # ══ Section 9.3 — anchor blocks for Developers 3A and 3B ══════════════════
+    # ══ Area blocks ═══════════════════════════════════════════════════════════
     #
     # §7.7: at least one refusal test per gated route. `REFUSALS` below derives
-    # one per refused role from every row here, so a §9.3 route needs a row and
-    # nothing else. Three people add them — 3A in each of its two phases, and 3B
-    # — so the seam commit cuts the tail into owned blocks rather than leaving one
-    # shared append point, which would conflict every time.
+    # one per refused role from every row here, so a route needs a row and
+    # nothing else. Several areas add them, so the tail is cut into one block per
+    # area rather than leaving one shared append point, which would conflict
+    # every time.
     #
-    # ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
-    # (3A appends here; 3B does not.)
-    # Cut into the two phase sub-anchors below — phase agreement §6.3.
+    # ── Conversation and follow-ups ──
     #
-    # ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
+    # ── Conversation gauge ──
     # `REFUSALS` turns each row into one 403 test per role the row excludes. The
     # bodies below are well formed on purpose: a gate that runs as a dependency
     # refuses before the handler, so a 403 here also proves the handler never ran.
@@ -251,7 +249,7 @@ GATED_ROUTES = [
     ("GET", f"{BASE}/exporters/{_ID}/conversation", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/conversation/moves", None, READERS),
     #
-    # ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
+    # ── Follow-ups ──
     # One 403 test per refused role, derived by `REFUSALS` below. The body is
     # well formed on purpose: the gate runs as a dependency, so a 403 also proves
     # the handler never reached the service.
@@ -263,8 +261,7 @@ GATED_ROUTES = [
     ),
     ("GET", f"{BASE}/follow-ups", None, READERS),
     #
-    # ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
-    # (3B appends here; 3A does not.)
+    # ── Deals, buyers, storage and documents ──
     # One 403 test per refused role, derived by `REFUSALS` below. Each body is well
     # formed on purpose: the gate runs as a dependency, so a 403 also proves the
     # handler never reached the service.
@@ -283,7 +280,7 @@ GATED_ROUTES = [
         {"name": "Rotterdam Trading BV", "country": "NL"},
         STAFF,
     ),
-    # Required document categories — owner: Developer 2 (plan P2-5a). A settings
+    # Required document categories. A settings
     # rule about every deal, so the read is `READERS` like `/qualification/criteria`
     # and the write is ADMIN only.
     ("GET", f"{BASE}/settings/deal-required-documents", None, READERS),
@@ -293,8 +290,8 @@ GATED_ROUTES = [
         {"category": "BUYER"},
         ADMIN_ONLY,
     ),
-    # Documents (L3-09). The two uploads are multipart, so they are covered by their
-    # own refusal tests in `test_l3b_documents.py` rather than here — this table
+    # Documents. The two uploads are multipart, so they are covered by their
+    # own refusal tests in `test_documents.py` rather than here — this table
     # sends a JSON body, and a multipart route refuses a JSON one at parsing with a
     # 422 before the gate is reached, which would prove nothing about the gate.
     ("GET", f"{BASE}/documents/categories", None, READERS),
@@ -309,17 +306,14 @@ GATED_ROUTES = [
         None,
         READERS,
     ),
-    # ══ Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0) ══
+    # ══ Compliance blocks ══
     #
-    # The same cut as the §9.3 blocks above: each Dev4 owner adds rows only inside its
-    # own block, and `REFUSALS` derives the 403 tests. Dev4B may also edit the existing
-    # "verifications" / "screening review" rows, `_trigger_body()` and the FIX 3 /
-    # FIX 4 tests; Dev4A may not.
+    # The same cut as the area blocks above: each area adds rows only inside its
+    # own block, and `REFUSALS` derives the 403 tests.
     #
-    # ── Background check — owner: Developer 4A ──
-    # (4A appends here; 4B does not.)
+    # ── Background check ──
     #
-    # `STAFF` throughout: DEVELOPER is refused even on the reads, pending D8. These
+    # `STAFF` throughout: DEVELOPER is refused even on the reads. These
     # rows are what proves it, rather than the intention living only in a comment.
     ("GET", f"{BASE}/exporters/{_ID}/background-check", None, STAFF),
     (
@@ -330,8 +324,7 @@ GATED_ROUTES = [
     ),
     ("GET", f"{BASE}/exporters/{_ID}/background-check/decisions", None, STAFF),
     #
-    # ── Verification and screening — owner: Developer 4B ──
-    # (4B appends here; 4A does not.)
+    # ── Verification and screening ──
     (
         "GET",
         f"{BASE}/exporters/{_ID}/screening-review/website-reviewed/history",
@@ -339,8 +332,8 @@ GATED_ROUTES = [
         STAFF,
     ),
     #
-    # ── Compliance engine — owner: Developer 1 (allocation §2.2: rows only, lane block) ──
-    # DEVELOPER refused throughout (D8). The start is COMPLIANCE and ADMIN (IQ-3).
+    # ── Compliance engine ──
+    # DEVELOPER refused throughout. The start is COMPLIANCE and ADMIN.
     (
         "GET",
         f"{BASE}/exporters/{_ID}/background-check/decisions/{_ID}/evidence",
@@ -354,8 +347,8 @@ GATED_ROUTES = [
         {"kind": "RE_KYC", "reason": "Annual re-check"},
         COMPLIANCE_OR_ADMIN,
     ),
-    # Maker-checker (P3-1b/c): compliance and admin resolve proposals and read the
-    # queue; the RM never approves (plan §8). The due list is read by all staff (P3-3c).
+    # Maker-checker: compliance and admin resolve proposals and read the
+    # queue; the RM never approves. The due list is read by all staff.
     ("GET", f"{BASE}/exporters/{_ID}/background-check/proposals", None, STAFF),
     (
         "POST",
@@ -481,7 +474,7 @@ async def test_operations_can_perform_routine_crm_writes(
 
 
 async def _trigger(client: AsyncClient, token: str) -> str:
-    # A real company: a ghost subject is refused (404) since Dev4B 4B-4.
+    # A real company: a ghost subject is refused (404).
     customer_id = await _create_exporter(client, token)
     resp = await client.post(
         f"{BASE}/verifications", json=_trigger_body(customer_id), headers=auth_header(token)
@@ -540,7 +533,7 @@ def test_schema_accepts_exactly_the_real_providers():
     base = {k: v for k, v in _trigger_body().items() if k != "provider"}
     assert TriggerVerificationRequest(**base).provider == "manual"
     assert TriggerVerificationRequest(**base, provider="manual").provider == "manual"
-    # D7 (lead, 28 Sep 2026): the manual route is manual only; "rxil" is reserved
+    # Decided 28 Sep 2026: the manual route is manual only; "rxil" is reserved
     # for the future RXIL intake path.
     for provider in ("rxil", "kyb"):
         with pytest.raises(ValidationError):
@@ -588,7 +581,7 @@ async def _identifiers_as(client: AsyncClient, token: str, customer_id: str) -> 
     """The identifiers as seen on the detail route and in a search listing.
 
     The search leg deliberately does **not** filter by PAN. An exact identifier
-    filter is COMPLIANCE/ADMIN-only (L1-10), so using one here would make this
+    filter is COMPLIANCE/ADMIN-only, so using one here would make this
     helper 403 for exactly the roles whose masking it exists to check. It pages
     through an unfiltered listing instead, which every reader may call.
     """
@@ -678,7 +671,7 @@ async def test_identifiers_masked_even_for_the_owning_relationship_manager(
         assert seen["pan"] == _masked(pan)
 
 
-# ── Identifier search is an existence oracle (L1-10) ─────────────────────────
+# ── Identifier search is an existence oracle ─────────────────────────
 
 
 @pytest.mark.parametrize("param", ["pan", "gstin", "iec"])
@@ -760,7 +753,7 @@ async def test_write_responses_are_masked_too(client: AsyncClient, tokens: dict[
     assert resp.json()["pan"] == _masked(pan)
 
     # The same rule on the GST registrations route, which is where a GSTIN is written
-    # since task 3.13 — a PATCH no longer accepts `gstins`.
+    # now — a PATCH no longer accepts `gstins`.
     added = await client.post(
         f"{BASE}/exporters/{resp.json()['customer_id']}/gst-registrations",
         json={"gstin": gstin},
@@ -878,7 +871,7 @@ def test_mask_email_shapes(value: str | None, expected: str | None):
     assert mask_email(value) == expected
 
 
-# ── The journey is never moved by hand (L2-04) ───────────────────────────────
+# ── The journey is never moved by hand ───────────────────────────────
 #
 # The ten-status lifecycle and its per-edge compliance gate are gone. The
 # journey moves only through a qualification outcome (and, later, the

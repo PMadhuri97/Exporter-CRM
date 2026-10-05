@@ -1,4 +1,4 @@
-"""Repository for ``deal_buyer`` — **owner: Developer 3B** (L3-06).
+"""Repository for ``deal_buyer``.
 
 One row per deal, enforced by ``uq_deal_buyer_deal_id``. Setting a buyer on a deal
 that already has one is an **update of that row**, not a second row — which is why

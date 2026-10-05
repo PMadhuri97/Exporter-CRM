@@ -1,10 +1,9 @@
-"""``CompanyDirectoryService`` — the F3 implementation of ``CompanyDirectory`` —
-**owner: Developer 3** (allocation F3; plan P4-3, P4-6).
+"""``CompanyDirectoryService`` — the implementation of ``CompanyDirectory``.
 
 Interface and the meaning of each answer: ``domain/company_directory.py``.
 
-How ``match`` decides (task 3.10 completed F3's stub)
-----------------------------------------------------
+How ``match`` decides
+---------------------
 In order, because the degrees of confidence differ:
 
 #. **An exact identifier names the company.** A full PAN, GSTIN or
@@ -12,7 +11,7 @@ In order, because the degrees of confidence differ:
    ``MATCHED``. A partial or prefix search is never accepted — see the disclosure
    rule below.
 #. **Disagreeing identifiers are a ``CONFLICT``**, never resolved by picking one.
-   Two companies holding one GSTIN gives the same answer (IQ-9: GSTINs stay
+   Two companies holding one GSTIN gives the same answer (GSTINs stay
    warn-only, so this really happens, and the RM chooses between them).
 #. **Only then, the name.** Companies in the same country whose names differ just
    in punctuation, spacing, case or legal form are ``POSSIBLE_DUPLICATE`` —
@@ -24,8 +23,8 @@ A name never overrides an identifier: if a PAN named a company, that is the answ
 and a different company with a similar name is not even reported. Mixing the two
 would let a near-match on a name cast doubt on an identity.
 
-Decision BQ-2, and why the audit lives here
--------------------------------------------
+Identifier disclosure, and why the audit lives here
+---------------------------------------------------
 A masked role may submit a **full** identifier and be told which company holds it;
 the identifiers themselves stay masked in the response (the route's job), and
 partial search stays refused (``IdentifierSearchNotPermittedError``, on the list
@@ -42,8 +41,8 @@ watch who saw PANs would defeat the point.
 ``create_buyer_company`` writes through ``ExporterProfileService.create_or_get_profile``
 rather than inserting a row: that path owns the identifier validation, the GSTIN rules,
 the idempotency key and the first history row. The only thing this service adds is what
-makes the company a *buyer*: ``source = DEAL_BUYER`` (IQ-6),
-``pipeline_status = NOT_IN_PIPELINE`` (so it is not a lead, plan §8), ``created_via``
+makes the company a *buyer*: ``source = DEAL_BUYER``,
+``pipeline_status = NOT_IN_PIPELINE`` (so it is not a lead), ``created_via``
 and ``created_via_deal_id``.
 """
 
@@ -81,7 +80,7 @@ logger = structlog.get_logger(__name__)
 
 #: How `created_via` records a company the buyer migration or the deal screen made.
 #: Kept as a name here because this module is where the value is written; the list
-#: of channels lives in `domain/company_identity.py` (task 3.8).
+#: of channels lives in `domain/company_identity.py`.
 CREATED_VIA_DEAL_BUYER = CreatedVia.DEAL_BUYER.value
 
 
@@ -109,7 +108,7 @@ class CompanyDirectoryService:
         the order of confidence and what is audited.
 
         ``actor_role`` and ``actor_id`` are recorded on the audit row for an
-        identifier lookup (BQ-2). They do not change the answer: what a caller may
+        identifier lookup. They do not change the answer: what a caller may
         be *told* is the route's decision, and narrowing the match itself by role
         would mean two users disagreeing about which company a PAN belongs to.
         """
@@ -170,7 +169,7 @@ class CompanyDirectoryService:
 
         if len(named) > 1:
             # Either one identifier is held by two companies, or two identifiers name
-            # different companies. Both need a person (IQ-8, IQ-9); picking one would
+            # different companies. Both need a person; picking one would
             # attach a deal to the wrong company silently.
             return MatchResult(
                 MatchKind.CONFLICT,
@@ -195,14 +194,14 @@ class CompanyDirectoryService:
         self, *, limit: int = 50, offset: int = 0
     ) -> tuple[list[ExporterProfile], int]:
         """The companies the CRM cannot identify yet: ``identity_type`` is ``NULL``,
-        so they hold neither a PAN nor a registration number (IQ-7's completion list,
-        plan §17.2, R-28). Returns ``(companies, total)``.
+        so they hold neither a PAN nor a registration number (the identity completion
+        list). Returns ``(companies, total)``.
 
         Ordered by what the rules require first — a missing country, then a foreign
         company's missing registration number, then an Indian company's missing PAN —
         and oldest first within each, so the list is worked from the top. Ended
         companies are left out. A company leaves the list the moment an edit gives it
-        an identifier, because ``update_profile`` recomputes ``identity_type`` (R-16).
+        an identifier, because ``update_profile`` recomputes ``identity_type``.
         """
         country = func.upper(func.coalesce(ExporterProfile.country, ""))
         urgency = case(
@@ -282,7 +281,7 @@ class CompanyDirectoryService:
         actor_role: str | None,
         actor_id: str | None,
     ) -> None:
-        """Record that somebody looked a company up by an identifier (BQ-2).
+        """Record that somebody looked a company up by an identifier.
 
         Carries which *kind* of identifier was used, never its value: recording a
         PAN in the table built to watch who saw PANs would defeat the point, and the
@@ -323,12 +322,12 @@ class CompanyDirectoryService:
         where it came from.
 
         **Idempotent by the deal it came from.** The key is the deal id when there is
-        one, so Developer 2's migration can be re-run without creating a second company
-        for the same buyer (P4-6: "re-run creates nothing"). A draft with no deal falls
+        one, so the buyer migration can be re-run without creating a second company
+        for the same buyer ("re-run creates nothing"). A draft with no deal falls
         back to a fresh key, because there is nothing stable to key on.
 
-        **The buyer's contact details become a contact record** (plan §17.2,
-        "Creation"), in the same transaction as the company: a draft's email and phone
+        **The buyer's contact details become a contact record**, in the same
+        transaction as the company: a draft's email and phone
         were otherwise dropped. Not the primary contact: nobody chose a person, and the
         record carries only what the deal's buyer details held (``BUYER_CONTACT_ROLE``).
 
@@ -366,13 +365,13 @@ class CompanyDirectoryService:
             pan=draft.pan,
             gstins=list(draft.gstins) or None,
             registration_number=draft.registration_number,
-            # IQ-7's one exception: a migrated buyer may be nothing but a name and
+            # The foreign-identity rule's one exception: a migrated buyer may be nothing but a name and
             # a country, so this path asks for the rule to be waived rather than
             # inventing a number to satisfy it.
             allow_missing_registration_number=True,
-            # No journey row (plan P4-6). Nobody is selling to this company: it
+            # No journey row. Nobody is selling to this company: it
             # exists because it was somebody's buyer. Its journey history begins
-            # if and when it is brought into the pipeline (task 3.11), and a
+            # if and when it is brought into the pipeline, and a
             # `LEAD` row written now would claim a sales process that never
             # started. The `journey` *column* still reads LEAD, because it is
             # NOT NULL and `ck_exporter_profile_not_in_pipeline_start` requires
@@ -391,7 +390,7 @@ class CompanyDirectoryService:
             profile.created_via_deal_id = draft.created_via_deal_id
             # `created_via`, `registration_number` and `identity_type` are set by
             # `create_or_get_profile` from `history_source` and the identifiers
-            # given (task 3.8); only the deal link is this path's alone.
+            # given; only the deal link is this path's alone.
             #
             # The one history row this company starts with, in place of the journey
             # row it does not get: how it came to exist, on the dimension that
@@ -440,7 +439,7 @@ _STAFF_ROLES = frozenset({"OPERATIONS", "COMPLIANCE", "ADMIN"})
 
 def actor_type_for_role(role: str | None) -> ActorType:
     """The audit `ActorType` for a caller with this role, by the audit module's own
-    definitions (R-22): staff are `COMPLIANCE_OFFICER`, an external caller
+    definitions: staff are `COMPLIANCE_OFFICER`, an external caller
     (`API_USER`) is `API_CLIENT`, and no role at all is the platform, `SYSTEM`.
 
     A role outside those (DEVELOPER, which `/companies/match` refuses) is recorded as

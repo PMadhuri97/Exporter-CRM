@@ -1,11 +1,10 @@
 """Add `relationship_manager_user_id` to `exporter_profile`
 
-EXP-F2's frontend role model (a build ticket since retired) needs
+The frontend role model needs
 to answer "is the logged-in user this exporter's relationship_manager" to
 decide whether an `OPERATIONS`-role user may reveal masked PAN/GSTIN/IEC on
-this record — `relationship_manager` alone (a free display string, EXP-1's
-deliberate design) can't answer that reliably, per that doc's own flagged
-gap.
+this record — `relationship_manager` alone (a free display string, by
+deliberate design) can't answer that reliably.
 
 **No foreign key to `auth.users`, on purpose** — matching this codebase's
 established convention for actor/user-reference columns
@@ -18,9 +17,9 @@ DEPENDENCY OF ANY KIND"). This column follows the same shape: a bare,
 nullable `UUID`, no `ForeignKeyConstraint`.
 
 **Application-layer validation is a deliberate, documented gap, not an
-oversight** — nothing yet sets this column (no ticket has built a UI action
+oversight** — nothing yet sets this column (no UI action has been built
 that would), so there is nothing to validate against `auth.users` yet.
-Whichever ticket first writes to it (a future "assign relationship manager"
+Whichever change first writes to it (a future "assign relationship manager"
 action) should add an active-user check mirroring
 `cases.application.actor_validation.require_active_user`'s pattern — this
 module cannot import that function directly (it lives in `cases`'

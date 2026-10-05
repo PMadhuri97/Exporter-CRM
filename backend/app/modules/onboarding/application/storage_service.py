@@ -1,10 +1,10 @@
-"""Storing a file and having it scanned — **owner: Developer 3B** (L3-07, L3-08).
+"""Storing a file and having it scanned.
 
 Contract: ``docs/contracts/storage-and-documents.md`` §1-§4.
 
 This service is the one place that knows the **order** of the two steps: bytes are
 stored, then scanned, and the object is not servable until a clean result comes
-back. It holds no database session and writes no row — Phase 3's
+back. It holds no database session and writes no row —
 ``DocumentService`` persists ``crm_document`` and calls this. Splitting it that
 way is what lets the storage rules be tested without a database, and what keeps
 the port free of document concepts.
@@ -41,7 +41,7 @@ logger = structlog.get_logger(__name__)
 #: extension goes into the storage key, and deriving it from the uploaded file
 #: name would put user-controlled text in a path (§9.3's "Watch out for").
 #: A type absent from here is refused rather than stored with a made-up
-#: extension — Phase 3's upload route turns that into a 422.
+#: extension — the upload route turns that into a 422.
 CONTENT_TYPE_EXTENSIONS: dict[str, str] = {
     "application/pdf": ".pdf",
     "image/jpeg": ".jpg",
@@ -67,7 +67,7 @@ class UnsupportedContentTypeError(ValueError):
 
 @dataclass(frozen=True)
 class StoredDocument:
-    """Everything Phase 3 needs to write a ``crm_document`` row.
+    """Everything ``DocumentService`` needs to write a ``crm_document`` row.
 
     Deliberately not an entity: this service has no session, so it returns facts
     rather than a row. ``scan`` carries the scanner's name as well as its verdict,
@@ -128,7 +128,7 @@ class StorageService:
         ``StoredDocument`` is through here.
 
         ``document_id`` is supplied by the caller rather than generated here:
-        Phase 3 needs the id for its row, the key contains it, and generating it
+        ``DocumentService`` needs the id for its row, the key contains it, and generating it
         in two places would let the row and the key disagree.
         """
         key = build_storage_key(

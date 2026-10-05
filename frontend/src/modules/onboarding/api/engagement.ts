@@ -1,17 +1,17 @@
 /**
- * Contacts, the activity log and the conversation gauge — **owner: Developer 3**.
+ * Contacts, the activity log and the conversation gauge.
  *
  * These are the relationship's own records: who we talk to, what was said or
  * done, and how the conversation is going. They hang off the company rather than
- * any one verification pass, which is why they sit together in Developer 3's area
+ * any one verification pass, which is why they sit together in the engagement area
  * (architecture §9.3) rather than with the company record itself.
  *
  * The contact and activity functions were split out of the single `api/index.ts`
- * unchanged; the conversation functions are new in L3-03.
+ * unchanged; the conversation functions came later.
  *
- * `listConversationHistory` calls **Developer 1's** history route with
+ * `listConversationHistory` calls the shared history route with
  * `?dimension=conversation`. The gauge writes into the one shared history log
- * (`docs/contracts/history-row.md`), so a second table of Developer 3's would be
+ * (`docs/contracts/history-row.md`), so a second table of engagement's own would be
  * the duplication that contract exists to prevent — and a request function is a
  * caller, not a claim of ownership.
  */
@@ -75,7 +75,7 @@ export function logExporterActivity(
   });
 }
 
-// ── Conversation gauge (L3-03, L3-04a) ───────────────────────────────
+// ── Conversation gauge ───────────────────────────────
 
 /**
  * The gauge, the check-back date, and the moves this user may make.
@@ -107,7 +107,7 @@ export function setExporterConversation(
   });
 }
 
-/** This company's conversation history, newest first — Developer 1's shared
+/** This company's conversation history, newest first — the shared
  * history route, narrowed to one dimension. */
 export function listConversationHistory(
   customerId: string,

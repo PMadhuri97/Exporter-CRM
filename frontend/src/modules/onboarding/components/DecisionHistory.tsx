@@ -1,6 +1,6 @@
 /**
- * The background check's decision trail — **owner: Developer 4A** (L4-04, L4-06);
- * evidence per decision and cycle grouping by **Developer 1** (plans P2-1c, P2-3d).
+ * The background check's decision trail, with the evidence per decision and cycle
+ * grouping.
  *
  * Every decision, newest first, with the evidence it rested on. Decisions are
  * append-only: a reopen or reassessment is a **new** decision that supersedes the
@@ -16,9 +16,9 @@
  * With more than one check cycle, the decisions are grouped by cycle, newest first
  * (a Re-KYC / Re-KYB starts a cycle; earlier ones stay readable).
  *
- * Maker-checker (Developer 1, P3-1c): a decision taken on a proposal names both people
+ * Maker-checker: a decision taken on a proposal names both people
  * — who decided (proposed it) and who approved it — so the maker sees who approved. A
- * CLEAR says until when it is current (P3-3a).
+ * CLEAR says until when it is current.
  */
 
 import { useState } from 'react';

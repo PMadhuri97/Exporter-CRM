@@ -23,7 +23,7 @@ vi.mock('../../api', () => ({
   startCheckCycle: vi.fn(),
 }));
 
-// Developer 4B's section. Stubbed so this file tests the gauge, not their 631-line
+// The verification section. Stubbed so this file tests the gauge, not its 631-line
 // component — but still asserted to be rendered, because the panel must not drop it.
 vi.mock('../../components/VerificationSection', () => ({
   VerificationSection: () => <div data-testid="verification-section" />,
@@ -138,7 +138,7 @@ describe('BackgroundCheckPanel — the gauge', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('keeps Developer 4B’s verification section below the gauge', async () => {
+  it('keeps the verification section below the gauge', async () => {
     renderPanel();
     await screen.findByTestId('background-check-gauge');
     expect(screen.getByTestId('verification-section')).toBeInTheDocument();
@@ -163,7 +163,7 @@ describe('BackgroundCheckPanel — risk', () => {
   });
 
   it('explains a risk shown on a company that is not clear', async () => {
-    // D6 is open: a reopened company still reports the last recorded risk, so the
+    // A reopened company still reports the last recorded risk, so the
     // screen says where it came from rather than implying it describes the company now.
     vi.mocked(getBackgroundCheck).mockResolvedValue(
       standing({ value: 'IN_REVIEW', risk_rating: 'HIGH' }),
@@ -456,7 +456,7 @@ describe('BackgroundCheckPanel — the decision trail', () => {
   });
 });
 
-describe('BackgroundCheckPanel — check cycles and expiry (Developer 1)', () => {
+describe('BackgroundCheckPanel — check cycles and expiry', () => {
   const currentCycle = {
     id: 'cycle-1',
     company_id: COMPANY_ID,

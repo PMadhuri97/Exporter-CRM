@@ -1,5 +1,5 @@
 /**
- * The shared history log — Developer 1's routes, read by the company page's
+ * The shared history log — its routes, read by the company page's
  * History tab and the deal page.
  *
  * Keys: `['companyHistory', id, params]` and `['dealHistory', id, params]`.

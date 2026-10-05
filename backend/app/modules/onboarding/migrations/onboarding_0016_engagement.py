@@ -1,16 +1,14 @@
 """Engagement: the conversation gauge, its check-back date, and the follow-up
-completion table (L3-03, L3-04).
+completion table.
 
 Revision ID: onboarding_0016_engagement
 Revises: onboarding_0020_retire_lifecycle
 
 Numbered 0016 per the migration register, and parented on 0020 because 0020 is
-the head when this is written: 0014, 0017 and 0020 have landed and Developer 4's
-0015 has not. Numbers are labels, not order — ``down_revision`` is the order
-(register §2). Developer 3B's 0018 then parents onto this revision and 0019 onto
-0018; if 3B somehow merges first, **3B re-parents**, because the rule puts
-re-parenting on the later merger, and whoever does it tells Developer 1 to update
-the register.
+the head when this is written: 0014, 0017 and 0020 have landed and 0015 has not.
+Numbers are labels, not order — ``down_revision`` is the order (register §2). 0018
+then parents onto this revision and 0019 onto 0018; re-parenting falls to whichever
+merges later, and the register is updated with it.
 
 ``onboarding_0016_engagement`` is 26 characters, inside the register's 32-character
 limit on ``alembic_version.version_num``.
@@ -20,17 +18,15 @@ What it adds, all in the ``onboarding`` schema:
 * ``exporter_conversation_enum`` — the six architecture §3.3 values.
 * ``exporter_profile.conversation`` — the gauge's current value, ``NOT NULL
   DEFAULT 'NOT_CONTACTED'``. This is the field
-  ``docs/contracts/company-record.md`` §2.4 reserves for Developer 3; it is a
-  column on Developer 2's table, so **this migration needs Developer 2's review**
-  (architecture §8.1). Nothing else in ``exporter_profile`` is Developer 3's.
+  ``docs/contracts/company-record.md`` §2.4 reserves for engagement
+  (architecture §8.1). Nothing else in ``exporter_profile`` is engagement's.
 * ``exporter_profile.conversation_check_back_on`` — ``DATE NULL``, the date a
   ``NOT_NOW`` conversation is to be picked up again
-  (``docs/contracts/engagement.md`` §4). Named in that contract before Phase 2
-  started, because Phase 2's Follow-ups list reads it.
+  (``docs/contracts/engagement.md`` §4). Named in that contract before follow-ups
+  were built, because the Follow-ups list reads it.
 * ``follow_up_completion`` — append-only, with real links to the activity and the
-  company. **Phase 1 creates it and writes no code against it**; Phase 2 fills
-  it (phase agreement §6.2 says why the table is still Phase 1's to create). Its
-  columns are the ones ``engagement.md`` §5.2 fixes.
+  company. **This migration creates it and writes no code against it**; follow-ups
+  fill it. Its columns are the ones ``engagement.md`` §5.2 fixes.
 
 **Both enums are created in the ordinary transactional body**, never with
 ``ALTER TYPE ... ADD VALUE`` in an autocommit block — the register calls that out
@@ -39,14 +35,14 @@ by name as something that has broken this repository before, and
 
 **No foreign key is re-added for contacts or activities.** 0014 already created
 ``fk_exporter_contact_customer_id`` and ``fk_exporter_activity_customer_id`` (its
-``_LINKED`` tuple, step 4). L3-02 declares them on the ORM entities, where the
+``_LINKED`` tuple, step 4). They are declared on the ORM entities, where the
 docstrings previously claimed the opposite, and adds the direct-SQL test; it adds
 no DDL, because there is nothing left to add.
 
 The ``CHECK`` on the check-back date is the invariant, not a convenience: a
 check-back date may exist **exactly** when the conversation is ``NOT_NOW``. A
 stale date on a company that has since moved to ``READY_NOW`` would put it on
-Phase 2's Follow-ups list for a conversation that is over. Same shape, and the
+the Follow-ups list for a conversation that is over. Same shape, and the
 same reasoning, as ``ck_exporter_profile_marker_reason``. Every existing row
 satisfies it, since the default is ``NOT_CONTACTED`` with no date, which is why
 this can be added to a populated table in one statement.
@@ -81,10 +77,9 @@ CONVERSATION_VALUES = (
     "READY_NOW",
 )
 
-#: How a follow-up was dealt with (engagement contract §5.3). Phase 2's
-#: `FollowUpOutcome` maps to this type; Phase 1 creates the type and no Python
-#: enum, because `engagement_enums.py` is Phase 1's file and the phase agreement
-#: gives no file to both phases.
+#: How a follow-up was dealt with (engagement contract §5.3). The follow-ups'
+#: `FollowUpOutcome` maps to this type; this migration creates the type and no
+#: Python enum, because `engagement_enums.py` holds the conversation gauge's values.
 FOLLOW_UP_OUTCOMES = ("DONE", "NO_ANSWER", "RESCHEDULED", "CANCELLED")
 
 conversation_enum = postgresql.ENUM(
@@ -108,7 +103,7 @@ def upgrade() -> None:
     for enum_type in _ENUMS:
         enum_type.create(bind, checkfirst=False)
 
-    # ── 1. The gauge on the company record (Developer 2 reviews) ─────────────
+    # ── 1. The gauge on the company record ───────────────────────────────────
     op.add_column(
         "exporter_profile",
         sa.Column("conversation", conversation_enum, nullable=False, server_default="NOT_CONTACTED"),
@@ -132,7 +127,7 @@ def upgrade() -> None:
         "ix_exporter_profile_conversation", "exporter_profile", ["conversation"], schema=SCHEMA
     )
     # Partial, because a check-back date is set on a small minority of companies
-    # and Phase 2's Follow-ups list asks only for those: "whose check-back is due".
+    # and the Follow-ups list asks only for those: "whose check-back is due".
     op.create_index(
         "ix_exporter_profile_conversation_check_back",
         "exporter_profile",
@@ -141,7 +136,7 @@ def upgrade() -> None:
         postgresql_where=sa.text("conversation_check_back_on IS NOT NULL"),
     )
 
-    # ── 2. Follow-up completion — created here, filled by Phase 2 ───────────
+    # ── 2. Follow-up completion — created here, filled by follow-ups ────────
     #
     # Append-only, with real links both ways. `customer_id` is denormalised from
     # the activity deliberately (contract §5.2): one company's completions then
@@ -204,8 +199,8 @@ def upgrade() -> None:
     # one, and a second would be dead weight on an append-only table.
 
     # Locked by the same shared guard every other append-only table in this
-    # repository uses. Phase 1 proves this with a direct-SQL test that has no ORM
-    # entity to go through, so Phase 2 inherits a table it already knows is safe.
+    # repository uses. A direct-SQL test proves this with no ORM entity to go
+    # through, so follow-ups inherit a table already known to be safe.
     op.execute(
         f"CREATE TRIGGER trg_follow_up_completion_append_only "
         f"BEFORE UPDATE OR DELETE ON {SCHEMA}.follow_up_completion "

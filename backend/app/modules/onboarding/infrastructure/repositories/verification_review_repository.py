@@ -1,4 +1,4 @@
-"""Repository for ``verification_review`` — **owner: Developer 4B** (verification-and-screening.md §1).
+"""Repository for ``verification_review`` (verification-and-screening.md §1).
 
 Append-only: ``AppendOnlyRepository`` exposes no ``update`` and no ``delete``, and the
 table refuses both at the database. A changed verdict is a new row that supersedes the

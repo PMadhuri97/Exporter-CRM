@@ -8,7 +8,7 @@ import {
   setTokens,
 } from './tokenStorage';
 
-// Every other ticket's data fetching goes through `apiRequest` below, not
+// Every other module's data fetching goes through `apiRequest` below, not
 // raw `fetch` — this is the one place a stale/expiring access token gets
 // refreshed before a request goes out, and the one place a 401 that slips
 // through anyway gets one retry after a forced refresh. `authApi.ts`
@@ -108,8 +108,7 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
    * is opt-in so nothing else changes. Added for the document download
    * (`modules/onboarding/api/documents.ts`), which has to fetch content with the
    * access token rather than let the browser open a URL that carries none.
-   * **Owner: Developer 1** (architecture §8.1) — additive, no existing caller
-   * affected.
+   * Additive (architecture §8.1) — no existing caller affected.
    */
   parseAs?: 'blob';
   body?: unknown;

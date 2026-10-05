@@ -8,7 +8,7 @@
  * the company's Background check chapter — the same component the dossier shows, so
  * the two never drift apart. `j` / `k` move through the queue; `a` / `x` approve or
  * reject the selected proposal, each through the same confirmation as anywhere else.
- * "In review" (companies mid-check) waits for ask A4 and is not shown until then.
+ * "In review" (companies mid-check) waits for the backend to serve it and is not shown until then.
  */
 
 import { lazy, Suspense, useState } from 'react';

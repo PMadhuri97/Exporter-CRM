@@ -1,5 +1,5 @@
 /**
- * RXIL company intake — **owner: Developer 2** (L2-12, L2-14).
+ * RXIL company intake.
  *
  * Paste an RXIL package as RXIL sent it and submit it. The package format is
  * provisional until RXIL publishes its specification, so this page does not
@@ -11,7 +11,7 @@
  * ADMIN only, as on the server: a package records a qualification decision as
  * RXIL's (source, method and confidence a person may never set by hand), so
  * only the role trusted to vouch that it came from RXIL may submit one. Guarded at
- * the route (`company.rxilIntake`, R-33 G5): every other role gets the generic
+ * the route (`company.rxilIntake`): every other role gets the generic
  * NotFound there, and neither this page nor an explanation of it.
  */
 

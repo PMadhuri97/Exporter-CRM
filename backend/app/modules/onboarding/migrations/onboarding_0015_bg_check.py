@@ -1,15 +1,15 @@
 """The background check: the gauge on the company, locked decisions, and their
-evidence snapshots (L4-03, L4-04, L4-06, L4-08) — **owner: Developer 4A**.
+evidence snapshots.
 
 Revision ID: onboarding_0015_bg_check
 Revises: onboarding_0019_documents
 
 Numbered 0015 because the migration register reserves 0015 for the background
 check, and parented on 0019 because 0019 is the head when this is written. Numbers
-are labels, not order; ``down_revision`` is the order (register §2). Developer 4B's
-``onboarding_0021_verif_review`` starts from the same head: **whichever Dev4 PR
-merges second re-parents its own ``down_revision`` onto the first** (a one-line
-change) and tells Developer 1 the register row to add. Never a merge revision.
+are labels, not order; ``down_revision`` is the order (register §2).
+``onboarding_0021_verif_review`` started from the same head: **whichever merged
+second re-parented its own ``down_revision`` onto the first** (a one-line
+change). Never a merge revision.
 
 ``onboarding_0015_bg_check`` is 24 characters, inside the register's 32-character
 limit on ``alembic_version.version_num``.
@@ -17,25 +17,24 @@ limit on ``alembic_version.version_num``.
 What it adds, all in the ``onboarding`` schema, and nothing else
 (``docs/contracts/background-check.md``):
 
-* Five enum types, all Developer 4A's:
+* Five enum types, all the background check's:
   ``background_check_enum`` (the six gauge values), ``background_check_risk_enum``
-  (``LOW``/``MEDIUM``/``HIGH``/``CRITICAL`` — D13: a type of Dev4A's own, **not**
-  Developer 4B's ``verification_risk_level_enum``), ``background_check_decided_by_kind_enum``,
+  (``LOW``/``MEDIUM``/``HIGH``/``CRITICAL`` — a type of its own, **not**
+  verification's ``verification_risk_level_enum``), ``background_check_decided_by_kind_enum``,
   ``background_check_decision_source_enum`` and ``background_check_evidence_kind_enum``.
 * ``exporter_profile.background_check`` — ``NOT NULL DEFAULT 'NOT_STARTED'``, the field
-  ``company-record.md`` §2.4 reserves for Developer 4. It is a column on Developer 2's
-  table, so **this migration needs Developer 2's review**, as 0016 did. **No risk
-  column is added to the company** — that is D5, open.
+  ``company-record.md`` §2.4 reserves for the background check. **No risk
+  column is added to the company.**
 * ``background_check_decision`` — one locked row per move, chained by
   ``supersedes_decision_id``. The constraints make one company's decisions a single
   unbroken chain that can only grow at its head (contract §5.3).
 * ``background_check_evidence`` — one locked row per id a decision relied on. Foreign
   keys to ``crm_document``, ``verification_result`` and ``screening_review_item``, which
-  all exist already. The verification **review** id is a bare uuid on purpose: Developer
-  4B's review table is theirs, in their own unmerged migration, and an FK to it would
-  make the two Dev4 migrations depend on each other (contract §6.1).
+  all exist already. The verification **review** id is a bare uuid on purpose: the
+  review table is verification's, in its own migration, and an FK to it would
+  make the two migrations depend on each other (contract §6.1).
 
-Nothing verification- or screening-shaped is created or altered; Developer 4B's
+Nothing verification- or screening-shaped is created or altered; verification's
 tables are only referenced.
 
 **Enum types are created in the ordinary transactional body**, never with
@@ -107,7 +106,7 @@ _MOVE_CONSTRAINT = " OR ".join(
 )
 #: Every move but the start carries text (contract §4): the note of what is needed or
 #: what arrived, or the reason. Includes `CLEAR` (architecture §4.1 step 9) and
-#: `MORE_INFO -> IN_REVIEW`, which `history-row.md` §4 omits (D14).
+#: `MORE_INFO -> IN_REVIEW`.
 _REASON_CONSTRAINT = (
     "from_value = 'NOT_STARTED' OR (reason IS NOT NULL AND btrim(reason) <> '')"
 )
@@ -127,7 +126,7 @@ def upgrade() -> None:
     for enum_type in _ENUMS:
         enum_type.create(bind, checkfirst=False)
 
-    # ── 1. The gauge on the company record (Developer 2 reviews) ─────────────
+    # ── 1. The gauge on the company record ───────────────────────────────────
     op.add_column(
         "exporter_profile",
         sa.Column(
@@ -273,7 +272,7 @@ def upgrade() -> None:
         sa.Column("kind", evidence_kind_enum, nullable=False),
         sa.Column("crm_document_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("verification_result_id", postgresql.UUID(as_uuid=True), nullable=True),
-        # Bare on purpose — Developer 4B's review table (contract §6.1).
+        # Bare on purpose — verification's review table (contract §6.1).
         sa.Column("verification_review_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("screening_review_item_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.PrimaryKeyConstraint("id", name="pk_background_check_evidence"),

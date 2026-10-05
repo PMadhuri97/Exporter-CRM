@@ -1,10 +1,9 @@
-"""Request and response shapes for ``POST /companies/match`` — **owner:
-Developer 3** (allocation task 3.10, plan P4-3).
+"""Request and response shapes for ``POST /companies/match``.
 
 Its own file rather than ``exporter.py``, because none of these shapes is a
 company: they are the answer to "which company is this?", and that answer is
 deliberately *not* a company response. See ``company_directory_router.py`` for the
-disclosure rule the shapes implement (decision BQ-2) — in short, a candidate
+disclosure rule the shapes implement — in short, a candidate
 carries a company's id, name, country and pipeline status, and never an identifier.
 """
 
@@ -47,7 +46,7 @@ class CompanyMatchRequest(BaseModel):
     #: it had read would be asking "which company holds ••••••1234F".
     pan: Annotated[str | None, NotMasked] = Field(default=None, max_length=32)
     #: One complete GSTIN. A GSTIN held by two companies is a POSSIBLE_DUPLICATE
-    #: rather than a match (decision IQ-9).
+    #: rather than a match.
     gstin: Annotated[str | None, NotMasked] = Field(default=None, max_length=32)
     #: A complete foreign registration number, matched within `country`.
     registration_number: Annotated[str | None, NotMasked] = Field(
@@ -117,7 +116,7 @@ class CompanyMatchResponse(BaseModel):
     company_id: uuid.UUID | None = None
     #: Why, in words a person can act on. `null` for `NEW`.
     reason: str | None = None
-    #: Whether a person has to decide (`POSSIBLE_DUPLICATE` or `CONFLICT`, IQ-8).
+    #: Whether a person has to decide (`POSSIBLE_DUPLICATE` or `CONFLICT`).
     #: Served rather than inferred from `kind`, so a screen and the buyer migration
     #: apply one rule.
     needs_a_person: bool = False
@@ -133,11 +132,11 @@ __all__ = [
 
 
 class IdentityCompletionItem(BaseModel):
-    """One company the CRM cannot yet identify (IQ-7's completion list, R-28).
+    """One company the CRM cannot yet identify (the identity completion list).
 
     Carries **no identifier**: the company has none, which is why it is here. What it
     lacks is ``missing``; ``required`` says whether a rule requires it (a foreign
-    company's registration number, IQ-7; any company's country) or it is only worth
+    company's registration number; any company's country) or it is only worth
     doing (an Indian company's PAN).
     """
 
@@ -145,7 +144,7 @@ class IdentityCompletionItem(BaseModel):
     name: str | None
     country: str | None
     pipeline_status: CompanyPipelineStatus
-    #: Which channel created it — `DEAL_BUYER` for the P4-6 migration's buyers.
+    #: Which channel created it — `DEAL_BUYER` for the buyer migration's companies.
     created_via: str | None
     missing: IdentityGap
     required: bool

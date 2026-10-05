@@ -1,5 +1,5 @@
-"""RXIL company package -> the CRM's ``PartnerCompanyIntake`` (L2-12).
-**Owner: Developer 2. The format is provisional.**
+"""RXIL company package -> the CRM's ``PartnerCompanyIntake``.
+**The format is provisional.**
 
 RXIL's integration specification has not been published (architecture §11:
 "Awaited. Intake built as provisional."), so this file is the **only** place
@@ -11,7 +11,7 @@ matching, qualification and the journey are the CRM's, applied by
 
 It parses the company half of a package only. RXIL's own check results (KYC,
 AML/CFT, invoice duplication, vessel tracking, …) belong to the background
-check — Developer 4's RXIL results intake (L4-10) — and are not read here.
+check — the RXIL results intake — and are not read here.
 
 The provisional package, as JSON::
 
@@ -145,10 +145,10 @@ def parse_rxil_company_package(payload: Any) -> PartnerCompanyIntake:
     for reason in reasons:
         problems.add(reason.code, reason.message)
 
-    # Decision IQ-7 is **not** checked here, deliberately. A delivery must carry a
+    # The foreign-identity rule is **not** checked here, deliberately. A delivery must carry a
     # PAN or at least one GSTIN (`IntakeIdentity.has_identifier`, so a repeat finds
     # the same company), and both mean the exporter is identified by a PAN — so
-    # there is no reachable delivery for which IQ-7 has anything left to ask. The
+    # there is no reachable delivery for which the rule has anything left to ask. The
     # rule still holds on this path: `create_or_get_profile` enforces it for every
     # create path at once. A number RXIL does send is kept.
     try:

@@ -1,5 +1,4 @@
-"""Which paperwork a deal must have before handover — **owner: Developer 2**
-(plan P2-5a and P2-5b, allocation tasks 2.2 and 2.3).
+"""Which paperwork a deal must have before handover.
 
 Contract: ``docs/contracts/deal-and-buyer.md`` §6.1 condition 3. Table:
 ``domain/entities/deal_required_document.py``, migration 0030.
@@ -15,7 +14,7 @@ Two jobs, deliberately in one file because they are two readings of one table:
   It satisfies ``handover_conditions.RequiredDocumentsPolicy`` structurally, so
   ``DealService`` injects it without either module importing the other's class.
 
-Only ``AVAILABLE`` documents count (IQ-10's companion answer, IQ-11). A
+Only ``AVAILABLE`` documents count. A
 ``PENDING_SCAN`` upload is not evidence yet and a ``QUARANTINED`` or
 ``SCAN_FAILED`` one never will be — "we have not scanned it" and "it is clean"
 must not collapse into the same outcome, the same rule the download route applies.
@@ -49,7 +48,7 @@ from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
 
-#: The scan verdict a document must carry to satisfy a requirement (IQ-11).
+#: The scan verdict a document must carry to satisfy a requirement.
 _COUNTS = DocumentScanStatus.AVAILABLE
 
 
@@ -203,10 +202,10 @@ class DealRequiredDocumentsService:
 
 
 class DealRequiredDocumentsPolicy:
-    """The handover guard's condition 3 (plan P2-5b).
+    """The handover guard's condition 3.
 
     Satisfies ``handover_conditions.RequiredDocumentsPolicy`` structurally — it
-    does not import that protocol, so the deal lane's guard and this
+    does not import that protocol, so the deal guard and this
     implementation stay independently replaceable.
 
     Holds the same session the guard runs in, so what it reads is what the

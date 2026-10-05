@@ -1,18 +1,14 @@
-"""Sample data for follow-up completion — **owner: Developer 3A, Phase 2**
-(L3-04b).
+"""Sample data for follow-up completion.
 
-A hook, called once from ``sample_data.py``'s ``load_sample_data``. That file is
-Developer 2's and was edited once, in the seam commit; this seeder is why Phase 2
-never has to open it.
+A hook, called once from ``sample_data.py``'s ``load_sample_data``, so follow-ups
+never have to edit that file.
 
-**What it seeds, and why it logs activities of its own.** Developer 2's sample data
+**What it seeds, and why it logs activities of its own.** The company sample data
 gives exactly one activity a ``due_at`` — company A's "Check back on Q1 shipments" —
 which is one row, and a Follow-ups screen with one outstanding row demonstrates
-neither *overdue* nor *done*. Rather than edit Dev 2's file to add more, this seeder
-logs the follow-ups it needs against the companies Dev 2 created, which is what this
-prompt's §2 asks of it ("seed completed and outstanding follow-ups against the
-companies Phase 1's seeder creates"). The result covers all three states a person
-opening the screen should see:
+neither *overdue* nor *done*. Rather than edit ``sample_data.py`` to add more, this
+seeder logs the follow-ups it needs against the companies that file created. The
+result covers all three states a person opening the screen should see:
 
 * **overdue** — a follow-up whose due date has passed and which nobody has dealt with
 * **outstanding** — one due in the future
@@ -58,7 +54,7 @@ logger = structlog.get_logger(__name__)
 class _SampleFollowUp:
     """One follow-up to seed, and how it should end up.
 
-    ``company_slug`` names a company from Developer 2's ``COMPANIES``; ``due_in_days``
+    ``company_slug`` names a company from ``sample_data.COMPANIES``; ``due_in_days``
     is relative to now, negative for overdue. ``outcome`` is ``None`` to leave the
     follow-up outstanding.
     """
@@ -75,7 +71,7 @@ class _SampleFollowUp:
 
 #: Architecture §3.9 fixes each company's gauges, not its follow-ups, so these are
 #: chosen to cover the three states rather than taken from it. Company A said "not
-#: now" and already carries a check-back date from Phase 1's seeder, so the screen
+#: now" and already carries a check-back date from the conversation seeder, so the screen
 #: shows a check-back row for it as well.
 _SAMPLE_FOLLOW_UPS: tuple[_SampleFollowUp, ...] = (
     _SampleFollowUp(
@@ -140,7 +136,7 @@ async def load_follow_up_sample_data() -> int:
     for sample in _SAMPLE_FOLLOW_UPS:
         customer_id = by_slug.get(sample.company_slug)
         if customer_id is None:
-            # A company Developer 2 renamed or removed. Skipped rather than raised:
+            # A company the sample data renamed or removed. Skipped rather than raised:
             # sample data that refuses to load is worse than sample data with one
             # fewer row, and the log line is enough to find it.
             logger.warning(
@@ -160,9 +156,9 @@ async def _ensure_follow_up(
 ) -> uuid.UUID | None:
     """The activity for this follow-up, logging it if it is not already there.
 
-    Matched by ``(customer_id, subject)``, the same way Developer 2's seeder matches
+    Matched by ``(customer_id, subject)``, the same way the company seeder matches
     activities. Returns its id, or ``None`` if the company does not exist yet — which
-    happens only if this hook is somehow called before Dev 2's company step.
+    happens only if this hook is somehow called before the company step.
     """
     # Oldest first, and one row. A `RESCHEDULED` seed leaves a replacement activity
     # with the **same** subject behind it, so on a repeat run this match has two rows;
@@ -184,7 +180,7 @@ async def _ensure_follow_up(
         return existing.id
 
     # `exporter_activity.actor_id` is NOT NULL, so a seeded activity needs a name.
-    # Developer 2's own constant, not a copy of its value, so the whole sample set
+    # The company seeder's own constant, not a copy of its value, so the whole sample set
     # reads as one hand. Imported here for the same circular-import reason as
     # `COMPANIES` above.
     from app.modules.onboarding.sample_data import SAMPLE_DATA_ACTOR
@@ -229,7 +225,7 @@ async def _ensure_completion(activity_id: uuid.UUID, sample: _SampleFollowUp) ->
             note=sample.completion_note,
             next_due_at=next_due_at,
             # The platform acting on its own, the meaning `None` carries everywhere in
-            # this CRM. Developer 2's seeder records history rows the same way.
+            # this CRM. The company seeder records history rows the same way.
             actor_id=None,
         )
     return True

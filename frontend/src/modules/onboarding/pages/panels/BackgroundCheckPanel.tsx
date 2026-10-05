@@ -1,6 +1,5 @@
 /**
- * The background check — **owner: Developer 4A** for the gauge (L4-03, L4-08, L4-13);
- * **Developer 4B** for `VerificationSection`, which is rendered below and untouched.
+ * The background check: the gauge, with `VerificationSection` rendered below it.
  *
  * The gauge answers "is it safe and lawful to work with this company?" (architecture
  * §3.3). The verification results and the eight-item screening checklist below it are
@@ -17,19 +16,19 @@
  * is actually there.
  *
  * The one role check that remains is the one the page already applied: DEVELOPER may
- * read the CRM but the background-check routes refuse it (D8, settled 28 September
+ * read the CRM but the background-check routes refuse it (settled 28 September
  * 2026), so the panel is not rendered for it rather than rendered broken.
  *
- * Developer 1, 1 October 2026: the panel names the current check cycle and, when the
- * server offers them (`allowed_cycle_actions`), the Re-KYC / Re-KYB buttons (P2-3c/d);
- * a Clear's expiry is shown (F1); each decision opens to the evidence it rested on
- * (P2-1c) and decisions are grouped by cycle.
+ * Since 1 October 2026 the panel names the current check cycle and, when the
+ * server offers them (`allowed_cycle_actions`), the Re-KYC / Re-KYB buttons;
+ * a Clear's expiry is shown; each decision opens to the evidence it rested on
+ * and decisions are grouped by cycle.
  *
- * Developer 1, tranche 2: maker-checker (P3-1c) — a proposed CLEAR, FLAGGED or ON_HOLD
+ * Maker-checker: a proposed CLEAR, FLAGGED or ON_HOLD
  * shows as "Awaiting approval" with exactly the actions the server allows this user
- * (approve / reject for a second officer, withdraw for the proposer); rule B's required
- * checks and their state in the current cycle (P3-2); a "Re-KYC due" badge when the
- * Clear has expired or soon will (P3-3c); the proposals already resolved — approved,
+ * (approve / reject for a second officer, withdraw for the proposer); the required
+ * checks and their state in the current cycle; a "Re-KYC due" badge when the
+ * Clear has expired or soon will; the proposals already resolved — approved,
  * rejected with the reason, or withdrawn — so the maker sees how theirs ended.
  */
 
@@ -157,7 +156,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
           <RiskChip risk={standing.risk_rating} />
           {standing.value !== 'CLEAR' && (
             // The risk is the last one anyone recorded, not a statement about the
-            // company now — the reader's D6 caveat, said plainly rather than hidden.
+            // company now — the reader's caveat, said plainly rather than hidden.
             <span className="text-xs text-ink-3">
               from the most recent decision that set one
             </span>
@@ -239,7 +238,7 @@ export function BackgroundCheckPanel({
   return (
     <div className="flex flex-col gap-10">
       <GaugeSection customerId={customerId} />
-      {/* Developer 4B's, unchanged and rendered below the gauge: the checks are the
+      {/* The verification section, rendered below the gauge: the checks are the
           inputs to the decision, so they read in that order. */}
       <VerificationSection customerId={customerId} />
     </div>

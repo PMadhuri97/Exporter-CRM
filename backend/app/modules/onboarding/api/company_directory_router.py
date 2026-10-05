@@ -1,5 +1,4 @@
-"""``POST /companies/match`` — "do we already have this company?" — **owner:
-Developer 3** (allocation task 3.10, plan P4-3).
+"""``POST /companies/match`` — "do we already have this company?"
 
 Its own file, and its own ``/companies`` prefix, for a reason worth stating: this
 route is not about one company. Every other route in ``exporter_router.py`` names
@@ -7,8 +6,8 @@ a company in its path and answers questions about it; this one is handed a name 
 some identifiers and asks the CRM which company — if any — they belong to. Hanging
 it off ``/exporters/{id}`` would need an id the caller does not have yet.
 
-Decision BQ-2, as this route implements it
------------------------------------------
+Identifier disclosure, as this route implements it
+--------------------------------------------------
 A relationship manager who may not see raw identifiers **may** submit a full PAN,
 GSTIN or registration number here, and the server will name the company that holds
 it. That is the whole point: the alternative is an RM creating a duplicate of a
@@ -27,9 +26,10 @@ Three things keep that from becoming a way to read identifiers:
    it named — by ``CompanyDirectoryService``, which is the layer that knows a
    lookup actually happened.
 
-BQ-2 (plan §19.0) allows naming the holder of a full identifier to a masked role;
-``remaining-work.md`` D-07 asks the lead to confirm the shared-GSTIN warnings follow it. This route follows the precedent already set by the duplicate
-PAN refusal and the GSTIN warnings: name the company, never the identifier.
+The disclosure rule allows naming the holder of a full identifier to a masked role,
+and the shared-GSTIN warnings follow it too. This route follows the precedent already
+set by the duplicate PAN refusal and the GSTIN warnings: name the company, never the
+identifier.
 
 Why POST for a read
 -------------------
@@ -66,7 +66,7 @@ from app.platform.database.services import get_db
 router = APIRouter(prefix="/companies", tags=["Exporter CRM"])
 
 #: Who may ask. Recording a deal's buyer is a relationship manager's job, so
-#: OPERATIONS is included — that is the case BQ-2 was decided for. DEVELOPER is
+#: OPERATIONS is included — that is the case the disclosure rule was decided for. DEVELOPER is
 #: excluded: it is read-only internal technical staff, it may never reveal an
 #: identifier (``can_reveal_identifiers``), and it has no reason to be resolving a
 #: buyer. API_USER is excluded for the same reason as everywhere else in the CRM.
@@ -85,10 +85,10 @@ _READER = require_role(
     response_model=IdentityCompletionListResponse,
     summary="Companies the CRM cannot identify yet",
     description=(
-        "IQ-7's completion list (R-28): every company with no `identity_type` — it "
+        "The identity completion list: every company with no `identity_type` — it "
         "holds neither a PAN nor a registration number — except ended ones. Each "
         "says what it is `missing`: a `REGISTRATION_NUMBER` (a company outside India, "
-        "which IQ-7 requires — the P4-6 migration's buyers are the expected case), a "
+        "which the CRM requires — the buyer migration's companies are the expected case), a "
         "`COUNTRY`, or a `PAN` (an Indian company; not required, but it cannot be "
         "matched by identifier without one). `required` is true for the first two. "
         "Required gaps come first, oldest first within each. A company leaves the "
@@ -134,12 +134,12 @@ async def list_identity_completion(
     description=(
         "Answers MATCHED, POSSIBLE_DUPLICATE, CONFLICT or NEW. A full PAN, GSTIN or "
         "(country, registration_number) names the company that holds it — including "
-        "for a role that sees identifiers masked (decision BQ-2) — and every such "
+        "for a role that sees identifiers masked — and every such "
         "lookup is audited. Partial or prefix identifier search is not offered. "
         "Without an identifier, companies in the same country whose name differs only "
         "in punctuation, spacing, case or legal form come back as POSSIBLE_DUPLICATE "
         "candidates for a person to choose between; a GSTIN held by two companies does "
-        "the same (decision IQ-9). The response names candidates by id, name and "
+        "the same. The response names candidates by id, name and "
         "country, and never carries an identifier. Nothing is created or changed."
     ),
     responses={

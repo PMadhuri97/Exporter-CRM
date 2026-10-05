@@ -1,8 +1,7 @@
-"""``GstRegistrationService`` — a company's GST branches — **owner: Developer 3**
-(allocation tasks 3.13, 3.14, 3.15; plan P6-2, P6-5, and P6-3's consequences).
+"""``GstRegistrationService`` — a company's GST branches.
 
 A GST registration is a **branch**: a state, an address, a portal status, and
-possibly a compliance flag (``domain/entities/exporter_gstin.py``). Until task 3.12
+possibly a compliance flag (``domain/entities/exporter_gstin.py``). Before branches
 it was a string in a list that a company edit replaced wholesale; this service is
 what replaced that.
 
@@ -14,9 +13,9 @@ Three things it will not do
 * **Take a state.** ``state_code`` and ``state_name`` are derived from the GSTIN
   (``domain/gst_states.py``). A form that accepted both would let someone record
   "Maharashtra" against a GSTIN issued in Karnataka.
-* **Refuse a GSTIN another company holds.** Decision IQ-9 keeps duplicates
+* **Refuse a GSTIN another company holds.** The CRM keeps duplicates
   warn-only. ``add`` returns the other holders so the screen can say "this GSTIN is
-  also on company X" — and ``flag`` returns them too (task 3.15), because a flag
+  also on company X" — and ``flag`` returns them too, because a flag
   belongs to *one* company's row and whoever flags it should know the other copy is
   unaffected.
 
@@ -57,8 +56,8 @@ from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
 
-#: The history dimension every write here records. Developer 1's one list, so the
-#: read route's D8 rule and this writer cannot disagree about the spelling.
+#: The history dimension every write here records. From the one list, so the
+#: read route's DEVELOPER rule and this writer cannot disagree about the spelling.
 HISTORY_DIMENSION_GST = history_dimensions.GST_REGISTRATION
 
 
@@ -89,7 +88,7 @@ class GstRegistrationService:
     async def other_holders(
         self, gstin: str, *, excluding: uuid.UUID
     ) -> list[uuid.UUID]:
-        """Other companies holding this GSTIN (decision IQ-9: a warning, never a
+        """Other companies holding this GSTIN (a warning, never a
         refusal). Active rows only — a company that deactivated its copy is no longer
         claiming it."""
         rows = await self._db.scalars(
@@ -115,7 +114,7 @@ class GstRegistrationService:
         """Record a GST registration for this company.
 
         Returns ``(registration, other_holders)``: the other companies holding the
-        same GSTIN are a warning the caller shows, never a refusal (IQ-9).
+        same GSTIN are a warning the caller shows, never a refusal.
 
         A GSTIN this company **deactivated** earlier reactivates that row rather than
         inserting a second one, so there is one row per ``(company, GSTIN)`` forever
@@ -226,11 +225,11 @@ class GstRegistrationService:
     async def flag(
         self, registration_id: uuid.UUID, *, reason: str, actor_id: str | None
     ) -> tuple[ExporterGstin, list[uuid.UUID]]:
-        """Flag this branch (task 3.14). A reason is required.
+        """Flag this branch. A reason is required.
 
-        Returns the other companies holding the same GSTIN (task 3.15): the flag
+        Returns the other companies holding the same GSTIN: the flag
         belongs to **this** company's row and does not touch theirs, which is a
-        consequence of IQ-9 keeping duplicates warn-only. Whoever flags it needs to
+        consequence of keeping duplicates warn-only. Whoever flags it needs to
         know the other copy exists and is unaffected — otherwise they will believe
         they have stopped trade that is still running on the other company.
 
@@ -355,10 +354,10 @@ class GstRegistrationService:
     async def _lock_company_then_registration(
         self, registration_id: uuid.UUID
     ) -> ExporterGstin:
-        """Lock the owning company ``FOR UPDATE``, then the registration (R-18).
+        """Lock the owning company ``FOR UPDATE``, then the registration.
 
         The handover guard reads a seller's branches under ``FOR SHARE`` on the
-        **company** row (D10, P4-7) — so a flag, an unflag or a deactivation that
+        **company** row — so a flag, an unflag or a deactivation that
         locked only the branch could commit between the guard's read and the
         handover's commit, and a deal would go to the lending team through a branch
         flagged a moment before. Taking the company first makes such a write wait for

@@ -5,7 +5,7 @@ One module per vendor. Nothing in the platform imports these directly — the
 registry constructs them lazily by name, so that business logic never names a
 vendor. The two mock adapters here are the credential-free default used by CI.
 
-`ManualEntryAdapter` (EXP-2) and `StubRxilAdapter` (Exporter CRM Piece 3) are
+`ManualEntryAdapter` and `StubRxilAdapter` are
 a different, simpler registry (`workflow_dependencies.
 VERIFICATION_ADAPTER_REGISTRY`, generalized from `kyb.domain.ports.REGISTRY`)
 than the two mocks above (`infrastructure/registry.py`'s `ProviderRegistry`)

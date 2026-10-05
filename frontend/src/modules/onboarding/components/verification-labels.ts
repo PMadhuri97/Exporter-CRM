@@ -1,5 +1,5 @@
 /**
- * Words, colours and option lists for verification results — **owner: Developer 4B**.
+ * Words, colours and option lists for verification results.
  *
  * Nothing here decides what a user may do. Who may record or review a result comes
  * from the server's `capabilities`, never from a role comparison (verification-and-screening.md §9).
@@ -63,7 +63,7 @@ export function chipClasses(value: string): string {
 /**
  * Where a result came from, said honestly. `provenance` is served by the backend:
  * `MANUAL` is a person; `STUB` is the RXIL stub — not RXIL, whose results contract
- * (D12) is unpublished; `PROVIDER` is a real integration, shown by its stored name.
+ * is unpublished; `PROVIDER` is a real integration, shown by its stored name.
  */
 export function provenanceLabel(result: Pick<VerificationResult, 'provenance' | 'provider'>): string {
   if (result.provenance === 'MANUAL') return 'Manual (person)';

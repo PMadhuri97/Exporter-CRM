@@ -1,5 +1,5 @@
 /**
- * The signature components (frontend-plan §6, R-33 Phase 3): each state they draw,
+ * The signature components (frontend-plan §6): each state they draw,
  * and above all what they never draw — the background-check lamp for Developer, a
  * button for a move the server did not list, a download for a quarantined file, an
  * identifier lookup for a role that may not create.
@@ -81,7 +81,7 @@ describe('Standing', () => {
     expect(screen.getByText('In review')).toBeInTheDocument();
   });
 
-  it('leaves the background check out for Developer — absent, not greyed (D8)', () => {
+  it('leaves the background check out for Developer — absent, not greyed', () => {
     as('DEVELOPER');
     wrap(<Standing {...company} size="card" />);
     expect(screen.getByRole('img', { name: 'Qualification: Qualified' })).toBeInTheDocument();
@@ -213,7 +213,7 @@ describe('Preflight', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('becomes a checklist once structured conditions are served (ask A3)', () => {
+  it('becomes a checklist once structured conditions are served', () => {
     wrap(
       <Preflight
         blockedReason="x"

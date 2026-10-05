@@ -1,13 +1,11 @@
-"""``BranchFlagReader`` — is this GST registration flagged? — **owner: Developer 3**
-(allocation task 3.14; plan P6-5, P6-7).
+"""``BranchFlagReader`` — is this GST registration flagged?
 
-The Protocol is **Developer 2's**, declared in ``domain/handover_conditions.py``
-because their handover guard is its only consumer and F2 merged before F3. This
+The Protocol is declared in ``domain/handover_conditions.py``
+because the handover guard is its only consumer. This
 module provides the class that satisfies it; nothing here re-declares the Protocol,
-and nothing here injects it — ``DealService`` choosing to use it is Developer 2's
-task 2.9.
+and nothing here injects it — ``DealService`` chooses to use it.
 
-**This is the real reader.** F3 shipped a stub that answered "not flagged" for
+**This is the real reader.** An earlier stub answered "not flagged" for
 everything, which was true at the time because there was nowhere to record a flag.
 Task 3.12 added ``flag_status`` and ``flag_reason`` to ``exporter_gstin`` and task
 3.14 the routes that write them, so it now reads the column.
@@ -16,7 +14,7 @@ Why the answer carries a state name
 -----------------------------------
 The guard's message names the branch — "the invoicing branch Maharashtra is
 flagged" — and a deal's invoicing branch is a row id, not something the guard can
-describe on its own. Only this lane knows that a GSTIN's state comes from its first
+describe on its own. Only the GST-branch code knows that a GSTIN's state comes from its first
 two characters (``domain/gst_states.py``), so the state travels with the answer
 rather than the guard having to look it up.
 
@@ -25,7 +23,7 @@ branch: ``state_name`` is ``NULL`` for a code this release does not know, and a
 block that read "the invoicing branch None is flagged" would be worse than a vague
 one.
 
-**A flag is per company, not per GSTIN** (decision IQ-9 keeps duplicates
+**A flag is per company, not per GSTIN** (duplicates stay
 warn-only). This reads the row it is given, so a GSTIN that two companies hold is
 flagged for one of them and not the other — which is the intended behaviour, and
 why ``GstRegistrationService.flag`` tells whoever flags it that the other copy
@@ -47,7 +45,7 @@ logger = structlog.get_logger(__name__)
 
 
 class BranchFlagService:
-    """Satisfies Developer 2's ``BranchFlagReader`` Protocol."""
+    """Satisfies the handover guard's ``BranchFlagReader`` Protocol."""
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
@@ -79,8 +77,7 @@ class BranchFlagService:
     async def is_active(
         self, gst_registration_id: uuid.UUID
     ) -> tuple[bool, str | None]:
-        """Whether this registration is still active, and how to name its branch
-        (R-19, decision D-04).
+        """Whether this registration is still active, and how to name its branch.
 
         ``(True, None)`` for a registration that does not exist, for the reason
         ``is_flagged`` gives: a data error is not a reason to block a handover, and
@@ -101,7 +98,7 @@ class BranchFlagService:
     async def has_active_registrations(self, company_id: uuid.UUID) -> bool:
         """Whether this company has any branch it could invoice from.
 
-        P6-7's second rule asks a deal to say which branch it is invoiced from — but
+        The branch-recorded rule asks a deal to say which branch it is invoiced from — but
         only of a seller that has one. A seller with no active GST registration is not
         asked, because some legitimately have none and blocking them on a field they
         cannot fill would make the rule a nuisance rather than a control.

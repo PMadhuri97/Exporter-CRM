@@ -1,6 +1,5 @@
 /**
- * How a company's background-check proposals ended — **owner: Developer 1** (maker-
- * checker, plan P3-1c).
+ * How a company's background-check proposals ended (maker-checker).
  *
  * The open proposal is shown by `AwaitingApproval`; this lists the resolved ones, newest
  * first, so the maker sees who approved, who rejected and why, or that it was withdrawn.

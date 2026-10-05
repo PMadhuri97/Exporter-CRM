@@ -1,6 +1,6 @@
 /**
- * A verification result's review chain, and the dialog that adds to it — **owner:
- * Developer 4B** (verification-and-screening.md §1, §9; 4B-7).
+ * A verification result's review chain, and the dialog that adds to it
+ * (verification-and-screening.md §1, §9).
  *
  * Reviews are append-only. A verdict never changes by editing: a later review
  * *supersedes* the current one by naming it (`supersedes_review_id =

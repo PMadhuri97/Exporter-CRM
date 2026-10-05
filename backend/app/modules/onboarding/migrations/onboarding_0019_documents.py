@@ -1,4 +1,4 @@
-"""Documents on a company or on a deal (L3-09).
+"""Documents on a company or on a deal.
 
 Revision ID: onboarding_0019_documents
 Revises: onboarding_0018_deal_buyer
@@ -18,7 +18,7 @@ What it adds, all in the ``onboarding`` schema:
 * ``crm_document`` — owned by a company **or** a deal, with
   ``ck_crm_document_one_owner`` requiring exactly one; the category, the type (a
   settings value, so a plain string), the source, the file's own details, the scan
-  status and scanner, and the **relative storage key only** (decision D8).
+  status and scanner, and the **relative storage key only**.
 
 **Document types are not an enum and get no table.** Architecture §3.4 makes them
 settings: ``deployments/gitops/reference-data/crm/documents/document-types.yaml``,
@@ -118,7 +118,7 @@ def upgrade() -> None:
             "scan_status", scan_status_enum, nullable=False, server_default="PENDING_SCAN"
         ),
         sa.Column("scanner_name", sa.String(length=100), nullable=True),
-        # Relative only — decision D8. No bucket, no host, no `s3://`.
+        # Relative only. No bucket, no host, no `s3://`.
         sa.Column("storage_key", sa.String(length=500), nullable=False),
         sa.Column(
             "created_at",

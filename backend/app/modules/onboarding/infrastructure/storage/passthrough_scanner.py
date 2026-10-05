@@ -1,7 +1,6 @@
-"""The prototype's scanner, which is not a scanner — **owner: Developer 3B**
-(L3-08).
+"""The prototype's scanner, which is not a scanner.
 
-Assumption A9 and gate §7.6: the prototype ships a **clearly labelled
+Gate §7.6: the prototype ships a **clearly labelled
 pass-through**. This file is that label. It returns clean for everything it is
 given, and its name says so wherever the verdict is stored or shown.
 
@@ -20,7 +19,7 @@ from app.modules.onboarding.domain.storage import DocumentScanStatus, ScanOutcom
 logger = structlog.get_logger(__name__)
 
 #: Stored lowercase on the document row, exactly as a verification provider is
-#: stored ``"manual"`` (§7.5, decision D4); screens display it uppercase.
+#: stored ``"manual"`` (§7.5); screens display it uppercase.
 PASS_THROUGH_SCANNER_NAME = "pass-through"
 
 

@@ -1,27 +1,27 @@
 """``ComplianceFactsService`` — implements ``domain/compliance_facts.py``'s
-``ComplianceFactsReader`` — **owner: Developer 1** (allocation §3, F1).
+``ComplianceFactsReader``.
 
-What another lane reads a party's compliance through: Developer 2's handover guard
-(plan P3-3b, P3-4, P4-7) and Developer 3's customer promotion
-(``ExporterProfileService.promote_to_customer_if_ready``, IQ-18). The rules the facts
+What the rest of the CRM reads a party's compliance through: the handover guard
+and the customer promotion
+(``ExporterProfileService.promote_to_customer_if_ready``). The rules the facts
 follow are the domain module's; this class only gathers what they need.
 
 **Read-only, and never locks** — the same contract as ``BackgroundCheckReader`` and
 the compliance-inputs seam it reads through. It never commits, flushes or writes; the
 caller owns locking and knows why it is asking. A consumer that must not race a
 background-check move takes the company row itself (the handover guard's
-``FOR SHARE``, D10; the promotion's caller's ``FOR UPDATE``).
+``FOR SHARE``; the promotion's caller's ``FOR UPDATE``).
 
 What it reads, today
 --------------------
 * The gauge and the clearing decision through ``BackgroundCheckReader.standing`` — the
   chain head of a ``CLEAR`` company is its clearing decision.
-* Expiry (plan P3-3b) from the standing: the clearing decision's stored
-  ``expires_at`` (P3-3a), or — for a Clear recorded before migration 0027 — the legacy
-  rule (the decision + one year, BQ-5). An expired Clear is still ``is_clear``; only
+* Expiry from the standing: the clearing decision's stored
+  ``expires_at``, or — for a Clear recorded before migration 0027 — the legacy
+  rule (the decision + one year). An expired Clear is still ``is_clear``; only
   ``is_clear_current`` turns false. Nothing moves the gauge.
 * Sanctions and AML from the company's **current-cycle** inputs, through the
-  compliance-inputs seam (plan P2-3b), by IQ-2's meaning of "passed".
+  compliance-inputs seam, by ``compliance_facts.check_state``'s meaning of "passed".
 """
 
 from __future__ import annotations

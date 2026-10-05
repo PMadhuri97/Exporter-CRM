@@ -1,4 +1,4 @@
-"""Repository for ``exporter_profile`` rows (EXP-1)."""
+"""Repository for ``exporter_profile`` rows."""
 
 from __future__ import annotations
 

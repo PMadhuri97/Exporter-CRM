@@ -1,10 +1,9 @@
-"""``TradeHistoryService`` — what two companies have traded, and how it went —
-**owner: Developer 3** (allocation tasks 3.18 and 3.19, plan P5-1, P5-2).
+"""``TradeHistoryService`` — what two companies have traded, and how it went.
 
 Three operations and one invariant.
 
 ``get_or_create_relationship`` is **idempotent under concurrency**, which is the
-whole difficulty of task 3.18: two deals recording the same new pair at the same
+whole difficulty of relationships: two deals recording the same new pair at the same
 moment must produce one relationship. It is written as insert-then-handle-the-race
 rather than check-then-insert, because the check-then-insert version is wrong on a
 database with more than one writer and passes every single-threaded test.
@@ -14,7 +13,7 @@ freezes. ``record_outcome`` appends to a superseding chain — never edits — a
 refuses to supersede anything but the chain's current head, so two people cannot each
 correct the same outcome without seeing the other's.
 
-Currency is stored and never converted (decision IQ-4). There is no reporting
+Currency is stored and never converted. There is no reporting
 currency and no rate, here or anywhere.
 """
 
@@ -66,10 +65,10 @@ from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
 
-#: The history dimension trade writes record. Developer 1's one list.
+#: The history dimension trade writes record. From the one list.
 HISTORY_DIMENSION_TRADE = history_dimensions.TRADE
 
-#: How a relationship came to exist (BQ-7).
+#: How a relationship came to exist (provenance).
 SOURCE_DEAL_BUYER_RECORDED = "deal_buyer_recorded"
 SOURCE_BACKFILL = "backfill"
 SOURCE_MANUAL = "manual"
@@ -80,7 +79,7 @@ class TradeHistoryService:
         self._db = db
         self._history = HistoryService(db)
 
-    # ── Relationships (task 3.18) ────────────────────────────────────────────
+    # ── Relationships ────────────────────────────────────────────────────────
 
     async def get_or_create_relationship(
         self,
@@ -95,7 +94,7 @@ class TradeHistoryService:
 
         Returns ``(relationship, created)``.
 
-        **Safe under concurrency**, which is task 3.18's acceptance criterion: two
+        **Safe under concurrency**, which is the point: two
         deals recording the same new pair at the same moment produce one relationship.
         Done with ``INSERT … ON CONFLICT DO NOTHING`` against
         ``uq_trade_relationship_pair`` and then a read, rather than "look, then
@@ -165,7 +164,7 @@ class TradeHistoryService:
     ) -> list[TradeRelationship]:
         """This company's relationships — the ones it sells on, or with ``as_buyer``
         the ones it buys on. Two questions, two lists, for the same reason the deal
-        lists are separate (task 2.7)."""
+        lists are separate."""
         column = (
             TradeRelationship.buyer_company_id
             if as_buyer
@@ -190,7 +189,7 @@ class TradeHistoryService:
             )
         )
 
-    # ── Invoices (task 3.19) ─────────────────────────────────────────────────
+    # ── Invoices ─────────────────────────────────────────────────────────────
 
     async def record_invoice(
         self,
@@ -213,15 +212,15 @@ class TradeHistoryService:
         recording the right invoice, and the wrong one stays visible — which is the
         same trade-off every append-only table in this module makes.
 
-        ``deal_id`` is optional, because past trade predates us (task 3.21).
+        ``deal_id`` is optional, because past trade predates us.
 
-        ``currency`` is stored as given, upper-cased, and **never converted**
-        (IQ-4). ISO 4217's shape is checked here and by
+        ``currency`` is stored as given, upper-cased, and **never converted**.
+        ISO 4217's shape is checked here and by
         ``ck_trade_invoice_currency``, because a code nobody can look up is permanent
         nonsense in a column that is never recomputed.
 
         ``deal_id``, when given, must be a deal **between this relationship's two
-        companies** — the seller's deal with this buyer company (R-17). The value is
+        companies** — the seller's deal with this buyer company. The value is
         frozen once written and nothing else ties an invoice to a deal, so a wrong id
         would sit on the invoice for good.
 
@@ -268,7 +267,7 @@ class TradeHistoryService:
     ) -> TradeInvoice:
         """``record_invoice`` without the commit: flushed, with its history row, inside
         the caller's transaction. ``record_outcome_for_deal`` needs the invoice and its
-        outcome to land together or not at all (R-12)."""
+        outcome to land together or not at all."""
         relationship = await self._db.scalar(
             select(TradeRelationship).where(TradeRelationship.id == relationship_id)
         )
@@ -339,7 +338,7 @@ class TradeHistoryService:
         )
         return list(rows)
 
-    # ── Outcomes: an append-only chain (task 3.19) ───────────────────────────
+    # ── Outcomes: an append-only chain ───────────────────────────────────────
 
     async def record_outcome(
         self,
@@ -369,10 +368,10 @@ class TradeHistoryService:
         with no reason is not a record anyone can act on.
 
         ``PARTIAL`` requires ``amount_paid``. Nothing else may claim an amount it did
-        not receive, and a payment in another currency is a conversion, which IQ-4
+        not receive, and a payment in another currency is a conversion, which the CRM
         rules out — so there is one amount, in the invoice's own currency.
 
-        **Safe under concurrency** (R-13). The invoice row is locked ``FOR UPDATE``
+        **Safe under concurrency**. The invoice row is locked ``FOR UPDATE``
         before the head is read, so two outcomes for one invoice are decided one after
         the other: the second sees the first as the head and is refused as stale, with
         the 409 the route documents, rather than racing it into a unique index and a
@@ -417,7 +416,7 @@ class TradeHistoryService:
     ) -> tuple[EvidenceRef, ...]:
         """Everything about an outcome that can be checked without reading the
         database — so ``record_outcome_for_deal`` can refuse a bad request before it
-        writes anything (R-12). Returns the parsed evidence references.
+        writes anything. Returns the parsed evidence references.
 
         Raises:
             ValidationError: a missing ``amount_paid`` for ``PARTIAL``, a negative
@@ -540,7 +539,7 @@ class TradeHistoryService:
         )
         return outcome
 
-    # ── A handed-over deal's payment outcome (task 3.21) ─────────────────────
+    # ── A handed-over deal's payment outcome ─────────────────────────────────
 
     async def record_outcome_for_deal(
         self,
@@ -556,7 +555,7 @@ class TradeHistoryService:
         actor_id: str | None,
     ) -> tuple[TradeInvoice, TradeInvoiceOutcome]:
         """How a handed-over deal was actually paid — **creating the invoice if there
-        is none** (task 3.21, plan P5-4).
+        is none**.
 
         This is the question the CRM exists to answer in the end: the deal went to the
         lending team, and then what happened. Recording it at the *deal* is what makes
@@ -569,7 +568,7 @@ class TradeHistoryService:
 
         **The deal must name a buyer company.** A relationship is a pair of company
         records; a legacy ``deal_buyer`` row is a set of details with nothing to pair
-        with, so such a deal is refused until the buyer migration (P4-6) links it.
+        with, so such a deal is refused until the buyer migration links it.
         That is a real limit, and saying so beats inventing a company.
 
         The relationship is created if the pair has none — ``get_or_create``, so two
@@ -578,16 +577,16 @@ class TradeHistoryService:
         one, ``invoice`` must be omitted, because an invoice's identity is frozen and
         quietly ignoring new details would tell the caller they had been recorded.
 
-        **All or nothing** (R-12). The request is checked before anything is written,
+        **All or nothing**. The request is checked before anything is written,
         and the relationship, the invoice and the outcome are written in one
         transaction committed once at the end. A refused request leaves no invoice
         behind, so the corrected retry is not refused for an invoice it never meant to
         create.
 
-        **One request per deal at a time** (R-14). The deal row is locked ``FOR
+        **One request per deal at a time**. The deal row is locked ``FOR
         UPDATE`` first, so two first outcomes on a deal with no invoice cannot both
         create one: the second sees the first's invoice and is told so. Nothing more is
-        enforced — whether a deal may have more than one invoice is decision D-03, and
+        enforced — a deal may have more than one invoice (no rule limits it), and
         the relationship route still records a second one deliberately
         (``TradeInvoiceAlreadyRecordedError``). When a deal has several, this route
         answers about the earliest.
@@ -753,9 +752,9 @@ class TradeHistoryService:
         """One ``trade`` history row, on the **seller's** timeline.
 
         The seller's, because that is where a deal's rows go and the two belong to one
-        story. The buyer sees it through the read-side union task 2.7 added for deals
+        story. The buyer sees it through the read-side union added for deals
         (``include_deals_as_buyer``) when the row carries a ``deal_id``; a past-trade
-        row has none, and surfacing it on the buyer's timeline is task 3.20's
+        row has none, and surfacing it on the buyer's timeline is the trade routes'
         question, not this one's.
         """
         if relationship is None:  # pragma: no cover - the FK makes this unreachable

@@ -1,7 +1,7 @@
-"""Exporter CRM API routes (EXP-1).
+"""Exporter CRM API routes.
 
 Kept in a sibling file rather than added directly to `router.py`: at the time
-this ticket was built, `router.py` was already 277 lines covering the case
+these routes were built, `router.py` was already 277 lines covering the case
 management state machine and the pre-backlog onboarding-foundation routes,
 each documented with the same `summary`/`description`/`responses` verbosity
 these nine new routes would need — appending them in place would have pushed
@@ -9,19 +9,18 @@ that file past 550 lines and mixed three unrelated route groups (case state
 machine, onboarding foundation, exporter CRM) in one module. `router.py`
 already groups its own routes with `# ── ─────` section banners rather than
 splitting files, so this split is the exception, made because size crossed
-the point the ticket itself flagged as worth checking, not because the
+the point worth checking, not because the
 existing convention calls for one file per feature.
 
 This module's `router` is mounted into `router.py`'s own `router` via
 `include_router`, so it inherits the `/onboarding` prefix `app/api/rest/
 router.py` applies to the whole module — routes are declared here with only
-the `/exporters` prefix, matching the ticket's `/onboarding/exporters...`
+the `/exporters` prefix, matching the documented `/onboarding/exporters...`
 paths once combined.
 
-**Split by owner (L2-01).** This file now carries only the company routes
-(Developer 2). The contact and activity routes moved to `engagement_router.py`
-(Developer 3) and the screening-review and bank-activity routes to
-`screening_router.py` (Developer 4). All three share the `/exporters` prefix
+**Split by area.** This file now carries only the company routes. The contact and
+activity routes moved to `engagement_router.py` and the screening-review and
+bank-activity routes to `screening_router.py`. All three share the `/exporters` prefix
 and the `Exporter CRM` tag and are mounted side by side in `router.py`, so no
 path, operation or schema changed.
 """
@@ -370,7 +369,7 @@ async def set_exporter_marker(
     return response
 
 
-# ── Into the sales pipeline (task 3.11) ──────────────────────────────────
+# ── Into the sales pipeline ──────────────────────────────────────────────
 
 
 @router.post(

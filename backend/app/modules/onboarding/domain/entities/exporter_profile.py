@@ -1,5 +1,5 @@
 """``ExporterProfile`` — the enduring exporter/customer relationship record
-(EXP-1, Exporter CRM Phase 1).
+of the Exporter CRM.
 
 Not a facet of any single ``OnboardingRequest``: a profile may exist before an
 onboarding journey ever starts (a Lead entered by Sales, nothing verified
@@ -25,10 +25,10 @@ from the legacy ``onboarding_request`` table.
 
 Each gauge's **current** value is carried here so lists and filters need no join
 (architecture §3.8), and each is written by exactly one service, which writes the
-history row in the same transaction. ``journey`` and ``qualification`` are
-Developer 2's; ``conversation`` and ``conversation_check_back_on`` (0016) are
-Developer 3's and are written only by ``ConversationService``; ``background_check``
-(0015) is Developer 4A's.
+history row in the same transaction. ``journey`` and ``qualification`` belong to
+the company record; ``conversation`` and ``conversation_check_back_on`` (0016) are
+written only by ``ConversationService``; ``background_check`` (0015) only by
+``BackgroundCheckService``.
 """
 
 from __future__ import annotations
@@ -114,12 +114,12 @@ class ExporterProfile(AnerModel):
             "conversation_check_back_on",
             postgresql_where=text("conversation_check_back_on IS NOT NULL"),
         ),
-        Index(  # 0023 — Developer 1 (F1): the "Re-KYC due" list
+        Index(  # 0023: the "Re-KYC due" list
             "ix_exporter_profile_background_check_expires_at",
             "background_check_expires_at",
             postgresql_where=text("background_check_expires_at IS NOT NULL"),
         ),
-        # ── 0032 — Developer 3 (F3): identity and pipeline (plan P4-1) ───────
+        # ── 0032: identity and pipeline ──────────────────────────────────────
         #
         # `NOT_IN_PIPELINE` means the journey has not started. Enforced here and not
         # only in the service, because the buyer migration writes these rows directly
@@ -188,7 +188,7 @@ class ExporterProfile(AnerModel):
         UUID(as_uuid=True), nullable=True
     )
 
-    # ── Identity (L2-03, columns from migration 0014) ──────────────────────
+    # ── Identity (columns from migration 0014) ─────────────────────────────
     #: Nullable only while the API's unnamed create path exists; the database
     #: refuses a blank name (`ck_exporter_profile_name_not_blank`).
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -200,7 +200,7 @@ class ExporterProfile(AnerModel):
     #: The company's GST registrations, one row each (`ExporterGstin`), newest last.
     #: Loaded with the profile (`selectin`), so async code never lazy-loads it.
     #:
-    #: **No `delete-orphan`** since task 3.12. A registration is a branch the company
+    #: **No `delete-orphan`**. A registration is a branch the company
     #: really traded through: a handed-over deal records which one it invoiced from
     #: (`deal.seller_gst_registration_id`), so deleting the row would either break
     #: that FK's `RESTRICT` or destroy the record. Dropping one is a *deactivation*
@@ -211,7 +211,7 @@ class ExporterProfile(AnerModel):
         order_by="ExporterGstin.created_at, ExporterGstin.gstin",
     )
 
-    # ── Marker (L2-08): commercial pause or ending, not a journey stage ─────
+    # ── Marker: commercial pause or ending, not a journey stage ─────────────
     marker: Mapped[ExporterMarker] = mapped_column(
         Enum(ExporterMarker, name="exporter_marker_enum", schema=SCHEMA),
         nullable=False,
@@ -226,7 +226,7 @@ class ExporterProfile(AnerModel):
     # ── Journey and qualification gauge (migration 0017) ────────────────────
     #: LEAD -> PROSPECT -> CUSTOMER, forward only, never set by hand
     #: (company-record contract §3.1). Replaced the ten-status
-    #: `lifecycle_status`, retired in L2-04 (migration 0020).
+    #: `lifecycle_status`, retired in migration 0020.
     journey: Mapped[ExporterJourney] = mapped_column(
         Enum(ExporterJourney, name="exporter_journey_enum", schema=SCHEMA),
         nullable=False,
@@ -242,16 +242,14 @@ class ExporterProfile(AnerModel):
         default=QualificationState.NOT_YET_REVIEWED,
     )
 
-    # ── Conversation gauge (migration 0016) — Developer 3 ───────────────────
+    # ── Conversation gauge (migration 0016) ─────────────────────────────────
     #
-    # The two columns below are the only part of this entity Developer 3 owns
-    # (`docs/contracts/company-record.md` §2.4, `engagement.md` §2.1). Everything
-    # else on this table is Developer 2's, and Developer 2 reviewed 0016 because
-    # it adds a column to their table.
+    # The two columns below are the only part of this entity the engagement code
+    # owns (`docs/contracts/company-record.md` §2.4, `engagement.md` §2.1).
     #
     #: How the sales conversation is going. Only `ConversationService` writes it,
     #: and every change writes a `conversation` history row in the same
-    #: transaction. **Applies from `PROSPECT` onward** (assumption A4): a `LEAD`
+    #: transaction. **Applies from `PROSPECT` onward**: a `LEAD`
     #: reads `NOT_CONTACTED` because the column is `NOT NULL`, not because anyone
     #: judged it, and the service refuses a move on a `LEAD`.
     conversation: Mapped[ExporterConversation] = mapped_column(
@@ -263,32 +261,31 @@ class ExporterProfile(AnerModel):
     #: When to pick a `NOT_NOW` conversation back up. `NULL` exactly when the
     #: conversation is not `NOT_NOW` (`ck_exporter_profile_conversation_check_back`).
     #: A date, not a timestamp: "check back in the new year" is a day, and a time
-    #: of day would be invented precision. Phase 2's Follow-ups list **reads** this
+    #: of day would be invented precision. The Follow-ups list **reads** this
     #: and never writes it — a check-back date moves only through
     #: `ConversationService`.
     conversation_check_back_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
-    # ── Background-check gauge (migration 0015) — Developer 4A ──────────────
+    # ── Background-check gauge (migration 0015) ─────────────────────────────
     #
-    # The one column below is the only part of this entity Developer 4A owns
-    # (`docs/contracts/company-record.md` §2.4, `background-check.md` §2). Developer 2
-    # reviews it because it is on their table, as they reviewed 0016.
+    # The one column below is the only part of this entity the background check
+    # owns (`docs/contracts/company-record.md` §2.4, `background-check.md` §2).
     #
     #: Is it safe and lawful to work with them? Only `BackgroundCheckService` writes it,
     #: together with a locked decision, its evidence snapshot and a `background_check`
     #: history row, in one transaction. There is **no** company-level risk column: risk
-    #: is on the decision, and whether it is also carried here is D5, open.
+    #: is on the decision.
     background_check: Mapped[BackgroundCheckState] = mapped_column(
         Enum(BackgroundCheckState, name="background_check_enum", schema=SCHEMA),
         nullable=False,
         server_default=BackgroundCheckState.NOT_STARTED.value,
         default=BackgroundCheckState.NOT_STARTED,
     )
-    #: When the current `CLEAR` stops being current (decision E, one year) — the
+    #: When the current `CLEAR` stops being current (one year) — the
     #: current value, carried here like the gauge so a "Re-KYC due" list needs no join.
-    #: **Developer 1's one column on this table** (allocation §2.2, F1, migration
-    #: `onboarding_0023_dev1_foundation`). `NULL` until plan P3-3a writes it on CLEAR,
-    #: clears it on any move away and backfills the companies already CLEAR (BQ-5);
+    #: The compliance engine's one column on this table (migration
+    #: `onboarding_0023_compliance_core`). `NULL` until the Clear-expiry rule writes it on CLEAR,
+    #: clears it on any move away and backfills the companies already CLEAR;
     #: until then `ComplianceFactsReader` derives expiry from the legacy rule (the
     #: clearing decision + one year) and nothing reads this column.
     background_check_expires_at: Mapped[datetime | None] = mapped_column(
@@ -305,13 +302,13 @@ class ExporterProfile(AnerModel):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    # ── Identity and pipeline (migration 0032, F3 — plan P4-1) ───────────────
+    # ── Identity and pipeline (migration 0032) ──────────────────────────────
     #
     # A company is no longer always an exporter we went looking for: it may exist only
     # because it was somebody's buyer. These five columns are what tell the two apart.
 
     #: Which registration identifies this company — PAN for an Indian one, a foreign
-    #: registration number for the rest. `NULL` on every company created before F3:
+    #: registration number for the rest. `NULL` on every company created before 0032:
     #: the question did not exist then, and guessing from "has a PAN?" would read a
     #: migrated buyer with neither as foreign.
     identity_type: Mapped[CompanyIdentityType | None] = mapped_column(
@@ -324,13 +321,13 @@ class ExporterProfile(AnerModel):
         nullable=True,
     )
     #: Whatever the company's own jurisdiction issues, for a company that is not
-    #: identified by a PAN. Required on a foreign create path (IQ-7) except for buyers
+    #: identified by a PAN. Required on a foreign create path except for buyers
     #: the migration made, which may have nothing but a name and a country. Unique per
     #: country once normalised — a partial index, because most rows are `NULL`.
-    #: Masked like CIN (task 3.8).
+    #: Masked like CIN.
     registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
-    #: Whether this company is in the sales pipeline at all (plan P4-2). `NOT NULL`
+    #: Whether this company is in the sales pipeline at all. `NOT NULL`
     #: with a server default, so every existing company reads `IN_PIPELINE` without a
     #: backfill. `ck_exporter_profile_not_in_pipeline_start` holds the implication that
     #: `NOT_IN_PIPELINE` means the journey has not started.
@@ -352,7 +349,7 @@ class ExporterProfile(AnerModel):
     #: `event_metadata.source` (audit §3.1). Task 3.8 backfills it from there.
     created_via: Mapped[str | None] = mapped_column(String(64), nullable=True)
     #: The deal whose buyer this company was, when that is why it exists. A real deal
-    #: since 0042 (R-17), ``ON DELETE RESTRICT``: deals are never deleted (``WITHDRAWN``
+    #: since 0042, ``ON DELETE RESTRICT``: deals are never deleted (``WITHDRAWN``
     #: is how one ends), so the company is never lost and the link never dangles.
     created_via_deal_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -368,7 +365,7 @@ class ExporterProfile(AnerModel):
     def gstins(self) -> list[str]:
         """The company's **active** GSTINs as plain strings, in `gstin_rows` order.
 
-        Active only, since task 3.12: a deactivated branch is part of the record but
+        Active only: a deactivated branch is part of the record but
         not part of the company's current identity, and every caller of this property
         — the duplicate warning, the PAN/GSTIN consistency check, the responses —
         means "the GSTINs this company trades under now". `gstin_rows` is still every
@@ -378,7 +375,7 @@ class ExporterProfile(AnerModel):
 
     @property
     def flagged_branch_count(self) -> int:
-        """How many active branches compliance has flagged (task 3.14) — what the
+        """How many active branches compliance has flagged — what the
         company page's warning chip counts."""
         return sum(1 for row in self.gstin_rows if row.active and row.is_flagged)
 

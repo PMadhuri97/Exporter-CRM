@@ -1,5 +1,5 @@
 /**
- * The Conversation panel's gauge control and history (L3-11a-i).
+ * The Conversation panel's gauge control and history.
  *
  * The panel is mounted directly rather than through `ExporterDetailPage`, because
  * what is under test is the gauge section and not the shell's query timing — the
@@ -254,8 +254,8 @@ describe('ConversationPanel — the conversation gauge', () => {
           // `HistoryEntryResponse.details` is `dict | None` on the server, which
           // openapi-typescript generates as `Record<string, never>` — a type that
           // accepts no properties at all. The cast is the narrowest way to build a
-          // realistic row without touching Developer 1's schema, which is theirs and
-          // not Developer 3's to retype. The panel reads the key defensively
+          // realistic row without touching the shared history schema, which is not
+          // this panel's to retype. The panel reads the key defensively
           // (`typeof … === 'string'`) for the same reason.
           details: { check_back_on: '2027-04-01' } as unknown as HistoryEntry['details'],
           occurred_at: '2026-09-27T10:00:00Z',

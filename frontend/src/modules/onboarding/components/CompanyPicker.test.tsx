@@ -177,7 +177,7 @@ describe('CompanyPicker — searching by identifier', () => {
   it('says plainly that a partial value will not do', () => {
     renderPicker();
     expect(screen.getByText(/Partial values are not accepted/)).toBeInTheDocument();
-    // And that the value does not come back — BQ-2 lets an identifier *name* a
+    // And that the value does not come back — an identifier may *name* a
     // company while the identifiers themselves stay masked.
     expect(screen.getByText(/never shown back to you/)).toBeInTheDocument();
   });
@@ -210,7 +210,7 @@ describe('CompanyPicker — the four answers', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/more than one company/);
     // Both named, nothing chosen: picking one is how a deal gets attached to the
-    // wrong company (IQ-8).
+    // wrong company.
     expect(await screen.findByText('Antwerp Shipping NV')).toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });
@@ -255,7 +255,7 @@ describe('CompanyPicker — the four answers', () => {
 
   it('creates nothing unless its caller supplies the buyer-company path', async () => {
     // A create button that made an ordinary IN_PIPELINE lead would inflate the sales
-    // pipeline — the exact failure P4-2 exists to prevent. So without `onCreate`
+    // pipeline — the exact failure to prevent. So without `onCreate`
     // (the deal's buyer route) there is no button at all.
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 });
     vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
@@ -271,7 +271,7 @@ describe('CompanyPicker — the four answers', () => {
   });
 });
 
-// ── R-24: creating the buyer as a company outside the pipeline ───────────────
+// ── Creating the buyer as a company outside the pipeline ─────────────────────
 
 function renderWithCreate(
   onCreate = vi.fn().mockResolvedValue(undefined),
@@ -291,7 +291,7 @@ async function searchByName(name: string) {
   fireEvent.blur(screen.getByPlaceholderText('Company name'));
 }
 
-describe('CompanyPicker — creating a buyer company (R-24)', () => {
+describe('CompanyPicker — creating a buyer company', () => {
   beforeEach(() => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 });
   });
@@ -321,7 +321,7 @@ describe('CompanyPicker — creating a buyer company (R-24)', () => {
     expect(screen.getByLabelText(/Company name/)).toHaveValue('Brand New Buyer BV');
     expect(screen.getByLabelText(/Country/)).toHaveValue('NL');
 
-    // IQ-7: a buyer outside India needs its registration number before it can be sent.
+    // A buyer outside India needs its registration number before it can be sent.
     const submit = screen.getByRole('button', { name: 'Create buyer company' });
     expect(submit).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/Registration number/), {
@@ -382,7 +382,7 @@ describe('CompanyPicker — creating a buyer company (R-24)', () => {
     expect(screen.queryByRole('button', { name: 'Create buyer company' })).not.toBeInTheDocument();
   });
 
-  it('is offered after look-alikes only as "none of these is the buyer" (IQ-8)', async () => {
+  it('is offered after look-alikes only as "none of these is the buyer"', async () => {
     vi.mocked(matchCompany).mockResolvedValue(
       matchResult({ kind: 'POSSIBLE_DUPLICATE', needs_a_person: true, candidates: [candidate()] }),
     );

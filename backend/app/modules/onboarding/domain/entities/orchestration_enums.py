@@ -97,7 +97,7 @@ class KybNormalisedResult(str, enum.Enum):
     NOT_SUPPORTED = "NOT_SUPPORTED"
 
 
-# ── EXP-2: generalized VerificationAdapter / VerificationResult vocabulary ────
+# ── Generalized VerificationAdapter / VerificationResult vocabulary ───────────
 #
 # Named with a `Verification` prefix throughout, even where the PRD's own name
 # would collide: `entities.enums.VerificationStatus` (the legacy single-record

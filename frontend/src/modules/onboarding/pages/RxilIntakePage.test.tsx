@@ -45,13 +45,13 @@ function submit(text: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Take in' }));
 }
 
-describe('RxilIntakePage — RXIL company intake (L2-12, L2-14)', () => {
+describe('RxilIntakePage — RXIL company intake', () => {
   beforeEach(() => {
     vi.mocked(submitRxilPackage).mockReset();
     mockRole('ADMIN');
   });
 
-  // Who may open this screen is decided at the route now (R-33, G5): any other role
+  // Who may open this screen is decided at the route now: any other role
   // gets the generic NotFound and never loads the page. That is asserted, role by
   // role, in `src/routes/access.matrix.test.tsx`, which replaces the in-page
   // "Only an administrator" checks that used to be here.

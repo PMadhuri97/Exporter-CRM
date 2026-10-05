@@ -1,6 +1,6 @@
 /**
- * Qualification criteria — **owner: Developer 2** (L2-09). ADMIN only, guarded at
- * the route (`settings.criteria`, R-33 G5): any other role gets the generic NotFound
+ * Qualification criteria. ADMIN only, guarded at
+ * the route (`settings.criteria`): any other role gets the generic NotFound
  * there and never loads this page, so it carries no "Administrators only" of its own.
  *
  * The criteria a lead is qualified against are settings, not code
@@ -308,7 +308,7 @@ function CriterionComposer({
 
 /**
  * Every version of one criterion, newest first, as a trail down its card. A version
- * is never edited. Who saved it is a user id until the server names people (R-36).
+ * is never edited. Who saved it is a user id until the server names people.
  */
 function VersionTrail({ criterionKey }: { criterionKey: string }) {
   const versions = useCriterionVersions(criterionKey);

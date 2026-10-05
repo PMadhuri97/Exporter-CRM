@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| Date | 4 October 2026 |
-| Branch audited | `feature/company-foundation-and-compliance-guard` @ `451ef97` |
-| What this file is | A design and engineering plan for the CRM's frontend: an access model that only ever shows a role what it may use, a new design language, and a screen-by-screen redesign, delivered in phases. No code was changed to write it |
-| Sources read | `docs/architecture.md`, `docs/plan.md` (incl. §19.0 decisions), `docs/open-items.md`, `docs/demo.md`, the contracts, the design PDF (*Exporter-CRM-Architecture-and-Plan.pdf* v1.0, read from git), `backend/.../test_route_authorization.py` (the role matrix), `frontend/openapi.json`, and every file in `frontend/src` |
-| Decisions taken for this plan (4 Oct) | **Direction "Ink & Paper"** (colour only ever means a state); **type: Instrument Serif + Instrument Sans + JetBrains Mono**; **frontend-first**, with backend additions listed as owned *asks* that each have a fallback; **light-first with full dark parity** |
-| Feedback this answers | The TL's: the app looks generic and AI-made (purple/teal accents, slate greys, Inter, a card around everything, tables and long forms) |
+| Date | 5 October 2026 (second version) |
+| Code base | `main` @ `9ed6cb6`, with the "Ink & Paper" redesign merged (PR #19) |
+| What this file is | The plan for the next pass on the CRM frontend. It replaces the "Ink & Paper" visual layer with a standard enterprise CRM look and layout. It keeps the access model and every behaviour the server drives. This is a plan only: no code was changed to write it |
+| Replaces | The 4 October version ("Ink & Paper"), kept in git at `a77725d:docs/frontend-plan.md`. Its access section is built, so it is carried over under the **same section numbers (§4.1–§4.5)**. Code comments that cite §4.x stay correct. §13–§15 also keep their roles, because `remaining-work.md` cites them |
+| Decisions (5 October) | (1) **Standard enterprise CRM look**, modelled on Salesforce Lightning, Dynamics 365, HubSpot and SAP Fiori. (2) **No data-table views and no generic forms.** The rule from 4 October stays. (3) From the redesign, **keep only what enterprise CRMs also do** (§3.3). (4) **Plan first.** The TL reviews this plan, and the style guide at the end of Phase 1, before screens change |
+| Feedback this answers | The TL did not like the redesign. It reads as AI-generated, and the UI before it was closer to what is wanted |
 
 ---
 
@@ -17,14 +17,14 @@
 2. [The product, in the terms a screen needs](#2-the-product-in-the-terms-a-screen-needs)
 3. [The frontend today](#3-the-frontend-today)
 4. [Access: only what a role may use, failing closed](#4-access-only-what-a-role-may-use-failing-closed)
-5. [Design language: Ink & Paper](#5-design-language-ink--paper)
-6. [Signature components](#6-signature-components)
-7. [Shell, navigation and the command bar](#7-shell-navigation-and-the-command-bar)
+5. [Design language: standard enterprise](#5-design-language-standard-enterprise)
+6. [Components](#6-components)
+7. [Shell, navigation and search](#7-shell-navigation-and-search)
 8. [Screens](#8-screens)
 9. [No generic forms: the replacement for each one](#9-no-generic-forms-the-replacement-for-each-one)
 10. [No table views: the replacement for each one](#10-no-table-views-the-replacement-for-each-one)
 11. [Accessibility](#11-accessibility)
-12. [Engineering: structure, dependencies, performance](#12-engineering-structure-dependencies-performance)
+12. [Engineering](#12-engineering)
 13. [Backend asks](#13-backend-asks)
 14. [Delivery phases](#14-delivery-phases)
 15. [Definition of done and QA](#15-definition-of-done-and-qa)
@@ -36,50 +36,57 @@
 
 ## 1. Summary
 
-**Today** the frontend's behaviour is in good shape. It asks the server what is allowed (`allowed_moves`, `allowed_stage_moves`, `allowed_marker_moves`, `capabilities`), the server does the masking, the query layer is tidy, and there are 45 test files with 435 tests, all passing (run 4 October). What lets it down is how it looks and how it is put together:
+**Where we are.** The redesign merged on 5 October fixed real problems. Each role sees only what it may use, each screen loads its own code, and every colour comes from a token. The problem is how it looks. It uses:
 
-- **It looks like a starter template.** Inter on slate greys, a teal accent, violet "Awaiting approval" badges and `rounded-lg border shadow-card` on every surface. Twenty-one component files bypass the tokens and use raw Tailwind colours (`slate-*`, `violet-*`, `emerald-*`, `red-*`, `amber-*`).
-- **Everything is a box.** Each screen is a stack of `Panel`s. Companies, qualification, criteria, required documents and the import report are `<Table>`s. Twenty-four files hold a hand-built form.
-- **Role-based visibility has gaps** (§3.3). API users see the whole CRM navigation, DEVELOPER is offered "Add company" and "Import CSV", and the admin-only pages announce themselves ("Administrators only") rather than not existing.
+- a cream "paper" background, a display serif and monospace identifiers;
+- an ink-black primary button, and status drawn as glyphs (◔ ◑ ◕ ‖ ▲);
+- invented names: Desk, Dossier, Ledger, Shelf, Runway, Pre-flight;
+- a time-of-day greeting and Vim-style shortcuts.
 
-**The plan** has three parts:
+Any one of these could be defended. Together they look like a generated demo, not a tool the RM and Compliance teams use all day.
 
-1. **An access layer that fails closed** (§4). One capability manifest drives the navigation, the routes, the queries, the command bar and the keyboard shortcuts. If a role cannot use a module, its row is absent, its URL reads exactly like a URL that does not exist, its code is never downloaded and its queries never fire. An unknown role, a role still loading, or a failed permissions request all get nothing.
-2. **A design language with an opinion** (§5–§6). *Ink & Paper* uses warm paper neutrals and an ink-black primary, and the chrome has **no brand hue**, so every coloured pixel on screen means a state. An editorial serif sets company names and big numbers. One signature object, the **Standing strip** (the PDF's "one company, several gauges" drawn as a single glyph), appears wherever a company does.
-3. **Screens built around verbs, not records** (§8–§10). Each role gets its own desk. Companies are dossiers, not rows. The conversation is a track you click along, and the handover guard is a pre-flight checklist. History is a ledger with lanes. Forms become inline edits, smart entry, segmented decisions and composers. ⌘K reaches everything a role may use.
+**Where we are going.** The CRM should look and work like the enterprise CRMs people already know:
 
-It ships in **six phases** (§14). **Phase 0 closes the access gaps on the current screens, before any visual work**, so the security fix does not wait on the redesign.
+- An **app header** with search and a *New* menu, and a **labelled left navigation**.
+- **Record pages**: a header with the key fields and actions, a stage **path**, **tabs**, and related records as **cards in a right-hand column**.
+- An **activity timeline** with a composer for calls, meetings, notes and follow-ups.
+- **Lists without data grids**: record lists, a pipeline board and a split view.
+- **Quick create and quick actions in a side panel**, and **inline edit** on record details, instead of long forms.
+- **Plain names**: Home, Companies, Pipeline, Follow-ups, Approvals, History. **Status in words.**
+- **One brand colour** for actions, neutral greys, and the operating system's UI font.
+
+**What does not change.** Access (§4), every server-driven behaviour (§3.1), every URL, and the tests that prove them.
+
+**Delivery.** Three phases (§14). Phases 1 and 2 cover everything the demo walks through (`demo.md` §2–§5). The TL reviews the style guide and one real screen at the end of Phase 1, before the screens are re-laid out.
 
 ---
 
 ## 2. The product, in the terms a screen needs
 
-What the architecture says, and what each part means for a screen:
-
 | The model says | So the screen must |
 |---|---|
-| One company record; a **journey** (`LEAD → PROSPECT → CUSTOMER`), forward only, **never moved by hand** | Show the journey as progress, never as a control. There is no drag on the board, and nothing on screen looks movable |
-| Three **gauges** that move independently: qualification, conversation, background check. Plus a **marker** (`NONE / PAUSED / ENDED`) | Show the four positions together, side by side and never merged into one label. That is the PDF's "the same dashboard, three companies". This is the **Standing strip** (§6.1) |
-| **The server is the authority**: allowed moves, roles, masking, validation | Offer exactly the moves the server listed, and never compute a move. Show a refusal in the server's words. Send `from_value` and treat a 409 as "someone moved it; look again" |
-| **History is never lost**: corrections are new records, decisions are append-only, rows written together share a timestamp | Show history as a ledger. Bundle rows that share a timestamp into one event. Nothing offers "edit" or "delete" on a decision, a review, a document or a history row |
-| **A problem stays where it happened**: a buyer's problem never touches the company's gauge, but the handover guard reads both parties | On the deal, show seller and buyer as two separate parties, each with its own standing, and give the guard its own view |
-| **Maker-checker** on `CLEAR`, `FLAGGED`, `ON_HOLD`: a proposal waits for a *different* officer | Show "awaiting a second signature" as its own visual state (not a seventh gauge value), with the two signatures drawn |
-| **Clear expires** after a year; an expired Clear still reads `CLEAR` but no longer promotes or hands over | Show the Clear with its expiry, and make "Re-KYC due" an attention state on the Clear rather than a different value |
-| **Check cycles** (Re-KYC / Re-KYB); the decision reads the current cycle only | Show cycles as a short timeline. Earlier cycles are read-only, and the server says so through `capabilities` |
-| **Masking by role**; a role that cannot reveal gets **no reveal control at all** | Render identifiers in one component that owns this rule. Copy is only possible on a revealed value |
-| **Anything not yet real is labelled** (pass-through scanner, `NOT_CONNECTED` bank feed, placeholders, legacy buyer) | Keep every honesty label. Restyle them as a quiet "prototype" tag, never delete them |
-| **CRITICAL risk must look different on screen** (PDF §3.3) | CRITICAL is the only filled, hatched risk mark (§5.2) |
-| No cross-company deal or document list; the search has no `total` | Do not fake either one. Each has a backend ask (§13) and an honest fallback ("200+", or the section hidden) |
+| One company record. A **journey** (`LEAD → PROSPECT → CUSTOMER`), forward only, **never moved by hand** | Show the journey as a read-only path under the record header. It has no "mark as current" step and the pipeline board has no drag |
+| Three **gauges** that move independently: qualification, conversation, background check. Plus a **marker** (`NONE / PAUSED / ENDED`) | Show them as separate worded badges side by side, in the record header and on list items. Never merge them into one label |
+| **The server is the authority**: allowed moves, roles, masking, validation | Offer exactly the moves the server lists and never compute one. Show a refusal in the server's words. Send `from_value`, and treat a 409 as "someone changed it, look again" |
+| **History is never lost** | The History tab is read-only. Rows that share a timestamp are one event. There is no edit or delete on a decision, review, document or history row |
+| **A problem stays where it happened** | The deal shows seller and buyer as separate cards, each with its own status. The handover checklist reads both |
+| **Maker-checker** on `CLEAR`, `FLAGGED`, `ON_HOLD` | An "Awaiting approval" badge shows the proposer and the time. *Approve* and *Reject* appear only for a different officer |
+| **A Clear expires** after a year | The Clear badge carries "until <date>". "Re-KYC due" is its own attention badge, not a different value |
+| **Check cycles** (Re-KYC / Re-KYB) | A cycle selector on the Background check tab. Earlier cycles are read-only, as the server's `capabilities` say |
+| **Masking by role**; a role that cannot reveal gets **no reveal control at all** | One `Identifier` component owns the rule. Copy is offered only on a revealed value |
+| **Anything not yet real is labelled** | Every "Prototype" label stays: pass-through scanner, bank feed, placeholders, legacy buyer |
+| **CRITICAL risk must look different** (PDF §3.3) | Critical is the only solid risk badge (§5.2) |
+| No cross-company deal or document list; search has no `total` | Don't fake either one. Keep the "200+" caps, and hide a section until its backend ask lands (§13) |
 
-The **roles** that matter (architecture §9, route matrix in `test_route_authorization.py`). The UI says **RM** for `OPERATIONS` (IQ-13, `roleLabel()`).
+The **roles** (architecture §9, route matrix in `test_route_authorization.py`). The UI says **RM** for `OPERATIONS`.
 
 | Role | In one line |
 |---|---|
 | **RM** (`OPERATIONS`) | Finds, qualifies and talks to companies; opens and moves deals; uploads paperwork; may start a background check and answer "more info". Identifiers masked |
-| **Compliance** | Everything an RM does, plus every background-check decision, screening, verification results and reviews, approval of a colleague's proposal, Re-KYC cycles and GST branch flags. Sees full identifiers |
-| **Admin** | Everything, plus qualification criteria, required documents, RXIL intake, and users and roles |
-| **Developer** | Reads the CRM, masked. **Never** sees the background check, verifications or screening (D8), and gets no stage moves or handover reason |
-| **API user** | What public sign-up grants. **Reaches nothing in the CRM** |
+| **Compliance** | Everything an RM does, plus background-check decisions, screening, verification results and reviews, approving a colleague's proposal, Re-KYC cycles and GST branch flags. Sees full identifiers |
+| **Admin** | Everything, plus qualification criteria, required documents, RXIL intake, users and roles |
+| **Developer** | Reads the CRM, masked. **Never** sees the background check, verifications or screening (D8). Gets no stage moves and no handover reason |
+| **API user** | **Reaches nothing in the CRM** |
 
 ---
 
@@ -87,979 +94,852 @@ The **roles** that matter (architecture §9, route matrix in `test_route_authori
 
 ### 3.1 What to keep, exactly as it behaves now
 
-These are deliberate and tested. The redesign changes how they look, not how they behave:
+These are deliberate and tested. This plan changes how they look, not how they behave:
 
-- **Server-served actions**: `allowed_moves`, `allowed_stage_moves`, `allowed_marker_moves`, `allowed_cycle_actions`, `allowed_outcomes`, `can_record_results`, `can_open_deal`, `capabilities.can_record_decision`, `allowed_actions` on proposals. The redesign renders these. It never re-derives them.
-- **`from_value` on background-check moves**, with a 409 handled as "reload and decide again".
-- **Server masking**, and `MaskedValue`'s rule that a masked role gets no eye icon.
-- **`paths.ts`** as the single source of URLs. The **legacy `/exporters/*` redirects**. **`?tab=`** deep links on the company page. The tab keys (`overview`, `qualification`, `conversation`, `deals`, `documents`, `background-check`, `history`) stay valid.
+- **Server-served actions**: `allowed_moves`, `allowed_stage_moves`, `allowed_marker_moves`, `allowed_cycle_actions`, `allowed_outcomes`, `can_record_results`, `can_open_deal`, `capabilities.can_record_decision`, and `allowed_actions` on proposals. Screens render these and never re-derive them.
+- **`from_value`** on background-check moves, with a 409 handled as "reload and decide again".
+- **Server masking**, and `Identifier`'s rule: no reveal control for a masked role, and copy only on a revealed value.
+- **`paths.ts`** as the single source of URLs. The legacy `/exporters/*` redirects. The **`?tab=`** keys on the company page (`overview`, `qualification`, `conversation`, `deals`, `documents`, `background-check`, `history`).
 - **Query invalidation across the journey** (`journey-invalidation.test.tsx`).
-- **Honesty rules**: "200+" and "100+" caps; follow-ups and check-backs kept as **two** lists (a check-back cannot be completed); no drag on the pipeline; no reveal control for masked roles; ENDED hidden by default *by the server*; labels on the pass-through scanner, the bank feed and placeholders.
-- **Session handling** in `lib/api/client.ts` (single refresh, Web Locks). Not touched.
-- **The stack**: Vite, React 18, TypeScript, TanStack Query, Tailwind, Radix, React Hook Form, Zod and sonner all stay.
+- **Honesty rules**: "200+" and "100+" caps; follow-ups and check-backs kept as two kinds (a check-back cannot be completed); no drag on the pipeline; ENDED hidden by default *by the server*; the prototype labels.
+- **Session handling** in `lib/api/client.ts` (single refresh, Web Locks).
+- **The access layer** (§4), route-level code splitting, the module table, and the page-to-shell registry (`platform/shell`).
+- **The stack**: Vite, React 18, TypeScript, TanStack Query, Tailwind, Radix, React Hook Form, Zod, sonner, cmdk.
 
-### 3.2 What is wrong
+### 3.2 What reads as generated
 
-| Area | Finding | Evidence |
-|---|---|---|
-| Look | Inter, slate neutrals, teal `brand-*`, violet badges: the default shadcn/Tailwind look | `tailwind.config.ts`, `index.css`, `BackgroundCheckGauge.tsx` (`bg-violet-50`) |
-| Token drift | 21 files use raw palette classes instead of tokens. They look different from the rest and break in dark mode. All are in the compliance, verification and deal-outcome areas | `AwaitingApproval`, `BackgroundCheckGauge`, `BackgroundCheckMoveDialog`, `BankActivityPanel`, `BuyerChecks`, `CheckCycleActions`, `CompanyComplianceSummary`, `ComplianceCheckChip`, `DecisionHistory`, `EvidenceList`, `HomeCards`, `ManualResultForm`, `ProposalHistory`, `ProposalResolveDialog`, `RecordDealOutcomeForm`, `ReviewDialog`, `RiskChip`, `ScreeningChecklist`, `ScreeningItemHistory`, `VerificationSection`, `BackgroundCheckPanel` |
-| Boxes | Every section is a bordered, shadowed `Panel`, often a panel inside a tab inside a sticky card | `ExporterDetailPage.tsx` Deals tab: four stacked panels |
-| Tables | Six table screens (five use `<Table>`, Users uses a raw `<table>`); the company list is a six-column grid of masked IDs | `ExportersListPage`, `QualificationPanel`, `QualificationCriteriaPage`, `DealRequiredDocumentsPage`, `CompanyImportPage`, `UsersTab` |
-| Forms | 24 files hold hand-built forms, many opened as a `FormPanel` box in the middle of the page | §9 lists every one |
-| Tabs | The company page has seven tabs of equal weight, and nothing says what to do next | `ExporterDetailPage.tsx` |
-| Home | A generic card grid, the same for every role (except two compliance cards) | `HomePage.tsx` |
-| Bundle | One ~589 kB chunk (build warning); no route-level splitting | `vite build` |
-| Icons | lucide, the default icon set of generated UIs | `package.json` |
-
-### 3.3 Role-visibility gaps, which Phase 0 fixes
-
-Each one shows a module, or announces one, to a role that may not use it:
-
-| # | Gap | Who sees what they should not | Where |
+| # | What | Where in the code | Replaced by |
 |---|---|---|---|
-| G1 | The main navigation is the same for every authenticated user | **API user** sees Home, Companies, Follow-ups, Pipeline. Every one of them 403s | `layout/Sidebar.tsx` (`NAV_ITEMS`, no role filter) |
-| G2 | Home renders the follow-ups, check-backs and pipeline cards for every role | **API user** gets three cards that each fire a refused request | `pages/HomePage.tsx` |
-| G3 | "Add company" and "Import CSV" buttons are unconditional | **Developer** (and API user) are offered two write screens the server refuses | `ExportersListPage.tsx` header actions |
-| G4 | `/companies/new` and `/companies/import` have no route or page guard | **Developer / API user** reach the full forms by URL | `modules/onboarding/routes.tsx`, `AddExporterPage.tsx`, `CompanyImportPage.tsx` |
-| G5 | Admin pages guard *inside* the page and render "Administrators only" | **Any non-admin** with the URL learns that the screen exists and that they are excluded. This is the leak the masking principle rejects ("a disabled eye icon would still leak…") | `QualificationCriteriaPage.tsx`, `DealRequiredDocumentsPage.tsx`, `RxilIntakePage.tsx` |
-| G6 | Role checks are spread across files, one of them inline | A change of rule must be made in many places, and missing one leaks | `ExporterDetailPage.tsx` (`role === 'COMPLIANCE' \|\| role === 'ADMIN'`), plus the `is*Role` helpers in eight other files |
-| G7 | All admin and compliance code ships in the one bundle | Every role downloads screens it can never open | single chunk |
+| 1 | Cream "paper" page with hairline sections and no containers | `design/tokens.css` (`--paper` `#F5F3EE`) | Neutral grey page with white cards (§5.2, §5.4) |
+| 2 | Display serif for titles, company names and numbers (Instrument Serif) | `font-display` in 21 files | One sans family; weight sets the hierarchy (§5.3) |
+| 3 | Monospace for every identifier and reference (JetBrains Mono) | `font-mono` in 17 files | The UI font with tabular figures (§5.3) |
+| 4 | Ink-black primary button and no brand colour | `components/ui/Button.tsx`, tokens | One brand blue for primary actions, links and selection (§5.2) |
+| 5 | Status as glyphs (◌ ◔ ◑ ◕ ‖ ● ▲ ■) and the "Standing" strip | `components/standing/` (`lamps.ts`, `Lamp`, `Standing`) | Worded status badges (§6.4, §18.2) |
+| 6 | Invented names: Desk, Agenda, Review, Dossier, Chapters, Ledger, Shelf, Runway, Pre-flight, Composer, "Find…" | nav labels in `routes/modules.ts`; page titles | Standard CRM names (§18.1) |
+| 7 | "Good afternoon, Ritu" and big serif numerals on the home page | `pages/HomePage.tsx` (`greeting()`) | Home as a grid of work cards (§8.2) |
+| 8 | Icon-only rail that widens on hover | `layout/Rail.tsx` (64 → 232 px) | Labelled side navigation, collapsed only by a button (§7.3) |
+| 9 | Vim-style keys: `g h`, `g c`, `j`/`k`, `c`, `l`, `a`/`x`, and a `?` sheet | `layout/useGlobalShortcuts.ts`, `platform/shell/keys.ts` | `/` and Ctrl+K for search, Ctrl+/ for the shortcut list (§7.5) |
+| 10 | Command palette with actions ("Log a call", "Go to") | `layout/CommandBar.tsx`, `CommandBody.tsx` | Header search over companies and pages only (§7.5) |
+| 11 | The company name morphing between pages, lamps "travelling", rows that "settle" | `lib/viewTransition.ts`, `lib/motion.ts` | Plain fades on menus and panels only (§5.6) |
+| 12 | Bottom/right "composer" sheets | `components/ui/Composer.tsx` | A right-hand side panel with a standard header and footer (§6.9) |
+| 13 | Brand mark: an italic serif *a* in a black square | `design/BrandMark.tsx`, `public/favicon.svg` | A plain wordmark until a logo exists (§5.8) |
+| 14 | Theme follows the system, so a laptop in dark mode demos in dark | `platform/theme/theme.ts` (`'system'` default) | Light by default; dark offered in the user menu (§5.2) |
+| 15 | Literary copy: "Nothing here.", "Every company, one record.", "Nothing waiting on you here." | `components/ui/NotFound.tsx`, sign-in, home | Plain product copy (§5.7) |
+
+### 3.3 What stays from the redesign
+
+These stay because enterprise CRMs do them too. Each is restyled to §5:
+
+| Keep | Enterprise counterpart |
+|---|---|
+| Fail-closed access (§4): absent, never disabled | Not visual; untouched |
+| Global search in the header, opened by Ctrl+K or `/` (companies and pages only) | Global search in the Salesforce, Dynamics and HubSpot headers; `/` is Salesforce's search key |
+| The **Approvals** queue (was *Review*), as a split view | Salesforce "Items to Approve"; Salesforce split view; Fiori list-detail |
+| The **Pipeline** board, with no drag | Salesforce Kanban list view; HubSpot board |
+| Inline edit of company facts | Salesforce inline edit on record details |
+| The activity composer on the company | Salesforce activity composer; Dynamics timeline with quick create |
+| Quick create of a company with a live identifier match | Dynamics quick create with duplicate detection |
+| The handover guard as a checklist | Salesforce Path key fields and guidance per stage; Dynamics business process flow steps |
+| The dev-only style guide (`/__design`) | Becomes the page the TL reviews (§12.4) |
+
+**Removed**: the glyph grammar and the Standing strip, the serif and monospace faces, the invented names, the `g` chords and single-letter action keys, the actions in the command palette, the view-transition morph and lamp travel, the time-of-day greeting, the hover-widening rail, and the bottom bar on narrow screens (a navigation drawer replaces it).
 
 ---
 
 ## 4. Access: only what a role may use, failing closed
 
-The requirement is: show only the modules that apply to a role, and never place the others even if a check goes wrong. This section defines how. The server stays the authority: it refuses what a role may not do whatever the screen shows. The frontend's job is to never *offer*, *mention*, *fetch* or *download* what the server would refuse.
+**Status: built** (4 October, `remaining-work.md` R-33 Phase 0) and **unchanged by this plan**, except for the module names and the `/approvals` address. The subsection numbers are the 4 October ones, which code comments cite.
 
 ### 4.1 The role matrix, by module
 
-Taken from the route gates (`STAFF`, `COMPLIANCE_OR_ADMIN`, `ADMIN_ONLY`, `READERS` in `test_route_authorization.py`) and the settings permissions (`users:view`, `roles:view`). "—" means absent: no nav row, no route, no button, no shortcut, no command.
+"—" means absent: no nav row, no route, no button, no search result, no shortcut.
 
 | Module / surface | RM | Compliance | Admin | Developer | API user |
 |---|---|---|---|---|---|
-| **Desk** (`/`) | RM desk | Compliance desk | Admin desk | Read-only desk | **No workspace** screen |
-| **Companies**: register and board (`/companies`, `/pipeline`) | ✓ | ✓ | ✓ | read, masked | — |
-| Add company, import CSV | ✓ | ✓ | ✓ | — | — |
+| **Home** (`/`) | RM cards | Compliance cards | Admin cards | Read-only cards | **No workspace** page |
+| **Companies** list and **Pipeline** (`/companies`, `/pipeline`) | ✓ | ✓ | ✓ | read, masked | — |
+| New company, import companies | ✓ | ✓ | ✓ | — | — |
 | RXIL intake | — | — | ✓ | — | — |
-| **Company dossier**: profile, qualification, conversation, deals & trade, documents, ledger | ✓ act | ✓ act | ✓ act | read | — |
-| Dossier: **background check** chapter | ✓ read; start; answer more-info | ✓ decide, propose, approve | ✓ decide, propose, approve | — (the chapter does not exist) | — |
+| **Company record**: details, qualification, activity, deals, documents, history | ✓ act | ✓ act | ✓ act | read | — |
+| Company record: **Background check** tab | ✓ read; start; answer more-info | ✓ decide, propose, approve | ✓ decide, propose, approve | — (the tab does not exist) | — |
 | Screening decisions, verification results and reviews, Re-KYC cycles | — | ✓ | ✓ | — | — |
 | GST branch: add, deactivate | ✓ | ✓ | ✓ | — | — |
 | GST branch: flag, unflag | — | ✓ | ✓ | — | — |
 | Bring a buyer-only company into the pipeline | ✓ | ✓ | ✓ | — | — |
-| **Deal room** (`/deals/:id`) | ✓ act | ✓ act | ✓ act | read; no stage moves, no handover reason | — |
+| **Deal record** (`/deals/:id`) | ✓ act | ✓ act | ✓ act | read; no stage moves, no handover reason | — |
 | Parties' compliance on the deal | ✓ | ✓ | ✓ | — | — |
 | Trade history: read / record outcome | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ | read / — | — |
-| **Agenda** (`/follow-ups`) | ✓ complete | ✓ complete | ✓ complete | read | — |
-| **Review** queue (`/review`, new) | — | ✓ | ✓ | — | — |
+| **Follow-ups** (`/follow-ups`) | ✓ complete | ✓ complete | ✓ complete | read | — |
+| **Approvals** (`/approvals`; `/review` redirects) | — | ✓ | ✓ | — | — |
 | Re-KYC due list | ✓ read | ✓ | ✓ | — | — |
 | **Settings → My profile, sessions** | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Settings → Users / Roles | by permission | by permission | by permission (default ✓) | by permission | by permission |
-| Settings → Qualification criteria | — | — | ✓ | — | — |
-| Settings → Required documents | — | — | ✓ | — | — |
+| Settings → Qualification criteria, Required documents | — | — | ✓ | — | — |
 | Reveal identifiers | — | ✓ | ✓ | — | — |
-| Find a company by full PAN/GSTIN/IEC in ⌘K | — (name only) | ✓ | ✓ | — (name only) | — |
+| Search a company by full PAN/GSTIN/IEC | — (name only) | ✓ | ✓ | — (name only) | — |
 
-Two deliberate choices to note:
+Two deliberate choices:
 
-- **Criteria and required documents are readable by every CRM role at the API** (`READERS`), but the settings screens are **Admin only**. Other roles already see the criteria inside a company's qualification scorecard, and the required categories inside the deal's pre-flight check. A screen whose only purpose is editing is a module only Admin uses.
-- **The RM sees the background-check chapter.** The RM may start a check and answer "more info", and the deal's pre-flight check depends on it. The RM sees no decision, screening or verification *controls*, because the server's `allowed_moves` and `capabilities` leave them out.
+- **Criteria and required documents are readable by every CRM role at the API**, but the settings screens are **Admin only**. Other roles see the criteria inside a company's qualification, and the required categories in the deal's handover checklist.
+- **The RM sees the Background check tab.** The RM may start a check and answer "more info", and the handover checklist depends on it. The RM sees no decision, screening or verification controls, because the server's `allowed_moves` and `capabilities` leave them out.
 
 ### 4.2 One manifest, read by everything
 
-A new `src/platform/access/` holds the single client-side copy of the role groups. It replaces `isStaffRole`, `isAdminRole`, `isComplianceRole` and every inline `role === …`.
-
-```ts
-// src/platform/access/capabilities.ts — sketch
-export type Capability =
-  | 'crm.read'            // READERS
-  | 'crm.write'           // STAFF
-  | 'company.create' | 'company.import'
-  | 'company.rxilIntake'  // ADMIN_ONLY
-  | 'compliance.read'     // STAFF  (D8: never DEVELOPER)
-  | 'compliance.decide'   // COMPLIANCE_OR_ADMIN
-  | 'compliance.queue'    // COMPLIANCE_OR_ADMIN  (GET /background-check/proposals?status=open)
-  | 'gst.flag'            // COMPLIANCE_OR_ADMIN
-  | 'identifiers.reveal'  // COMPLIANCE_OR_ADMIN
-  | 'settings.criteria' | 'settings.requiredDocuments'   // ADMIN_ONLY (write screens)
-  | 'settings.users' | 'settings.roles';                // from /auth/me/permissions
-
-// An allowlist per role. No default branch, no denylist: a role nobody listed has nothing.
-const ROLE_CAPABILITIES: Readonly<Record<UserRole, readonly Capability[]>> = {
-  OPERATIONS: ['crm.read', 'crm.write', 'company.create', 'company.import', 'compliance.read'],
-  COMPLIANCE: [/* …RM… */ 'compliance.decide', 'compliance.queue', 'gst.flag', 'identifiers.reveal'],
-  ADMIN:      [/* …Compliance… */ 'company.rxilIntake', 'settings.criteria', 'settings.requiredDocuments'],
-  DEVELOPER:  ['crm.read'],
-  API_USER:   [],
-};
-```
-
-**The modules table** (`src/app/modules.tsx`) declares each module once: its path, a lazy element, the capabilities it requires, its nav row (label, icon, group) and its shortcuts. The router, the rail, ⌘K and the shortcut map are all **generated from this table**, so none of them can disagree with another.
-
-```ts
-{ id: 'review', path: '/review', requires: ['compliance.queue'],
-  load: () => import('@/modules/onboarding/review'), nav: { label: 'Review', icon: 'Seal', group: 'work' },
-  shortcut: 'g r' }
-```
+- `src/platform/access/capabilities.ts` has an allowlist of capabilities per role. There is no default branch, so a role nobody listed has nothing.
+- `src/routes/modules.ts` declares each module once: its path, its lazy screen, the capabilities it requires and its nav row.
+- The router, the side navigation, the search's *Pages* group and the shortcut list are all generated from that table, so they cannot disagree.
+- **This plan changes only the table's labels and icons.** It also adds `/approvals` and the *Pipeline* nav row, and drops the per-module `g` shortcut keys.
 
 ### 4.3 The failure modes, all closed
 
 | Situation | What renders |
 |---|---|
-| Role not in the manifest (a new backend role, a typo, `undefined`) | Zero capabilities: the **No workspace** screen |
-| `/auth/me` still loading | The shell's skeleton only. No rows, no module |
-| `/auth/me/permissions` loading or failed | No permission-derived capability, so no Users/Roles rows. Role capabilities are unaffected |
-| URL for a module the role lacks | **The same `NotFound` as a URL that does not exist**: same component, same copy, same document title. Never "Administrators only" or "You don't have access" |
-| Module code for a role that lacks it | Never downloaded. `React.lazy` sits *inside* the gate, so the import only runs once the gate passes |
-| Data for a section the role lacks | Never requested. Gated hooks take `enabled: can(cap)`; a console with no 403s is the test |
-| The server says 403 anyway (manifest drift) | The section renders the neutral "This isn't available" inline state, never partial content. In development a `console.warn('[access drift]', route, role)` makes the drift loud |
-| A nav row, a button, a command and a shortcut for the same thing | All derived from the same capability, so they appear and disappear together |
-| A disabled control for something the role may never do | Not allowed. It is **absent**. Disabled is reserved for "allowed, but not right now" (for example a save button while a request is in flight) |
-
-**No workspace.** API user, an unknown role, or a role with no CRM capability gets one quiet page with no rail, no CRM words and no counts: the brand mark, "Your account doesn't have access to a workspace yet. Ask an administrator.", a link to *My profile* (permitted for every role) and *Sign out*.
+| Role not in the manifest (a new backend role, a typo, `undefined`) | No capabilities: the **No workspace** page |
+| `/auth/me` still loading | The shell's skeleton only |
+| `/auth/me/permissions` loading or failed | No Users/Roles sections; role capabilities unaffected |
+| URL for a module the role lacks | **The same Not found page as a URL that does not exist**: same component, same copy, same document title |
+| Module code for a role that lacks it | Never downloaded (`React.lazy` sits inside the gate) |
+| Data for a section the role lacks | Never requested (`enabled: can(cap)`) |
+| The server says 403 anyway (manifest drift) | An inline "This isn't available" in that card. In development, `console.warn('[access drift]', …)` |
+| A disabled control for something the role may never do | Not allowed: it is **absent**. Disabled means "allowed, but not right now" |
 
 ### 4.4 Guards in code, and what keeps them honest
 
-- **`<Gate requires={…}>`** wraps every module route and returns `NotFound` when unmet. **`useCan(cap)`** covers individual controls. Both are exported only from `@/platform/access`.
-- **A lint rule** bans `role ===`, `role !==`, `.role ==` and imports of the old `is*Role` helpers outside `src/platform/access/**` (ESLint `no-restricted-syntax` + `no-restricted-imports`). A new screen *cannot* invent its own role check.
-- **A generated matrix test** iterates over 5 roles × every module in the table and asserts, for each pair: the rail row is present or absent; the route renders the module or the generic `NotFound`; and **no gated request fires** (fetch spy). It replaces and extends `Sidebar.test.tsx` and `routes.test.tsx`.
-- **A per-role "nothing forbidden in the DOM" test** renders each desk and each dossier chapter as Developer and as API user, and asserts that none of a fixed list of forbidden strings appears ("Background check", "Approve", "Record a decision", "Reveal value", "Qualification criteria", …).
-- **A drift check against the server's table** (ask A7, §13). The backend exports its gated-route table as JSON, and a vitest asserts every manifest capability's routes have exactly the roles the server allows. Until A7 lands, the manifest carries a comment block listing the route-table rows it mirrors, and Phase 0 review checks it by hand.
+- `<Gate requires={…}>` wraps every module route. `useCan(cap)` covers individual controls. Both are exported only from `@/platform/access`.
+- A lint rule bans `role ===`, `role !==` and the old `is*Role` helpers outside `src/platform/access/**`.
+- The matrix test (`src/routes/access.matrix.test.tsx`) checks every pair of 5 roles × every module: the nav row is present or absent, the route renders or shows Not found, no gated request fires, and no forbidden text appears. **Phase 1 changes what it compares.** The search *Pages* group and the shortcut list must equal the nav. The `g` keys go away.
+- The drift check against the server's route table waits on ask A7 (§13).
 
 ### 4.5 The two layers, kept apart
 
-1. **Module visibility**: the client manifest, by role, coarse. It answers "does this role have this module at all?"
-2. **Action availability**: served by the server, per record. It answers "what may this user do to *this* company or deal *now*?" (`allowed_moves` and friends).
+1. **Module visibility** comes from the client manifest. It is coarse and by role: "does this role have this module at all?"
+2. **Action availability** comes from the server, per record: "what may this user do to *this* company or deal *now*?"
 
-The redesign never uses layer 1 to decide an action the server serves through layer 2. The one exception is a *module* whose every action needs a capability (the Review queue), and that is layer 1 by definition.
+The client never uses layer 1 to decide an action the server serves through layer 2.
 
 ---
 
-## 5. Design language: Ink & Paper
+## 5. Design language: standard enterprise
 
 ### 5.1 Principles
 
-1. **Colour is information.** The chrome is ink on paper, with no brand hue anywhere. Green, red, amber and the one blue are each spent on a single meaning, so a glance at a screen says what is wrong with it.
-2. **Paper, not panels.** Structure comes from typography, whitespace and hairlines, not from boxes. A border has to earn its place, and a box inside a box is never needed.
-3. **One signature object.** A company is always drawn the same way, as its **Standing** (§6.1): in a list row, on a board card, in a search result, on a deal, in the dossier header. Learn it once and read it everywhere.
-4. **Verbs over forms.** The screen asks "what do you want to do?" and opens the smallest surface that does it: an inline edit, a segmented choice, a composer, a step sheet. A long form is a design failure (§9).
-5. **Every role gets its own desk.** The home screen answers "what is mine to do now?" for the person signed in, not "here are some numbers".
-6. **Keyboard-first, mouse-friendly.** Every action has a pointer path. The frequent ones also have a key (§7.4).
-7. **Motion explains change.** When a gauge moves, its lamp travels along its track. When a list filters, rows settle instead of popping. Nothing moves for decoration.
-8. **Honest states.** Skeletons are shaped like what they replace. Errors give the server's words and a retry. Prototype limits wear a "prototype" tag. A missing count says "200+", never a guess.
+1. **Familiar before novel.** Every pattern on screen has a counterpart in Salesforce, Dynamics, HubSpot or Fiori (§18.3). A pattern without one needs a stated reason.
+2. **Colour has two jobs.** The brand blue marks what you can act on: primary buttons, links, the selected nav item and the current path step. The status colours mark state. Nothing else is coloured.
+3. **Status in words.** A badge always shows its label. Colour and icon support the label; they never replace it.
+4. **One level of container.** White cards sit on a grey page. A card never holds another card; inside one, headings and dividers give the structure.
+5. **Dense enough for daily work.** 14 px body text, 32 px controls, two-line list items. At 1366 × 768, a common office laptop, a record's header and its first card are visible without scrolling.
+6. **Actions where enterprise users look for them.** A record's actions sit top-right of its header and a card's actions top-right of the card. There is one primary button per view.
+7. **Calm motion.** Menus, popovers, dialogs and the side panel fade or slide in 150 ms. Nothing moves when data changes, except a toast.
+8. **Honest states** (kept): shaped skeletons, errors in the server's words, "Prototype" labels, "200+".
 
-**Never** (this is the list that keeps it from looking generated): purple, violet, indigo or any gradient · glassmorphism or backdrop blur · emoji or sparkles · a row of four KPI tiles · uppercase tracked-out micro-labels on every field · pills on everything · drop shadows on resting surfaces · centred empty states with a large icon in a circle · Inter · cards inside cards · a six-column data table as the main view of anything.
+**Never**: a display serif · monospace for ordinary values · cream or beige backgrounds · gradients, glass or backdrop blur · emoji · status shown only as a glyph or a colour · time-of-day greetings · single-letter or chorded navigation keys · cards inside cards · a data grid as the main view of anything · a long scrolling form · an invented name for a standard CRM thing.
 
 ### 5.2 Colour tokens
 
-Every token is a CSS variable holding an RGB triplet, as today, so Tailwind opacity modifiers keep working. The **names change** (`brand-*`, `slate`-like greys and `status-info` go). §14 Phase 1 does the rename with a codemod.
+The mechanism stays: CSS variables holding RGB triplets, the Tailwind mapping, and `tokens.contrast.test.ts`. **Token names stay**, so screens do not churn. The values change, and one group (`accent`) is added.
 
-**Neutrals: paper and ink**
+**Neutrals**
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `paper` | `#F5F3EE` | `#12110E` | App background |
-| `surface` | `#FFFFFF` | `#1A1915` | Sheets, dossier body, composer |
-| `raised` | `#FFFFFF` | `#201F1A` | Popovers, menus, ⌘K (with the one floating shadow) |
-| `sunken` | `#EEEBE4` | `#24221D` | Wells, segmented tracks, hover fill, code |
-| `line` | `#E3DFD5` | `#2E2C25` | Hairlines, dividers |
-| `line-strong` | `#CFC9BC` | `#3E3B33` | Input borders, the focus offset |
-| `ink` | `#17160F` | `#F2EFE6` | Primary text, **primary button fill**, focus ring, selection |
-| `ink-2` | `#4A473E` | `#CFCABD` | Secondary text |
-| `ink-3` | `#6B675C` | `#A39E90` | Labels, metadata (AA on `surface` in both themes) |
-| `ink-4` | `#9C978A` | `#6E695E` | Placeholders and decorative glyphs only, never text that must be read |
+| `paper` | `#F3F3F3` | `#1B1B1B` | Page background |
+| `surface` | `#FFFFFF` | `#242424` | Cards, record header, side panel body |
+| `raised` | `#FFFFFF` | `#2C2C2C` | Menus, popovers, search results |
+| `sunken` | `#F5F5F5` | `#2E2E2E` | Hover fill, wells, upcoming path steps |
+| `line` | `#E0E0E0` | `#3A3A3A` | Card borders, dividers |
+| `line-strong` | `#8A8A8A` | `#8F8F8F` | Input borders (3:1 on `surface`, WCAG 1.4.11) |
+| `ink` | `#242424` | `#F0F0F0` | Primary text |
+| `ink-2` | `#424242` | `#D6D6D6` | Secondary text |
+| `ink-3` | `#616161` | `#ADADAD` | Labels, metadata (AA on `surface` and `paper`) |
+| `ink-4` | `#8A8A8A` | `#7A7A7A` | Placeholders and decorative marks only |
 
-**Meaning: each hue spent once.** Each meaning has three roles: `fg` for text and icons (AA on `surface`), `tint` for backgrounds, and `solid` for dots, fills and the gauge lamps.
+**Accent (new): the brand colour, for actions only**
 
-| Meaning | Used for | Light fg / tint / solid | Dark fg / tint / solid |
+| Token | Light | Dark | Use |
 |---|---|---|---|
-| `positive` | passed, qualified, clear, ready now, paid, scanned-clean | `#1D6B3F` / `#E6F2EA` / `#2F9E5B` | `#6CCB8F` / `#17291E` / `#3FAE6A` |
-| `negative` | failed, not qualified, flagged, on hold, quarantined, overdue | `#A8231B` / `#FBE9E7` / `#D83A2E` | `#F08A80` / `#2E1715` / `#E0493C` |
-| `attention` | needs review, more info, not now, paused, Re-KYC due, missing | `#7A5300` / `#FBF0D6` / `#E0A526` | `#E9C065` / `#2D2412` / `#D9A33A` |
-| `progress` | in review, reaching out, in flight, pending scan | `#2F5D8C` / `#E8EFF6` / `#4A7DB5` | `#8DB6E2` / `#16212D` / `#5A8CC4` |
-| `idle` | not started, not contacted, not yet reviewed, ended | `ink-3` / `sunken` / `#A7A193` | `ink-3` / `sunken` / `#6E695E` |
+| `accent` | `#0B5CAD` | `#75B2F0` | Links and accent text on `surface` |
+| `accent-solid` | `#0B5CAD` | `#2266B8` | Primary button, current path step, selected nav bar (white text, ≥ 4.5:1) |
+| `accent-solid-hover` | `#094C8F` | `#1D5AA3` | Hover and press on the above |
+| `accent-tint` | `#E8F1FB` | `#172A40` | Selected nav row, completed path steps |
 
-**Deliberately not coloured:**
+The blue is a placeholder until Aner's brand colour is confirmed (§17 Q1). When it is, only these four values change. The focus ring becomes 2 px `accent-solid` with a 2 px `surface` offset; it was ink.
 
-- **The journey** is *progress*, not *state*: ink dots filled 1/3, 2/3, 3/3 (`●○○ Lead`, `●●○ Prospect`, `●●● Customer`). A buyer-only company shows a dashed empty ring, "Outside pipeline".
-- **Awaiting approval** is a dashed ink outline around the gauge lamp plus a two-signature glyph. It is **not** a colour, because nothing has happened yet. (This replaces today's violet.)
-- **Selection, focus and the active nav row** are ink, never a hue.
+**Status**: the five meanings and their contrast-tested values stay (`positive`, `negative`, `attention`, `progress`, each with `-tint` and `-solid`). The exception is `idle`, which moves from warm grey to neutral: text `ink-3`, tint `#F0F0F0` / `#2E2E2E`, solid `#8A8A8A` / `#7A7A7A`. The tests must pass for every changed value before it merges.
 
-**Risk** (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`, decision 6) has a meter glyph so it never depends on colour alone. `CRITICAL` is the only filled mark, as the PDF requires:
+**Theme.** Light by default; the system preference no longer switches it. Dark stays available in the user menu and is kept at parity by the same tests. The reason is that a demo laptop set to dark mode should not demo in dark.
 
-| Risk | Mark |
+**Risk** (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`) never relies on colour alone:
+
+| Risk | Badge |
 |---|---|
-| LOW | `▂▁▁▁` positive fg on positive tint, "Low risk" |
-| MEDIUM | `▂▄▁▁` attention fg on attention tint, "Medium risk" |
-| HIGH | `▂▄▆▁` negative fg on negative tint, hairline negative outline, "High risk" |
-| CRITICAL | `▂▄▆█` **white on solid negative, 45° hatch, leading "!"**, "Critical risk" |
+| Low | positive tint, "Low risk" |
+| Medium | attention tint, "Medium risk" |
+| High | negative tint with a negative outline, "High risk" |
+| Critical | **solid negative, white text, warning icon**, "Critical risk". The only solid risk badge (PDF §3.3) |
 
 ### 5.3 Typography
 
-| Role | Face | Sizes (px / line height) | Used for |
-|---|---|---|---|
-| Display | **Instrument Serif** 400 (and italic) | 40/44 · 30/36 · 24/30 · 20/26 | Desk greeting and big numerals; company name in the dossier; page titles; deal reference title; empty-state lines |
-| UI | **Instrument Sans** (variable) 400/500/600 | 15/22 lead · **14/20 body (default)** · 13/18 secondary · 12/16 caption | Everything else |
-| Data | **JetBrains Mono** (variable) 400/500 | 12.5/18 | PAN, GSTIN, IEC, CIN, registration numbers, deal references, invoice numbers, ids |
+One family, the operating system's UI font:
 
-- Labels are **12px sentence case in `ink-3`**, not uppercase with tracking.
-- Numbers are tabular everywhere. *Verify in Phase 1* that Instrument Sans exposes `tnum`. If it does not, counts and amounts use JetBrains Mono at matching size.
-- *Verify* the `₹` glyph in both families. The fallback stack (`ui-sans-serif, system-ui`) covers it.
-- Self-hosted through `@fontsource` (no external font requests from an internal app). The serif is display-only, so only its regular and italic are loaded.
+```
+"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif
+```
 
-### 5.4 Space, shape, depth, motion
+- **Why**: it is what Dynamics 365 and Microsoft 365 render in on Windows, the demo laptop runs Windows 11, and there is nothing to download. It has tabular figures and the `₹` sign. Today none of the three bundled faces has `₹`, so amounts already mix two fonts. On macOS it renders San Francisco.
+- **If the TL wants one identical face on every machine**: IBM Plex Sans, self-hosted (open licence). Check `₹` before choosing it.
+- Remove `@fontsource/instrument-serif`, `@fontsource-variable/instrument-sans` and `@fontsource-variable/jetbrains-mono`, along with the `preload-fonts` plugin in `vite.config.ts`.
 
-- **Space**: 4px base; scale 4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 · 56 · 72. Reading width 1240px for the dossier and deal room; boards and the register use the full width.
-- **Radius**: 4 tags · 6 controls · 10 sheets and popovers · 14 dialogs. Fully round only for dots, lamps and avatars. **No pill buttons, no pill chips.**
-- **Depth**: resting surfaces have hairlines and **no shadow**. Floating layers (popover, menu, ⌘K, sheet) get the one shadow: `0 1px 0 var(--line), 0 16px 40px -16px rgb(23 22 15 / .22)` (dark: black at .6).
-- **Motion**: 120 ms for hover and press, 180 ms for popovers and sheets, 240 ms for a lamp travelling along a track. Easing `cubic-bezier(.2,.8,.2,1)` for enter and `cubic-bezier(.4,0,1,1)` for exit. Route changes use the browser's View Transitions through React Router 7's `viewTransition` prop: the company name morphs from a register row into the dossier title. Under `prefers-reduced-motion` all of it becomes instant.
+| Role | Size / line height, weight |
+|---|---|
+| Page and record title | 20/28, 600 |
+| Card title | 16/22, 600 |
+| Body (default) | 14/20, 400 |
+| Secondary | 13/18, 400 |
+| Label, caption | 12/16, 400, `ink-3`, sentence case, above its value |
+| Home counts | 24/32, 600 |
 
-### 5.5 Icons
+- **Identifiers** (PAN, GSTIN, IEC, CIN, deal and invoice references) use the UI font with tabular figures. No monospace.
+- Numbers are tabular everywhere (`font-variant-numeric: tabular-nums` on `body`).
+- No italics for display. No uppercase tracked labels.
 
-lucide is replaced by **Phosphor** (regular weight, 1.5px look) behind a single `Icon` map in `src/design/icons.ts`. Screens name icons semantically (`Icon.followUp`, `Icon.seal`), so the set can change in one file. Glyphs carry meaning only together with a label or a shape.
+### 5.4 Layout, space and density
 
-### 5.6 Voice
+- 4 px grid. Spacing scale: 4 · 8 · 12 · 16 · 24 · 32.
+- App header 48 px. Side navigation 224 px; it collapses to 56 px by a button, and the choice is remembered per viewer.
+- Page padding 24 px (16 px under 768 px). Record pages use the full width: a main column, plus a 360 px right column from 1280 px. Below that they are one column.
+- **Card**: `surface`, 1 px `line` border, 4 px radius, no shadow, 16 px padding. The header row is 48 px, with the title and an optional count on the left and the actions on the right.
+- Controls are 32 px tall (28 px compact inside cards). List items are 56 px (two lines). Badges are 20 px.
+- Breakpoints to check: 1440, 1366, 1280, 1024, 768, 390.
 
-- Plain verbs on buttons: "Log a call", "Open a deal", "Propose Clear", "Hand over". Never "Submit", never "Proceed".
+### 5.5 Shape and depth
+
+- Radius: 4 px for controls, badges and cards; 8 px for dialogs, the side panel and menus. Only avatars and status dots are round, so there are no pill buttons.
+- Resting surfaces have a border and no shadow. Floating layers (menus, popovers, search results, dialogs, side panel) share one shadow: `0 4px 16px rgb(0 0 0 / 0.14)` (dark: `/ 0.5`).
+
+### 5.6 Motion
+
+- 100 ms for hover and press. 150 ms fade or slide for menus, popovers, dialogs and the side panel.
+- Removed: page view transitions, the lamp travel and the list settle (`lib/viewTransition.ts`, `lib/motion.ts`).
+- Under `prefers-reduced-motion`, all of it is instant.
+
+### 5.7 Voice and copy
+
+- **Standard CRM nouns** (§18.1): Home, Companies, Pipeline, Follow-ups, Approvals, Details, Activity, Deals, Documents, History.
+- **Buttons are a verb and an object**: "New company", "Log a call", "Open deal", "Hand over", "Approve". Never "Submit" or "Proceed".
 - Sentence case everywhere. The number comes before the noun: "3 overdue".
-- A refusal is shown **in the server's words** (the API's `message`), introduced by what the person tried: "Couldn't hand over: the seller's background check is not clear."
-- RM in the UI, never "Operations" (IQ-13). "Aner Labs" as the product name (P1-4).
-- No exclamation marks and no "Oops". An empty state is one sentence and, if the role may act, one verb.
+- **A refusal is shown in the server's words**, introduced by what was tried: "Couldn't hand over: the seller's background check is not clear."
+- "RM", never "Operations". "Aner Labs" as the company and "Exporter CRM" as the product.
+- **Empty states are one plain line**, plus one action if the role may act: "No follow-ups due." Use no illustrations, taglines, greetings or exclamation marks.
+- **Not found**: "Page not found. The page you asked for doesn't exist." plus *Go to Home*. It is identical for a forbidden module (§4.3).
 
-### 5.7 Brand mark
+### 5.8 Brand and icons
 
-A solid ink square with a lower-case italic *a* set in Instrument Serif, knocked out in paper, beside the wordmark "Aner Labs" in Instrument Sans 600. The favicon is the square alone. No hue, no gradient.
+- **Brand**: the "Aner Labs" wordmark (16/600, `ink`) with "Exporter CRM" in `ink-3` beside it, the way Salesforce and Dynamics name the app in the header. The favicon is a white "A" on an `accent-solid` square. Both are placeholders until a logo exists (§17 Q1).
+- **Icons**: **Fluent UI System Icons**, regular, 20 px (MIT licence, Microsoft), the set Dynamics and Microsoft 365 use. Screens name icons by meaning through the existing `Icon` map, and `scripts/build-icons.mjs` copies only the glyphs used. The swap is the map plus the script, and Phosphor is removed.
 
 ---
 
-## 6. Signature components
+## 6. Components
 
-These are the domain primitives the screens are built from. Each lives in `modules/onboarding/components/` (domain) or `src/design/` (generic) and gets a test and a dev-only style-guide entry (§12.4).
+These are the parts the screens are built from. Generic ones live in `src/components/ui`, CRM ones in `modules/onboarding/components`. Each one gets a style-guide entry and tests for every state, including what Developer does not see.
 
-### 6.1 Standing: one company, several gauges
+### 6.1 App header
 
-The PDF's concept view ("the same dashboard, three companies") drawn as a component. **Three sizes, one grammar**:
+48 px, `surface`, a bottom border. From left to right:
 
-```
-inline   ●●○ Prospect   ✓ Qualified   ◕ Interested   ◔ In review
-card     ●●○  ✓  ◕  ◔        (lamps only, label on hover)
-hero     ┌ Journey ───────┬ Qualification ─┬ Conversation ──┬ Background check ───────┐
-         │ ●●○ Prospect   │ ✓ Qualified    │ ◕ Interested   │ ◔ In review  · cycle 2  │
-         │ next: Clear    │ 12 Sep         │ log a call     │ 3 of 7 screened         │
-         └────────────────┴────────────────┴────────────────┴─────────────────────────┘
-```
+- the wordmark (links Home);
+- search (§7.5);
+- **+ New ▾** (only when the role has a create capability): *New company*, *Import companies*, and *RXIL intake* for Admin;
+- the user menu: name, role label, theme (Light / Dark), *My profile*, *Sign out*.
 
-- **Lamp grammar** (shape and colour, never colour alone):
-  - Qualification: `◌` not yet reviewed (idle) · `✓` qualified (positive) · `✕` not qualified (negative).
-  - Conversation: `◌` not contacted · `◔` reaching out · `◑` spoke to them · `◕` interested (all progress, the quarter-fill is the warmth) · `‖` not now (attention, with the check-back date) · `●` ready now (positive).
-  - Background check: `◌` not started · `◔` in review (progress) · `?` more info (attention) · `●` clear (positive, with the risk meter) · `▲` flagged (negative) · `■` on hold (negative). A dashed ring overlay means awaiting approval. An attention dot means Re-KYC due.
-- **Marker**: `‖ Paused` (attention) or `— Ended` (idle, name struck through in lists).
-- **Role-aware**: for Developer, **the background-check lamp is not rendered** (D8). Absent, not greyed.
-- **Hero is interactive**: each segment opens its chapter. The "next" line comes **only** from served data (for example `allowed_moves` includes `IN_REVIEW` → "start the check"). It is never computed from rules held on the client.
-- **Data** (fallback until ask A1): list items carry `journey`, `qualification`, `marker`, `pipeline_status` but **not** `conversation` or `background_check`. Until A1, `inline` and `card` show journey, qualification and marker, plus the other two lamps where the page already has them. `hero` always has all four, because the dossier loads them.
+### 6.2 Side navigation
 
-### 6.2 Gauge track: the conversation as something you move along
+- Labelled rows with an icon. *Settings* sits at the foot, then a *Collapse* button.
+- The selected row has an `accent-tint` fill, a 3 px `accent-solid` bar on the left and `accent` text.
+- Collapsed, it shows 56 px of icons with tooltips. Under 1024 px it is hidden behind a menu button in the header and opens as a drawer.
+
+### 6.3 Page header and record header
+
+**Page header** (list pages): breadcrumbs, the title, and the page's actions on the right.
+
+**Record header** works like the Salesforce highlights panel or the Dynamics form header: what the record is, its key fields, and its actions.
 
 ```
-  Not contacted ── Reaching out ── Spoke to them ── Interested ──┬── Ready now
-        ◌               ◔              ◑             ◕ (you are here)   ●
-                                                                 └── Not now ‖  [ check back on ▾ 12 Nov ]
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│ Company                                                                              │
+│ Bharat Precision Metals                            [Log a call] [Open deal] [More ▾] │
+│ Precision engineering · Mumbai, India · RM R. Mehta                                  │
+│ ──────────────────────────────────────────────────────────────────────────────────── │
+│ Journey      Qualification   Conversation   Background check            PAN          │
+│ Customer     Qualified       Ready now      Clear · Low risk            ••••••1234F  │
+│                                             until 3 Oct 2027                         │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│ ( ✓ Lead )>( ✓ Prospect )>(  Customer  )      Customer since 3 Oct 2026              │
+└──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Nodes the server lists in `GET …/conversation/moves` are clickable. The others are drawn but inert. When there are no moves, the track has no clickable node and no explanation is needed.
-- Choosing **Not now** opens a date popover inline (not in the past, as the server checks). Choosing **Ready now** offers "Open a deal" in the same popover, as `OpenDealPrompt` does today.
-- On success the lamp travels to the new node (240 ms) and a ledger line appears.
+- The object type ("Company", "Deal") sits in 12 px `ink-3` above a 20/28 title, with one metadata line under it.
+- **Key fields**: up to six, label above value. Statuses are badges (§6.4). For Developer the Background check field is absent, not greyed.
+- **Actions**: built **only** from served fields. At most three buttons show, the first primary; the rest go under *More ▾*. When nothing applies, there are no buttons. Developer gets none.
+- Under the header, the **Path** (§6.5).
+- **On scroll** the header compresses to a sticky bar with the title, the badges and the actions (the Fiori dynamic page header behaves the same way).
 
-### 6.3 Check runway: the background check as a state map
+### 6.4 Status badge
+
+- 20 px tall, 4 px radius, a tint background, text in the meaning's colour, and a leading 6 px dot in its solid colour.
+- **Tones**: positive, negative, attention, progress, neutral.
+- **Two special forms**: *outline* for "Awaiting approval" (nothing has happened yet, so it has no fill), and *solid* for Critical risk only.
+- The wording for every gauge is in §18.2.
+- It replaces `Tag` as a status display, `Lamp`, `Standing`, and the chip components (`JourneyChip`, `QualificationChip`, `MarkerBadge`, `DealStageChip`, `VerificationStatusChip`, `ScanStatusBadge`, `RiskChip`, `TradeOutcomeChip`, `ComplianceCheckChip`). Their label maps stay, so the wording and the tests that assert it carry over.
+
+### 6.5 Path
+
+These are chevron steps, as in Salesforce Path and the Dynamics business process flow:
+
+- **completed** steps: `accent-tint` with a check;
+- **current**: `accent-solid` with white text;
+- **upcoming**: `sunken`;
+- one guidance line beside the path for the current stage (for example "Qualify the company to move it to Prospect.").
+
+It has three uses:
+
+| Path | Steps | Clickable? |
+|---|---|---|
+| **Journey** (record header) | Lead → Prospect → Customer | **Never**: the journey is never moved by hand. A buyer-only company shows an "Outside pipeline" badge instead of a path |
+| **Conversation** (Activity tab) | Not contacted → Reaching out → Spoke to them → Interested → Ready now | A step is clickable **only if** the server lists that move (`GET …/conversation/moves`). Clicking selects it and shows *Mark as current*, as Salesforce Path does. *Not now* is a button beside the path that opens a date popover (not in the past). *Ready now* offers *Open deal* |
+| **Deal stage** (deal header) | Open → Gathering paperwork → Handed over | Never. Moves are header buttons from `allowed_stage_moves`. A withdrawn deal shows a "Withdrawn" badge instead of the path |
+
+The guidance line is fixed text per stage. It names what moves a stage on and never offers a move the server did not list.
+
+### 6.6 Card and related-list card
+
+- **Card**: a header row (title, count, actions), a body, and an optional footer link.
+- **Related-list card** (the record's right column): up to three items, as Salesforce shows in a narrow column. The footer *View all* opens the matching tab. *+ Add* sits in the header when the role may add.
+
+### 6.7 Record list item: the list without a table
 
 ```
- Not started ─▶ In review ◀──▶ More info
-                   │  ╲
-                   │   ╲──▶ Flagged ──▶ On hold
-                   ▼          ╲________╱──▶ (back to In review)
-                 Clear ┄┄ awaiting ✍︎ second signature (proposed by R. Mehta, 11:02)
-                   │
-                   └──▶ (reopen) In review
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│ Bharat Precision Metals                          Customer  Qualified  Clear · Low risk│
+│ Precision engineering · Mumbai · PAN ••••••1234F · RM R. Mehta                        │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│ Coastal Seafood Exports                          Prospect  Qualified  Flagged        │
+│ Seafood · Kochi · PAN ••••••7781K · RM S. Rao                                        │
+└──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- The current node is solid. **Outgoing edges are drawn only for `allowed_moves`**. Choosing an edge opens the decision composer (§6.10) for that move.
-- An `open_proposal` draws a **dashed** target node with two signature slots: proposer ✓, approver ○. For a second officer the slot reads "Approve" / "Reject" (`allowed_actions`); for the proposer it reads "Withdraw".
-- Below it, **Required for Clear**: KYB, AML and Sanctions as three lamps, from `required_checks`. Beside them, the server's `clear_blocked_reasons` as a short "still needed" list.
+- Two lines. The title is a link (14/600); under it is one line of key facts (13 px, `ink-2`). The badges sit on the right.
+- The whole row is the link. It gets a `sunken` hover fill and sits in normal tab order.
+- There are no column headers and no sortable grid. Filtering and order come from the list's own controls, on the server (as Fiori's object list item and Salesforce's split-view list work).
+- One component serves companies, deals, users, follow-ups and approvals. The facts line and badges differ per use.
 
-### 6.4 Pre-flight: the handover guard as a checklist
+### 6.8 Activity timeline and composer
+
+As in the Salesforce activity timeline and the Dynamics timeline:
+
+- **Composer** at the top, with tabs *Call · Meeting · Email · Note · Task · Follow-up*. Each tab has a subject, an optional body, and a due date for a follow-up. Staff only.
+- **Upcoming**: open follow-ups by due date. **Past activity**: entries grouped by month, each with an icon, title, who and when, and expandable.
+- Today's paging stays: 8 per page, then *Show earlier*.
+
+### 6.9 Side panel
+
+The quick-create and quick-action surface, as in Dynamics quick create and HubSpot's create panel:
+
+- A right-hand panel, 480 px wide (full width under 768 px), over a dimmed page.
+- A header with the verb ("New company", "Record a decision") and a close button. The fewest fields possible. A footer with one primary button and *Cancel*.
+- A 422 that names a field (`detail[].loc`) is shown on that field; anything else goes in the footer. Focus returns to the trigger on close.
+- It replaces `Composer` and `FormPanel`. Their logic and variants stay (§9).
+
+### 6.10 Inline edit field
+
+- Label above value. A pencil appears on hover and focus, as in Salesforce inline edit.
+- *Enter* saves and *Esc* cancels. The server's error appears under the field.
+- Staff only; every other role sees plain text. This is the existing `Editable`, restyled.
+
+### 6.11 Handover checklist
 
 ```
- Ready to hand over?                                  4 of 6
+ Handover readiness                                                   4 of 6 met
  ✓ Seller is a customer
- ✓ Seller's background check is clear and current (until 3 Oct 2027)
+ ✓ Seller's background check is clear (until 3 Oct 2027)
  ✓ A buyer is recorded
- ✕ Buyer's AML is not passed                          Record on buyer ▸
- ✓ Invoicing branch recorded — Maharashtra
- ✕ Pre-shipment document missing                      Upload ▸
+ ✕ Buyer's AML is not passed                                          Go to buyer ›
+ ✓ Invoicing branch recorded: Maharashtra
+ ✕ Pre-shipment document missing                                      Upload ›
 ```
 
-- **With ask A3** (structured conditions): one row per condition, each with an optional deep link to where it is fixed. The link appears only if the role may act there.
-- **Fallback (today)**: one attention callout with `handover_blocked_reason` verbatim: "Not ready to hand over: …". The plan does **not** split the server's string on `;` to fake rows.
+- **With ask A3** (structured conditions): one row per condition, with a link where the role may act.
+- **Fallback (today)**: one attention message with `handover_blocked_reason` verbatim. The client never splits the server's sentence into rows.
 - Developer gets neither, because the server gives Developer no reason (D8).
 
-### 6.5 Ledger: history in lanes
+### 6.12 Pipeline board
 
-```
- Filter  [All] [Journey] [Qualification] [Conversation] [Deals] [Background check] [Documents]
- ─ 3 Oct 2026 ───────────────────────────────────────────────────────────────────────────
- 11:04  ● Background check   Clear · Low risk           approved by A. Khan, proposed by R. Mehta
-        ●●● Journey          Prospect → Customer        (same moment)
- 10:12  ◕ Conversation       Spoke to them → Interested  by R. Mehta
- ─ 2 Oct 2026 ───────────────────────────────────────────────────────────────────────────
- 16:40  ▤ Deal DL-0041       Open → Gathering paperwork  by R. Mehta
-```
+- Three columns: **Lead**, **Prospect**, **Customer**, each with a capped count.
+- **Cards** show the name, city and country, the qualification badge, the background-check badge (staff, once A1 lands) and the RM.
+- **No drag.** The column header says what moves a company on.
 
-- Lanes come from the history row's `dimension`, and a lane filter uses the route's existing `?dimension=` parameter, so filtering is done by the server. Lane chips are generated from the dimensions actually present, so Developer never sees a "Background check" chip (the server sends Developer no such rows).
-- **Rows that share a `created_at` are one event** (they were one transaction, architecture §8) and render as one entry with sub-lines, honestly labelled "same moment". Their order within the event is not presented as chronological.
-- Hovering an entry with evidence (a decision) opens its evidence in a hover card (P2-1a's resolved evidence).
+### 6.13 Split view
 
-### 6.6 Identifier
+A list of record list items on the left (360 px) and the selected record on the right, as in Salesforce split view and Fiori list-detail. The selection is kept in the URL, so a link opens the same item. Used by Approvals (§8.8).
 
-`<Identifier kind="PAN" value={…} />` replaces `MaskedValue` at every call site. It renders in mono; it shows the eye **only** for `identifiers.reveal`; it offers copy **only** once revealed (copying bullets is useless, and a copy button beside a masked value invites the question). Values arrive masked from the server for masked roles, as now.
+### 6.14 Identifier
 
-### 6.7 Party card
+Behaviour is unchanged (§3.1). It renders in the UI font with tabular figures, the eye shows only for `identifiers.reveal`, and *Copy* only once revealed.
 
-The company mini-dossier for any place a second company appears: the deal room's seller and buyer, trade relationships, match results. Shows the name (serif 18), country, the Standing `inline`, and for staff the compliance summary (`CompanyComplianceSummary`, restyled). It links to the dossier.
+### 6.15 Other primitives
 
-### 6.8 Shelf: documents by category
-
-Documents grouped by category as a shelf of file tiles (name, type, size, uploaded by and when, scan state). `PENDING_SCAN` has a slow progress pulse. `QUARANTINED` and `SCAN_FAILED` are negative and never downloadable. The "pass-through scanner" prototype tag sits on the shelf, not on each file. Uploading is a drop zone on the shelf: drop a file, choose its type in a popover, done. On a deal, the shelf marks **required categories** (from `/settings/deal-required-documents`) with ✓ or ✕.
-
-### 6.9 Smart entry
-
-One input that understands what was typed: a PAN (`AAAAA9999A`), a GSTIN (15 characters with an embedded PAN), an IEC, a CIN, or a name. It shows the detected kind as a tag, and live-checks it with `POST /companies/match` (debounced; staff only). Used by *Add company* and by *Choose buyer* on a deal. The masked-role rule (BQ-2) holds: an exact identifier may *name* a company, with its identifiers still masked.
-
-### 6.10 Composer
-
-The bottom sheet (or right sheet on wide screens) that replaces the `FormPanel` box. It has a title verb, the fewest fields, a footer with one primary action, and server errors placed against their field when the error names one. Variants: **activity** (type, subject, optional due), **decision** (move, reason, risk, evidence, with a summary step for Clear: "this Clear will rest on: KYB ✓, AML ✓, Sanctions ✓, 7 of 7 screened, 2 documents"), **verification result**, **review**, **withdraw a deal**, **marker** (pause or end, with reason).
-
-### 6.11 Other primitives (generic, `src/design/`)
-
-`Button` (primary ink, secondary hairline, quiet, destructive outline; sizes 32/36) · `Segmented` (Radix ToggleGroup) · `Tag` (replaces `Chip`: 4px radius, leading glyph, three tones per meaning) · `Field` · `Input` / `Textarea` / `Select` / `DatePopover` · `Editable` (click-to-edit text, number, select) · `Sheet` · `Popover` · `HoverCard` · `Toast` (sonner, restyled) · `Skeleton` (shaped) · `EmptyLine` · `InlineError` · `Kbd` · `Count` (serif numeral with "+" honesty) · `NotFound` · `NoWorkspace`.
+- **Button**: primary (`accent-solid`), secondary (white with a `line-strong` border), subtle (text only) and destructive (`negative-solid`), at 32 or 28 px.
+- **Inputs**: `Segmented`, `Select`, `DatePopover`.
+- **Overlays and feedback**: `Dialog` (confirmations), `Toast` (sonner).
+- **Navigation and structure**: `Tabs` (underlined, with an `accent-solid` bar under the selected tab), `Breadcrumbs`, `Avatar` (initials).
+- **States**: `Skeleton`, `EmptyState` (one line, one action), `InlineError`.
 
 ---
 
-## 7. Shell, navigation and the command bar
+## 7. Shell, navigation and search
 
 ### 7.1 The shell
 
 ```
-┌──────┬──────────────────────────────────────────────────────────────────────────────┐
-│  ■a  │  Companies / Bharat Precision Metals / Background check     ⌘K Find…    RM ◐ │
-│      ├──────────────────────────────────────────────────────────────────────────────┤
-│  ⌂   │                                                                              │
-│  ▦   │                                                                              │
-│  ◷   │                                (page)                                         │
-│  ✍︎   │                                                                              │
-│      │                                                                              │
-│      │                                                                              │
-│  ⚙   │                                                                              │
-└──────┴──────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│ Aner Labs  Exporter CRM     [ Search companies and pages…   Ctrl K ]   [+ New ▾]  RM ◯ │
+├───────────────┬──────────────────────────────────────────────────────────────────────┤
+│ ⌂ Home        │ Companies › Bharat Precision Metals                                  │
+│ ▦ Companies   │ ┌ record header ───────────────────────────────────────────────────┐ │
+│ ▥ Pipeline    │ └──────────────────────────────────────────────────────────────────┘ │
+│ ☑ Follow-ups  │ Details  Qualification  Activity  Deals  Documents  Background  History│
+│ ⚖ Approvals   │ ┌ tab content ─────────────────────────────┐ ┌ related cards ──────┐ │
+│               │ │                                          │ │                     │ │
+│               │ └──────────────────────────────────────────┘ └─────────────────────┘ │
+│ ⚙ Settings    │                                                                      │
+│ « Collapse    │                                                                      │
+└───────────────┴──────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Rail**: 64px of icons by default, which expands to 232px on hover or pin (state kept per viewer in `localStorage`, guarded as today). It holds the role's work modules, then a gap, then Settings at the foot. The active row is an ink bar on the left plus ink text, with no tinted fill.
-- **Context bar** (52px): the breadcrumb trail (each step a link) · ⌘K · the avatar menu (name, role label, theme: system/light/dark, My profile, Sign out). This replaces today's separate top bar.
-- **Narrow screens** (<1024px): the rail becomes a bottom bar of up to five icons for the role's modules. Settings moves into the avatar menu.
+### 7.2 App header
 
-### 7.2 Navigation per role
+As §6.1. It replaces `ContextBar`. The breadcrumbs move into each page's header, because that is where enterprise apps put them.
 
-| Rail | RM | Compliance | Admin | Developer | API user |
+### 7.3 Navigation per role
+
+| Nav row | RM | Compliance | Admin | Developer | API user |
 |---|---|---|---|---|---|
-| Desk `g h` | ✓ | ✓ | ✓ | ✓ | (no shell) |
-| Companies `g c` (register + board) | ✓ | ✓ | ✓ | ✓ | |
-| Agenda `g f` | ✓ | ✓ | ✓ | ✓ | |
-| Review `g r` | | ✓ | ✓ | | |
-| Settings (foot) `g s` | ✓ | ✓ | ✓ | ✓ | |
-| Settings → criteria, required documents | | | ✓ | | |
+| Home | ✓ | ✓ | ✓ | ✓ | (no shell) |
+| Companies | ✓ | ✓ | ✓ | ✓ | |
+| Pipeline | ✓ | ✓ | ✓ | ✓ | |
+| Follow-ups | ✓ | ✓ | ✓ | ✓ | |
+| Approvals | | ✓ | ✓ | | |
+| Settings (foot) | ✓ | ✓ | ✓ | ✓ | |
 
-**Pipeline becomes the Board view of Companies.** `/pipeline` stays as a route and opens the board directly, so links and `demo.md` keep working. The rail loses one row that duplicated another.
+- **Pipeline gets its row back.** The UI before the redesign had it, and it is the word people use in the demo. It links to `/pipeline`, which keeps redirecting to `/companies?view=board`. On that view the nav marks *Pipeline* as current, not *Companies*. The Companies page keeps a *List | Pipeline* switch.
+- Settings shows only the sections the role has (§8.9).
 
-### 7.3 URLs
+### 7.4 URLs
 
-Every current URL keeps working. New: `/review` (Compliance, Admin), `/companies?view=board` (with `/pipeline` as its permanent alias), and `/settings/*` sub-routes for its sections (`/settings/profile`, `/settings/users`, `/settings/roles`; the existing `/settings/qualification-criteria` and `/settings/deal-required-documents` stay). The dossier keeps `?tab=` with the current keys. A filtered register is a URL (`?journey=PROSPECT&q=…`), so a filter can be shared.
+Every current URL keeps working. There is one new address, `/approvals`, and `/review` redirects to it, the way `/pipeline` redirects today. The `/settings/*` sections, the `?tab=` keys and the list filters in the URL (`?journey=PROSPECT&q=…`) are unchanged.
 
-### 7.4 Keyboard
+### 7.5 Search and keyboard
 
-`⌘K` / `Ctrl K` command bar · `/` focus the page's search · `g` then `h c f r s` go to a module (only the role's) · `j` / `k` move through any list · `Enter` open · `e` edit the focused field (dossier) · `l` log an activity (dossier, staff) · `c` complete (agenda, staff) · `a` / `x` approve or reject (review, compliance; both confirm) · `?` the shortcut sheet, listing **only this role's** keys. Shortcuts never fire inside inputs.
+**Search** is a field in the app header. Ctrl+K or `/` focuses it, and its results drop down in three groups:
 
-### 7.5 The command bar (⌘K)
+- **Companies**: name, city and the journey badge. Name search works for every reader. Search by **full** PAN, GSTIN or IEC is only for `identifiers.reveal`. For a masked role, an identifier-shaped query sends nothing and shows the hint "To match a company by PAN, use New company" (unchanged rule).
+- **Pages**: the role's modules, generated from the module table.
+- **Recent**: the last eight companies opened, kept per viewer and cleared on sign-out.
 
-```
-┌ ⌘K ─────────────────────────────────────────────────────────┐
-│  bharat|                                                     │
-├──────────────────────────────────────────────────────────────┤
-│  Companies                                                   │
-│   ●●● Bharat Precision Metals          IN · Customer   ↵     │
-│   ●○○ Bharat Agro Overseas             IN · Lead             │
-│  On this company                                             │
-│   Log a call                                          l      │
-│   Open a deal                                                │
-│  Go to                                                       │
-│   Agenda                                              g f    │
-└──────────────────────────────────────────────────────────────┘
-```
+Search shows **no actions**. Actions live on the record.
 
-- Built on `cmdk` (unstyled; styled with the tokens).
-- **Find a company**: by name for every reader. By **full** PAN/GSTIN/IEC only for `identifiers.reveal` (the API refuses an identifier search for masked roles, decision 12). For RM, typing something shaped like a PAN shows a hint: "To match a company by PAN, use Add company or Choose buyer", which leads to the BQ-2 match flow.
-- **On this company / deal**: actions built from the record's served moves only (for example "Open a deal" appears iff `can_open_deal`).
-- **Go to**: the role's modules. **Recent**: the last eight companies opened, kept per viewer (id and name only) and cleared on sign-out.
+**Keyboard**: `/` and Ctrl+K go to search, Ctrl+/ lists the shortcuts (as in Salesforce), *Esc* closes a panel, menu or dialog, and Tab order is standard everywhere. **Removed**: the `g` chords, `j`/`k`, `c`, `l`, `a`/`x` and the `?` sheet. Shortcuts never fire inside inputs.
 
 ---
 
 ## 8. Screens
 
-Each screen below gives its purpose, who sees it, the layout, the interactions, its data and its fallbacks. Roles not mentioned see the screen as the matrix in §4.1 says.
+Each screen below gives its layout, what each role sees, and its fallbacks. Roles not mentioned see the screen as §4.1 says.
 
 ### 8.1 Sign in
 
-Paper background. The left half (≥1024px) holds a single serif line ("Every company, one record.") over a slow, faint line drawing of the journey track. The right half holds the form: email, password, *Sign in* (ink). Errors are inline. The theme follows the system. No illustration, no gradient, no "Welcome back!".
+- A centred 400 px card on the grey page: the wordmark, "Sign in to Exporter CRM", email, password, and *Sign in* (primary). Errors are inline.
+- It is always light. There is no split layout, tagline, illustration or line drawing.
 
-### 8.2 Desk: one per role
+### 8.2 Home
 
-The desk answers one question: **what is mine to do now?** Every section is hidden, not empty, when the role lacks it or an ask has not landed.
-
-**RM desk**
-
-```
- Good afternoon, Ritu                                         Fri 4 Oct
- 3 follow-ups overdue · 2 companies to check back on · 1 Re-KYC due
-
- Up next ─────────────────────────────────────────────── Mine | Team
-  ⚑ overdue 2d  Call back about bank statements     Aarav Textiles        c ↵
-  ⚑ overdue 1d  Send revised term sheet             Coastal Seafood       c ↵
-  ‖ today       Check back (parked "not now")       Deccan Spices           ↵
-  ◷ tomorrow    Site visit                          Bharat Precision        ↵
-
- Pipeline                                   Re-KYC due
-   48       21       9                      Bharat Precision   expires 12 Oct
-   Leads    Prospects Customers             (read only — Compliance acts)
-   ─────────────────────────────── Board ▸
-```
-
-- **Up next** merges overdue and due-soon follow-ups (`/follow-ups`, `actorId` for Mine) and due check-backs into **one time-ordered queue**, still labelled by kind. A check-back opens the conversation and is never "completed" (the two-section rule from `FollowUpsPage.tsx`, kept as two kinds in one list). `c` completes a follow-up through a popover holding its outcome.
-- **Pipeline** is three serif numerals ("200+" when capped). With ask A2 they become exact.
-- **Deals in paperwork** (ask A5) appears only once a cross-company deal list exists.
-
-**Compliance desk**
+The title is "Home". A two-column grid of cards from 1280 px, one column below. Every card is hidden, not empty, when the role lacks it or its backend ask has not landed.
 
 ```
- Good morning, Aisha
- 2 decisions await your signature · 4 companies in review · 1 Re-KYC due
-
- Awaiting your signature ─────────────────────────────────────────────
-  ● Propose Clear · Low risk   Bharat Precision    by R. Mehta 11:02   [Approve] [Reject]
-  ▲ Propose Flag               Coastal Seafood     by S. Rao   09:40   [Approve] [Reject]
-
- In review (ask A4)                     Re-KYC due
-  Deccan Spices     3 of 7 screened     Bharat Precision   expires 12 Oct   [Start Re-KYC ▸]
+ Home
+ ┌ My follow-ups                    Mine | Team ┐ ┌ Pipeline                               ┐
+ │ ⚑ Overdue 2d  Call back about statements    │ │   48          21           9          │
+ │               Aarav Textiles   [Mark done]  │ │   Leads       Prospects    Customers   │
+ │ ⚑ Overdue 1d  Send revised term sheet       │ │                         View pipeline ›│
+ │               Coastal Seafood  [Mark done]  │ └────────────────────────────────────────┘
+ │ ◷ Tomorrow    Site visit · Bharat Precision │ ┌ Re-KYC due                             ┐
+ │                           View all (7) ›    │ │ Bharat Precision    expires 12 Oct     │
+ └─────────────────────────────────────────────┘ │ Compliance starts the check            │
+ ┌ Check back on                               ┐ └────────────────────────────────────────┘
+ │ Deccan Spices     due today  Open activity ›│ ┌ Recent companies                       ┐
+ └─────────────────────────────────────────────┘ └────────────────────────────────────────┘
 ```
 
-- Approve and reject keep today's two-click confirm (`ProposalResolveDialog`) and become a popover anchored to the row.
-- **In review** needs ask A4 (a `background_check` filter on company search). Until then the section is not shown.
-- The RM sections (Up next, Pipeline) sit below, because Compliance holds every RM capability.
+| Card | RM | Compliance | Admin | Developer | Source |
+|---|---|---|---|---|---|
+| **Items to approve**: proposal, company, proposer and time, *Approve* / *Reject* (both confirm), *View all* → Approvals | | 1st | 1st | | `GET /background-check/proposals?status=open` |
+| **My follow-ups**: overdue and due within 7 days; *Mark done* opens a popover for the outcome; *Mine* / *Team* | ✓ | ✓ | ✓ | Team, read-only | `/follow-ups` |
+| **Check back on**: companies parked at "Not now" whose date has come. It opens the company's Activity tab and has no *done* (the two-kinds rule) | ✓ | ✓ | ✓ | read | existing |
+| **Pipeline**: three counts, each linking to the filtered list ("200+" when capped) | ✓ | ✓ | ✓ | ✓ | company search |
+| **Re-KYC due**: read-only for RM; *Start Re-KYC* for Compliance | read | ✓ | ✓ | | `GET /background-check/due` |
+| **Setup**: active criteria version, required document categories, users | | | ✓ | | settings APIs |
+| **Recent companies** | ✓ | ✓ | ✓ | ✓ | per viewer |
 
-**Admin desk**: the Compliance desk plus one line of **Setup** (active criteria versions, required document categories, users awaiting a role). Each item links to its setting.
+- Developer sees a neutral bar first: "Read-only access. Identifiers are masked."
+- API user gets the **No workspace** page (§8.10) and never reaches the shell.
+- *In review* (ask A4) and *Deals in paperwork* (ask A5) cards appear only once their asks land.
 
-**Developer desk**: "Read-only access. Identifiers are masked." Then Pipeline, the team's Up next as a read-only list (no `c`), and nothing from compliance.
-
-**API user**: the **No workspace** page (§4.3). It never reaches the shell.
-
-### 8.3 Companies: the register and the board
-
-**Register** (default view). Rows, not a table:
-
-```
- Companies                                       [ Register | Board ]    + Add company ▾
- [All] [Leads 48] [Prospects 21] [Customers 9]   Qualification ▾  Relationship ▾  Outside pipeline
- ───────────────────────────────────────────────────────────────────────────────────────────
-  Bharat Precision Metals            ●●● Customer  ✓ Qualified  ● Clear ▂▁▁▁        IN · R. Mehta
-  Precision engineering · 2 branches  PAN ••••••1234F
-  ───────────────────────────────────────────────────────────────────────────────────────────
-  Coastal Seafood Exports            ●●○ Prospect  ✓ Qualified  ▲ Flagged          IN · S. Rao
-  Seafood · Kochi                     PAN ••••••7781K
-  ───────────────────────────────────────────────────────────────────────────────────────────
-  Deccan Spices                      ●○○ Lead      ◌ Not yet reviewed                IN · —
-```
-
-- Each row: serif name; Standing `inline`; one muted line of identity (industry, city or branches); the primary identifier through `Identifier`; country and RM on the right.
-- **Filters are lenses**: the journey segmented control with counts (capped), plus qualification, relationship and "outside pipeline" toggles. All filtering stays on the server, as today. Lenses live in the URL.
-- **Hover** on a row prefetches the dossier (TanStack `prefetchQuery`) and shows a hover card with the hero Standing. **`j` / `k`** move the focus and **Enter** opens.
-- **Paging**: "Show more" loads the next 50. With no `total`, the footer reads "50 shown" (exact count after ask A2).
-- **+ Add company ▾** (staff only): *Add one* · *Import a CSV* · *RXIL intake* (Admin only, inside the same menu).
-- **Bulk anything**: none. The API has no bulk action, so the screen does not invent one.
-
-**Board** (`?view=board`, alias `/pipeline`): three columns (Leads, Prospects, Customers) of Standing `card`s. **No drag**, because the journey is never moved by hand. Each column header says what moves a company out of it: "Qualify to move to Prospect" and "Clear to become a Customer". With ask A1 each card shows the gauge holding it back (Lead: qualification lamp; Prospect: background-check lamp, hidden for Developer).
-
-### 8.4 Add a company: smart entry
+### 8.3 Companies list and Pipeline
 
 ```
- Add a company
- ┌──────────────────────────────────────────────────────────────┐
- │ 27AAAPL1234C1ZV                                    [GSTIN]   │
- └──────────────────────────────────────────────────────────────┘
-  ✓ Not in Aner yet.   PAN AAAPL1234C will be taken from this GSTIN.
-
-  Name     [ Lakshmi Polymers Pvt Ltd           ]
-  Country  [ India ▾ ]                           Source  [ Sales ▾ ]
-                                                          [ Create lead ]
-  Everything else (contacts, branches, industry) is added on the company itself.
+ Companies                                              [List | Pipeline]   [New company ▾]
+ ┌──────────────────────────────────────────────────────────────────────────────────────┐
+ │ All · Leads 48 · Prospects 21 · Customers 9      Qualification ▾  Relationship ▾       │
+ │ [ Search this list… ]                                                ☐ Outside pipeline│
+ ├──────────────────────────────────────────────────────────────────────────────────────┤
+ │ (record list items, §6.7)                                                              │
+ ├──────────────────────────────────────────────────────────────────────────────────────┤
+ │                                50 shown · Show more                                    │
+ └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Step 1 is one field. The kind is detected (§6.9) and `POST /companies/match` answers live: **matched** ("Already in Aner: *Bharat Precision Metals*. Open ▸", identifiers masked per role), **possible duplicate** (candidates as Party cards), **conflict** (the server's reason), or **new**.
-- Step 2 asks only what the create needs: name, country, source, plus the registration number for a foreign company (IQ-7). A duplicate PAN is refused by the server and shown in its words, with "open the other company" (the holder as a link, as today).
-- After creation the dossier opens on the profile chapter, which says what is missing.
-- **CSV import** is a drop zone. Client-side it only reads the header row and the first five lines into a preview, so the person sees what they are sending. The server's report then comes back as a list of row lines (✓ created / ⚠ warning / ✕ refused, in the server's words). The client re-implements none of the server's checks. With ask A8 (`dry_run`), the preview becomes the server's own report before commit.
+- **Filters**: the journey as tabs with capped counts; qualification and relationship as dropdown buttons; *Outside pipeline* as a checkbox. All filtering is on the server, and every filter lives in the URL.
+- **Badges on each item**: journey, qualification, and marker when paused or ended. Conversation and background check join them once ask A1 lands (background check for staff only).
+- **Prefetch** on hover and focus is kept; it is invisible.
+- **New company ▾**: *New company*, *Import companies*, and *RXIL intake* for Admin, each gated by its capability.
+- **Pipeline** view: §6.12.
+- **Identity completion** (`/companies/identity-completion`) is the same record list, with a "Missing: …" line on each company.
 
-### 8.5 Company dossier
+### 8.4 New company, import, RXIL intake
 
-```
- Companies /
- Bharat Precision Metals                                                    ‖ Pause ▾
- Precision engineering · Mumbai · since 2009 · RM R. Mehta     PAN ••••••1234F  GSTIN 2 ▾
- ┌ Journey ─────────┬ Qualification ───┬ Conversation ────┬ Background check ───────────┐
- │ ●●● Customer     │ ✓ Qualified      │ ● Ready now      │ ● Clear ▂▁▁▁ until 3 Oct 27 │
- │ since 3 Oct      │ 12 Sep · R.Mehta │ open a deal      │ cycle 2 · KYB ✓ AML ✓ San ✓ │
- └──────────────────┴──────────────────┴──────────────────┴─────────────────────────────┘
- ┌──────────────┐
- │ Now          │   ◉ Ready now, and no open deal.                          [Open a deal]
- │ Profile      │
- │ Qualification│   Profile ───────────────────────────────────────────────────────────
- │ Conversation │   Industry       Precision engineering          (click to edit)
- │ Deals & trade│   Export markets AE, DE, NL
- │ Documents  3 │   Year founded   2009
- │ Background ● │   Branches       ◉ Maharashtra 27AAA…1ZV    ◉ Gujarat 24AAA…1ZK  ⚑ flagged
- │ Ledger       │
- └──────────────┘
-```
+- **New company**: a side panel over the Companies list. `/companies/new` opens the list with the panel open.
+  - Step 1 is one *Identifier* field. The kind (PAN, GSTIN, IEC, CIN) is detected and shown as a tag. Once a name and country are known, `POST /companies/match` answers: already in the CRM (with an *Open* link, identifiers masked per role), a possible duplicate, a conflict, or new.
+  - Step 2 asks for the name, country and source, plus the registration number for a foreign company. The button is *Create lead*.
+  - A duplicate PAN is refused in the server's words, with a link to the other company. After creating, the company record opens on *Details*.
+- **Import companies**: a page with one card holding a drop zone. The preview shows the header and the first five lines as row items ("Row 2 · Lakshmi Polymers · IN"). The server's report comes back grouped as *Created*, *Warnings* and *Refused*, in its own words. The client re-implements none of the server's checks.
+- **RXIL intake** (Admin): a paste box, a parsed preview card, then *Take in*.
 
-- **Header**: serif name; one metadata line; identifiers on the right; the marker as a quiet menu built from `allowed_marker_moves` (absent when there are none). It **compresses on scroll** to an 18px name with the `card` Standing, and stays sticky.
-- **Hero Standing**: four segments, each opening its chapter.
-- **Chapters**: a sticky left rail on ≥1280px, horizontal tabs below that. Keys and `?tab=` are unchanged. Developer's rail has no *Background check* entry (unchanged rule, now through the manifest).
-- **Now** (top of the Overview chapter): at most three next actions, each built **only** from served fields: `can_record_results`, `allowed_outcomes`, the conversation moves, `can_open_deal`, `allowed_moves`, `open_proposal.allowed_actions`, `rekyc_due`. When nothing applies: "Nothing waiting on you here."
-
-**Chapter: Profile** (`overview`). Facts are inline `Editable` fields (staff only; read-only text otherwise), so there is no edit form. **Branches** (GST registrations) is a strip of branch tiles (state, mono GSTIN, active/flagged). Add a branch through smart entry; deactivate on staff; flag/unflag with a reason on `gst.flag` only. A GSTIN another company holds shows the server's warning with a link. Buyer-only companies show "Outside pipeline" and the *Bring into pipeline* verb (staff).
-
-**Chapter: Qualification**: a **scorecard**:
+### 8.5 Company record
 
 ```
- Suggestion: Qualified — every required criterion passes.         [Qualified] [Not qualified]
- ─────────────────────────────────────────────────────────────────────────────────────────
- Annual revenue      ≥ USD 100,000,000   observed [ 140,000,000 ]   [Pass|Fail|Unknown] ✎ note
- Years in business   ≥ 5                 observed [ 17 ]            [Pass|Fail|Unknown] ✎ note
- Export history      optional            —                          [Pass|Fail|Unknown]
+ Companies › Bharat Precision Metals
+ ┌ record header and journey path (§6.3) ──────────────────────────────────────────────┐
+ └──────────────────────────────────────────────────────────────────────────────────────┘
+ Details   Qualification   Activity   Deals   Documents   Background check   History
+ ┌ tab content ─────────────────────────────────────┐ ┌ Open follow-ups (2)   View all ┐
+ │                                                  │ │ Call back about statements ⚑2d │
+ │                                                  │ └────────────────────────────────┘
+ │                                                  │ ┌ Deals (2)             View all ┐
+ │                                                  │ │ DL-0041 Rotterdam · Paperwork  │
+ │                                                  │ └────────────────────────────────┘
+ │                                                  │ ┌ Contacts (3)             + Add ┐
+ │                                                  │ ┌ Documents (5)         View all ┐
+ └──────────────────────────────────────────────────┘
 ```
 
-- One row per criterion, with a `Segmented` result, an inline observed value and an evidence note (PASS/FAIL need evidence; the server says so). Changed rows collect into a sticky "Record 2 results" bar. Nothing is sent per keystroke.
-- The outcome buttons are exactly `allowed_outcomes`. *Not qualified* opens reason-code chips (served codes, `other` asks for a note).
-- Earlier outcomes and results form a small version trail under the card.
+**Header actions** come only from served fields. They replace the redesign's *Now* panel.
 
-**Chapter: Conversation**: the **Gauge track** (§6.2) on top. **People**: contacts as person tiles (name, role, primary star, masked email and phone per role) with *Add a person* as a composer. **Thread**: activities as a chronological log with a composer pinned at the bottom ("Log a call… / meeting / email / note / task / follow-up"; a follow-up asks for a due date). Filter by type with tags. Today's pagination stays (8 per page, "earlier").
+| Action | Shown when |
+|---|---|
+| Log a call | `crm.write` |
+| Record qualification | `can_record_results` |
+| Open deal | `can_open_deal` |
+| Start background check | `allowed_moves` includes `IN_REVIEW` |
+| Approve / Reject | `open_proposal.allowed_actions` |
+| Pause / End / Resume (under *More*) | `allowed_marker_moves` |
+| Bring into pipeline | buyer-only company, staff |
 
-**Chapter: Deals & trade**:
+**Tabs.** The `?tab=` keys are unchanged; only the labels change.
 
-```
- Selling ───────────────────────────────────────────────────────────── [Open a deal]
-  DL-0041  Rotterdam shipment   Open ━━●━━ Paperwork ━━○ Handed over    → Rotterdam Trading BV
-  DL-0033  Hamburg order        Open ━━━━━ Paperwork ━━● Handed over    → Hanse Metall GmbH
- Buying ─────────────────────────────────────────────────────────────────────────────
-  DL-0052  (from Lakshmi Polymers)  Paperwork                           ← Lakshmi Polymers
- Trade ──────────────────────────────────────────────────────────────────────────────
-  Bharat Precision → Hanse Metall GmbH     ● ● ● ◐ ○   5 invoices · EUR, USD
-```
+| Tab | `?tab=` | Content |
+|---|---|---|
+| **Details** (default) | `overview` | *Company information* card: facts in two columns as inline-edit fields (staff), read-only text otherwise. *GST registrations* card: branch items with state, GSTIN, and Active / Flagged badges; *Add branch* (side panel); deactivate (staff); flag and unflag with a reason popover (`gst.flag`). A GSTIN another company holds shows the server's warning with a link. The identity gaps notice |
+| **Qualification** | `qualification` | The server's suggestion as a banner. One item per criterion: *Pass / Fail / Unknown* (segmented), the observed value, and an evidence note (PASS and FAIL need evidence; the server says so). Changes collect into a sticky "Record 2 results" bar, and nothing is sent per keystroke. Outcome buttons are exactly `allowed_outcomes`; *Not qualified* opens the served reason codes. Earlier outcomes sit in a collapsed section |
+| **Activity** | `conversation` | The conversation path (§6.5) and *Not now*, then the composer and timeline (§6.8). Contacts are in the right column |
+| **Deals** | `deals` | *Selling* and *Buying* cards of deal items (reference, title, stage badge, counterparty). The *Trade* card: one item per relationship, with invoice counts by outcome as badges ("3 paid · 1 unpaid · 1 no outcome recorded"). Expanding one shows its invoices. Amounts stay in their currency and are **never totalled** (IQ-4). *Record a past invoice* (staff) |
+| **Documents** | `documents` | Items grouped by category: name, type, size, who uploaded it and when, and a scan badge. *Quarantined* and *Scan failed* are never downloadable. Upload is a drop zone on the card plus a type select. "Prototype: pass-through scanner" is on the card, not on each file |
+| **Background check** | `background-check` | §8.5.1. Absent for Developer |
+| **History** | `history` | Entries grouped by day. Rows that share a timestamp are one entry, labelled "same moment". A filter by area uses the existing `?dimension=`, and its options come from the dimensions actually sent. Read-only |
 
-- Deals are rows with a mini route of their stage and the buyer. *Open a deal* appears iff `can_open_deal`.
-- **Trade**: relationship rows with one dot per invoice, coloured by its latest outcome (paid, partial, unpaid, disputed, unknown, and a hollow dot for "nobody looked yet", which `TradeOutcomeChip` already keeps apart). Opening a relationship expands its invoices and outcome chains. Amounts stay in their own currency and are **never totalled** (IQ-4).
+**Right column** (from 1280 px; below that it follows the tab content): *Open follow-ups*, *Deals*, *Contacts* (with *+ Add* as a side panel) and *Documents*, as related-list cards (§6.6). Developer sees no *Add*.
 
-**Chapter: Documents**: the **Shelf** (§6.8) for company documents, with upload on staff.
-
-**Chapter: Background check** (`compliance.read`; absent for Developer):
-
-```
- ◔ In review · cycle 2 (Re-KYC, started 1 Oct)                 Cycle  1 · [2]
- ─ Check runway ─────────────────────────────────────────────────────────────────────
-   (§6.3 map, edges only for allowed_moves)
- ─ Required for Clear ──────────────────────────  ─ Still needed ───────────────────────
-   KYB ✓   AML ◔ in review   Sanctions ◌          AML has no accepted review
-                                                   Sanctions not recorded
- ─ Screening  5 of 7 ─────────────────────────────────────────────────────────────────
-   ✓ Sanctions lists checked            passed · A. Khan · 1 Oct      📎 1
-   ✓ Bank statements reviewed           passed · A. Khan · 1 Oct
-   ◌ Suspicious bank indicators         [Pass] [Fail] [Exempt] [Needs review]   (p f e n)
-   …
- ─ Verifications ─────────────── [All] [Manual] [Automated] [Needs review] ───────────
-   KYB        ✓ Passed   manual · A. Khan · 30 Sep   evidence: registry extract   ⋯ review
-   AML        ◔ Review   manual · S. Rao · 1 Oct     awaiting review              [Review]
- ─ Decisions (by cycle) ──────────────────────────────────────────────────────────────
-   Ledger-style list; each opens its pinned evidence.
-```
-
-- The **screening runway** gives Compliance one row per item and keyboard decisions (`p f e n`, then an optional comment and evidence). It is read-only for RM, from `capabilities.can_record_decision` as today.
-- **Verifications** are cards grouped by check type, with provenance tags (`Manual`, `Stub`, `Provider`, and "placeholder" stays loud). *Record a result* and *Review* are composers, offered only on `compliance.decide` and the server's capabilities.
-- **Bank activity** stays one honest line: "No bank feed is connected." It is not a panel.
-- `VerificationSection`, `ScreeningChecklist`, `DecisionHistory`, `ProposalHistory`, `AwaitingApproval` and `CheckCycleActions` keep their logic and tests. They are re-skinned and re-composed, not rewritten. Their raw palette is removed in Phase 1.
-
-**Chapter: Ledger** (`history`): the **Ledger** (§6.5).
-
-### 8.6 Deal room
+#### 8.5.1 Background check tab
 
 ```
- Bharat Precision Metals / Deals /
- Rotterdam shipment                                     DL-2026-0041
- Open ━━━━━━● Gathering paperwork ━━━━━━○ Handed over                 [Withdraw]  [Hand over ▸]
- ┌ Seller ───────────────────────────┐       ┌ Buyer ───────────────────────────────────┐
- │ Bharat Precision Metals           │  ───▶ │ Rotterdam Trading BV            NL       │
- │ ●●● Customer  ● Clear ▂▁▁▁        │       │ Outside pipeline · Sanctions ✓  AML ◌    │
- │ invoicing from: Maharashtra ▾     │       │ (chosen once — withdraw to change)       │
- └───────────────────────────────────┘       └──────────────────────────────────────────┘
- Pre-flight (§6.4)                               │  Ledger (deal)
- Paperwork (Shelf, required categories marked)   │  16:40 Open → Gathering paperwork
- Trade between these two (after a buyer company) │  16:41 Buyer recorded
- What was handed over (sealed receipt, once)     │
+ Background check · cycle 2 (Re-KYC, started 1 Oct)                         Cycle [2 ▾]
+ ┌ Status ──────────────────────────────────────────────────────────────────────────────┐
+ │ In review                              [Ask for more information]  [Propose decision ▾]│
+ │ Required for Clear   KYB Passed · AML In review · Sanctions Not recorded               │
+ │ Still needed         AML has no accepted review · Sanctions not recorded               │
+ │ Awaiting approval    Clear · Low risk, proposed by R. Mehta at 11:02  [Approve][Reject]│
+ └────────────────────────────────────────────────────────────────────────────────────────┘
+ ┌ Screening  5 of 7 ┐   ┌ Verifications ┐   ┌ Bank activity ┐   ┌ Decisions ┐
 ```
 
-- **Stage moves** are exactly `allowed_stage_moves`. *Hand over* is the one primary action and keeps its confirmation ("This cannot be undone…"). *Withdraw* opens the reason composer. Developer gets none of it and no line saying so; the room reads as a record.
-- **Buyer**: *Choose buyer* opens smart entry (match-or-create, set once, as today). The legacy "record details instead" path and `BuyerChecks` stay for legacy buyers until P4-10, visually demoted to a "Legacy buyer record" fold.
-- **Invoicing branch** is an inline select on the seller card (`PUT /deals/{id}/invoicing-branch`, staff).
-- **What was handed over** is a sealed, read-only receipt: hairline double border, mono references, "taken at the handover" or "reconstructed" in the server's words.
-- **Record outcome** (after handover, staff) is the outcome composer, unchanged in logic.
+- **Status card.** The moves are buttons from `allowed_moves`; there is no state-map diagram. Each opens the decision side panel. For *Clear* the panel ends on a summary step: "This Clear rests on: KYB passed, AML passed, Sanctions passed, 7 of 7 screened, 2 documents."
+- **Required for Clear** comes from `required_checks`. **Still needed** is the server's `clear_blocked_reasons`.
+- **Awaiting approval**: *Approve* and *Reject* for a different officer (`allowed_actions`), *Withdraw* for the proposer.
+- **Screening**: one item per check, with *Pass / Fail / Exempt / Needs review* for Compliance. It is read-only for RM (`capabilities.can_record_decision`).
+- **Verifications**: grouped by check type, with provenance badges (*Manual*, *Stub*, *Provider*; *Placeholder* stays prominent). *Record a result* and *Review* are side panels.
+- **Bank activity**: one line, "No bank feed is connected.", with the Prototype label.
+- **Decisions**: by cycle. Each one opens its evidence.
+- `VerificationSection`, `ScreeningChecklist`, `DecisionHistory`, `ProposalHistory`, `AwaitingApproval` and `CheckCycleActions` keep their logic and tests. They are restyled, not rewritten.
 
-### 8.7 Agenda (follow-ups)
-
-```
- Agenda                                                        Mine | Team   [Overdue ▾]
- ─ Overdue ─────────────────────────────────────────────────────────────────────────
-  2d  Call back about bank statements     Aarav Textiles       R. Mehta     [Done ▾]  c
- ─ Today ───────────────────────────────────────────────────────────────────────────
- ─ This week ───────────────────────────────────────────────────────────────────────
- ─ Later ───────────────────────────────────────────────────────────────────────────
- ─ Done (last 14 days) ─────────────────────────────────────────────────────────────
-
- Parked — check back on                     (companies at "not now")
-  Deccan Spices        due today      → conversation
-  Konkan Cashew        12 Nov
-```
-
-- **Time buckets** replace today's state tabs. The `OVERDUE / OUTSTANDING / DONE` server filters stay, mapped to the buckets. `state` and `is_overdue` are still read from the server, never computed.
-- **Complete** is a popover holding the outcome options, or `c`. Staff only; Developer reads.
-- **Check-backs** are a separate rail with no complete action (the rule in `FollowUpsPage.tsx`'s header, kept).
-
-### 8.8 Review (new; Compliance, Admin)
-
-A split view for the compliance working day.
+### 8.6 Deal record
 
 ```
- Review                                   ┌──────────────────────────────────────────────┐
- Awaiting your signature  2               │ Bharat Precision Metals                      │
-  ▸ Bharat Precision — Clear · Low        │ (the dossier's Background check chapter,     │
-    Coastal Seafood — Flag                │  embedded, with Approve / Reject at the top) │
- In review (ask A4)  4                    │                                              │
-    Deccan Spices — 5 of 7                │                                              │
- Re-KYC due  1                            │                                              │
-    Bharat Precision — 12 Oct             │                                              │
-                                          └──────────────────────────────────────────────┘
+ Companies › Bharat Precision Metals › DL-2026-0041
+ ┌──────────────────────────────────────────────────────────────────────────────────────┐
+ │ Deal · DL-2026-0041                                                                   │
+ │ Rotterdam shipment                                      [Hand over] [Withdraw] [More ▾]│
+ │ Bharat Precision Metals → Rotterdam Trading BV (NL)                                   │
+ │ Stage                Invoicing branch     Opened                                      │
+ │ Gathering paperwork  Maharashtra          2 Oct 2026 by R. Mehta                      │
+ ├──────────────────────────────────────────────────────────────────────────────────────┤
+ │ ( ✓ Open )>(  Gathering paperwork  )>( Handed over )                                  │
+ └──────────────────────────────────────────────────────────────────────────────────────┘
+ ┌ Handover readiness (§6.11) ─────────────────────┐  ┌ History ────────────────────────┐
+ ┌ Seller ─────────────────┐ ┌ Buyer ─────────────┐ │  │ 16:41 Buyer recorded            │
+ ┌ Documents (required categories marked) ────────┐ │  │ 16:40 Open → Gathering paperwork│
+ ┌ Trade between these two ───────────────────────┐ │  └─────────────────────────────────┘
+ ┌ Handover record (after handover, read-only) ───┐
 ```
 
-- Queue on the left (`j` / `k`), the case on the right (the same chapter component as the dossier, so the two stay identical). `a` / `x` approve or reject, each confirmed.
-- Sources: `GET /background-check/proposals?status=open` (`compliance.queue`) and `GET /background-check/due`. **In review** waits for ask A4 and is hidden until then.
-- RM and Developer: the module does not exist (§4.1).
+- **Stage moves** are header buttons from `allowed_stage_moves`. *Hand over* is the primary button and keeps its confirmation ("This cannot be undone…"). *Withdraw* opens a reason side panel. *Record outcome* (after handover, staff) is a side panel.
+- **Developer** gets no buttons and no readiness reason. The page reads as a record.
+- **Seller card**: status badges, and the *Invoicing branch* select (staff, `PUT /deals/{id}/invoicing-branch`).
+- **Buyer card**: *Choose buyer* opens a side panel with the identifier lookup (match or create, set once). A legacy buyer shows a collapsed "Legacy buyer record" section with `BuyerChecks`.
+- **Documents**: grouped by category. The required categories (from `/settings/deal-required-documents`) are marked *Present* or *Missing*.
+- **Handover record**: a read-only card with a "Read-only" badge and the server's words ("taken at the handover" or "reconstructed").
+
+### 8.7 Follow-ups
+
+- The title is "Follow-ups", with a *Mine | Team* switch.
+- Cards for **Overdue**, **Today**, **This week**, **Later** and **Done (last 14 days)**, each a list of task items: due date, subject, company and owner, with a *Mark done* button. The button opens a popover for the outcome; it is staff only, and Developer reads.
+- **Check back on** is its own card, in the right column from 1280 px. It has no *done* action.
+- `state` and `is_overdue` come from the server and are never computed. The `OVERDUE / OUTSTANDING / DONE` filters map onto the cards.
+
+### 8.8 Approvals (Compliance, Admin)
+
+A split view (§6.13).
+
+- **Left list**: *Awaiting your approval* (open proposals), *Re-KYC due*, and *In review* once ask A4 lands.
+- **Right side**: the selected company's Background check tab (the same component as the company record, so the two never differ), with *Approve* and *Reject* in its status card. Both confirm in a dialog.
+- **Sources**: `GET /background-check/proposals?status=open` (`compliance.queue`) and `GET /background-check/due`.
+- For RM and Developer the module does not exist (§4.1).
 
 ### 8.9 Settings
 
-A settings frame with its own left list, showing only the role's sections:
+A settings page with its own left list. It shows only the sections the role has.
 
-- **My profile** (everyone): name and email as `Editable`; password change as a composer with the existing strength meter; sessions as a list of devices with *Sign out of this one*.
-- **Users** (`settings.users`): people tiles (initials avatar, name, email, role tag, active/inactive), with search and a role filter as lenses. *Add a user* and *Reset password* are composers.
-- **Roles** (`settings.roles`): role tiles. Opening one shows its **permission grid**, a matrix of toggles grouped by module. This is an editor, not a data view, and the one place a grid is the right tool. Built-in roles are labelled. CRM permissions marked "not enforced" by the catalogue say so in-line ("changes no CRM access today", architecture §9).
-- **Qualification criteria** (Admin): rule cards (label, kind, threshold and unit, required, active), each with a **version trail**. *New version* is a composer pre-filled from the current version. The open item about `created_by` showing an id is noted for ask A9.
-- **Required documents** (Admin): the document categories as toggles, with their append-only history beneath and the 409 `DEAL_REQUIRED_DOCUMENT_CHANGED` handled as "someone changed this; here is the current rule".
+- **My profile** (everyone): a details card with inline edit; *Change password* (side panel, with the existing strength meter); *Sessions* as device items, each with *Sign out*.
+- **Users** (`settings.users`): people as record list items (initials avatar, name, email, role badge, Active / Inactive), with search and a role filter. *New user* and *Reset password* are side panels.
+- **Roles** (`settings.roles`): roles as list items. Opening one shows its **permission matrix**, an editor of toggles grouped by module. It is the one grid in the app, because it is an editor, not a data view. Built-in roles carry a badge. CRM permissions the catalogue marks "not enforced" say so in place.
+- **Qualification criteria** (Admin): one card per criterion (label, rule, required, active), with its version history collapsed. *New version* is a side panel pre-filled from the current version.
+- **Required documents** (Admin): the categories as a checklist of toggles, with the change history below. A 409 `DEAL_REQUIRED_DOCUMENT_CHANGED` reads "Someone changed this. Here is the current rule."
 
-### 8.10 Not found, errors, loading
+### 8.10 Not found, no workspace, errors, loading
 
-- **Not found**: serif "Nothing here." and a link back to the Desk. **Used identically for forbidden modules** (§4.3).
-- **Errors**: inline in the section that failed, with the server's message and *Try again*. A section's failure never blanks the page (error boundaries per chapter).
-- **Loading**: shaped skeletons, never a spinner in the middle of a page. Buttons show their own pending state.
+- **Not found**: "Page not found." plus *Go to Home*. It is identical for forbidden modules (§4.3).
+- **No workspace** (API user, unknown role): the wordmark, then "Your account doesn't have access to a workspace yet. Ask an administrator.", *My profile* and *Sign out*. No navigation, no CRM words, no counts.
+- **Errors**: inline in the card that failed, with the server's message and *Try again*. Each tab and card has its own error boundary, so one failure never blanks the page.
+- **Loading**: skeletons shaped like the card, never a page-centre spinner. Buttons show their own pending state.
 
 ---
 
 ## 9. No generic forms: the replacement for each one
 
-Every form surface in `src` today, and what it becomes. Validation keeps Zod at the edge and the server's errors as the authority. A 422 that names a field (`detail[].loc`) is placed on that field; anything else goes in the composer footer.
+Validation keeps Zod at the edge and treats the server's errors as the authority.
 
-| Today | Becomes | Pattern |
+| Form today | Becomes | Enterprise counterpart |
 |---|---|---|
-| `LoginPage` | Two fields, split layout | (kept minimal) |
-| `AddExporterPage` (long create form) | One field, then two or three | Smart entry §8.4 |
-| `CompanyImportPage` | Drop zone, preview, report lines | §8.4 |
-| `RxilIntakePage` (paste JSON) | Paste box with a parsed preview card, then *Take in* (Admin) | Composer |
-| `CompanyPanel` edit form | Inline `Editable` facts | §8.5 Profile |
-| `GstRegistrationsSection` add / flag | Branch strip; add by smart entry; flag reason popover | §8.5 |
-| `MarkerControl` (pause/end reason) | Header menu, then reason popover | Composer (marker) |
-| `QualificationPanel` results + outcome | Scorecard with segmented results and a sticky record bar | §8.5 |
-| `ConversationGaugeControl` (select + date) | Gauge track with date popover | §6.2 |
-| `ConversationPanel` contact form | Person composer | Composer |
-| `ConversationPanel` activity form | Pinned thread composer | Composer (activity) |
-| `OpenDealForm` / `OpenDealPrompt` | One-line popover: reference, then *Open* | Popover |
-| `DealDetailPage` buyer form | *Choose buyer* smart entry (legacy form folded) | §6.9 |
-| `DealDetailPage` withdraw reason | Reason composer | Composer |
-| `CompanyPicker` | Smart entry results as Party cards | §6.9 |
-| `DocumentUpload` | Drop on the shelf, type popover | §6.8 |
-| `RecordDealOutcomeForm` | Outcome composer (invoice + outcome in one step) | Composer |
-| `BackgroundCheckMoveDialog` | Decision composer from a runway edge | §6.3, §6.10 |
-| `ProposalResolveDialog` | Approve / reject popover with confirm | Popover |
-| `ManualResultForm` | Verification composer | Composer |
-| `ReviewDialog` | Review composer (names the current review, as now) | Composer |
-| `ScreeningChecklist` item decision | Segmented row + keys | §8.5 |
-| `CheckCycleActions` | *Start Re-KYC / Re-KYB* popover with reason | Popover |
-| `FollowUpsPage` completion | Done popover / `c` | §8.7 |
-| `QualificationCriteriaPage` version form | Rule card, then *New version* composer | §8.9 |
-| `DealRequiredDocumentsPage` | Category toggles | §8.9 |
-| `UserFormDialog`, `RoleFormDialog`, `ResetPasswordDialog` | Composers | §8.9 |
-| `MyProfileTab` | `Editable` + password composer | §8.9 |
+| Sign in | Centred card, two fields | Standard |
+| New company (`AddExporterPage`) | Side panel: identifier lookup, then name, country, source | Dynamics quick create with duplicate detection |
+| Import companies | Drop zone, preview, grouped report | Data import wizards |
+| RXIL intake | Paste box, parsed preview card, *Take in* | — |
+| Company facts (`CompanyPanel`) | Inline edit fields | Salesforce inline edit |
+| GST branch add / flag | *Add branch* side panel; flag reason popover | Quick action |
+| Pause / End (`MarkerControl`) | *More ▾*, then a reason dialog | Record action menu |
+| Qualification results and outcome | Criterion items with segmented results and a sticky record bar | Path key fields |
+| Conversation status | Conversation path with *Mark as current*; *Not now* date popover | Salesforce Path |
+| Contact | *+ Add* on the Contacts card, opening a side panel | HubSpot / Dynamics quick create |
+| Activity | Timeline composer | Salesforce activity composer |
+| Open deal | Popover: reference, then *Open* | Quick action |
+| Choose buyer | Side panel with the identifier lookup | Lookup with create |
+| Withdraw deal / Record outcome | Side panels | Quick action |
+| Background-check move | Side panel from the status card | Quick action |
+| Approve / reject a proposal | Confirm dialog | Approve / Reject on the approval request |
+| Verification result / review | Side panels | Quick action |
+| Screening item | Segmented choice in the item | — |
+| Start Re-KYC / Re-KYB | Popover with a reason | Quick action |
+| Complete a follow-up | *Mark done* popover | Task completion |
+| Criteria version | Side panel, pre-filled | — |
+| Required documents | Toggles | Settings toggles |
+| User / role / reset password | Side panels | Admin quick create |
+| My profile | Inline edit and a password side panel | — |
 
 ---
 
 ## 10. No table views: the replacement for each one
 
-| Today | Becomes |
+| List | Becomes |
 |---|---|
-| `ExportersListPage` (6-column table) | The register: dossier rows with Standing (§8.3) |
-| `QualificationPanel` results table | The scorecard (§8.5) |
-| `QualificationCriteriaPage` table | Rule cards with version trails (§8.9) |
-| `DealRequiredDocumentsPage` table | Category toggles and history (§8.9) |
-| `CompanyImportPage` report table | Report lines grouped by created / warning / refused (§8.4) |
-| `UsersTab`, `RolesTab` | People tiles, role tiles, and the permission grid as an editor (§8.9) |
-
-`components/ui/Table.tsx` is deleted once its last caller moves (Phase 4).
+| Companies | Record list items (§6.7), plus the Pipeline board (§6.12) |
+| Identity completion | Record list items with a "Missing: …" line |
+| Qualification results | Criterion items (§8.5) |
+| Qualification criteria | Criterion cards with their version history |
+| Required documents | Category checklist and history |
+| Import preview and report | Row items grouped by created, warning and refused |
+| Users | People list items |
+| Roles | Role list items; the permission matrix is the one editor grid |
+| Follow-ups | Task items grouped by due date |
+| Approvals | Split view |
+| History | Timeline grouped by day |
+| A company's deals | Deal list items |
+| Documents | Items grouped by category |
+| Screening and verifications | Items grouped by check |
+| Trade invoices | Invoice items with outcome badges; amounts in their own currency, never totalled |
 
 ---
 
 ## 11. Accessibility
 
-- **WCAG 2.2 AA** in both themes. The token table (§5.2) gives AA text pairs. `ink-4` is never used for meaningful text.
-- **Never colour alone.** Every state has a shape (§6.1 lamp grammar, §5.2 risk meter) and a text label, at least as an accessible name.
-- **Focus**: a 2px ink ring with a 2px paper offset on everything focusable. Focus never disappears on a composer opening or closing; it returns to the trigger.
-- **Keyboard parity**: every pointer action has a key path. Shortcuts are listed per role and never fire inside inputs.
+- **WCAG 2.2 AA** in both themes, proved by `tokens.contrast.test.ts`. It gains input borders (3:1) and the accent pairs.
+- **Never colour alone**: every badge has its words, and the Critical risk badge has an icon.
+- **Focus**: a 2 px `accent-solid` ring with a 2 px offset on everything focusable. Focus returns to the trigger when a side panel, dialog or popover closes.
+- **Keyboard**: every action can be reached by Tab and Enter. The shortcut list (Ctrl+/) shows only the role's keys.
 - **Live regions** announce async results ("Decision recorded", "Couldn't hand over: …").
 - **Reduced motion** turns every transition off.
-- **Tests**: an axe check (`vitest-axe`) on each desk, the register, each dossier chapter, the deal room and settings, in both themes.
+- **Tests**: axe on Home (per role), the companies list, each company tab, the deal record, Follow-ups, Approvals and Settings, in both themes.
 
 ---
 
-## 12. Engineering: structure, dependencies, performance
+## 12. Engineering
 
-### 12.1 Structure
+### 12.1 What changes in code
 
-```
-src/
-  app/                 modules.tsx (the module table §4.2), AppRouter from it, providers
-  platform/
-    access/            capabilities.ts, Gate.tsx, useCan.ts, NoWorkspace.tsx, tests (matrix)
-    auth/              unchanged API; roleLabel() stays; is*Role() removed after Phase 0
-    theme/             unchanged mechanism, new tokens
-  design/              tokens (CSS), icons.ts, primitives (§6.11), dev-only style guide
-  layout/              Rail, ContextBar, CommandBar, Shortcuts
-  modules/onboarding/  unchanged layout (api, hooks, components, pages, paths.ts)
-    components/standing/  Standing, GaugeTrack, CheckRunway, Preflight, Ledger, PartyCard, Shelf, SmartEntry
-    review/            the Review module (new)
-  modules/settings/    sections become sub-routes
-```
+| Area | Files | Change |
+|---|---|---|
+| Tokens | `src/design/tokens.css`, `tailwind.config.ts`, `lib/cn.ts` | New values (§5.2) and the `accent` group; the font family and type scale (§5.3); remove the `display-*` sizes and the `font-display` and `font-mono` families; update the type scale `tailwind-merge` knows |
+| Fonts | `main.tsx`, `vite.config.ts`, `package.json` | Remove the three `@fontsource` imports and dependencies and the `preload-fonts` plugin |
+| Icons | `scripts/build-icons.mjs`, `src/design/icon-paths.ts`, `icons.ts`, `icon-names.ts` | Fluent regular 20 in place of Phosphor |
+| Primitives | `components/ui/*` | `Button` (accent); `Tag` → `Badge`; `Composer` → `SidePanel`; `Tabs` (underlined); `Card` (header row); `Editable` (pencil); `NotFound` copy; new `Path`, `RecordHeader`, `RecordListItem`, `Breadcrumbs` |
+| Shell | `layout/*` | `Rail` → `SideNav`; `ContextBar` and `AvatarMenu` → `AppHeader` (search, *+ New*, user menu); `CommandBar` / `CommandBody` → the header search; `Shortcuts` / `useGlobalShortcuts` → `/`, Ctrl+K, Ctrl+/; `BottomBar` → nav drawer |
+| Module table | `routes/modules.ts`, `platform/shell/keys.ts` | Labels (Home, Companies, Pipeline, Follow-ups, Approvals), icons, `/approvals` with `/review` redirecting, the Pipeline nav row; remove the `shortcut` keys |
+| CRM parts | `modules/onboarding/components/standing/*` | `Standing` → `RecordHeader` fields and `StatusBadge`; `Lamp` and `lamps.ts` deleted (wording stays in the label maps); `GaugeTrack` → `Path` (conversation); `StageRoute` → `Path` (deal); `CheckRunway` → the status card's buttons; `Preflight` → `HandoverChecklist`; `Shelf` → grouped document list; `SmartEntry` → `IdentifierLookup`; `PartyCard` kept as the seller and buyer cards |
+| Motion | `lib/viewTransition.ts`, `lib/motion.ts`, `design/motion.test.ts` | Removed; the reduced-motion test stays for the remaining fades |
+| Theme | `platform/theme/theme.ts` | Default `light` |
+| Pages | every page | Re-laid out per §8, with their tests updated in the same change |
 
-The ESLint `boundaries` rules stay. `design/` and `platform/` are importable from modules, and modules export only through `index.ts`, as today.
+**Not touched**: `platform/access`, `lib/api`, the hooks, `paths.ts`, session handling, and the server-driven logic inside components.
+
+**Renames**: a component is renamed when its screen is reworked, in the same change, never in a separate sweep. Names describe behaviour, and no plan or task IDs go into code, comments or tests.
 
 ### 12.2 Dependencies
 
 | Add | Why |
 |---|---|
-| `@fontsource/instrument-serif`, `@fontsource-variable/instrument-sans`, `@fontsource-variable/jetbrains-mono` | Self-hosted type (§5.3) |
-| `cmdk` | The command bar |
-| `@radix-ui/react-popover`, `@radix-ui/react-toggle-group`, `@radix-ui/react-hover-card` | Popovers, segmented controls, hover previews (same family as the Radix already used) |
-| `@phosphor-icons/react` | Icons (§5.5) |
-| dev: `vitest-axe` | Accessibility assertions |
-| dev, optional: `@playwright/test` | Visual snapshots per role (§15) |
+| `@fluentui/svg-icons` (dev only) | The build script copies the glyphs used into `icon-paths.ts` |
 
 | Remove | When |
 |---|---|
-| `@fontsource-variable/inter` | Phase 1 |
-| `lucide-react` | Phase 2, once `Icon` covers every use |
+| `@fontsource/instrument-serif`, `@fontsource-variable/instrument-sans`, `@fontsource-variable/jetbrains-mono` | Phase 1 |
+| `@phosphor-icons/react` (dev) | Phase 1, once the icon map is switched |
+
+Radix, cmdk (it backs the search results list), sonner, React Hook Form and Zod stay.
 
 ### 12.3 Performance
 
-- **Route-level code splitting** through the module table (`React.lazy` inside `Gate`). This removes the ~589 kB single-chunk warning, and forbidden modules are never downloaded (§4.3).
-- **Budget**: initial JS ≤ 250 kB gzip-equivalent on the Desk. Fonts preloaded (serif regular, sans variable latin subset).
-- **Prefetch on intent**: hovering or focusing a company row prefetches its detail. The dossier opens with data already in the cache.
-- **No optimistic state transitions** for anything the server decides (gauges, stages, decisions). The lamp moves when the server answers. Optimistic only for an activity appearing in the thread, rolled back on error.
+- Route-level splitting and *prefetch on intent* stay.
+- Dropping the fonts takes the font files off the first load.
+- Budget: initial JS ≤ 250 kB gzip on Home (146 kB at the last measure, 5 October).
+- No optimistic state for anything the server decides. A new activity in the timeline is the one optimistic case, rolled back on error.
 
-### 12.4 The style guide
+### 12.4 The style guide is the TL's review page
 
-A dev-only route (`/__design`, mounted only when `import.meta.env.DEV`, so it is **not in the production bundle**) renders every token, primitive and signature component in both themes, with every state. It replaces the need for Storybook and doubles as the visual review page for the TL.
+`/__design` is mounted only in development, so it is not in the production bundle. Phase 1 rebuilds it to show:
+
+- the tokens in light and dark;
+- every badge for every gauge (§18.2);
+- the path in its three uses;
+- a record header seen as each role (the existing "Seen as" switch);
+- a record list item, a related-list card, the side panel, the timeline and the checklist.
+
+The TL signs off on this page and on one real screen before Phase 2 starts.
+
+### 12.5 Section references in code
+
+94 files under `frontend/src` cite `frontend-plan §…`. References to §4 stay valid. References to §5–§8 point at the 4 October version (`a77725d`). Each one is rewritten when its file is touched in Phases 1–3. Phase 3 greps for any left over.
 
 ---
 
 ## 13. Backend asks
 
-None of these blocks a phase. Each unlocks a richer version, and until it lands the fallback in the right-hand column ships. Owners follow `developer-allocation.md` lanes. Every ask that changes a schema regenerates `openapi.json` and `schema.ts`.
+None of these blocks a phase. Each unlocks a fuller screen, and until it lands the fallback ships. Status is from `remaining-work.md` (R-46, D-19).
 
-| # | Ask | Owner (lane) | Unlocks | Fallback until then |
+| # | Ask | Unlocks | Fallback until then | Status |
 |---|---|---|---|---|
-| A1 | Company list items carry `conversation`, `conversation_check_back_on`, and for staff only `background_check`, `awaiting_approval`, `rekyc_due` (omitted for Developer, D8) | Dev 3 (company record) with Dev 1 (compliance read) | Full Standing in register, board, ⌘K, hover cards | Journey + qualification + marker only |
-| A2 | `total` on `GET /exporters` search | Dev 3 | Exact counts on Desk, register, board | "200+" / "50 shown" |
-| A3 | Structured `handover_conditions: [{key, met, message}]` beside `handover_blocked_reason` (the guard is already an ordered list, `domain/handover_conditions.py`) | Dev 2 | Pre-flight checklist with deep links | The server sentence in one callout |
-| A4 | `background_check` filter on company search (staff only) | Dev 3 with Dev 1 | "In review" on the Compliance desk and Review queue | Section hidden |
-| A5 | Cross-company `GET /deals?stage=…` (staff + Developer, masked) | Dev 2 | "Deals in paperwork" on the RM desk; a deals lens | Section hidden |
-| A6 | `relationship_manager_user_id` written (it is never written today) and a `relationship_manager_user_id` filter | Dev 3 | "My companies" lens; RM avatars | RM shown as free text; no "mine" for companies |
-| A7 | Export the gated-route table (`method, path, roles`) as a JSON artifact, guarded like `openapi.json` | Dev 1 | Automated drift check of the access manifest (§4.4) | Manual check in review |
-| A8 | `dry_run=true` on `POST /imports/companies` | Dev 3 | Server-validated CSV preview | Header and first lines previewed client-side |
-| A9 | Criteria versions carry `created_by_name` (`remaining-work.md` R-36) | Dev 3 | Names instead of ids on the criteria trail | The id, labelled "user id" |
+| A1 | Company list items carry `conversation`, `conversation_check_back_on`, and for staff only `background_check`, `awaiting_approval`, `rekyc_due` (omitted for Developer, D8) | All four badges on list items, pipeline cards and search results | Journey, qualification and marker badges only | To build (R-46) |
+| A2 | `total` on company search | Exact counts on Home, the list and the board | "200+" / "50 shown" | Not scheduled |
+| A3 | Structured `handover_conditions: [{key, met, message}]` beside `handover_blocked_reason` | The handover checklist with links (§6.11) | The server's sentence in one message | To build (R-46) |
+| A4 | `background_check` filter on company search (staff only) | *In review* on Home and in Approvals | Card hidden | To build (R-46) |
+| A5 | Cross-company `GET /deals?stage=…` | *Deals in paperwork* on Home | Card hidden | Deferred (D-19) |
+| A6 | `relationship_manager_user_id` written, plus a filter on it | A *My companies* list view; RM avatars | RM shown as text | Deferred (D-19) |
+| A7 | The gated-route table exported as JSON, guarded like `openapi.json` | The automated drift check of the access manifest (§4.4) | Manual check in review | To build (R-46) |
+| A8 | `dry_run=true` on `POST /imports/companies` | A server-checked import preview | Header and first lines previewed client-side | Deferred (D-19) |
+| A9 | Criteria versions carry `created_by_name` | Names instead of ids in the criteria history | The id, labelled "user id" | R-36 |
 
 ---
 
 ## 14. Delivery phases
 
-Each phase merges on its own and leaves the app working. Gates for every phase: `npx tsc -b --noEmit` · `npx eslint .` (0 errors) · `npx vitest run` (no test removed without its replacement) · `npx vite build`. Do **not** run prettier over existing files (there is no prettier config; the repo is hand-formatted, single quotes, ~100 columns).
+**Gates for every phase**: `npx tsc -b --noEmit` · `npx eslint .` (0 errors) · `npx vitest run` (no test removed without its replacement) · `npx vite build`. Do not run prettier over existing files: there is no prettier config, and the repo is hand-formatted (single quotes, about 100 columns).
 
-### Phase 0: Access, failing closed (on the current screens)
+**Already done**: Phase 0, access (4 October). The "Ink & Paper" Phases 1–5 (5 October, PR #19) are superseded visually. Their structure is reused: lazy modules, the token mechanism, the shell registry, the primitives, and the component logic.
 
-- `platform/access` (manifest, `Gate`, `useCan`, `NoWorkspace`) and the module table driving router and rail.
-- Fix G1–G7: rail and Desk filtered by capability; API user gets No workspace; `Add company` / `Import CSV` and their routes gated on `company.create` / `company.import`; criteria, required documents and RXIL guarded **at the route**, rendering the generic `NotFound` (the in-page "Administrators only" goes); all `role ===` and `is*Role` call sites moved to `useCan`; lazy module loading.
-- Lint rule (§4.4) and the matrix tests (5 roles × every module: rail, route, no forbidden fetch, no forbidden text).
-- **Done when**: signed in as each of the five roles, the rail, the routes and the network tab match §4.1, and the matrix test proves it.
-- **Status: built 4 October 2026** (`remaining-work.md` R-33). One deviation: the module
-  table is `src/routes/modules.ts`, beside the router it drives, rather than a new
-  `src/app/modules.tsx`. The matrix test is `src/routes/access.matrix.test.tsx`. The
-  drift check against the server's table still waits on ask A7; until then
-  `capabilities.ts` lists the route-table rows it mirrors, as §4.4 says.
+**Start point**: a branch from `main` after the current unstaged work on `main` is committed. Phase 1 touches most of `frontend/src`, so starting on top of open changes would conflict.
 
-### Phase 1: Tokens, type, primitives
+### Phase 1: Look and shell
 
-- New tokens (§5.2) in light and dark; Tailwind config maps them; fonts (§5.3); the brand mark; `Icon` map.
-- Codemod: every raw palette class in the 21 files (§3.2) moved to meaning tokens; `brand-*` and `status-info` retired; a lint rule (`no-restricted-syntax` on class strings matching `(slate|gray|zinc|violet|purple|indigo|emerald|teal|blue|red|amber|orange|green)-\d`) stops new ones.
-- Primitives (§6.11) and the dev-only style guide.
-- **Done when**: no raw palette class remains; both themes pass the axe check on the style guide; the current screens render in the new look with no behaviour change (the existing 435 tests pass).
-- **Status: built 5 October 2026** (worktree `feature/redesign`). Tokens in
-  `src/design/tokens.css`; a codemod moved 88 files to them; three ESLint selectors refuse the
-  raw palette, the retired token names and white/black fills. Deviations: (1) **three token
-  values changed** because `src/design/tokens.contrast.test.ts` (which reads the CSS and checks
-  every pair, as jsdom cannot) found them under AA — attention-solid light `#E0A526`→`#B07D0E`
-  and idle-solid light `#A7A193`→`#878275` (lamps under 3:1), negative-solid dark
-  `#E0493C`→`#C83A2E` (CRITICAL's white text under 4.5:1); (2) the primitives stay in
-  `src/components/ui` (one home, no import churn) and `src/design/` holds tokens, icons, the
-  brand mark and the style guide; (3) `axe-core` is called directly (`vitest-axe` predates
-  vitest 4); (4) Instrument Sans carries `tnum` (checked in the font file), so no mono
-  fallback for figures; ₹ is in none of the three faces and falls back to the system font;
-  (5) `tailwind-merge` is told the type scale (`lib/cn.ts`), or it drops `text-ink-2` next
-  to `text-secondary`. Tests: 55 files / 684.
+- Tokens (§5.2), the system font (§5.3), Fluent icons (§5.8), the wordmark, and light as the default theme.
+- Primitives: `Button`, `Badge`, `Card`, `Tabs`, `SidePanel`, `Editable`, `Path`, `RecordHeader`, `RecordListItem`, `Breadcrumbs`.
+- Shell: `AppHeader` with search and *+ New*, `SideNav`, the nav drawer, and the shortcut set (§7.5).
+- On-screen names (§18.1), and the Not found, No workspace and sign-in copy.
+- Removal of the motion extras (§5.6).
+- The style guide rebuilt (§12.4).
+- **Done when**:
+  - every screen renders in the new look with no behaviour change;
+  - no `font-display`, `font-mono` or glyph lamp remains on screen;
+  - the matrix test is green against the new nav and search;
+  - axe is clean on the style guide in both themes;
+  - **the TL has signed off the style guide and the company record header.**
 
-### Phase 2: Shell
+### Phase 2: The screens the demo walks
 
-- Rail, context bar and breadcrumbs, avatar menu (theme here), ⌘K, shortcuts and the `?` sheet, sign-in, No workspace, NotFound, the bottom bar on narrow screens. Pipeline folded into Companies as a view, with `/pipeline` as an alias.
-- **Done when**: every role's ⌘K, shortcuts and rail come from the module table (matrix test extended), and lucide is gone.
-- **Status: built 5 October 2026** (worktree `feature/redesign`). `layout/` holds `Rail`,
-  `ContextBar` (+ `AvatarMenu`), `CommandBar` (+ lazy `CommandBody`), `Shortcuts` and
-  `BottomBar`; what a page tells the shell (trail, ⌘K actions, page keys, recent companies)
-  goes through `src/platform/shell`, so no module imports the layout. The matrix test now also
-  proves, per role, that ⌘K's "Go to", the `?` sheet and the `g` keys equal the rail.
-  Deviations: (1) Phosphor's glyph modules carry six weights each (295 kB for our set), so
-  `scripts/build-icons.mjs` (`pnpm icons`) copies the regular weight — and fill for rail
-  icons — into `src/design/icon-paths.ts` (43 kB); Phosphor is a dev dependency only;
-  (2) the sign-in page and the command bar's body are lazy, which keeps the entry chunk at
-  444 kB (143 kB gzip) with no chunk warning; (3) a masked role's identifier-shaped query
-  sends nothing (`useCompanyFinder`), not even as a name search. Tests: 58 files / 719.
+In this order, because each one reuses the one before it:
 
-### Phase 3: Signature components
+1. **Company record**: header, path, tabs, right column, and the Background check tab (§8.5).
+2. **Deal record** (§8.6).
+3. **Companies list and Pipeline** (§8.3), and *New company* as a side panel (§8.4).
+4. **Home** for each role (§8.2).
+5. **Follow-ups** (§8.7).
+6. **Approvals** (§8.8).
 
-- Standing (three sizes, role-aware), Gauge track, Check runway, Pre-flight (fallback mode), Ledger, Party card, Shelf, Smart entry, Composer variants.
-- **Done when**: each has unit tests for every state, including Developer's absent lamp, and a style-guide page.
-- **Status: built 5 October 2026** (worktree `feature/redesign`). In
-  `modules/onboarding/components/standing/`: `lamps.ts` (the §18.2 grammar as data), `Lamp`
-  (SVG shapes and the two overlays), `Standing` (inline / card / hero), `GaugeTrack`,
-  `CheckRunway`, `Preflight` (fallback, with a `conditions` prop ready for A3), `PartyCard`,
-  `Shelf`, `SmartEntry`; `Identifier` in `platform/mask`; `Composer` in `components/ui`, with
-  `ApiError.fieldErrors` added (additive) for per-field 422s. Re-skins were switched in at once
-  rather than twice: `HistoryTimeline` **is** the Ledger now (day rules, same-moment events,
-  lanes in ink, lane chips from the dimensions actually sent), `GaugeTrack` replaced
-  `ConversationGaugeControl`, `Identifier` replaced `MaskedValue`. Style guide: the onboarding
-  module's `OnboardingStyleGuide` with a "Seen as" role switch (`StaticAuthProvider`, dev only).
-  Deviations: (1) `POST /companies/match` needs a name and a country beside the identifier, so
-  Smart entry matches once those are known, not on the identifier alone; (2) **open question**:
-  Compliance/Admin read identifiers in full by decision ("never masks PAN for COMPLIANCE"), so the
-  eye §6.6 gives them changes nothing visible — either drop it or mask until revealed; kept as
-  it was; (3) party cards, shelf categories and the checklist are labelled groups, not landmark
-  regions (axe: duplicate landmarks). Tests: 62 files / 846.
+- **Done when**: `demo.md` §3–§5 have been walked as RM, Compliance, Admin and Developer, in light, at 1366 × 768 and 1440 × 900, with no console error and no failed request. Each screen passes §15, and screenshots have gone to the TL.
 
-### Phase 4: Screens
+### Phase 3: Remaining screens and clean-up
 
-In this order, because each step reuses the one before it:
-
-1. **Companies** register and board (§8.3); add company and import (§8.4).
-2. **Dossier** header, hero, Now, and the Profile, Qualification, Conversation, Deals & trade, Documents and Ledger chapters (§8.5).
-3. **Background check** chapter, re-composed from the existing Dev 1 components (§8.5).
-4. **Deal room** (§8.6).
-5. **Desks** for each role (§8.2) and the **Review** module (§8.8).
-6. **Agenda** (§8.7).
-7. **Settings** sections (§8.9).
-
-**Done when** (each screen): §15's checklist passes, and its old tests are updated in the same change. Accessible names and `data-testid`s are kept where tests rely on them, and changed deliberately where the structure changed.
-
-- **Status: built 5 October 2026** (worktree `feature/redesign`). Every screen is re-composed
-  from the Phase 3 parts and the existing hooks; no endpoint was added. (1) Companies: the
-  register (dossier rows, a journey lens with capped counts, qualification and relationship
-  lenses in the URL, "Show more" to 200, prefetch on hover and focus, `j`/`k`), the board as
-  `/companies?view=board`, Smart entry on Add company, a drop zone with a preview on Import, and
-  *Take in* on RXIL intake. (2) The dossier: a serif header that compresses on scroll, the hero
-  Standing opening its chapter, a chapter rail from 1280 px (tabs below it, the same `?tab=`
-  keys), *Now* from served fields, Profile facts as `Editable`, the Qualification scorecard,
-  the Conversation `GaugeTrack`, people and thread, the Documents `Shelf`, the Ledger, and `l`
-  to log an activity (staff). (3) Background check: `CheckRunway` opens the existing move
-  composer. (4) The deal room: route, pre-flight, party cards, branch picker on the seller,
-  buyer chosen in a sheet (R-24's create step included), the legacy buyer folded under its own
-  label, the paperwork shelf with required categories, the sealed receipt, and the deal Ledger.
-  (5) Desks for each role, and a new **Review** module (`/review`, `compliance.queue`, `g r`):
-  a queue on the left, the dossier's own Background check chapter on the right, and `a`/`x`
-  through the usual confirmation. (6) Agenda buckets with check-backs beside them, and `c`.
-  (7) Settings as sections at `/settings/profile|users|roles`; a section the server's
-  permissions do not grant is the same NotFound, and nothing shows while they load; people
-  tiles, role tiles with the permission grid in a composer, criteria as rule cards with a
-  version trail, and required documents as category rows with the history beneath. A 409
-  `DEAL_REQUIRED_DOCUMENT_CHANGED` says someone changed it. `Table`, `Drawer`, `Sidebar`,
-  `Chip`, `MaskedValue` and `ConversationGaugeControl` are deleted. `Panel` (a heading and a
-  hairline), `Card` (one object), and `FormPanel` (now a sheet) stay because they are used.
-  Deviations: (1) the three settings dialogs and the criteria and required-documents dialogs are
-  composers, and role delete uses `ConfirmDialog` instead of `window.confirm`; (2) `Editable`
-  takes `trigger="pencil"` for a value that has its own buttons (an `Identifier`), because a
-  button cannot hold buttons; (3) **not built**: the register's hover card (the row already
-  shows what it would), the Ledger's evidence hover card, `e` to edit the focused fact (every
-  fact is a button that Tab and Enter reach), and the screening checklist's `p`/`f`/`e`/`n`
-  keys (Dev 4's component is unchanged apart from tokens). *In review* (A4) and *Deals in
-  paperwork* (A5) are not rendered. Tests: 63 files / 868.
-
-### Phase 5: Polish
-
-- View transitions (register to dossier name morph), lamp travel, settle animations, reduced-motion check.
-- Performance budget, prefetch on intent, font subsetting.
-- Optional Playwright visual snapshots: 5 roles × Desk, register, dossier (each chapter), deal room, agenda, settings, in light and dark, on the sample data (`demo.md` §1).
-- Each backend ask (§13) that has landed: switch its fallback off.
-- **Status: built 5 October 2026** (worktree `feature/redesign`). Motion: (1) the register's
-  company name travels into the dossier's title through the browser's View Transitions
-  (`lib/viewTransition.ts`; React Router's `viewTransition` prop needs a data router, and the
-  app mounts `<BrowserRouter>`), (2) the conversation's ring travels to its new node in 240 ms,
-  and (3) register rows settle when a lens brings a new set. Under reduced motion all of it is
-  instant, including the view-transition pseudo-elements, and `src/design/motion.test.ts` proves
-  it. Performance: the entry chunk is 448 kB (146 kB gzip) against the 250 kB gzip budget.
-  Instrument Serif regular and Instrument Sans (latin) are preloaded by a build plugin in
-  `vite.config.ts`, and every other subset loads on demand through `unicode-range`. Prefetch on
-  intent covers the register and board rows. None of A1, A3, A4 or A7 has landed, so every
-  fallback stays on. Playwright snapshots were skipped. Instead, a headless walk on a scratch
-  database covered 5 roles × 56 screens at 1440, 1024 and 390 px in light and dark, with no
-  console error, no failed API call, NotFound on every forbidden address, and no horizontal
-  scroll. Tests: 64 files / 877.
-
-**Ownership.** Shared frontend files (`lib/api`, `platform/auth`, `routes`, `layout`, the sidebar) belong to Developer 1 (architecture §10), so Phases 0 and 2 need Developer 1's review. Phase 4 screens touch every lane's panels, so each screen's change is reviewed by that panel's owner. The design work itself (tokens, primitives, signature components) belongs to whoever owns this plan.
+- Import, RXIL intake and identity completion (§8.4, §8.3), and the Settings sections (§8.9).
+- Delete what is now unused: `Lamp`, `lamps.ts`, `Standing`, `CheckRunway`, `StageRoute`, `CommandBody`'s actions, `BottomBar`, `lib/motion.ts` and `lib/viewTransition.ts`.
+- Renames left over from Phase 2. Section references to the old plan (§12.5).
+- A full dark-theme pass.
+- `demo.md` §2 screen names and the "Find…" wording updated.
+- **Done when**: nothing imports a removed component, no code comment cites a removed section, and every role passes §15 in both themes.
 
 ---
 
@@ -1067,16 +947,16 @@ In this order, because each step reuses the one before it:
 
 For every screen, before it merges:
 
-- [ ] **Roles**: walked as RM, Compliance, Admin, Developer and API user; what shows matches §4.1; no forbidden request in the network tab; the matrix test covers it.
-- [ ] **Server authority**: every action rendered from a served list or capability; no move, outcome or stage computed on the client; refusals shown in the server's words; `from_value` and 409 handled where they apply.
-- [ ] **Masking**: identifiers only through `Identifier`; no reveal or copy control for masked roles.
-- [ ] **States**: loading (shaped), empty (one line, one verb if permitted), error (inline, retry), and the prototype labels present.
-- [ ] **Both themes**: light and dark checked; axe clean.
-- [ ] **Keyboard**: every action reachable; focus visible and returned; this screen's shortcuts in `?`.
-- [ ] **Widths**: 1440, 1280, 1024, 768 and 390; no horizontal page scroll.
-- [ ] **Tokens only**: no raw palette class; no new shadow on a resting surface; no pill button.
-- [ ] **Copy**: verbs on buttons, sentence case, "RM" not "Operations", "Aner Labs".
-- [ ] **Gates**: tsc, eslint, vitest, build, all green.
+- [ ] **Roles**: walked as RM, Compliance, Admin, Developer and API user. What shows matches §4.1, no forbidden request fires, and the matrix test covers it.
+- [ ] **Server authority**: every action is rendered from a served list or capability; nothing is computed on the client; refusals use the server's words; `from_value` and 409 are handled where they apply.
+- [ ] **Masking**: identifiers go only through `Identifier`, with no reveal or copy for masked roles.
+- [ ] **States**: loading (shaped), empty (one line, plus one action if permitted), error (inline, with retry), and the Prototype labels present.
+- [ ] **Look**: tokens only; no serif, no monospace, no glyph-only status; one primary button per view; no card inside a card; no shadow on a resting surface.
+- [ ] **Names and copy**: §18.1 names; verbs on buttons; sentence case; "RM", not "Operations".
+- [ ] **Both themes**: light and dark checked, axe clean.
+- [ ] **Keyboard**: every action reachable, focus visible and returned.
+- [ ] **Widths**: 1440, 1366, 1280, 1024, 768 and 390, with no horizontal page scroll.
+- [ ] **Gates**: tsc, eslint, vitest and build all green.
 
 ---
 
@@ -1084,68 +964,114 @@ For every screen, before it merges:
 
 | Risk | Why it matters | Mitigation |
 |---|---|---|
-| The access manifest drifts from the server's route gates | A role is shown something that 403s, or misses something it may use | One manifest; lint ban on role checks elsewhere; matrix test; drift check with A7; dev-mode drift warning |
-| Redesign changes break the 435 existing tests | Tests assert accessible names, copy and test ids | Keep names and ids where possible; update tests in the same change; never delete a test without a replacement |
-| Touching every lane's panels at once causes merge conflicts | Five lanes own panels | Phase 1 is a mechanical codemod in one change; Phase 4 goes screen by screen with each owner reviewing |
-| "Ink & Paper" reads as too quiet | Little colour by design | Colour is reserved for state, so the screens with problems are the ones that light up; serif numerals and the Standing glyph carry the character. The style guide is reviewed with the TL at the end of Phase 1, before screens move |
-| Instrument Sans lacks tabular figures or ₹ | Misaligned numbers, a missing glyph | Verified in Phase 1; mono numerals and the system fallback are ready |
-| Fallbacks look unfinished while asks are pending | Hidden sections can feel missing | Hidden, never empty; each desk section names nothing it cannot fill |
-| Motion feels gimmicky | Undermines "calm" | Motion only explains a change; 240 ms maximum; off under reduced motion |
+| The TL dislikes the new look too | A third pass costs another week | The TL signs off the style guide and one real screen at the end of Phase 1, before any screen is re-laid out |
+| The brand colour is not known | A placeholder blue might be "wrong" | It is four token values (§5.2); changing them later touches no screen |
+| The system font differs between Windows and macOS | Screenshots differ by machine | Demo and screenshots on Windows. IBM Plex Sans is ready if one face is wanted (§5.3) |
+| Tests assert the old names and copy ("Desk", "Agenda", "Review", "Nothing here.", "Find…") | Many test edits | Update them in the same change as the screen. The matrix test guards access throughout |
+| Merge conflicts with work in progress on `main` | Phase 1 touches most files | Start from a clean `main` (§14). Phase 1 is mechanical and lands first, in one change |
+| Without tables, lists are harder to scan | RMs compare many companies | Two-line items with right-aligned badges, journey tabs with counts, server-side filters in the URL |
+| "Enterprise" drifts back into "generic" | The TL's original complaint | The *Never* list (§5.1), one brand colour, record pages built from named enterprise patterns (§18.3) |
 
 ---
 
 ## 17. Open questions
 
-None of these blocks Phase 0 or Phase 1.
+None blocks the start of Phase 1.
 
-1. **The brand mark.** The italic serif *a* in an ink square is a placeholder for a wordmark the business may already have. Is there an Aner Labs logo to use?
-2. **The Developer desk.** Is a read-only desk useful to the people with that role, or should Developer land on Companies?
-3. **Review for Admin.** Admins hold every compliance capability. Should Review be in an Admin's rail by default, or only once the Admin has acted on a proposal?
-4. **Which asks to schedule.** Recommended order: A1 and A3 (the two most visible), then A2, A4, A7.
+1. **Brand.** Does Aner have a brand colour and a logo? Until then, the placeholder blue (§5.2) and the wordmark (§5.8) are used.
+2. **Demo date.** If the demo comes before Phase 2 finishes, Phase 2 is cut to the screens `demo.md` §4 walks: company record, deal record, companies list, and Home.
+3. **The identifier eye for Compliance and Admin** (carried from 5 October). They read identifiers in full by decision, so the eye changes nothing for them. Should it be dropped, or should identifiers be masked until revealed?
+4. **Theme.** Light by default, with dark in the user menu (§5.2). Agreed?
+
+Answered earlier (D-20, still applies): a placeholder brand mark until a logo exists; a read-only home for Developer; Approvals in the Admin navigation.
 
 ---
 
 ## 18. Appendices
 
-### 18.1 Current to new: component map
+### 18.1 Names: on screen and in code
 
-| Current | New |
-|---|---|
-| `Panel`, `Card` | Section headings with hairlines; `Sheet` for floating |
-| `Chip`, `JourneyChip`, `QualificationChip`, `MarkerBadge`, `DealStageChip`, `VerificationStatusChip`, `ScanStatusBadge` | `Tag` + lamp grammar; Standing |
-| `BackgroundCheckGauge`, `AwaitingApproval` | Standing lamp + Check runway |
-| `RiskChip` | Risk meter mark (§5.2) |
-| `MaskedValue` | `Identifier` |
-| `HistoryTimeline`, `DealHistory` | `Ledger` |
-| `FormPanel` | `Composer` |
-| `Table` family | Removed (§10) |
-| `Sidebar`, `AppShell` top bar | `Rail`, `ContextBar`, `CommandBar` |
-| `HomeCards` | Desk sections per role |
-| `PipelinePage` | Companies board view |
-| `isStaffRole`, `isAdminRole`, `isComplianceRole`, inline `role ===` | `useCan(capability)` |
+| 4 October (on screen) | New (on screen) | Code, when its screen is reworked |
+|---|---|---|
+| Desk | **Home** | `HomePage` (unchanged) |
+| Companies (register) | **Companies** | `ExportersListPage` |
+| Board | **Pipeline** | `PipelineView` |
+| Agenda | **Follow-ups** | `FollowUpsPage` (unchanged) |
+| Review | **Approvals** | `ApprovalsPage` |
+| Dossier, chapters | **Company record**, **tabs** | `ExporterDetailPage` |
+| Now | Header actions | `RecordHeader` |
+| Profile | **Details** | `CompanyPanel` |
+| Conversation | **Activity** | `ConversationPanel` |
+| Deals & trade | **Deals** | `DealsPanel` |
+| Ledger | **History** | `HistoryTimeline` (unchanged) |
+| Standing, lamps | **Status badges** | `StatusBadge` |
+| Gauge track | **Conversation path** | `Path` |
+| Check runway | **Background check status** | status card in `BackgroundCheckPanel` |
+| Pre-flight | **Handover readiness** | `HandoverChecklist` |
+| Shelf | **Documents** | `DocumentList` |
+| Party card | **Seller** / **Buyer** | `PartyCard` (unchanged) |
+| Composer | **Side panel** | `SidePanel` |
+| Smart entry | **Identifier lookup** | `IdentifierLookup` |
+| Deal room | **Deal record** | `DealDetailPage` (unchanged) |
+| Find… (⌘K) | **Search** | `HeaderSearch` |
+| Rail, context bar | **Side navigation**, **app header** | `SideNav`, `AppHeader` |
+| "Nothing here." | **Page not found** | `NotFound` (unchanged) |
 
-### 18.2 Lamp grammar, at a glance
+### 18.2 Status wording per gauge
 
-| Gauge | idle | progress | attention | positive | negative |
+| Gauge | Neutral | Progress | Attention | Positive | Negative |
 |---|---|---|---|---|---|
-| Qualification | `◌` not yet reviewed | — | — | `✓` qualified | `✕` not qualified |
-| Conversation | `◌` not contacted | `◔ ◑ ◕` reaching out, spoke, interested | `‖` not now | `●` ready now | — |
-| Background check | `◌` not started | `◔` in review | `?` more info | `●` clear (+ risk) | `▲` flagged, `■` on hold |
-| Overlays | dashed ring = awaiting approval · attention dot = Re-KYC due | | | | |
-| Journey (not a state) | `●○○` lead · `●●○` prospect · `●●●` customer · dashed ring = outside pipeline | | | | |
+| Journey (path, not a badge) | Lead · Prospect · Customer; "Outside pipeline" badge (neutral) for a buyer-only company | | | | |
+| Qualification | Not reviewed | — | — | Qualified | Not qualified |
+| Conversation | Not contacted | Reaching out · Spoke to them · Interested | Not now · check back <date> | Ready now | — |
+| Background check | Not started | In review | More info needed | Clear · <risk> · until <date> | Flagged · On hold |
+| Background check, extra badges | "Awaiting approval" (outline) | | "Re-KYC due" | | |
+| Marker | Ended (and the name greyed in lists) | | Paused | | |
+| Deal stage | Withdrawn | Open · Gathering paperwork | | Handed over | |
+| Document scan | | Scanning | | Clean | Quarantined · Scan failed |
+| Trade outcome | Not known · No outcome recorded · Claimed (beside the status, never folded into it) | | Part paid · Unpaid | Paid | Disputed |
+| Risk | | | Medium | Low | High; **Critical** (solid, icon) |
 
-### 18.3 Where each decision in this plan comes from
+Exact strings come from the existing label maps (`background-check-labels.ts`, `verification-labels.ts` and the chip label maps), so tests that assert them keep passing.
 
-| Rule in this plan | Source |
+### 18.3 Enterprise patterns this plan uses
+
+| Pattern | Where it comes from | Used in |
+|---|---|---|
+| App header with app name, global search, quick create (+) and user menu | Dynamics 365 app header; Salesforce global header | §6.1, §7.2 |
+| Labelled left navigation | Dynamics site map; HubSpot navigation | §6.2, §7.3 |
+| Record header with key fields and actions | Salesforce highlights panel (up to seven compact-layout fields); Dynamics form header (four read-only fields); Fiori dynamic page header (key information and global actions) | §6.3 |
+| Stage path with guidance | Salesforce Path (key fields and guidance per stage, *Mark as current stage*); Dynamics business process flow | §6.5 |
+| Tabs, with the main task on the first one | Dynamics main form guidance ("Information that's necessary and is primary … should be on the first tab"); Fiori anchor bar or tabs | §8.5 |
+| Related records as cards in a narrow right column, three items each | Salesforce related lists in a narrow region; HubSpot right sidebar; Dynamics reference panel | §6.6, §8.5 |
+| Activity timeline with a composer | Salesforce activity timeline; Dynamics timeline control; HubSpot middle column | §6.8 |
+| Lists as Kanban or split view, not only tables | Salesforce list views, displayed as Table, Kanban or Split View | §6.12, §6.13 |
+| List and detail side by side | Fiori flexible column layout | §8.8 |
+| Quick create in a side panel | Dynamics quick create forms; HubSpot create panel | §6.9 |
+| Inline edit on record details | Salesforce inline edit | §6.10 |
+| Items to approve on the home page | Salesforce "Items to Approve" home component | §8.2 |
+| `/` to search, Ctrl+/ for the shortcut list | Salesforce Lightning keyboard shortcuts | §7.5 |
+| Icon set | Fluent UI System Icons (Microsoft, MIT) | §5.8 |
+
+### 18.4 Where each product rule comes from
+
+| Rule | Source |
 |---|---|
-| Absent, never disabled, for what a role may not do | architecture §9 ("a disabled eye icon would still leak…"); `SettingsPage.tsx` comment |
+| Absent, never disabled, for what a role may not do | architecture §9 ("a disabled eye icon would still leak…") |
 | The server decides moves; the screen asks | architecture §1, §4; PDF §2.6 |
 | CRITICAL looks different | PDF §3.3 |
-| One company, several gauges, drawn together | PDF poster, "The same dashboard, three companies" |
-| No drag on the journey | architecture §4 (journey never moved by hand) |
-| Follow-ups and check-backs stay two kinds | `FollowUpsPage.tsx` header; `engagement.md` |
+| The gauges shown side by side, never merged | PDF poster, "The same dashboard, three companies" |
+| No drag on the journey | architecture §4 (the journey is never moved by hand) |
+| Follow-ups and check-backs stay two kinds | `FollowUpsPage.tsx`; `engagement.md` |
 | RM, not Operations; Aner Labs | plan.md P1-4, P1-5; IQ-13 |
 | Developer never sees background check, verification or screening | D8 (`contracts/background-check.md` §14) |
 | API user reaches nothing | `test_api_user_reaches_nothing_in_the_crm` |
-| Masked roles cannot search by identifier; exact match may name a company | decision 12; BQ-2 |
+| Masked roles cannot search by identifier; an exact match may name a company | decision 12; BQ-2 |
 | Amounts never totalled, kept in their currency | IQ-4; `trade-history.md` |
+
+### 18.5 Sources (checked 5 October 2026)
+
+- Salesforce: [How page layout elements display in Lightning Experience](https://help.salesforce.com/s/articleView?language=en_US&id=platform.layouts_in_lex.htm&type=5) · [Custom record pages (Trailhead)](https://trailhead.salesforce.com/content/learn/modules/lightning_app_builder/lightning_app_builder_recordpage) · [List views (Trailhead)](https://trailhead.salesforce.com/content/learn/modules/lightning-experience-for-salesforce-classic-users/work-with-list-views) · [Split view guide](https://www.salesforceben.com/your-complete-guide-to-salesforce-split-view/) · [Path (Lightning Design System)](https://archive-2_5_2.lightningdesignsystem.com/components/path/) · [Keyboard shortcuts](https://help.salesforce.com/s/articleView?id=xcloud.accessibility_keyboard_shortcuts.htm&language=en_US&type=5) · [Approval requests on the home page](https://help.salesforce.com/s/articleView?id=sf.approvals_homepage.htm&language=en_US&type=5)
+- Microsoft: [Productive main form design in model-driven apps](https://learn.microsoft.com/en-us/power-apps/maker/model-driven-apps/design-productive-forms) · [Timeline control](https://learn.microsoft.com/en-us/power-apps/maker/model-driven-apps/set-up-timeline-control) · [Business process flows](https://learn.microsoft.com/en-us/power-apps/user/work-with-business-processes) · [Fluent 2 iconography](https://fluent2.microsoft.design/iconography) · [`@fluentui/svg-icons`](https://www.npmjs.com/package/@fluentui/svg-icons)
+- HubSpot: [Record page layout](https://knowledge.hubspot.com/records/work-with-records)
+- SAP: [Fiori object page floorplan](https://www.sap.com/design-system/fiori-design-web/v1-145/page-types/floorplans/object-page)

@@ -1,4 +1,4 @@
-"""E9 persistence service for screening review state and bank findings.
+"""Persistence service for screening review state and bank findings.
 
 **The checklist is a log, not a set of toggles.** ``screening_review_item`` has
 no unique constraint on ``(customer_id, item_key)`` and rejects ``UPDATE`` and
@@ -10,27 +10,27 @@ what an auditor asks for, and what overwriting in place destroyed.
 The read path compensates so nothing above this service notices:
 ``list_review_items`` returns exactly one row per ``item_key``, the latest, and
 ``upsert_review_item`` returns the row it just wrote. ``list_item_history``
-returns the whole log for one item (Dev4B 4B-1).
+returns the whole log for one item.
 
 Every decision is also written to the company's shared history log under the
-``screening`` dimension, in the same transaction (decision **D9**, lead, 28 Sep 2026).
+``screening`` dimension, in the same transaction (decided 28 Sep 2026).
 The checklist table stays the item's own full history.
 
 Screening is not qualification and not a gauge (architecture §5.5).
 
-Developer 1 (compliance engine) since 1 October 2026:
+Since 1 October 2026:
 
-* **Seven items, not eight** (plan P2-4a, decision K). ``website-reviewed`` left the
-  catalogue with the website field (R11). Its stored rows stay exactly as they were,
+* **Seven items, not eight**. ``website-reviewed`` left the
+  catalogue with the website field. Its stored rows stay exactly as they were,
   and every decision that pinned one keeps it; the key is *retired*: readable in an
   item's history and in a decision's evidence, refused on a new write (422).
-* **Evidence on an answer** (plan P2-1b, IQ-14: optional). An answer may carry
+* **Evidence on an answer** (optional). An answer may carry
   ``{type, ref}`` references, checked by the same rule as a verification result's
   (``evidence_documents.check_evidence_documents``): the company's own ``AVAILABLE``
   documents, or http(s) links.
-* **Cycles** (plan P2-3a/b). Every answer is stamped with the company's current check
+* **Cycles**. Every answer is stamped with the company's current check
   cycle; "the current state of an item" is its latest row **in that cycle**. A new
-  cycle therefore starts with every item unanswered (IQ-3), and an earlier cycle's
+  cycle therefore starts with every item unanswered, and an earlier cycle's
   answers stay readable by naming the cycle.
 """
 
@@ -76,7 +76,7 @@ class ScreeningCatalogueItem:
 
 #: **The one screening catalogue** — the seven checklist items, in display order,
 #: with the label and section the workspace shows. Served to the frontend in the
-#: list response (verification-and-screening.md §5, Dev4B 4B-1), so `VerificationSection.tsx` needs
+#: list response (verification-and-screening.md §5), so `VerificationSection.tsx` needs
 #: no copy of its own; everything else in the backend derives from this tuple.
 #:
 #: Checked here rather than in the router because the router takes `item_key` as a
@@ -85,7 +85,7 @@ class ScreeningCatalogueItem:
 #: "X/8 reviewed" progress the reviewer is working against.
 #:
 #: Adding an item is one entry here; retiring one moves it to
-#: `RETIRED_SCREENING_ITEMS` (plan P2-4a) so its stored rows keep a label.
+#: `RETIRED_SCREENING_ITEMS` so its stored rows keep a label.
 SCREENING_CATALOGUE_ITEMS: tuple[ScreeningCatalogueItem, ...] = (
     ScreeningCatalogueItem(
         "address-physical",
@@ -124,11 +124,11 @@ SCREENING_CATALOGUE_ITEMS: tuple[ScreeningCatalogueItem, ...] = (
     ),
 )
 
-#: Items that were once in the catalogue (plan P2-4a, decision K). Their stored rows
+#: Items that were once in the catalogue. Their stored rows
 #: are kept and a decision that pinned one still resolves it, so they keep a label;
 #: a new answer to one is refused.
 RETIRED_SCREENING_ITEMS: tuple[ScreeningCatalogueItem, ...] = (
-    # Retired 1 October 2026 with the website field (R11); part of `CLEAR_RULES_V1`.
+    # Retired 1 October 2026 with the website field; part of `CLEAR_RULES_V1`.
     ScreeningCatalogueItem(
         "website-reviewed",
         "Has the website been reviewed?",
@@ -147,8 +147,8 @@ ITEM_LABELS: dict[str, str] = {
     item.key: item.label for item in (*SCREENING_CATALOGUE_ITEMS, *RETIRED_SCREENING_ITEMS)
 }
 
-#: The shared-history dimension screening decisions are recorded under (D9). Needs
-#: its row in `docs/contracts/history-row.md` §2 — Developer 1's contract.
+#: The shared-history dimension screening decisions are recorded under. Needs
+#: its row in `docs/contracts/history-row.md` §2.
 HISTORY_DIMENSION = "screening"
 
 
@@ -216,7 +216,7 @@ class ScreeningReviewService:
         The cycle is ``scope.selected`` (default: the company's current cycle), with the
         legacy rule that a row with no cycle belongs to cycle 1. Only catalogue keys are
         listed: a retired item's rows stay stored and readable through its history, but
-        they are not part of the checklist any more (plan P2-4a).
+        they are not part of the checklist any more.
 
         `DISTINCT ON (item_key)` with a matching `ORDER BY` takes the first row
         of each `item_key` group, and `created_at DESC` makes that the newest.
@@ -324,7 +324,7 @@ class ScreeningReviewService:
         cycle 1 if the company has none yet).
 
         Also writes one `screening` row to the company's shared history log, in
-        the same transaction (**D9**): `from_value` the item's previous status in this
+        the same transaction: `from_value` the item's previous status in this
         cycle (or `None` for its first answer in it), `to_value` the new one, `reason`
         the comment, and the item key, row id and cycle in `details`.
         """

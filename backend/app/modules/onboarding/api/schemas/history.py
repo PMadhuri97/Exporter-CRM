@@ -88,7 +88,7 @@ class HistoryEntryResponse(BaseModel):
         that blob is special. `event_metadata` is nullable, hence the `or {}`.
 
         `hidden_detail_keys` are left out of `details` — the route passes the
-        keys a role may not see (decision D8 for DEVELOPER), so the row is served
+        keys a role may not see (for DEVELOPER), so the row is served
         without them rather than refused. `actor_names` maps actor ids to the names
         this reader may see (`api/actor_names.py`).
         """
@@ -118,7 +118,7 @@ class HistoryEntryResponse(BaseModel):
 
 #: Company fields whose values a history row never serves in full, for any reader —
 #: the same set the writer masks (`exporter_profile_service._MASKED_IN_HISTORY`).
-#: Masked again here because rows written before R-15 hold a registration number in
+#: Masked again here because older rows hold a registration number in
 #: full, and history is append-only: it cannot be rewritten, only served masked.
 #: Masking an already-masked value changes nothing.
 IDENTIFIER_FIELDS_IN_HISTORY = frozenset({"gstins", "pan", "iec", "cin", "registration_number"})

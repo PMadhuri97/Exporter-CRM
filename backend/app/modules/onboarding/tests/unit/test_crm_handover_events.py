@@ -2,7 +2,7 @@
 
 `company.became_customer` and `deal.handed_over` are what the Exporter CRM
 announces to other teams. Nothing fires them yet — the transitions that should
-belong to Developer 2 and Developer 3 — so these tests exercise the helper
+belong to the company record and deals — so these tests exercise the helper
 directly. That is the point: the envelope and the payload are settled here,
 before two people build against a guess.
 
@@ -48,11 +48,11 @@ def publisher(bus: InMemoryEventBus) -> OnboardingEventPublisher:
     return OnboardingEventPublisher(bus=bus)
 
 
-# ── The envelope (U2) ────────────────────────────────────────────────────────
+# ── The envelope ────────────────────────────────────────────────────────
 
 
 def test_the_envelope_carries_an_actor_and_a_deal():
-    """Decision U2: both are fields on the envelope, not payload keys.
+    """Both are fields on the envelope, not payload keys.
 
     A field with a type is what makes a producer that forgets one fail; a
     documented convention about `payload` would fail at no point.

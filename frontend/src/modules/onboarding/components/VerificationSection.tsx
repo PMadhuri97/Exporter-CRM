@@ -1,10 +1,10 @@
 /**
- * The company's verification workspace — **owner: Developer 4B** (verification-and-screening.md §9;
- * 4B-7). Rendered by Developer 4A's `BackgroundCheckPanel`, so its export and props,
+ * The company's verification workspace (verification-and-screening.md §9).
+ * Rendered by `BackgroundCheckPanel`, so its export and props,
  * `VerificationSection({ customerId })`, stay as they are.
  *
  * Verification results and the eight screening items are *inputs* to the background
- * check, not the decision (that is Developer 4A's). This workspace records and
+ * check, not the decision (that is the background check's). This workspace records and
  * reviews those inputs:
  *
  * - `ManualResultForm` records a manual result with evidence (a `PASSED` needs some);
@@ -16,12 +16,12 @@
  * What the viewer may do comes from the server's `capabilities` — this file makes no
  * role comparison.
  *
- * Developer 1, 1 October 2026:
- * - **Filters** (P2-2): All / Automated / Manual / Flagged, over served fields only.
- *   Automated is a real provider (`provenance = PROVIDER`; the RXIL stub is not, IQ-15)
+ * Since 1 October 2026:
+ * - **Filters**: All / Automated / Manual / Flagged, over served fields only.
+ *   Automated is a real provider (`provenance = PROVIDER`; the RXIL stub is not)
  *   and says honestly that none is connected; Flagged is a `FAILED` result or a
  *   `HIGH`/`CRITICAL` risk.
- * - **Cycles** (P2-3d): the results of the current check cycle are listed as before;
+ * - **Cycles**: the results of the current check cycle are listed as before;
  *   an earlier cycle's (after a Re-KYC / Re-KYB) stay readable, grouped by cycle and
  *   read-only. The current cycle is the server's (`current_cycle` on the standing).
  */
@@ -43,7 +43,7 @@ import { VerificationResultRow } from './VerificationResultRow';
 
 type WorkspaceTab = 'COMPANY' | 'BANK';
 
-/** The result filters (P2-2), over fields the server serves. */
+/** The result filters, over fields the server serves. */
 type ResultFilter = 'ALL' | 'AUTOMATED' | 'MANUAL' | 'FLAGGED';
 
 const FILTERS: { value: ResultFilter; label: string }[] = [
@@ -81,7 +81,7 @@ function FilteredEmpty({ filter }: { filter: ResultFilter }) {
   );
 }
 
-/** An earlier cycle's results: readable, never reviewable (P2-3d). */
+/** An earlier cycle's results: readable, never reviewable. */
 function EarlierCycle({
   label,
   results,

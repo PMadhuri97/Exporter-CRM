@@ -1,14 +1,13 @@
-"""``exporter_gstin`` becomes a branch record — **owner: Developer 3**
-(allocation task 3.12, plan P6-1).
+"""``exporter_gstin`` becomes a branch record.
 
 Revision ID: onboarding_0035_gst_branch
 Revises: onboarding_0034_deal_buyer_co
 
 Why
 ---
-R3 needs a per-branch record: a company trading from Maharashtra and Karnataka has
+The CRM needs a per-branch record: a company trading from Maharashtra and Karnataka has
 two addresses, two portal statuses, and possibly a compliance problem in one of
-them. P6-1's recommendation is to grow ``exporter_gstin`` **in place** rather than
+them. The design grows ``exporter_gstin`` **in place** rather than
 create ``gst_registration`` and copy — every row, FK and repository stays, and
 nothing has to be moved.
 
@@ -21,7 +20,7 @@ What it adds
   ``address``, ``flag_status`` (``NOT NULL DEFAULT 'NONE'``), ``flag_reason``,
   ``active`` (``NOT NULL DEFAULT true``), ``deactivated_at``, ``deactivated_by``.
 * ``uq_exporter_gstin_id_customer_id`` — redundant on its own, since ``id`` is the
-  primary key, and that is the point: it is what lets task 2.8 tie a deal's
+  primary key, and that is the point: it is what lets migration 0036 tie a deal's
   invoicing branch to its seller with a **composite** FK, so the database refuses a
   deal pointing at another company's branch.
 * ``ck_exporter_gstin_flag_reason``: ``FLAGGED`` implies a non-blank reason.
@@ -39,10 +38,10 @@ Data steps
 ``state_code`` from the GSTIN's first two characters, and ``state_name`` from the
 code, for every row — the same mapping ``domain/gst_states.py`` applies going
 forward, restated here as SQL because a migration must not depend on code that
-keeps changing. ``test_dev3_gst_branch.py`` asserts the two agree, so a code added
+keeps changing. ``test_gst_branch.py`` asserts the two agree, so a code added
 to one and not the other fails a test.
 
-**Unknown codes are reported, not refused** (P6-1: "unknown codes reported"). The
+**Unknown codes are reported, not refused**. The
 format check accepts any two digits, so a row may carry a code this release does
 not know; it keeps ``state_name = NULL``, and the count is printed for the
 operator. ``state_code`` is still filled, because the GSTIN really does carry it.

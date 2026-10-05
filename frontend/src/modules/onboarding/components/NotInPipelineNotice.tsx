@@ -1,6 +1,5 @@
 /**
- * "This company is not in the sales pipeline" — **owner: Developer 3**
- * (allocation tasks 3.9 and 3.11, plan P4-2).
+ * "This company is not in the sales pipeline".
  *
  * A company that exists only because it was somebody's buyer is a full company
  * record — it can be screened, cleared and traded with — but nobody is selling to
@@ -11,7 +10,7 @@
  * the server refuses to qualify (`COMPANY_NOT_IN_PIPELINE`, 409).
  *
  * This replaces those controls with the reason, and — for a role that may act — the
- * one action that changes it (task 3.11). That is the difference between a screen
+ * one action that changes it. That is the difference between a screen
  * that explains itself and one that offers a button which 409s, the same principle
  * `handover_blocked_reason` follows on the deal page.
  *

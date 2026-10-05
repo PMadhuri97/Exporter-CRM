@@ -1,5 +1,4 @@
-"""Migration 0014 — real links, PAN and GSTIN rules, the marker, sample data
-(L2-05, L2-06, L2-08).
+"""Migration 0014 — real links, PAN and GSTIN rules, the marker, sample data.
 
 The database-level cases go straight through ``psycopg2`` so they prove the
 *database* refuses the bad row, not just the service (migration register §2:
@@ -252,7 +251,7 @@ async def test_verification_results_deliberately_have_no_company_link():
     """`entity_reference` names several kinds of subject (company, person,
     buyer), so it cannot point at one table.
 
-    Since F1 (0023) and P2-3a (0025) the table has two foreign keys of its own — the
+    Since 0023 and 0025 the table has two foreign keys of its own — the
     set-once `subject_company_id` and `cycle_id` — and neither is on
     `entity_reference`, which still has none."""
     conn = _connect()
@@ -495,7 +494,7 @@ async def test_a_companys_gstins_are_no_longer_edited_as_a_list():
     *deactivation*, and `trg_exporter_gstin_no_delete` refuses the delete outright.
 
     Adding, deactivating and flagging a branch are `GstRegistrationService`'s, each
-    with its own history row; `test_dev3_gst_branch.py` covers them. What is left to
+    with its own history row; `test_gst_branch.py` covers them. What is left to
     assert here is that the old door is shut.
     """
     pan = _new_pan()
@@ -716,7 +715,7 @@ async def test_sample_data_is_deterministic_and_safe_to_run_again():
     second = await load_sample_data()
 
     # The per-company rows. `SECTION_9_3_SLUG` is not a company — the three §9.3
-    # seeders the seam commit wired in each span every company, so their counts
+    # seeders wired in each span every company, so their counts
     # have no per-company row to sit in — and it is asserted separately below.
     per_company = {slug: c for slug, c in second.items() if slug != SECTION_9_3_SLUG}
     assert all(
@@ -799,7 +798,7 @@ async def test_sample_data_reaches_the_three_example_companies():
     # pre-shipment document, and its buyer is unscreened — `sample_data_deals`
     # satisfies the paperwork and the buyer's screening only for deals it is about to
     # hand over, so C keeps showing every reason it cannot go. The buyer's two are
-    # BQ-4, live since task 2.5 wired Developer 1's reader.
+    # the buyer rule, read through the compliance reader.
     assert c_deal.handover_blocked_reason == (
         "the company is PROSPECT, not CUSTOMER; the background check is FLAGGED, not CLEAR; "
         "missing required documents: PRE_SHIPMENT; "
@@ -884,9 +883,9 @@ async def test_gstins_carrying_two_pans_are_refused_even_without_a_pan():
                 uuid.uuid4(), source=ExporterSource.SALES, name="Two PANs", country="IN",
                 gstins=[_gstin(first), _gstin(second)],
             )
-    # The edit half of this rule moved with task 3.13: a GSTIN is added one at a time
+    # The edit half of this rule moved to the registration routes: a GSTIN is added one at a time
     # now, and `GstRegistrationService.add` checks it against the company's PAN —
-    # `test_dev3_gst_branch.py::test_a_gstin_that_does_not_carry_the_companys_pan_is_refused`.
+    # `test_gst_branch.py::test_a_gstin_that_does_not_carry_the_companys_pan_is_refused`.
     # Two GSTINs carrying different PANs can no longer be submitted together at all.
 
 

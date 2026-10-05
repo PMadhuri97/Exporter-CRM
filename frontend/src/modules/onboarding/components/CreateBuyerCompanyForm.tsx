@@ -1,5 +1,5 @@
 /**
- * Create a deal's buyer as a company — `remaining-work.md` R-24 (plan P4-3).
+ * Create a deal's buyer as a company.
  *
  * Opened by `CompanyPicker` once a search has found no company on file. It collects
  * the least a buyer company needs and hands it to the caller, which sends it as the
@@ -7,7 +7,7 @@
  * the pipeline** — a buyer, not a lead — and names it as the deal's buyer in one step.
  *
  * What it does not do is decide anything the server decides. It asks for a
- * registration number when the country is not India, because IQ-7 requires one and
+ * registration number when the country is not India, because the CRM requires one and
  * saying so up front saves a round trip — but whether the value is acceptable, whether
  * a company on file already holds it, and whether a PAN fits a GSTIN are the server's
  * answers, shown as they come back. When the server says a company on file already

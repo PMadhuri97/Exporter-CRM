@@ -1,17 +1,16 @@
 """``ComplianceInputsService`` — the compliance-inputs seam's implementation.
-**Owner: Developer 1** (compliance engine, allocation §2.1; built by Developer 4B).
 
 Implements ``domain/compliance_inputs.py::ComplianceInputsReader``
-(``docs/contracts/background-check.md`` §12). Developer 4A reads the inputs to a background-check
-decision through this and nothing else; it never queries Dev4B's tables itself.
+(``docs/contracts/background-check.md`` §12). The background check reads the inputs to a
+decision through this and nothing else; it never queries verification's tables itself.
 
-Reads the tables honestly. 4B-0 read today's tables; 4B-2 switched the latest review
-to the superseding-review table and 4B-4 filled the evidence ids — the shape returned
-never changed (§12.1 invariant 7).
+Reads the tables honestly. The latest review comes from the superseding-review table
+and the evidence ids from each result's references — the shape returned has never
+changed (§12.1 invariant 7).
 
 Read-only in the caller's session
 ---------------------------------
-Dev4A calls this inside its own transaction, holding the company row
+The background check calls this inside its own transaction, holding the company row
 ``FOR UPDATE``. So this never commits, never flushes and never locks (§12.1
 invariant 2):
 
@@ -22,7 +21,7 @@ invariant 2):
   caller's identity map;
 * nothing here takes a row lock. The caller owns locking. Writers of these inputs
   take ``FOR SHARE`` on the company (``company_input_lock.py``), which is what makes
-  a read under Dev4A's ``FOR UPDATE`` a stable one.
+  a read under the background check's ``FOR UPDATE`` a stable one.
 
 What each field means today
 ---------------------------
@@ -31,10 +30,11 @@ What each field means today
   ``ScreeningItemInput`` per catalogue key, in catalogue order; a key never
   recorded has ``screening_review_item_id=None`` and ``status=None``. Rows under a
   key outside the catalogue are not returned.
-* **Verifications (company) — company-keyed (plan P4-5).** The results *about* the
+* **Verifications (company) — company-keyed.** The results *about* the
   company (``verification_result.about_company``): ``subject_company_id =
-  company_id`` — every company-subject result recorded since P4-5, and a legacy
-  deal-buyer result the deal-buyer migration (P4-6) mapped to this company — plus,
+  company_id`` — every company-subject result recorded since checks became
+  company-keyed, and a legacy deal-buyer result the deal-buyer migration mapped to
+  this company — plus,
   for a row recorded before checks were company-keyed (``subject_company_id IS
   NULL``), ``entity_type = EXPORTER AND entity_reference = company_id``. So a company
   has one set of checks, whether it is a seller, a buyer or both. Newest first
@@ -43,21 +43,21 @@ What each field means today
   company link and are **not** returned. A legacy BUYER result that names no company
   is never returned here (§12.1 invariant 3 still holds for it).
 * **Latest review** — the head of the result's ``verification_review`` chain: the
-  review nothing supersedes (4B-2). The database allows exactly one per reviewed
+  review nothing supersedes. The database allows exactly one per reviewed
   result, so it is deterministic. ``latest_review_id``, ``latest_review_status`` and
   ``latest_reviewed_at`` are that review's. A result with no review row but a
   legacy ``review_status`` (written outside the service after migration 0021, which
-  copied every earlier one) reports that status with ``None`` id and time, as 4B-0
-  did — never an invented id or time.
+  copied every earlier one) reports that status with ``None`` id and time — never an
+  invented id or time.
 * **Placeholders** — ``is_placeholder`` is ``verification_result.
   is_placeholder_result``: ``normalized_result.stub`` is ``true`` and no
   ``provider_reference``. Reported, not filtered: whether a placeholder counts as
-  pending is Dev4A's D2.
+  pending is the Clear policy's question.
 * **Evidence** — ``evidence_document_ids`` are the ``document`` references in the
-  result's ``evidence_refs``, in the order recorded (4B-4). ``url`` references are
+  result's ``evidence_refs``, in the order recorded. ``url`` references are
   not documents and are not reported. The retired ``evidence_reference`` column is
   not read.
-* **Cycles (seam v2, plan P2-3b)** — ``company_inputs`` is scoped to the company's
+* **Cycles (seam v2)** — ``company_inputs`` is scoped to the company's
   **current** check cycle (its highest ``check_cycle.number``): the results and the
   latest answer per item *of that cycle*. A row with ``cycle_id IS NULL`` belongs to
   cycle 1 by the legacy rule (``check_cycle_repository.in_cycle``), and is reported
@@ -217,7 +217,7 @@ class ComplianceInputsService:
 
     async def company_inputs(self, company_id: uuid.UUID) -> CompanyComplianceInputs:
         """The company's screening items and the verification results about it
-        (company-keyed, P4-5), in its current check cycle (seam v2).
+        (company-keyed), in its current check cycle (seam v2).
 
         Raises:
             ExporterProfileNotFoundError: no company has this id.
@@ -299,7 +299,7 @@ class ComplianceInputsService:
 
         **Legacy** in seam v2: it serves deals whose buyer is still a ``deal_buyer`` row
         and is replaced by ``company_inputs(buyer_company_id)`` once a deal names a buyer
-        company (plan P4-4/P4-5). Unscoped by cycle — legacy buyers have none.
+        company. Unscoped by cycle — legacy buyers have none.
 
         Keyed by the buyer id only, never the deal or the company (§12.1 invariant 3).
         Nothing returned here is ever part of ``company_inputs``.

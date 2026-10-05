@@ -1,5 +1,5 @@
 /**
- * Qualification — **owner: Developer 2**. Recording an outcome can move the
+ * Qualification. Recording an outcome can move the
  * journey, so it invalidates the company as well as its qualification.
  */
 

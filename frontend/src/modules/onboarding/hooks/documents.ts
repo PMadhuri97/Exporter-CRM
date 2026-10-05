@@ -1,7 +1,7 @@
 /**
- * React Query hooks for documents — **owner: Developer 3B** (L3-09).
+ * React Query hooks for documents.
  *
- * Created as a stub in the seam commit with its barrel line in `hooks/index.ts`,
+ * Created as a stub with its barrel line in `hooks/index.ts`,
  * and filled here, so the barrel was never opened twice.
  */
 

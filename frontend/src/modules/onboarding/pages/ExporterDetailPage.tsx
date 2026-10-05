@@ -1,5 +1,5 @@
 /**
- * The company dossier — **shell, owner: Developer 2**, drawn as frontend-plan §8.5.
+ * The company dossier — the shell, drawn as frontend-plan §8.5.
  *
  * A serif header (the name, one line of facts, the identifiers, the marker menu the
  * server allows), the **hero Standing** — journey, qualification, conversation and,
@@ -8,13 +8,13 @@
  * rail on a wide screen and tabs below that; the keys and `?tab=` are unchanged, so
  * every old link lands where it did.
  *
- *   Profile            panels/CompanyPanel.tsx          Developer 2
- *   Qualification      panels/QualificationPanel.tsx    Developer 2
- *   Conversation       panels/ConversationPanel.tsx     Developer 3A
- *   Deals & trade      panels/DealsPanel.tsx and trade  Developer 3B / 3
- *   Documents          panels/DocumentsPanel.tsx        Developer 3B
- *   Background check   panels/BackgroundCheckPanel.tsx  Developer 4 / 1
- *   Ledger             components/HistoryTimeline.tsx   Developer 1
+ *   Profile            panels/CompanyPanel.tsx
+ *   Qualification      panels/QualificationPanel.tsx
+ *   Conversation       panels/ConversationPanel.tsx
+ *   Deals & trade      panels/DealsPanel.tsx and trade
+ *   Documents          panels/DocumentsPanel.tsx
+ *   Background check   panels/BackgroundCheckPanel.tsx
+ *   Ledger             components/HistoryTimeline.tsx
  *
  * **Now**, at the top of the profile, lists at most three next steps, each built only
  * from what the server served for this company (`can_open_deal`, the background
@@ -78,7 +78,7 @@ import { DealsPanel } from './panels/DealsPanel';
 import { DocumentsPanel } from './panels/DocumentsPanel';
 import { QualificationPanel } from './panels/QualificationPanel';
 
-// The compliance chapter is its own chunk (G7): a role without the tab never loads it.
+// The compliance chapter is its own chunk: a role without the tab never loads it.
 const BackgroundCheckPanel = lazy(() =>
   import('./panels/BackgroundCheckPanel').then((m) => ({ default: m.BackgroundCheckPanel })),
 );
@@ -139,12 +139,12 @@ function useScrolledPast(ref: React.RefObject<HTMLElement>): boolean {
 export function ExporterDetailPage() {
   const { customerId } = useParams<{ customerId: string }>();
   // DEVELOPER reads the CRM (masked) but writes nothing and cannot load
-  // verification results — the backend refuses those with 403 (D8) — so it gets no
+  // verification results — the backend refuses those with 403 — so it gets no
   // Background check chapter at all, and no request for one.
   const isStaff = useCan('crm.write');
   const canReadCompliance = useCan('compliance.read');
   // Flagging a branch stops trade through it, so it is a compliance decision and not
-  // a sales one (plan P6-5). The server refuses it for OPERATIONS; the screen does not
+  // a sales one. The server refuses it for OPERATIONS; the screen does not
   // offer it either, rather than showing a button that 403s.
   const canFlagBranches = useCan('gst.flag');
   const tabs = canReadCompliance
@@ -167,14 +167,14 @@ export function ExporterDetailPage() {
   const activityQuery = useExporterActivities(customerId, activityParams);
   const dealsQuery = useCompanyDeals(customerId);
   const conversation = useExporterConversation(customerId);
-  // Only for a role the background-check routes admit (D8): no request otherwise.
+  // Only for a role the background-check routes admit: no request otherwise.
   const check = useBackgroundCheck(canReadCompliance ? customerId : undefined);
   // Hooks run before the missing-id guard below; the mutation is only offered after it.
   const bringIntoPipeline = useBringIntoPipeline(customerId ?? '');
   const header = useRef<HTMLDivElement>(null);
   const compact = useScrolledPast(header);
 
-  // The shell (R-33 Phase 2): the trail, ⌘K's "Recent", and its chapters as commands.
+  // The shell: the trail, ⌘K's "Recent", and its chapters as commands.
   const userId = String(useCurrentUser().id);
   const name = profile ? displayName(profile) : null;
   useCrumbs([{ label: 'Companies', to: paths.companies }, ...(name ? [{ label: name }] : [])]);
@@ -239,7 +239,7 @@ export function ExporterDetailPage() {
   const hasNextActivityPage = activities.length === ACTIVITY_PAGE_SIZE;
   const dealCount = dealsQuery.data?.total;
   // A company that exists only because it was somebody's buyer: its journey and both
-  // gauges do not apply, and the server refuses them (plan P4-2, task 3.9).
+  // gauges do not apply, and the server refuses them.
   const notInPipeline = profile.pipeline_status === 'NOT_IN_PIPELINE';
   const gauge = conversation.data;
   const standing = check.data;
@@ -422,12 +422,12 @@ export function ExporterDetailPage() {
                   </ul>
                 )}
               </section>
-              {/* IQ-7's completion list, from the company's side (R-28). */}
+              {/* The identity completion list, from the company's side. */}
               {profile.identity_type === null ? (
                 <IdentityGapNotice country={profile.country} canEdit={isStaff} />
               ) : null}
               <CompanyPanel profile={profile} canEdit={isStaff} />
-              {/* The company's branches (task 3.13). Flagging one is COMPLIANCE's
+              {/* The company's branches. Flagging one is COMPLIANCE's
                   decision, so it is gated separately from editing. */}
               <GstRegistrationsSection customerId={customerId} canEdit={isStaff} canFlag={canFlagBranches} />
             </div>
@@ -470,9 +470,9 @@ export function ExporterDetailPage() {
             )}
           </TabsContent>
           <TabsContent value="deals">
-            {/* Both sides of this company's trade (task 3.9): selling, where a deal is
+            {/* Both sides of this company's trade: selling, where a deal is
                 opened, and buying, a plain list. Then what came of it, invoice by
-                invoice — never totalled; amounts stay in their own currency (IQ-4). */}
+                invoice — never totalled; amounts stay in their own currency. */}
             <div className="flex flex-col gap-8">
               <DealsPanel customerId={customerId} isStaff={isStaff} />
               <Panel
@@ -499,7 +499,7 @@ export function ExporterDetailPage() {
             <DocumentsPanel customerId={customerId} isStaff={isStaff} />
           </TabsContent>
           <TabsContent value="background-check">
-            {/* Never rendered for a role without the chapter, so its code never loads (G7). */}
+            {/* Never rendered for a role without the chapter, so its code never loads. */}
             <Suspense fallback={<Skeleton className="h-40 rounded-xl" />}>
               <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
             </Suspense>

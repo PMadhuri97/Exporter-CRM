@@ -6,12 +6,12 @@ its ``lifecycle_*`` event types come from; migration 0013 generalised it.
 
 Same base and enforcement pattern as ``ExporterActivity`` and
 ``OnboardingEvent``: ``trg_exporter_lifecycle_history_append_only`` (migration
-``onboarding_0011_e9_audit``) rejects UPDATE and DELETE at the database, reusing
+``onboarding_0011_review_audit``) rejects UPDATE and DELETE at the database, reusing
 the shared ``public.prevent_mutation()`` function both of those already rely on.
 
 ``customer_id`` is a real foreign key to ``exporter_profile.customer_id``
 (``ON DELETE RESTRICT``), added by migration 0014 once the company record existed;
-0013 deliberately left it bare (decision U3).
+0013 deliberately left it bare.
 
 **Why this is not an ``onboarding_event`` row.** That was the first choice, and
 ``ExporterProfileService`` already holds a repository for it.
@@ -77,7 +77,7 @@ class ExporterLifecycleHistory(AppendOnlyModel):
         ),
         # Serves the ANER-4.2-S1T2 completion hook — a consumer watching for a
         # company's terminal journey move (to CUSTOMER since migration 0020; it was
-        # COMPLIANCE_REVIEW -> ONBOARDED before — company-record contract, O2).
+        # COMPLIANCE_REVIEW -> ONBOARDED before — company-record contract).
         Index(
             "ix_exporter_lifecycle_history_to_status",
             "to_status",

@@ -1,6 +1,6 @@
 /**
- * Chips for the company's journey, qualification gauge and marker —
- * **owner: Developer 2**. Three separate displays for three separate values:
+ * Chips for the company's journey, qualification gauge and marker.
+ * Three separate displays for three separate values:
  * none of them is a stage of another.
  */
 

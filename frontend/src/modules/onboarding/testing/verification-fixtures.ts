@@ -1,5 +1,5 @@
 /**
- * Builders for Developer 4B's verification-workspace tests. Values are shaped like
+ * Builders for the verification-workspace tests. Values are shaped like
  * the server's responses (the generated types), never hand-simplified.
  *
  * Test-only: imported by `*.test.tsx` files, never by the app — which is why it
@@ -111,7 +111,7 @@ export function crmDocument(overrides: Partial<CrmDocument> = {}): CrmDocument {
 }
 
 /** The server's catalogue (`SCREENING_CATALOGUE_ITEMS`), in its display order — seven
- * items since plan P2-4a retired `website-reviewed`. */
+ * items since `website-reviewed` retired. */
 export const CATALOGUE: ScreeningCatalogueItem[] = [
   { key: 'address-physical', label: 'Is the registered address a physical business address?', section: 'Company checks' },
   { key: 'business-consistency', label: 'Does the declared business activity make sense for the exporter?', section: 'Company checks' },

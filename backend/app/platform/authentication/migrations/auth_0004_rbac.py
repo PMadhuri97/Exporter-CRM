@@ -1,6 +1,6 @@
 """Role and permission tables, seeded from the five built-in roles
 
-Phase 2 of user management: roles become data an administrator can edit, rather
+Role management: roles become data an administrator can edit, rather
 than five values hardcoded in an enum.
 
 What this migration does *not* do is switch the 21 existing `require_role` call

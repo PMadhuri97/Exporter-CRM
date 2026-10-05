@@ -1,10 +1,10 @@
-"""Phase 2 role management: roles as editable data, permissions as the gate.
+"""Role management: roles as editable data, permissions as the gate.
 
 The tests that matter most here are the ones about *not* changing behaviour.
 Moving user management from `require_role(ADMIN)` to `require_permission` is
 only safe if the seeded built-in roles reproduce section 3.7 of the architecture
 plan exactly, so the first group asserts that seed directly, and the refusal
-tests from Phase 1 keep passing untouched.
+tests from user management keep passing untouched.
 
 The second group covers the two lockouts that are genuinely reachable now that
 "who may do this" is editable: stripping role management from your own role, and
@@ -187,7 +187,7 @@ async def test_my_permissions_needs_no_permission_of_its_own(
 async def test_the_operations_role_reads_rm_everywhere_it_is_named(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
-    """IQ-13 (task 3.6, `auth_0005_rm_role_name`): the built-in row is what the
+    """`auth_0005_rm_role_name`: the built-in row is what the
     Roles tab, the user form and "Signed in as …" show, so the rename has to reach
     it. An account with no `role_id` is named by that same built-in row — the one
     its permissions come from — not by the enum title-cased into "Operations"."""
@@ -474,7 +474,7 @@ async def test_user_count_includes_enum_fallback_holders(
 
 
 async def test_cannot_strip_role_management_from_your_own_role(client: AsyncClient):
-    """Reachable, unlike Phase 1's "last admin": an administrator editing the
+    """Reachable, unlike user management's "last admin": an administrator editing the
     role they themselves hold can remove the permission needed to put it back."""
     _, admin_token = await user_with_role(client, UserRole.ADMIN)
     roles = await _roles_by_slug(client, admin_token)

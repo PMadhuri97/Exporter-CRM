@@ -1,6 +1,6 @@
-"""Request/response schemas for the EXP-2 verification API — **owner: Developer 4B**.
+"""Request/response schemas for the verification API.
 
-Changes since EXP-2 are additive: `VerificationResultResponse` keeps
+Changes since the first version are additive: `VerificationResultResponse` keeps
 every field it had and gains evidence, the buyer snapshot, provenance, the
 placeholder flag and the review chain. `reviewed_by` / `review_status` now report the
 **current** review (the chain head) rather than the legacy columns, which are no
@@ -39,13 +39,14 @@ from app.platform.authentication.models import User
 #: Registry keys of the real verification adapters: `ManualEntryAdapter`
 #: (`"manual"`) and `StubRxilAdapter`'s `REGISTRY_KEY` (`"rxil"`). Widen this
 #: when a new adapter is registered. Middesk, Trulioo and Sumsub stay
-#: unreachable (A13).
+#: unreachable.
 VerificationProvider = Literal["manual", "rxil"]
 
-#: What `POST /verifications` — the manual route — accepts. Decision **D7** (lead,
-#: 28 Sep 2026): a person records results here, so only `"manual"`. `"rxil"` is
+#: What `POST /verifications` — the manual route — accepts. Decided
+#: 28 Sep 2026: a person records results here, so only `"manual"`. `"rxil"` is
 #: refused (422) and reserved for the future RXIL results-intake path (blocked on
-#: D12), so nobody can record a result *as RXIL's* by picking it from a form.
+#: the RXIL results contract), so nobody can record a result *as RXIL's* by picking it
+#: from a form.
 ManualRouteProvider = Literal["manual"]
 
 
@@ -56,7 +57,7 @@ class VerificationEvidenceRefModel(BaseModel):
     Prefixed because OpenAPI schema names are global: qualification already has an
     `EvidenceRefModel` / `EvidenceRefOut` (`schemas/qualification.py`), and a second
     class of the same name makes FastAPI rename *both* to module-qualified names,
-    silently changing Developer 2's generated types."""
+    silently changing the frontend's generated types."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -68,7 +69,7 @@ class TriggerVerificationRequest(BaseModel):
     """Ask `trigger_verification` to run one check.
 
     `provider` defaults to `"manual"` (`ManualEntryAdapter`) and, on this route,
-    is limited to it (`ManualRouteProvider`, decision D7) — the value is resolved
+    is limited to it (`ManualRouteProvider`) — the value is resolved
     to a module path, so anything else must be refused here at the boundary
     rather than reaching the registry. `payload` is
     opaque here by design: its shape is between the caller and whichever
@@ -79,7 +80,7 @@ class TriggerVerificationRequest(BaseModel):
     `BUYER` — never a company or deal id for a buyer.
 
     Evidence (`evidence_note`, `evidence_refs`) is what the outcome rests on, in the
-    qualification contract's shape. A manual `PASSED` needs some (D16: a note or at
+    qualification contract's shape. A manual `PASSED` needs some (a note or at
     least one reference). A `document` reference must belong to the subject and be
     `AVAILABLE` (scanned clean); a `url` reference must be an http(s) link.
     """
@@ -180,7 +181,7 @@ class VerificationResultResponse(BaseModel):
     risk_level: VerificationRiskLevel | None
     performed_at: datetime
     valid_until: datetime | None
-    # D8 (lead, 28 Sep 2026): no change — returned as stored to the roles that
+    # Decided 28 Sep 2026: no change — returned as stored to the roles that
     # may read it; DEVELOPER stays refused.
     normalized_result: dict[str, Any]
     #: Retired: never written. Kept so the response shape does not shrink.
@@ -199,11 +200,11 @@ class VerificationResultResponse(BaseModel):
     reviews: list[VerificationReviewResponse]
     created_at: datetime
     updated_at: datetime
-    #: The check cycle a company-subject result belongs to (Developer 1, P2-3a); one
+    #: The check cycle a company-subject result belongs to; one
     #: recorded before cycles reads as cycle 1. `None` for other subjects.
     cycle_id: uuid.UUID | None = None
-    #: The company the result is about (Developer 1, P4-5): set on every company-subject
-    #: result since P4-5, and on a deal-buyer result the deal-buyer migration mapped to a
+    #: The company the result is about: set on every company-subject
+    #: result since checks became company-keyed, and on a deal-buyer result the deal-buyer migration mapped to a
     #: company. `None` on a legacy row (an `EXPORTER` one is about `entity_reference`).
     subject_company_id: uuid.UUID | None = None
 

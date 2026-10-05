@@ -456,7 +456,7 @@ This document is the audit. Phase 0's remaining work turns its open points into 
 
 ### P0-2 — Contract revision v2 (designed once)
 - **Objective:** design every contract change the phases need, so the frozen 4A↔4B seam, the history dimensions and the deal contract change once.
-- **Current state:** `domain/compliance_inputs.py` says its output shape is frozen; `test_l4b_compliance_inputs_contract.py` pins it. `history-row.md` lists dimensions. `deal-and-buyer.md` and `event-envelope.md` describe `deal_buyer`.
+- **Current state:** `domain/compliance_inputs.py` says its output shape is frozen; `test_compliance_inputs_contract.py` pins it. `history-row.md` lists dimensions. `deal-and-buyer.md` and `event-envelope.md` describe `deal_buyer`.
 - **Required change:** a v2 of `docs/contracts/background-check.md` §6 seam: `VerificationInput.cycle_id`, `ScreeningItemInput.cycle_id`, `CompanyComplianceInputs.current_cycle_id`, inputs keyed by `subject_company_id`; `buyer_checks(deal_buyer_id)` kept for legacy reads and replaced by `company_inputs(buyer_company_id)`. New history dimensions: `check_cycle`, `background_check_approval`, `gst_registration`, `trade`, `pipeline`. `deal.handed_over` payload: buyer snapshot + `buyer_company_id`.
 - **Backend / Frontend / Database / Migration:** docs only in this task.
 - **Tests:** list which contract tests change (see §18.2).
@@ -613,7 +613,7 @@ This document is the audit. Phase 0's remaining work turns its open points into 
 - **Objective:** the background check decides on the current cycle.
 - **Current state:** `ComplianceInputsService.company_inputs` returns every EXPORTER result ever and the latest screening row per key.
 - **Required change:** implement the P0-2 seam shape: current cycle's results (legacy `NULL` = cycle 1), latest screening row per key within the current cycle, with the cycle id. Placeholders from earlier cycles no longer block (this settles source §1.5 item 3 going forward).
-- **Tests:** `test_l4b_compliance_inputs.py`, `test_l4b_compliance_inputs_contract.py`, `test_l4a_background_check_rules.py` (policy over cycle-scoped inputs).
+- **Tests:** `test_compliance_inputs.py`, `test_compliance_inputs_contract.py`, `test_background_check_rules.py` (policy over cycle-scoped inputs).
 - **Dependencies:** P2-3a.
 - **Acceptance criteria:** a company in cycle 2 with no cycle-2 screening answers cannot be cleared even though cycle 1 had eight PASSED.
 
@@ -663,7 +663,7 @@ This document is the audit. Phase 0's remaining work turns its open points into 
 - **Objective:** name missing categories like the other unmet conditions.
 - **Current state:** guard in `deal_service.py:535-588`.
 - **Required change:** in `_handover_blocked_reason`, read active requirements and the deal's documents; count only `AVAILABLE` documents (IQ-11, answered); append "missing required documents: PRE_SHIPMENT, …".
-- **Tests:** `test_l3b_handover.py` new cases; the unlocked read path shows the same reason; e2e.
+- **Tests:** `test_handover.py` new cases; the unlocked read path shows the same reason; e2e.
 - **Dependencies:** P2-5a.
 - **Acceptance criteria:** with a requirement set, a deal lacking it is refused with 409 naming the category; with none set, behaviour is unchanged.
 
@@ -717,14 +717,14 @@ This document is the audit. Phase 0's remaining work turns its open points into 
 
 ### P3-1d — Bring the existing suite and sample data onto maker-checker
 - **Objective:** no silent single-user path left in tests or seeds.
-- **Required change:** `sample_data_background_check.py` records approvals by a second seeded user; `test_l4a_background_check_service.py` (1,435 lines), `test_l4a_background_check_api.py`, `test_customer_promotion.py`, `test_crm_end_to_end.py`, `test_l3b_handover.py` use the P0-5 helper.
+- **Required change:** `sample_data_background_check.py` records approvals by a second seeded user; `test_background_check_service.py` (1,435 lines), `test_background_check_api.py`, `test_customer_promotion.py`, `test_crm_end_to_end.py`, `test_handover.py` use the P0-5 helper.
 - **Acceptance criteria:** suite back to baseline with maker-checker on.
 
 ### P3-2 — KYB, AML and sanctions must pass for Clear (decision B)
 - **Objective:** `CLEAR` refused unless KYB, AML and SANCTIONS passed in the current cycle.
 - **Current state:** `ClearPolicy` has no required-type field; seam scoped by cycle after P2-3b.
 - **Required change:** `ClearPolicy.required_passed_types = {KYB, AML, SANCTIONS}`, and a prerequisite per missing type (`kyb_passed`, `aml_passed`, `sanctions_passed`) so the refusal names each. "Passed" by default means: the latest non-placeholder result of that type in the current cycle has `status=PASSED` (IQ-2 decides whether `REVIEW` + `ACCEPTED` counts). The background-check read serves the required types and their state, so the UI stops relying on `COMPANY_CHECK_TYPES` for this.
-- **Tests:** `test_l4a_background_check_rules.py` (pure policy), service/API tests, e2e, sample data.
+- **Tests:** `test_background_check_rules.py` (pure policy), service/API tests, e2e, sample data.
 - **Dependencies:** P2-3b; with P2-4a in the same `rules_version` bump.
 - **Parallelization:** with P3-1.
 - **Acceptance criteria:** source §7 3.2; the guard names what is missing.
@@ -755,7 +755,7 @@ This document is the audit. Phase 0's remaining work turns its open points into 
   - **Buyer:** the latest SANCTIONS and the latest AML result must each be **PASSED** (or REVIEW with an ACCEPTED review). A missing or FAILED result blocks ("buyer sanctions not checked" / "buyer: failed AML"). Incomplete KYB and other buyer checks are warnings in the deal view.
   - **Seller:** a FAILED latest SANCTIONS or AML result in the current cycle blocks, even while the gauge still reads CLEAR (consequence 5.1.1, confirmed). The seller's CLEAR gauge rule stays as it is.
   - P4-7 replaces only where the buyer results are read from (the buyer company instead of `deal_buyer`).
-- **Tests:** `test_l3b_handover.py`, `test_l4b_buyer_checks.py`, e2e.
+- **Tests:** `test_handover.py`, `test_buyer_checks.py`, e2e.
 - **Dependencies:** none left (BQ-3/BQ-4 answered).
 - **Parallelization:** with P3-1..3.
 - **Acceptance criteria:** a deal whose buyer has no PASSED sanctions/AML result, or whose seller has a FAILED one, cannot be handed over and says why. The seeded sample buyers need sanctions and AML results recorded for the demo handover to work.
@@ -799,7 +799,7 @@ Sequencing: P4-1 → (P4-2 ∥ P4-3 ∥ P4-4) → P4-5 → **P4-6 migration chec
 - **Frontend:** buyer picker in `DealDetailPage.tsx` (replaces `BuyerForm`), with P4-3.
 - **Database:** column, check, trigger function update.
 - **Migration:** backfill in P4-6.
-- **Tests:** `test_l3b_deal_buyer.py` rewritten for companies; seller ≠ buyer; terminal freeze includes the new column (raw SQL); masking; OpenAPI.
+- **Tests:** `test_deal_buyer.py` rewritten for companies; seller ≠ buyer; terminal freeze includes the new column (raw SQL); masking; OpenAPI.
 - **Dependencies:** P4-1, P2-7.
 - **Acceptance criteria:** a deal can record a buyer company; handover snapshots it.
 
@@ -808,7 +808,7 @@ Sequencing: P4-1 → (P4-2 ∥ P4-3 ∥ P4-4) → P4-5 → **P4-6 migration chec
 - **Current state:** BUYER results keyed by `deal_buyer.id`; history on the seller timeline; `share_lock_companies` locks the seller for buyer inputs.
 - **Required change:** `verification_result.subject_company_id` (FK, nullable), set on every new EXPORTER-subject result (= `entity_reference`) and on buyer-company checks; frozen once set (add to `trg_verification_result_input_immutability`). New buyer checks are recorded against the buyer **company** (entity type `EXPORTER`, read as "company subject"; renaming the enum is not worth it). History goes to the buyer company's timeline with `deal_id` context. Seam: `company_inputs` reads by `subject_company_id` (legacy rows by `entity_reference`). `buyer_checks(deal_buyer_id)` stays for legacy reads only.
 - **Frontend:** `BuyerChecks.tsx` replaced by a link to the buyer company's background-check panel plus a compact "buyer sanctions/AML" summary on the deal.
-- **Tests:** `test_l4b_buyer_checks.py`, `test_l4b_evidence_and_subjects.py`, `test_exp2_verification_service.py`, seam tests.
+- **Tests:** `test_buyer_checks.py`, `test_evidence_and_subjects.py`, `test_verification_service.py`, seam tests.
 - **Dependencies:** P4-4, P0-2.
 - **Acceptance criteria:** one set of checks per company; a company that is buyer in deal 1 and seller in deal 2 shows the same results in both.
 
@@ -1163,12 +1163,12 @@ P0 (decisions, seam v2, inventory, conventions, fixtures)
 
 ### 18.2 Existing tests that must change
 
-- **Buyer model:** `test_l3b_deal_buyer.py`, `test_l3b_handover.py`, `test_l4b_buyer_checks.py`, `test_l4b_evidence_and_subjects.py`, `test_exp2_verification_service.py`, `test_exp3_stub_rxil_adapter.py`, `test_l4a_background_check_reader.py`, `test_l4a_background_check_service.py`, `test_l4b_compliance_inputs.py`, `unit/test_l4b_compliance_inputs_contract.py`; frontend `DealDetailPage.test.tsx`, `BuyerChecks.test.tsx`, one more referencing buyer shapes.
-- **Screening catalogue / website item:** `test_crm_end_to_end.py`, `test_customer_promotion.py`, `test_e9_screening_review_service.py`, `test_l4a_background_check_repository.py`, `test_l4a_background_check_schema.py`, `test_l4b_compliance_inputs.py`, `test_l4b_screening_integrity.py`, `test_l4b_verification_schema.py`, `test_route_authorization.py`, `unit/test_l4b_compliance_inputs_contract.py`, `unit/test_l4b_verification_integrity_rules.py`; frontend `ScreeningChecklist.test.tsx` and one more.
+- **Buyer model:** `test_deal_buyer.py`, `test_handover.py`, `test_buyer_checks.py`, `test_evidence_and_subjects.py`, `test_verification_service.py`, `test_stub_rxil_adapter.py`, `test_background_check_reader.py`, `test_background_check_service.py`, `test_compliance_inputs.py`, `unit/test_compliance_inputs_contract.py`; frontend `DealDetailPage.test.tsx`, `BuyerChecks.test.tsx`, one more referencing buyer shapes.
+- **Screening catalogue / website item:** `test_crm_end_to_end.py`, `test_customer_promotion.py`, `test_screening_review_service.py`, `test_background_check_repository.py`, `test_background_check_schema.py`, `test_compliance_inputs.py`, `test_screening_integrity.py`, `test_verification_review_schema.py`, `test_route_authorization.py`, `unit/test_compliance_inputs_contract.py`, `unit/test_verification_integrity_rules.py`; frontend `ScreeningChecklist.test.tsx` and one more.
 - **Website field:** `test_company_website.py`, `test_company_import.py`, RXIL intake tests, `AddExporterPage.test.tsx`, `CompanyImportPage.test.tsx`.
 - **GSTIN:** `test_company_identity.py`, `test_company_record_0014.py`, `test_profile_edit_history.py`, `test_company_import.py`, `test_rxil_intake.py`, frontend `ExporterDetailPage.test.tsx`.
-- **Maker-checker / Clear rule:** `test_l4a_background_check_service.py`, `test_l4a_background_check_api.py`, `unit/test_l4a_background_check_rules.py`, `test_customer_promotion.py`, `test_crm_end_to_end.py`, `BackgroundCheckPanel.test.tsx`.
-- **Handover guard:** `test_l3b_handover.py`, `test_crm_integrity_guards_0022.py` (trigger function changes), `unit/test_crm_handover_events.py` (event payload).
+- **Maker-checker / Clear rule:** `test_background_check_service.py`, `test_background_check_api.py`, `unit/test_background_check_rules.py`, `test_customer_promotion.py`, `test_crm_end_to_end.py`, `BackgroundCheckPanel.test.tsx`.
+- **Handover guard:** `test_handover.py`, `test_crm_integrity_guards_0022.py` (trigger function changes), `unit/test_crm_handover_events.py` (event payload).
 - **Always:** `test_route_authorization.py` (one row per new route), `tests/contract/test_openapi_artifact_is_current.py` (regenerate `openapi.json` and `schema.ts`), `tests/contract/test_orm_matches_the_onboarding_schema.py`.
 
 ### 18.3 Missing tests to add

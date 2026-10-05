@@ -2,7 +2,7 @@
 
 Pure logic, no database: the service-level check that an uninterpretable pair
 is rejected before any adapter runs lives in
-`tests/integration/test_exp2_verification_service.py`.
+`tests/integration/test_verification_service.py`.
 """
 
 from __future__ import annotations

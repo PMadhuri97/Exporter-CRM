@@ -16,7 +16,7 @@ const EXPECTED: Record<Capability, UserRole[]> = {
   'company.create': ['OPERATIONS', 'COMPLIANCE', 'ADMIN'],
   'company.import': ['OPERATIONS', 'COMPLIANCE', 'ADMIN'],
   'company.rxilIntake': ['ADMIN'],
-  // D8: a company's background check is never the DEVELOPER's.
+  // A company's background check is never the DEVELOPER's.
   'compliance.read': ['OPERATIONS', 'COMPLIANCE', 'ADMIN'],
   'compliance.decide': ['COMPLIANCE', 'ADMIN'],
   'compliance.queue': ['COMPLIANCE', 'ADMIN'],

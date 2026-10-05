@@ -1,5 +1,5 @@
 // platform/shell — what a page tells the shell (crumbs, ⌘K actions, page keys), and the
-// viewer's recent companies (frontend-plan §7, R-33 Phase 2).
+// viewer's recent companies (frontend-plan §7).
 export {
   useCommandActions,
   useCrumbs,

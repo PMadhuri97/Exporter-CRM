@@ -178,11 +178,11 @@ class HistoryService:
         leaves whole dimensions out of both the page and the total, and
         ``exclude_event_types`` single kinds of row.
 
-        **The deals include the ones this company buys on** (task 2.7). A deal's
+        **The deals include the ones this company buys on**. A deal's
         history rows are keyed to the selling company, so without this a buyer
         company's timeline would show nothing of the deals it is a party to — and a
         buyer-only company's timeline would be empty but for the row saying it was
-        created. Decision D8 still applies: ``exclude_dimensions`` is applied to
+        created. The DEVELOPER rule still applies: ``exclude_dimensions`` is applied to
         these rows exactly as to the company's own, so nothing becomes readable by
         arriving through a deal.
         """

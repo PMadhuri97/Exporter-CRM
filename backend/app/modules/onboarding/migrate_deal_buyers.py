@@ -1,5 +1,4 @@
-"""Turn legacy deal buyers into company records — **owner: Developer 2**
-(allocation task 2.6, plan P4-6 and §17.2).
+"""Turn legacy deal buyers into company records.
 
     LOG_LEVEL=WARNING DEBUG=false python -m app.modules.onboarding.migrate_deal_buyers --dry-run
     ... --apply --run-id 2026-10-03a [--confirm-name <deal_buyer_id>=<company_id> ...]
@@ -16,9 +15,9 @@ set-once and frozen by triggers, so neither can be set back to ``NULL``. Restori
 ``pg_dump`` is the only route back, which is why taking one is step zero and not a
 precaution. See ``rollback`` for how this was found.
 
-A command and not an Alembic revision, because §17.2 puts a **person** between
-reading and writing: name-only duplicates are reported and confirmed by hand
-(decision IQ-8), and a revision has nowhere to pause for that.
+A command and not an Alembic revision, because the migration puts a **person** between
+reading and writing: name-only duplicates are reported and confirmed by hand,
+and a revision has nowhere to pause for that.
 
 **Never run on a live database before its dry-run report has been read.** It is
 tested against seeded databases covering §17.2's edge cases. The intended sequence
@@ -27,14 +26,14 @@ is: ``pg_dump``, ``--dry-run``, read the report, confirm what needs a person,
 
 How a buyer's identity is resolved (§17.2, in order of confidence)
 ------------------------------------------------------------------
-#. **The row is already linked to a company**: its deal names a buyer company
-   (task 2.4), or its BUYER results already have a ``subject_company_id`` (P4-5).
+#. **The row is already linked to a company**: its deal names a buyer company,
+   or its BUYER results already have a ``subject_company_id``.
    Both are set once and frozen, so that company is the answer and the row can map
    nowhere else (``ALREADY_LINKED``). Its identifiers are still checked against the
    company; if any contradicts it — or the links contradict each other — the row
    needs a person and nothing is written for it.
 #. **A PAN.** An Indian buyer whose ``tax_id`` is a PAN, or a GSTIN carrying one,
-   joins the company holding that PAN. This is R1's case and it may well join an
+   joins the company holding that PAN. This is the case that matters most: it may well join an
    existing **seller** — which is the whole point of unifying the two. A PAN that
    only GSTINs carry, on **several** companies, is a ``CONFLICT`` for a person.
 #. **A registration number.** A foreign buyer joins the company with the same
@@ -43,7 +42,7 @@ How a buyer's identity is resolved (§17.2, in order of confidence)
    A number with fewer than ``MIN_REGISTRATION_KEY_LENGTH`` letters or digits (the
    ``X`` found on a scratch copy) is not an identity: it is reported, not used.
 #. **Nothing shared** — a new ``NOT_IN_PIPELINE`` company, **one per row**.
-#. **A matching name and no identifier** is never a merge (decision IQ-8). If a
+#. **A matching name and no identifier** is never a merge. If a
    company of that name already exists, the row needs a person, who confirms one
    candidate with ``--confirm-name`` (mapped ``NAME_CONFIRMED``). Identifier-less
    buyers that share a name with *each other* are **kept separate**: each becomes
@@ -74,12 +73,12 @@ for the deal's BUYER results.
 
 It does **not** touch ``deal_buyer`` rows, ``entity_type``, ``entity_reference``,
 ``subject_snapshot`` or any existing history row. Existing history stays on the
-seller's timeline and reaches the buyer company by the read-side union task 2.7
-added. The ``handover_snapshot`` of a handed-over deal was taken from the
-``deal_buyer`` row before this ever runs (P2-7), so what the lending team was given
+seller's timeline and reaches the buyer company by the read-side union for deals
+as buyer. The ``handover_snapshot`` of a handed-over deal was taken from the
+``deal_buyer`` row before this ever runs, so what the lending team was given
 cannot change.
 
-Everything this command prints is ASCII, so a cp1252 console can show it (R-11).
+Everything this command prints is ASCII, so a cp1252 console can show it.
 """
 
 from __future__ import annotations
@@ -144,7 +143,7 @@ MAX_CANDIDATES_SHOWN = 5
 LARGE_MERGE = 25
 
 #: The fewest letters and digits a registration number needs to identify a company
-#: here (R-10). No format is documented for foreign registration numbers — they are
+#: here. No format is documented for foreign registration numbers — they are
 #: stored "as the registrar writes it" and compared alphanumerics-only
 #: (``company-record.md``, ``registration_key``) — so this is not a format rule. It is
 #: the narrowest one that stops a placeholder like ``X`` (11 rows on a scratch copy,
@@ -163,7 +162,7 @@ class _Group:
     holding one of its identifiers, or a deal that already names its buyer company.
     None means the group becomes one new company, created once; one is the company;
     **more than one is contested** — deals, or a deal and an identifier, disagree about
-    who this buyer is — and every member then needs a person (R-07, R-08).
+    who this buyer is — and every member then needs a person.
     """
 
     key: str
@@ -189,9 +188,9 @@ class _Resolution:
     name: str
     country: str
     deal_created_at: datetime | None = None
-    #: The buyer company the deal already names (task 2.4). When set, it is the answer.
+    #: The buyer company the deal already names. When set, it is the answer.
     deal_company_id: uuid.UUID | None = None
-    #: The companies the row's BUYER results already name as their subject (P4-5).
+    #: The companies the row's BUYER results already name as their subject.
     #: Set once and frozen, so they bind the row exactly as the deal's company does.
     result_subjects: set[uuid.UUID] = field(default_factory=set)
     rule: BuyerMatchRule | None = None
@@ -272,7 +271,7 @@ class Report:
     @property
     def look_alikes(self) -> dict[tuple[str, str], list[_Resolution]]:
         """Identifier-less buyers sharing ``(country, normalised name)``: **kept
-        separate** (IQ-8), each its own company, and listed for review."""
+        separate**, each its own company, and listed for review."""
         grouped: dict[tuple[str, str], list[_Resolution]] = defaultdict(list)
         for r in self.ready:
             key = name_key(r.name)
@@ -286,7 +285,7 @@ class Report:
         return [r for r in self.ready if r.notes]
 
     def render(self, *, show: int = DEFAULT_ROWS_SHOWN) -> str:
-        """The operator's report. ASCII only (R-11).
+        """The operator's report. ASCII only.
 
         **Deliberately truncated.** The first run of this against a seeded database
         printed 568 problem rows, several listing 73 candidate company ids on one
@@ -301,7 +300,7 @@ class Report:
         """
         lines = [
             "",
-            "Buyer migration (P4-6) - report",
+            "Buyer migration - report",
             "=" * 60,
             f"deal_buyer rows considered: {len(self.resolutions)}",
             f"  ready to migrate:         {len(self.ready)}",
@@ -352,7 +351,7 @@ class Report:
             rows = sum(len(v) for v in look_alikes.values())
             lines += [
                 "",
-                f"Kept separate - review (IQ-8): {rows} buyer(s) with no identifier share "
+                f"Kept separate - review: {rows} buyer(s) with no identifier share "
                 f"a name in {len(look_alikes)} group(s).",
                 "  A name is never a merge: each row becomes its own company. To merge a "
                 "group instead,",
@@ -468,8 +467,8 @@ async def _pan_holders(db: AsyncSession, pan: str) -> set[uuid.UUID]:
     """Every company holding this PAN — on its record, or else on an active GSTIN.
 
     **All of them**, never the first: a PAN that only GSTINs carry can sit on several
-    companies (shared GSTINs are legal, IQ-9), and choosing one would decide a buyer's
-    identity by row order (R-08).
+    companies (shared GSTINs are legal), and choosing one would decide a buyer's
+    identity by row order.
     """
     holders = set(
         await db.scalars(select(ExporterProfile.customer_id).where(ExporterProfile.pan == pan))
@@ -513,7 +512,7 @@ async def resolve(db: AsyncSession) -> Report:
     Already-mapped rows are skipped, which is what makes a re-run a no-op.
 
     Rows already linked to a company — their deal names one, or their BUYER results
-    already name a subject — are resolved **first** (R-07), so an identity they carry
+    already name a subject — are resolved **first**, so an identity they carry
     points at that company before any other row claims it; the report keeps the
     original order.
     """
@@ -562,7 +561,7 @@ async def resolve(db: AsyncSession) -> Report:
 
     # Rows already linked to a company may disagree about who one identifier is. Then
     # nobody sharing it is mapped by rule: picking one link for the rest would decide
-    # an identity by row order (R-07, R-08).
+    # an identity by row order.
     for group in {id(g): g for g in claimed.values()}.values():
         if not group.contested:
             continue
@@ -626,7 +625,7 @@ async def _resolve_one(
         await _against_the_link(db, r, found, named, groups, claimed)
         return
 
-    # One identifier naming several companies (R-08), or identifiers disagreeing.
+    # One identifier naming several companies, or identifiers disagreeing.
     ambiguous = {label: holders for label, holders in found.items() if len(holders) > 1}
     for label, holders in sorted(ambiguous.items()):
         r.problems.append(
@@ -680,11 +679,11 @@ async def _resolve_one(
     if r.name_candidates:
         r.problems.append(
             f"name-only match: {len(r.name_candidates)} company(ies) in {r.country} share "
-            "this name and it carries no identifier: confirm or reject by hand (IQ-8)"
+            "this name and it carries no identifier: confirm or reject by hand"
         )
         r.candidates = [c for c in r.name_candidates if c != r.seller_company_id]
         return
-    # No group: a name is never an identity (IQ-8), so a buyer that shares one with
+    # No group: a name is never an identity, so a buyer that shares one with
     # another identifier-less buyer is still its own company. `Report.look_alikes`
     # lists them for review.
     r.rule = BuyerMatchRule.NEW
@@ -753,8 +752,8 @@ async def _against_the_link(
     groups: list[_Group],
     claimed: dict[str, _Group],
 ) -> None:
-    """R-07: the row is already linked to a company — the deal names it (task 2.4),
-    or the row's BUYER results already have it as their subject (P4-5). Both links
+    """The row is already linked to a company — the deal names it,
+    or the row's BUYER results already have it as their subject. Both links
     are set once, so that is the only company this row can map to. It does unless
     something on the legacy row contradicts it, in which case a person looks and
     nothing is written for it."""
@@ -826,7 +825,7 @@ async def _against_the_link(
             group.claims.add(company_id)
 
 
-# ── Confirmations (R-09) ──────────────────────────────────────────────────────
+# ── Confirmations ─────────────────────────────────────────────────────────────
 
 
 async def check_confirmations(
@@ -919,7 +918,7 @@ async def apply(
 
     Each deal's buyer company is read again, locked, just before its row is written.
     A deal that has named a different company since the report was built is skipped
-    (``skipped_deal_changed``) rather than mapped against it (R-07).
+    (``skipped_deal_changed``) rather than mapped against it.
     """
     confirmed = confirmed or {}
     errors = await check_confirmations(db, report, confirmed)
@@ -1177,7 +1176,7 @@ VALIDATION_QUERIES: tuple[tuple[str, str], ...] = (
         """,
     ),
     (
-        # R-07: the map and the deal must agree on who the buyer is.
+        # The map and the deal must agree on who the buyer is.
         "mapped deal buyers whose company is not the deal's buyer company",
         """
         SELECT count(*) FROM onboarding.deal_buyer_company_map m
@@ -1187,7 +1186,7 @@ VALIDATION_QUERIES: tuple[tuple[str, str], ...] = (
         """,
     ),
     (
-        # R-07: a BUYER result belongs to the company the deal names, never another.
+        # A BUYER result belongs to the company the deal names, never another.
         "BUYER results whose subject is not the deal's buyer company",
         """
         SELECT count(*) FROM onboarding.verification_result r
@@ -1337,7 +1336,7 @@ async def _main(args: argparse.Namespace) -> int:
             if failures:
                 print(
                     f"VALIDATION FAILED: {failures} of {len(results)} checks are not 0. "
-                    "Do not go on to P5-5 or P4-10 until every one is.\n"
+                    "Do not go on to the trade relationship backfill until every one is.\n"
                 )
                 return 1
             print(f"All {len(results)} checks are 0.\n")
@@ -1413,7 +1412,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         prog="python -m app.modules.onboarding.migrate_deal_buyers",
         description=(
-            "Turn legacy deal buyers into company records (P4-6). Take a pg_dump "
+            "Turn legacy deal buyers into company records. Take a pg_dump "
             "first, read the --dry-run report, confirm what needs a person, then "
             "--apply and --validate. Run with LOG_LEVEL=WARNING DEBUG=false."
         ),

@@ -1,5 +1,5 @@
 /**
- * Re-KYC / Re-KYB — start a new check cycle — **owner: Developer 1** (plans P2-3c/d).
+ * Re-KYC / Re-KYB — start a new check cycle.
  *
  * The buttons are the server's `allowed_cycle_actions`, exactly: the server offers a
  * kind only when it would accept the start (COMPLIANCE or ADMIN; not on a FLAGGED or
@@ -7,7 +7,7 @@
  * role list and no state table.
  *
  * A start needs a reason. When `reopens` is set the company is CLEAR, and the same
- * request moves it back to IN_REVIEW (IQ-3) — said before anyone confirms, because it
+ * request moves it back to IN_REVIEW — said before anyone confirms, because it
  * pauses the company's handovers until the new cycle is cleared.
  */
 

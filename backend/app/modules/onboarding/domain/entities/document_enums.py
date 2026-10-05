@@ -1,4 +1,4 @@
-"""Enums for documents — **owner: Developer 3B** (L3-09).
+"""Enums for documents.
 
 Contract: ``docs/contracts/storage-and-documents.md`` §5.3. Architecture §3.4.
 
@@ -51,7 +51,7 @@ class DocumentCategory(str, enum.Enum):
     #: Company: sanctions, politically-exposed-person and adverse-media evidence.
     COMPLIANCE_SCREENING = "COMPLIANCE_SCREENING"
     #: Company: generated analysis. Nothing writes into it in the prototype
-    #: (decision D16) — the category exists so the later generator has a home.
+    #: — the category exists so the later generator has a home.
     COMPANY_MARKET_REVIEW = "COMPANY_MARKET_REVIEW"
     #: Deal: proforma invoice, purchase order, sales contract, letter of credit.
     PRE_SHIPMENT = "PRE_SHIPMENT"
@@ -110,5 +110,5 @@ class DocumentSource(str, enum.Enum):
     EXPORTER_UPLOAD = "EXPORTER_UPLOAD"
     #: Produced inside ANER by a person.
     INTERNAL = "INTERNAL"
-    #: Generated. Nothing generates in the prototype (decision D16).
+    #: Generated. Nothing generates in the prototype.
     SYSTEM = "SYSTEM"

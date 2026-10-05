@@ -1,5 +1,5 @@
 /**
- * The register — **owner: Developer 2** (L2-14), drawn as frontend-plan §8.3: rows,
+ * The register, drawn as frontend-plan §8.3: rows,
  * not a table. Each company is its serif name, its Standing, one muted line of
  * identity, its primary identifier and, on the right, its country and RM.
  *
@@ -10,7 +10,7 @@
  * `?qualification=`, `?relationship=`), so a filtered register can be shared and the
  * desk's counts link straight into one.
  *
- * The list route has no total (ask A2): journey counts are capped ("200+"), and the
+ * The list route has no total: journey counts are capped ("200+"), and the
  * footer says how many are shown rather than guessing how many exist. Hovering or
  * focusing a row loads its dossier ahead of the click; `j` / `k` move through the
  * rows and Enter opens one.
@@ -143,7 +143,7 @@ function Row({
 }
 
 export function ExportersListPage() {
-  // Absent, not disabled, for a role the server refuses (R-33, G3): DEVELOPER reads
+  // Absent, not disabled, for a role the server refuses: DEVELOPER reads
   // the register and is offered no write screen.
   const canCreate = useCan('company.create');
   const canImport = useCan('company.import');
@@ -211,7 +211,7 @@ export function ExportersListPage() {
         description="Find and manage company relationships. Ended relationships are hidden unless you search for them or filter by “Ended”."
         actions={
           <>
-            {/* IQ-7's completion list (R-28): work on the records themselves, kept
+            {/* The identity completion list: work on the records themselves, kept
                 apart from the pipeline. */}
             <Link to={paths.identityCompletion} className={buttonClasses({ variant: 'quiet' })}>
               Identity to complete

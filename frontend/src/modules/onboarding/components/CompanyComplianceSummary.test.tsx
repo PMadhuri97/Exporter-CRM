@@ -64,7 +64,7 @@ describe('CompanyComplianceSummary', () => {
     );
   });
 
-  it('renders the same for a buyer-only company: its own check, its own panel (P4-5, P4-11)', async () => {
+  it('renders the same for a buyer-only company: its own check, its own panel', async () => {
     const BUYER_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     vi.mocked(getBackgroundCheck).mockResolvedValue(
       standing({
@@ -127,7 +127,7 @@ describe('CompanyComplianceSummary', () => {
     expect(screen.queryByTestId('compliance-expiry')).not.toBeInTheDocument();
   });
 
-  it('tells a role refused the background check (D8) that it is not available, not that it failed', async () => {
+  it('tells a role refused the background check that it is not available, not that it failed', async () => {
     vi.mocked(getBackgroundCheck).mockRejectedValue(
       new ApiError(403, 'DEVELOPER is not allowed', 'FORBIDDEN'),
     );
@@ -139,7 +139,7 @@ describe('CompanyComplianceSummary', () => {
     expect(screen.queryByTestId('compliance-panel-link')).not.toBeInTheDocument();
   });
 
-  it('carries the served "Awaiting approval" and "Re-KYC due" badges (P3-1c, P3-3c)', async () => {
+  it('carries the served "Awaiting approval" and "Re-KYC due" badges', async () => {
     vi.mocked(getBackgroundCheck).mockResolvedValue(
       standing({ awaiting_approval: true, rekyc_due: true }),
     );

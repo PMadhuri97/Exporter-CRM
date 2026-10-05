@@ -149,7 +149,7 @@ describe('VerificationSection — every result on the company is shown', () => {
 });
 
 describe('VerificationSection — writes refresh the background check', () => {
-  // Developer 4A's panel disables CLEAR from ['backgroundCheck', id]; a write here that
+  // The background-check panel disables CLEAR from ['backgroundCheck', id]; a write here that
   // did not refresh it left CLEAR disabled after the inputs were complete.
   function invalidatedKeys(spy: { mock: { calls: unknown[][] } }) {
     return spy.mock.calls.map((call) => (call[0] as { queryKey: unknown[] }).queryKey);
@@ -205,7 +205,7 @@ describe('VerificationSection — bank activity', () => {
   });
 });
 
-describe('VerificationSection — filters (P2-2)', () => {
+describe('VerificationSection — filters', () => {
   const manualPassed = verificationResult({ id: 'r-manual', status: 'PASSED', provenance: 'MANUAL' });
   const manualFailed = verificationResult({ id: 'r-failed', verification_type: 'SANCTIONS', status: 'FAILED' });
   const highRisk = verificationResult({ id: 'r-high', verification_type: 'AML', status: 'PASSED', risk_level: 'HIGH' });
@@ -245,7 +245,7 @@ describe('VerificationSection — filters (P2-2)', () => {
   });
 });
 
-describe('VerificationSection — check cycles (P2-3d)', () => {
+describe('VerificationSection — check cycles', () => {
   it('lists the current cycle’s results and keeps an earlier cycle’s readable, not reviewable', async () => {
     vi.mocked(getBackgroundCheck).mockResolvedValue({
       company_id: COMPANY_ID,
@@ -293,7 +293,7 @@ describe('VerificationSection — check cycles (P2-3d)', () => {
   });
 });
 
-describe('VerificationSection — company-keyed checks (P4-5)', () => {
+describe('VerificationSection — company-keyed checks', () => {
   it('lists a deal-buyer check mapped to this company, saying where it was recorded', async () => {
     vi.mocked(listVerificationResults).mockResolvedValue(
       resultList([

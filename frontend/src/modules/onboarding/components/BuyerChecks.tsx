@@ -1,5 +1,5 @@
 /**
- * Checks on a deal's buyer — **owner: Developer 4B** (verification-and-screening.md §6, phase 4B-5).
+ * Checks on a deal's buyer (verification-and-screening.md §6).
  *
  * A buyer check is recorded against the buyer (`deal_buyer.id`), never the company,
  * and never moves the company's background check (architecture §3.5, decision 9).
@@ -14,16 +14,16 @@
  * deal's.
  *
  * Mounted on the deal page, for staff, once the deal has a buyer. On a closed deal
- * the server stops offering `can_record_result` (D17); existing checks stay
+ * the server stops offering `can_record_result`; existing checks stay
  * reviewable.
  *
- * **Legacy (Developer 1, plan P4-5).** Checks are company-keyed now: a buyer company's
+ * **Legacy.** Checks are company-keyed now: a buyer company's
  * checks are recorded on its own background-check panel, and a deal shows that company
- * through `CompanyComplianceSummary` — the one compliance summary (task 1.20; mounted
- * by Developer 2's task 2.4 once a deal names a buyer company). This list remains only
+ * through `CompanyComplianceSummary` — the one compliance summary (mounted once a deal
+ * names a buyer company). This list remains only
  * for a deal whose buyer is still a `deal_buyer` row, the one place that buyer's
  * sanctions and AML can be recorded, until the deal-buyer migration maps it to a
- * company (P4-6) and `deal_buyer` writes are retired (P4-10), when it is removed.
+ * company and `deal_buyer` writes are retired, when it is removed.
  */
 
 import { useState } from 'react';

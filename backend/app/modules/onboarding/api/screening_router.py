@@ -1,25 +1,24 @@
-"""Screening-review checklist and bank-activity routes — **owner:
-Developer 4** (architecture §8.1, §9.4).
+"""Screening-review checklist and bank-activity routes (architecture §8.1, §9.4).
 
-Split out of `exporter_router.py` (L2-01) so the company routes and the
+Split out of `exporter_router.py` so the company routes and the
 background-check routes stop sharing one file. Mounted by `router.py` beside
 `exporter_router`, with the same `/exporters` prefix and `Exporter CRM` tag, so
 every path stays `/onboarding/exporters/...`.
 
-Dev4B (4B-1): the list serves the one screening catalogue and the caller's
+The list serves the one screening catalogue and the caller's
 capabilities, so the frontend keeps neither a key list nor a role list; unknown
 companies are 404; each item's history is readable. Roles are unchanged — read
 OPERATIONS/COMPLIANCE/ADMIN, write COMPLIANCE/ADMIN; DEVELOPER stays refused
-(**D8**, lead, 28 Sep 2026: no widening). Each decision is also recorded in the
-company history under the `screening` dimension (**D9**).
+(decided 28 Sep 2026: no widening). Each decision is also recorded in the
+company history under the `screening` dimension.
 
 The screening checklist is a compliance list inside the background check. It is
 not qualification (architecture §5.5).
 
-Developer 1 (1 October 2026): the list is about one check cycle — the current one, or
-an earlier one named by ``cycle_id`` (read-only: ``can_record_decision`` is false there,
-plan P2-3d) — and lists the seven catalogue items (P2-4a). An answer may carry evidence
-references (P2-1b). A retired item's history stays readable; a new answer to it is 422.
+Since 1 October 2026 the list is about one check cycle — the current one, or
+an earlier one named by ``cycle_id`` (read-only: ``can_record_decision`` is false
+there) — and lists the seven catalogue items. An answer may carry evidence
+references. A retired item's history stays readable; a new answer to it is 422.
 """
 
 from __future__ import annotations
@@ -100,7 +99,7 @@ def _cycle(scope: ScreeningCycleScope, names: dict[str, str]) -> CheckCycleRespo
     )
 
 
-# ── E9 screening review workspace ─────────────────────────────────────────
+# ── Screening review workspace ────────────────────────────────────────────
 
 @router.get(
     "/{customer_id}/screening-review",

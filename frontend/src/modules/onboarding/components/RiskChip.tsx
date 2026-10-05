@@ -1,5 +1,5 @@
 /**
- * The CRM risk rating — **owner: Developer 4A** (L4-08).
+ * The CRM risk rating.
  *
  * Four values (decision 6), and `CRITICAL` must look different from the rest
  * (architecture §3.3): it is the one a compliance officer must not skim past.

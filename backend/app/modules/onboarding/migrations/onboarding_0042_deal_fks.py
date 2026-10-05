@@ -1,5 +1,4 @@
-"""An invoice's deal and a buyer company's deal are real deals — **owner: Developer 3**
-(allocation tasks 3.8 and 3.19, ``remaining-work.md`` R-17).
+"""An invoice's deal and a buyer company's deal are real deals.
 
 Revision ID: onboarding_0042_deal_fks
 Revises: onboarding_0041_map_rule_link

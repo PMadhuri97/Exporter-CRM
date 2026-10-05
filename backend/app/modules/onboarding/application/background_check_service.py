@@ -1,25 +1,25 @@
-"""``BackgroundCheckService`` — the background-check gauge — **owner: Developer 4A**
-(L4-03, L4-04, L4-06, L4-08; ``docs/contracts/background-check.md``).
+"""``BackgroundCheckService`` — the background-check gauge
+(``docs/contracts/background-check.md``).
 
 The gauge answers "is it safe and lawful to work with them?" (architecture §3.3). It
 is **not** the journey and not the qualification: this service never writes
 ``exporter_profile.journey`` and never touches another gauge's column, so a company
 that is reopened, flagged or put on hold stays exactly as far along its journey as it
-was (company-record §3.1, A5). The journey's one dependency on this gauge — a
-``PROSPECT`` whose check becomes ``CLEAR`` becomes a ``CUSTOMER`` (decision 2) — is
-Developer 2's method, called at step 7b in this move's transaction.
+was (company-record §3.1). The journey's one dependency on this gauge — a
+``PROSPECT`` whose check becomes ``CLEAR`` becomes a ``CUSTOMER`` — is
+the company record's method, called at step 7b in this move's transaction.
 
 **Every move is one transaction** (contract §9), in this order:
 
 1. lock the company row ``FOR UPDATE``;
 2. check the caller's premise, the move, the role, the text and the risk — nothing
    is assigned yet;
-3. read the inputs through the 4A ↔ 4B seam in the same session;
-4. (``CLEAR`` only) evaluate A3's prerequisites, still assigning nothing;
+3. read the inputs through the compliance-inputs seam in the same session;
+4. (``CLEAR`` only) evaluate the four prerequisites, still assigning nothing;
 5. insert the decision and its evidence rows;
 6. assign ``exporter_profile.background_check``;
-7. write the history row through Developer 1's service (flush only);
-7b. (``CLEAR`` only) Developer 2's ``promote_to_customer_if_ready`` — a ``PROSPECT``
+7. write the history row through ``HistoryService`` (flush only);
+7b. (``CLEAR`` only) ``promote_to_customer_if_ready`` — a ``PROSPECT``
     becomes a ``CUSTOMER``, with its journey history row (flush only);
 8. commit once, then announce ``company.became_customer`` if 7b promoted.
 
@@ -31,22 +31,22 @@ any promotion back together, because they are one transaction.
 alone would let an OPERATIONS user flag a company, since the route that serves move 1
 is the route that serves move 5.
 
-**The 4A ↔ 4B seam is the only way in to screening and verification.** This module
-imports ``ComplianceInputsReader``/``ComplianceInputsService`` and nothing else of
-Developer 4B's: no ``screening_review_item``, no ``verification_result``, no review
+**The compliance-inputs seam is the only way in to screening and verification.** This
+module imports ``ComplianceInputsReader``/``ComplianceInputsService`` and nothing else
+of theirs: no ``screening_review_item``, no ``verification_result``, no review
 tables (``background-check.md`` §12.1 invariant 6). The reader is injectable so a unit test can pass a fake
 without a database.
 
-**Cycles and rules versions (Developer 1, plans P2-3a–c and P2-4a).** Every decision
+**Cycles and rules versions.** Every decision
 is stamped, at step 5, with the company's current check cycle (cycle 1 is created on
 the company's first decision if no input created it first) and with the Clear rules
 in force (``CURRENT_CLEAR_RULES``). The inputs read at step 3 are the current cycle's
 only (seam v2). :meth:`start_cycle` begins a new cycle — a Re-KYC or Re-KYB — under the
-same row lock, and on a ``CLEAR`` company records the reopen in the same transaction
-(IQ-3), because there is no ``CLEAR → CLEAR`` move and the gauge must not read
+same row lock, and on a ``CLEAR`` company records the reopen in the same transaction,
+because there is no ``CLEAR → CLEAR`` move and the gauge must not read
 ``CLEAR`` while the new cycle's checks are outstanding.
 
-**Maker-checker (Developer 1, plan P3-1b, decision A, IQ-1, IQ-17).** ``CLEAR``,
+**Maker-checker.** ``CLEAR``,
 ``FLAGGED`` and ``ON_HOLD`` need two people. :meth:`propose` records the move as a
 proposal — every rule a move checks, plus ``CLEAR``'s prerequisites, evaluated now —
 and the gauge does not move ("awaiting approval"). :meth:`approve`, by a *different*
@@ -62,10 +62,10 @@ path lets one user take a company to ``CLEAR``. The switch
 ``CRM_BACKGROUND_CHECK_MAKER_CHECKER`` may be off only in local/test
 (``compliance_settings``).
 
-**Expiry (Developer 1, plan P3-3a).** Every ``CLEAR`` stores ``expires_at`` =
+**Expiry.** Every ``CLEAR`` stores ``expires_at`` =
 ``decided_at`` + the validity setting, both from one server timestamp, and writes the
 company's current ``background_check_expires_at``; any move away from ``CLEAR`` clears
-it. Nothing moves the gauge when a Clear expires (P3-3b): the readers report it.
+it. Nothing moves the gauge when a Clear expires: the readers report it.
 """
 
 from __future__ import annotations
@@ -234,10 +234,10 @@ _METHOD_FOR_MOVE: dict[tuple[_State, _State], str] = {
 }
 
 
-#: Who may start a new check cycle (IQ-3: compliance and admin, not the RM).
+#: Who may start a new check cycle: compliance and admin, not the RM.
 _CYCLE_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
 
-#: The gauge values a new cycle may start from (plan P2-3c). `CLEAR` also reopens;
+#: The gauge values a new cycle may start from. `CLEAR` also reopens;
 #: `FLAGGED` and `ON_HOLD` are reassessed first, so they are absent.
 _CYCLE_START_STATES: frozenset[_State] = frozenset(
     {_State.NOT_STARTED, _State.IN_REVIEW, _State.MORE_INFO, _State.CLEAR}
@@ -246,7 +246,7 @@ _CYCLE_START_STATES: frozenset[_State] = frozenset(
 #: The kinds the API starts: the Re-KYC and Re-KYB buttons. `FULL` is reserved.
 STARTABLE_CYCLE_KINDS: tuple[CheckCycleKind, ...] = (CheckCycleKind.RE_KYC, CheckCycleKind.RE_KYB)
 
-#: How a kind is named in the reopen decision's reason ("Re-KYC: …", IQ-3).
+#: How a kind is named in the reopen decision's reason ("Re-KYC: …").
 _CYCLE_LABELS: dict[CheckCycleKind, str] = {
     CheckCycleKind.RE_KYC: "Re-KYC",
     CheckCycleKind.RE_KYB: "Re-KYB",
@@ -256,8 +256,8 @@ _CYCLE_LABELS: dict[CheckCycleKind, str] = {
 #: `event_type` of the `check_cycle` history row.
 CYCLE_STARTED_EVENT = "check_cycle_started"
 
-#: Who may propose, approve or reject (decision A): compliance and admin. The RM never
-#: approves compliance (plan §8).
+#: Who may propose, approve or reject: compliance and admin. The RM never
+#: approves compliance.
 _APPROVER_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
 
 #: `event_type` of each `background_check_approval` history row. `from_status` /
@@ -329,12 +329,12 @@ class BackgroundCheckService:
 
     Args:
         db: The session. Every move commits it exactly once.
-        reader: The 4A ↔ 4B seam. Defaults to Developer 4B's
+        reader: The compliance-inputs seam. Defaults to the
             ``ComplianceInputsService`` on the same session; a test may pass a fake
             implementing ``ComplianceInputsReader`` to drive the rules without a
             database.
-        clear_policy: What A3's ambiguous phrases mean (D1–D4, settled 28 September
-            2026). Defaults to ``background_check_views.CLEAR_POLICY``; injectable so a
+        clear_policy: What the prerequisites' ambiguous phrases mean (settled 28
+            September 2026). Defaults to ``background_check_views.CLEAR_POLICY``; injectable so a
             test can pin behaviour without depending on the shipped answer.
     """
 
@@ -358,7 +358,7 @@ class BackgroundCheckService:
 
     @staticmethod
     def needs_approval(to_value: _State) -> bool:
-        """Whether a move to ``to_value`` is proposed rather than recorded (IQ-1, with
+        """Whether a move to ``to_value`` is proposed rather than recorded (with
         maker-checker on). Each of ``CLEAR``, ``FLAGGED`` and ``ON_HOLD`` has one legal
         origin, so the destination decides."""
         return maker_checker_enabled() and any(to is to_value for (_, to) in APPROVAL_MOVES)
@@ -480,8 +480,7 @@ class BackgroundCheckService:
     ) -> BackgroundCheckDecisionView:
         """Move 4 — ``MORE_INFO → IN_REVIEW``. ``note`` says what arrived.
 
-        The architecture requires this note; ``history-row.md`` §4 omits it (**D14**,
-        Developer 1's contract text). This service enforces the architecture.
+        The architecture requires this note, and this service enforces it.
         """
         return await self._move(
             company_id,
@@ -505,7 +504,7 @@ class BackgroundCheckService:
         """Move 5 — ``IN_REVIEW → FLAGGED``.
 
         Only from ``IN_REVIEW``. A cleared company is never flagged directly: that
-        goes through a reopen (architecture §4.2), which is phase 4A-5.
+        goes through a reopen (architecture §4.2).
         """
         return await self._move(
             company_id,
@@ -547,12 +546,12 @@ class BackgroundCheckService:
         actor_id: str,
         actor_role: UserRole,
     ) -> BackgroundCheckDecisionView:
-        """Move 2 — ``IN_REVIEW → CLEAR`` (phase 4A-4).
+        """Move 2 — ``IN_REVIEW → CLEAR``.
 
-        One COMPLIANCE or ADMIN user decides; there is no second approver in the
-        prototype (decision 5). Risk is required. A3's four prerequisites are
+        A COMPLIANCE or ADMIN user decides (with maker-checker on, through a
+        proposal and :meth:`approve`). Risk is required. The four prerequisites are
         evaluated by one pure function (``evaluate_clear_prerequisites``) under the row
-        lock; D1–D4 settled what its phrases mean on 28 September 2026. Nothing is
+        lock; what its phrases mean was settled on 28 September 2026. Nothing is
         assigned until they pass.
 
         Raises:
@@ -614,7 +613,7 @@ class BackgroundCheckService:
         is always on the record before anything is concluded.
 
         **The company's journey is untouched.** A company that reached ``CUSTOMER``
-        stays ``CUSTOMER`` while its check is reopened (company-record §3.1, A5) — this
+        stays ``CUSTOMER`` while its check is reopened (company-record §3.1) — this
         service never writes ``journey``, and a reopen is not a demotion.
 
         The clearing decision itself is unchanged in the database; the reopen is a new
@@ -693,7 +692,7 @@ class BackgroundCheckService:
         actor_id: str,
         actor_role: UserRole,
     ) -> StartedCycle:
-        """Start a new check cycle — a Re-KYC or Re-KYB (plan P2-3c, IQ-3).
+        """Start a new check cycle — a Re-KYC or Re-KYB.
 
         One transaction, under the company row lock every move takes:
 
@@ -732,7 +731,7 @@ class BackgroundCheckService:
         current = profile.background_check
         if current not in _CYCLE_START_STATES:
             raise CheckCycleNotAllowedError(company_id, current)
-        # A new cycle would change the inputs an open proposal rests on (P3-1b).
+        # A new cycle would change the inputs an open proposal rests on.
         await self._refuse_if_awaiting_approval(company_id)
 
         now = clock.now()
@@ -802,7 +801,7 @@ class BackgroundCheckService:
     # ── Reads ────────────────────────────────────────────────────────────────
 
     async def clear_prerequisites(self, company_id: uuid.UUID) -> tuple[str, ...]:
-        """Which of A3's prerequisites are unmet right now, ignoring the risk rating.
+        """Which of the four prerequisites are unmet right now, ignoring the risk rating.
 
         For a screen that wants to explain what is outstanding before anyone presses
         anything. Read-only: it takes no lock, writes nothing and commits nothing, so
@@ -825,12 +824,12 @@ class BackgroundCheckService:
         return prerequisites.unmet
 
     async def required_checks(self, company_id: uuid.UUID) -> tuple[RequiredCheckState, ...]:
-        """Rule B's required types and their state in the current cycle (plan P3-2),
+        """The passed-checks rule's required types and their state in the current cycle,
         for the read — so the screen keeps no list of its own. Read-only."""
         inputs = await self._reader.company_inputs(company_id)
         return required_check_states(inputs, self._clear_policy)
 
-    # ── Maker-checker (Developer 1, plan P3-1b) ──────────────────────────────
+    # ── Maker-checker ────────────────────────────────────────────────────────
 
     async def propose(
         self,
@@ -843,7 +842,7 @@ class BackgroundCheckService:
         actor_role: UserRole,
         seen_value: _State | None = None,
     ) -> BackgroundCheckProposalView:
-        """Propose ``CLEAR``, ``FLAGGED`` or ``ON_HOLD`` (IQ-1). One transaction:
+        """Propose ``CLEAR``, ``FLAGGED`` or ``ON_HOLD``. One transaction:
 
         1. lock the company ``FOR UPDATE``;
         2. every rule the move itself checks — premise, legality, role, text, risk —
@@ -1257,7 +1256,7 @@ class BackgroundCheckService:
         decision's id, so a cycle written first can name it.
 
         **The maker-checker gate is here**, because every decision is written here: a
-        move that needs approval (IQ-1) is refused unless ``approval`` comes from
+        move that needs approval is refused unless ``approval`` comes from
         :meth:`approve`, and while a proposal is open no other move is made.
 
         Returns ``(decision, evidence, announcement)``; the caller commits and then
@@ -1278,7 +1277,7 @@ class BackgroundCheckService:
             seen_value=seen_value,
             method=method,
         )
-        # 2b — maker-checker (P3-1b). Only `approve` carries an approval.
+        # 2b — maker-checker. Only `approve` carries an approval.
         if approval is None:
             if maker_checker_enabled() and (current, to_value) in APPROVAL_MOVES:
                 raise BackgroundCheckApprovalRequiredError(current, to_value)
@@ -1294,7 +1293,7 @@ class BackgroundCheckService:
             self._require_clear_prerequisites(company_id, inputs, risk=risk, evidence=evidence)
 
         # 5 — the decision and its evidence snapshot, in the current cycle and under the
-        #     rules in force (P2-3a, P2-4a).
+        #     rules in force.
         cycle = cycle or await self._cycles.current_or_initial(
             company_id,
             actor_id=actor_id,
@@ -1302,7 +1301,7 @@ class BackgroundCheckService:
             at=clock.now(),
         )
         previous = await self._decisions.latest_for_company(company_id)
-        # One server timestamp for a CLEAR's `decided_at` and `expires_at` (P3-3a), and
+        # One server timestamp for a CLEAR's `decided_at` and `expires_at`, and
         # for an approval's `approved_at`. Read after the lock, so `decided_at` still
         # follows the chain; other moves keep the column default.
         stamp = None
@@ -1316,7 +1315,8 @@ class BackgroundCheckService:
             to_value=to_value,
             decided_by=actor_id,
             # Always MANUAL in the prototype: the one automatic move (the start on
-            # RXIL results) is blocked on D12 and nothing writes AUTOMATED.
+            # RXIL results) is blocked on the RXIL results contract and nothing writes
+            # AUTOMATED.
             decided_by_kind=BackgroundCheckDecidedByKind.MANUAL,
             source=BackgroundCheckDecisionSource.MANUAL,
             reason=text,
@@ -1335,7 +1335,7 @@ class BackgroundCheckService:
         await self._decisions.record(decision, self._evidence_rows(evidence))
 
         # 6 — the gauge itself, and the current Clear's expiry (set on CLEAR, cleared on
-        #     every move away — P3-3a).
+        #     every move away).
         profile.background_check = to_value
         profile.background_check_expires_at = expires_at
 
@@ -1363,9 +1363,9 @@ class BackgroundCheckService:
             },
         )
 
-        # 7b — the move to CUSTOMER (decision 2, A1). A PROSPECT whose check has just
-        #      become CLEAR becomes a CUSTOMER in this same transaction (U4, taken as
-        #      one transaction). Developer 2's method writes the journey; this service
+        # 7b — the move to CUSTOMER. A PROSPECT whose check has just
+        #      become CLEAR becomes a CUSTOMER in this same transaction. The company
+        #      record's method writes the journey; this service
         #      still never does. It flushes only, under the lock taken at step 1.
         announcement = None
         if to_value is _State.CLEAR:
@@ -1434,8 +1434,8 @@ class BackgroundCheckService:
     async def _company_documents(self, company_id: uuid.UUID) -> tuple[DocumentInput, ...]:
         """Every document filed against the company, for the evidence rule to sift.
 
-        Developer 3B's ``crm_document`` — there is no second document system
-        (contract §6). Read through their repository's ``list_for_owner``, which is the
+        The CRM's ``crm_document`` — there is no second document system
+        (contract §6). Read through the document repository's ``list_for_owner``, which is the
         only thing this service calls on it.
 
         **Paged to exhaustion, not to the first page.** ``list_for_owner`` defaults to
@@ -1443,7 +1443,7 @@ class BackgroundCheckService:
         have a snapshot silently missing whatever fell off the end, and an append-only
         row cannot be corrected afterwards.
 
-        The scan-status rule is D4's and is applied by ``select_evidence``, not here,
+        The scan-status rule is applied by ``select_evidence``, not here,
         so the decision stays in one pure, testable place.
         """
         page_size = 200

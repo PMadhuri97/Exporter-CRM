@@ -1,5 +1,4 @@
-"""``FollowUpCompletion`` — the record that a follow-up was dealt with
-(L3-04b). **Owner: Developer 3A, Phase 2.**
+"""``FollowUpCompletion`` — the record that a follow-up was dealt with.
 
 A follow-up is an ``ExporterActivity`` with a ``due_at``: something someone said
 they would do. A completion is one append-only row saying that promise was dealt
@@ -14,8 +13,8 @@ this design invites. This table is append-only too
 ``public.prevent_mutation()``), so a correction is a **new activity** plus its own
 completion.
 
-**The table already existed when this file was written.** Migration 0016 (Phase 1)
-created it; Phase 2 writes no migration at all (phase agreement §6.2). This class
+**The table already existed when this file was written.** Migration 0016
+created it; follow-ups add no migration at all. This class
 maps what the DDL built and adds nothing: the columns, the two foreign keys, the
 unique constraint on ``activity_id`` and the ``next_due_at`` check are all declared
 here so the ORM says what the database says, and every one of them is already in
@@ -54,8 +53,8 @@ SCHEMA = "onboarding"
 class FollowUpOutcome(str, enum.Enum):
     """How a follow-up was dealt with — ``docs/contracts/engagement.md`` §5.3.
 
-    Lives here rather than in ``engagement_enums.py`` because that file is Phase
-    1's and the phase agreement (§6.3) gives no file to both phases. Phase 1 created
+    Lives here rather than in ``engagement_enums.py`` because that file holds the
+    conversation gauge's values. Migration 0016 created
     the Postgres type ``onboarding.follow_up_outcome_enum`` and no Python enum; this
     is it.
 

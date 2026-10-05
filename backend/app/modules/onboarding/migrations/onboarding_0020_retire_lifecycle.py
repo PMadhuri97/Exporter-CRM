@@ -1,4 +1,4 @@
-"""Retire the ten-status lifecycle from the company record (L2-04).
+"""Retire the ten-status lifecycle from the company record.
 
 Revision ID: onboarding_0020_retire_lifecycle
 Revises: onboarding_0017_qualification
@@ -16,8 +16,8 @@ with its enum type.
 this migration does not touch that table.
 
 Numbered 0020: the migration register reserves 0015, 0016, 0018 and 0019 for
-Developers 3 and 4, and has no number for L2-04. Whichever of those lands
-after this re-parents onto the head (register §2). Developer 1 to add the row.
+other migrations. Whichever of those lands after this re-parents onto the head
+(register §2), and the register gains the row.
 
 Downgrade restores the column, **lossily**: it can only be derived from the
 journey (``LEAD`` -> ``LEAD``, ``PROSPECT`` -> ``CONTACTED``, ``CUSTOMER`` ->

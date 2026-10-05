@@ -1,11 +1,11 @@
 /**
  * Seam S2 — the "open a deal" prompt on the Conversation panel.
  *
- * **Owner: Developer 3A.** Mounted by `ConversationPanel.tsx` whenever the gauge
+ * Mounted by `ConversationPanel.tsx` whenever the gauge
  * reads `READY_NOW`. Architecture §3.3: "`READY_NOW` … The screen offers to open a
  * deal; opening a deal also sets this."
  *
- * The form is Developer 3B's `OpenDealForm` — the same one the Deals tab uses —
+ * The form is `OpenDealForm` — the same one the Deals tab uses —
  * reached through the components barrel, never re-implemented here. Opening the
  * deal is what moves the gauge, on the server (seam S1): this component never
  * sets the conversation itself. On success it goes to the new deal's page, where

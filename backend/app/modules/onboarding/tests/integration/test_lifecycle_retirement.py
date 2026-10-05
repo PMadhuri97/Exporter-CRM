@@ -1,4 +1,4 @@
-"""L2-04 — the ten-status lifecycle is retired; the journey is LEAD ->
+"""The ten-status lifecycle is retired; the journey is LEAD ->
 PROSPECT -> CUSTOMER, with qualification and the marker beside it.
 
 The old model is gone from the live record (migration 0020), and nothing it

@@ -11,7 +11,7 @@
  * - Copy is offered **only** where the full value is on screen — never beside
  *   bullets: copying them is useless, and the button would invite the question.
  *
- * Open question for the lead (reported, not decided here): a role that may reveal
+ * Open question (reported, not decided here): a role that may reveal
  * already reads identifiers in full, so its eye changes nothing visible. Either the
  * eye goes, or those roles read masked until they reveal (frontend-plan §6.6).
  */

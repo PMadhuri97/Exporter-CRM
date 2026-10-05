@@ -322,7 +322,7 @@ async def test_require_role_denies_wrong_role(client: AsyncClient):
     assert me.json()["role"] == "API_USER"
 
 
-# ── direct-grant test fixture (L1-04) ─────────────────────────────────────────
+# ── direct-grant test fixture ─────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_user_with_role_issues_a_usable_privileged_token(client: AsyncClient):
@@ -330,7 +330,7 @@ async def test_user_with_role_issues_a_usable_privileged_token(client: AsyncClie
     touching `POST /auth/register`.
 
     The whole point of the direct-creation path is that it survives sign-up
-    being switched off (assumption A10), so this asserts the end state — a
+    being switched off, so this asserts the end state — a
     token the API accepts and reports as COMPLIANCE — rather than the
     mechanism. The `auth.users` row it writes must be indistinguishable from a
     registered one to `/auth/login` and `/auth/me`, which is what makes the
@@ -349,8 +349,8 @@ async def test_create_user_direct_is_reachable_without_the_signup_route(client: 
     """A row created directly can log in — no `/auth/register` call anywhere.
 
     Separate from the test above because that one goes through `user_with_role`;
-    this one exercises `create_user_direct` itself, which is the function L1-13
-    will rely on once sign-up can be turned off.
+    this one exercises `create_user_direct` itself, which is the function the
+    sign-up switch relies on once sign-up can be turned off.
     """
     email = unique_email()
     user_id = create_user_direct(email, UserRole.ADMIN)
@@ -365,7 +365,7 @@ async def test_create_user_direct_is_reachable_without_the_signup_route(client: 
     assert me.json()["is_active"] is True
 
 
-# ── self-service sign-up switch (L1-13) ───────────────────────────────────────
+# ── self-service sign-up switch ───────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_signup_is_enabled_by_default(client: AsyncClient):

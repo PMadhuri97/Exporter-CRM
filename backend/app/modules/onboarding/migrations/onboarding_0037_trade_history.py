@@ -1,5 +1,4 @@
-"""Trade history: relationships, invoices and their outcomes — **owner:
-Developer 3** (allocation tasks 3.18 and 3.19, plan P5-1, P5-2).
+"""Trade history: relationships, invoices and their outcomes.
 
 Revision ID: onboarding_0037_trade_history
 Revises: onboarding_0036_deal_branch
@@ -11,11 +10,11 @@ decision has, and the CRM has nowhere to record it. Three tables:
 
 * ``trade_relationship`` — one row per ordered ``(seller, buyer)`` pair. Ordered, not
   symmetric: A selling to B is a different relationship from B selling to A.
-  **No column on ``deal``** (allocation §1, adjustment 1, departing from P5-1's
-  ``deal.relationship_id``): a deal already names both parties, so a stored link
+  **No column on ``deal``** (no ``deal.relationship_id``): a deal already names
+  both parties, so a stored link
   would be a second copy of the same fact able to drift from it.
 * ``trade_invoice`` — a fact about the past, with its **identity frozen** once
-  written. ``deal_id`` is nullable, because past trade predates us (task 3.21).
+  written. ``deal_id`` is nullable, because past trade predates us.
 * ``trade_invoice_outcome`` — append-only superseding chain, the same shape
   ``verification_review`` uses: a payment story is a sequence of things we learned,
   and the earlier belief stays part of the record.
@@ -35,13 +34,13 @@ Three rules the database holds, not just the service
    (``uq_trade_invoice_outcome_supersedes``). Together they stop two people each
    correcting the same outcome without seeing the other's.
 
-Currency is stored and never converted (IQ-4), so there is no rate column and no
+Currency is stored and never converted, so there is no rate column and no
 reporting currency; ``ck_trade_invoice_currency`` holds it to ISO 4217's shape,
 because a code nobody can look up is permanent nonsense in a column that is never
 recomputed.
 
 No data steps: three new tables. The relationship backfill for existing deals is
-task 3.23 and runs separately, after Developer 2's buyer migration.
+``backfill_trade_relationships`` and runs separately, after the buyer migration.
 
 Rollback
 --------
@@ -92,7 +91,7 @@ def upgrade() -> None:
     _PAYMENT_STATUS.create(bind, checkfirst=False)
     _PROOF_STATUS.create(bind, checkfirst=False)
 
-    # ── trade_relationship (task 3.18) ───────────────────────────────────────
+    # ── trade_relationship ───────────────────────────────────────────────────
     op.create_table(
         "trade_relationship",
         sa.Column(
@@ -152,7 +151,7 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    # ── trade_invoice (task 3.19) ────────────────────────────────────────────
+    # ── trade_invoice ────────────────────────────────────────────────────────
     op.create_table(
         "trade_invoice",
         sa.Column(
@@ -224,7 +223,7 @@ def upgrade() -> None:
         """
     )
 
-    # ── trade_invoice_outcome (task 3.19) ────────────────────────────────────
+    # ── trade_invoice_outcome ────────────────────────────────────────────────
     op.create_table(
         "trade_invoice_outcome",
         sa.Column(

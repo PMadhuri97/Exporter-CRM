@@ -1,11 +1,10 @@
 /**
- * What a verification result rests on — **owner: Developer 4B** (verification-and-screening.md §3,
- * §9; 4B-7).
+ * What a verification result rests on (verification-and-screening.md §3, §9).
  *
  * Shows `evidence_note` and `evidence_refs` exactly as the server stored them. The
  * retired `evidence_reference` column is never shown: nothing writes it.
  *
- * A `document` reference is opened through Developer 3B's download flow, the same
+ * A `document` reference is opened through the documents' download flow, the same
  * three steps `DocumentList` takes: mint a short-lived link (`createDownloadLink`,
  * via `useDownloadDocument`), fetch it **with the access token**
  * (`fetchDocumentBlob`), save the bytes. The document row is read first for its file

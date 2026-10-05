@@ -1,12 +1,12 @@
 /**
- * The background-check gauge — **owner: Developer 4A** (L4-03, L4-08).
+ * The background-check gauge.
  *
  * The six values of `background-check.md` §2, and nothing inferred from them. In
  * particular `NOT_STARTED` says **"Not started"**, never "pending" or "clear": no
  * check has run, and a screen that implies one has is the exact failure the
  * pass-through scanner warnings exist to prevent.
  *
- * Developer 1 (plans P3-1c, P3-3c): two served sub-states show as badges beside the
+ * Two served sub-states show as badges beside the
  * value, never as a seventh value. **Awaiting approval** — a CLEAR, FLAGGED or ON_HOLD
  * has been proposed and waits for a second officer; the gauge has not moved.
  * **Re-KYC due** — the Clear has expired or expires within the Re-KYC window; an

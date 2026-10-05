@@ -7,7 +7,7 @@
  * never a tinted fill or a hue.
  *
  * The rows come from the module table (`routes/modules.ts`), filtered by what the
- * role may use (R-33, G1), so the rail never offers a screen the router would
+ * role may use, so the rail never offers a screen the router would
  * refuse. Labels stay in the DOM when narrow (visually hidden), so every row keeps
  * its accessible name.
  */

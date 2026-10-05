@@ -1,16 +1,14 @@
 /**
- * One deal: its stage, its buyer, its paperwork and its history — **owner:
- * Developer 3B** (L3-11b).
+ * One deal: its stage, its buyer, its paperwork and its history.
  *
  * **The stage moves this page offers come from the server.** `allowed_stage_moves`
  * is what *this* deal may do next for *this* user (§7.5, deal contract §4.1), so
  * there is no copy of the stage graph in here and an illegal move is not offerable
  * rather than rejected after a click.
  *
- * **A blocked handover is explained, not offered.** When the A5 guard is unmet the
- * move is absent from that list and `handover_blocked_reason` says why — until
- * Developer 4's background check exists, always. Showing the reason beats a
- * button that returns 409.
+ * **A blocked handover is explained, not offered.** When the handover guard is unmet
+ * the move is absent from that list and `handover_blocked_reason` says why. Showing
+ * the reason beats a button that returns 409.
  */
 
 import { useState } from 'react';
@@ -179,7 +177,7 @@ const SNAPSHOT_SOURCE_LABEL: Record<string, string> = {
 };
 
 /**
- * What the lending team was given (plan P2-7).
+ * What the lending team was given.
  *
  * Read-only, always: the snapshot is set once and the database refuses to change
  * it, so there is nothing to offer here but the record. The buyer's identifiers
@@ -327,7 +325,7 @@ function StageMoves({
         </form>
       )}
 
-      {/* The guard's verdict, verbatim (frontend-plan §6.4); a checklist once A3 lands. */}
+      {/* The guard's verdict, verbatim (frontend-plan §6.4); a checklist once structured conditions are served. */}
       <Preflight blockedReason={blockedReason} />
 
       <ConfirmDialog
@@ -363,11 +361,11 @@ export function DealDetailPage() {
   const [pickingCompany, setPickingCompany] = useState(false);
   // Task 2.4's write: the same `PUT /deals/{id}/buyer` route, in its company form.
   const setBuyerCompany = useSetDealBuyer(dealId ?? '', deal?.company_id);
-  // P5-6's write. Separate state because it is a different question from the deal's
+  // The payment-outcome write. Separate state because it is a different question from the deal's
   // own: the deal is finished, and this is about what happened to the money.
   const [recordingOutcome, setRecordingOutcome] = useState(false);
 
-  // The trail (R-33 Phase 2): Companies / the seller / its deals / this deal.
+  // The trail: Companies / the seller / its deals / this deal.
   const seller = company.data?.name;
   useCrumbs([
     { label: 'Companies', to: paths.companies },
@@ -412,7 +410,7 @@ export function DealDetailPage() {
             </dl>
           )}
           {/* Staff see the moves and, when the guard says no, why (the pre-flight). A
-              read-only role is given no moves and no reason (D8), so the record reads
+              read-only role is given no moves and no reason, so the record reads
               as a record, with no line saying what it cannot do. */}
           {isStaff && (
             <StageMoves
@@ -429,7 +427,7 @@ export function DealDetailPage() {
 
         {/* The two parties, side by side — a problem stays with the party it belongs
             to (architecture). The guard reads the seller's background check and the
-            buyer's sanctions and AML (decision BQ-4), and each card shows its own. */}
+            buyer's sanctions and AML, and each card shows its own. */}
         <Panel title="Parties" description="Who is selling, and who is buying. A buyer is a company record of its own; its checks are recorded against it and read back from it.">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-start">
             <PartyCard
@@ -499,14 +497,14 @@ export function DealDetailPage() {
                 )}
                 {isStaff && !isClosed && (
                   <div className="flex flex-wrap gap-2">
-                    {/* Choosing the company is the way in (task 2.4); it is set once,
+                    {/* Choosing the company is the way in; it is set once,
                         so a second choice is a 409. */}
                     <Button size="sm" variant="primary" onClick={() => setPickingCompany(true)}>
                       Choose buyer company
                     </Button>
                     {/* The legacy `deal_buyer` form: kept while deals written before the
                         buyer migration still have one (it is where such a deal's
-                        sanctions and AML are recorded). Retires with P4-10. */}
+                        sanctions and AML are recorded). Retires with the legacy buyer. */}
                     <Button size="sm" variant="quiet" onClick={() => setEditingBuyer(true)}>
                       {deal.buyer ? 'Edit buyer details' : 'Record details instead'}
                     </Button>
@@ -521,7 +519,7 @@ export function DealDetailPage() {
               <CompanyPicker
                 // The seller cannot be its own buyer (`ck_deal_buyer_is_not_the_seller`).
                 excludeCompanyId={deal.company_id}
-                // R-24: create the buyer as a company outside the pipeline and name it,
+                // Create the buyer as a company outside the pipeline and name it,
                 // in one request. A refusal is shown inside the form.
                 onCreate={async (draft) => {
                   await setBuyerCompany.mutateAsync({ create: draft });
@@ -568,20 +566,20 @@ export function DealDetailPage() {
           )}
         </Panel>
 
-        {/* Checks on a **legacy** buyer row only (task 2.4), demoted under its own
+        {/* Checks on a **legacy** buyer row only, demoted under its own
             label: once a buyer company is named its checks live on that company.
-            Staff only: DEVELOPER is refused the verification routes (D8). */}
+            Staff only: DEVELOPER is refused the verification routes. */}
         {isStaff && deal.buyer && !deal.buyer_company && (
           <section aria-label="Legacy buyer record" className="space-y-2">
             <p className="flex items-center gap-2 text-caption text-ink-3">
               <Icon.history size={14} aria-hidden />
-              Legacy buyer record — kept until this deal's buyer is a company (P4-10)
+              Legacy buyer record — kept until this deal's buyer is a company
             </p>
             <BuyerChecks dealId={deal.id} dealBuyerId={deal.buyer.id} />
           </section>
         )}
 
-        {/* What these two companies have traded before (task 2.11), on a deal with a
+        {/* What these two companies have traded before, on a deal with a
             buyer company only: a legacy buyer row has no second company to pair with. */}
         {deal.buyer_company && (
           <Panel
@@ -611,7 +609,7 @@ export function DealDetailPage() {
           </Panel>
         )}
 
-        {/* What the lending team was given (P2-7), once it exists: a sealed receipt. */}
+        {/* What the lending team was given, once it exists: a sealed receipt. */}
         {deal.handover_snapshot && <HandoverSnapshot snapshot={deal.handover_snapshot} />}
 
         <Panel

@@ -1,10 +1,10 @@
 /**
- * Companies the CRM cannot identify yet — IQ-7's completion list (`remaining-work.md`
- * R-28, plan §17.2).
+ * Companies the CRM cannot identify yet — the identity completion list.
  *
  * A company with no `identity_type` holds neither a PAN nor a registration number, so
- * nothing can match it by identifier and, outside India, it does not meet IQ-7. The
- * buyers the P4-6 migration created without a number are the expected case. This is a
+ * nothing can match it by identifier and, outside India, it does not meet the
+ * foreign-identity rule. The companies the buyer migration created without a number
+ * are the expected case. This is a
  * work list, not a filter on the pipeline: it says **what** each company lacks, puts
  * the ones a rule requires first, and a company leaves it as soon as its profile is
  * corrected — completing one is done on the company's own page, with the same edit
@@ -111,7 +111,7 @@ export function IdentityCompletionPage() {
         <>
           <Group
             title="Required"
-            description="A company outside India must carry its registration number (IQ-7), and every company needs a country."
+            description="A company outside India must carry its registration number, and every company needs a country."
             items={items.filter((item) => item.required)}
           />
           <Group

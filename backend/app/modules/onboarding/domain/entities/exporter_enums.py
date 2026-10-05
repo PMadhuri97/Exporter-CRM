@@ -1,8 +1,7 @@
-"""Enums for the company record (EXP-1): ``ExporterProfile`` — **owner:
-Developer 2** (architecture §8.1, §9.2).
+"""Enums for the company record: ``ExporterProfile`` (architecture §8.1, §9.2).
 
-The activity-log enum (``ExporterActivityType``) used to live here too; L2-01
-moved it to ``engagement_enums.py``, which Developer 3 owns.
+The activity-log enum (``ExporterActivityType``) used to live here too; it moved
+to ``engagement_enums.py``.
 
 Kept in their own file rather than added to ``orchestration_enums.py`` or the
 legacy ``enums.py``: none of these concepts belong to a single verification
@@ -10,7 +9,7 @@ journey (``OnboardingRequestStatus``'s domain) or to the pre-Epic-4.1 case/KYC
 design (``enums.py``'s domain) — they describe the enduring exporter
 relationship those journeys attach to.
 
-The old ten-status ``ExporterLifecycleStatus`` was retired in L2-04 (migration
+The old ten-status ``ExporterLifecycleStatus`` was retired in migration
 0020): the journey is ``ExporterJourney``, beside the qualification gauge and
 the ``ExporterMarker``. Its values survive as strings in the history log.
 """
@@ -35,8 +34,8 @@ class ExporterSource(str, enum.Enum):
     BROKER = "BROKER"
     EVENT = "EVENT"
     EXISTING_CUSTOMER = "EXISTING_CUSTOMER"
-    #: Created by the buyer migration, or by an RM recording a deal's buyer (IQ-6,
-    #: allocation F3). Says the relationship began as somebody else's counterparty
+    #: Created by the buyer migration, or by an RM recording a deal's buyer.
+    #: Says the relationship began as somebody else's counterparty
     #: rather than as a lead we went looking for.
     DEAL_BUYER = "DEAL_BUYER"
 
@@ -58,7 +57,7 @@ class ExporterJourney(str, enum.Enum):
     background-check decision (``docs/contracts/company-record.md`` §3.1).
 
     Added in migration 0017; the ten-status ``ExporterLifecycleStatus`` it
-    replaces was retired in L2-04 (migration 0020)."""
+    replaces was retired in migration 0020."""
 
     LEAD = "LEAD"
     PROSPECT = "PROSPECT"
@@ -66,16 +65,15 @@ class ExporterJourney(str, enum.Enum):
 
 
 class CompanyIdentityType(str, enum.Enum):
-    """Which kind of registration identifies this company — **owner: Developer 3**
-    (allocation F3, plan P4-1).
+    """Which kind of registration identifies this company.
 
     An Indian company is identified by its PAN; a foreign one by whatever its own
     jurisdiction issues, which ``registration_number`` carries. The distinction has to
     be a column rather than "has a PAN?", because a buyer company created by the
-    migration may have neither yet (IQ-7 excuses migrated buyers from the requirement)
+    migration may have neither yet (migrated buyers are excused from the requirement)
     and "we do not know which" must not read as "foreign".
 
-    Nullable on ``exporter_profile``: every company created before F3 predates the
+    Nullable on ``exporter_profile``: every company created before 0032 predates the
     question. Migration 0032 sets ``IN_PAN`` wherever a PAN is already stored, which is
     the only case it can infer safely.
     """
@@ -85,18 +83,17 @@ class CompanyIdentityType(str, enum.Enum):
 
 
 class CompanyPipelineStatus(str, enum.Enum):
-    """Whether this company is in the sales pipeline at all — **owner: Developer 3**
-    (allocation F3, plan P4-1, P4-2).
+    """Whether this company is in the sales pipeline at all.
 
     A company that exists only because it was somebody's buyer is not a lead, and must
-    not appear in pipeline counts or be chased by sales (plan §8: buyers become leads
+    not appear in pipeline counts or be chased by sales (buyers become leads
     only when someone onboards them). It is still a full company record: it can be
-    screened, cleared and have checks recorded against it (Developer 1's P4-11).
+    screened, cleared and have checks recorded against it (full-depth buyer checks).
 
     ``NOT_IN_PIPELINE`` implies the journey has not started — `LEAD`, with
     qualification `NOT_YET_REVIEWED` and conversation `NOT_CONTACTED` — and migration
     0032 enforces that with a check constraint. `POST /exporters/{id}/pipeline`
-    (task 3.11) is the one way out, and it starts the journey properly.
+    is the one way out, and it starts the journey properly.
     """
 
     IN_PIPELINE = "IN_PIPELINE"
@@ -104,8 +101,7 @@ class CompanyPipelineStatus(str, enum.Enum):
 
 
 class GstRegistrationStatus(str, enum.Enum):
-    """What the GST portal says about a registration — **owner: Developer 3**
-    (allocation task 3.12, plan P6-1).
+    """What the GST portal says about a registration.
 
     `UNVERIFIED` is the default and means exactly that: somebody recorded the GSTIN
     and nobody has checked it against the portal. It is deliberately **not** called
@@ -113,7 +109,7 @@ class GstRegistrationStatus(str, enum.Enum):
     the column is to tell "we believe this is live" apart from "nobody has looked".
 
     `CANCELLED` and `SUSPENDED` come from the portal. Neither deactivates the row by
-    itself (`active` is a separate, local decision, task 3.12): a cancelled
+    itself (`active` is a separate, local decision): a cancelled
     registration is still part of the company's record, and the two questions — "is
     this registration live at the GST portal?" and "do we still use it?" — have
     different answers and different owners.
@@ -126,13 +122,12 @@ class GstRegistrationStatus(str, enum.Enum):
 
 
 class GstRegistrationFlag(str, enum.Enum):
-    """Whether compliance has flagged this branch — **owner: Developer 3**
-    (allocation task 3.14, plan P6-5).
+    """Whether compliance has flagged this branch.
 
     One branch, not the company: a company trading through five states may have a
     problem in one of them, and flagging the company would stop the other four
-    (decision BQ-6). A flagged branch blocks a handover only for deals invoiced
-    *through that branch* (task 2.9).
+    A flagged branch blocks a handover only for deals invoiced
+    *through that branch*.
 
     `FLAGGED` always carries a reason — `ck_exporter_gstin_flag_reason` requires it —
     because the reason is what the person reading the block needs, and a flag whose

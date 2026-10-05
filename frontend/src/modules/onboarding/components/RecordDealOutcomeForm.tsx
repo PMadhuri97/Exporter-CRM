@@ -1,5 +1,5 @@
 /**
- * Record how a handed-over deal was paid — **owner: Developer 3** (plan P5-6).
+ * Record how a handed-over deal was paid.
  *
  * The one write trade history needs on the deal page, and the reason the panel beside
  * it is not read-only. `POST /deals/{id}/payment-outcome` does three things in one

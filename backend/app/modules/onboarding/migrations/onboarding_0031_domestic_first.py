@@ -1,5 +1,5 @@
 """Domestic-first qualification: export evidence stops being required, and the
-export-only rejection reasons retire (P1-1, P1-2).
+export-only rejection reasons retire.
 
 The first phase of the product is domestic trade — a buyer and a seller, no trade
 corridors — so a company with no IEC and no export track record must be able to
@@ -21,24 +21,24 @@ copying the current row keeps whatever label or ``active`` flag that ADMIN chose
 criterion whose current version is already not required gets no new row.
 
 ``revenue`` and ``deal_size`` are deliberately untouched. Their thresholds stay in
-USD (BQ-1, answered 1 October), so their existing results keep counting.
+USD (decided 1 October), so their existing results keep counting.
 
 **Release note — the de-count.** After this runs, existing ``export_history`` and
 ``export_licence`` results **stop counting towards the suggestion**, because
 ``_suggest()`` looks only at criteria that are *active and required*. Two consequences,
 both intended:
 
-* a company already ``QUALIFIED`` is unaffected — qualification is final (assumption
-  A2) and nothing recalculates it;
+* a company already ``QUALIFIED`` is unaffected — qualification is final
+  and nothing recalculates it;
 * an **undecided lead re-suggests**: it may now read ``QUALIFIED`` where it read
   ``NOT_QUALIFIED`` before, which is exactly the point.
 
-The three export-only rejection reasons retire at the same time (IQ-12), so no new
+The three export-only rejection reasons retire at the same time, so no new
 decision can cite a reason that assumes export. ``qualification_reason_code`` carries
 no append-only trigger, and an outcome stores its codes as JSONB **strings** rather
 than foreign keys, so deactivating them leaves every past outcome rendering unchanged
 while ``QualificationService`` refuses them on new ones. They can be reactivated if
-export returns (decision F).
+export returns.
 
 **Rollback.** ``pg_dump`` first. The downgrade removes only the rows this migration
 inserted, and is refused (foreign key) once any result has been recorded against
@@ -67,8 +67,8 @@ MIGRATION_ACTOR = "migration:onboarding_0031_domestic_first"
 #: The two criteria that stop being required.
 _RELAXED = ("export_history", "export_licence")
 
-#: Rejection reasons that assume export (IQ-12). Deactivated, not deleted: a past
-#: outcome's JSONB still names them, and they can come back with decision F.
+#: Rejection reasons that assume export. Deactivated, not deleted: a past
+#: outcome's JSONB still names them, and they can come back if export returns.
 _RETIRED_REASON_CODES = (
     "no_export_history",
     "no_export_licence",

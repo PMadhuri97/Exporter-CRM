@@ -1,5 +1,5 @@
 /**
- * Sign-in (frontend-plan §8.1). It had no test before Phase 2; the redesign changed
+ * Sign-in (frontend-plan §8.1). It had no test before the redesign, which changed
  * its look, so this pins its behaviour: the server's refusal in its words, the
  * client's checks before any request, and the redirect once signed in.
  */

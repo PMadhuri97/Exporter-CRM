@@ -1,17 +1,17 @@
 """Request/response schemas for the screening-review checklist and the
-bank-activity panel — **owner: Developer 4** (architecture §8.1, §9.4).
+bank-activity panel (architecture §8.1, §9.4).
 
-Split out of `exporter.py` (L2-01) so the company shapes and the
+Split out of `exporter.py` so the company shapes and the
 background-check shapes stop sharing one file. The class names are what the
 OpenAPI document and the frontend's generated types key on, so they stay
-exactly as they were; Dev4B's changes (4B-1, 4B-6) only add fields and shapes.
+exactly as they were; later changes only add fields and shapes.
 
 The screening checklist is a compliance list inside the background check. It
 is not qualification, and qualification does not reuse it (architecture §5.5).
 
-Developer 1 (1 October 2026) added fields only: an answer's ``evidence_refs`` (plan
-P2-1b; accepted on the ``PUT``, optional per IQ-14) and its ``cycle_id``, and the
-check cycle a list is about (P2-3d). No identifier is carried by any of them.
+Added 1 October 2026, fields only: an answer's ``evidence_refs`` (accepted on the
+``PUT``, optional) and its ``cycle_id``, and the check cycle a list is about. No
+identifier is carried by any of them.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from app.modules.onboarding.domain.verification_evidence import (
     VerificationEvidence,
 )
 
-# ── E9 screening review workspace ──────────────────────────────────────────
+# ── Screening review workspace ─────────────────────────────────────────────
 
 #: Same four values as `screening_review.SCREENING_STATUSES` and
 #: `ck_screening_review_item_status`.
@@ -49,7 +49,7 @@ class UpdateScreeningReviewItemRequest(BaseModel):
         default_factory=list,
         max_length=50,
         description=(
-            "Optional (IQ-14). A `document` must be one of the company's own documents "
+            "Optional. A `document` must be one of the company's own documents "
             "and `AVAILABLE` (scanned clean); a `url` must be an http(s) link."
         ),
     )

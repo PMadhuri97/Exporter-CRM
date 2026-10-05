@@ -22,7 +22,7 @@ function renderPage() {
   );
 }
 
-describe('CompanyImportPage — bulk CSV import (L2-13, L2-14)', () => {
+describe('CompanyImportPage — bulk CSV import', () => {
   beforeEach(() => {
     vi.mocked(importCompanies).mockReset();
     vi.mocked(importCompanies).mockResolvedValue({

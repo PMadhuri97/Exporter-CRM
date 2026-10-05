@@ -1,5 +1,5 @@
 /**
- * Qualification — **owner: Developer 2** (L2-09, L2-10).
+ * Qualification.
  *
  * The server decides everything: which outcomes the user may record, whether
  * results may be recorded, what the suggestion is. These functions only carry

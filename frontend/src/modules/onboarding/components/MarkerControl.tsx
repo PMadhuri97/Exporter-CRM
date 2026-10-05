@@ -1,5 +1,5 @@
 /**
- * Pause, end or resume a relationship — **owner: Developer 2** (L2-08).
+ * Pause, end or resume a relationship.
  *
  * Shows exactly the moves the server listed for this user and this company
  * (`allowed_marker_moves`) and asks for a reason exactly where the server says

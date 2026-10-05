@@ -1,6 +1,6 @@
 /**
- * The shelf: documents by category (frontend-plan §6.8) — **paperwork owners:
- * Developer 3B**; replaces the document list's table-like rows.
+ * The shelf: documents by category (frontend-plan §6.8); replaces the document
+ * list's table-like rows.
  *
  * Each category is a row of file tiles: name, type, size, when, and the scan state
  * as a lamp. A file waiting on the scanner pulses slowly; a quarantined or failed

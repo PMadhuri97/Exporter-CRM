@@ -1,21 +1,17 @@
 /**
- * The conversation: the gauge, contacts, and the activity log — **owner:
- * Developer 3A** (architecture §9.3, L3-03, L3-04a, L3-11a-i).
+ * The conversation: the gauge, contacts, and the activity log (architecture §9.3).
  *
  * The sales relationship: how the conversation is going, who we talk to, and what
  * was said or done.
  *
- * **This file is written once, in Phase 1, and closed** (phase agreement §6.3).
- * Phase 2's only business on this screen is `components/OpenDealPrompt.tsx`, its
- * own file, and the same is true of whoever lands seam S2's button. That is why the
- * gauge section below delegates to two components rather than rendering the prompt
- * inline: a panel that stays closed has to put everything still-open behind a
- * seam.
+ * **The gauge section delegates to two components** rather than rendering the
+ * prompt inline: `components/OpenDealPrompt.tsx` (seam S2's button) lives in its own
+ * file, so a change to it never reopens this panel.
  *
  * **The gauge query lives here, not in the shell.** The shell hands this panel
  * contacts and activities as props — see below for why that is deliberate and must
- * stay — but it knows nothing about the conversation gauge, and Developer 3 does
- * not edit `ExporterDetailPage.tsx`. So the gauge calls its own hook here. That
+ * stay — but it knows nothing about the conversation gauge, and the gauge does
+ * not belong in `ExporterDetailPage.tsx`. So the gauge calls its own hook here. That
  * costs nothing the props were buying: the profile, contacts and activities still
  * start together on the first render, and the gauge is a fourth request alongside
  * them rather than a second round trip after them, because this panel is mounted
@@ -39,12 +35,12 @@
  * So the contact and activity query calls and the pagination state stay in the
  * shell, exactly where the page already had them, and this panel is presentational
  * **for those two**. The trade is deliberate: identical behaviour now, at the cost
- * of the shell still holding some of Developer 3's state until Developers 2 and 3
- * decide to move it.
+ * of the shell still holding some of the engagement state until someone decides
+ * to move it.
  *
  * The gauge is the exception, and not an inconsistency: the shell was never given
- * that query to hold, and adding it there would mean editing a file Developer 3 does
- * not own to buy timing the gauge does not need. Nothing renders before the gauge
+ * that query to hold, and adding it there would mean editing the shell to buy
+ * timing the gauge does not need. Nothing renders before the gauge
  * resolves except the gauge's own skeleton.
  *
  * The `data-extension` hooks for the gauge, contacts and activities are stable;

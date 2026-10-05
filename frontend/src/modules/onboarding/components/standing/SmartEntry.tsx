@@ -8,8 +8,8 @@
  * gives the server's reason, NEW says it is not here yet. The match needs a name and a
  * country besides the identifier (the server's rule: a MATCHED answer naming a company
  * that looks nothing like the name typed is how a mistake shows), so it runs once those
- * are known. A masked role may still have a company **named** by its exact identifier
- * (BQ-2); identifiers in the answer stay masked — the response carries none.
+ * are known. A masked role may still have a company **named** by its exact identifier;
+ * identifiers in the answer stay masked — the response carries none.
  *
  * Matching runs only where the page allows it (`live`) — pages that may create
  * (Add company, Choose buyer) are already gated on that capability — and only once

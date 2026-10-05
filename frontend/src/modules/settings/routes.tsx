@@ -5,7 +5,7 @@
 import { lazy } from 'react';
 import { Route, Routes } from 'react-router-dom';
 
-// Loaded on first use (frontend plan G7), like every other screen.
+// Loaded on first use, like every other screen.
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );

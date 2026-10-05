@@ -4,9 +4,9 @@
  * the country are known the server is asked whether the company is already in Aner
  * (`POST /companies/match`, read-only and audited). Then only what the create needs:
  * name, country, source — and, outside India without a PAN, the registration number
- * its own registrar issued (IQ-7). Everything else is added on the company itself.
+ * its own registrar issued. Everything else is added on the company itself.
  *
- * Add a company — **owner: Developer 2** (L2-06, L2-14).
+ * Add a company.
  *
  * Limited to `CreateExporterProfileRequest`'s real fields. The person adding
  * the company is never asked for their own contact — the backend takes it
@@ -50,7 +50,7 @@ const addCompanySchema = z.object({
   ]),
   registration_number: z.string().max(100).optional().or(z.literal('')),
 });
-// Decision IQ-7 (a company outside India is identified by its registrar's number unless
+// The foreign-identity rule (a company outside India is identified by its registrar's number unless
 // it holds a PAN) is checked in onSubmit: the PAN comes from the smart entry, not a field.
 
 type AddCompanyFormValues = z.infer<typeof addCompanySchema>;
@@ -92,12 +92,12 @@ export function AddExporterPage() {
   });
   const name = watch('name') ?? '';
   const country = (watch('country') ?? '').trim().toUpperCase();
-  // A PAN — typed, or inside a GSTIN — is itself an identity (IQ-7).
+  // A PAN — typed, or inside a GSTIN — is itself an identity.
   const holdsPan = Boolean(detected.pan);
 
   const onSubmit = async (values: AddCompanyFormValues) => {
     setServerError(null);
-    // IQ-7: outside India and without a PAN, the registrar's number is the identity.
+    // Outside India and without a PAN, the registrar's number is the identity.
     if (values.country !== 'IN' && !holdsPan && !values.registration_number?.trim()) {
       setError('registration_number', { message: 'Required for a company outside India' });
       return;

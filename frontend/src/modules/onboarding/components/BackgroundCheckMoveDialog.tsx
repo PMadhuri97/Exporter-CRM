@@ -1,5 +1,5 @@
 /**
- * Recording a background-check decision — **owner: Developer 4A** (L4-03).
+ * Recording a background-check decision.
  *
  * **Offers only what the server offered.** The moves, whether each needs a reason,
  * and whether each needs a risk rating all come from `allowed_moves`; this component
@@ -16,7 +16,7 @@
  * the company's displayed risk. The server refuses that too
  * (`BACKGROUND_CHECK_RISK_NOT_ALLOWED`); this keeps the screen from ever trying.
  *
- * **Maker-checker (Developer 1, P3-1c).** A move the server marks `approval_required`
+ * **Maker-checker.** A move the server marks `approval_required`
  * (CLEAR, FLAGGED, ON_HOLD) is proposed, not recorded: the dialog says so and the
  * button reads "Propose for approval". The check moves only when a second compliance
  * officer approves it.

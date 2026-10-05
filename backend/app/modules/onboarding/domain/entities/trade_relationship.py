@@ -1,18 +1,17 @@
-"""``TradeRelationship`` — one record per (seller, buyer) pair — **owner:
-Developer 3** (allocation task 3.18, plan P5-1).
+"""``TradeRelationship`` — one record per (seller, buyer) pair.
 
 Two companies either trade with each other or they do not, and when they do there is
 one relationship however many deals it carries. That is the whole table: the pair,
 and where the record came from.
 
-**No column on ``deal``** (allocation §1, adjustment 1, departing from P5-1's
-``deal.relationship_id``). A deal already names both parties —
+**No column on ``deal``** (no ``deal.relationship_id``). A deal already names both
+parties —
 ``company_id`` and ``buyer_company_id`` — so the relationship is *derivable* from
 the deal, and a stored link would be a second copy of the same fact, able to drift
 from it. ``get_or_create`` on the pair is what callers use instead.
 
-``source`` and ``source_ref`` are on every new table in this lane (BQ-7): a row
-created by the backfill (task 3.23) must be distinguishable from one created when a
+``source`` and ``source_ref`` are on every trade table (provenance): a row
+created by the backfill must be distinguishable from one created when a
 deal recorded its buyer, because the two mean different things about how much we
 know.
 """
@@ -49,7 +48,7 @@ class TradeRelationship(AnerModel):
             "seller_company_id <> buyer_company_id",
             name="ck_trade_relationship_not_self",
         ),
-        # The two read directions (task 3.20): "who does this company sell to" and
+        # The two read directions: "who does this company sell to" and
         # "who does it buy from".
         Index("ix_trade_relationship_seller", "seller_company_id", "created_at"),
         Index("ix_trade_relationship_buyer", "buyer_company_id", "created_at"),
@@ -78,8 +77,8 @@ class TradeRelationship(AnerModel):
     #: Who created it. A plain string like every other ``actor_id`` here: a migration
     #: or a backfill is not a user.
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    #: How the row came to exist — BQ-7. ``deal_buyer_recorded`` when a deal named its
-    #: buyer company, ``backfill`` when task 3.23 reconstructed it from existing deals.
+    #: How the row came to exist. ``deal_buyer_recorded`` when a deal named its
+    #: buyer company, ``backfill`` when the backfill reconstructed it from existing deals.
     source: Mapped[str | None] = mapped_column(String(64), nullable=True)
     #: The thing within that source: a deal id, or a backfill run id.
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)

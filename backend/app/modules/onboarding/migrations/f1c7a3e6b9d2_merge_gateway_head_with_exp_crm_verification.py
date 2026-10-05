@@ -1,13 +1,13 @@
-"""merge gateway head with EXP-1/EXP-2 exporter CRM + verification heads
+"""merge gateway head with the exporter CRM + verification heads
 
-Reconciliation for the EXP-1 (exp-1-crm) / EXP-2 (exp-2-verification) build,
+Reconciliation for the exporter CRM / verification-results build,
 each done in its own git worktree from the same starting point (`master` at
 `d1e0e88`). Both worktrees independently chained their own migration
 (`onboarding_0005_exporter_crm`, `onboarding_0006_verif_result`) onto
 `onboarding_0004_screening_fix`, believing it to be the current head — it
 was not: `2807a84d72ba` (this repo's own gateway-integration merge point,
 see its docstring) already sat downstream of `onboarding_0004_screening_fix`
-in `master` before either EXP worktree was created, so `master`'s actual
+in `master` before either worktree was created, so `master`'s actual
 head at branch time was `2807a84d72ba`, not `onboarding_0004_screening_fix`.
 
 Two distinct forks resulted from merging both worktrees into `master`, and
@@ -15,7 +15,7 @@ each was fixed the way this codebase's own history already establishes for
 its kind:
 
 1. `onboarding_0005_exporter_crm` vs. `onboarding_0006_verif_result` — both
-   unreleased, never applied anywhere but a disposable, per-ticket test
+   unreleased, never applied anywhere but a disposable test
    container. Fixed with a direct, in-place edit of
    `onboarding_0006_verif_result.down_revision` (now
    `onboarding_0005_exporter_crm`) rather than a merge revision — see that

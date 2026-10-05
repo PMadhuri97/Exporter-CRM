@@ -45,15 +45,15 @@ vi.mock('../api', () => ({
   listDealHistory: vi.fn(),
   // Staff see the buyer's checks under the buyer.
   listVerificationResults: vi.fn(),
-  // Trade history (task 2.11), mounted only on a deal with a buyer company.
+  // Trade history, mounted only on a deal with a buyer company.
   listTradeRelationships: vi.fn(),
   getTradeRelationship: vi.fn(),
   getTradeInvoice: vi.fn(),
   recordDealPaymentOutcome: vi.fn(),
-  // The invoicing branch (task 2.8): the seller's GST registrations, and the write.
+  // The invoicing branch: the seller's GST registrations, and the write.
   listGstRegistrations: vi.fn(),
   setDealInvoicingBranch: vi.fn(),
-  // The buyer picker (task 2.4) and creating a buyer company from it (R-24).
+  // The buyer picker and creating a buyer company from it.
   searchExporterProfiles: vi.fn(),
   matchCompany: vi.fn(),
 }));
@@ -81,10 +81,9 @@ function deal(overrides: Partial<Deal> = {}): Deal {
       contact_email: null,
       contact_phone: null,
     },
-    // The three fields allocation F2 added. Every deal in the database today has
-    // them null: the buyer is still a `deal_buyer` row (P4-6 fills the company
-    // link), nothing has been handed over in this fixture, and the invoicing
-    // branch arrives with P6-6.
+    // The three newer deal fields. This fixture has them null: the buyer is still
+    // a `deal_buyer` row (the buyer migration fills the company link), nothing has
+    // been handed over, and no invoicing branch is recorded.
     buyer_company: null,
     handover_snapshot: null,
     seller_gst_registration_id: null,
@@ -248,7 +247,7 @@ describe('DealDetailPage — buyer checks', () => {
     );
   });
 
-  it('does not render them for a DEVELOPER, whom the server refuses (D8)', async () => {
+  it('does not render them for a DEVELOPER, whom the server refuses', async () => {
     signedInAs('DEVELOPER');
     renderPage();
 
@@ -497,7 +496,7 @@ describe('DealDetailPage — editing a buyer whose details are masked', () => {
   });
 });
 
-// ── What was handed over (plan P2-7) ─────────────────────────────────────────
+// ── What was handed over ─────────────────────────────────────────
 
 describe('the handover snapshot', () => {
   const SNAPSHOT = {
@@ -591,7 +590,7 @@ describe('the handover snapshot', () => {
   });
 });
 
-// ── The buyer as a company record (plan P4-4) ───────────────────────────────
+// ── The buyer as a company record ───────────────────────────────
 
 describe('the buyer company', () => {
   it('is absent on every deal whose buyer is still a deal_buyer row', async () => {
@@ -621,7 +620,7 @@ describe('the buyer company', () => {
     expect(screen.getByText('••••••1234')).toBeInTheDocument();
   });
 
-  // Task 2.11: Developer 3's panel, mounted only where it has two companies to
+  // The trade history panel, mounted only where it has two companies to
   // pair. A deal whose buyer is still a `deal_buyer` row has one, so the panel is
   // absent rather than empty — an empty panel would imply these two have never
   // traded, when the truth is that nothing yet says who the buyer is.
@@ -654,7 +653,7 @@ describe('the buyer company', () => {
     );
   });
 
-  // P5-6. The server refuses a payment outcome on a deal that has not been handed
+  // The server refuses a payment outcome on a deal that has not been handed
   // over, so offering the control earlier would be offering a refusal.
   it('offers "Record outcome" only after the handover', async () => {
     vi.mocked(listTradeRelationships).mockResolvedValue({ relationships: [], total: 0 });
@@ -686,7 +685,7 @@ describe('the buyer company', () => {
   });
 });
 
-// R-05: the guard has asked for an invoicing branch since task 2.9 whenever the seller
+// The guard asks for an invoicing branch whenever the seller
 // has an active GST registration, and this panel is the only way to record one.
 describe('the invoicing branch', () => {
   const MAHARASHTRA = 'mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm';
@@ -844,7 +843,7 @@ describe('the invoicing branch', () => {
   });
 });
 
-// R-24: a buyer not on file is created as a company outside the pipeline, through the
+// A buyer not on file is created as a company outside the pipeline, through the
 // deal's own buyer route, and named in the same request.
 describe('creating the buyer company', () => {
   it('sends the create form to PUT /deals/{id}/buyer and closes the picker', async () => {

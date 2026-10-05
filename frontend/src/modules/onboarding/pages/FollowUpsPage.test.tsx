@@ -1,5 +1,5 @@
 /**
- * The Follow-ups screen (L3-11a-ii).
+ * The Follow-ups screen.
  *
  * Most of these assert what the page does **not** decide. `state` and `is_overdue`
  * come from the server, which derives them from whether a completion row exists; the
@@ -104,7 +104,7 @@ function renderPage() {
   );
 }
 
-describe('FollowUpsPage — L3-11a-ii', () => {
+describe('FollowUpsPage', () => {
   beforeEach(() => {
     mockUser('OPERATIONS');
     vi.mocked(listFollowUps).mockResolvedValue(list());

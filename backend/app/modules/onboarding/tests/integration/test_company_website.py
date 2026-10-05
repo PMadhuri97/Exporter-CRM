@@ -1,5 +1,4 @@
-"""The company website is gone, and stored values survive it — R11, decision IQ-16
-(**owner: Developer 3**, task 3.7).
+"""The company website is gone, and stored values survive it.
 
 This file used to prove that every write path applied the one link rule
 (``domain/web_links.py``) to ``exporter_profile.website``. There is no such write
@@ -16,7 +15,7 @@ half that can go wrong silently:
 
 The link rule itself still has a caller — a verification result's ``url``
 evidence — covered by ``test_web_links.py`` and
-``test_l4b_verification_integrity_rules.py``.
+``test_verification_integrity_rules.py``.
 """
 
 from __future__ import annotations
@@ -64,7 +63,7 @@ async def _companies_with_pan(pan: str) -> int:
 
 
 async def test_the_column_still_exists_and_a_stored_value_is_left_alone():
-    """Decision IQ-16 is "keep stored websites, hide them", so the value a company
+    """The decision is "keep stored websites, hide them", so the value a company
     had before this release must still be readable with SQL. Written with raw SQL
     on purpose: the ORM entity still maps the column, but a later cleanup that
     dropped it would make every *other* test in this file pass while quietly
@@ -200,7 +199,7 @@ async def test_the_template_no_longer_offers_a_website_column():
 
 
 async def test_a_csv_file_with_the_old_website_header_still_imports():
-    """The acceptance criterion for task 3.7. A file somebody downloaded before
+    """The acceptance criterion for the website's removal. A file somebody downloaded before
     this release still has the column, and the importer refuses any header it does
     not recognise — so an unrecognised one would reject the whole file, not one
     row."""
@@ -235,7 +234,7 @@ async def test_a_csv_file_with_the_old_website_header_still_imports():
 
 async def test_a_csv_row_whose_website_would_once_have_been_refused_now_imports():
     """A value the old importer rejected the row for (`INVALID_WEBSITE`) no longer
-    stops a company being imported. "A missing website is never a failure" (R11)
+    stops a company being imported. "A missing website is never a failure"
     goes for a malformed one too, now that nothing renders it."""
     pan = _pan()
     old_columns = TEMPLATE_COLUMNS + ("website",)
@@ -275,7 +274,7 @@ async def test_a_header_with_an_unknown_column_is_still_refused():
 
 
 async def test_an_rxil_package_carrying_a_website_is_accepted_and_ignores_it():
-    """"RXIL ignores `website` in the package" (IQ-16). The format is provisional
+    """"RXIL ignores `website` in the package". The format is provisional
     and partner-driven, so a value we no longer want must not fail the delivery —
     an exporter rejected over a field we stopped using would be a real company
     lost to a formatting detail."""

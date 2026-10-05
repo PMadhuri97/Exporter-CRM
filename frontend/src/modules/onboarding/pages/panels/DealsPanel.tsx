@@ -1,5 +1,5 @@
 /**
- * Deals — **owner: Developer 3B** (architecture §9.3, L3-05, L3-06, L3-11b).
+ * Deals (architecture §9.3).
  *
  * The company's deal list, the control that opens one, and the way through to
  * a deal. Shown on the company page's Deals tab.

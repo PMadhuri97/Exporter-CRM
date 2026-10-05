@@ -10,9 +10,9 @@
  *   segment opens its chapter.
  *
  * Role-aware: the background-check lamp is drawn only for a role that may read the
- * check (`compliance.read`) — **absent** for Developer (D8), not greyed. A gauge
+ * check (`compliance.read`) — **absent** for Developer, not greyed. A gauge
  * the caller has no value for is simply left out (company list rows carry no
- * conversation or background check until ask A1). Every line of text here comes
+ * conversation or background check yet). Every line of text here comes
  * from served values; nothing is worked out from rules held on the client.
  */
 

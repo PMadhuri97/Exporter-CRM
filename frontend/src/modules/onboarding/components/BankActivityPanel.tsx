@@ -1,6 +1,6 @@
 /**
- * Bank-linked activity, stated honestly — **owner: Developer 4B** (verification-and-screening.md §8;
- * architecture §7.6's "honest bank panel"; 4B-7).
+ * Bank-linked activity, stated honestly (verification-and-screening.md §8;
+ * architecture §7.6's "honest bank panel").
  *
  * No bank-monitoring provider feed is connected. The server says so
  * (`provider_feed_connected: false`, `provider_feed_status: NOT_CONNECTED`, and a

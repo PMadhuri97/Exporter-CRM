@@ -5,7 +5,7 @@ import type { UserRole } from '@/lib/api/types';
 import { roleLabel, roleShortLabel } from './roles';
 
 describe('roleLabel', () => {
-  // IQ-13: the enum value stays OPERATIONS; only what a person reads changes.
+  // The enum value stays OPERATIONS; only what a person reads changes.
   it('names OPERATIONS as the relationship manager', () => {
     expect(roleLabel('OPERATIONS')).toBe('RM (Relationship Manager)');
     expect(roleShortLabel('OPERATIONS')).toBe('RM');

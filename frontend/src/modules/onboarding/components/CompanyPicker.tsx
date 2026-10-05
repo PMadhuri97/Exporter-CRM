@@ -1,6 +1,5 @@
 /**
- * Pick a company, or create one — **owner: Developer 3** (allocation task 3.10,
- * plan P4-3). Mounted on the deal page by Developer 2's task 2.4.
+ * Pick a company, or create one. Mounted on the deal page as the buyer picker.
  *
  * Two ways to find a company, because an RM has one of two things in hand:
  *
@@ -11,14 +10,14 @@
  *   point of this control is that an RM stops creating a second record for a buyer
  *   we already have.
  * * **A full identifier.** A complete PAN, GSTIN or registration number names the
- *   company that holds it — including for a role that sees identifiers masked
- *   (decision BQ-2). The identifier is sent, never displayed back: the response
+ *   company that holds it — including for a role that sees identifiers masked.
+ *   The identifier is sent, never displayed back: the response
  *   carries no identifiers at all, and every such lookup is audited server-side.
  *
  * **Partial identifiers are refused by the server, so this does not offer them.**
  * The field asks for the whole value and says so; a prefix search would be a way to
  * read identifiers out of the CRM one character at a time, which is exactly what
- * BQ-2's "exact only" rule exists to prevent. The component does not try to
+ * the "exact only" rule exists to prevent. The component does not try to
  * validate formats itself — the server owns that, and a client-side regex that
  * disagreed with it would refuse values the CRM accepts.
  *
@@ -29,17 +28,17 @@
  * | `MATCHED` | one company, ready to select |
  * | `POSSIBLE_DUPLICATE` | "check these first" — candidates, nothing preselected |
  * | `CONFLICT` | a warning naming every company involved; the RM decides |
- * | `NEW` | "no company matches" — and **Create buyer company** (R-24) |
+ * | `NEW` | "no company matches" — and **Create buyer company** |
  *
  * `POSSIBLE_DUPLICATE` and `CONFLICT` both set `needs_a_person`, and neither
  * preselects anything — picking one for the RM is how a deal ends up attached to
- * the wrong company (decision IQ-8).
+ * the wrong company.
  *
- * **Creating** (R-24) is offered only when the caller passes `onCreate`, and only
+ * **Creating** is offered only when the caller passes `onCreate`, and only
  * once the server has answered `NEW` — or `POSSIBLE_DUPLICATE` after the RM says none
- * of the look-alikes is the buyer: a name is never an identity (IQ-8), but the RM
+ * of the look-alikes is the buyer: a name is never an identity, but the RM
  * must have seen them first. It creates a buyer company **outside the pipeline**
- * through the deal's buyer route, never an ordinary lead — the failure P4-2 exists to
+ * through the deal's buyer route, never an ordinary lead — the failure that rule exists to
  * prevent. `MATCHED` and `CONFLICT` never offer it: an identifier already names a
  * company on file, and the server would refuse a duplicate anyway.
  */
@@ -92,7 +91,7 @@ export interface CompanyPickerProps {
    */
   country?: string;
   /**
-   * Create the buyer as a company outside the pipeline (R-24). Rejects with the
+   * Create the buyer as a company outside the pipeline. Rejects with the
    * server's refusal, which the form shows. Without it, nothing here creates.
    */
   onCreate?(draft: CreateBuyerCompanyRequest): Promise<unknown>;
@@ -267,7 +266,7 @@ export function CompanyPicker({
           initial={{
             name: trimmed,
             country,
-            // The RM's own input, never a value the server sent back (BQ-2).
+            // The RM's own input, never a value the server sent back.
             ...(identifier.trim() ? { [identifierKind]: identifier.trim() } : {}),
           }}
           onCreate={onCreate}

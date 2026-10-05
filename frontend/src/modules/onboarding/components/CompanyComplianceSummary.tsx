@@ -1,27 +1,26 @@
 /**
- * One company's compliance at a glance — **owner: Developer 1** (allocation F1; the
- * full version is task 1.20).
+ * One company's compliance at a glance.
  *
  * The props are final: `{ companyId }`. It renders the same for any company — a seller,
- * a buyer-only company or one that is both — because the checks are the company's
- * (decision D, plan P4-5): one set of checks per company, wherever it appears. Developer
- * 2 mounts it on the deal page for the seller and for the buyer company (task 2.4).
+ * a buyer-only company or one that is both — because the checks are the company's:
+ * one set of checks per company, wherever it appears. The deal page mounts it for the
+ * seller and for the buyer company.
  *
  * What it shows, all served by the background-check read (nothing is derived here, so
- * the rule for "passed" — IQ-2 — and for "current" live in one place):
+ * the rule for "passed" and for "current" live in one place):
  *
  * - the gauge, with the "Awaiting approval" (maker-checker) and "Re-KYC due" badges;
  * - whether the Clear is current and until when, or when it expired;
  * - the latest sanctions and AML results in the current cycle (`PASSED` / `FAILED` /
- *   `PENDING` / not checked) — what the handover guard reads (BQ-3, BQ-4);
+ *   `PENDING` / not checked) — what the handover guard reads;
  * - a link to the company's own background-check panel, where everything else is.
  *
  * It is the one compliance summary in the app. On a deal whose buyer is still a legacy
  * `deal_buyer` row (no buyer company yet), `BuyerChecks` remains the place that buyer's
- * own checks are recorded until the deal-buyer migration and its retirement (P4-6,
- * P4-10); it is a recording list, not a second summary.
+ * own checks are recorded until the deal-buyer migration and its retirement; it is a
+ * recording list, not a second summary.
  *
- * DEVELOPER is refused the background check (D8). This component makes no role check of
+ * DEVELOPER is refused the background check. This component makes no role check of
  * its own: a 403 is shown as "not available to your role", never as an error.
  */
 

@@ -1,5 +1,5 @@
-"""``ExporterActivity`` — an append-only relationship-history log entry
-(EXP-1), same base and enforcement pattern as ``OnboardingEvent``: a logged
+"""``ExporterActivity`` — an append-only relationship-history log entry,
+same base and enforcement pattern as ``OnboardingEvent``: a logged
 call, meeting, email, note, task, or follow-up is never edited after the
 fact. ``trg_exporter_activity_append_only`` (migration
 ``onboarding_0005_exporter_crm``) rejects UPDATE and DELETE at the database

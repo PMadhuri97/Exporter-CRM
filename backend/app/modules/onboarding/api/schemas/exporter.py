@@ -1,12 +1,11 @@
-"""Request/response schemas for the company record — **owner: Developer 2**
-(architecture §8.1, §9.2).
+"""Request/response schemas for the company record (architecture §8.1, §9.2).
 
-This file used to carry every Exporter CRM shape. L2-01 split it by owner:
+This file used to carry every Exporter CRM shape. It is now split by area:
 
-  exporter.py    the company record and journey      Developer 2
-  engagement.py  contacts and the activity log       Developer 3
-  screening.py   screening checklist, bank activity  Developer 4
-  masking.py     tax-ID and contact masking (L1-10)  Developer 1
+  exporter.py    the company record and journey
+  engagement.py  contacts and the activity log
+  screening.py   screening checklist, bank activity
+  masking.py     tax-ID and contact masking
 
 The detail response still embeds the contact and activity shapes, because the
 company detail page shows them; it imports them rather than restating them.
@@ -84,7 +83,7 @@ class _IdentifierMasking:
             "pan": mask_identifier(self.pan),
             "iec": mask_identifier(self.iec),
             "cin": mask_identifier(self.cin),
-            # Masked like CIN (task 3.8): a registration number names the company
+            # Masked like CIN: a registration number names the company
             # in its own registrar's public index, so it carries the same risk.
             "registration_number": mask_identifier(self.registration_number),
         }
@@ -141,7 +140,7 @@ class CreateExporterProfileRequest(BaseModel):
 
     `customer_id` is optional: when omitted, the API mints a fresh one.
 
-    `website` is **not** a field here any more (R11, decision IQ-16): with
+    `website` is **not** a field here any more: with
     `extra="forbid"`, sending one is a 422. The column and every value already
     stored stay as they are — nothing is destroyed, and nothing is shown.
     Only the CSV importer still tolerates the old header, because those files
@@ -157,7 +156,7 @@ class CreateExporterProfileRequest(BaseModel):
     iec: Annotated[str | None, NotMasked] = Field(default=None, max_length=10)
     cin: Annotated[str | None, NotMasked] = Field(default=None, max_length=_IDENTIFIER_MAX)
     #: Whatever the company's own registrar issued, for a company that is not
-    #: identified by a PAN. Required for a company outside India (decision IQ-7);
+    #: identified by a PAN. Required for a company outside India;
     #: stored as the registrar writes it and compared without punctuation, so one
     #: number cannot be entered twice per country.
     registration_number: Annotated[str | None, NotMasked] = Field(
@@ -177,10 +176,10 @@ class CreateExporterProfileRequest(BaseModel):
     @field_validator("source")
     @classmethod
     def _not_a_deal_buyer(cls, value: ExporterSource) -> ExporterSource:
-        """``DEAL_BUYER`` (IQ-6) means "this company exists because it was somebody's
+        """``DEAL_BUYER`` means "this company exists because it was somebody's
         buyer": it is set by the buyer-company path, which creates the company
         ``NOT_IN_PIPELINE``. Here it would make an in-pipeline lead with a journey
-        row — a buyer that is not one (R-21)."""
+        row — a buyer that is not one."""
         if value is ExporterSource.DEAL_BUYER:
             raise ValueError(
                 "source DEAL_BUYER is set only when a company is created as a deal's "
@@ -219,10 +218,10 @@ class UpdateExporterProfileRequest(BaseModel):
     `source`, the journey, the qualification gauge and the marker are
     deliberately not fields on this model at all — with `extra="forbid"`, sending any of them is
     rejected at the API boundary (422). The marker has its own route. `website`
-    joined them in R11 (decision IQ-16): it can no longer be set or cleared
+    joined them when the website field was retired: it can no longer be set or cleared
     here, and a stored value is left untouched.
 
-    **`gstins` joined them in task 3.13.** It used to replace the company's whole
+    **`gstins` joined them.** It used to replace the company's whole
     list, which deleted the row of every GSTIN dropped — and a GST registration is a
     branch the company traded through, named by any deal that invoiced from it.
     Adding one, deactivating one and flagging one are now three decisions with three
@@ -238,7 +237,7 @@ class UpdateExporterProfileRequest(BaseModel):
     iec: Annotated[str | None, NotMasked] = Field(default=None, max_length=10)
     cin: Annotated[str | None, NotMasked] = Field(default=None, max_length=_IDENTIFIER_MAX)
     #: Whatever the company's own registrar issued, for a company that is not
-    #: identified by a PAN. Required for a company outside India (decision IQ-7);
+    #: identified by a PAN. Required for a company outside India;
     #: stored as the registrar writes it and compared without punctuation, so one
     #: number cannot be entered twice per country.
     registration_number: Annotated[str | None, NotMasked] = Field(
@@ -271,7 +270,7 @@ class SetMarkerRequest(BaseModel):
 
 
 class BringIntoPipelineRequest(BaseModel):
-    """Bring a buyer-only company into the sales pipeline (task 3.11).
+    """Bring a buyer-only company into the sales pipeline.
 
     Only a reason, and it is optional: the decision is the request itself, and
     there is nothing to choose — a company is either in the pipeline or not, and

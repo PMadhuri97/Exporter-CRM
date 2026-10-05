@@ -103,7 +103,7 @@ describe('ManualResultForm — what it offers', () => {
   });
 });
 
-describe('ManualResultForm — the evidence rule (D16)', () => {
+describe('ManualResultForm — the evidence rule', () => {
   it('refuses a PASSED with no evidence before calling the server', async () => {
     const form = renderForm();
     fireEvent.change(within(form).getByLabelText('Outcome'), { target: { value: 'PASSED' } });

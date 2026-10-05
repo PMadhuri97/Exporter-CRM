@@ -154,7 +154,7 @@ describe('rows about one thing of several', () => {
   });
 });
 
-describe('background-check approvals and cycles (Developer 1)', () => {
+describe('background-check approvals and cycles', () => {
   it('names the proposed move and the cycle kind', async () => {
     vi.mocked(listCompanyHistory).mockResolvedValue(
       page([
