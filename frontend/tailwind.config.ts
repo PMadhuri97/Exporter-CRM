@@ -1,8 +1,9 @@
 import type { Config } from 'tailwindcss';
 
-// Design tokens — "Ink & Paper" (docs/frontend-plan.md §5): ink on paper, no
-// brand hue, and colour spent only on meaning. Consumed by name
-// (`bg-positive-tint`, `text-ink-3`, `border-line`) rather than as ad hoc values,
+// Design tokens — a standard enterprise palette (docs/frontend-plan.md §5): neutral
+// greys, one brand blue for what can be acted on, and colour otherwise spent only on
+// state. Consumed by name (`bg-positive-tint`, `text-ink-3`, `bg-accent-solid`)
+// rather than as ad hoc values,
 // and a lint rule (eslint.config.js) refuses Tailwind's raw palette and the
 // retired token names, so a screen cannot drift back to `slate-*` or `violet-*`.
 //
@@ -14,7 +15,7 @@ function token(name: string): string {
 }
 
 /** A meaning's three roles: text/icon (`text-positive`), background
- * (`bg-positive-tint`) and dot/fill/lamp (`bg-positive-solid`). */
+ * (`bg-positive-tint`) and dot/fill (`bg-positive-solid`). */
 function meaning(name: string) {
   return {
     DEFAULT: token(name),
@@ -26,12 +27,12 @@ function meaning(name: string) {
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   // `data-theme="dark"` on <html> is set by `src/platform/theme` (and before the
-  // first paint by the inline script in index.html).
+  // first paint by the inline script in index.html). Light is the default.
   darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
-        // Neutrals: paper and ink.
+        // Neutrals: the page (`paper`), cards (`surface`), lines and text.
         paper: token('paper'),
         surface: token('surface'),
         raised: token('raised'),
@@ -47,7 +48,15 @@ export default {
           // Placeholders and decorative glyphs only — never text that must be read.
           4: token('ink-4'),
         },
-        // Meaning: each hue spent once.
+        // The brand colour, for actions only (§5.2): links and accent text, the
+        // primary button's fill and its hover, and the selected row's tint.
+        accent: {
+          DEFAULT: token('accent'),
+          solid: token('accent-solid'),
+          'solid-hover': token('accent-solid-hover'),
+          tint: token('accent-tint'),
+        },
+        // State: each hue spent once.
         positive: meaning('positive'),
         negative: meaning('negative'),
         attention: meaning('attention'),
@@ -55,48 +64,47 @@ export default {
         idle: meaning('idle'),
       },
       fontFamily: {
-        display: ['"Instrument Serif"', 'ui-serif', 'Georgia', 'serif'],
+        // One family, the operating system's UI font (§5.3): Segoe UI on Windows, as
+        // Dynamics 365 draws, and San Francisco on macOS. Nothing to download, and it
+        // has the rupee sign.
         sans: [
-          '"Instrument Sans Variable"',
-          'ui-sans-serif',
+          '"Segoe UI Variable Text"',
+          '"Segoe UI"',
           'system-ui',
           '-apple-system',
+          'BlinkMacSystemFont',
+          '"Helvetica Neue"',
+          'Arial',
           'sans-serif',
         ],
-        mono: ['"JetBrains Mono Variable"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       fontSize: {
-        // §5.3: UI 15 lead · 14 body · 13 secondary · 12 caption; data 12.5.
-        caption: ['0.75rem', { lineHeight: '1rem' }],
-        secondary: ['0.8125rem', { lineHeight: '1.125rem' }],
-        body: ['0.875rem', { lineHeight: '1.25rem' }],
-        lead: ['0.9375rem', { lineHeight: '1.375rem' }],
-        data: ['0.78125rem', { lineHeight: '1.125rem' }],
-        // Display (serif): 20 · 24 · 30 · 40.
-        'display-sm': ['1.25rem', { lineHeight: '1.625rem' }],
-        'display-md': ['1.5rem', { lineHeight: '1.875rem' }],
-        'display-lg': ['1.875rem', { lineHeight: '2.25rem' }],
-        'display-xl': ['2.5rem', { lineHeight: '2.75rem' }],
+        // §5.3: weight, not a second face, sets the hierarchy.
+        caption: ['0.75rem', { lineHeight: '1rem' }], // 12/16: labels above values
+        secondary: ['0.8125rem', { lineHeight: '1.125rem' }], // 13/18: facts lines, metadata
+        body: ['0.875rem', { lineHeight: '1.25rem' }], // 14/20: the default
+        heading: ['1rem', { lineHeight: '1.375rem' }], // 16/22: card titles
+        title: ['1.25rem', { lineHeight: '1.75rem' }], // 20/28: page and record titles
+        count: ['1.5rem', { lineHeight: '2rem' }], // 24/32: Home counts
       },
       boxShadow: {
-        // Resting surfaces have hairlines and no shadow; only floating layers
-        // (popover, menu, ⌘K, sheet, dialog) get this one.
+        // §5.5: resting surfaces have a border and no shadow; only floating layers
+        // (menus, popovers, search results, dialogs, the side panel) get this one.
         float: 'var(--shadow-float)',
       },
       borderRadius: {
-        // §5.4: 4 tags · 6 controls · 10 sheets and popovers · 14 dialogs. The
-        // stock names are re-pointed so existing classes land on the new scale.
+        // §5.5: 4 for controls, badges and cards; 8 for dialogs, the side panel and
+        // menus. The stock names are re-pointed so existing classes land on the scale.
         sm: '4px',
         DEFAULT: '4px',
-        md: '6px',
-        lg: '6px',
-        xl: '10px',
-        '2xl': '14px',
+        md: '4px',
+        lg: '4px',
+        xl: '8px',
+        '2xl': '8px',
       },
       transitionDuration: {
         quick: 'var(--dur-quick)',
         pop: 'var(--dur-pop)',
-        travel: 'var(--dur-travel)',
       },
       transitionTimingFunction: {
         enter: 'cubic-bezier(.2,.8,.2,1)',
@@ -124,13 +132,6 @@ export default {
           from: { opacity: '0', transform: 'translateY(-2px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
-        // Rows arriving after a filter: a short rise into place.
-        settle: {
-          from: { opacity: '0', transform: 'translateY(3px)' },
-          to: { opacity: '1', transform: 'translateY(0)' },
-        },
-        // A stroke drawing itself (the sign-in page's journey line).
-        draw: { to: { strokeDashoffset: '0' } },
       },
       animation: {
         'fade-in': 'fade-in var(--dur-quick) cubic-bezier(.2,.8,.2,1)',
@@ -139,12 +140,10 @@ export default {
         'slide-in-up': 'slide-in-up var(--dur-pop) cubic-bezier(.2,.8,.2,1)',
         'pop-in': 'pop-in var(--dur-pop) cubic-bezier(.2,.8,.2,1)',
         'float-in': 'float-in var(--dur-pop) cubic-bezier(.2,.8,.2,1)',
-        settle: 'settle var(--dur-pop) cubic-bezier(.2,.8,.2,1)',
-        // A file waiting on the scanner: slow, so it reads as "working", not "alarm".
-        'scan-pulse': 'pulse 2.4s cubic-bezier(.4,0,.6,1) infinite',
       },
       maxWidth: {
-        // Reading width for the dossier and the deal room (§5.4).
+        // A cap for pages that read as one column (sign-in excepted); record pages
+        // use the full width (§5.4).
         reading: '77.5rem',
       },
     },

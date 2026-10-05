@@ -22,7 +22,8 @@ import {
   PipelineSummaryCard,
   ProposalsAwaitingMeCard,
   ReKycDueCard,
-  UpNextCard,
+  CheckBackCard,
+  MyFollowUpsCard,
 } from './HomeCards';
 
 vi.mock('../../api', () => ({
@@ -84,28 +85,34 @@ beforeEach(() => {
 });
 
 describe('Home cards', () => {
-  it("shows the user's own overdue follow-ups first, and the team's on request", async () => {
-    renderCard(<UpNextCard userId="user-1" canComplete />);
+  it("shows the user's own open follow-ups, and the team's on request", async () => {
+    renderCard(<MyFollowUpsCard userId="user-1" canComplete />);
     expect(await screen.findByText('Send the rate sheet')).toBeInTheDocument();
-    expect(screen.getByTestId('overdue-count')).toHaveTextContent('3');
+    expect(screen.getByTestId('open-count')).toHaveTextContent('3');
     expect(listFollowUps).toHaveBeenLastCalledWith(
-      expect.objectContaining({ state: 'OVERDUE', actorId: 'user-1' }),
+      expect.objectContaining({ state: 'OUTSTANDING', actorId: 'user-1', includeCheckBacks: false }),
     );
+    expect(screen.getByRole('button', { name: /Mark done: Send the rate sheet/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Team' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Team' }));
     await waitFor(() =>
       expect(listFollowUps).toHaveBeenLastCalledWith(
-        expect.objectContaining({ state: 'OVERDUE', actorId: undefined }),
+        expect.objectContaining({ state: 'OUTSTANDING', actorId: undefined }),
       ),
     );
   });
 
-  it('puts due check-backs in the same queue, as their own kind, linking to the conversation', async () => {
-    renderCard(<UpNextCard userId="user-1" />);
-    // One time-ordered queue; a check-back is never "completed" here.
-    expect(await screen.findAllByTestId('up-next-check-back')).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: /Done/ })).not.toBeInTheDocument();
-    const link = await screen.findByRole('link', { name: /Aarav Textiles/ });
+  it('offers a read-only role no Mark done', async () => {
+    renderCard(<MyFollowUpsCard userId="user-1" />);
+    expect(await screen.findByText('Send the rate sheet')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Mark done/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps check-backs in their own card, never marked done, each opening the activity', async () => {
+    renderCard(<CheckBackCard />);
+    expect(await screen.findAllByTestId('check-back')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /Mark done/ })).not.toBeInTheDocument();
+    const link = await screen.findByRole('link', { name: /Open activity: Aarav Textiles/ });
     expect(link).toHaveAttribute('href', `/companies/${CUSTOMER_ID}?tab=conversation`);
     expect(listFollowUps).toHaveBeenLastCalledWith(
       expect.objectContaining({ includeCheckBacks: true, checkBacksDueOnly: true }),

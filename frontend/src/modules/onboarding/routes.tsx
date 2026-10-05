@@ -34,7 +34,7 @@ import {
 import { paths } from './paths';
 
 /**
- * Companies has two views of one list (frontend-plan §8.3): the register (rows) and
+ * Companies has two views of one list (frontend-plan §8.3): the list (rows) and
  * the board (three journey columns). `?view=board` picks the board, so a view is a
  * URL that can be shared.
  */

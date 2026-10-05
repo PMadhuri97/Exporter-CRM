@@ -3,8 +3,9 @@
  *
  * jsdom does not compute colours, so axe cannot check contrast in a unit test; this
  * reads `tokens.css` itself and does the arithmetic. Text pairs need 4.5:1; the
- * solids — dots, lamps, fills that carry a state beside a label — need 3:1 against
- * the surfaces they sit on. A token change that breaks a pair fails here.
+ * solids — status dots and fills that carry a state beside a label — and input
+ * borders need 3:1 against the surfaces they sit on (WCAG 1.4.11). A token change
+ * that breaks a pair fails here.
  */
 
 import { readFileSync } from 'node:fs';
@@ -45,7 +46,6 @@ function contrast(a: Rgb, b: Rgb): number {
 
 const LIGHT = block(':root,');
 const DARK = block("[data-theme='dark'] {");
-const SYSTEM_DARK = block(":root:not([data-theme='light'])");
 const WHITE: Rgb = [255, 255, 255];
 const MEANINGS = ['positive', 'negative', 'attention', 'progress', 'idle'] as const;
 const SURFACES = ['surface', 'paper', 'raised'] as const;
@@ -74,22 +74,40 @@ describe.each([
     }
   });
 
-  it.each(MEANINGS)('the %s solid stands out as a lamp or dot', (meaning) => {
+  it.each(MEANINGS)('the %s solid stands out as a status dot', (meaning) => {
     for (const surface of SURFACES) {
       expect(contrast(t(`${meaning}-solid`), t(surface)), `${meaning}-solid on ${surface}`).toBeGreaterThanOrEqual(3);
     }
   });
 
-  it('keeps the primary button and CRITICAL legible', () => {
-    // Primary: paper text on an ink fill. CRITICAL: white on the negative solid.
-    expect(contrast(t('paper'), t('ink'))).toBeGreaterThanOrEqual(4.5);
+  it('keeps the brand blue readable as links and as the primary button', () => {
+    for (const background of [...SURFACES, 'sunken', 'accent-tint']) {
+      expect(contrast(t('accent'), t(background)), `accent on ${background}`).toBeGreaterThanOrEqual(4.5);
+    }
+    // Primary button and current path step: white on the solid, at rest and on hover.
+    expect(contrast(WHITE, t('accent-solid'))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(WHITE, t('accent-solid-hover'))).toBeGreaterThanOrEqual(4.5);
+    // The focus ring and the selected nav bar draw in `accent`, readable above, so
+    // they clear 3:1 on every surface in both themes.
+  });
+
+  it('keeps input borders visible', () => {
+    for (const surface of SURFACES) {
+      expect(contrast(t('line-strong'), t(surface)), `line-strong on ${surface}`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('keeps Critical risk legible: white on the negative solid', () => {
     expect(contrast(WHITE, t('negative-solid'))).toBeGreaterThanOrEqual(4.5);
   });
 });
 
-describe('the two dark blocks', () => {
-  it('are the same palette, so `data-theme="dark"` and the system preference agree', () => {
-    expect(SYSTEM_DARK).toEqual(DARK);
+describe('the two themes', () => {
+  it('define the same tokens', () => {
     expect(Object.keys(DARK).sort()).toEqual(Object.keys(LIGHT).sort());
+  });
+
+  it('follow no system preference: light unless the viewer chose dark', () => {
+    expect(css).not.toMatch(/prefers-color-scheme/);
   });
 });

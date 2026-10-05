@@ -76,8 +76,8 @@ export function ProposalResolveDialog({
       data-testid="proposal-resolve-dialog"
       className="rounded-lg border border-line bg-surface p-4"
     >
-      <h4 className="text-sm font-semibold text-ink">{TITLES[action]}</h4>
-      <dl className="mt-2 space-y-1 text-sm text-ink-2">
+      <h4 className="text-body font-semibold text-ink">{TITLES[action]}</h4>
+      <dl className="mt-2 space-y-1 text-body text-ink-2">
         {proposal.company_name && (
           <div>
             <dt className="inline text-ink-3">Company: </dt>
@@ -100,14 +100,14 @@ export function ProposalResolveDialog({
           <dt className="inline text-ink-3">Reason: </dt>
           <dd className="inline">{proposal.reason}</dd>
         </div>
-        <div className="text-xs text-ink-3">
+        <div className="text-caption text-ink-3">
           Rests on {proposal.evidence_count} item{proposal.evidence_count === 1 ? '' : 's'}
           {proposal.cycle_number ? ` in cycle ${proposal.cycle_number}` : ''}.
         </div>
       </dl>
 
       {action === 'APPROVE' && (
-        <p className="mt-3 rounded bg-sunken p-2 text-xs text-ink-2">
+        <p className="mt-3 rounded bg-sunken p-2 text-caption text-ink-2">
           Approving records the decision now — decided by{' '}
           {actorLabel(proposal.proposed_by_name, proposal.proposed_by)}, approved by you
           {proposal.to_value === 'CLEAR' && '; a qualified prospect becomes a customer'}.
@@ -115,14 +115,14 @@ export function ProposalResolveDialog({
       )}
 
       {action !== 'APPROVE' && (
-        <label className="mt-3 block text-sm">
-          <span className="text-xs font-medium text-ink-2">
+        <label className="mt-3 block text-body">
+          <span className="text-caption font-medium text-ink-2">
             {reasonRequired ? 'Reason (required)' : 'Reason (optional)'}
           </span>
           <textarea
             aria-label="Reason"
             rows={3}
-            className="mt-1 w-full rounded border border-line-strong p-2 text-sm"
+            className="mt-1 w-full rounded border border-line-strong p-2 text-body"
             value={reason}
             onChange={(event) => setReason(event.target.value)}
           />
@@ -130,7 +130,7 @@ export function ProposalResolveDialog({
       )}
 
       {resolve.isError && (
-        <p role="alert" className="mt-3 text-xs text-negative">
+        <p role="alert" className="mt-3 text-caption text-negative">
           {resolve.error instanceof ApiError
             ? resolve.error.message
             : 'The proposal could not be updated.'}
@@ -142,14 +142,14 @@ export function ProposalResolveDialog({
           type="button"
           disabled={!canSubmit || resolve.isPending}
           onClick={submit}
-          className="rounded bg-ink px-3 py-1.5 text-sm text-paper disabled:opacity-40"
+          className="rounded bg-accent-solid px-3 py-1.5 text-body text-white disabled:opacity-40"
         >
           {resolve.isPending ? PENDING[action] : CONFIRM[action]}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded border border-line-strong px-3 py-1.5 text-sm"
+          className="rounded border border-line-strong px-3 py-1.5 text-body"
         >
           Cancel
         </button>

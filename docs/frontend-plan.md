@@ -558,8 +558,10 @@ Each screen below gives its layout, what each role sees, and its fallbacks. Role
 
 ### 8.1 Sign in
 
-- A centred 400 px card on the grey page: the wordmark, "Sign in to Exporter CRM", email, password, and *Sign in* (primary). Errors are inline.
-- It is always light. There is no split layout, tagline, illustration or line drawing.
+- Two columns on white. Left: the wordmark at the top, then a 400 px form, "Sign in to Exporter CRM", "Use your work email and password.", email, password, *Sign in* (primary) and "No account yet, or locked out? Ask an administrator."; the copyright at the foot. Errors are inline.
+- Right, from 1024 px: a pale accent panel with a looping illustration of a sales team at a meeting table, the headline "Every exporter, from first call to handover", and three lines with icons: *Companies and background checks*, *Deal pipeline*, *Approvals and handover*. Below 1024 px the panel is not shown and the animation is not fetched. From 1024 px the page is exactly the window's height and the picture shrinks to the room left, so the page never scrolls (checked down to a 520 px tall window).
+- The illustration is "Business meeting in office" by Abdul Latif (LottieFiles, Lottie Simple License: commercial use, no attribution required), played by lottie-web's SVG-only build. The player and the file load only once the panel shows, outside the main bundle. It is decorative (`aria-hidden`), and under `prefers-reduced-motion` it shows one still frame.
+- It is always light. (Changed 6 October at the user's request: the earlier plain centred card read as too bare.)
 
 ### 8.2 Home
 
@@ -758,7 +760,7 @@ Validation keeps Zod at the edge and treats the server's errors as the authority
 
 | Form today | Becomes | Enterprise counterpart |
 |---|---|---|
-| Sign in | Centred card, two fields | Standard |
+| Sign in | Form beside an illustrated product panel, two fields | Standard (Salesforce, HubSpot sign-in pages) |
 | New company (`AddExporterPage`) | Side panel: identifier lookup, then name, country, source | Dynamics quick create with duplicate detection |
 | Import companies | Drop zone, preview, grouped report | Data import wizards |
 | RXIL intake | Paste box, parsed preview card, *Take in* | — |
@@ -918,6 +920,7 @@ None of these blocks a phase. Each unlocks a fuller screen, and until it lands t
   - the matrix test is green against the new nav and search;
   - axe is clean on the style guide in both themes;
   - **the TL has signed off the style guide and the company record header.**
+- **Status (6 October): built**, unstaged on `feature/frontend-redesign`. Placeholder blue, Segoe UI, light by default (the open questions' recommended answers). Awaiting TL sign-off of `/__design` and the company record.
 
 ### Phase 2: The screens the demo walks
 
@@ -931,6 +934,7 @@ In this order, because each one reuses the one before it:
 6. **Approvals** (§8.8).
 
 - **Done when**: `demo.md` §3–§5 have been walked as RM, Compliance, Admin and Developer, in light, at 1366 × 768 and 1440 × 900, with no console error and no failed request. Each screen passes §15, and screenshots have gone to the TL.
+- **Status (6 October): built**, all six screens. Every screen was walked headless as each role with no console error and no failed request; the formal `demo.md` §3–§5 walk and the screenshots for the TL are still to do.
 
 ### Phase 3: Remaining screens and clean-up
 
@@ -940,6 +944,7 @@ In this order, because each one reuses the one before it:
 - A full dark-theme pass.
 - `demo.md` §2 screen names and the "Find…" wording updated.
 - **Done when**: nothing imports a removed component, no code comment cites a removed section, and every role passes §15 in both themes.
+- **Status (6 October): built.** Import, RXIL intake, identity completion and Settings restyled; *Qualification criteria* and *Required documents* sit inside the Settings frame (the side navigation shows only *Settings*); `lamps.ts`, `Lamp`, `DocumentList` and the motion helpers deleted; components renamed per §18.1 (`CheckStatus`, `HandoverChecklist`, `DocumentsByCategory`, `IdentifierLookup`, `ConversationPath`, `DealStagePath`, `CompanyBadges`, `ApprovalsPage`; folder `components/record`); section references and old names in comments updated; dark theme checked on the main screens; `demo.md` §2–§5 names updated.
 
 ---
 

@@ -34,11 +34,11 @@ import type {
 import { isWebLink, MANUAL_OUTCOMES, RISK_LEVELS } from './verification-labels';
 
 const FIELD =
-  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60';
+  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-caption text-ink outline-none focus:border-accent disabled:opacity-60';
 const SECONDARY_BUTTON =
-  'rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
+  'rounded-lg border border-line px-2.5 py-1.5 text-caption font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
 const PRIMARY_BUTTON =
-  'rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-paper disabled:opacity-50';
+  'rounded-md bg-accent-solid px-2.5 py-1.5 text-caption font-medium text-white disabled:opacity-50';
 
 /** Whose documents may be evidence: the company's, or the buyer's deal's. */
 export type EvidenceDocumentOwner = { kind: 'company' | 'deal'; id: string };
@@ -126,7 +126,7 @@ export function ManualResultForm({
   return (
     <div
       data-testid="manual-result-form"
-      className="mt-4 rounded-lg border border-line p-4 text-xs"
+      className="mt-4 rounded-lg border border-line p-4 text-caption"
     >
       <p className="font-medium text-ink">Record a manual result</p>
       <p className="mt-0.5 text-ink-3">Recorded as a manual check by you.</p>

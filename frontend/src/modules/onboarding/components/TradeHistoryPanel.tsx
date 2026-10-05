@@ -49,7 +49,7 @@ export interface TradeHistoryPanelProps {
  * a buyer the migration created from a `deal_buyer` row may have had only a tax id. */
 function Pair({ seller, buyer }: { seller: TradeCounterparty; buyer: TradeCounterparty }) {
   return (
-    <p className="text-sm text-ink-2">
+    <p className="text-body text-ink-2">
       <Link
         to={paths.company(seller.company_id)}
         className="font-medium text-ink hover:underline"
@@ -101,7 +101,7 @@ export function TradeHistoryPanel({ sellerId, buyerId, dealId }: TradeHistoryPan
         <Pair seller={relationship.seller} buyer={relationship.buyer} />
         <Link
           to={paths.company(relationship.buyer.company_id)}
-          className="flex items-center gap-1 text-xs font-medium text-ink hover:underline"
+          className="flex items-center gap-1 text-caption font-medium text-ink hover:underline"
         >
           {relationship.buyer.name ?? 'The buyer'}
           <Icon.caretRight size={13} />

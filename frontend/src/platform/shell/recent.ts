@@ -1,5 +1,5 @@
 /**
- * The last companies a viewer opened, for ⌘K's "Recent" (frontend-plan §7.5):
+ * The last companies a viewer opened, for search's "Recent" (frontend-plan §7.5):
  * id and name only, at most eight, kept per viewer in this browser and keyed by
  * the user, so a second person signing in on the same machine never sees the
  * first one's list. Cleared on sign-out. Every storage access is guarded — a

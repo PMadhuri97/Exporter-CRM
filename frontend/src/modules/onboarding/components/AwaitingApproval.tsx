@@ -33,27 +33,27 @@ export function AwaitingApproval({ proposal }: { proposal: BackgroundCheckPropos
   return (
     <div
       data-testid="awaiting-approval"
-      className="mt-3 rounded-md border border-dashed border-ink/60 p-3"
+      className="mt-3 rounded border border-line-strong p-3"
     >
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 text-body">
         <span className="font-medium text-ink">Awaiting approval:</span>
         <span className="font-medium text-ink">
           {proposedMoveLabel(proposal.to_value)}
         </span>
         {proposal.risk_rating && <RiskChip risk={proposal.risk_rating} />}
       </div>
-      <p className="mt-1 text-xs text-ink-2">
+      <p className="mt-1 text-caption text-ink-2">
         Proposed by {actorLabel(proposal.proposed_by_name, proposal.proposed_by)},{' '}
         {formatDateTime(proposal.proposed_at)} — {proposal.reason}
       </p>
       {proposal.stale_reason && (
-        <p data-testid="proposal-stale" className="mt-2 rounded bg-attention-tint p-2 text-xs text-attention">
+        <p data-testid="proposal-stale" className="mt-2 rounded bg-attention-tint p-2 text-caption text-attention">
           This proposal is out of date ({proposal.stale_reason}). It can no longer be
           approved: reject or withdraw it, and record the decision again.
         </p>
       )}
       {actions.length === 0 && (
-        <p className="mt-2 text-xs text-ink-3">
+        <p className="mt-2 text-caption text-ink-3">
           A second compliance officer must approve or reject it.
         </p>
       )}
@@ -67,8 +67,8 @@ export function AwaitingApproval({ proposal }: { proposal: BackgroundCheckPropos
                 onClick={() => setAction(candidate)}
                 className={
                   BUTTONS[candidate].primary
-                    ? 'rounded bg-ink px-3 py-1.5 text-sm text-paper'
-                    : 'rounded border border-line-strong bg-surface px-3 py-1.5 text-sm'
+                    ? 'rounded bg-accent-solid px-3 py-1.5 text-body text-white'
+                    : 'rounded border border-line-strong bg-surface px-3 py-1.5 text-body'
                 }
               >
                 {BUTTONS[candidate].label}

@@ -8,62 +8,46 @@
  */
 @layer base {
   html {
-    /* Tabular figures everywhere: counts, amounts and dates line up (§5.3).
-     * Instrument Sans carries `tnum`; the serif and mono faces ignore it. */
-    font-feature-settings: 'tnum' 1;
+    /* Tabular figures everywhere: counts, amounts, dates and identifiers line up
+     * (§5.3). */
+    font-variant-numeric: tabular-nums;
   }
 
   body {
     @apply bg-paper font-sans text-body text-ink antialiased;
   }
 
-  /* §11: a 2px ink ring with a 2px paper offset on everything focusable. */
+  /* §11: a 2px brand-blue ring with a 2px offset on everything focusable. */
   :focus-visible {
-    @apply outline-none ring-2 ring-ink ring-offset-2 ring-offset-paper;
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-surface;
   }
 
   ::selection {
-    @apply bg-ink text-paper;
+    @apply bg-accent-tint text-ink;
   }
 }
 
 @layer components {
   /* Shared text-input styling — every form field uses this (directly, or via
-   * the `Input`/`Select`/`Textarea` primitives in `components/ui`). */
+   * the `Input`/`Select`/`Textarea` primitives in `components/ui`). 32px tall,
+   * with a border at 3:1 on the surface (WCAG 1.4.11). */
   .input {
-    @apply w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-body text-ink outline-none transition-colors duration-quick placeholder:text-ink-4;
-    @apply hover:border-ink-3 focus:border-ink focus:ring-1 focus:ring-ink;
+    @apply h-8 w-full rounded border border-line-strong bg-surface px-2.5 text-body text-ink outline-none transition-colors duration-quick placeholder:text-ink-4;
+    @apply hover:border-ink-2 focus:border-accent focus:ring-1 focus:ring-accent;
     @apply disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-3;
   }
+  textarea.input {
+    @apply h-auto py-1.5;
+  }
 
-  /* Identifiers, references and ids (§5.3: JetBrains Mono 12.5). */
+  /* Identifiers, references and ids (§5.3): the UI font with tabular figures,
+   * never monospace. */
   .data {
-    @apply font-mono text-data;
-  }
-
-  /* CRITICAL risk's 45° hatch (§5.2) — over the solid negative fill. */
-  .hatch {
-    background-image: repeating-linear-gradient(
-      -45deg,
-      rgb(255 255 255 / 0.18) 0 2px,
-      transparent 2px 6px
-    );
+    @apply tabular-nums;
   }
 }
 
-/* §5.4: a page that morphs (`lib/viewTransition`) moves at the travel pace; the
-   rest of the page cross-fades at the pop pace. */
-::view-transition-group(*) {
-  animation-duration: var(--dur-travel);
-  animation-timing-function: var(--ease-enter);
-}
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: var(--dur-pop);
-}
-
-/* §5.4: under reduced motion, every transition and animation is instant — the
-   view-transition pseudo-elements included, which `*` does not reach. */
+/* §5.6: under reduced motion, every transition and animation is instant. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -72,11 +56,6 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
-  }
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
   }
 }
 
@@ -94,7 +73,7 @@ html [data-sonner-toaster][data-theme] {
   --gray4: rgb(var(--line));
   --gray5: rgb(var(--line-strong));
   --gray12: rgb(var(--ink));
-  --border-radius: 10px;
+  --border-radius: 8px;
   font-family: inherit;
 }
 html [data-sonner-toaster] [data-sonner-toast] {

@@ -1,54 +1,52 @@
 /**
- * The company dossier — the shell, drawn as frontend-plan §8.5.
+ * The company record (frontend-plan §8.5): the record header (§6.3) with the key
+ * fields, the actions the server serves for this company and user, and the journey
+ * path; tabs under it; and the related records in a right-hand column (§6.6). The
+ * `?tab=` keys are unchanged, so every old link lands where it did.
  *
- * A serif header (the name, one line of facts, the identifiers, the marker menu the
- * server allows), the **hero Standing** — journey, qualification, conversation and,
- * for a role that may read it, the background check, side by side — and the
- * chapters. The header compresses to a slim bar once it scrolls away. Chapters are a
- * rail on a wide screen and tabs below that; the keys and `?tab=` are unchanged, so
- * every old link lands where it did.
- *
- *   Profile            panels/CompanyPanel.tsx
+ *   Details            panels/CompanyPanel.tsx
  *   Qualification      panels/QualificationPanel.tsx
- *   Conversation       panels/ConversationPanel.tsx
- *   Deals & trade      panels/DealsPanel.tsx and trade
+ *   Activity           panels/ConversationPanel.tsx
+ *   Deals              panels/DealsPanel.tsx and trade
  *   Documents          panels/DocumentsPanel.tsx
  *   Background check   panels/BackgroundCheckPanel.tsx
- *   Ledger             components/HistoryTimeline.tsx
+ *   History            components/HistoryTimeline.tsx
  *
- * **Now**, at the top of the profile, lists at most three next steps, each built only
- * from what the server served for this company (`can_open_deal`, the background
- * check's `allowed_moves`, `open_proposal.allowed_actions`, `rekyc_due`, the
- * conversation's check-back) — nothing is worked out from rules held here.
+ * Header actions are built only from what the server served (`can_open_deal`, the
+ * background check's `allowed_moves`, `open_proposal.allowed_actions`, `rekyc_due`);
+ * nothing is worked out from rules held here.
  *
- * The contact and activity queries stay here, not in the Conversation chapter: they
- * start with the profile, so opening that chapter shows them at once.
+ * The contact and activity queries stay here, not in the Activity tab: they start with
+ * the profile, so opening that tab shows them at once.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import {
-  Button,
   ErrorState,
   Panel,
+  Path,
+  RecordHeader,
   Skeleton,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
   useSearchParamState,
+  type PathStep,
+  type RecordAction,
+  type RecordField,
 } from '@/components';
-import { Icon } from '@/design/icons';
 import { formatDate } from '@/lib/format';
-import { companyNameTransition } from '@/lib/viewTransition';
 import { useCan } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 import { Identifier } from '@/platform/mask';
-import { rememberCompany, useCommandActions, useCrumbs, usePageShortcuts } from '@/platform/shell';
+import { rememberCompany } from '@/platform/shell';
 
 import {
   CompanyDealsList,
+  CompanyRelatedCards,
   CompanyHistory,
   CompanyTradePanel,
   GstRegistrationsSection,
@@ -56,9 +54,13 @@ import {
   MarkerBadge,
   MarkerControl,
   NotInPipelineNotice,
-  Standing,
-  type StandingSegment,
 } from '../components';
+import {
+  BackgroundCheckBadge,
+  ConversationBadge,
+  OutsidePipelineBadge,
+  QualificationBadge,
+} from '../components/StatusBadge';
 import { cycleKindLabel } from '../components/background-check-labels';
 import {
   useBackgroundCheck,
@@ -70,7 +72,7 @@ import {
   useExporterProfileDetail,
 } from '../hooks';
 import { COMPANY_TABS, paths, type CompanyTab } from '../paths';
-import type { ExporterActivityType, ExporterProfileDetail } from '../types';
+import type { ExporterActivityType, ExporterJourney, ExporterProfileDetail } from '../types';
 
 import { CompanyPanel } from './panels/CompanyPanel';
 import { ConversationPanel } from './panels/ConversationPanel';
@@ -78,7 +80,7 @@ import { DealsPanel } from './panels/DealsPanel';
 import { DocumentsPanel } from './panels/DocumentsPanel';
 import { QualificationPanel } from './panels/QualificationPanel';
 
-// The compliance chapter is its own chunk: a role without the tab never loads it.
+// The Background check tab is its own chunk: a role without the tab never loads it.
 const BackgroundCheckPanel = lazy(() =>
   import('./panels/BackgroundCheckPanel').then((m) => ({ default: m.BackgroundCheckPanel })),
 );
@@ -88,59 +90,37 @@ const BackgroundCheckPanel = lazy(() =>
 const ACTIVITY_PAGE_SIZE = 8;
 
 const TAB_LABEL: Record<CompanyTab, string> = {
-  overview: 'Profile',
+  overview: 'Details',
   qualification: 'Qualification',
-  conversation: 'Conversation',
-  deals: 'Deals & trade',
+  conversation: 'Activity',
+  deals: 'Deals',
   documents: 'Documents',
   'background-check': 'Background check',
-  history: 'Ledger',
+  history: 'History',
 };
 
-/** Which chapter a hero segment opens. */
-const SEGMENT_TAB: Record<StandingSegment, CompanyTab> = {
-  journey: 'history',
-  qualification: 'qualification',
-  conversation: 'conversation',
-  'background-check': 'background-check',
+const JOURNEY_STEPS: PathStep<ExporterJourney>[] = [
+  { key: 'LEAD', label: 'Lead' },
+  { key: 'PROSPECT', label: 'Prospect' },
+  { key: 'CUSTOMER', label: 'Customer' },
+];
+
+/** What moves the journey on (architecture: never by hand). */
+const JOURNEY_GUIDANCE: Record<ExporterJourney, string> = {
+  LEAD: 'Becomes a prospect once qualified.',
+  PROSPECT: 'Becomes a customer once the background check is clear.',
+  CUSTOMER: 'A customer.',
 };
 
 function displayName(profile: ExporterProfileDetail): string {
   return profile.name ?? 'Unnamed company';
 }
 
-/** Today, as the `YYYY-MM-DD` the server's dates use. */
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-interface NowItem {
-  key: string;
-  text: ReactNode;
-  verb: string;
-  open: CompanyTab;
-}
-
-/** True once `ref`'s element has scrolled out of view (and IntersectionObserver exists). */
-function useScrolledPast(ref: React.RefObject<HTMLElement>): boolean {
-  const [past, setPast] = useState(false);
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(([entry]) => setPast(!entry!.isIntersecting), {
-      threshold: 0,
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [ref]);
-  return past;
-}
-
 export function ExporterDetailPage() {
   const { customerId } = useParams<{ customerId: string }>();
   // DEVELOPER reads the CRM (masked) but writes nothing and cannot load
   // verification results — the backend refuses those with 403 — so it gets no
-  // Background check chapter at all, and no request for one.
+  // Background check tab at all, and no request for one.
   const isStaff = useCan('crm.write');
   const canReadCompliance = useCan('compliance.read');
   // Flagging a branch stops trade through it, so it is a compliance decision and not
@@ -171,40 +151,14 @@ export function ExporterDetailPage() {
   const check = useBackgroundCheck(canReadCompliance ? customerId : undefined);
   // Hooks run before the missing-id guard below; the mutation is only offered after it.
   const bringIntoPipeline = useBringIntoPipeline(customerId ?? '');
-  const header = useRef<HTMLDivElement>(null);
-  const compact = useScrolledPast(header);
-
-  // The shell: the trail, ⌘K's "Recent", and its chapters as commands.
+  // Search's "Recent". The breadcrumbs are in the record header.
   const userId = String(useCurrentUser().id);
   const name = profile ? displayName(profile) : null;
-  useCrumbs([{ label: 'Companies', to: paths.companies }, ...(name ? [{ label: name }] : [])]);
   useEffect(() => {
     if (customerId && name) rememberCompany(userId, { id: customerId, name });
   }, [customerId, name, userId]);
-  // `l` logs an activity (staff, §7.5): it opens the Conversation chapter and its
-  // composer, the same one the Thread's button opens.
+  // Set to open the Activity tab's composer from outside it.
   const [logRequested, setLogRequested] = useState(false);
-  const logActivity = () => {
-    setTab('conversation');
-    setLogRequested(true);
-  };
-  useCommandActions(
-    profile
-      ? [
-          ...(isStaff
-            ? [{ id: 'log-activity', label: 'Log an activity', shortcut: 'l', keywords: ['call', 'note', 'meeting'], run: logActivity }]
-            : []),
-          ...tabs
-            .filter((value) => value !== tab)
-            .map((value) => ({
-              id: `chapter-${value}`,
-              label: `Go to ${TAB_LABEL[value]}`,
-              run: () => setTab(value),
-            })),
-        ]
-      : [],
-  );
-  usePageShortcuts(profile && isStaff ? [{ key: 'l', label: 'Log an activity', run: logActivity }] : []);
 
   if (!customerId) {
     return <p className="text-body text-negative">Company id is missing.</p>;
@@ -215,8 +169,8 @@ export function ExporterDetailPage() {
       <div className="max-w-reading space-y-5" aria-label="Loading company">
         <Skeleton className="h-10 w-80" />
         <Skeleton className="h-4 w-96 max-w-full" />
-        <Skeleton className="h-24 rounded-xl" />
-        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-24 rounded" />
+        <Skeleton className="h-64 rounded" />
       </div>
     );
   }
@@ -249,43 +203,77 @@ export function ExporterDetailPage() {
       ? standing.compliance.clear_expires_at
       : null;
 
-  // Now: only what the server served for this company, at most three.
-  const now: NowItem[] = [];
+  // The header's actions (frontend-plan §8.5), built only from what the server served
+  // for this company and this user. Each opens the tab where the work is done.
+  const actions: RecordAction[] = [];
   if (standing?.open_proposal?.allowed_actions?.some((action) => action !== 'WITHDRAW')) {
-    now.push({
-      key: 'proposal',
-      text: 'A background-check decision is waiting for your signature.',
-      verb: 'Review it',
-      open: 'background-check',
+    actions.push({ label: 'Review proposal', onSelect: () => setTab('background-check') });
+  }
+  if (isStaff && !notInPipeline) {
+    actions.push({
+      label: 'Log a call',
+      onSelect: () => {
+        setTab('conversation');
+        setLogRequested(true);
+      },
     });
   }
+  if (dealsQuery.data?.can_open_deal) {
+    actions.push({ label: 'Open deal', onSelect: () => setTab('deals') });
+  }
+  if (standing?.value === 'NOT_STARTED' && (standing.allowed_moves ?? []).some((move) => move.to_value === 'IN_REVIEW')) {
+    actions.push({ label: 'Start background check', onSelect: () => setTab('background-check') });
+  }
   if (standing?.rekyc_due) {
-    now.push({ key: 'rekyc', text: 'Re-KYC is due on this company.', verb: 'Open the check', open: 'background-check' });
+    actions.push({ label: 'Open Re-KYC', onSelect: () => setTab('background-check') });
   }
-  if (standing?.value === 'NOT_STARTED' && (standing.allowed_moves ?? []).length > 0) {
-    now.push({ key: 'start', text: 'No background check has been started.', verb: 'Start it', open: 'background-check' });
-  }
-  if (gauge?.conversation === 'READY_NOW' && dealsQuery.data?.can_open_deal) {
-    now.push({ key: 'deal', text: 'Ready now, and no open deal.', verb: 'Open a deal', open: 'deals' });
-  }
-  if (gauge?.conversation === 'NOT_NOW' && gauge.check_back_on && gauge.check_back_on <= today()) {
-    now.push({
-      key: 'checkback',
-      text: `Due a check-back (since ${formatDate(gauge.check_back_on)}).`,
-      verb: 'Open the conversation',
-      open: 'conversation',
+  if (notInPipeline && isStaff) {
+    actions.push({
+      label: 'Bring into pipeline',
+      onSelect: () => bringIntoPipeline.mutate({}),
+      loading: bringIntoPipeline.isPending,
     });
   }
 
-  const details: Partial<Record<StandingSegment, ReactNode>> = {
-    journey: `added ${formatDate(profile.date_added)}`,
-    'background-check': [
-      cycle ? `cycle ${cycle.number} · ${cycleKindLabel(cycle.kind)}` : null,
-      clearUntil ? `until ${formatDate(clearUntil)}` : null,
-    ]
-      .filter(Boolean)
-      .join(' · ') || undefined,
-  };
+  const checkDetail = cycle ? `Cycle ${cycle.number} · ${cycleKindLabel(cycle.kind)}` : '';
+
+  const fields: RecordField[] = [];
+  if (!notInPipeline) {
+    fields.push({ label: 'Qualification', value: <QualificationBadge state={profile.qualification} /> });
+    if (gauge) {
+      fields.push({
+        label: 'Conversation',
+        value: <ConversationBadge value={gauge.conversation} checkBackOn={gauge.check_back_on} />,
+      });
+    }
+  }
+  if (canReadCompliance && standing) {
+    fields.push({
+      label: 'Background check',
+      value: (
+        <span className="flex flex-col gap-1">
+          <BackgroundCheckBadge
+            state={standing.value}
+            risk={standing.risk_rating}
+            clearUntil={clearUntil}
+            awaitingApproval={standing.awaiting_approval}
+            rekycDue={standing.rekyc_due}
+          />
+          {checkDetail && <span className="text-secondary text-ink-3">{checkDetail}</span>}
+        </span>
+      ),
+    });
+  }
+  fields.push({ label: 'PAN', value: <Identifier kind="PAN" value={profile.pan} /> });
+  fields.push({
+    label: 'GSTIN',
+    value: (
+      <span className="inline-flex items-center gap-1">
+        <Identifier kind="GSTIN" value={profile.gstins[0] ?? null} />
+        {profile.gstins.length > 1 && <span className="text-secondary text-ink-3">+{profile.gstins.length - 1}</span>}
+      </span>
+    ),
+  });
 
   const facts = [
     profile.industry,
@@ -295,133 +283,66 @@ export function ExporterDetailPage() {
   ].filter(Boolean);
 
   return (
-    // One `Tabs` root around the header and the chapters, so the triggers and the
+    // One `Tabs` root around the header and the tabs, so the triggers and the
     // contents share its ids (the tab <-> tabpanel wiring).
     <Tabs value={tab} onValueChange={(next) => setTab(next as CompanyTab)}>
-      <div className="max-w-reading">
-        {/* The slim bar that replaces the header once it has scrolled away. */}
-        {compact && (
-          <div
-            aria-hidden
-            className="sticky -top-6 z-20 -mx-4 mb-2 flex h-11 items-center gap-4 border-b border-line bg-paper px-4 sm:-mx-8 sm:px-8"
-          >
-            <span className="truncate font-display text-[18px] text-ink">{displayName(profile)}</span>
-            <Standing
-              size="card"
-              journey={profile.journey}
-              qualification={profile.qualification}
-              conversation={gauge?.conversation}
-              backgroundCheck={standing?.value}
-              awaitingApproval={standing?.awaiting_approval}
-              rekycDue={standing?.rekyc_due}
-              marker={profile.marker}
-              outsidePipeline={notInPipeline}
-            />
-          </div>
-        )}
-
-        <header ref={header} className="mb-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h1
-                  data-company-title
-                  className="font-display text-display-lg text-ink [overflow-wrap:anywhere]"
-                  style={{ viewTransitionName: companyNameTransition(customerId) }}
-                >
-                  {displayName(profile)}
-                </h1>
-                <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />
-              </div>
-              <p className="mt-1 text-body text-ink-2">
-                {facts.join(' · ') || `Added ${formatDate(profile.date_added)}`}
-                {profile.marker_reason ? ` · ${profile.marker_reason}` : ''}
-              </p>
+      <RecordHeader
+        breadcrumbs={[{ label: 'Companies', to: paths.companies }, { label: displayName(profile) }]}
+        objectType="Company"
+        title={displayName(profile)}
+        titleBadges={<MarkerBadge marker={profile.marker} reason={profile.marker_reason} />}
+        meta={
+          <>
+            {facts.join(' · ') || `Added ${formatDate(profile.date_added)}`}
+            {profile.marker_reason ? ` · ${profile.marker_reason}` : ''}
+          </>
+        }
+        fields={fields}
+        actions={actions}
+        path={
+          notInPipeline ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <OutsidePipelineBadge />
+              <span className="text-secondary text-ink-2">
+                A buyer-only company: the journey does not apply until it is brought into the pipeline.
+              </span>
             </div>
-            <div className="flex flex-col items-end gap-2">
+          ) : (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <Path
+                label="Journey"
+                steps={JOURNEY_STEPS}
+                current={profile.journey}
+                guidance={JOURNEY_GUIDANCE[profile.journey]}
+                className="min-w-0 flex-1"
+              />
               {/* Only the marker moves the server listed for this user; none, nothing. */}
               <MarkerControl customerId={customerId} moves={profile.allowed_marker_moves ?? []} />
-              <dl className="flex flex-wrap items-center gap-x-4 gap-y-1 text-secondary text-ink-3">
-                <div className="flex items-center gap-1.5">
-                  <dt>PAN</dt>
-                  <dd>
-                    <Identifier kind="PAN" value={profile.pan} />
-                  </dd>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <dt>GSTIN</dt>
-                  <dd className="flex items-center gap-1">
-                    <Identifier kind="GSTIN" value={profile.gstins[0] ?? null} />
-                    {profile.gstins.length > 1 && <span>+{profile.gstins.length - 1}</span>}
-                  </dd>
-                </div>
-              </dl>
             </div>
-          </div>
+          )
+        }
+      />
 
-          <Standing
-            size="hero"
-            className="mt-5"
-            journey={profile.journey}
-            outsidePipeline={notInPipeline}
-            qualification={profile.qualification}
-            conversation={gauge?.conversation}
-            checkBackOn={gauge?.check_back_on}
-            backgroundCheck={standing?.value}
-            risk={standing?.risk_rating}
-            awaitingApproval={standing?.awaiting_approval}
-            rekycDue={standing?.rekyc_due}
-            details={details}
-            onOpen={(segment) => setTab(SEGMENT_TAB[segment])}
-          />
-        </header>
-      </div>
+      <TabsList aria-label="Company" className="mt-4">
+        {tabs.map((value) => (
+          <TabsTrigger key={value} value={value}>
+            {TAB_LABEL[value]}
+            {value === 'deals' && dealCount !== undefined && dealCount > 0 && (
+              <span className="font-normal tabular-nums text-ink-3">({dealCount})</span>
+            )}
+            {value === 'background-check' && (standing?.awaiting_approval || standing?.rekyc_due) && (
+              <span aria-label="needs attention" className="h-1.5 w-1.5 rounded-full bg-attention-solid" />
+            )}
+          </TabsTrigger>
+        ))}
+      </TabsList>
 
-      <div className="grid gap-6 xl:grid-cols-[12rem_minmax(0,1fr)]">
-        <TabsList
-          aria-label="Company chapters"
-          className="xl:sticky xl:top-0 xl:h-fit xl:flex-col xl:gap-0.5 xl:overflow-visible xl:border-b-0"
-        >
-          {tabs.map((value) => (
-            <TabsTrigger
-              key={value}
-              value={value}
-              className="xl:-mb-0 xl:justify-between xl:rounded-md xl:border-b-0 xl:border-l-2 xl:py-2 xl:data-[state=active]:bg-surface"
-            >
-              {TAB_LABEL[value]}
-              {value === 'deals' && dealCount !== undefined && dealCount > 0 && (
-                <span className="text-caption tabular-nums text-ink-3">{dealCount}</span>
-              )}
-              {value === 'background-check' && (standing?.awaiting_approval || standing?.rekyc_due) && (
-                <span aria-label="needs attention" className="h-1.5 w-1.5 rounded-full bg-attention-solid" />
-              )}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <div className="min-w-0 max-w-reading">
+      {/* The tab's content, and the related records beside it from 1280px (§8.5);
+          below that the related cards follow the content. */}
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_22.5rem]">
+        <div className="min-w-0">
           <TabsContent value="overview">
-            <div className="flex flex-col gap-6">
-              <section aria-label="Now" className="rounded-xl border border-line bg-surface px-4 py-3">
-                <h2 className="text-caption text-ink-3">Now</h2>
-                {now.length === 0 ? (
-                  <p className="mt-1 text-body text-ink-2">Nothing waiting on you here.</p>
-                ) : (
-                  <ul className="mt-1 divide-y divide-line">
-                    {now.slice(0, 3).map((item) => (
-                      <li key={item.key} className="flex flex-wrap items-center justify-between gap-3 py-2">
-                        <span className="flex items-center gap-2 text-body text-ink">
-                          <Icon.forward size={15} className="text-ink-3" aria-hidden />
-                          {item.text}
-                        </span>
-                        <Button size="sm" variant="secondary" onClick={() => setTab(item.open)}>
-                          {item.verb}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
+            <div className="flex flex-col gap-4">
               {/* The identity completion list, from the company's side. */}
               {profile.identity_type === null ? (
                 <IdentityGapNotice country={profile.country} canEdit={isStaff} />
@@ -453,8 +374,6 @@ export function ExporterDetailPage() {
             ) : (
               <ConversationPanel
                 customerId={customerId}
-                contacts={contacts}
-                contactsLoading={contactQuery.isLoading}
                 activities={activities}
                 activitiesLoading={activityQuery.isLoading}
                 activitiesFetching={activityQuery.isFetching}
@@ -499,8 +418,8 @@ export function ExporterDetailPage() {
             <DocumentsPanel customerId={customerId} isStaff={isStaff} />
           </TabsContent>
           <TabsContent value="background-check">
-            {/* Never rendered for a role without the chapter, so its code never loads. */}
-            <Suspense fallback={<Skeleton className="h-40 rounded-xl" />}>
+            {/* Never rendered for a role without the tab, so its code never loads. */}
+            <Suspense fallback={<Skeleton className="h-40 rounded" />}>
               <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
             </Suspense>
           </TabsContent>
@@ -508,6 +427,12 @@ export function ExporterDetailPage() {
             <CompanyHistory customerId={customerId} />
           </TabsContent>
         </div>
+        <CompanyRelatedCards
+          customerId={customerId}
+          contacts={contacts}
+          contactsLoading={contactQuery.isLoading}
+          canAdd={isStaff}
+        />
       </div>
     </Tabs>
   );

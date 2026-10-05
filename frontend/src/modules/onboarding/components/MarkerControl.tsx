@@ -64,7 +64,7 @@ export function MarkerControl({ customerId, moves }: MarkerControlProps) {
           <Button
             key={move.to}
             size="sm"
-            variant={move.to === 'ENDED' ? 'quiet' : 'secondary'}
+            variant={move.to === 'ENDED' ? 'subtle' : 'secondary'}
             onClick={() => setPending(move)}
           >
             {MARKER_ACTION_LABEL[move.to]}
@@ -88,7 +88,7 @@ export function MarkerControl({ customerId, moves }: MarkerControlProps) {
               submit();
             }}
           >
-            <label className="block text-sm font-medium text-ink" htmlFor="marker-reason">
+            <label className="block text-body font-medium text-ink" htmlFor="marker-reason">
               Reason{pending.reason_required ? '' : ' (optional)'}
             </label>
             <Textarea
@@ -99,7 +99,7 @@ export function MarkerControl({ customerId, moves }: MarkerControlProps) {
               required={pending.reason_required}
             />
             <div className="flex justify-end gap-2">
-              <Button variant="quiet" onClick={close}>
+              <Button variant="subtle" onClick={close}>
                 Cancel
               </Button>
               <Button

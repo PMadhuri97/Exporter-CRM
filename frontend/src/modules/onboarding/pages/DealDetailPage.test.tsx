@@ -209,7 +209,7 @@ describe('DealDetailPage — the server decides what may happen next', () => {
     signedInAs('DEVELOPER');
     renderPage();
 
-    expect(await screen.findByText('Rotterdam shipment, March')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Rotterdam shipment, March' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Edit buyer details' }),
@@ -230,7 +230,7 @@ describe('DealDetailPage — the server decides what may happen next', () => {
     );
     renderPage();
 
-    expect(await screen.findByText('Handed over')).toBeInTheDocument();
+    expect((await screen.findAllByText('Handed over')).length).toBeGreaterThan(0);
     // What the lending team was given must not be editable afterwards.
     expect(screen.queryByRole('button', { name: 'Edit buyer details' })).not.toBeInTheDocument();
   });
@@ -251,7 +251,7 @@ describe('DealDetailPage — buyer checks', () => {
     signedInAs('DEVELOPER');
     renderPage();
 
-    expect(await screen.findByText('Rotterdam shipment, March')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Rotterdam shipment, March' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Buyer checks' })).not.toBeInTheDocument();
     expect(listVerificationResults).not.toHaveBeenCalled();
   });
@@ -516,7 +516,7 @@ describe('the handover snapshot', () => {
 
   it('is absent before the deal is handed over', async () => {
     renderPage();
-    await screen.findByText('Rotterdam shipment, March');
+    await screen.findByRole('heading', { name: 'Rotterdam shipment, March' });
     expect(screen.queryByText('What was handed over')).not.toBeInTheDocument();
   });
 
@@ -595,7 +595,7 @@ describe('the handover snapshot', () => {
 describe('the buyer company', () => {
   it('is absent on every deal whose buyer is still a deal_buyer row', async () => {
     renderPage();
-    await screen.findByText('Rotterdam shipment, March');
+    await screen.findByRole('heading', { name: 'Rotterdam shipment, March' });
     expect(screen.queryByText('Buyer company')).not.toBeInTheDocument();
   });
 
@@ -628,7 +628,7 @@ describe('the buyer company', () => {
     vi.mocked(listTradeRelationships).mockResolvedValue({ relationships: [], total: 0 });
 
     renderPage();
-    await screen.findByText('Rotterdam shipment, March');
+    await screen.findByRole('heading', { name: 'Rotterdam shipment, March' });
     expect(screen.queryByTestId('trade-history-panel')).not.toBeInTheDocument();
     expect(listTradeRelationships).not.toHaveBeenCalled();
 
@@ -900,7 +900,7 @@ describe('creating the buyer company', () => {
     signedInAs('DEVELOPER');
     vi.mocked(getDeal).mockResolvedValue(deal({ buyer: null }));
     renderPage();
-    await screen.findByText('Rotterdam shipment, March');
+    await screen.findByRole('heading', { name: 'Rotterdam shipment, March' });
     expect(screen.queryByRole('button', { name: 'Choose buyer company' })).not.toBeInTheDocument();
   });
 });

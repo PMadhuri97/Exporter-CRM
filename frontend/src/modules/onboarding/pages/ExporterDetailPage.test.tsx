@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useCurrentUser } from '@/platform/auth';
-import { ShellProvider, useShellState } from '@/platform/shell';
+import { ShellProvider } from '@/platform/shell';
 
 import {
   getExporterProfileDetail,
@@ -145,19 +145,6 @@ function mockUser(role: string, id: string) {
 }
 
 /** Opens the company page, on `tab` when given (`?tab=`). */
-/** The page's own keys as buttons, run the way the shell runs them. */
-function Keys() {
-  const { shortcuts } = useShellState();
-  return (
-    <div>
-      {shortcuts.map((shortcut) => (
-        <button key={shortcut.key} type="button" onClick={shortcut.run}>
-          key {shortcut.key}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function renderPage(tab?: string, withShell = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -173,7 +160,6 @@ function renderPage(tab?: string, withShell = false) {
         {withShell ? (
           <ShellProvider>
             {routes}
-            <Keys />
           </ShellProvider>
         ) : (
           routes
@@ -261,7 +247,7 @@ describe('ExporterDetailPage — screening review', () => {
     expect(await screen.findByText('No screening results yet')).toBeInTheDocument();
   });
 
-  it('opens on the tab named in the URL, and on Overview otherwise', async () => {
+  it('opens on the tab named in the URL, and on Details otherwise', async () => {
     mockUser('COMPLIANCE', 'someone-else');
     const { unmount } = renderPage('qualification');
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
@@ -271,26 +257,8 @@ describe('ExporterDetailPage — screening review', () => {
 
     renderPage('no-such-tab');
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: 'Company profile' })).toBeInTheDocument();
-  });
-
-  it('lets staff press l to log an activity, and gives DEVELOPER no such key', async () => {
-    mockUser('OPERATIONS', 'someone-else');
-    const { unmount } = renderPage(undefined, true);
-    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    fireEvent.click(await screen.findByRole('button', { name: 'key l' }));
-    expect(await screen.findByRole('dialog', { name: 'Log an activity' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Conversation', hidden: true })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    unmount();
-
-    mockUser('DEVELOPER', 'someone-else');
-    renderPage(undefined, true);
-    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.queryByRole('button', { name: 'key l' })).not.toBeInTheDocument();
   });
 
   it('gives DEVELOPER no Background check tab, since the server refuses it the results', async () => {
@@ -298,7 +266,7 @@ describe('ExporterDetailPage — screening review', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
     expect(screen.queryByRole('tab', { name: 'Background check' })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Ledger' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'History' })).toBeInTheDocument();
   });
 
   it('shows the company history, with who changed what and why', async () => {
@@ -428,7 +396,10 @@ describe('ExporterDetailPage — screening review', () => {
     });
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getAllByTestId('journey-chip')[0]).toHaveTextContent('Lead');
+    // The journey is a read-only path: Lead is the current step, and no step is a button.
+    const journey = screen.getByRole('list', { name: 'Journey' });
+    expect(within(journey).getByText('Lead').closest('li')).toHaveAttribute('aria-current', 'step');
+    expect(within(journey).queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getAllByText('Paused').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /move to/i })).not.toBeInTheDocument();
     // No retired lifecycle label anywhere on the page.
@@ -490,7 +461,7 @@ describe('ExporterDetailPage — screening review', () => {
     expect(screen.getByTestId('qualification-suggestion')).toHaveTextContent('Suggested: Qualified');
     expect(screen.queryByRole('form', { name: 'Record results' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Record:/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'Profile' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
     expect(await screen.findByRole('heading', { name: 'Company profile' })).toBeInTheDocument();
     // Facts are inline edits for staff (frontend-plan §8.5); a read-only role gets text.
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();

@@ -1,6 +1,6 @@
 /**
- * Keyboard helpers shared by the shell and pages (frontend-plan §7.4).
- * Shortcuts never fire while someone is typing.
+ * Keyboard helpers for the shell (frontend-plan §7.5). Shortcuts never fire while
+ * someone is typing.
  */
 
 export function isTypingTarget(target: EventTarget | null): boolean {
@@ -21,7 +21,7 @@ export function hasModifier(event: KeyboardEvent): boolean {
   return event.altKey || event.ctrlKey || event.metaKey;
 }
 
-/** "Ctrl" or "⌘" for the command-bar hint, by platform. */
+/** "Ctrl" or "⌘" for the search hint, by platform. */
 export function commandKeyLabel(): string {
   const platform =
     typeof navigator === 'undefined'

@@ -9,6 +9,7 @@
  * something has been resolved.
  */
 
+import { Card } from '@/components';
 import { formatDateTime } from '@/lib/format';
 
 import { useBackgroundCheckProposals } from '../hooks';
@@ -28,7 +29,7 @@ const OUTCOME: Record<string, { verb: string; tone: string }> = {
 function Resolved({ proposal }: { proposal: BackgroundCheckProposal }) {
   const outcome = OUTCOME[proposal.status] ?? { verb: proposal.status, tone: 'text-ink-2' };
   return (
-    <li data-testid="resolved-proposal" data-status={proposal.status} className="text-xs text-ink-2">
+    <li data-testid="resolved-proposal" data-status={proposal.status} className="text-caption text-ink-2">
       <span className="font-medium text-ink">{proposedMoveLabel(proposal.to_value)}</span>
       {' proposed by '}
       {actorLabel(proposal.proposed_by_name, proposal.proposed_by)}, {formatDateTime(proposal.proposed_at)}
@@ -46,7 +47,7 @@ export function ProposalHistory({ customerId }: { customerId: string }) {
   if (query.isLoading) return null;
   if (query.isError) {
     return (
-      <p role="alert" className="text-xs text-negative">
+      <p role="alert" className="text-caption text-negative">
         The proposals could not be loaded.
       </p>
     );
@@ -54,13 +55,12 @@ export function ProposalHistory({ customerId }: { customerId: string }) {
   const resolved = (query.data?.proposals ?? []).filter((p) => p.status !== 'OPEN');
   if (resolved.length === 0) return null;
   return (
-    <div data-testid="proposal-history">
-      <h4 className="text-sm font-semibold text-ink">Proposals</h4>
-      <ul className="mt-2 flex flex-col gap-1.5">
+    <Card as="h3" title="Proposals" data-testid="proposal-history">
+      <ul className="flex flex-col gap-1.5">
         {resolved.slice(0, SHOWN).map((proposal) => (
           <Resolved key={proposal.id} proposal={proposal} />
         ))}
       </ul>
-    </div>
+    </Card>
   );
 }

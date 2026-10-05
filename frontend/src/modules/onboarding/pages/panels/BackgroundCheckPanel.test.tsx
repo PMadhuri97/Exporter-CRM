@@ -111,7 +111,6 @@ describe('BackgroundCheckPanel — the gauge', () => {
 
     const gauge = await screen.findByTestId('background-check-gauge');
     expect(gauge).toHaveAttribute('data-value', 'NOT_STARTED');
-    // The runway draws every state too, so the gauge's own words are read from it.
     expect(within(gauge).getByText('Not started')).toBeInTheDocument();
     // Never "pending" or "clear": no check has run, and the screen must not imply one has.
     expect(
@@ -154,12 +153,12 @@ describe('BackgroundCheckPanel — risk', () => {
 
     const chip = await screen.findByTestId('risk-chip');
     expect(chip).toHaveAttribute('data-risk', 'CRITICAL');
-    // The one filled mark: solid negative, hatched and bold, with a leading "!" —
+    // The one solid badge: white on the negative solid, with a warning icon —
     // LOW/MEDIUM/HIGH are tinted only (frontend-plan §5.2).
     expect(chip.className).toContain('bg-negative-solid');
-    expect(chip.className).toContain('hatch');
-    expect(chip.className).toContain('font-bold');
-    expect(chip).toHaveTextContent('!');
+    expect(chip.className).toContain('text-white');
+    expect(chip.querySelector('svg')).not.toBeNull();
+    expect(chip).toHaveTextContent('Critical risk');
   });
 
   it('explains a risk shown on a company that is not clear', async () => {

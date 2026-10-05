@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- The brand mark's square (frontend-plan §5.7): ink, with an italic serif "a" knocked out in paper. -->
-  <rect width="32" height="32" rx="6" fill="#17160F"/>
-  <text x="16" y="22.5" text-anchor="middle" font-family="'Instrument Serif', Georgia, 'Times New Roman', serif" font-style="italic" font-size="23" fill="#F5F3EE">a</text>
+  <!-- The placeholder brand mark (frontend-plan §5.8): a white "A" on the brand blue. -->
+  <rect width="32" height="32" rx="5" fill="#0B5CAD"/>
+  <text x="16" y="23" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, Arial, sans-serif" font-size="19" font-weight="700" fill="#FFFFFF">A</text>
 </svg>

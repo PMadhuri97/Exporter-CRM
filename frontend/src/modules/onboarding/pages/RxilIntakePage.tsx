@@ -48,7 +48,7 @@ export function RxilIntakePage() {
   const preview = useMemo(() => readPackage(text), [text]);
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-3xl space-y-4">
       <PageHeader
         title="RXIL intake"
         meta={<Tag tone="attention">Prototype: provisional format</Tag>}
@@ -56,7 +56,7 @@ export function RxilIntakePage() {
       />
 
       <form
-        className="space-y-3"
+        className="space-y-3 rounded border border-line bg-surface p-4"
         onSubmit={(e) => {
           e.preventDefault();
           let pkg: unknown;
@@ -72,14 +72,14 @@ export function RxilIntakePage() {
       >
         <Textarea
           aria-label="RXIL package"
-          className="min-h-[14rem] font-mono text-data"
+          className="min-h-[14rem] text-secondary"
           placeholder='Paste the package: {"package_id": "…", …}'
           spellCheck={false}
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
         {preview && (
-          <p className="text-secondary text-ink-3" data-testid="package-preview">
+          <p className="rounded bg-sunken px-3 py-2 text-secondary text-ink-2" data-testid="package-preview">
             {preview.ok
               ? preview.facts.length > 0
                 ? preview.facts.map(([label, value]) => `${label} ${value}`).join(' · ')
@@ -100,24 +100,26 @@ export function RxilIntakePage() {
       </form>
 
       {result && (
-        <Card aria-label="Intake result" className="space-y-2 p-5" role="group">
-          <p className="flex items-center gap-2 font-display text-display-sm text-ink">
-            <Icon.passed size={20} className="text-positive" aria-hidden />
-            {result.replayed ? 'Already taken in — nothing changed' : 'Taken in'}
-          </p>
-          <p className="text-secondary text-ink-2">
-            Company {result.company} · qualification {result.qualification}
-          </p>
-          {result.warnings.length > 0 && (
-            <ul className="list-disc pl-5 text-secondary text-attention">
-              {result.warnings.map((warning, i) => (
-                <li key={`${warning.code}-${i}`}>{warning.message}</li>
-              ))}
-            </ul>
-          )}
-          <Link to={paths.company(result.customer_id)} className="inline-block text-body font-medium text-ink underline underline-offset-[3px]">
-            Open company
-          </Link>
+        <Card aria-label="Intake result" role="group">
+          <div className="space-y-2">
+            <p className="flex items-center gap-2 text-heading font-semibold text-ink">
+              <Icon.passed size={20} className="text-positive" aria-hidden />
+              {result.replayed ? 'Already taken in — nothing changed' : 'Taken in'}
+            </p>
+            <p className="text-secondary text-ink-2">
+              Company {result.company} · qualification {result.qualification}
+            </p>
+            {result.warnings.length > 0 && (
+              <ul className="list-disc pl-5 text-secondary text-attention">
+                {result.warnings.map((warning, i) => (
+                  <li key={`${warning.code}-${i}`}>{warning.message}</li>
+                ))}
+              </ul>
+            )}
+            <Link to={paths.company(result.customer_id)} className="inline-block text-body font-semibold text-accent underline-offset-2 hover:underline">
+              Open company
+            </Link>
+          </div>
         </Card>
       )}
     </div>

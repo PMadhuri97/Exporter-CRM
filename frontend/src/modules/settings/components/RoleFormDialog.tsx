@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import { Composer, composerFieldError, Field, Input, Skeleton, Tag, Textarea } from '@/components';
+import { SidePanel, sidePanelFieldError, Field, Input, Skeleton, Tag, Textarea } from '@/components';
 import { Icon } from '@/design/icons';
 import { cn } from '@/lib/cn';
 
@@ -102,7 +102,7 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
   }
 
   return (
-    <Composer
+    <SidePanel
       open
       onOpenChange={(open) => {
         if (!open) onClose();
@@ -121,7 +121,7 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
       onSubmit={() => void handleSubmit()}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name" htmlFor="role-name" error={composerFieldError(error, 'name')}>
+        <Field label="Name" htmlFor="role-name" error={sidePanelFieldError(error, 'name')}>
           <Input
             id="role-name"
             type="text"
@@ -133,7 +133,7 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
         <Field
           label="Identifier"
           htmlFor="role-slug"
-          error={composerFieldError(error, 'slug')}
+          error={sidePanelFieldError(error, 'slug')}
           hint={
             isEdit
               ? 'Fixed — other systems and tests refer to this.'
@@ -143,7 +143,7 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
           <Input
             id="role-slug"
             type="text"
-            className="font-mono"
+            className=""
             value={slugEdited ? slug : slugify(name)}
             disabled={isEdit}
             onChange={(event) => {
@@ -157,7 +157,7 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
       <Field
         label="Description"
         htmlFor="role-description"
-        error={composerFieldError(error, 'description')}
+        error={sidePanelFieldError(error, 'description')}
       >
         <Textarea
           id="role-description"
@@ -197,7 +197,7 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
                   <button
                     type="button"
                     onClick={() => toggleModule(module.key, actionKeys)}
-                    className="shrink-0 text-caption font-medium text-ink underline-offset-[3px] hover:underline"
+                    className="shrink-0 text-caption font-medium text-accent underline-offset-2 hover:underline"
                   >
                     {allOn ? 'Clear all' : 'Select all'}
                   </button>
@@ -213,9 +213,9 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
                         title={action.description}
                         className={cn(
                           'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-secondary transition-colors duration-quick',
-                          'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink',
+                          'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent',
                           on
-                            ? 'border-ink bg-ink text-paper'
+                            ? 'border-accent-solid bg-accent-solid text-white'
                             : 'border-line-strong bg-surface text-ink-2 hover:text-ink',
                         )}
                       >
@@ -241,6 +241,6 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
           })}
         </div>
       </fieldset>
-    </Composer>
+    </SidePanel>
   );
 }

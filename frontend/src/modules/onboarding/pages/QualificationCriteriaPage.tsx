@@ -23,8 +23,8 @@ import { toast } from 'sonner';
 
 import {
   Button,
-  Composer,
-  composerFieldError,
+  SidePanel,
+  sidePanelFieldError,
   EmptyLine,
   ErrorState,
   Field,
@@ -38,7 +38,6 @@ import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
 import { cn } from '@/lib/cn';
 import { formatDateTime } from '@/lib/format';
-import { useCrumbs } from '@/platform/shell';
 
 import {
   useAddCriterionVersion,
@@ -132,7 +131,7 @@ function definitionOf(draft: Draft): CriterionDefinitionRequest {
   };
 }
 
-/** Add a criterion, or the next version of one — a composer (frontend-plan §6.10). */
+/** Add a criterion, or the next version of one — a composer (frontend-plan §6.9). */
 function CriterionComposer({
   onClose,
   base,
@@ -174,7 +173,7 @@ function CriterionComposer({
   };
 
   return (
-    <Composer
+    <SidePanel
       open
       onOpenChange={(next) => {
         if (!next) onClose();
@@ -198,12 +197,12 @@ function CriterionComposer({
             htmlFor="criterion-key"
             required
             hint="Permanent. Lower case with underscores, e.g. annual_exports."
-            error={composerFieldError(error, 'key')}
+            error={sidePanelFieldError(error, 'key')}
             className="sm:col-span-2"
           >
             <Input
               id="criterion-key"
-              className="font-mono"
+              className=""
               value={draft.key}
               onChange={(e) => set('key', e.target.value)}
               required
@@ -214,7 +213,7 @@ function CriterionComposer({
           label="Label"
           htmlFor="criterion-label"
           required
-          error={composerFieldError(error, 'label')}
+          error={sidePanelFieldError(error, 'label')}
           className="sm:col-span-2"
         >
           <Input id="criterion-label" value={draft.label} onChange={(e) => set('label', e.target.value)} required />
@@ -244,12 +243,12 @@ function CriterionComposer({
               label="Threshold"
               htmlFor="criterion-threshold"
               required
-              error={composerFieldError(error, 'threshold')}
+              error={sidePanelFieldError(error, 'threshold')}
             >
               <Input
                 id="criterion-threshold"
                 inputMode="decimal"
-                className="font-mono"
+                className=""
                 value={draft.threshold}
                 onChange={(e) => set('threshold', e.target.value)}
               />
@@ -258,7 +257,7 @@ function CriterionComposer({
               label="Unit"
               htmlFor="criterion-unit"
               hint="e.g. USD, years"
-              error={composerFieldError(error, 'unit')}
+              error={sidePanelFieldError(error, 'unit')}
               className="sm:col-span-2"
             >
               <Input id="criterion-unit" value={draft.unit} onChange={(e) => set('unit', e.target.value)} />
@@ -271,7 +270,7 @@ function CriterionComposer({
             htmlFor="criterion-values"
             required
             hint="Comma-separated."
-            error={composerFieldError(error, 'allowed_values')}
+            error={sidePanelFieldError(error, 'allowed_values')}
             className="sm:col-span-2"
           >
             <Input
@@ -302,7 +301,7 @@ function CriterionComposer({
           Active
         </label>
       </div>
-    </Composer>
+    </SidePanel>
   );
 }
 
@@ -330,7 +329,7 @@ function VersionTrail({ criterionKey }: { criterionKey: string }) {
             aria-hidden
             className={cn(
               'absolute -left-[1.6875rem] top-1 h-2.5 w-2.5 rounded-full border-2 border-surface',
-              index === 0 ? 'bg-ink' : 'bg-line-strong',
+              index === 0 ? 'bg-accent-solid' : 'bg-line-strong',
             )}
           />
           <p className="flex flex-wrap items-center gap-2 text-secondary font-medium text-ink">
@@ -346,7 +345,7 @@ function VersionTrail({ criterionKey }: { criterionKey: string }) {
             {version.created_by ? (
               <>
                 {' · by user id '}
-                <span className="font-mono">{version.created_by}</span>
+                <span className="">{version.created_by}</span>
               </>
             ) : null}
           </p>
@@ -362,19 +361,19 @@ function RuleCard({ criterion, onNewVersion }: { criterion: Criterion; onNewVers
   return (
     <li
       className={cn(
-        'flex min-w-0 flex-col gap-3 rounded-xl border bg-surface p-5',
+        'flex min-w-0 flex-col gap-3 rounded border bg-surface p-5',
         criterion.active ? 'border-line' : 'border-dashed border-line-strong',
       )}
       data-testid="criterion-row"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-display text-display-sm text-ink">{criterion.label}</p>
-          <p className="font-mono text-caption text-ink-3">{criterion.key}</p>
+          <p className="text-heading font-semibold text-ink">{criterion.label}</p>
+          <p className="text-caption text-ink-3">{criterion.key}</p>
         </div>
-        <span className="shrink-0 font-mono text-secondary tabular-nums text-ink-2">v{criterion.version}</span>
+        <span className="shrink-0 text-secondary tabular-nums text-ink-2">v{criterion.version}</span>
       </div>
-      <p className="text-lead text-ink">
+      <p className="text-body text-ink">
         <span className="block text-caption text-ink-3">{KIND_LABEL[criterion.kind]}</span>
         {ruleOf(criterion)}
       </p>
@@ -387,7 +386,7 @@ function RuleCard({ criterion, onNewVersion }: { criterion: Criterion; onNewVers
       <div className="mt-auto flex items-center gap-1 border-t border-line pt-3">
         <Button
           size="sm"
-          variant="quiet"
+          variant="subtle"
           aria-expanded={showVersions}
           onClick={() => setShowVersions((shown) => !shown)}
         >
@@ -410,7 +409,6 @@ function RuleCard({ criterion, onNewVersion }: { criterion: Criterion; onNewVers
 
 export function QualificationCriteriaPage() {
   const criteria = useCriteria();
-  useCrumbs([{ label: 'Settings', to: '/settings' }, { label: 'Qualification criteria' }]);
   // `composerKey` remounts the composer per open, so its draft always starts from
   // the version it was opened on.
   const [composer, setComposer] = useState<{ base: Criterion | null; composerKey: number } | null>(
@@ -423,6 +421,7 @@ export function QualificationCriteriaPage() {
   return (
     <div className="max-w-reading">
       <PageHeader
+        as="h2"
         title="Qualification criteria"
         description="What a lead is measured against before someone decides whether it qualifies. Every change is a new version; results keep the version they were recorded against."
         actions={
@@ -437,8 +436,8 @@ export function QualificationCriteriaPage() {
         <ErrorState title="Couldn't load the criteria." onRetry={() => void criteria.refetch()} />
       ) : criteria.isLoading ? (
         <div className="grid gap-4 md:grid-cols-2" aria-hidden>
-          <Skeleton className="h-48 rounded-xl" />
-          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-48 rounded" />
+          <Skeleton className="h-48 rounded" />
         </div>
       ) : rows.length === 0 ? (
         <EmptyLine>No criteria yet — add the first one.</EmptyLine>

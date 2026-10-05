@@ -72,7 +72,7 @@ export function ScanStatusBadge({
       </Tag>
       {scannerName && (
         <span
-          className="text-xs uppercase tracking-wide text-ink-3"
+          className="text-caption uppercase tracking-wide text-ink-3"
           title={
             scannerName === 'pass-through'
               ? 'This build ships a labelled pass-through: no malware check was performed.'

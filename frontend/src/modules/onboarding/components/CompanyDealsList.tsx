@@ -52,7 +52,7 @@ function Row({ deal, as }: { deal: DealListItem; as: DealSide }) {
           <span className="font-medium text-ink group-hover:text-ink">
             {deal.reference}
           </span>
-          <p className="mt-0.5 text-xs text-ink-2">
+          <p className="mt-0.5 text-caption text-ink-2">
             {/* The other party, whichever side this company is on: the server puts
                 it in `buyer_name` both ways. The fallback differs because
                 the two gaps mean different things — a seller's deal may genuinely

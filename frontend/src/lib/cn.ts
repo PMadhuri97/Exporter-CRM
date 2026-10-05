@@ -17,21 +17,11 @@ const twMerge = extendTailwindMerge({
     classGroups: {
       'font-size': [
         {
-          text: [
-            'caption',
-            'secondary',
-            'body',
-            'lead',
-            'data',
-            'display-sm',
-            'display-md',
-            'display-lg',
-            'display-xl',
-          ],
+          text: ['caption', 'secondary', 'body', 'heading', 'title', 'count'],
         },
       ],
       shadow: [{ shadow: ['float'] }],
-      duration: [{ duration: ['quick', 'pop', 'travel'] }],
+      duration: [{ duration: ['quick', 'pop'] }],
       ease: [{ ease: ['enter', 'exit'] }],
     },
   },

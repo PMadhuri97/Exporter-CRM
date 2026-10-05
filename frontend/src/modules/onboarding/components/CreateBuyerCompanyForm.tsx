@@ -91,7 +91,7 @@ export function CreateBuyerCompanyForm({
       aria-label="Create buyer company"
       className="flex flex-col gap-3 rounded-lg border border-line p-4"
     >
-      <p className="text-sm text-ink-2">
+      <p className="text-body text-ink-2">
         A buyer company is created <span className="font-medium text-ink">outside the
         pipeline</span>: it is not a lead and changes no pipeline count. It is named as
         this deal's buyer at once.
@@ -151,7 +151,7 @@ export function CreateBuyerCompanyForm({
       {error ? (
         <div
           role="alert"
-          className="rounded-lg border border-negative/30 bg-negative-tint px-3 py-2 text-sm text-ink"
+          className="rounded-lg border border-negative/30 bg-negative-tint px-3 py-2 text-body text-ink"
         >
           {error}
           {existing ? (
@@ -165,7 +165,7 @@ export function CreateBuyerCompanyForm({
       ) : null}
 
       <div className="flex justify-end gap-2">
-        <Button variant="quiet" onClick={onCancel} disabled={pending}>
+        <Button variant="subtle" onClick={onCancel} disabled={pending}>
           Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={!ready} loading={pending}>

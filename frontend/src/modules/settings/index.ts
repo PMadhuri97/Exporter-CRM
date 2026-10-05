@@ -1,3 +1,4 @@
 // modules/settings — public facade.
 // Other modules import ONLY from here.
-export { SettingsRoutes } from './routes';
+export { SettingsRoutes, SettingsSectionFrame } from './routes';
+export type { SettingsSection } from './pages/SettingsPage';
