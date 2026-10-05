@@ -86,7 +86,7 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Email or password is incorrect.');
   });
 
-  it('sends a signed-in user on to where they were going', () => {
+  it('sends a signed-in user to Home, never to a page left open before signing out', () => {
     vi.mocked(useAuth).mockReturnValue({
       status: 'authenticated',
       user: { id: 1 },
@@ -94,6 +94,7 @@ describe('LoginPage', () => {
       logout: vi.fn(),
     } as unknown as ReturnType<typeof useAuth>);
     renderAt({ from: '/companies' });
-    expect(screen.getByText('companies')).toBeInTheDocument();
+    expect(screen.getByText('desk')).toBeInTheDocument();
+    expect(screen.queryByText('companies')).not.toBeInTheDocument();
   });
 });

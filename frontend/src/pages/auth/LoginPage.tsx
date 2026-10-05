@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { z } from 'zod';
 
 import { Button, Field, FormError, Input } from '@/components';
@@ -21,7 +21,6 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
   const { status, login } = useAuth();
-  const location = useLocation();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -30,10 +29,10 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema) });
 
-  if (status === 'authenticated') {
-    const redirectTo = (location.state as { from?: string } | null)?.from ?? '/';
-    return <Navigate to={redirectTo} replace />;
-  }
+  // Every sign-in starts on Home. The page someone was on when they signed out (or
+  // their session ran out) belonged to that session, and the next person to sign in
+  // on this browser may not be them.
+  if (status === 'authenticated') return <Navigate to="/" replace />;
 
   const onSubmit = async (values: LoginFormValues) => {
     setServerError(null);

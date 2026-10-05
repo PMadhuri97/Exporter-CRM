@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 
 import { useAuth } from '@/platform/auth';
 
@@ -14,12 +14,11 @@ function AuthCheckingSkeleton() {
 
 export function ProtectedRoute() {
   const { status } = useAuth();
-  const location = useLocation();
 
   if (status === 'loading') return <AuthCheckingSkeleton />;
 
   if (status === 'unauthenticated') {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" replace />;
   }
 
   return <Outlet />;
