@@ -108,4 +108,87 @@ describe('PipelinePage — the three-column journey', () => {
     }
     expect(screen.queryByRole('button', { name: /move/i })).not.toBeInTheDocument();
   });
+
+  it('says on each card what it is waiting for, and counts the ones waiting on us', async () => {
+    renderPage();
+
+    // A lead nobody has judged is the one case the board can call ours.
+    const lead = await screen.findByRole('region', { name: 'Lead' });
+    expect(await within(lead).findAllByText('Waiting on a qualification decision')).toHaveLength(2);
+    expect(within(lead).getByText('2 waiting on you')).toBeInTheDocument();
+
+    // A prospect waits on compliance, not on the person reading the board — so it is
+    // said, but not counted.
+    const prospect = screen.getByRole('region', { name: 'Prospect' });
+    expect(await within(prospect).findByText('Waiting on the background check')).toBeInTheDocument();
+    expect(within(prospect).queryByText(/waiting on you/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the waiting count off the board for a role whose queue it is not', async () => {
+    // COMPLIANCE holds `crm.write` and so *may* record a qualification decision, but
+    // leads are the relationship manager's work. A count of someone else's queue reads
+    // as a demand on whoever is looking at it.
+    for (const role of ['COMPLIANCE', 'ADMIN'] as const) {
+      vi.mocked(useCurrentUser).mockReturnValue({
+        id: 'u1',
+        email: 'user@aner.example',
+        full_name: null,
+        role,
+        is_active: true,
+      });
+      const { unmount } = renderPage();
+      const lead = await screen.findByRole('region', { name: 'Lead' });
+      // The cards still say what each company waits on — only the tally is theirs alone.
+      expect(await within(lead).findAllByText('Waiting on a qualification decision')).toHaveLength(2);
+      expect(within(lead).queryByText(/waiting on you/)).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('reads the marker and its reason in place of a next step', async () => {
+    vi.mocked(searchExporterProfiles).mockImplementation((params: ExporterSearchParams) =>
+      Promise.resolve({
+        profiles:
+          params.journey === 'LEAD'
+            ? [{ ...company('LEAD', 'Paused One'), marker: 'PAUSED', marker_reason: 'Seasonal' }]
+            : [],
+        limit: 100,
+        offset: 0,
+      }),
+    );
+    renderPage();
+
+    const lead = await screen.findByRole('region', { name: 'Lead' });
+    expect(await within(lead).findByText('Paused — Seasonal')).toBeInTheDocument();
+    // Paused is not work waiting on anyone, whatever its qualification says.
+    expect(within(lead).queryByText(/waiting on you/)).not.toBeInTheDocument();
+    expect(within(lead).queryByText('Waiting on a qualification decision')).not.toBeInTheDocument();
+  });
+
+  it('puts industry, country and the RM on one line, and no bare country code', async () => {
+    vi.mocked(searchExporterProfiles).mockImplementation((params: ExporterSearchParams) =>
+      Promise.resolve({
+        profiles:
+          params.journey === 'CUSTOMER'
+            ? [
+                {
+                  ...company('CUSTOMER', 'Kaveri Spice Traders'),
+                  industry: 'Spices',
+                  relationship_manager: 'Srikar',
+                },
+              ]
+            : [],
+        limit: 100,
+        offset: 0,
+      }),
+    );
+    renderPage();
+
+    const customer = await screen.findByRole('region', { name: 'Customer' });
+    expect(await within(customer).findByText('Spices · IN · RM Srikar')).toBeInTheDocument();
+    // The country used to sit alone in the corner, where "IN" said nothing.
+    expect(within(customer).queryByText('IN', { exact: true })).not.toBeInTheDocument();
+    // A customer's next step is "trade", which the column note already says once.
+    expect(within(customer).queryByText(/^Waiting on/)).not.toBeInTheDocument();
+  });
 });
