@@ -13,7 +13,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { EmptyLine, Input, PageHeader, Skeleton } from '@/components';
-import { Icon } from '@/design/icons';
+import { Icon, type IconComponent } from '@/design/icons';
+import { cn } from '@/lib/cn';
+import { useCan } from '@/platform/access';
 
 import { CompaniesViewSwitch, CompanyBadges } from '../components';
 import { JOURNEY_LABEL, JOURNEY_STAGES } from '../constants';
@@ -34,6 +36,75 @@ const COLUMN_NOTE: Record<ExporterJourney, string> = {
   CUSTOMER: 'Customers can open deals and hand them over.',
 };
 
+/** A quiet mark beside the stage name. Decorative: the name is right next to it. */
+const COLUMN_DOT: Record<ExporterJourney, string> = {
+  LEAD: 'bg-ink-4',
+  PROSPECT: 'bg-accent',
+  CUSTOMER: 'bg-positive',
+};
+
+interface NextStep {
+  text: string;
+  icon: IconComponent;
+  /** Someone here has to act. Drawn in attention, and counted in the column header. */
+  onUs: boolean;
+}
+
+/**
+ * What this company is waiting for, worked out from the row the list already returns.
+ *
+ * Deliberately nothing that would need another request. A lead's criteria tally, a
+ * prospect's screening items and a customer's open deals would each be a call per card,
+ * which is what makes a board like this slow — so the line says which decision is
+ * outstanding, and the record says how far along it is.
+ *
+ * `null` where the row implies no next step: a customer's is "trade", which the column
+ * note already says once for all of them.
+ */
+function nextStep(profile: ExporterProfileListItem): NextStep | null {
+  if (profile.marker === 'PAUSED') {
+    return {
+      text: profile.marker_reason ? `Paused — ${profile.marker_reason}` : 'Paused',
+      icon: Icon.pause,
+      onUs: false,
+    };
+  }
+  if (profile.marker === 'ENDED') {
+    return {
+      text: profile.marker_reason ? `Ended — ${profile.marker_reason}` : 'Ended',
+      icon: Icon.prohibited,
+      onUs: false,
+    };
+  }
+
+  switch (profile.journey) {
+    case 'LEAD':
+      // The one case where the board can say the work is ours: nobody has judged it.
+      if (profile.qualification === 'NOT_YET_REVIEWED') {
+        return { text: 'Waiting on a qualification decision', icon: Icon.warning, onUs: true };
+      }
+      // NOT_QUALIFIED and still a lead: decided, and it stays here. Not our move.
+      return { text: 'Not qualified — stays a lead', icon: Icon.info, onUs: false };
+    case 'PROSPECT':
+      // Not "waiting on": the row does not carry the check's state, and a prospect whose
+      // check came back flagged or declined is not waiting on anything. What is true of
+      // every prospect is what it still needs.
+      return { text: 'Needs a clear background check', icon: Icon.backgroundCheck, onUs: false };
+    default:
+      return null;
+  }
+}
+
+/** The muted second line: what the company does, where it is, and who holds it. */
+function factsLine(profile: ExporterProfileListItem): string | null {
+  const parts = [
+    profile.industry,
+    profile.country,
+    profile.relationship_manager ? `RM ${profile.relationship_manager}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 function PipelineCard({
   profile,
   onIntent,
@@ -41,6 +112,8 @@ function PipelineCard({
   profile: ExporterProfileListItem;
   onIntent: (id: string) => void;
 }) {
+  const step = nextStep(profile);
+  const facts = factsLine(profile);
   return (
     <Link
       to={paths.company(profile.customer_id)}
@@ -49,17 +122,31 @@ function PipelineCard({
       onFocus={() => onIntent(profile.customer_id)}
       className="block rounded border border-line bg-surface p-3 transition-colors duration-quick hover:border-line-strong hover:bg-sunken"
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-body font-semibold leading-snug text-accent">
-          {profile.name ?? <span className="italic text-ink-3">Unnamed lead</span>}
-        </span>
-        {profile.country && <span className="shrink-0 text-caption text-ink-3">{profile.country}</span>}
-      </div>
+      <span className="block text-body font-semibold leading-snug text-accent">
+        {profile.name ?? <span className="italic text-ink-3">Unnamed lead</span>}
+      </span>
+
+      {/* Country reads here rather than floating in the corner, where a bare "IN" had
+          nothing to say what it was. */}
+      {facts && <p className="mt-1 text-caption text-ink-3">{facts}</p>}
+
       <div className="mt-2">
         <CompanyBadges size="inline" qualification={profile.qualification} marker={profile.marker} />
       </div>
-      {profile.relationship_manager && (
-        <div className="mt-2 text-caption text-ink-3">RM {profile.relationship_manager}</div>
+
+      {/* The line the board is worth opening for. Attention only when someone here has
+          to act, so a column of amber means a column of work. */}
+      {step && (
+        <div className="mt-2.5 flex items-center gap-1.5 border-t border-line pt-2">
+          <step.icon
+            size={13}
+            className={cn('shrink-0', step.onUs ? 'text-attention' : 'text-ink-3')}
+            aria-hidden
+          />
+          <span className={cn('text-caption', step.onUs ? 'font-medium text-attention' : 'text-ink-3')}>
+            {step.text}
+          </span>
+        </div>
       )}
     </Link>
   );
@@ -78,23 +165,48 @@ function PipelineColumn({ journey, name }: { journey: ExporterJourney; name: str
     void prefetch(customerId);
   };
   const profiles = data?.profiles ?? [];
+  // Counted from the page already in hand, not asked for: it is how many of these cards
+  // say someone has to act. A column past `COLUMN_LIMIT` undercounts, which is why the
+  // count beside the name carries the "+".
+  //
+  // Shown to the relationship managers only. Qualification is their work; COMPLIANCE and
+  // ADMIN may record a decision too (all three hold `crm.write`), but it is not their
+  // queue, and a tally of other people's work reads as a demand on whoever is looking.
+  // `queue.qualification` says whose queue it is, which `crm.write` cannot.
+  const ownsTheQueue = useCan('queue.qualification');
+  const waiting = ownsTheQueue ? profiles.filter((profile) => nextStep(profile)?.onUs).length : 0;
 
   return (
-    <section aria-label={JOURNEY_LABEL[journey]} className="flex min-w-0 flex-col">
-      <header className="rounded border border-line bg-surface px-3 py-2.5">
-        <h2 className="text-heading font-semibold text-ink">
-          {JOURNEY_LABEL[journey]}
+    <section
+      aria-label={JOURNEY_LABEL[journey]}
+      // `rounded-xl` is 8px — the top of the scale (§5.5), which the side panel and
+      // dialogs use. A column is a surface holding cards, so it reads softer than the
+      // 4px cards inside it; the same radius on both made the nesting hard to see.
+      className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface"
+    >
+      <header className="border-b border-line px-3.5 py-3">
+        <div className="flex items-center gap-2">
+          <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', COLUMN_DOT[journey])} aria-hidden />
+          <h2 className="text-heading font-semibold text-ink">{JOURNEY_LABEL[journey]}</h2>
           {!isLoading && !isError && (
-            <span className="ml-1.5 font-normal tabular-nums text-ink-3">
-              ({profiles.length}
-              {profiles.length === COLUMN_LIMIT ? '+' : ''})
+            <span className="tabular-nums text-secondary text-ink-3">
+              {profiles.length}
+              {profiles.length === COLUMN_LIMIT ? '+' : ''}
             </span>
           )}
-        </h2>
-        <p className="mt-0.5 text-caption text-ink-3">{COLUMN_NOTE[journey]}</p>
+          {waiting > 0 && (
+            <span className="ml-auto shrink-0 rounded-full bg-attention-tint px-2 py-0.5 text-caption font-medium text-attention">
+              {waiting} waiting on you
+            </span>
+          )}
+        </div>
+        <p className="mt-1.5 text-caption text-ink-3">{COLUMN_NOTE[journey]}</p>
       </header>
-      <div className="flex flex-col gap-2 pt-2">
-        {isLoading && Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
+
+      {/* Capped and scrolled: one long stage used to run the page down past the other
+          two, leaving the short columns stranded at the top. */}
+      <div className="flex max-h-[34rem] flex-col gap-2 overflow-y-auto p-2.5">
+        {isLoading && Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
         {isError && <p className="py-6 text-secondary text-negative">Couldn't load this stage.</p>}
         {!isLoading &&
           !isError &&
@@ -118,7 +230,6 @@ export function PipelinePage() {
       <PageHeader
         title="Companies"
         meta={<CompaniesViewSwitch view="board" />}
-        description="The same companies as three journey columns. Nothing here moves a company: the journey moves on its own, when the decisions behind it are made."
         actions={
           <form
             role="search"

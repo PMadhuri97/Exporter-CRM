@@ -30,6 +30,10 @@
  *
  * Users and roles screens are not here: they follow `/auth/me/permissions`
  * (`modules/settings/usePermissions`), so granting a permission needs no code change.
+ *
+ * One entry — `queue.qualification` — mirrors no route group and is not a permission.
+ * It marks whose queue a piece of work is, so a screen can address the people whose job
+ * it is without a `role === '…'` check. Its own comment says why it is here.
  */
 
 import type { UserRole } from '@/lib/api/types';
@@ -55,6 +59,17 @@ export type Capability =
   | 'gst.flag'
   /** See full tax identifiers; everyone else is served them masked. COMPLIANCE_OR_ADMIN. */
   | 'identifiers.reveal'
+  /**
+   * Whose queue the unjudged leads are. **Not a permission**, and the one entry here
+   * that mirrors no route group: COMPLIANCE and ADMIN may record a qualification
+   * decision too — all three hold `crm.write` and the server refuses none of them.
+   * It says whose *work* it is, so the pipeline can count "waiting on you" for the
+   * relationship managers and show nobody else a tally of someone else's queue.
+   *
+   * It is therefore the one capability a wider role does not inherit. Never gate a
+   * request or a write on it; `crm.write` is the permission.
+   */
+  | 'queue.qualification'
   /** The qualification-criteria screen (an editing screen). ADMIN_ONLY. */
   | 'settings.criteria'
   /** The deal-required-documents screen (an editing screen). ADMIN_ONLY. */
@@ -77,7 +92,9 @@ const COMPLIANCE: readonly Capability[] = [
 ];
 
 const ROLE_CAPABILITIES: Readonly<Record<UserRole, readonly Capability[]>> = {
-  OPERATIONS: STAFF,
+  // `queue.qualification` is deliberately not in `STAFF`, and so not inherited by
+  // COMPLIANCE or ADMIN below: it marks whose work the leads are, not who may act.
+  OPERATIONS: [...STAFF, 'queue.qualification'],
   COMPLIANCE,
   ADMIN: [...COMPLIANCE, 'company.rxilIntake', 'settings.criteria', 'settings.requiredDocuments'],
   // Reads the CRM, masked, and writes nothing.

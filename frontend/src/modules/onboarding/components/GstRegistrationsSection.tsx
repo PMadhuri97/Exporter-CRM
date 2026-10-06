@@ -116,7 +116,6 @@ export function GstRegistrationsSection({
   return (
     <Panel
       title="GST registrations"
-      description="One per state the company is registered in. A registration is kept even after it stops being used, because a handed-over deal may have been invoiced through it."
       actions={
         canEdit &&
         !adding && (

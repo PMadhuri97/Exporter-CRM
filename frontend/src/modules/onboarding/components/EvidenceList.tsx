@@ -9,6 +9,9 @@
  * via `useDownloadDocument`), fetch it **with the access token**
  * (`fetchDocumentBlob`), save the bytes. The document row is read first for its file
  * name and whether it may be served; a refusal is shown, never worked around.
+ *
+ * Each cited document is also named by its file name on display, from the same
+ * row through a cached query; the shortened id stands in until then.
  */
 
 import { useState } from 'react';
@@ -17,10 +20,24 @@ import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
 
 import { fetchDocumentBlob, getDocument } from '../api';
-import { useDownloadDocument } from '../hooks';
+import { useDocument, useDownloadDocument } from '../hooks';
 import type { VerificationEvidenceRefStored } from '../types';
 
 import { isWebLink } from './verification-labels';
+
+/**
+ * A cited document by its file name, read through the same route the download
+ * takes — so a role sees no more than it could already open. The shortened id
+ * stands in while the row loads, and stays if the read is refused.
+ */
+function DocumentName({ documentId }: { documentId: string }) {
+  const { data } = useDocument(documentId);
+  return data ? (
+    <span data-testid="evidence-document-name">{data.file_name}</span>
+  ) : (
+    <span>Document {documentId.slice(0, 8)}…</span>
+  );
+}
 
 export function EvidenceList({
   note,
@@ -74,7 +91,7 @@ export function EvidenceList({
             <li key={`${ref.type}:${ref.ref}`} className="break-all">
               {ref.type === 'document' ? (
                 <span className="inline-flex flex-wrap items-center gap-2">
-                  <span>Document {ref.ref.slice(0, 8)}…</span>
+                  <DocumentName documentId={ref.ref} />
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 font-medium text-ink hover:underline disabled:opacity-50"

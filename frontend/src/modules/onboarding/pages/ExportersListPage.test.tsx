@@ -69,7 +69,7 @@ function renderPage() {
   );
 }
 
-describe('ExportersListPage — PAN/GSTIN masking', () => {
+describe('ExportersListPage — identifiers are not on the list', () => {
   beforeEach(() => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({
       profiles: [PROFILE],
@@ -78,31 +78,28 @@ describe('ExportersListPage — PAN/GSTIN masking', () => {
     });
   });
 
-  // Decision 12: OPERATIONS sees masked tax IDs whether or not it is the
-  // assigned relationship manager. The second case below used to assert the
-  // opposite for an owner; both ownership states now have the same answer, so
-  // the owner case asserts that rather than being dropped.
-  it('masks PAN for OPERATIONS on an exporter they do not own', async () => {
+  // This block used to assert how PAN was *masked* on each row (masked for OPERATIONS
+  // whether or not they own the company, plain for COMPLIANCE). The rows no
+  // longer carry PAN or GSTIN at all, so there is no masking left here to get wrong —
+  // the rule itself is still proved on the company record, in `ExporterDetailPage.test`.
+  // What matters now is the stronger claim: neither value reaches this screen in any
+  // form, for any role, so no reveal control can appear on a list either.
+  it.each(['OPERATIONS', 'COMPLIANCE'])('shows no PAN or GSTIN for %s', async (role) => {
+    mockUser(role, 'someone-else');
+    renderPage();
+    expect(await screen.findByText('Acme Exports')).toBeInTheDocument();
+
+    expect(screen.queryByText('ABCDE1234F')).not.toBeInTheDocument();
+    expect(screen.queryByText('••••••234F')).not.toBeInTheDocument();
+    expect(screen.queryByText(/PAN/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/GSTIN/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reveal value/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps the country and the relationship manager on the second line', async () => {
     mockUser('OPERATIONS', 'someone-else');
     renderPage();
-    expect(await screen.findByText('Acme Exports')).toBeInTheDocument();
-    expect(screen.getByText('••••••234F')).toBeInTheDocument();
-    expect(screen.queryByText('ABCDE1234F')).not.toBeInTheDocument();
-  });
-
-  it('still masks PAN for OPERATIONS on an exporter they do own', async () => {
-    mockUser('OPERATIONS', 'user-owner');
-    renderPage();
-    expect(await screen.findByText('Acme Exports')).toBeInTheDocument();
-    expect(screen.getByText('••••••234F')).toBeInTheDocument();
-    expect(screen.queryByText('ABCDE1234F')).not.toBeInTheDocument();
-  });
-
-  it('never masks PAN for COMPLIANCE', async () => {
-    mockUser('COMPLIANCE', 'someone-else');
-    renderPage();
-    expect(await screen.findByText('Acme Exports')).toBeInTheDocument();
-    expect(screen.getByText('ABCDE1234F')).toBeInTheDocument();
+    expect(await screen.findByText('IN · RM Jane RM')).toBeInTheDocument();
   });
 });
 

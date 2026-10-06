@@ -162,6 +162,16 @@ describe('BuyerChecks — reading', () => {
     ).toBeInTheDocument();
   });
 
+  it('names an acronym check type in capitals, not title-cased', async () => {
+    vi.mocked(listVerificationResults).mockResolvedValue(
+      list([check({ verification_type: 'AML' })]),
+    );
+    renderChecks();
+    const row = await screen.findByTestId('buyer-check');
+    expect(within(row).getByText('AML')).toBeInTheDocument();
+    expect(within(row).queryByText('Aml')).not.toBeInTheDocument();
+  });
+
   it('shows each check with its status, provenance, snapshot and evidence', async () => {
     renderChecks();
     const row = await screen.findByTestId('buyer-check');

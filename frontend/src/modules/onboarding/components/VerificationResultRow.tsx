@@ -10,13 +10,13 @@
 import { useMemo, useState } from 'react';
 
 import { Icon } from '@/design/icons';
-import { formatDateTime, humanize } from '@/lib/format';
+import { formatDateTime } from '@/lib/format';
 
 import type { VerificationResult } from '../types';
 
 import { EvidenceList } from './EvidenceList';
 import { ReviewChain, ReviewDialog } from './ReviewDialog';
-import { provenanceLabel } from './verification-labels';
+import { provenanceLabel, verificationTypeLabel } from './verification-labels';
 import { VerificationStatusChip } from './VerificationStatusChip';
 
 export function VerificationResultRow({
@@ -45,7 +45,7 @@ export function VerificationResultRow({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-ink">{humanize(result.verification_type)}</span>
+            <span className="font-medium text-ink">{verificationTypeLabel(result.verification_type)}</span>
             {placeholder ? (
               // Deliberately not the PENDING chip a real in-flight check gets.
               <span className="inline-flex items-center gap-1 rounded-sm border border-dashed border-line-strong bg-sunken px-2 py-1 text-caption font-medium text-ink-3">

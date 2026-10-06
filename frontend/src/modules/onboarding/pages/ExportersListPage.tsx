@@ -33,7 +33,6 @@ import {
 } from '@/components';
 import { Icon } from '@/design/icons';
 import { useCan } from '@/platform/access';
-import { Identifier } from '@/platform/mask';
 
 import { CompaniesViewSwitch, CompanyBadges } from '../components';
 import { JOURNEY_LABEL, JOURNEY_STAGES, MARKER_LABEL, QUALIFICATION_LABEL } from '../constants';
@@ -60,11 +59,20 @@ function JourneyCount({ journey }: { journey: ExporterJourney }) {
   return <>{count >= COUNT_CAP ? `${COUNT_CAP}+` : count}</>;
 }
 
-/** The muted second line: what the company does, and how it reached us. */
+/**
+ * The muted second line: what the company does, where it is, and who holds it.
+ *
+ * Identifiers are deliberately not here. PAN and GSTIN are not what anyone scans a list
+ * for — they are looked up on a company already found — and putting masked values on
+ * every row made each one read as a string of dots. The branch count went with the
+ * GSTINs it was counting; branches are on the company's own record, with each one's
+ * state. Nothing is hidden by this: the company record shows all of it.
+ */
 function identityLine(profile: ExporterProfileListItem): string | null {
   const parts = [
     profile.industry,
-    profile.gstins.length > 1 ? `${profile.gstins.length} branches` : null,
+    profile.country,
+    profile.relationship_manager ? `RM ${profile.relationship_manager}` : null,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -87,22 +95,7 @@ function Row({
       muted={profile.marker === 'ENDED'}
       onIntent={() => void prepare(profile.customer_id)}
       data-testid="company-row"
-      facts={
-        <>
-          {[line, profile.country].filter(Boolean).join(' · ')}
-          {/* Above the row's link, so a role that may reveal can use the eye. */}
-          <span className="relative z-10">
-            {(line || profile.country) && ' · '}PAN <Identifier kind="PAN" value={profile.pan} />
-            {profile.gstins[0] && (
-              <>
-                {' · '}GSTIN <Identifier kind="GSTIN" value={profile.gstins[0]} />
-                {profile.gstins.length > 1 && ` +${profile.gstins.length - 1}`}
-              </>
-            )}
-          </span>
-          {profile.relationship_manager && ` · RM ${profile.relationship_manager}`}
-        </>
-      }
+      facts={line}
       badges={
         <CompanyBadges
           journey={profile.journey}
@@ -153,7 +146,6 @@ export function ExportersListPage() {
       <PageHeader
         title="Companies"
         meta={<CompaniesViewSwitch view="list" />}
-        description="Find and manage company relationships. Ended relationships are hidden unless you search for them or filter by “Ended”."
         actions={
           <>
             {/* The identity completion list: work on the records themselves, kept

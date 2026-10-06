@@ -41,7 +41,6 @@ import {
 import { formatDate } from '@/lib/format';
 import { useCan } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
-import { Identifier } from '@/platform/mask';
 import { rememberCompany } from '@/platform/shell';
 
 import {
@@ -61,7 +60,6 @@ import {
   OutsidePipelineBadge,
   QualificationBadge,
 } from '../components/StatusBadge';
-import { cycleKindLabel } from '../components/background-check-labels';
 import {
   useBackgroundCheck,
   useBringIntoPipeline,
@@ -105,12 +103,9 @@ const JOURNEY_STEPS: PathStep<ExporterJourney>[] = [
   { key: 'CUSTOMER', label: 'Customer' },
 ];
 
-/** What moves the journey on (architecture: never by hand). */
-const JOURNEY_GUIDANCE: Record<ExporterJourney, string> = {
-  LEAD: 'Becomes a prospect once qualified.',
-  PROSPECT: 'Becomes a customer once the background check is clear.',
-  CUSTOMER: 'A customer.',
-};
+// The journey bar carries no guidance line. What moves it on is never a manual action
+// (architecture: the server advances it), and each step's caption restated what the
+// qualification and background-check gauges sitting beside it already show.
 
 function displayName(profile: ExporterProfileDetail): string {
   return profile.name ?? 'Unnamed company';
@@ -197,7 +192,6 @@ export function ExporterDetailPage() {
   const notInPipeline = profile.pipeline_status === 'NOT_IN_PIPELINE';
   const gauge = conversation.data;
   const standing = check.data;
-  const cycle = standing?.current_cycle;
   const clearUntil =
     standing?.compliance?.is_clear && standing.compliance.clear_expires_at
       ? standing.compliance.clear_expires_at
@@ -235,8 +229,6 @@ export function ExporterDetailPage() {
     });
   }
 
-  const checkDetail = cycle ? `Cycle ${cycle.number} · ${cycleKindLabel(cycle.kind)}` : '';
-
   const fields: RecordField[] = [];
   if (!notInPipeline) {
     fields.push({ label: 'Qualification', value: <QualificationBadge state={profile.qualification} /> });
@@ -250,30 +242,24 @@ export function ExporterDetailPage() {
   if (canReadCompliance && standing) {
     fields.push({
       label: 'Background check',
+      // The badge alone. The cycle number and kind that used to sit under it ("Cycle 2 ·
+      // Re-KYB") describe how the check was arrived at, not where it stands — that belongs
+      // on the Background check tab, which shows the cycle in full.
       value: (
-        <span className="flex flex-col gap-1">
-          <BackgroundCheckBadge
-            state={standing.value}
-            risk={standing.risk_rating}
-            clearUntil={clearUntil}
-            awaitingApproval={standing.awaiting_approval}
-            rekycDue={standing.rekyc_due}
-          />
-          {checkDetail && <span className="text-secondary text-ink-3">{checkDetail}</span>}
-        </span>
+        <BackgroundCheckBadge
+          state={standing.value}
+          risk={standing.risk_rating}
+          clearUntil={clearUntil}
+          awaitingApproval={standing.awaiting_approval}
+          rekycDue={standing.rekyc_due}
+        />
       ),
     });
   }
-  fields.push({ label: 'PAN', value: <Identifier kind="PAN" value={profile.pan} /> });
-  fields.push({
-    label: 'GSTIN',
-    value: (
-      <span className="inline-flex items-center gap-1">
-        <Identifier kind="GSTIN" value={profile.gstins[0] ?? null} />
-        {profile.gstins.length > 1 && <span className="text-secondary text-ink-3">+{profile.gstins.length - 1}</span>}
-      </span>
-    ),
-  });
+  // PAN and GSTIN are deliberately not in this strip. They are identifiers, not state:
+  // the header carries what someone needs at a glance to judge the company, and both
+  // remain on the Company panel (PAN) and in `GstRegistrationsSection` (the GSTINs,
+  // each with its branch state) where they can be read in full.
 
   const facts = [
     profile.industry,
@@ -313,7 +299,6 @@ export function ExporterDetailPage() {
                 label="Journey"
                 steps={JOURNEY_STEPS}
                 current={profile.journey}
-                guidance={JOURNEY_GUIDANCE[profile.journey]}
                 className="min-w-0 flex-1"
               />
               {/* Only the marker moves the server listed for this user; none, nothing. */}

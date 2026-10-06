@@ -22,6 +22,9 @@ const EXPECTED: Record<Capability, UserRole[]> = {
   'compliance.queue': ['COMPLIANCE', 'ADMIN'],
   'gst.flag': ['COMPLIANCE', 'ADMIN'],
   'identifiers.reveal': ['COMPLIANCE', 'ADMIN'],
+  // The one entry a wider role does not inherit: it marks whose work the leads are, not
+  // who may record a decision on one (all three staff roles may).
+  'queue.qualification': ['OPERATIONS'],
   'settings.criteria': ['ADMIN'],
   'settings.requiredDocuments': ['ADMIN'],
 };

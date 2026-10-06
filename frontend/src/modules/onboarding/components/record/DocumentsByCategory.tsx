@@ -10,7 +10,7 @@
  * handover requires as present or missing.
  */
 
-import { useState, type DragEvent } from 'react';
+import { useEffect, useState, type DragEvent } from 'react';
 
 import { Button, EmptyLine, Sheet, Skeleton, Tag } from '@/components';
 import { Icon } from '@/design/icons';
@@ -20,8 +20,9 @@ import { formatDateTime, humanize } from '@/lib/format';
 import type { CrmDocument, DocumentOwnerKind, DocumentScanStatus, UploadDocumentInput } from '../../types';
 import { SOURCE_LABEL } from '../document-labels';
 import { DocumentUpload } from '../DocumentUpload';
+import { DocumentViewer } from '../DocumentViewer';
 import { ScanStatusBadge } from '../ScanStatusBadge';
-import { useOpenDocument } from '../useOpenDocument';
+import { isViewable, saveObjectUrl, useOpenDocument } from '../useOpenDocument';
 
 import { categoryLabel } from './categoryLabel';
 const SCAN_TITLE: Record<DocumentScanStatus, string> = {
@@ -38,7 +39,25 @@ function formatSize(bytes: number): string {
 }
 
 function Item({ document_ }: { document_: CrmDocument }) {
-  const open = useOpenDocument();
+  const { open, view } = useOpenDocument();
+  // The blob URL while this document is being read, and nothing when it is not. The row
+  // owns it because the row opened it, so a session of opening one document after
+  // another does not hold every one of them in memory.
+  const [viewing, setViewing] = useState<string | null>(null);
+
+  // Revoked when the viewer closes, and also when the row goes while it is open — the
+  // user leaves the page, or a refetch drops the file — which a close handler alone
+  // would miss, leaving the blob held for the life of the tab.
+  useEffect(() => {
+    if (!viewing) return undefined;
+    return () => URL.revokeObjectURL(viewing);
+  }, [viewing]);
+
+  async function showInApp() {
+    const url = await view(document_);
+    if (url) setViewing(url);
+  }
+
   return (
     <li className="flex min-w-0 items-center gap-3 py-2.5" data-testid="document-row">
       <Icon.document size={20} className="shrink-0 text-ink-3" aria-hidden />
@@ -49,11 +68,30 @@ function Item({ document_ }: { document_: CrmDocument }) {
           {SOURCE_LABEL[document_.source] ?? humanize(document_.source)} · {formatDateTime(document_.uploaded_at)}
         </p>
       </div>
-      {/* The status and the scanner that decided it: in this build that is the
-          pass-through, which checks nothing — so a file never reads as scanned. */}
+      {/* The status alone. The scanner's name used to sit beside it on every row, so that
+          "Available" could not be read as "a malware scan passed this"; the panel says
+          "Prototype: pass-through scanner" once above the list, which makes the same point
+          without repeating it on each line. */}
       <span className="shrink-0" data-scan={document_.scan_status} title={SCAN_TITLE[document_.scan_status]}>
-        <ScanStatusBadge status={document_.scan_status} scannerName={document_.scanner_name} />
+        <ScanStatusBadge status={document_.scan_status} />
       </span>
+      {/* Both gated on `is_downloadable`: viewing serves the same bytes as downloading,
+          so a file the server refuses to serve has neither. View is offered only for the
+          types a browser renders — on anything else it would just download, which the
+          button beside it already does. */}
+      {document_.is_downloadable && isViewable(document_) && (
+        <Button
+          size="sm"
+          variant="subtle"
+          className="shrink-0"
+          onClick={() => void showInApp()}
+          // The name carries the file, so rows are told apart by assistive tech; it opens
+          // with the visible words, which is what a voice command will say.
+          aria-label={`View document ${document_.file_name}`}
+        >
+          View document
+        </Button>
+      )}
       {document_.is_downloadable && (
         <Button
           size="sm"
@@ -64,6 +102,16 @@ function Item({ document_ }: { document_: CrmDocument }) {
         >
           <Icon.download size={16} aria-hidden />
         </Button>
+      )}
+
+      {viewing && (
+        <DocumentViewer
+          document_={document_}
+          url={viewing}
+          onClose={() => setViewing(null)}
+          // The bytes on screen are the file: saved as they are, not fetched again.
+          onDownload={() => saveObjectUrl(viewing, document_.file_name)}
+        />
       )}
     </li>
   );

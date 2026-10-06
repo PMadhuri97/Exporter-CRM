@@ -6,7 +6,9 @@ decision, and what is deliberately not being done.** Audited on **4 October 2026
 `main` @ `05b43eb` the same evening. The lead answered every open decision then (§4), and
 the work that follows from them is planned in §12. A UAT and demo-readiness audit on
 `main` @ `46097bd` (the redesign merged) on **5 October 2026** built R-19 and R-47 early,
-fixed four demo issues and rebuilt the demo database (§13). On **6 October 2026** the
+fixed four demo issues and rebuilt the demo database (§13). A walkthrough for the CEO demo
+deck on `main` @ `9ed6cb6` the same day found four display issues, fixed as R-58 – R-61
+(§15). On **6 October 2026** the
 second frontend plan — a standard enterprise CRM look in place of the redesign's, which the
 TL rejected — was built on `feature/frontend-redesign` (R-57, §14).
 
@@ -36,7 +38,7 @@ unhyphenated D1–D17 are in `contracts/background-check.md` §14 and
 |---|---|
 | **Audited** | `feature/company-foundation-and-compliance-guard` @ `6cd71db` (4 commits since `dfcb2d2`: R-01–R-05, R-06–R-11, R-12–R-23, R-24–R-33 Phase 0), 4 October 2026. **Merged** to `main` (`05b43eb`, fast-forward plus the audit's documentation commit; local `main` not yet pushed). Code since `6cd71db` changed in comments only, and every gate was re-run on `main` (§9) |
 | **Implementation** | Every allocated task of the three lanes is built and tested except **P4-10** (R-25, blocked on purpose) and the optional **P6-4** (R-30); task 3.2's script is built but its reports are still owed (OPS-0). One plan requirement was never allocated and is only partly built (R-34). The post-merge audit found five more items (R-43–R-46 and the decided R-19, R-47–R-50). Details in §2, §3 and §12 |
-| **Quality gates** | All pass at the baseline (§9, and §13.5 for 5 October) |
+| **Quality gates** | All pass at the baseline (§9, and §13.5 and §15.4 for 5 October) |
 | **Migration head** | One head, `onboarding_0043_identity_type`. Next free number **0044**. Upgrade from an empty database, `downgrade -3` and back, and `alembic check` are clean (re-run on `main`) |
 | **Merge readiness** | Merged. No blocker was found |
 | **Demo readiness** | **Ready — re-verified 5 October 2026 on the redesigned UI (§13).** Later that day, at the lead's request, `aner_settlement` was rebuilt clean as the **only** CRM database on the development server and every other one dropped, `crm_demo` included (§13.6); the paragraph that follows is the 4 October state. **4 October:** ready. Sign-in accounts on `crm_demo`: one ADMIN, two COMPLIANCE (maker-checker needs the second), one RM (OPERATIONS) and one DEVELOPER, each with a full name; passwords kept outside the repository. Demo database `crm_demo` built fresh at head with the sample companies (demo.md §1); `demo.md` §3 and §5 rehearsed against a copy of it through the API and, for 91 screens across four roles, in a headless browser on the production build: no error, no failed request, role gating as §5 says. `demo.md` corrected where the sample data had moved on |
@@ -162,7 +164,7 @@ come before R-25 and R-26.
 | R-35 | Retire `GET /exporters/activities/pending` | STILL OPEN | Low | `engagement.md` §5.6; plan §19.3 | Superseded by `GET /follow-ups`, still lists completed follow-ups, no screen calls it. Remove the route, its authorisation rows and OpenAPI entry; confirm no outside caller first | No |
 | R-36 | The qualification-criteria screen shows a version's `created_by` as a user id | STILL OPEN | Low | architecture §8; plan §19.3 | Serve `created_by_name`, as every other history-like read does | No |
 | R-37 | The company search returns no `total` | STILL OPEN | Low | plan §19.3 | Add `total` to `GET /exporters`; Home and Companies then show exact counts | No |
-| R-38 | Two tests fail intermittently | STILL OPEN | Low | `development.md` §9 | `test_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle`: the listing **already** orders by `decided_at DESC, id DESC`, and that cannot fix it — ids are random UUIDs, and on Windows two quick decisions can share a timestamp — so order ties by the decision chain (a decision follows the one it supersedes) and keep the assertion; `test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index` (asserts a query plan; whole suite only). §12, PR-E | No |
+| R-38 | Two tests fail intermittently (a third of the same kind found 5 October, §15.4: `test_buyer_migration_safety.py::test_a_created_company_gets_one_creation_row_saying_where_it_came_from`, because `migrate_deal_buyers.py` breaks a `created_at` tie by a random deal id) | STILL OPEN | Low | `development.md` §9 | `test_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle`: the listing **already** orders by `decided_at DESC, id DESC`, and that cannot fix it — ids are random UUIDs, and on Windows two quick decisions can share a timestamp — so order ties by the decision chain (a decision follows the one it supersedes) and keep the assertion; `test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index` (asserts a query plan; whole suite only). §12, PR-E | No |
 | R-39 | The OpenAPI artifact test compares `info.title`, which comes from `APP_NAME` | STILL OPEN | Low | `development.md` §8 | Pin the title in code, or leave it out of the comparison | No |
 | R-40 | The suite cannot run inside the `aner-app` container | STILL OPEN | Low | — | `test_openapi_artifact_is_current.py` needs `./frontend`; mount it in compose | No |
 | R-41 | Accounts created before 29 September with a special-use address (`admin@demo.local`) cannot sign in | STILL OPEN (data) | Low | — | Make a new account with a real-looking address and deactivate the old one (Settings cannot change an email). Neither `crm_release_audit` nor the shared development database has one (checked 4 October); it can only concern `crm_uat_walk` | No |
@@ -754,7 +756,7 @@ database clean; restore this file's answered decisions (they had been left in
 | — | P1 | Docs | `demo.md` described the screens before the redesign; this file's decisions were only in a stash | **Fixed** |
 | R-31 | P2 | Gap | `POST /exporters` still accepts a company with no name or country (the form requires both) | Open — PR-E / PR-L as planned |
 | R-53 | P2 | UX | Two refusals put internal ids in `human_readable_message` ("Deal `<uuid>` cannot be handed over: …", `TRADE_INVOICE_ALREADY_RECORDED`). The screens show their own text for the first; the second is not reachable from the UI | Open |
-| R-54 | P2 | UX | Raw codes in UI text: the handover refusal ("PRE_SHIPMENT", "MISSING, not PASSED", "PROSPECT, not CUSTOMER"), the risk options ("LOW"), check types title-cased from codes ("Kyb", "Aml") | Open — the refusal half is A3 (PR-B) |
+| R-54 | P2 | UX | Raw codes in UI text: the handover refusal ("PRE_SHIPMENT", "MISSING, not PASSED", "PROSPECT, not CUSTOMER"), the risk options ("LOW"), check types title-cased from codes ("Kyb", "Aml") | Open — the check-type half is done (R-61, §15); the refusal half is A3 (PR-B) |
 | R-55 | P3 | A11y | The branch flag form's reason field has no label | Open |
 | R-56 | P3 | UX | Deactivating a branch is one click with no confirmation (reversible: adding the GSTIN again reactivates it) | Open |
 | — | P3 | Data | The Desk greets by the first word of the full name, so the demo account "Relationship Manager" reads "Good morning, Relationship" | Not work: name the account |
@@ -855,3 +857,104 @@ changed. The formal `demo.md` walk with screenshots for the TL is still owed (R-
 | Production build | Passes; entry 157 kB gzip (146 kB before; the new header menus and tooltips), within the plan's 250 kB budget. `/__design` is not in the build |
 | Backend | Not touched |
 
+---
+
+## 15. CEO-demo walkthrough fixes (5 October 2026)
+
+While a CEO demo deck was being built, the CRM was driven end to end on `main` @ `9ed6cb6`
+in a browser: the production build, an empty database, and a real user for each role. No
+control was affected, but four screens showed wrong or unpolished information. Each fix
+has its own id, continuing from R-57, and changes only `backend/app/modules/onboarding`
+and `frontend/src/modules/onboarding`, plus the regenerated API artifacts, a one-line
+addition to architecture §8 and this file. No migration was added; the next free number is
+still **0044**.
+
+### 15.1 Items
+
+| Id | Pri | Kind | Finding | Fix | Covered by | Status |
+|---|---|---|---|---|---|---|
+| R-58 | P1 | Bug | A seller's **Deals & trade** tab read "No buyer recorded yet" for a deal whose buyer is a company record, while the deal page and "Trade — sold to" named it. `DealService.list_for_company` read `buyer_name` only from the legacy `deal_buyer` row and ignored `buyer_company_id`, which every new deal uses (P4-4) | On the seller side `buyer_name` is the buyer company's name, read in one query for every row as the buyer side already did for sellers. The legacy name is used only when no buyer company is set. A company name is not a masked identifier (architecture §9), so every reader, DEVELOPER included, gets it as stored. Neither the response shape nor the component changed | `test_deals_as_buyer.py`: `test_the_seller_side_names_the_buyer_company_then_the_legacy_buyer` (company, legacy and no buyer on one seller) and `test_the_seller_side_names_a_buyer_company_to_every_reader` (route, as OPERATIONS, COMPLIANCE and DEVELOPER). Both fail without the fix | **DONE — VERIFIED** |
+| R-59 | P1 | Bug | The Agenda's **Done** tab read "Done by 853ef096-3113-… on …": a completion was served with `completed_by` (a user id) only | `completed_by_name` on the follow-up list's completion and on the completion route's response, resolved through `api/actor_names.py` in the same lookup as `actor_name` (OPERATIONS, COMPLIANCE and ADMIN get the full name or the email; DEVELOPER gets the full name only, architecture §8). `FollowUpsPage` renders it with `actorLabel`, the fallback every other screen uses. OpenAPI and `schema.ts` regenerated (two additive fields) | `test_actor_names.py::test_a_completed_follow_up_names_who_completed_it` (named and unnamed completer, staff and DEVELOPER); `FollowUpsPage.test.tsx` (the named row, and the shortened-id fallback) | **DONE — VERIFIED** |
+| R-60 | P2 | UX | A document cited as verification evidence read "Document 1c068d09…" (for example the IEC certificate on a KYB result, Background check tab) | `EvidenceList` names it by `file_name`, read through a new `useDocument` query hook (`['document', id]`, five-minute cache, no retry, fetched only when a cited document is rendered). The shortened id shows while it loads and stays if the read is refused. It reads the same `GET /documents/{id}` the download already called, which the server serves to all four roles and which the Documents tab already names, so no role can see more. DEVELOPER is still refused the Background check tab (D8) | `EvidenceList.test.tsx` (named, cached across two citations, refused read, nothing cited) | **DONE — VERIFIED** |
+| R-61 | P2 | UX | Check types read "Kyb", "Aml", "Iec", … wherever the raw code went through `humanize()` (part of R-54) | `verificationTypeLabel()` in `VerificationResultRow`, `BuyerChecks`, the `ManualResultForm` options and the screenings panel's "N check types have no result" chips. The Ledger (`HistoryTimeline`), `DecisionHistory` and `ComplianceCheckChip` already used it. Non-acronym types are now in sentence case like the others ("Bank account", "Company registry") | `VerificationResultRow.test.tsx` (KYB, AML, Sanctions, Company registry), `ManualResultForm.test.tsx`, `VerificationSection.test.tsx` (the chips; "Bank Account" became "Bank account"), `BuyerChecks.test.tsx` | **DONE — VERIFIED** |
+
+### 15.2 Not done here: handover reasons in system words (rest of R-54; A3, PR-B)
+
+The deal's "Not ready to hand over" box still shows the server's sentence, for example
+"the company is PROSPECT, not CUSTOMER; …". It was left out of this pull request on
+purpose, and the browser does not rewrite it:
+
+- PR-B's remaining scope is R-34 (the buyer KYB and incomplete-check warnings, a new facts
+  field including legacy buyers) **and** A3. Plan §16.1 allows only one edit to the
+  handover guard at a time, and PR-B is planned as that edit.
+- A3 as planned (`handover_conditions: [{key, met, message}]`) carries the guard's own
+  `message`. Built alone, it would show the same system words as a list. Plain words mean
+  changing the guard's messages, which `contracts/deal-and-buyer.md` §6.1 and
+  `background-check.md` quote and 38 assertions in 8 test files depend on. That is a
+  contract change for PR-B and the contract's owner, not a display fix.
+
+So R-54's refusal half stays open under PR-B, as planned (§12).
+
+### 15.3 How it was verified
+
+Each repro was walked again in a headless browser. The setup:
+
+- the production build of this branch, served by `vite preview` on `:4174`;
+- this branch's API on `:8010`;
+- a fresh database at head, `crm_ceo_walk`, with OPERATIONS, COMPLIANCE, ADMIN and DEVELOPER
+  accounts that have full names, plus one OPERATIONS account with no name to exercise the
+  fallback.
+
+The preconditions (a qualified seller, a deal at Gathering paperwork, and a new DE buyer
+"Nordsee Handels GmbH" with registration number "HRB 204518 Hamburg") were created through
+the same routes the screens call. The steps each repro is about were done in the UI.
+
+| Repro | OPERATIONS | COMPLIANCE | DEVELOPER |
+|---|---|---|---|
+| R-58 Deals & trade row | "Nordsee Handels GmbH · opened 05 Oct 2026" | the same | the same |
+| R-59 Agenda → Done | Recorded "Done" through Record outcome; the row reads "Done by Riya Operations". The unnamed account's row reads its email | the same | "Done by Riya Operations"; the unnamed account's row reads "User 5137a620…", never the email |
+| R-60 Evidence | KYB result reads "IEC-certificate-Coastal-Spice.pdf · Download" | Recorded the KYB result citing the certificate through "Record a result"; the row names the file | Background check tab not offered; no document read made |
+| R-61 Check types | "KYB", "AML", "IEC", "Sanctions", "Company registry"; no "Kyb"-style label anywhere on the tab | the same, and the manual form offers "KYB, Company registry, GST, IEC, UBO, AML, CFT, Sanctions, PEP, Adverse media" | not applicable (D8) |
+
+No console error and no 5xx response on any of these screens.
+
+### 15.4 Gates (5 October 2026, `main` @ `9ed6cb6` + this branch)
+
+| Gate | Result |
+|---|---|
+| Migration head | One: `onboarding_0043_identity_type`; `alembic check` reports no new upgrade operations |
+| CRM suite (`pytest --crm`) | **2,723 passed, 1 skipped, 0 failed** of 2,724 (the 5 October baseline of 2,721 plus the 3 new tests); the skip is the Windows symlink test. Run in six chunks against a scratch database at head. On the first pass two tests failed on a timestamp tie and each then passed four runs in a row; neither file is touched here: `test_background_check_service.py::TestChain::test_two_concurrent_moves_serialise_and_only_one_wins` (two decisions share `decided_at`, so the order falls to a random id: R-38) and `test_buyer_migration_safety.py::test_a_created_company_gets_one_creation_row_saying_where_it_came_from` (`migrate_deal_buyers.py` picks the "earliest" deal by `(created_at, deal_id)`, so two deals created in the same tick tie the same way; a new instance of R-38). Passing chunk paths explicitly also collected 229 legacy `onboarding_request` tests that `--crm` leaves out; 5 of them failed and are not part of the gate |
+| Ruff | 16 findings, all pre-existing (none in a changed file) |
+| import-linter | 19 kept, 0 broken |
+| TypeScript | 0 errors |
+| ESLint | 0 errors, 2 warnings (`AuthContext.tsx`, pre-existing) |
+| Frontend tests | 65 files, **896** passed (884 + 12 new; one existing expectation changed: "Bank account") |
+| Production build | Passes, no chunk warning (entry 448 kB, 146 kB gzip) |
+| Generated artifacts | `openapi.json` and `schema.ts` regenerated with `APP_NAME` at its default; only the two `completed_by_name` fields were added. `test_openapi_artifact_is_current.py` passes |
+
+### 15.5 Display refinements in the same pull request, and its audit (6 October 2026)
+
+Two later commits on the branch (`29aae17`, `283a8e9`) changed more screens than §15.1
+lists, and one change reaches outside `modules/onboarding`
+(`frontend/src/platform/access/capabilities.ts`). None changes the backend or a contract.
+
+| Id | Kind | Change | Covered by | Status |
+|---|---|---|---|---|
+| R-62 | UX | **View a document in the CRM.** *View document* beside *Download* on the Documents list (company and deal) opens PDFs, images and plain text in a wide side panel (`DocumentViewer`), from a blob of the bytes the download route serves; *Download* in the panel saves those bytes without fetching again. SVG and HTML are download only (a blob URL runs with the CRM's origin). The blob is freed when the panel closes or the row unmounts. The per-row scanner name went; the card's single "Prototype: pass-through scanner" notice stays (frontend-plan §8.5) | `record.test.tsx` (which types get View; view, save, free), `DealDetailPage.test.tsx` (the notice once, not per row) | **DONE** |
+| R-63 | UX | **Pipeline cards say what each company waits on.** A next-step line from the row alone (unreviewed lead, not-qualified lead, prospect, paused/ended), "N waiting on you" on the Lead column for OPERATIONS only (new capability `queue.qualification`, never a permission), one facts line (industry · country · RM), columns scroll past 34rem. frontend-plan §6.12 | `PipelinePage.test.tsx`, `capabilities.test.ts` | **DONE** |
+| R-64 | UX | **Identifiers off the list and the header.** Company rows show industry · country · RM, with no PAN or GSTIN; the record header drops PAN, GSTIN and the background-check cycle line; the Journey path drops its guidance line; the page descriptions on Companies and Pipeline and the GST registrations panel description went; the Deals tab moved after Background check. frontend-plan §6.3, §6.5, §6.7 and the `?tab=` order updated to match | `ExportersListPage.test.tsx` (no identifier, any role; RM kept), `ExporterDetailPage.test.tsx` (masking still proved on the Company panel) | **DONE** |
+
+**Audit fixes (unstaged on top of the branch).** `DealDetailPage.test.tsx` still expected the
+per-row "pass-through" and failed; task ids in test names, docstrings and comments
+replaced with what the code does; commented-out JSX removed (GST panel text, page
+descriptions); the RM restored on Companies rows (the commit had commented it out while
+the function's comment still promised it); the viewer's blob freed on unmount and its
+Download made to reuse the bytes; the prospect line no longer claims "waiting" on a check
+that may be flagged or declined; `demo.md` steps 9 and 11 say **KYB**/**AML**.
+
+**Gates after the audit fixes** (branch head `1772c91` + the fixes above, scratch database
+at head, dropped afterwards): one migration head, `onboarding_0043_identity_type`; CRM suite
+(`pytest --crm`) **2,747 passed, 1 skipped, 0 failed** (the 2,744 baseline plus the 3 new
+tests; 45 min); ruff 17, none in a changed file; import-linter 19 kept, 0 broken;
+TypeScript 0 errors; ESLint 0 errors, 2 warnings (`AuthContext.tsx`); frontend **66 files,
+927 passed**; production build passes (entry 490 kB, 158 kB gzip).

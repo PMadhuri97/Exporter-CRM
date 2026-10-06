@@ -185,7 +185,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
 9. **Switch to COMPLIANCE** (`compliance@aner.com`). On *Background check*:
    - *Review checklist*: set each of the seven items to **Passed** (or **Exempt** for
      the two exception questions) and **Save** each.
-   - **Record a result** three times — *Check* **Kyb**, **Aml**, **Sanctions**, *Outcome*
+   - **Record a result** three times — *Check* **KYB**, **AML**, **Sanctions**, *Outcome*
      **Passed**, an *Evidence note* → **Record check**. *Required for Clear (this cycle)*
      turns to *KYB: Passed · AML: Passed · Sanctions: Passed* (rule B).
    - **Propose Clear** → *Risk rating* `LOW` and a reason → **Propose for approval**.
@@ -200,7 +200,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
 11. **Screen the buyer** (still COMPLIANCE). On the deal, the buyer's card shows
     *Sanctions: Not checked · AML: Not checked* and **Open the background check**. On
     the buyer company's *Background check*, **Record a result** for **Sanctions** and
-    **Aml**, both **Passed**. A buyer's checks attach to the buyer and never change the
+    **AML**, both **Passed**. A buyer's checks attach to the buyer and never change the
     seller's check (decision 9); the handover needs both `PASSED` (BQ-4), so a buyer
     nobody screened reads `MISSING` and blocks — show that refusal first if you want.
 12. **Hand over** (back as OPERATIONS). The deal now offers **Hand over to lending** →

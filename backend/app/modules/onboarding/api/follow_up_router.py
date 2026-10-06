@@ -136,7 +136,13 @@ async def list_follow_ups(
         limit=limit,
         offset=offset,
     )
-    names = await actor_names(db, current_user, (row.actor_id for row in view.follow_ups))
+    # Who logged each follow-up and who completed it, in one lookup.
+    names = await actor_names(
+        db,
+        current_user,
+        [row.actor_id for row in view.follow_ups]
+        + [row.completion.completed_by for row in view.follow_ups if row.completion],
+    )
     return FollowUpListResponse.from_view(
         view, limit=limit, offset=offset, actor_names=names
     )
@@ -192,7 +198,10 @@ async def complete_follow_up(
         # From the session, never from the body (architecture §7.5).
         actor_id=str(current_user.id),
     )
-    return FollowUpCompletionResponse.model_validate(completion)
+    names = await actor_names(db, current_user, [completion.completed_by])
+    return FollowUpCompletionResponse.model_validate(completion).model_copy(
+        update={"completed_by_name": names.get(completion.completed_by or "")}
+    )
 
 
 __all__ = ["router"]

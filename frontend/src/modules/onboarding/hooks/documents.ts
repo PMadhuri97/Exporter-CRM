@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   createDownloadLink,
+  getDocument,
   getDocumentCategories,
   listCompanyDocuments,
   listDealDocuments,
@@ -50,6 +51,24 @@ export function useDealDocuments(
     queryKey: ['documents', 'deal', dealId, params],
     queryFn: () => listDealDocuments(dealId!, params),
     enabled: Boolean(dealId),
+  });
+}
+
+/**
+ * One document's row, for naming it where it is cited (verification evidence).
+ *
+ * Fetched only when a component that cites it mounts, and cached: a file name does
+ * not change, and several results citing the same document share one read. A
+ * refusal (403/404) is not retried — the caller keeps showing the id. Downloading
+ * still reads the row afresh, since the scan status can move.
+ */
+export function useDocument(documentId: string | undefined) {
+  return useQuery({
+    queryKey: ['document', documentId],
+    queryFn: () => getDocument(documentId!),
+    enabled: Boolean(documentId),
+    staleTime: 5 * 60_000,
+    retry: false,
   });
 }
 

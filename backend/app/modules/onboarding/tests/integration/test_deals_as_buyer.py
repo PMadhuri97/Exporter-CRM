@@ -159,6 +159,60 @@ async def test_the_buyer_side_names_the_seller_not_the_company_itself():
     assert row.buyer_name != buyer_name
 
 
+async def test_the_seller_side_names_the_buyer_company_then_the_legacy_buyer():
+    """Every new deal records its buyer as a company, and the
+    seller's list once read only the legacy ``deal_buyer`` row — so a deal with a
+    buyer company read "No buyer recorded yet" on the Deals tab while the deal page
+    named it. The company wins; the legacy name is the fallback; no buyer is
+    ``None``."""
+    seller = await _named_seller(f"Seller Side {uuid.uuid4().hex[:8]}")
+    buyer_name = f"Hamburg Trading {uuid.uuid4().hex[:8]}"
+    buyer = await _buyer_only_company(buyer_name)
+    with_company = await _deal_with_buyer_company(seller=seller, buyer=buyer)
+
+    async with db_services.AsyncSessionLocal() as db:
+        legacy = await DealService(db).open_deal(
+            seller, reference=f"Legacy {uuid.uuid4().hex[:8]}", actor_id="rm-1"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        await DealService(db).set_buyer(
+            legacy.id, name="Legacy Buyer GmbH", country="DE", actor_id="rm-1"
+        )
+    async with db_services.AsyncSessionLocal() as db:
+        no_buyer = await DealService(db).open_deal(
+            seller, reference=f"Empty {uuid.uuid4().hex[:8]}", actor_id="rm-1"
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        rows, total = await DealService(db).list_for_company(seller)
+    names = {row.id: row.buyer_name for row in rows}
+    assert total == 3
+    assert names == {
+        with_company: buyer_name,
+        legacy.id: "Legacy Buyer GmbH",
+        no_buyer.id: None,
+    }
+
+
+async def test_the_seller_side_names_a_buyer_company_to_every_reader(client: AsyncClient):
+    """A company name is not a masked identifier (architecture §9), so the masked
+    roles read it as stored — DEVELOPER included."""
+    seller = await _named_seller(f"Route Seller Side {uuid.uuid4().hex[:8]}")
+    buyer_name = f"Route Hamburg {uuid.uuid4().hex[:8]}"
+    buyer = await _buyer_only_company(buyer_name)
+    deal_id = await _deal_with_buyer_company(seller=seller, buyer=buyer)
+
+    for role in (UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.DEVELOPER):
+        token = await token_with_role(client, role)
+        resp = await client.get(
+            f"{BASE}/exporters/{seller}/deals", headers=auth_header(token)
+        )
+        assert resp.status_code == 200, (role, resp.text)
+        assert [(d["id"], d["buyer_name"]) for d in resp.json()["deals"]] == [
+            (str(deal_id), buyer_name)
+        ], role
+
+
 async def test_stage_filters_still_apply_on_the_buyer_side():
     seller = await _named_seller(f"Staged Seller {uuid.uuid4().hex[:8]}")
     buyer = await _buyer_only_company(f"Staged Buyer {uuid.uuid4().hex[:8]}")
