@@ -18,11 +18,13 @@ from app.modules.onboarding.infrastructure.storage.passthrough_scanner import (
     PASS_THROUGH_SCANNER_NAME,
     PassThroughScanner,
 )
+from app.modules.onboarding.infrastructure.storage.s3 import S3Storage
 
 __all__ = [
     "PASS_THROUGH_SCANNER_NAME",
     "LocalDiskStorage",
     "PassThroughScanner",
+    "S3Storage",
     "sign_key",
     "verify_signed_key",
 ]

@@ -74,19 +74,24 @@ from app.modules.onboarding.infrastructure.repositories.crm_document_repository 
 from app.modules.onboarding.infrastructure.storage import (
     LocalDiskStorage,
     PassThroughScanner,
+    S3Storage,
 )
+from app.modules.onboarding.infrastructure.storage.config import storage_backend
 
 logger = structlog.get_logger(__name__)
 
 
 def build_storage_service() -> StorageService:
-    """The prototype's storage: local disk, behind a labelled pass-through scanner.
+    """Document storage: S3 when configured, local disk for local development/tests.
 
     One place to change when S3 and a real scanner arrive (gate §7.6),
     rather than a constructor call in every route. Not a FastAPI dependency: it
     holds no session and nothing about it varies per request.
     """
+    if storage_backend() == "s3":
+        return StorageService(S3Storage(), PassThroughScanner())
     return StorageService(LocalDiskStorage(), PassThroughScanner())
+
 
 
 class DocumentService:
