@@ -76,6 +76,10 @@ describe('VerificationSection — states', () => {
     expect(await screen.findByText('No screening results yet')).toBeInTheDocument();
     // What is missing is listed rather than silently absent.
     expect(screen.getByText('10 check types have no result')).toBeInTheDocument();
+    // Named for a person, acronyms in capitals (R-60).
+    expect(screen.getByText('KYB')).toBeInTheDocument();
+    expect(screen.getByText('Company registry')).toBeInTheDocument();
+    expect(screen.queryByText('Kyb')).not.toBeInTheDocument();
   });
 
   it('says so when the results cannot be loaded', async () => {
@@ -135,7 +139,7 @@ describe('VerificationSection — every result on the company is shown', () => {
     );
     renderSection();
     const other = await screen.findByTestId('other-company-checks');
-    expect(within(other).getByText('Bank Account')).toBeInTheDocument();
+    expect(within(other).getByText('Bank account')).toBeInTheDocument();
     expect(within(other).getByRole('button', { name: 'Review' })).toBeInTheDocument();
     expect(screen.getAllByTestId('verification-result')).toHaveLength(2);
     expect(screen.getByRole('button', { name: /Company screenings/ })).toHaveTextContent('(2)');

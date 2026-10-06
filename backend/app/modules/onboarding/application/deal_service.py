@@ -302,29 +302,44 @@ class DealService:
         is the only thing that distinguishes the rows. The field keeps its name
         because it is the same column of the same table — "the other party on this
         deal" — and renaming it would be a contract change for every caller.
+
+        On the seller side it is the buyer **company's** name when the deal names
+        one, and the legacy ``deal_buyer`` row's only when it does not — the same
+        precedence as the handover snapshot (plan P4-4). A company name is not a
+        masked identifier, so every reader gets it as stored.
         """
         deals, total = await self._deals.list_for_company(
             company_id, stages=stages, as_buyer=as_buyer, limit=limit, offset=offset
         )
-        sellers: dict[uuid.UUID, str | None] = {}
-        if as_buyer and deals:
+        # The other party is a company record on the buyer side (the seller) and,
+        # on the seller side, whenever the deal names a buyer company: one query
+        # for every row's name either way, rather than one per row.
+        others = {
+            deal.company_id if as_buyer else deal.buyer_company_id for deal in deals
+        } - {None}
+        names: dict[uuid.UUID, str | None] = {}
+        if others:
             rows = await self._db.execute(
                 select(ExporterProfile.customer_id, ExporterProfile.name).where(
-                    ExporterProfile.customer_id.in_({deal.company_id for deal in deals})
+                    ExporterProfile.customer_id.in_(others)
                 )
             )
-            sellers = {row.customer_id: row.name for row in rows}
+            names = {row.customer_id: row.name for row in rows}
+
+        def other_party(deal: Deal) -> str | None:
+            if as_buyer:
+                return names.get(deal.company_id)
+            if deal.buyer_company_id is not None:
+                return names.get(deal.buyer_company_id)
+            return deal.buyer.name if deal.buyer is not None else None
+
         return [
             DealListItemView(
                 id=deal.id,
                 company_id=deal.company_id,
                 reference=deal.reference,
                 stage=deal.stage,
-                buyer_name=(
-                    sellers.get(deal.company_id)
-                    if as_buyer
-                    else (deal.buyer.name if deal.buyer is not None else None)
-                ),
+                buyer_name=other_party(deal),
                 created_at=deal.created_at,
                 updated_at=deal.updated_at,
             )

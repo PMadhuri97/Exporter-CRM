@@ -32,7 +32,7 @@ import type {
   VerificationType,
 } from '../types';
 
-import { isWebLink, MANUAL_OUTCOMES, RISK_LEVELS } from './verification-labels';
+import { isWebLink, MANUAL_OUTCOMES, RISK_LEVELS, verificationTypeLabel } from './verification-labels';
 
 const FIELD =
   'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60';
@@ -143,7 +143,7 @@ export function ManualResultForm({
           >
             {checkTypes.map((type) => (
               <option key={type} value={type}>
-                {humanize(type)}
+                {verificationTypeLabel(type)}
               </option>
             ))}
           </select>

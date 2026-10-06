@@ -29,7 +29,6 @@
 import { useState } from 'react';
 
 import { Icon } from '@/design/icons';
-import { humanize } from '@/lib/format';
 
 import { useBackgroundCheck, useCheckCycles, useVerificationResults } from '../hooks';
 import type { VerificationResult } from '../types';
@@ -38,7 +37,7 @@ import { cycleKindLabel } from './background-check-labels';
 import { BankActivityPanel } from './BankActivityPanel';
 import { ManualResultForm } from './ManualResultForm';
 import { ScreeningChecklist } from './ScreeningChecklist';
-import { COMPANY_CHECK_TYPES } from './verification-labels';
+import { COMPANY_CHECK_TYPES, verificationTypeLabel } from './verification-labels';
 import { VerificationResultRow } from './VerificationResultRow';
 
 type WorkspaceTab = 'COMPANY' | 'BANK';
@@ -149,7 +148,7 @@ function MissingChecks({ results }: { results: VerificationResult[] }) {
                 key={type}
                 className="inline-flex rounded-sm border border-line bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-3"
               >
-                {humanize(type)}
+                {verificationTypeLabel(type)}
               </span>
             ))}
           </div>

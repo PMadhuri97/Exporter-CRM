@@ -4566,6 +4566,11 @@ export interface components {
              */
             completed_by?: string | null;
             /**
+             * Completed By Name
+             * @description Who completed it, by name: the account's full name, or its email when it has none (DEVELOPER is given the full name only). Null when the platform acted or no account with a name matches `completed_by`.
+             */
+            completed_by_name?: string | null;
+            /**
              * Completed At
              * Format: date-time
              */
@@ -4589,6 +4594,11 @@ export interface components {
             next_due_at: string | null;
             /** Completed By */
             completed_by: string | null;
+            /**
+             * Completed By Name
+             * @description Who completed it, by name: the account's full name, or its email when it has none (DEVELOPER is given the full name only). Null when the platform acted or no account with a name matches `completed_by`.
+             */
+            completed_by_name?: string | null;
             /**
              * Completed At
              * Format: date-time

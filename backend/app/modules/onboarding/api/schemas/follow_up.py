@@ -30,6 +30,12 @@ from app.modules.onboarding.domain.follow_up_views import (
     FollowUpView,
 )
 
+_COMPLETED_BY_NAME = (
+    "Who completed it, by name: the account's full name, or its email when it has "
+    "none (DEVELOPER is given the full name only). Null when the platform acted or "
+    "no account with a name matches `completed_by`."
+)
+
 
 class CompleteFollowUpRequest(BaseModel):
     """Record that a follow-up was dealt with.
@@ -79,6 +85,7 @@ class FollowUpCompletionResponse(BaseModel):
             "itself acted."
         ),
     )
+    completed_by_name: str | None = Field(default=None, description=_COMPLETED_BY_NAME)
     completed_at: datetime
 
 
@@ -93,6 +100,7 @@ class FollowUpCompletionSummary(BaseModel):
     note: str | None
     next_due_at: datetime | None
     completed_by: str | None
+    completed_by_name: str | None = Field(default=None, description=_COMPLETED_BY_NAME)
     completed_at: datetime
 
 
@@ -138,9 +146,16 @@ class FollowUpResponse(BaseModel):
     )
 
     @classmethod
-    def from_view(cls, view: FollowUpView, *, actor_name: str | None = None) -> FollowUpResponse:
+    def from_view(
+        cls, view: FollowUpView, *, actor_names: Mapping[str, str] | None = None
+    ) -> FollowUpResponse:
         """`state` is a property on the view, so it is passed explicitly rather than
-        picked up by `from_attributes` — which reads fields, not properties."""
+        picked up by `from_attributes` — which reads fields, not properties.
+
+        `actor_names` names both people on the row — who logged it and who completed
+        it — from one lookup (`api/actor_names.py`)."""
+        names = actor_names or {}
+        completion = view.completion
         return cls(
             activity_id=view.activity_id,
             customer_id=view.customer_id,
@@ -149,15 +164,27 @@ class FollowUpResponse(BaseModel):
             subject=view.subject,
             notes=view.notes,
             actor_id=view.actor_id,
-            actor_name=actor_name,
+            actor_name=names.get(view.actor_id),
             occurred_at=view.occurred_at,
             due_at=view.due_at,
             is_overdue=view.is_overdue,
             state=view.state,
             completion=(
                 None
-                if view.completion is None
-                else FollowUpCompletionSummary.model_validate(view.completion)
+                if completion is None
+                else FollowUpCompletionSummary(
+                    id=completion.id,
+                    outcome=completion.outcome,
+                    note=completion.note,
+                    next_due_at=completion.next_due_at,
+                    completed_by=completion.completed_by,
+                    completed_by_name=(
+                        names.get(completion.completed_by)
+                        if completion.completed_by is not None
+                        else None
+                    ),
+                    completed_at=completion.completed_at,
+                )
             ),
         )
 
@@ -205,10 +232,9 @@ class FollowUpListResponse(BaseModel):
         offset: int,
         actor_names: Mapping[str, str] | None = None,
     ) -> FollowUpListResponse:
-        names = actor_names or {}
         return cls(
             follow_ups=[
-                FollowUpResponse.from_view(row, actor_name=names.get(row.actor_id))
+                FollowUpResponse.from_view(row, actor_names=actor_names)
                 for row in view.follow_ups
             ],
             follow_ups_total=view.follow_ups_total,

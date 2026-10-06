@@ -133,6 +133,64 @@ async def test_activities_and_follow_ups_name_who_logged_them(client: AsyncClien
     assert [f["actor_name"] for f in follow_ups.json()["follow_ups"]] == ["Priya Ops"]
 
 
+async def test_a_completed_follow_up_names_who_completed_it(client: AsyncClient, people):
+    """R-58. The Agenda's Done tab printed "Done by 853ef096-…": the completion was
+    served with `completed_by` only. It now carries `completed_by_name`, resolved
+    as every other actor is — the email standing in for an unnamed account for
+    staff, and never for DEVELOPER."""
+    company_id = await make_company()
+    due = (datetime.now(UTC) + timedelta(days=2)).isoformat()
+    completers = {"named": people["named_token"], "unnamed": people["unnamed_token"]}
+    activity_ids: dict[str, str] = {}
+    for who, token in completers.items():
+        logged = await client.post(
+            f"{BASE}/exporters/{company_id}/activities",
+            json={"activity_type": "FOLLOW_UP", "subject": f"Chase {who}", "due_at": due},
+            headers=auth_header(people["named_token"]),
+        )
+        assert logged.status_code == 201, logged.text
+        activity_ids[who] = logged.json()["id"]
+        done = await client.post(
+            f"{BASE}/follow-ups/{activity_ids[who]}/completion",
+            json={"outcome": "DONE"},
+            headers=auth_header(token),
+        )
+        assert done.status_code == 201, done.text
+        assert done.json()["completed_by_name"] == (
+            "Priya Ops" if who == "named" else people["unnamed_email"]
+        )
+
+    async def done_rows(token: str) -> list[dict]:
+        resp = await client.get(
+            f"{BASE}/follow-ups",
+            params={"customer_id": str(company_id), "state": "DONE"},
+            headers=auth_header(token),
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()["follow_ups"]
+
+    staff_rows = await done_rows(people["unnamed_token"])
+    developer_rows = await done_rows(people["developer_token"])
+
+    def by_activity(rows: list[dict], key: str) -> dict[str, str | None]:
+        return {row["activity_id"]: row["completion"][key] for row in rows}
+
+    assert by_activity(staff_rows, "completed_by_name") == {
+        activity_ids["named"]: "Priya Ops",
+        activity_ids["unnamed"]: people["unnamed_email"],
+    }
+    # DEVELOPER: the full name, never the email (architecture §8).
+    assert by_activity(developer_rows, "completed_by_name") == {
+        activity_ids["named"]: "Priya Ops",
+        activity_ids["unnamed"]: None,
+    }
+    # The id is still served beside the name.
+    assert by_activity(staff_rows, "completed_by") == {
+        activity_ids["named"]: people["named_id"],
+        activity_ids["unnamed"]: people["unnamed_id"],
+    }
+
+
 async def test_background_check_decisions_name_who_decided(client: AsyncClient, people):
     company_id = await make_company()
     started = await client.post(

@@ -29,7 +29,7 @@
 import { useState } from 'react';
 
 import { Icon } from '@/design/icons';
-import { formatDateTime, humanize } from '@/lib/format';
+import { formatDateTime } from '@/lib/format';
 
 import { useVerificationResults } from '../hooks';
 import type { BuyerSnapshot, VerificationResult } from '../types';
@@ -37,7 +37,7 @@ import type { BuyerSnapshot, VerificationResult } from '../types';
 import { EvidenceList } from './EvidenceList';
 import { ManualResultForm } from './ManualResultForm';
 import { ReviewChain, ReviewDialog } from './ReviewDialog';
-import { BUYER_CHECK_TYPES, provenanceLabel } from './verification-labels';
+import { BUYER_CHECK_TYPES, provenanceLabel, verificationTypeLabel } from './verification-labels';
 import { VerificationStatusChip } from './VerificationStatusChip';
 
 const SECONDARY_BUTTON =
@@ -123,7 +123,7 @@ function BuyerCheckRow({
   return (
     <li data-testid="buyer-check" className="py-4 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium text-ink">{humanize(result.verification_type)}</span>
+        <span className="font-medium text-ink">{verificationTypeLabel(result.verification_type)}</span>
         <VerificationStatusChip value={result.status} />
         {result.risk_level && <VerificationStatusChip value={result.risk_level} />}
         {result.review_status && <VerificationStatusChip value={result.review_status} />}

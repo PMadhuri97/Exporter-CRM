@@ -52,6 +52,16 @@ describe('VerificationResultRow — provenance, as the server states it', () => 
     expect(row).not.toHaveTextContent('rxil_stub');
   });
 
+  it.each([
+    ['KYB', 'KYB'],
+    ['AML', 'AML'],
+    ['SANCTIONS', 'Sanctions'],
+    ['COMPANY_REGISTRY', 'Company registry'],
+  ] as const)('names the %s check type as %s (R-60)', (type, label) => {
+    const row = renderRow(verificationResult({ verification_type: type }));
+    expect(within(row).getByText(label)).toBeInTheDocument();
+  });
+
   it('names a real provider by its stored name', () => {
     const row = renderRow(verificationResult({ provenance: 'PROVIDER', provider: 'surepass' }));
     expect(row).toHaveTextContent('SUREPASS');

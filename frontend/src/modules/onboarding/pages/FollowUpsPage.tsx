@@ -235,7 +235,7 @@ function FollowUpRow({ row, isStaff }: { row: FollowUp; isStaff: boolean }) {
             <Icon.done size={13} /> {humanize(row.completion.outcome)}
           </span>
           <span className="text-xs text-ink-3">
-            by {row.completion.completed_by ?? 'the platform'} on{' '}
+            by {actorLabel(row.completion.completed_by_name, row.completion.completed_by)} on{' '}
             {formatDateTime(row.completion.completed_at)}
           </span>
           {row.completion.next_due_at && (

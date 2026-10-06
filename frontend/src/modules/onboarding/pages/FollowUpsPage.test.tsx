@@ -148,6 +148,35 @@ describe('FollowUpsPage — L3-11a-ii', () => {
     ).toBeInTheDocument();
   });
 
+  it('names who completed a follow-up, not their account id (R-58)', async () => {
+    vi.mocked(listFollowUps).mockResolvedValue(
+      list({
+        follow_ups: [
+          { ...DONE, completion: { ...DONE.completion!, completed_by_name: 'Priya Ops' } },
+        ],
+        follow_ups_total: 1,
+      }),
+    );
+    renderPage();
+    const row = await screen.findByTestId('follow-up-row');
+    expect(within(row).getByText(/by Priya Ops on/)).toBeInTheDocument();
+    expect(within(row).queryByText(new RegExp(USER_ID))).not.toBeInTheDocument();
+  });
+
+  it('falls back to a shortened id when no name is served, as other screens do', async () => {
+    // DEVELOPER is not given an unnamed account's email, so the name can be null.
+    vi.mocked(listFollowUps).mockResolvedValue(
+      list({
+        follow_ups: [{ ...DONE, completion: { ...DONE.completion!, completed_by_name: null } }],
+        follow_ups_total: 1,
+      }),
+    );
+    renderPage();
+    const row = await screen.findByTestId('follow-up-row');
+    expect(within(row).getByText(/by User 22222222… on/)).toBeInTheDocument();
+    expect(within(row).queryByText(new RegExp(USER_ID))).not.toBeInTheDocument();
+  });
+
   it('offers no way to complete a follow-up that is already done', async () => {
     vi.mocked(listFollowUps).mockResolvedValue(
       list({ follow_ups: [DONE], follow_ups_total: 1 }),
