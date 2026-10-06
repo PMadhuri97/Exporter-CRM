@@ -20,7 +20,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('EvidenceList — a cited document by name (R-60)', () => {
+describe('EvidenceList — a cited document by name', () => {
   it('shows the file name once the document is read, and the short id until then', async () => {
     vi.mocked(getDocument).mockResolvedValue(crmDocument({ file_name: 'IEC-certificate.pdf' }));
     renderWithClient(<EvidenceList note={null} refs={CITED} />);

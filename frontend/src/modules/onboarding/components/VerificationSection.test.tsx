@@ -76,7 +76,7 @@ describe('VerificationSection — states', () => {
     expect(await screen.findByText('No screening results yet')).toBeInTheDocument();
     // What is missing is listed rather than silently absent.
     expect(screen.getByText('10 check types have no result')).toBeInTheDocument();
-    // Named for a person, acronyms in capitals (R-61).
+    // Named for a person, acronyms in capitals.
     expect(screen.getByText('KYB')).toBeInTheDocument();
     expect(screen.getByText('Company registry')).toBeInTheDocument();
     expect(screen.queryByText('Kyb')).not.toBeInTheDocument();

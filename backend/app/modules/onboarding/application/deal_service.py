@@ -305,7 +305,7 @@ class DealService:
 
         On the seller side it is the buyer **company's** name when the deal names
         one, and the legacy ``deal_buyer`` row's only when it does not — the same
-        precedence as the handover snapshot (plan P4-4). A company name is not a
+        precedence as the handover snapshot. A company name is not a
         masked identifier, so every reader gets it as stored.
         """
         deals, total = await self._deals.list_for_company(

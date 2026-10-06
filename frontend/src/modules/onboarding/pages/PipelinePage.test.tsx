@@ -120,7 +120,7 @@ describe('PipelinePage — the three-column journey', () => {
     // A prospect waits on compliance, not on the person reading the board — so it is
     // said, but not counted.
     const prospect = screen.getByRole('region', { name: 'Prospect' });
-    expect(await within(prospect).findByText('Waiting on the background check')).toBeInTheDocument();
+    expect(await within(prospect).findByText('Needs a clear background check')).toBeInTheDocument();
     expect(within(prospect).queryByText(/waiting on you/)).not.toBeInTheDocument();
   });
 

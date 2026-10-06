@@ -272,7 +272,9 @@ describe('DealDetailPage — documents', () => {
     await waitFor(() => expect(listDealDocuments).toHaveBeenCalled());
     expect(await screen.findByText('bill-of-lading.pdf')).toBeInTheDocument();
     expect(screen.getByText('Available')).toBeInTheDocument();
-    expect(screen.getByText('pass-through')).toBeInTheDocument();
+    // Said once above the list (frontend-plan §8.5), not repeated beside each row.
+    expect(screen.getByText('Prototype: pass-through scanner')).toBeInTheDocument();
+    expect(screen.queryByText('pass-through', { exact: true })).not.toBeInTheDocument();
   });
 
   it('says a staff upload of the exporter’s paperwork came from the exporter, via staff', async () => {

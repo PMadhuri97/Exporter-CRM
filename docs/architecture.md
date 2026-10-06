@@ -303,8 +303,9 @@ the scanner is a clearly labelled pass-through. Contract:
   their completions, screening decisions and verification reviews — also carries the name
   (`actor_name`, `decided_by_name`, `reviewed_by_name`, `completed_by_name`), resolved
   when read through the platform's auth facade (`display_names`, called from
-  `api/actor_names.py`) rather than by giving staff the user list. OPERATIONS, COMPLIANCE and ADMIN get the account's full name or, failing
-  that, its email; DEVELOPER gets the full name only. No actor reads "By the platform".
+  `api/actor_names.py`) rather than by giving staff the user list. OPERATIONS,
+  COMPLIANCE and ADMIN get the account's full name or, failing that, its email;
+  DEVELOPER gets the full name only. No actor reads "By the platform".
 - **Events** — two announcements, each published after the commit that made it true
   and best effort (the history row is the source of truth): `company.became_customer`
   and `deal.handed_over`. The default bus is in memory and no receiver is built yet

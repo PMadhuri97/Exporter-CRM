@@ -160,7 +160,7 @@ async def test_the_buyer_side_names_the_seller_not_the_company_itself():
 
 
 async def test_the_seller_side_names_the_buyer_company_then_the_legacy_buyer():
-    """R-58. Every new deal records its buyer as a company (plan P4-4), and the
+    """Every new deal records its buyer as a company, and the
     seller's list once read only the legacy ``deal_buyer`` row — so a deal with a
     buyer company read "No buyer recorded yet" on the Deals tab while the deal page
     named it. The company wins; the legacy name is the fallback; no buyer is

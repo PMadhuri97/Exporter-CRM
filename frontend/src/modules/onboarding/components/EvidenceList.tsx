@@ -10,7 +10,7 @@
  * (`fetchDocumentBlob`), save the bytes. The document row is read first for its file
  * name and whether it may be served; a refusal is shown, never worked around.
  *
- * Each cited document is also named by its file name on display (R-60), from the same
+ * Each cited document is also named by its file name on display, from the same
  * row through a cached query; the shortened id stands in until then.
  */
 

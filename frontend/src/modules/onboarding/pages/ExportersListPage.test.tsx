@@ -78,8 +78,8 @@ describe('ExportersListPage — identifiers are not on the list', () => {
     });
   });
 
-  // This block used to assert how PAN was *masked* on each row (decision 12: masked for
-  // OPERATIONS whether or not they own the company, plain for COMPLIANCE). The rows no
+  // This block used to assert how PAN was *masked* on each row (masked for OPERATIONS
+  // whether or not they own the company, plain for COMPLIANCE). The rows no
   // longer carry PAN or GSTIN at all, so there is no masking left here to get wrong —
   // the rule itself is still proved on the company record, in `ExporterDetailPage.test`.
   // What matters now is the stronger claim: neither value reaches this screen in any
@@ -94,6 +94,12 @@ describe('ExportersListPage — identifiers are not on the list', () => {
     expect(screen.queryByText(/PAN/)).not.toBeInTheDocument();
     expect(screen.queryByText(/GSTIN/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /reveal value/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps the country and the relationship manager on the second line', async () => {
+    mockUser('OPERATIONS', 'someone-else');
+    renderPage();
+    expect(await screen.findByText('IN · RM Jane RM')).toBeInTheDocument();
   });
 });
 

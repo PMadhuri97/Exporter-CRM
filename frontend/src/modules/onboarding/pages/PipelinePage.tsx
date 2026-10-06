@@ -86,7 +86,10 @@ function nextStep(profile: ExporterProfileListItem): NextStep | null {
       // NOT_QUALIFIED and still a lead: decided, and it stays here. Not our move.
       return { text: 'Not qualified — stays a lead', icon: Icon.info, onUs: false };
     case 'PROSPECT':
-      return { text: 'Waiting on the background check', icon: Icon.backgroundCheck, onUs: false };
+      // Not "waiting on": the row does not carry the check's state, and a prospect whose
+      // check came back flagged or declined is not waiting on anything. What is true of
+      // every prospect is what it still needs.
+      return { text: 'Needs a clear background check', icon: Icon.backgroundCheck, onUs: false };
     default:
       return null;
   }
@@ -227,7 +230,6 @@ export function PipelinePage() {
       <PageHeader
         title="Companies"
         meta={<CompaniesViewSwitch view="board" />}
-        // description="The same companies as three journey columns. Nothing here moves a company: the journey moves on its own, when the decisions behind it are made."
         actions={
           <form
             role="search"

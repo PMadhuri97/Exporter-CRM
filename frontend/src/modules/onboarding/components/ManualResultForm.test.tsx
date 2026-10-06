@@ -80,7 +80,7 @@ describe('ManualResultForm — what it offers', () => {
     expect(types).toEqual(COMPANY_CHECK_TYPES);
   });
 
-  it('labels the check types for a person: acronyms in capitals (R-61)', () => {
+  it('labels the check types for a person: acronyms in capitals', () => {
     const form = renderForm();
     const labels = within(within(form).getByLabelText('Check'))
       .getAllByRole('option')

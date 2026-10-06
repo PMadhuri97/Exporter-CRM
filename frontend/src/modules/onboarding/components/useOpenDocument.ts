@@ -44,6 +44,22 @@ export function isViewable(document_: CrmDocument): boolean {
   return VIEWABLE_TYPES.has(type);
 }
 
+/**
+ * Hands the browser bytes already fetched, to save under `fileName`. It does not revoke
+ * the URL: the caller that made it decides how long it lives.
+ */
+export function saveObjectUrl(objectUrl: string, fileName: string) {
+  const anchor = window.document.createElement('a');
+  anchor.href = objectUrl;
+  // A blob URL ignores `Content-Disposition`, so the name is set from the row — where
+  // the original name lives (it is deliberately not in the storage key).
+  anchor.download = fileName;
+  anchor.rel = 'noopener';
+  window.document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 export function useOpenDocument() {
   const download = useDownloadDocument();
 
@@ -65,15 +81,7 @@ export function useOpenDocument() {
     let objectUrl: string | null = null;
     try {
       objectUrl = URL.createObjectURL(await load(document_));
-      const anchor = window.document.createElement('a');
-      anchor.href = objectUrl;
-      // A blob URL ignores `Content-Disposition`, so the name is set from the row —
-      // where the original name lives (it is deliberately not in the storage key).
-      anchor.download = document_.file_name;
-      anchor.rel = 'noopener';
-      window.document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
+      saveObjectUrl(objectUrl, document_.file_name);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not open that document');
     } finally {

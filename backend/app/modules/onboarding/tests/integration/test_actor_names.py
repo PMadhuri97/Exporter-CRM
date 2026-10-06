@@ -134,7 +134,7 @@ async def test_activities_and_follow_ups_name_who_logged_them(client: AsyncClien
 
 
 async def test_a_completed_follow_up_names_who_completed_it(client: AsyncClient, people):
-    """R-59. The Agenda's Done tab printed "Done by 853ef096-…": the completion was
+    """The Agenda's Done tab once printed "Done by 853ef096-…": the completion was
     served with `completed_by` only. It now carries `completed_by_name`, resolved
     as every other actor is — the email standing in for an unnamed account for
     staff, and never for DEVELOPER."""

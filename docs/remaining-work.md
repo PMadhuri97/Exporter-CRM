@@ -931,3 +931,30 @@ No console error and no 5xx response on any of these screens.
 | Frontend tests | 65 files, **896** passed (884 + 12 new; one existing expectation changed: "Bank account") |
 | Production build | Passes, no chunk warning (entry 448 kB, 146 kB gzip) |
 | Generated artifacts | `openapi.json` and `schema.ts` regenerated with `APP_NAME` at its default; only the two `completed_by_name` fields were added. `test_openapi_artifact_is_current.py` passes |
+
+### 15.5 Display refinements in the same pull request, and its audit (6 October 2026)
+
+Two later commits on the branch (`29aae17`, `283a8e9`) changed more screens than §15.1
+lists, and one change reaches outside `modules/onboarding`
+(`frontend/src/platform/access/capabilities.ts`). None changes the backend or a contract.
+
+| Id | Kind | Change | Covered by | Status |
+|---|---|---|---|---|
+| R-62 | UX | **View a document in the CRM.** *View document* beside *Download* on the Documents list (company and deal) opens PDFs, images and plain text in a wide side panel (`DocumentViewer`), from a blob of the bytes the download route serves; *Download* in the panel saves those bytes without fetching again. SVG and HTML are download only (a blob URL runs with the CRM's origin). The blob is freed when the panel closes or the row unmounts. The per-row scanner name went; the card's single "Prototype: pass-through scanner" notice stays (frontend-plan §8.5) | `record.test.tsx` (which types get View; view, save, free), `DealDetailPage.test.tsx` (the notice once, not per row) | **DONE** |
+| R-63 | UX | **Pipeline cards say what each company waits on.** A next-step line from the row alone (unreviewed lead, not-qualified lead, prospect, paused/ended), "N waiting on you" on the Lead column for OPERATIONS only (new capability `queue.qualification`, never a permission), one facts line (industry · country · RM), columns scroll past 34rem. frontend-plan §6.12 | `PipelinePage.test.tsx`, `capabilities.test.ts` | **DONE** |
+| R-64 | UX | **Identifiers off the list and the header.** Company rows show industry · country · RM, with no PAN or GSTIN; the record header drops PAN, GSTIN and the background-check cycle line; the Journey path drops its guidance line; the page descriptions on Companies and Pipeline and the GST registrations panel description went; the Deals tab moved after Background check. frontend-plan §6.3, §6.5, §6.7 and the `?tab=` order updated to match | `ExportersListPage.test.tsx` (no identifier, any role; RM kept), `ExporterDetailPage.test.tsx` (masking still proved on the Company panel) | **DONE** |
+
+**Audit fixes (unstaged on top of the branch).** `DealDetailPage.test.tsx` still expected the
+per-row "pass-through" and failed; task ids in test names, docstrings and comments
+replaced with what the code does; commented-out JSX removed (GST panel text, page
+descriptions); the RM restored on Companies rows (the commit had commented it out while
+the function's comment still promised it); the viewer's blob freed on unmount and its
+Download made to reuse the bytes; the prospect line no longer claims "waiting" on a check
+that may be flagged or declined; `demo.md` steps 9 and 11 say **KYB**/**AML**.
+
+**Gates after the audit fixes** (branch head `1772c91` + the fixes above, scratch database
+at head, dropped afterwards): one migration head, `onboarding_0043_identity_type`; CRM suite
+(`pytest --crm`) **2,747 passed, 1 skipped, 0 failed** (the 2,744 baseline plus the 3 new
+tests; 45 min); ruff 17, none in a changed file; import-linter 19 kept, 0 broken;
+TypeScript 0 errors; ESLint 0 errors, 2 warnings (`AuthContext.tsx`); frontend **66 files,
+927 passed**; production build passes (entry 490 kB, 158 kB gzip).

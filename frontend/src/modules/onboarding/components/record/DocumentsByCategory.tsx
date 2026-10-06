@@ -10,7 +10,7 @@
  * handover requires as present or missing.
  */
 
-import { useState, type DragEvent } from 'react';
+import { useEffect, useState, type DragEvent } from 'react';
 
 import { Button, EmptyLine, Sheet, Skeleton, Tag } from '@/components';
 import { Icon } from '@/design/icons';
@@ -22,7 +22,7 @@ import { SOURCE_LABEL } from '../document-labels';
 import { DocumentUpload } from '../DocumentUpload';
 import { DocumentViewer } from '../DocumentViewer';
 import { ScanStatusBadge } from '../ScanStatusBadge';
-import { isViewable, useOpenDocument } from '../useOpenDocument';
+import { isViewable, saveObjectUrl, useOpenDocument } from '../useOpenDocument';
 
 import { categoryLabel } from './categoryLabel';
 const SCAN_TITLE: Record<DocumentScanStatus, string> = {
@@ -41,20 +41,21 @@ function formatSize(bytes: number): string {
 function Item({ document_ }: { document_: CrmDocument }) {
   const { open, view } = useOpenDocument();
   // The blob URL while this document is being read, and nothing when it is not. The row
-  // owns it because the row opened it: it is revoked on close, so a session of opening
-  // one document after another does not hold every one of them in memory.
+  // owns it because the row opened it, so a session of opening one document after
+  // another does not hold every one of them in memory.
   const [viewing, setViewing] = useState<string | null>(null);
+
+  // Revoked when the viewer closes, and also when the row goes while it is open — the
+  // user leaves the page, or a refetch drops the file — which a close handler alone
+  // would miss, leaving the blob held for the life of the tab.
+  useEffect(() => {
+    if (!viewing) return undefined;
+    return () => URL.revokeObjectURL(viewing);
+  }, [viewing]);
 
   async function showInApp() {
     const url = await view(document_);
     if (url) setViewing(url);
-  }
-
-  function closeViewer() {
-    setViewing((url) => {
-      if (url) URL.revokeObjectURL(url);
-      return null;
-    });
   }
 
   return (
@@ -107,8 +108,9 @@ function Item({ document_ }: { document_: CrmDocument }) {
         <DocumentViewer
           document_={document_}
           url={viewing}
-          onClose={closeViewer}
-          onDownload={() => void open(document_)}
+          onClose={() => setViewing(null)}
+          // The bytes on screen are the file: saved as they are, not fetched again.
+          onDownload={() => saveObjectUrl(viewing, document_.file_name)}
         />
       )}
     </li>

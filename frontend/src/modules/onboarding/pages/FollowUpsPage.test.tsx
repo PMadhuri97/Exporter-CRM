@@ -148,7 +148,7 @@ describe('FollowUpsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('names who completed a follow-up, not their account id (R-59)', async () => {
+  it('names who completed a follow-up, not their account id', async () => {
     vi.mocked(listFollowUps).mockResolvedValue(
       list({
         follow_ups: [

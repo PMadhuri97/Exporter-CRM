@@ -99,7 +99,7 @@ These are deliberate and tested. This plan changes how they look, not how they b
 - **Server-served actions**: `allowed_moves`, `allowed_stage_moves`, `allowed_marker_moves`, `allowed_cycle_actions`, `allowed_outcomes`, `can_record_results`, `can_open_deal`, `capabilities.can_record_decision`, and `allowed_actions` on proposals. Screens render these and never re-derive them.
 - **`from_value`** on background-check moves, with a 409 handled as "reload and decide again".
 - **Server masking**, and `Identifier`'s rule: no reveal control for a masked role, and copy only on a revealed value.
-- **`paths.ts`** as the single source of URLs. The legacy `/exporters/*` redirects. The **`?tab=`** keys on the company page (`overview`, `qualification`, `conversation`, `deals`, `documents`, `background-check`, `history`).
+- **`paths.ts`** as the single source of URLs. The legacy `/exporters/*` redirects. The **`?tab=`** keys on the company page, in display order (`overview`, `qualification`, `conversation`, `documents`, `background-check`, `deals`, `history`): roughly the order the work happens, judging the company, then its papers, then trading with it.
 - **Query invalidation across the journey** (`journey-invalidation.test.tsx`).
 - **Honesty rules**: "200+" and "100+" caps; follow-ups and check-backs kept as two kinds (a check-back cannot be completed); no drag on the pipeline; ENDED hidden by default *by the server*; the prototype labels.
 - **Session handling** in `lib/api/client.ts` (single refresh, Web Locks).
@@ -370,8 +370,8 @@ These are the parts the screens are built from. Generic ones live in `src/compon
 │ Bharat Precision Metals                            [Log a call] [Open deal] [More ▾] │
 │ Precision engineering · Mumbai, India · RM R. Mehta                                  │
 │ ──────────────────────────────────────────────────────────────────────────────────── │
-│ Journey      Qualification   Conversation   Background check            PAN          │
-│ Customer     Qualified       Ready now      Clear · Low risk            ••••••1234F  │
+│ Journey      Qualification   Conversation   Background check                         │
+│ Customer     Qualified       Ready now      Clear · Low risk                         │
 │                                             until 3 Oct 2027                         │
 ├──────────────────────────────────────────────────────────────────────────────────────┤
 │ ( ✓ Lead )>( ✓ Prospect )>(  Customer  )      Customer since 3 Oct 2026              │
@@ -379,7 +379,7 @@ These are the parts the screens are built from. Generic ones live in `src/compon
 ```
 
 - The object type ("Company", "Deal") sits in 12 px `ink-3` above a 20/28 title, with one metadata line under it.
-- **Key fields**: up to six, label above value. Statuses are badges (§6.4). For Developer the Background check field is absent, not greyed.
+- **Key fields**: up to six, label above value. Statuses are badges (§6.4). For Developer the Background check field is absent, not greyed. Key fields are **state**, not identifiers: PAN and GSTIN are not in the header (PAN is on the Company panel, the GSTINs in *GST registrations*, each with its branch state), and the Background check field is the badge alone (the cycle is on its tab).
 - **Actions**: built **only** from served fields. At most three buttons show, the first primary; the rest go under *More ▾*. When nothing applies, there are no buttons. Developer gets none.
 - Under the header, the **Path** (§6.5).
 - **On scroll** the header compresses to a sticky bar with the title, the badges and the actions (the Fiori dynamic page header behaves the same way).
@@ -399,7 +399,7 @@ These are chevron steps, as in Salesforce Path and the Dynamics business process
 - **completed** steps: `accent-tint` with a check;
 - **current**: `accent-solid` with white text;
 - **upcoming**: `sunken`;
-- one guidance line beside the path for the current stage (for example "Qualify the company to move it to Prospect.").
+- one guidance line beside the path for the current stage (for example "Qualify the company to move it to Prospect."), except on the **Journey** path, which has none: nothing on it is a manual move, and the qualification and background-check key fields beside it already say what it waits on.
 
 It has three uses:
 
@@ -421,10 +421,10 @@ The guidance line is fixed text per stage. It names what moves a stage on and ne
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
 │ Bharat Precision Metals                          Customer  Qualified  Clear · Low risk│
-│ Precision engineering · Mumbai · PAN ••••••1234F · RM R. Mehta                        │
+│ Precision engineering · IN · RM R. Mehta                                             │
 ├──────────────────────────────────────────────────────────────────────────────────────┤
 │ Coastal Seafood Exports                          Prospect  Qualified  Flagged        │
-│ Seafood · Kochi · PAN ••••••7781K · RM S. Rao                                        │
+│ Seafood · IN · RM S. Rao                                                             │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -432,6 +432,7 @@ The guidance line is fixed text per stage. It names what moves a stage on and ne
 - The whole row is the link. It gets a `sunken` hover fill and sits in normal tab order.
 - There are no column headers and no sortable grid. Filtering and order come from the list's own controls, on the server (as Fiori's object list item and Salesforce's split-view list work).
 - One component serves companies, deals, users, follow-ups and approvals. The facts line and badges differ per use.
+- A **company** row's facts line is industry · country · RM. It carries no identifiers: PAN and GSTIN are looked up on a company already found (*Search by identifier*), and masked values on every row read as a string of dots. The company record shows them all.
 
 ### 6.8 Activity timeline and composer
 
@@ -475,7 +476,9 @@ The quick-create and quick-action surface, as in Dynamics quick create and HubSp
 ### 6.12 Pipeline board
 
 - Three columns: **Lead**, **Prospect**, **Customer**, each with a capped count.
-- **Cards** show the name, city and country, the qualification badge, the background-check badge (staff, once A1 lands) and the RM.
+- **Cards** show the name; one facts line, industry · country · RM; the qualification and marker badges (and the background-check badge for staff, once A1 lands); and a **next-step line** worked out from the row alone, with no request per card: a lead not yet reviewed reads "Waiting on a qualification decision" (attention colour), a lead judged not qualified "Not qualified — stays a lead", a prospect "Needs a clear background check", a paused or ended company its marker and reason. A customer has none (the column note says it once).
+- The **Lead** column header counts "N waiting on you" (the unreviewed leads on the page in hand) for OPERATIONS only, through the `queue.qualification` capability: COMPLIANCE and ADMIN may record a decision too, but it is not their queue. It is never used to gate a request.
+- Each column scrolls past 34rem, so one long stage does not run the page down past the other two.
 - **No drag.** The column header says what moves a company on.
 
 ### 6.13 Split view
@@ -664,7 +667,7 @@ The title is "Home". A two-column grid of cards from 1280 px, one column below. 
 | **Qualification** | `qualification` | The server's suggestion as a banner. One item per criterion: *Pass / Fail / Unknown* (segmented), the observed value, and an evidence note (PASS and FAIL need evidence; the server says so). Changes collect into a sticky "Record 2 results" bar, and nothing is sent per keystroke. Outcome buttons are exactly `allowed_outcomes`; *Not qualified* opens the served reason codes. Earlier outcomes sit in a collapsed section |
 | **Activity** | `conversation` | The conversation path (§6.5) and *Not now*, then the composer and timeline (§6.8). Contacts are in the right column |
 | **Deals** | `deals` | *Selling* and *Buying* cards of deal items (reference, title, stage badge, counterparty). The *Trade* card: one item per relationship, with invoice counts by outcome as badges ("3 paid · 1 unpaid · 1 no outcome recorded"). Expanding one shows its invoices. Amounts stay in their currency and are **never totalled** (IQ-4). *Record a past invoice* (staff) |
-| **Documents** | `documents` | Items grouped by category: name, type, size, who uploaded it and when, and a scan badge. *Quarantined* and *Scan failed* are never downloadable. Upload is a drop zone on the card plus a type select. "Prototype: pass-through scanner" is on the card, not on each file |
+| **Documents** | `documents` | Items grouped by category: name, type, size, who uploaded it and when, and a scan badge. *Quarantined* and *Scan failed* are never downloadable. Upload is a drop zone on the card plus a type select. "Prototype: pass-through scanner" is on the card, not on each file. *View document* (beside *Download*, same `is_downloadable` gate) shows a PDF, an image or plain text in a wide side panel, from a blob of the served bytes; *Download* in the panel saves those bytes. SVG, HTML and other types are download only: a blob URL runs with the CRM's origin, so an uploaded SVG or HTML file is never rendered |
 | **Background check** | `background-check` | §8.5.1. Absent for Developer |
 | **History** | `history` | Entries grouped by day. Rows that share a timestamp are one entry, labelled "same moment". A filter by area uses the existing `?dimension=`, and its options come from the dimensions actually sent. Read-only |
 

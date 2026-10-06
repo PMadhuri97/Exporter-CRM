@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UserRole } from '@/lib/api/types';
 import { useCurrentUser } from '@/platform/auth';
 
-import { matchCompany } from '../../api';
+import { createDownloadLink, fetchDocumentBlob, matchCompany } from '../../api';
 import type { BackgroundCheckProposal, CrmDocument } from '../../types';
 
 import { detectEntry } from './entry';
@@ -22,6 +22,8 @@ import { CheckStatus, ConversationPath, PartyCard, HandoverChecklist, DocumentsB
 
 vi.mock('../../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api')>()),
+  createDownloadLink: vi.fn(),
+  fetchDocumentBlob: vi.fn(),
   matchCompany: vi.fn(),
 }));
 vi.mock('../CompanyComplianceSummary', () => ({
@@ -300,6 +302,45 @@ describe('DocumentsByCategory', () => {
       screen.queryByRole('button', { name: 'View document bad.pdf' }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Download bad.pdf' })).not.toBeInTheDocument();
+  });
+
+  it('shows a document in a panel, saves those same bytes, and frees them when it goes', async () => {
+    vi.mocked(createDownloadLink).mockResolvedValue({
+      document_id: 'd1',
+      url: '/api/v1/onboarding/documents/content?key=k&expires=1&signature=s',
+      expires_at: '2026-10-01T10:05:00Z',
+    });
+    vi.mocked(fetchDocumentBlob).mockResolvedValue(new Blob(['pdf bytes']));
+    const createObjectURL = vi.fn(() => 'blob:viewed');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
+    // jsdom cannot navigate to a blob URL; the save itself is the anchor's click.
+    const save = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    try {
+      const documents = [file({ file_name: 'pan.pdf', content_type: 'application/pdf' })];
+      const { unmount } = wrap(
+        <DocumentsByCategory isLoading={false} emptyMessage="None" documents={documents} />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'View document pan.pdf' }));
+
+      const viewer = await screen.findByRole('dialog');
+      expect(within(viewer).getByTitle('pan.pdf')).toHaveAttribute('src', 'blob:viewed');
+
+      // Download from the panel saves what is on screen: no second link, no second fetch.
+      fireEvent.click(within(viewer).getByRole('button', { name: /Download/ }));
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(createDownloadLink).toHaveBeenCalledTimes(1);
+      expect(fetchDocumentBlob).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+
+      // Leaving the page with the panel still open frees the bytes too.
+      unmount();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:viewed');
+    } finally {
+      save.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });
 

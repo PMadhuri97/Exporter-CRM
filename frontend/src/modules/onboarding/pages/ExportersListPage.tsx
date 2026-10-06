@@ -72,7 +72,7 @@ function identityLine(profile: ExporterProfileListItem): string | null {
   const parts = [
     profile.industry,
     profile.country,
-    // profile.relationship_manager ? `RM ${profile.relationship_manager}` : null,
+    profile.relationship_manager ? `RM ${profile.relationship_manager}` : null,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -146,7 +146,6 @@ export function ExportersListPage() {
       <PageHeader
         title="Companies"
         meta={<CompaniesViewSwitch view="list" />}
-       // description="Find and manage company relationships. Ended relationships are hidden unless you search for them or filter by “Ended”."
         actions={
           <>
             {/* The identity completion list: work on the records themselves, kept

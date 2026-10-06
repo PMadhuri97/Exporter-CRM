@@ -162,7 +162,7 @@ describe('BuyerChecks — reading', () => {
     ).toBeInTheDocument();
   });
 
-  it('names an acronym check type in capitals, not title-cased (R-61)', async () => {
+  it('names an acronym check type in capitals, not title-cased', async () => {
     vi.mocked(listVerificationResults).mockResolvedValue(
       list([check({ verification_type: 'AML' })]),
     );
