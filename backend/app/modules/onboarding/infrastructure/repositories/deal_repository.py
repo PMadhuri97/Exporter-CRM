@@ -14,13 +14,58 @@ list of deals costs two statements rather than one per row.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, String, and_, case, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
+from app.modules.onboarding.domain.deal_views import UNKNOWN_CORRIDOR, DealFilters
 from app.modules.onboarding.domain.entities.deal import Deal
+from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.platform.database.adapters.repository import BaseRepository
+
+_Seller = aliased(ExporterProfile, name="seller")
+_BuyerCompany = aliased(ExporterProfile, name="buyer_company")
+
+# The buyer is the company once the deal names one, and the older `deal_buyer`
+# details until then — the same authority `DealService` gives them on one deal.
+_BUYER_NAME = case(
+    (Deal.buyer_company_id.is_not(None), _BuyerCompany.name), else_=DealBuyer.name
+)
+_BUYER_COUNTRY = case(
+    (Deal.buyer_company_id.is_not(None), _BuyerCompany.country), else_=DealBuyer.country
+)
+# Seller's country, then buyer's: "IN-US". NULL while either is unknown. The hyphen
+# is inlined rather than bound: `corridor_counts` groups by this expression, and
+# Postgres only matches the SELECT to the GROUP BY when they are textually equal,
+# which two separately numbered parameters are not.
+_CORRIDOR = case(
+    (
+        and_(_Seller.country.is_not(None), _BUYER_COUNTRY.is_not(None)),
+        _Seller.country.op("||", return_type=String)(literal_column("'-'")).op(
+            "||", return_type=String
+        )(_BUYER_COUNTRY),
+    ),
+    else_=None,
+)
+
+
+def _with_parties(statement: Select[Any]) -> Select[Any]:
+    return (
+        statement.select_from(Deal)
+        .join(_Seller, _Seller.customer_id == Deal.company_id)
+        .outerjoin(_BuyerCompany, _BuyerCompany.customer_id == Deal.buyer_company_id)
+        .outerjoin(DealBuyer, DealBuyer.deal_id == Deal.id)
+    )
+
+
+def _escape_like(value: str) -> str:
+    """`value` for a LIKE pattern with a backslash as the escape character,
+    so its own `%`, `_` and backslashes are matched literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class DealRepository(BaseRepository[Deal]):
@@ -99,6 +144,88 @@ class DealRepository(BaseRepository[Deal]):
             statement.order_by(Deal.created_at.desc()).limit(limit).offset(offset)
         )
         return list(result.scalars().all()), int(total or 0)
+
+    async def list_all(
+        self, filters: DealFilters, *, limit: int = 50, offset: int = 0
+    ) -> tuple[list[Any], int]:
+        """Every deal matching ``filters``, newest first, with both parties and the
+        corridor worked out, and the total behind the page.
+
+        One statement per page, whatever its length: the parties are joined, not
+        loaded per row. Rows carry ``id, reference, stage, seller_company_id,
+        seller_name, seller_country, buyer_company_id, buyer_name, buyer_country,
+        corridor, created_at, updated_at``.
+        """
+        statement = _with_parties(
+            select(
+                Deal.id,
+                Deal.reference,
+                Deal.stage,
+                Deal.company_id.label("seller_company_id"),
+                _Seller.name.label("seller_name"),
+                _Seller.country.label("seller_country"),
+                Deal.buyer_company_id,
+                _BUYER_NAME.label("buyer_name"),
+                _BUYER_COUNTRY.label("buyer_country"),
+                _CORRIDOR.label("corridor"),
+                Deal.created_at,
+                Deal.updated_at,
+            )
+        ).where(*self._conditions(filters))
+
+        total = await self.session.scalar(
+            _with_parties(select(func.count())).where(*self._conditions(filters))
+        )
+        result = await self.session.execute(
+            statement.order_by(Deal.created_at.desc(), Deal.id.desc()).limit(limit).offset(offset)
+        )
+        return list(result.all()), int(total or 0)
+
+    async def corridor_counts(self) -> list[tuple[str | None, int]]:
+        """Every corridor some deal is on, with how many deals, across all deals —
+        not the filtered ones, so the choices on offer do not vanish as filters are
+        applied. Known corridors alphabetically, then the unknown ones."""
+        result = await self.session.execute(
+            _with_parties(select(_CORRIDOR.label("corridor"), func.count()))
+            .group_by(_CORRIDOR)
+            .order_by(_CORRIDOR.asc().nulls_last())
+        )
+        return [(row[0], int(row[1])) for row in result.all()]
+
+    @staticmethod
+    def _conditions(filters: DealFilters) -> list[Any]:
+        conditions: list[Any] = []
+        if filters.corridors:
+            known = [value for value in filters.corridors if value != UNKNOWN_CORRIDOR]
+            either = []
+            if known:
+                either.append(_CORRIDOR.in_(known))
+            if UNKNOWN_CORRIDOR in filters.corridors:
+                either.append(_CORRIDOR.is_(None))
+            conditions.append(or_(*either))
+        if filters.stages:
+            conditions.append(Deal.stage.in_(filters.stages))
+        if filters.search:
+            pattern = f"%{_escape_like(filters.search)}%"
+            conditions.append(
+                or_(
+                    Deal.reference.ilike(pattern, escape="\\"),
+                    _Seller.name.ilike(pattern, escape="\\"),
+                    _BUYER_NAME.ilike(pattern, escape="\\"),
+                )
+            )
+        if filters.company_id is not None:
+            conditions.append(
+                or_(
+                    Deal.company_id == filters.company_id,
+                    Deal.buyer_company_id == filters.company_id,
+                )
+            )
+        if filters.opened_from is not None:
+            conditions.append(Deal.created_at >= filters.opened_from)
+        if filters.opened_before is not None:
+            conditions.append(Deal.created_at < filters.opened_before)
+        return conditions
 
     async def count_for_company(self, company_id: uuid.UUID) -> int:
         """How many deals a company has, at any stage.

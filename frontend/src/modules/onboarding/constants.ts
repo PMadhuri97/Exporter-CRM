@@ -12,6 +12,7 @@
 
 import type {
   CriterionResultValue,
+  DealStage,
   ExporterJourney,
   ExporterMarker,
   QualificationState,
@@ -56,3 +57,48 @@ export const RESULT_CLASSES: Record<CriterionResultValue, string> = {
   FAIL: 'text-negative',
   UNKNOWN: 'text-ink-2',
 };
+
+// ── Deals ──────────────────────────────────────────────────────
+
+/** A deal's stages, in the order a deal moves through them. */
+export const DEAL_STAGES: readonly DealStage[] = [
+  'OPEN',
+  'GATHERING_PAPERWORK',
+  'HANDED_OVER',
+  'WITHDRAWN',
+];
+
+export const DEAL_STAGE_LABEL: Record<DealStage, string> = {
+  OPEN: 'Open',
+  GATHERING_PAPERWORK: 'Gathering paperwork',
+  HANDED_OVER: 'Handed over',
+  WITHDRAWN: 'Withdrawn',
+};
+
+/** The `corridor` filter value for deals whose corridor is not known yet. */
+export const UNKNOWN_CORRIDOR = 'UNKNOWN';
+
+let countryNames: Intl.DisplayNames | null | undefined;
+
+/** "Netherlands" for `NL`; the code itself where the browser has no name for it. */
+export function countryName(code: string): string {
+  if (countryNames === undefined) {
+    try {
+      countryNames = new Intl.DisplayNames(['en'], { type: 'region' });
+    } catch {
+      countryNames = null;
+    }
+  }
+  return countryNames?.of(code) ?? code;
+}
+
+/** `IN-NL` as "IN → NL": seller's country first. */
+export function corridorLabel(corridor: string): string {
+  return corridor.replace('-', ' → ');
+}
+
+/** `IN-NL` as "India to Netherlands", for a tooltip or a screen reader. */
+export function corridorDescription(corridor: string): string {
+  const [from, to] = corridor.split('-');
+  return from && to ? `${countryName(from)} to ${countryName(to)}` : corridor;
+}

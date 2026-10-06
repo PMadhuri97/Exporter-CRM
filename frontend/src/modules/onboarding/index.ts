@@ -4,6 +4,7 @@ export { CompanyRoutes, LegacyExporterRoutes, PipelineRedirect } from './routes'
 // Loaded on first use: the app router gates each one before it renders.
 export {
   DealDetailPage,
+  DealsPage,
   FollowUpsPage,
   DealRequiredDocumentsPage,
   ApprovalsPage,

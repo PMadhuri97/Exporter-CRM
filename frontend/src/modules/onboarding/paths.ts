@@ -32,6 +32,10 @@ export const paths = {
     tab && tab !== 'overview'
       ? `/companies/${customerId}?tab=${tab}`
       : `/companies/${customerId}`,
+  /** Every deal, across companies. */
+  deals: '/deals',
+  /** The Deals page with *New deal* open, so a link anywhere can start one. */
+  newDeal: '/deals?new=1',
   deal: (dealId: string) => `/deals/${dealId}`,
   /** Companies as a board of three journey columns (frontend-plan §8.3). */
   board: '/companies?view=board',

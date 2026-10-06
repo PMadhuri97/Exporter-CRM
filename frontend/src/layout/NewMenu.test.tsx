@@ -33,10 +33,12 @@ function open() {
 }
 
 describe('NewMenu', () => {
-  it.each<UserRole>(['OPERATIONS', 'COMPLIANCE'])('offers %s New company and Import companies', async (role) => {
+  it.each<UserRole>(['OPERATIONS', 'COMPLIANCE'])('offers %s New company, New deal and Import companies', async (role) => {
     renderAs(role);
     open();
     expect(await screen.findByRole('menuitem', { name: 'New company' })).toHaveAttribute('href', '/companies/new');
+    // Opens the Deals page with its New deal panel open.
+    expect(screen.getByRole('menuitem', { name: 'New deal' })).toHaveAttribute('href', '/deals?new=1');
     expect(screen.getByRole('menuitem', { name: 'Import companies' })).toHaveAttribute('href', '/companies/import');
     expect(screen.queryByRole('menuitem', { name: 'RXIL intake' })).not.toBeInTheDocument();
   });

@@ -13,7 +13,7 @@
  * (`modules/onboarding/routes.tsx`: add company, import, RXIL intake).
  *
  * Nav names are the standard CRM ones (frontend-plan §18.1): Home, Companies,
- * Pipeline, Follow-ups, Approvals, Settings. Pipeline is the Companies board
+ * Pipeline, Deals, Follow-ups, Approvals, Settings. Pipeline is the Companies board
  * (`/pipeline` redirects to it), and `/review` redirects to `/approvals`, so old
  * links keep working.
  */
@@ -24,6 +24,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import {
   CompanyRoutes,
   DealDetailPage,
+  DealsPage,
   DealRequiredDocumentsPage,
   FollowUpsPage,
   LegacyExporterRoutes,
@@ -86,8 +87,9 @@ function ReviewRedirect() {
 }
 
 /**
- * In side-navigation order. Deals and documents have no row: they are reached from a company,
- * because the server has no cross-company deal or document list.
+ * In side-navigation order. Documents have no row: they are reached from a company or a
+ * deal, because the server has no cross-company document list. Deals have one
+ * (`GET /deals` lists every company's), and a deal's own page keeps that row current.
  */
 export const APP_MODULES: readonly AppModule[] = [
   {
@@ -113,6 +115,13 @@ export const APP_MODULES: readonly AppModule[] = [
     requires: ['crm.read'],
     Screen: PipelineRedirect,
     nav: { label: 'Pipeline', to: '/pipeline', icon: 'pipeline', group: 'main' },
+  },
+  {
+    id: 'deals',
+    path: '/deals',
+    requires: ['crm.read'],
+    Screen: DealsPage,
+    nav: { label: 'Deals', to: '/deals', icon: 'deal', group: 'main' },
   },
   {
     id: 'follow-ups',

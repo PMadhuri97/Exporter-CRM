@@ -91,6 +91,34 @@ describe('CompanyPicker — searching by name', () => {
     );
   });
 
+  it('never offers the row fetched before searching as a match while the search loads', async () => {
+    let answerSearch: (value: Awaited<ReturnType<typeof searchExporterProfiles>>) => void = () => {};
+    vi.mocked(searchExporterProfiles).mockImplementation((params) =>
+      params?.name
+        ? new Promise((resolve) => {
+            answerSearch = resolve;
+          })
+        : Promise.resolve({
+            profiles: [company({ customer_id: ANTWERP, name: 'Unrelated Newest Co' })],
+            limit: 1,
+            offset: 0,
+          }),
+    );
+    renderPicker();
+    // Let the not-yet-searching request answer first, as it does on the deal page.
+    await waitFor(() => expect(searchExporterProfiles).toHaveBeenCalledWith({ limit: 1 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    fireEvent.change(screen.getByPlaceholderText('Company name'), {
+      target: { value: 'Rotterdam' },
+    });
+    expect(screen.queryByRole('button', { name: /Unrelated Newest Co/ })).not.toBeInTheDocument();
+
+    answerSearch({ profiles: [company()], limit: 10, offset: 0 });
+    expect(await screen.findByRole('button', { name: /Rotterdam Trading BV/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Unrelated Newest Co/ })).not.toBeInTheDocument();
+  });
+
   it('lists matches and hands back the company id when one is picked', async () => {
     const onSelect = renderPicker();
 

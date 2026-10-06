@@ -1,6 +1,6 @@
 /**
  * *+ New* in the app header (frontend-plan §6.1): the quick-create entries the role
- * has — New company, Import companies, and RXIL intake for Admin. Absent when the
+ * has — New company, New deal, Import companies, and RXIL intake for Admin. Absent when the
  * role may create nothing (§4.1), never a disabled button.
  */
 
@@ -14,6 +14,7 @@ import { useCan, type Capability } from '@/platform/access';
 
 const ENTRIES: { label: string; to: string; icon: IconName; requires: Capability }[] = [
   { label: 'New company', to: paths.newCompany, icon: 'company', requires: 'company.create' },
+  { label: 'New deal', to: paths.newDeal, icon: 'deal', requires: 'crm.write' },
   { label: 'Import companies', to: paths.importCompanies, icon: 'upload', requires: 'company.import' },
   { label: 'RXIL intake', to: paths.rxilIntake, icon: 'receipt', requires: 'company.rxilIntake' },
 ];
@@ -21,6 +22,7 @@ const ENTRIES: { label: string; to: string; icon: IconName; requires: Capability
 export function NewMenu() {
   const allowed = {
     'company.create': useCan('company.create'),
+    'crm.write': useCan('crm.write'),
     'company.import': useCan('company.import'),
     'company.rxilIntake': useCan('company.rxilIntake'),
   } as Partial<Record<Capability, boolean>>;

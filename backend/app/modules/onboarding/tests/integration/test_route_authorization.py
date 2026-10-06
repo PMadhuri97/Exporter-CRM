@@ -267,6 +267,7 @@ GATED_ROUTES = [
     # handler never reached the service.
     ("POST", f"{BASE}/exporters/{_ID}/deals", {"reference": "Rotterdam order"}, STAFF),
     ("GET", f"{BASE}/exporters/{_ID}/deals", None, READERS),
+    ("GET", f"{BASE}/deals", None, READERS),
     ("GET", f"{BASE}/deals/{_ID}", None, READERS),
     (
         "POST",

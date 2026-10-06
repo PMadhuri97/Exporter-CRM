@@ -89,9 +89,12 @@ from app.modules.onboarding.domain.company_identity import (
 )
 from app.modules.onboarding.domain.deal_views import (
     BuyerCompanyView,
+    CorridorCountView,
     DealBuyerView,
+    DealFilters,
     DealListItemView,
     DealStageMove,
+    DealSummaryView,
     DealView,
 )
 from app.modules.onboarding.domain.entities.deal import Deal
@@ -327,6 +330,41 @@ class DealService:
             )
             for deal in deals
         ], total
+
+    async def list_all(
+        self, filters: DealFilters, *, limit: int = 50, offset: int = 0
+    ) -> tuple[list[DealSummaryView], int]:
+        """Every deal, across companies, newest first — narrowed by ``filters``.
+
+        Each row names both parties and the corridor between them, worked out from
+        their countries (``DealSummaryView``). Withdrawn and handed-over deals are
+        included unless ``filters.stages`` leaves them out, as on a company's list.
+        """
+        rows, total = await self._deals.list_all(filters, limit=limit, offset=offset)
+        return [
+            DealSummaryView(
+                id=row.id,
+                reference=row.reference,
+                stage=row.stage,
+                seller_company_id=row.seller_company_id,
+                seller_name=row.seller_name,
+                seller_country=row.seller_country,
+                buyer_company_id=row.buyer_company_id,
+                buyer_name=row.buyer_name,
+                buyer_country=row.buyer_country,
+                corridor=row.corridor,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ], total
+
+    async def corridors(self) -> list[CorridorCountView]:
+        """The corridors deals are on, with a count each, for a filter to offer."""
+        return [
+            CorridorCountView(corridor=corridor, deals=deals)
+            for corridor, deals in await self._deals.corridor_counts()
+        ]
 
     @staticmethod
     def allowed_stage_moves(current: DealStage) -> list[DealStageMove]:

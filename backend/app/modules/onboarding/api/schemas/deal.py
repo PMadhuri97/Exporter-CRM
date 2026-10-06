@@ -38,8 +38,10 @@ from app.modules.onboarding.api.schemas.masking import (
 )
 from app.modules.onboarding.domain.deal_views import (
     BuyerCompanyView,
+    CorridorCountView,
     DealListItemView,
     DealStageMove,
+    DealSummaryView,
     DealView,
 )
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
@@ -547,15 +549,98 @@ class DealListResponse(BaseModel):
     )
 
 
+class DealSummaryResponse(BaseModel):
+    """One row of the list of every deal. Names both parties; the buyer's name and
+    country are visible to every reader, as on the deal itself."""
+
+    id: uuid.UUID
+    reference: str
+    stage: DealStage
+    seller_company_id: uuid.UUID
+    seller_name: str | None
+    seller_country: str | None
+    buyer_company_id: uuid.UUID | None = Field(
+        description=(
+            "The buyer as a company record. `null` when no buyer is recorded, or "
+            "when the buyer is still the older set of details (`buyer_name` and "
+            "`buyer_country` are filled either way)."
+        )
+    )
+    buyer_name: str | None
+    buyer_country: str | None
+    corridor: str | None = Field(
+        description=(
+            "The seller's country, then the buyer's, as `IN-US`. Worked out, never "
+            "stored. `null` while either country is unknown — usually because no "
+            "buyer has been recorded yet."
+        )
+    )
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_view(cls, view: DealSummaryView) -> DealSummaryResponse:
+        return cls(
+            id=view.id,
+            reference=view.reference,
+            stage=view.stage,
+            seller_company_id=view.seller_company_id,
+            seller_name=view.seller_name,
+            seller_country=view.seller_country,
+            buyer_company_id=view.buyer_company_id,
+            buyer_name=view.buyer_name,
+            buyer_country=view.buyer_country,
+            corridor=view.corridor,
+            created_at=view.created_at,
+            updated_at=view.updated_at,
+        )
+
+
+class DealCorridorResponse(BaseModel):
+    corridor: str | None = Field(
+        description="`IN-US` form; `null` for the deals whose corridor is not known yet."
+    )
+    deals: int = Field(description="How many deals are on it, across every deal.")
+
+    @classmethod
+    def from_view(cls, view: CorridorCountView) -> DealCorridorResponse:
+        return cls(corridor=view.corridor, deals=view.deals)
+
+
+class AllDealsResponse(BaseModel):
+    """``total`` is the count matching the filters, not the length of this page."""
+
+    deals: list[DealSummaryResponse]
+    total: int
+    limit: int
+    offset: int
+    corridors: list[DealCorridorResponse] = Field(
+        description=(
+            "Every corridor some deal is on, with its count, **ignoring the filters**, "
+            "so the choices a screen offers do not disappear as filters are applied. "
+            "Known corridors first, alphabetically, then `null`."
+        )
+    )
+    can_open_deal: bool = Field(
+        description=(
+            "Whether this caller's role may open deals. Which companies may have one "
+            "is the company's own `can_open_deal` — only a `PROSPECT` or `CUSTOMER`."
+        )
+    )
+
+
 __all__ = [
+    "AllDealsResponse",
     "BuyerCompanyResponse",
     "DealBuyerResponse",
+    "DealCorridorResponse",
     "DealRequiredDocumentResponse",
     "DealRequiredDocumentsResponse",
     "DealListItemResponse",
     "DealListResponse",
     "DealResponse",
     "DealStageMoveResponse",
+    "DealSummaryResponse",
     "OpenDealRequest",
     "SetDealBuyerRequest",
     "SetDealRequiredDocumentRequest",

@@ -114,6 +114,15 @@ export function CompanyPicker({
   // stands in for "not searching yet" and the results are ignored below.
   const ready = trimmed.length >= 2;
   const query = useExporterProfiles(ready ? { name: trimmed, limit: 10 } : { limit: 1 });
+  // The list query keeps its previous answer on screen while the next one loads, and
+  // that answer may be the one-row request made before searching — a company nobody
+  // searched for, which a quick click would pick as the buyer. So only a name search's
+  // own answer is shown: the current one once it arrives, the last search's until then.
+  const fresh = ready && query.data && !query.isPlaceholderData ? query.data.profiles : null;
+  const [lastSearch, setLastSearch] = useState<ExporterProfileListItem[] | null>(null);
+  if (fresh && fresh !== lastSearch) setLastSearch(fresh);
+  if (!ready && lastSearch !== null) setLastSearch(null);
+  const searching = ready && fresh === null && lastSearch === null && !query.isError;
 
   const match = useMutation({ mutationFn: matchCompany });
   // Cleared whenever the name changes, so a stale identifier answer can never sit
@@ -121,7 +130,7 @@ export function CompanyPicker({
   const matched: CompanyMatch | undefined = match.data;
 
   const byName = ready
-    ? (query.data?.profiles ?? []).filter(
+    ? (fresh ?? lastSearch ?? []).filter(
         (company: ExporterProfileListItem) => company.customer_id !== excludeCompanyId,
       )
     : [];
@@ -291,7 +300,7 @@ export function CompanyPicker({
         <p className="text-caption text-ink-3">
           Type at least two characters, or search by identifier.
         </p>
-      ) : query.isLoading || match.isPending ? (
+      ) : searching || match.isPending ? (
         <Skeleton className="h-16 rounded-lg" />
       ) : byName.length === 0 && candidates.length === 0 && !match.isError ? (
         creating ? null : (

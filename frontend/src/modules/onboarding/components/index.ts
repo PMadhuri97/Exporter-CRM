@@ -15,6 +15,9 @@ export { OpenDealPrompt } from './OpenDealPrompt';
 // `ScanStatusBadge` says which "scanner" reached a verdict.
 export { DealStageChip } from './DealStageChip';
 export { OpenDealForm } from './OpenDealForm';
+// The Deals page: its company filter and *New deal*.
+export { CompanySearchSelect } from './CompanySearchSelect';
+export { NewDealPanel } from './NewDealPanel';
 // A company's deals in one role, mounted on the company page.
 export { CompanyDealsList } from './CompanyDealsList';
 export { GstRegistrationsSection } from './GstRegistrationsSection';
