@@ -74,74 +74,63 @@ _COMPLIANCE_OR_ADMIN = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
 # and DEVELOPER (internal technical staff) are excluded.
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 
-# Exporter CRM (EXP-1) — kept in its own file; see exporter_router.py's module
+# Exporter CRM — kept in its own file; see exporter_router.py's module
 # docstring for why. Included here (rather than registered separately in
 # app/api/rest/router.py) so it inherits this router's own "/onboarding"
-# mount prefix, giving the ticket's documented paths
+# mount prefix, giving the documented paths
 # (/onboarding/exporters...) with no prefix duplicated in two places.
 router.include_router(exporter_router)
-# The same `/exporters` routes, split by owner in L2-01: contacts and activities
-# (Developer 3) and the screening checklist and bank activity (Developer 4).
+# The same `/exporters` routes, split by area: contacts and activities
+# (engagement) and the screening checklist and bank activity (screening).
 # Included straight after the company routes, in the order they were declared
 # when all three lived in exporter_router.py, so route matching is unchanged.
 router.include_router(engagement_router)
 router.include_router(screening_router)
-# Qualification (L2-09, L2-10) — Developer 2's, in its own file. Its paths are
+# Qualification, in its own file. Its paths are
 # absolute (/qualification/..., /exporters/{id}/qualification...), because the
 # criteria are not under /exporters.
 router.include_router(qualification_router)
-# RXIL company intake and bulk CSV import (L2-12, L2-13) — Developer 2's.
+# RXIL company intake and bulk CSV import.
 router.include_router(company_intake_router)
-# "Which company is this?" (P4-3, task 3.10) — Developer 3's. Its own `/companies`
+# "Which company is this?" Its own `/companies`
 # prefix, because the question is asked before any company id is known; see the
 # router's module docstring.
 router.include_router(company_directory_router)
-# GST registrations — a company's branches (P6-2, P6-5; tasks 3.13, 3.14, 3.17) —
-# Developer 3's. Absolute paths, because reading and adding one hangs off a company
+# GST registrations — a company's branches. Absolute paths, because reading and
+# adding one hangs off a company
 # while flagging one takes only the registration's own id.
 router.include_router(gst_registration_router)
-# Trade history — what two companies have traded (P5-3, P5-4; task 3.20) —
-# Developer 3's. Absolute paths: a relationship is the pair, not a sub-resource of
+# Trade history — what two companies have traded. Absolute paths: a relationship
+# is the pair, not a sub-resource of
 # either company, though one company's relationships are read under `/exporters`.
 router.include_router(trade_history_router)
 
-# Shared CRM history log (L1-11) — Developer 1's, in its own file for the same
+# Shared CRM history log, in its own file for the same
 # reason the Exporter CRM routes are in theirs, and included here so it
 # inherits the "/onboarding" mount prefix. It carries its own full paths
 # (/exporters/{id}/history, /deals/{id}/history) rather than a router prefix,
 # because the deal route is not under /exporters.
 router.include_router(history_router)
 
-# ── The §9.3 routers, mounted once in the seam commit and never re-mounted ──
+# ── Follow-ups, deals and documents ──
 #
-# All three are empty when this lands, and mounting an empty router adds nothing
-# to the OpenAPI document — which is the point. Developer 3A (phases 1 and 2)
-# and Developer 3B all append to shared files; the router index is one of them,
-# so it is edited here, once, and by neither of them again.
-#
-# Follow-up completion and the due/overdue list (L3-04) — Developer 3A, Phase 2.
+# Follow-up completion and the due/overdue list.
 # Same `/exporters` prefix as `engagement_router`, because a completion is about
 # one company's activity.
 router.include_router(follow_up_router)
-# Deals and buyers (L3-05, L3-06) — Developer 3B. Absolute paths (`/deals/...`),
+# Deals and buyers. Absolute paths (`/deals/...`),
 # like the deal history route above: a deal is not a company sub-resource.
 router.include_router(deal_router)
-# Documents and storage (L3-07 … L3-10) — Developer 3B. Absolute paths too,
+# Documents and storage. Absolute paths too,
 # because documents hang off deals as well as companies.
 router.include_router(document_router)
 
-# ── Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0) ──
+# ── Background check ──
 #
-# Developer 4A mounts exactly one router, and does it here: its import and its
-# `router.include_router(background_check_router)` both go in the 4A block below,
-# the import with `# noqa: E402`, so neither Dev4 branch edits the import list at the
-# top of this file for it. Developer 4B mounts nothing new — its routes live in the
-# `EXP-2: generalized verification results` block and `screening_router.py` — and
-# edits only that block and its imports. Nothing is mounted here yet, so the OpenAPI
-# document is unchanged.
-#
-# ── Background check — owner: Developer 4A ──
-# (4A adds its router import and its one include_router here; 4B does not.)
+# The background check mounts exactly one router, here: its import (with
+# `# noqa: E402`) and its `router.include_router(background_check_router)` sit
+# together in this block. Verification's routes live in the
+# `Generalized verification results` block below and in `screening_router.py`.
 from app.modules.onboarding.api.background_check_router import (  # noqa: E402
     router as background_check_router,
 )
@@ -409,14 +398,14 @@ async def sumsub_webhook(
     )
 
 
-# ── EXP-2: generalized verification results ──────────────────────────────────
+# ── Generalized verification results ─────────────────────────────────────────
 # One extensible mechanism to trigger and record any verification check (KYC
 # for a director, a bank-account check for an exporter, ...) — see
 # `domain.workflow_dependencies.VerificationAdapter` and
 # `application.verification_service.VerificationService`.
 #
-# Owner: Developer 4B (verification-and-screening.md §7). Roles unchanged: writes COMPLIANCE/ADMIN,
-# reads OPERATIONS/COMPLIANCE/ADMIN; DEVELOPER is refused (D8, lead: no widening). The
+# Roles (verification-and-screening.md §7): writes COMPLIANCE/ADMIN,
+# reads OPERATIONS/COMPLIANCE/ADMIN; DEVELOPER is refused. The
 # actor and reviewer always come from the session, never the body.
 
 #: Who may record a result or review one. The same tuple gates the two write routes
@@ -428,8 +417,8 @@ _VERIFICATION_DECIDER = require_role(*_VERIFICATION_DECISION_ROLES)
 
 async def _initial_cycle_ids(db: AsyncSession, views) -> dict[uuid.UUID, uuid.UUID]:
     """Each company's cycle-1 id, for the companies these results are about — so a
-    legacy result (no cycle) is served as cycle 1 (Developer 1, P2-3a; company-keyed
-    since P4-5, so a mapped deal-buyer result reads in its company's cycle 1)."""
+    legacy result (no cycle) is served as cycle 1 (company-keyed, so a mapped
+    deal-buyer result reads in its company's cycle 1)."""
     companies = {
         view.result.subject_company
         for view in views
@@ -458,7 +447,7 @@ def _result_response(view, viewer: User, names, initial: dict[uuid.UUID, uuid.UU
     summary="Trigger a verification check",
     description=(
         "Resolves `provider` (default `manual`) to a `VerificationAdapter` via the "
-        "EXP-2 registry, runs the check, and persists the outcome as a new "
+        "generalized registry, runs the check, and persists the outcome as a new "
         "`VerificationResult`. The exact same call handles every `verification_type`/"
         "`entity_type` combination — there is no per-type branching. Only "
         "`provider=manual` is accepted here. An `EXPORTER` subject must be an existing "
@@ -556,7 +545,7 @@ async def list_verification_results(
     views = await service.views_for(results)
     names = await actor_names(db, current_user, reviewer_ids(views))
     may_decide = current_user.role in _VERIFICATION_DECISION_ROLES
-    # D17: no new check on a buyer of a closed deal — served as a capability too, so
+    # No new check on a buyer of a closed deal — served as a capability too, so
     # the screen never offers a form the server would refuse. Reviews stay open.
     may_record = may_decide and await service.accepts_new_check(entity_type, entity_reference)
     initial = await _initial_cycle_ids(db, views)

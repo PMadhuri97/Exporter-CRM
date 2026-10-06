@@ -6,7 +6,7 @@ import { cn } from '@/lib/cn';
 import { Button } from './Button';
 
 /**
- * An empty state is one sentence and, if the role may act, one verb (§5.6) —
+ * An empty state is one sentence and, if the role may act, one verb (§5.7) —
  * not a centred box with an icon in a circle.
  */
 export function EmptyLine({
@@ -28,7 +28,7 @@ export function EmptyLine({
 
 /**
  * A refusal or a failed load, inline where it happened: what the person tried,
- * then the server's own words (§5.6), and a retry when one makes sense.
+ * then the server's own words (§5.7), and a retry when one makes sense.
  */
 export function InlineError({
   children,
@@ -44,7 +44,7 @@ export function InlineError({
       <Icon.error size={15} className="mt-px shrink-0" aria-hidden />
       <span className="min-w-0 flex-1">{children}</span>
       {onRetry && (
-        <Button size="sm" variant="quiet" className="-my-1.5 h-7" onClick={onRetry}>
+        <Button size="sm" variant="subtle" className="-my-1.5 h-7" onClick={onRetry}>
           Try again
         </Button>
       )}
@@ -57,7 +57,7 @@ export function Kbd({ children, className }: { children: ReactNode; className?: 
   return (
     <kbd
       className={cn(
-        'inline-flex h-5 min-w-5 items-center justify-center rounded border border-line-strong bg-surface px-1 font-mono text-[11px] leading-none text-ink-2',
+        'inline-flex h-5 min-w-5 items-center justify-center rounded border border-line-strong bg-surface px-1 text-[11px] leading-none text-ink-2',
         className,
       )}
     >
@@ -67,7 +67,7 @@ export function Kbd({ children, className }: { children: ReactNode; className?: 
 }
 
 /**
- * A big serif numeral (§6.11). Honest about a cap: when the server only says
+ * A count, as Home shows them (§5.3, §8.2). Honest about a cap: when the server only says
  * "at least `cap`", it reads "200+", never a guess.
  */
 export function Count({
@@ -88,10 +88,10 @@ export function Count({
   return (
     <span
       className={cn(
-        'font-display tabular-nums leading-none text-ink',
-        size === 'xl' && 'text-display-xl',
-        size === 'lg' && 'text-display-lg',
-        size === 'md' && 'text-display-md',
+        'font-semibold tabular-nums leading-none text-ink',
+        size === 'xl' && 'text-count',
+        size === 'lg' && 'text-count',
+        size === 'md' && 'text-title',
         className,
       )}
       {...rest}

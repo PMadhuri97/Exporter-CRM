@@ -1,19 +1,19 @@
-"""Deals and their buyers — **owner: Developer 3B** (L3-05, L3-06).
+"""Deals and their buyers.
 
 Contract: ``docs/contracts/deal-and-buyer.md``. Architecture §3.3, §3.5, §3.8.
 
 **One transaction per operation.** Every write locks the deal row (or reads the
 company for a create), validates, assigns, writes the history row through
-Developer 1's shared ``HistoryService`` — which flushes and never commits — and
+the shared ``HistoryService`` — which flushes and never commits — and
 commits once at the end. Architecture §3.8: the current value and the record of
 how it got there commit together or not at all. Every rule is checked *before*
 anything is assigned, so a refused move leaves nothing behind.
 
 **Seam S1 lives in ``open_deal``.** Opening a deal sets the company's conversation
-to ``READY_NOW`` (architecture §3.3) by calling Developer 3A's
+to ``READY_NOW`` (architecture §3.3) by calling
 ``ConversationService.mark_ready_now_for_opened_deal`` in this same session and
 transaction. This service never assigns ``exporter_profile.conversation`` and
-never imports 3A's enum to compare against it (``company-record.md`` §2.4). Because
+never imports the gauge's enum to compare against it (``company-record.md`` §2.4). Because
 S1 checks no journey, ``open_deal`` does: only a ``PROSPECT`` or ``CUSTOMER`` may
 have a deal (``_OPENABLE_JOURNEYS``), so a lead is never given a conversation value.
 
@@ -26,34 +26,33 @@ server instead of keeping a copy (§7.5). That split is
 
 **The handover guard is real on both halves.**
 ``GATHERING_PAPERWORK → HANDED_OVER`` needs the company to be a ``CUSTOMER`` with a
-``CLEAR`` background check (assumption A5). Developer 4A's migration 0015 has landed,
-so ``read_background_check`` calls their published helper (``background-check.md``
+``CLEAR`` background check. ``read_background_check`` calls the background check's
+published helper (``background-check.md``
 §10) and returns a real value: a company that has never been checked reads
 ``NOT_STARTED``, and "not ``CLEAR``" is never treated as "clear". Nothing here
 creates or writes that column (``company-record.md`` §2.4).
 
-The guard **share-locks the company row** while a handover is in progress (decision
-D10, settled 28 September 2026), so a concurrent flag cannot land between the guard
+The guard **share-locks the company row** while a handover is in progress (settled
+28 September 2026), so a concurrent flag cannot land between the guard
 and the commit. The read that renders a deal takes no lock — see
 ``_handover_blocked_reason``.
 
-A company reaches ``CUSTOMER`` through Developer 2's promotion (L2-11): the move that
+A company reaches ``CUSTOMER`` through the customer promotion: the move that
 makes it both a ``PROSPECT`` and ``CLEAR`` promotes it in the same transaction
 (``ExporterProfileService.promote_to_customer_if_ready``). ``read_background_check``
 stays a separate one-line function so the handover tests can isolate the code after
 the guard; the whole path, unsubstituted, is ``test_crm_end_to_end.py``.
 
-**The guard's rules now live in ``domain/handover_conditions.py``** (allocation F2):
+**The guard's rules live in ``domain/handover_conditions.py``**:
 an ordered list of condition functions over providers injected into this service.
-A5's two conditions are the first two and decide today; four more — required
-documents, the seller's and the buyer's compliance, the invoicing branch — are in
-the list with their null provider injected, so they report nothing until the lane
-that owns each provider ships it. This service keeps the part only a service can
+The original two conditions come first; the rest — required documents, the
+seller's and the buyer's compliance, the invoicing branch — each read their own
+provider. This service keeps the part only a service can
 do: read the company row once, under the right lock, and hand every condition the
 same snapshot of it.
 
 Everything downstream of the guard is real and tested: the **persisted** handover
-snapshot (``deal.handover_snapshot``, plan P2-7, written in the same ``UPDATE`` as
+snapshot (``deal.handover_snapshot``, written in the same ``UPDATE`` as
 the stage move so it lands before the terminal trigger freezes it), the history
 row, and the best-effort ``deal.handed_over`` announcement, in that order
 (architecture §3.6 — the record is the source of truth, the announcement is an
@@ -152,22 +151,22 @@ PERMITTED_STAGE_MOVES: dict[DealStage, tuple[DealStage, ...]] = {
     DealStage.WITHDRAWN: (),
 }
 
-#: Assumption A7.
+#: A withdrawal carries its reason.
 _NEEDS_REASON = frozenset({DealStage.WITHDRAWN})
 #: A handover payload carries the buyer (architecture §3.6).
 _NEEDS_BUYER = frozenset({DealStage.HANDED_OVER})
 
 #: Architecture §3.3: the journey value a company must have reached before a deal
-#: may be handed over (assumption A5's first half). It now lives with the condition
+#: may be handed over (the handover guard's first half). It now lives with the condition
 #: that reads it (``handover_conditions.HANDOVER_JOURNEY``) and is re-exported here
 #: under its old name, because that is the name the rest of this module and its
-#: tests call it by. Compared by *name* rather than by importing Developer 3's enum
-#: member, so neither file takes a dependency on the shape of their enum.
+#: tests call it by. Compared by *name* rather than by importing the company record's
+#: enum member, so neither file takes a dependency on the shape of that enum.
 _HANDOVER_JOURNEY = HANDOVER_JOURNEY
 
 #: The journey values a company must hold before a deal may be opened on it. A deal
-#: follows a sales conversation, which applies from ``PROSPECT`` onward (assumption
-#: A4), and opening one sets the conversation to ``READY_NOW`` (seam S1) — so a
+#: follows a sales conversation, which applies from ``PROSPECT`` onward, and opening
+#: one sets the conversation to ``READY_NOW`` (seam S1) — so a
 #: ``LEAD`` is refused before any row is written (``deal-and-buyer.md`` §2). Compared
 #: by name, like ``_HANDOVER_JOURNEY``.
 _OPENABLE_JOURNEYS = frozenset({"PROSPECT", "CUSTOMER"})
@@ -176,14 +175,14 @@ _OPENABLE_JOURNEYS = frozenset({"PROSPECT", "CUSTOMER"})
 def read_background_check(company: ExporterProfile) -> str | None:
     """The company's background check, as a plain string.
 
-    **This now calls Developer 4A's published read helper** (L4-01,
-    ``background-check.md`` §10). It was a stand-in until migration 0015 landed; the
+    **This calls the background check's published read helper**
+    (``background-check.md`` §10). It was a stand-in until migration 0015 landed; the
     body is a call to the helper and the name and signature are unchanged, which is
     exactly what the stand-in's docstring promised would happen.
 
     It stays a separate one-line function rather than being inlined at the call site,
     because that is what makes the seam visible: everything downstream of the guard
-    reads the gauge through this one place, and Dev4A owns only this body
+    reads the gauge through this one place, and the background check owns only this body
     (``background-check.md`` §10).
 
     The return type keeps ``| None`` for the callers that still handle it, but the
@@ -207,7 +206,7 @@ class _Handover:
     Frozen, and built once: the whole point is that this cannot change between the
     commit and the announcement, nor afterwards.
 
-    Since P2-7 it is also **persisted**, as ``deal.handover_snapshot``: the
+    It is also **persisted**, as ``deal.handover_snapshot``: the
     announcement is best effort and the history row carries only the document ids,
     so neither was a record of the buyer the lending team was given. A company's
     details change after a handover; this does not (set-once, by
@@ -247,11 +246,9 @@ class DealService:
         self._events = OnboardingEventPublisher()
         # The handover guard's providers (`domain/handover_conditions.py`).
         #
-        # Five of the six conditions are live: assumption A5's two, the required
-        # documents (P2-5b), and — since P4-7 — the seller's and the buyer's
-        # compliance, through Developer 1's published reader. Only the invoicing
-        # branch is still inert, waiting on Developer 3's real `BranchFlagReader`
-        # (task 2.9 swaps `NoBranchFlags` for it and changes no condition's code).
+        # Every condition is live: the original two, the required documents, the
+        # seller's and the buyer's compliance (through the compliance engine's
+        # published reader), and the invoicing branch (through `BranchFlagService`).
         #
         # `ComplianceFactsService` reads in this same session and never writes, so the
         # facts a condition sees are the ones this transaction's locks cover.
@@ -264,10 +261,10 @@ class DealService:
             else HandoverProviders(
                 compliance=ComplianceFactsService(db),
                 required_documents=DealRequiredDocumentsPolicy(db),
-                # Developer 3's real reader (task 3.14), replacing `NoBranchFlags`.
+                # The real reader, replacing `NoBranchFlags`.
                 # Both branch conditions become live with it: a flagged invoicing
                 # branch blocks the deals invoiced through it, and a deal whose seller
-                # has a branch but names none is asked to name it (task 2.9, P6-7).
+                # has a branch but names none is asked to name it.
                 branch_flags=BranchFlagService(db),
             )
         )
@@ -294,7 +291,7 @@ class DealService:
         offset: int = 0,
     ) -> tuple[list[DealListItemView], int]:
         """One company's deals — the ones it sells on, or with ``as_buyer`` the ones
-        it buys on (task 2.7).
+        it buys on.
 
         On the buyer side, ``buyer_name`` is **the seller's** name rather than the
         buyer's: on a list of "deals where this company is the buyer", repeating the
@@ -377,14 +374,14 @@ class DealService:
         """Open a deal on a company, and set its conversation to ``READY_NOW``.
 
         In one transaction: the deal row, its ``deal_initial`` history row, and
-        Developer 3A's gauge move (seam S1). If any of the three fails, none of
-        them happened — which is why 3A's method flushes without committing.
+        the conversation gauge's move (seam S1). If any of the three fails, none of
+        them happened — which is why the gauge's method flushes without committing.
 
-        The company is read (not locked): nothing here changes it, and 3A's method
+        The company is read (not locked): nothing here changes it, and the gauge's method
         locks the row itself before moving the gauge. Its journey must be
         ``PROSPECT`` or ``CUSTOMER`` — a ``LEAD`` is refused before anything is
         written, because seam S1 would otherwise give a lead a conversation value it
-        may not hold (A4). Reading without a lock is enough: the journey only moves
+        may not hold. Reading without a lock is enough: the journey only moves
         forward, so a company that passes this check cannot fall back behind it.
         """
         cleaned_reference = (reference or "").strip()
@@ -403,7 +400,7 @@ class DealService:
             stage=DealStage.OPEN,
         )
         self._db.add(deal)
-        # Flushed so the deal has its id before the history row and 3A's call, both
+        # Flushed so the deal has its id before the history row and the gauge call, both
         # of which carry `deal_id`.
         await self._db.flush()
 
@@ -451,10 +448,10 @@ class DealService:
            move", because the deal can never move again.
         3. The move is in the §1.1 table (422).
         4. ``WITHDRAWN`` carries a reason (422).
-        5. ``HANDED_OVER`` has a buyer (422) and satisfies the A5 guard (409).
+        5. ``HANDED_OVER`` has a buyer (422) and satisfies the handover guard (409).
 
-        Step 5's guard reads Developer 4A's ``background_check`` through
-        ``read_background_check`` and share-locks the company row while it does (D10),
+        Step 5's guard reads the company's ``background_check`` through
+        ``read_background_check`` and share-locks the company row while it does,
         so a concurrent reopen or flag waits until this handover commits.
         """
         deal = await self._lock_deal(deal_id)
@@ -482,7 +479,7 @@ class DealService:
             # is a buyer; neither is not.
             if deal.buyer_company_id is None and deal.buyer is None:
                 raise DealBuyerRequiredError(deal_id)
-            # `lock=True`: D10. The company row is share-locked for the rest of this
+            # `lock=True`: the company row is share-locked for the rest of this
             # transaction, so the check cannot change between this guard and the
             # commit below.
             blocked = await self._handover_blocked_reason(deal, lock=True)
@@ -501,7 +498,7 @@ class DealService:
             # later cannot change what the lending team was given (architecture
             # §3.6). Collected before the commit, announced after it.
             handover = await self._handover_snapshot(deal)
-            # Persisted in the same UPDATE as the stage move (P2-7). The order is
+            # Persisted in the same UPDATE as the stage move. The order is
             # what makes this legal: `trg_deal_terminal_freeze` fires on the OLD
             # row, whose stage is still `GATHERING_PAPERWORK`, so the column is
             # written before it is frozen — and set-once from then on.
@@ -577,8 +574,7 @@ class DealService:
         in ``details``, the changed field names (``changed``), the buyer's name
         (``buyer_name``) and whether this recorded the deal's first buyer
         (``created``): a buyer's details are part of a deal's story, and a separate
-        ``buyer`` dimension would need a change to ``history-row.md`` §2, which is
-        Developer 1's.
+        ``buyer`` dimension would need a change to ``history-row.md`` §2.
         """
         deal = await self._lock_deal(deal_id)
         if deal.stage.is_terminal:
@@ -658,12 +654,12 @@ class DealService:
         actor_id: str | None,
         actor_role: str | None,
     ) -> DealView:
-        """Create the deal's buyer as a company and name it — plan P4-3 and P4-4's
-        "or creates one", ``remaining-work.md`` R-24.
+        """Create the deal's buyer as a company and name it — the "or creates one"
+        half of match-or-create.
 
         A buyer that is not on file used to have two ways in: the legacy details form,
-        which is retiring (P4-10), or Add company, which makes a **lead** and inflates
-        the pipeline (P4-2). This creates the company the way a buyer should exist:
+        which is retiring, or Add company, which makes a **lead** and inflates
+        the pipeline. This creates the company the way a buyer should exist:
         ``NOT_IN_PIPELINE``, ``source`` and ``created_via`` ``DEAL_BUYER``, created
         from this deal, with one ``pipeline`` history row and no journey row
         (``CompanyDirectory.create_buyer_company``).
@@ -671,15 +667,15 @@ class DealService:
         In order, and nothing is written until every check has passed:
 
         #. The deal may still take a buyer company: not closed, none named yet.
-        #. **IQ-7.** A company outside India needs its registration number unless it
-           holds a PAN. The P4-6 migration's exemption is for rows that predate the
+        #. **Foreign identity.** A company outside India needs its registration number
+           unless it holds a PAN. The buyer migration's exemption is for rows that predate the
            rule; a buyer entered now can meet it.
         #. **Match first** (``CompanyDirectory.match``, which audits every identifier
-           lookup, BQ-2). An identifier a company on file holds — ``MATCHED``, or a
+           lookup). An identifier a company on file holds — ``MATCHED``, or a
            ``CONFLICT`` between several — is refused with that company named, rather
            than duplicated. A name that only resembles an existing company
            (``POSSIBLE_DUPLICATE``) does not stop it: a name is never an identity
-           (IQ-8), and the person creating it has already been shown the look-alikes.
+           and the person creating it has already been shown the look-alikes.
 
         Then the company is created and named as the buyer through
         ``set_buyer_company``, so the trade relationship and the history row are the
@@ -692,7 +688,8 @@ class DealService:
         Raises:
             DealNotFoundError, DealTerminalError, DealBuyerCompanyAlreadySetError:
                 the deal cannot take a buyer company.
-            ValidationError: IQ-7, or a malformed identifier.
+            ValidationError: a foreign company with no registration number, or a
+                malformed identifier.
             BuyerCompanyAlreadyKnownError: an identifier names a company on file.
         """
         from app.modules.onboarding.application.company_directory import (
@@ -727,7 +724,7 @@ class DealService:
         )
         if result.kind in (MatchKind.MATCHED, MatchKind.CONFLICT):
             # The identifier-lookup audit row is the one record of this request that
-            # must survive the refusal (BQ-2).
+            # must survive the refusal.
             await self._db.commit()
             raise BuyerCompanyAlreadyKnownError(result.kind.value, list(result.candidates))
 
@@ -757,13 +754,13 @@ class DealService:
     async def set_buyer_company(
         self, deal_id: uuid.UUID, *, buyer_company_id: uuid.UUID, actor_id: str | None
     ) -> DealView:
-        """Name the company this deal's buyer **is** (plan P4-4, task 2.4).
+        """Name the company this deal's buyer **is**.
 
         The successor to `set_buyer`, which records a `deal_buyer` row — a set of
         details with no record of its own. A buyer company is a full company record:
         it can be screened, its sanctions and AML live on its own timeline, and the
         same company can be the buyer on one deal and the seller on another. That is
-        the point of the whole keystone (plan §1).
+        the point of making the buyer a company.
 
         **Set once.** Naming a different company later is refused, by this method and
         by `trg_deal_buyer_company_set_once` behind it — see
@@ -773,7 +770,7 @@ class DealService:
 
         The legacy `deal_buyer` row, if the deal has one, is deliberately left alone.
         It is what a handover before the migration was built from, and the deal
-        response still serves it until P4-10 retires those writes; the company is the
+        response still serves it until those writes are retired; the company is the
         authority from here on (contract §3.0).
 
         Writes a `deal` history row with `event_type="deal_buyer_company_set"`.
@@ -814,8 +811,8 @@ class DealService:
             raise DealCompanyNotFoundError(buyer_company_id)
 
         deal.buyer_company_id = buyer_company_id
-        # The pair now has a trade relationship (task 3.18, plan P5-1): "every deal
-        # with a buyer company has a relationship" is that task's acceptance
+        # The pair now has a trade relationship: "every deal
+        # with a buyer company has a relationship" is the trade history's acceptance
         # criterion, and the same transaction is what makes it true rather than
         # eventually true. `get_or_create` is safe if two deals record the same new
         # pair at once, and it deliberately does not commit — this unit of work does.
@@ -838,7 +835,7 @@ class DealService:
                 "buyer_company_id": str(buyer_company_id),
                 "buyer_name": company.name,
                 # Whether this deal also carries a legacy `deal_buyer` row, so the
-                # P4-10 retirement can tell which deals still have both.
+                # retirement of legacy buyers can tell which deals still have both.
                 "had_legacy_buyer": deal.buyer is not None,
             },
         )
@@ -860,10 +857,9 @@ class DealService:
         gst_registration_id: uuid.UUID | None,
         actor_id: str | None,
     ) -> DealView:
-        """Record which of the seller's GST branches this deal is invoiced from
-        (task 2.8, plan P6-6).
+        """Record which of the seller's GST branches this deal is invoiced from.
 
-        May be set **and changed** freely before handover (decision IQ-20), and
+        May be set **and changed** freely before handover, and
         `prevent_terminal_deal_change()` freezes it afterwards. Deliberately not
         set-once, unlike `buyer_company_id`: choosing the wrong branch has no
         consequence until the handover reads it, while a buyer company accumulates
@@ -955,7 +951,7 @@ class DealService:
         documents = await CrmDocumentRepository(self._db).list_for_deal_ids((deal.id,))
         buyer = deal.buyer
         # Built from the buyer **company** when the deal names one, and from the
-        # legacy `deal_buyer` row otherwise (plan P4-4). The company is the
+        # legacy `deal_buyer` row otherwise. The company is the
         # authority, so a deal carrying both snapshots the company: that is what the
         # lending team is being handed, and what every later read of this deal's
         # buyer resolves to.
@@ -1004,36 +1000,35 @@ class DealService:
             buyer=buyer_details,
             document_ids=[str(document.id) for document in documents],
             # Recorded alongside the buyer's details, not instead of them: once
-            # P4-4 points deals at company records, the snapshot has to say *which*
+            # deals point at company records, the snapshot has to say *which*
             # company was handed over as well as what it looked like at the time.
             buyer_company_id=deal.buyer_company_id,
             at=deal.handed_over_at or clock.now(),
         )
 
-    # ── The A5 handover guard ────────────────────────────────────────────────
+    # ── The handover guard ───────────────────────────────────────────────────
 
     async def _handover_blocked_reason(self, deal: Deal, *, lock: bool = False) -> str | None:
         """Why this deal may not be handed over — every unmet condition, joined with
         ``"; "`` — or ``None`` if it may.
 
         **The rules themselves are ``domain/handover_conditions.py``'s**, an ordered
-        list of condition functions over the providers injected into this service
-        (allocation F2). This method's job is the part only a service can do: read
+        list of condition functions over the providers injected into this service.
+        This method's job is the part only a service can do: read
         the seller's row **once**, under the right lock, and hand every condition
         the same snapshot of it.
 
-        Assumption A5 — the company's journey is ``CUSTOMER`` **and** its background
-        check is ``CLEAR`` — is the first two conditions. Both are real: Developer 4A's
-        migration 0015 landed and ``read_background_check`` calls their published
-        helper, so a company that has never been checked reads ``NOT_STARTED`` — a
-        fact, not an absence — and "not ``CLEAR``" is never treated as "clear". The
-        remaining four conditions are inert until their provider ships.
+        The company's journey is ``CUSTOMER`` **and** its background check is
+        ``CLEAR`` — those are the first two conditions. ``read_background_check``
+        calls the background check's published helper, so a company that has never
+        been checked reads ``NOT_STARTED`` — a fact, not an absence — and "not
+        ``CLEAR``" is never treated as "clear".
 
-        ``lock`` takes ``FOR SHARE`` on the company row (**decision D10, settled 28
-        September 2026**). It is passed only by ``transition_stage``, never by the
+        ``lock`` takes ``FOR SHARE`` on the company row (**settled 28 September
+        2026**). It is passed only by ``transition_stage``, never by the
         read that renders a deal:
 
-        * **On the move**, the lock closes a real race. Dev4A's own moves take
+        * **On the move**, the lock closes a real race. The background check's own moves take
           ``FOR UPDATE``, so a share lock here makes a concurrent ``FLAGGED`` wait
           until this transaction ends. Without it a flag could commit between this
           guard seeing ``CLEAR`` and the handover committing, and the lending team
@@ -1044,14 +1039,14 @@ class DealService:
           deal page load, and locking there would have ordinary rendering block
           compliance's decisions.
 
-        ``FOR SHARE`` rather than ``FOR UPDATE`` deliberately: it blocks Dev4A's
+        ``FOR SHARE`` rather than ``FOR UPDATE`` deliberately: it blocks the background check's
         writers, which is the point, while two handovers of different deals on the
         same company still proceed in parallel.
         """
-        # **Both** parties, in one statement ordered by `customer_id` (P4-7). The
+        # **Both** parties, in one statement ordered by `customer_id`. The
         # seller alone was enough while only its own standing was read; condition 5
         # now reads the buyer's, so a flag landing on the buyer between this guard and
-        # the commit would be the same race D10 closed for the seller.
+        # the commit would be the same race the lock closes for the seller.
         #
         # `ORDER BY customer_id` is the deadlock rule, not a tidiness one: Postgres
         # takes row locks in the order the query returns them, so two handovers that
@@ -1088,15 +1083,15 @@ class DealService:
             deal_id=deal.id,
             seller_company_id=deal.company_id,
             seller_journey=company.journey.value,
-            # Through the read seam, so Developer 1 owns that one function's body
+            # Through the read seam, so the compliance engine owns that one function's body
             # and the conditions never reach for the column themselves.
             seller_background_check=read_background_check(company),
             buyer_company_id=deal.buyer_company_id,
             legacy_buyer_id=deal.buyer.id if deal.buyer is not None else None,
             seller_gst_registration_id=deal.seller_gst_registration_id,
             # One "now" for the whole run, so two conditions cannot disagree about
-            # whether a check had expired — and taken from the shared clock
-            # (allocation §2.2), so a test can move past a Clear's expiry instead of
+            # whether a check had expired — and taken from the shared clock,
+            # so a test can move past a Clear's expiry instead of
             # rewriting a decision the database refuses to change anyway.
             now=clock.now(),
         )
@@ -1148,7 +1143,7 @@ class DealService:
 
     async def _buyer_company(self, deal: Deal) -> BuyerCompanyView | None:
         """The buyer as a company record — ``None`` on every deal whose buyer is
-        still a ``deal_buyer`` row (plan P4-4, filled by the migration in P4-6).
+        still a ``deal_buyer`` row (filled by the buyer migration).
 
         A summary, not the company: a deal page wants enough to recognise the buyer
         and to click through, and the whole company record is one request away. The
@@ -1168,9 +1163,8 @@ class DealService:
             company_id=company.customer_id,
             name=company.name,
             country=company.country,
-            # Developer 3's F3 column, read by name through `state_name` so an enum
-            # and a string look the same here. The `getattr` this used to need came
-            # out when F3 merged, as its comment said it would.
+            # Read by name through `state_name` so an enum and a string look the
+            # same here.
             pipeline_status=state_name(company.pipeline_status),
             pan=company.pan,
             cin=company.cin,

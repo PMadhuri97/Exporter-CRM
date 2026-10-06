@@ -1,4 +1,4 @@
-"""Trade history's enums — **owner: Developer 3** (allocation task 3.19, plan P5-2).
+"""Trade history's enums.
 
 What a buyer did with an invoice, and how well we know it. Two axes, deliberately
 separate, because conflating them is the mistake this model exists to avoid: "they

@@ -1,5 +1,5 @@
 /**
- * Every onboarding screen, loaded on first use (`docs/frontend-plan.md` §4.3, G7).
+ * Every onboarding screen, loaded on first use (`docs/frontend-plan.md` §4.3).
  *
  * Each page is its own chunk, imported from its own file — never through
  * `./pages/index.ts`, which would pull every page into whichever chunk reached it
@@ -29,7 +29,7 @@ export const ExporterDetailPage = lazy(() =>
   loadExporterDetailPage().then((m) => ({ default: m.ExporterDetailPage })),
 );
 /**
- * Starts loading the dossier's code before the click — a pointer resting on a company,
+ * Starts loading the company record's code before the click — a pointer resting on a company,
  * or focus on its link — so the click does not wait for it. `true` once it has loaded.
  */
 export function preloadExporterDetailPage(): Promise<boolean> {
@@ -59,6 +59,6 @@ export const RxilIntakePage = lazy(() =>
   import('./pages/RxilIntakePage').then((m) => ({ default: m.RxilIntakePage })),
 );
 // The compliance queue (frontend-plan §8.8): COMPLIANCE and ADMIN only.
-export const ReviewPage = lazy(() =>
-  import('./pages/ReviewPage').then((m) => ({ default: m.ReviewPage })),
+export const ApprovalsPage = lazy(() =>
+  import('./pages/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
 );

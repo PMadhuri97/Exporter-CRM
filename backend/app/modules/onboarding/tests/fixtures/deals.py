@@ -34,7 +34,7 @@ async def make_deal_with_buyer_company(
     seller: uuid.UUID | None = None, buyer_company: uuid.UUID | None = None
 ) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
     """A deal whose buyer is a company — which also gives the pair its trade
-    relationship, as naming the buyer company does (task 3.18). Returns
+    relationship, as naming the buyer company does. Returns
     ``(deal, seller, buyer_company)``."""
     from app.modules.onboarding.application.deal_service import DealService
 

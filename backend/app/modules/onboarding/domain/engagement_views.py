@@ -1,15 +1,14 @@
-"""Read-model view types for contacts and the activity log — **owner:
-Developer 3** (architecture §8.1, §9.3).
+"""Read-model view types for contacts and the activity log (architecture §8.1, §9.3).
 
 Pure data structures — no I/O, no session — the same pattern as
-``exporter_profile_views.py``, from which these were split (L2-01) unchanged.
+``exporter_profile_views.py``, from which these were split unchanged.
 ``ExporterContactActivityService`` assembles the pending view; the company
-detail view (``ExporterProfileDetail``, Developer 2) embeds the contact and
+detail view (``ExporterProfileDetail``) embeds the contact and
 activity views because the company page shows them.
 ``ConversationService`` assembles ``ConversationView``.
 
-Phase 2 adds **no** view here: its due/overdue read models live in its own
-``domain/follow_up_views.py`` (phase agreement §6.3).
+Follow-ups add **no** view here: their due/overdue read models live in
+``domain/follow_up_views.py``.
 """
 
 from __future__ import annotations
@@ -53,7 +52,7 @@ class ExporterActivityView:
 @dataclass(frozen=True)
 class PendingActivityView:
     """One row of `ExporterContactActivityService.list_pending_activities`'s
-    cross-exporter pending/follow-up list (Piece 2).
+    cross-exporter pending/follow-up list.
 
     Carries the exporter's display name alongside the activity itself so a
     Follow-ups screen never needs a second, per-row query to answer "pending,
@@ -104,7 +103,7 @@ class ConversationView:
     """The conversation gauge as the Conversation panel reads it.
 
     Carries `journey` because the panel has to explain an empty `allowed_moves`
-    to a person: on a `LEAD` the gauge does not apply yet (assumption A4), which
+    to a person: on a `LEAD` the gauge does not apply yet, which
     is a different sentence from "your role may not move it". The list itself is
     empty in both cases on purpose — the *screen* never re-derives which — so the
     journey is here as the thing worth saying, not as an input to a rule.

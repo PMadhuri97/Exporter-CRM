@@ -1,11 +1,11 @@
 /**
  * Seam S2 — the "open a deal" prompt on the Conversation panel.
  *
- * **Owner: Developer 3A.** Mounted by `ConversationPanel.tsx` whenever the gauge
+ * Mounted by `ConversationPanel.tsx` whenever the gauge
  * reads `READY_NOW`. Architecture §3.3: "`READY_NOW` … The screen offers to open a
  * deal; opening a deal also sets this."
  *
- * The form is Developer 3B's `OpenDealForm` — the same one the Deals tab uses —
+ * The form is `OpenDealForm` — the same one the Deals tab uses —
  * reached through the components barrel, never re-implemented here. Opening the
  * deal is what moves the gauge, on the server (seam S1): this component never
  * sets the conversation itself. On success it goes to the new deal's page, where
@@ -52,17 +52,17 @@ export function OpenDealPrompt({ customerId, isStaff }: OpenDealPromptProps) {
         <Icon.trade size={16} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-ink">
+        <p className="text-body font-medium text-ink">
           This company has something they want financed
         </p>
-        <p className="mt-0.5 text-sm text-ink/80">
+        <p className="mt-0.5 text-body text-ink/80">
           {isStaff
             ? 'Open a deal to record what they want financed, then add the buyer and the paperwork.'
             : 'A staff member can open a deal for it.'}
         </p>
       </div>
       {isStaff && (
-        <Button size="sm" variant="primary" onClick={() => setOpening(true)}>
+        <Button size="sm" variant="secondary" onClick={() => setOpening(true)}>
           <Icon.add size={14} />
           Open a deal
         </Button>

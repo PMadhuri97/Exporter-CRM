@@ -276,11 +276,11 @@ async def test_an_unknown_deal_returns_an_empty_page(
     assert resp.json() == {"entries": [], "total": 0, "limit": 50, "offset": 0}
 
 
-# ── DEVELOPER and decision D8 ────────────────────────────────────────────────
+# ── What DEVELOPER is not served ─────────────────────────────────────────────
 
 
 async def _seed_compliance_rows(company_id: uuid.UUID, deal_id: uuid.UUID) -> None:
-    """One row in each dimension D8 keeps from DEVELOPER, and one it does not."""
+    """One row in each dimension kept from DEVELOPER, and one that is not."""
     rows = [
         {
             "dimension": "background_check",
@@ -314,10 +314,10 @@ async def _seed_compliance_rows(company_id: uuid.UUID, deal_id: uuid.UUID) -> No
             await db.commit()
 
 
-async def test_developer_does_not_get_what_d8_refuses_it_elsewhere(
+async def test_developer_does_not_get_what_it_is_refused_elsewhere(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
-    """D8 refuses DEVELOPER the background check (value, reasons, evidence) and the
+    """DEVELOPER is refused the background check (value, reasons, evidence) and the
     verification and screening routes. Their history rows carry the same things, so
     the history routes leave those dimensions out for DEVELOPER — from the page and
     from the total — and every other role still gets the full timeline."""
@@ -354,7 +354,7 @@ async def test_developer_gets_the_customer_row_without_the_clearing_details(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
     """The move to CUSTOMER is a journey row DEVELOPER may read, but it records the
-    clearing decision and its risk rating — background-check data D8 keeps from
+    clearing decision and its risk rating — background-check data kept from
     DEVELOPER. The row is served without those two keys; every other key stays, and
     every other role gets them all."""
     company_id = await make_company()

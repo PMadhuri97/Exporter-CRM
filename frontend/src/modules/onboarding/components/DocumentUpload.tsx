@@ -1,5 +1,5 @@
 /**
- * Upload a document against a company or a deal — **owner: Developer 3B** (L3-11b).
+ * Upload a document against a company or a deal.
  *
  * One component for both owners: the only differences are which categories the
  * server offers and which upload hook runs, and both are passed in.
@@ -12,7 +12,7 @@
  * **It says the scanner is a placeholder.** The catalogue returns `scanner_name`,
  * and while that reads `pass-through` this form says so in as many words: gate §7.6
  * blocks real exporter documents until a real scanner is behind the interface, and a
- * form that implied one had run would be the exact failure Developer 4's placeholder
+ * form that implied one had run would be the exact failure the placeholder
  * clean-up exists to prevent.
  */
 
@@ -57,7 +57,7 @@ interface DocumentUploadProps {
   onUpload: (input: UploadDocumentInput) => Promise<unknown>;
   isUploading: boolean;
   onDone?: () => void;
-  /** A file already chosen — dropped on the shelf (frontend-plan §6.8). */
+  /** A file already chosen — dropped on the document list (frontend-plan §8.5). */
   initialFile?: File | null;
 }
 
@@ -112,7 +112,7 @@ export function DocumentUpload({
         <div>
           <label
             htmlFor="document-category"
-            className="mb-1 block text-xs font-medium text-ink-2"
+            className="mb-1 block text-caption font-medium text-ink-2"
           >
             Category
           </label>
@@ -138,7 +138,7 @@ export function DocumentUpload({
         <div>
           <label
             htmlFor="document-type"
-            className="mb-1 block text-xs font-medium text-ink-2"
+            className="mb-1 block text-caption font-medium text-ink-2"
           >
             Type
           </label>
@@ -163,7 +163,7 @@ export function DocumentUpload({
       <div>
         <label
           htmlFor="document-file"
-          className="mb-1 block text-xs font-medium text-ink-2"
+          className="mb-1 block text-caption font-medium text-ink-2"
         >
           File
         </label>
@@ -191,14 +191,14 @@ export function DocumentUpload({
             }
             setFile(chosen);
           }}
-          className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink file:mr-3 file:rounded-md file:border-0 file:bg-sunken file:px-3 file:py-1 file:text-sm file:text-ink-2"
+          className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-body text-ink file:mr-3 file:rounded-md file:border-0 file:bg-sunken file:px-3 file:py-1 file:text-sm file:text-ink-2"
         />
       </div>
 
       {scannerName === 'pass-through' && (
-        <p className="rounded-lg border border-attention/30 bg-attention-tint px-3 py-2 text-xs text-ink-2">
+        <p className="rounded-lg border border-attention/30 bg-attention-tint px-3 py-2 text-caption text-ink-2">
           <span className="font-medium text-ink">No malware scanning yet.</span> This
-          build records a <span className="font-mono">pass-through</span> result
+          build records a <span className="">pass-through</span> result
           instead of scanning, so an uploaded file is marked available without being
           checked. Do not upload a real exporter document until a scanner is
           connected.

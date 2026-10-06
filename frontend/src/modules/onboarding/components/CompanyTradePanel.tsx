@@ -1,12 +1,12 @@
 /**
- * Who this company has traded with — **owner: Developer 3** (task 3.22, plan P5-7).
+ * Who this company has traded with.
  *
  * The company-page half of trade history. `TradeHistoryPanel` answers "what have
  * *these two* traded", which is the deal page's question; this one answers "who does
  * this company trade with, and how did it go", which is what you ask when the company
  * is the subject and no deal is.
  *
- * **Two sides, two lists**, as everywhere else in this module (task 2.7, and the trade
+ * **Two sides, two lists**, as everywhere else in this module (and the trade
  * routes' own `as` parameter): who the company sells to, and who it buys from. One
  * list mixing them would read differently row by row — the same counterparty can be on
  * both sides, and "we invoiced them" and "they invoiced us" carry opposite risk.
@@ -17,9 +17,9 @@
  * state still says whether there is anything under it — which is the thing a reader
  * scans for.
  *
- * Counterparty identifiers are **not served here for any role** (IQ-19): a row is a
+ * Counterparty identifiers are **not served here for any role**: a row is a
  * name, a country and a pipeline status, and the rest is on that company's own page
- * where D8's masking governs it. So there is nothing to mask in this component, which
+ * where its masking governs it. So there is nothing to mask in this component, which
  * is the point of the response carrying no identifiers in the first place.
  */
 
@@ -43,8 +43,8 @@ export interface CompanyTradePanelProps {
   /** Which side of the trade this company is on, in these relationships. */
   as: DealSide;
   /**
-   * Whether this viewer may record trade (OPERATIONS, COMPLIANCE, ADMIN — IQ-19).
-   * DEVELOPER reads trade history and writes nothing, so it gets no control (R-27).
+   * Whether this viewer may record trade (OPERATIONS, COMPLIANCE, ADMIN).
+   * DEVELOPER reads trade history and writes nothing, so it gets no control.
    */
   canRecord?: boolean;
 }
@@ -89,7 +89,7 @@ function Row({
               </Tag>
             )}
           </p>
-          <p className="mt-0.5 text-xs text-ink-2">
+          <p className="mt-0.5 text-caption text-ink-2">
             {`${other.country ?? 'Country not recorded'} · ${
               count === 0
                 ? 'No invoices recorded'
@@ -98,13 +98,13 @@ function Row({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {/* Past trade (R-27, P5-8): an invoice with no deal, recorded against this
+          {/* Past trade: an invoice with no deal, recorded against this
               pair. Staff only; the relationship is this row. */}
           {canRecord && !recording ? (
             <button
               type="button"
               onClick={() => setRecording(true)}
-              className="text-xs font-medium text-ink hover:underline"
+              className="text-caption font-medium text-ink hover:underline"
             >
               Record past invoice
             </button>
@@ -115,7 +115,7 @@ function Row({
             <button
               type="button"
               onClick={() => setOpen((was) => !was)}
-              className="flex items-center gap-1 text-xs font-medium text-ink hover:underline"
+              className="flex items-center gap-1 text-caption font-medium text-ink hover:underline"
               aria-expanded={open}
             >
               {open ? 'Hide invoices' : 'Invoices'}
@@ -124,7 +124,7 @@ function Row({
           ) : (
             <Link
               to={paths.company(other.company_id)}
-              className="flex items-center gap-1 text-xs font-medium text-ink hover:underline"
+              className="flex items-center gap-1 text-caption font-medium text-ink hover:underline"
             >
               Open company
               <Icon.caretRight size={13} />
@@ -177,11 +177,11 @@ export function CompanyTradePanel({ companyId, as, canRecord = false }: CompanyT
         {as === 'seller'
           ? // Not "has never sold anything": a relationship appears when a deal
             // records its buyer company, so a company whose deals predate the buyer
-            // migration (P4-6) and the relationship backfill (P5-5) has none yet.
+            // migration and the relationship backfill has none yet.
             'Nobody recorded as a buyer from this company yet. Deals recorded before trade history are linked by the buyer migration and the relationship backfill.'
           : 'Nobody recorded as a seller to this company yet.'}
         {/* There is no route that creates a relationship on its own: a deal's buyer
-            does. So past trade has nowhere to go until one exists (R-27). */}
+            does. So past trade has nowhere to go until one exists. */}
         {canRecord
           ? ' Past trade is recorded against a relationship, so it can be added once a deal names the other company.'
           : ''}

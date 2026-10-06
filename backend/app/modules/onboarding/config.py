@@ -35,8 +35,7 @@ DEFAULT_RISK_RATING_CONFIG_PATH = RISK_RATING_CONFIG_DIR / DEFAULT_RISK_RATING_C
 
 
 #: Root directory of the GitOps reference data for CRM document types
-#: (architecture §3.4: categories are fixed, types are settings) — owner:
-#: Developer 3B, L3-09.
+#: (architecture §3.4: categories are fixed, types are settings).
 CRM_DOCUMENT_CONFIG_DIR = (
     # <repo>/backend/app/modules/onboarding/config.py -> parents[4] is <repo>
     Path(__file__).resolve().parents[4]

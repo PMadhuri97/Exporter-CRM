@@ -32,14 +32,14 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
 
     @staticmethod
     def _about_company(customer_id: uuid.UUID, *, include_deals_as_buyer: bool):
-        """Which rows count as "this company's history" (task 2.7).
+        """Which rows count as "this company's history".
 
         Every row carries the ``customer_id`` of the company it is **about**, and for
         a deal row that is the **seller** — the deal hangs off the selling company.
         So a company that is the buyer on a deal sees nothing of that deal on its own
         timeline, which was right while a buyer was a ``deal_buyer`` row and is wrong
         now that a buyer is a company record: being bought from is part of a
-        company's story (plan P4-4).
+        company's story.
 
         With ``include_deals_as_buyer`` the predicate also admits the ``deal``-dimension
         rows of deals this company buys on. Matched through ``deal.buyer_company_id``
@@ -59,8 +59,8 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
 
         ``trade`` rows are the other kind: an invoice for the deal and how it was paid
         are about the trade between the two companies, so the buyer is a party to them
-        (``trade-history.md`` §6, plan P5-3/P5-4: "on the seller's timeline, and the
-        buyer's by read-side union"; R-23). Past trade recorded with no deal carries no
+        (``trade-history.md`` §6: "on the seller's timeline, and the
+        buyer's by read-side union"). Past trade recorded with no deal carries no
         ``deal_id`` and stays on the seller's timeline.
 
         Used by both the page and its count, so the two cannot disagree about what
@@ -113,12 +113,12 @@ class ExporterLifecycleHistoryRepository(AppendOnlyRepository[ExporterLifecycleH
         share a timestamp; each row's ``from``/``to`` says what it was.
 
         ``exclude_dimensions`` leaves whole dimensions out — the history route
-        uses it to keep from DEVELOPER what decision D8 keeps from it elsewhere.
+        uses it to keep from DEVELOPER what the CRM keeps from it elsewhere.
         ``exclude_event_types`` does the same for single kinds of row within a
-        dimension DEVELOPER otherwise reads (a branch's flag and unflag, R-47).
+        dimension DEVELOPER otherwise reads (a branch's flag and unflag).
 
         ``include_deals_as_buyer`` adds the rows of deals this company buys on; see
-        ``_about_company``. It composes with ``exclude_dimensions``, so D8 still
+        ``_about_company``. It composes with ``exclude_dimensions``, so the DEVELOPER rule still
         applies to rows that arrive this way: a dimension DEVELOPER may not see on
         its own company is not readable through a deal either.
         """

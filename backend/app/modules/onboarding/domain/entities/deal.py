@@ -1,5 +1,4 @@
-"""``Deal`` — one financing need a company brought us — **owner: Developer 3B**
-(L3-05).
+"""``Deal`` — one financing need a company brought us.
 
 Contract: ``docs/contracts/deal-and-buyer.md``. Architecture §3.3 ("The deal"),
 §3.5, and migration 0018.
@@ -11,7 +10,7 @@ deals is not deletable, because deleting one would silently destroy the record o
 what was financed.
 
 **A deal is never deleted.** ``WITHDRAWN`` is how a deal ends, with a reason
-(assumption A7), and the row stays. There is no delete route and no
+(architecture §6.3), and the row stays. There is no delete route and no
 ``AppendOnlyModel`` either — the stage genuinely changes, and each change is a
 history row (``dimension="deal"``), so the table is mutable while its history is
 not.
@@ -54,7 +53,7 @@ SCHEMA = "onboarding"
 class Deal(AnerModel):
     __tablename__ = "deal"
     __table_args__ = (
-        # Assumption A7: a withdrawal carries its reason, and nothing else does.
+        # A withdrawal carries its reason, and nothing else does.
         # Both halves, so the column cannot fill up with reasons for live deals —
         # the same shape as `ck_exporter_profile_marker_reason`.
         CheckConstraint(
@@ -63,14 +62,14 @@ class Deal(AnerModel):
             name="ck_deal_withdrawal_reason",
         ),
         # A company does not sell to itself (migration 0028). NULL-tolerant,
-        # because every deal written before the buyer migration (P4-6) has its
+        # because every deal written before the buyer migration has its
         # buyer in `deal_buyer` and this column empty.
         CheckConstraint(
             "buyer_company_id IS NULL OR buyer_company_id <> company_id",
             name="ck_deal_buyer_is_not_the_seller",
         ),
         # A deal's invoicing branch must be one of its **seller's** registrations
-        # (migration 0036, plan P6-6). Composite rather than a plain FK to
+        # (migration 0036). Composite rather than a plain FK to
         # `exporter_gstin.id`, which would admit any company's branch: a deal invoiced
         # through a stranger's branch would put their GSTIN on the invoice, and the
         # handover guard would be asking about a branch whose flag belongs to someone
@@ -83,7 +82,7 @@ class Deal(AnerModel):
         ),
         # One company's deals, newest first — what the Deals panel asks for.
         Index("ix_deal_company_recent", "company_id", "created_at"),
-        # The mirror of it: the deals a company is the *buyer* on (P4-8).
+        # The mirror of it: the deals a company is the *buyer* on.
         Index("ix_deal_buyer_company_recent", "buyer_company_id", "created_at"),
         # The open-work views filter by stage across companies.
         Index("ix_deal_stage", "stage"),
@@ -107,26 +106,24 @@ class Deal(AnerModel):
         nullable=False,
         default=DealStage.OPEN,
     )
-    #: Required exactly when `stage` is `WITHDRAWN` (assumption A7), enforced by
+    #: Required exactly when `stage` is `WITHDRAWN`, enforced by
     #: `ck_deal_withdrawal_reason` as well as by the service.
     withdrawal_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    #: When the deal reached `HANDED_OVER`. Phase 4 sets it; NULL until then, and
+    #: When the deal reached `HANDED_OVER`. The handover sets it; NULL until then, and
     #: NULL forever on a deal that was withdrawn instead.
     handed_over_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
-    # ── The buyer as a company (migration 0028, plan P4-4) ───────────────────
+    # ── The buyer as a company (migration 0028) ──────────────────────────────
     #: The buyer, once buyers are ordinary company records. Nullable, and NULL on
-    #: every deal written before the buyer migration (P4-6) — such a deal's buyer
-    #: is still its `deal_buyer` row. Until P4-4 the handover still requires that
-    #: row (`_NEEDS_BUYER` reads `deal.buyer`); P4-4 makes it accept either. A real
+    #: every deal written before the buyer migration — such a deal's buyer
+    #: is still its `deal_buyer` row, and the handover accepts either. A real
     #: FK to `exporter_profile.customer_id` with `RESTRICT`, the same rule the
     #: seller's FK has and for the same reason.
     #:
-    #: **Not frozen by the terminal trigger yet.** P4-4 adds it there under the
-    #: set-once rule; until then the buyer migration has to be able to fill it on
-    #: deals that are already handed over.
+    #: Set once, and frozen with the deal by the terminal trigger since migration
+    #: 0034.
     buyer_company_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(
@@ -137,7 +134,7 @@ class Deal(AnerModel):
         nullable=True,
     )
 
-    # ── What the lending team was given (migration 0029, plan P2-7) ──────────
+    # ── What the lending team was given (migration 0029) ─────────────────────
     #: ``{buyer, buyer_company_id, document_ids, snapshot_source, snapshot_at}``,
     #: written inside the transaction that hands the deal over. **Set once**:
     #: ``trg_deal_terminal_freeze`` lets it go from NULL to a value on a terminal
@@ -150,13 +147,13 @@ class Deal(AnerModel):
         JSONB(none_as_null=True), nullable=True
     )
 
-    # ── The invoicing branch (migrations 0028 and 0036, plan P6-6) ───────────
+    # ── The invoicing branch (migrations 0028 and 0036) ──────────────────────
     #: Which of the seller's GST registrations this deal is invoiced from. ``NULL``
     #: on every legacy deal.
     #:
     #: Its FK is **composite** — see ``__table_args__`` — so the database refuses a
     #: registration belonging to another company. It may be set and changed freely
-    #: before handover (decision IQ-20) and is frozen with the deal afterwards by
+    #: before handover and is frozen with the deal afterwards by
     #: ``prevent_terminal_deal_change()``. Deliberately *not* set-once, unlike
     #: ``buyer_company_id``: choosing the wrong branch has no consequence until the
     #: handover reads it, while a buyer company accumulates compliance results.

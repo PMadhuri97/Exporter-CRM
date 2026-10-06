@@ -1,5 +1,4 @@
-"""The storage and scanner ports, and the key shape — **owner: Developer 3B**
-(L3-07, L3-08).
+"""The storage and scanner ports, and the key shape.
 
 Contract: ``docs/contracts/storage-and-documents.md`` §1-§4. Architecture §3.4.
 
@@ -10,8 +9,8 @@ without touching a disk.
 
 **The ports know nothing about documents.** ``StoragePort`` moves bytes at a key;
 ``ScannerPort`` judges bytes. Neither takes a category, an owner or a document
-row — that is ``crm_document``'s job (Phase 3). Keeping them this narrow is what
-makes swapping local disk for S3 (decision D8) a change in one file.
+row — that is ``crm_document``'s job. Keeping them this narrow is what
+makes swapping local disk for S3 a change in one file.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ class DocumentScanStatus(str, enum.Enum):
 
     Lives here rather than in ``document_enums.py`` because the scanner port
     returns it and the port must not import the document entity's module — the
-    dependency runs the other way. Phase 3's ``crm_document`` imports it from
+    dependency runs the other way. ``crm_document`` imports it from
     here for its column.
     """
 
@@ -113,7 +112,7 @@ class ScannerPort(Protocol):
     """Something that decides whether stored bytes may be served.
 
     ``name`` is stored on the document row, lowercase, exactly as a verification
-    provider is stored ``"manual"`` (§7.5, decision D4), so a reader can always
+    provider is stored ``"manual"`` (§7.5), so a reader can always
     tell which scanner reached a verdict — including when the answer is
     "pass-through", which is not a scanner at all.
     """
@@ -197,7 +196,7 @@ def is_safe_key(key: str) -> bool:
     """Whether every segment of an existing key is a safe path segment.
 
     Used by an implementation before it resolves a key against its root, and by
-    Phase 3 before it trusts a key read back from a row. The final segment
+    the document code before it trusts a key read back from a row. The final segment
     carries an extension, so it is checked as name plus extension.
     """
     if not key or key.startswith("/") or "\\" in key or "\0" in key:

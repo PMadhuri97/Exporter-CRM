@@ -1,6 +1,5 @@
 /**
- * Trade history — what two companies have invoiced and how it was settled —
- * **owner: Developer 3** (allocation tasks 3.20–3.22, plan P5-3, P5-4, P5-7).
+ * Trade history — what two companies have invoiced and how it was settled.
  *
  * A relationship's own paths are absolute (`/onboarding/trade-relationships/...`)
  * because a relationship belongs to a *pair* and not to either company; only the
@@ -15,7 +14,7 @@
  *
  * Amounts arrive as **strings** (`amount`, `amount_paid`): money is `Numeric`
  * server-side, and a JSON number would silently round it. Nothing here parses them —
- * they are formatted for display and never summed (decision IQ-4: there is no
+ * they are formatted for display and never summed (there is no
  * reporting currency, so a total across currencies would be a lie).
  */
 
@@ -38,7 +37,7 @@ import type {
  * One company's trade relationships, on one side.
  *
  * `as: 'buyer'` lists who it buys from instead. Two sides, two lists, for the same
- * reason the deal lists are separate (task 2.7): a company can sell to one
+ * reason the deal lists are separate: a company can sell to one
  * counterparty and buy from another, and one list mixing them would read differently
  * row by row.
  */
@@ -98,7 +97,7 @@ export function recordTradeOutcome(
 }
 
 /**
- * Record how a handed-over deal was settled (task 3.21, plan P5-6).
+ * Record how a handed-over deal was settled.
  *
  * Creates the deal's invoice if it has none — the four invoice fields are then
  * required together — and appends the outcome. **Not a deal stage**: handover is the

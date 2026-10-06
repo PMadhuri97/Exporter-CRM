@@ -1,11 +1,11 @@
 """`StubRxilAdapter` — proves the "one payload produces many
-`VerificationResult` rows" batch shape (EXP-2 plan point 6 / Exporter CRM
-Piece 3) end-to-end, **without assuming anything about RXIL's real
+`VerificationResult` rows" batch shape end-to-end, **without assuming anything
+about RXIL's real
 integration mechanism**.
 
 This is explicitly a stub to de-risk the architecture, not a real vendor
 integration — **RXIL results intake is BLOCKED until the RXIL package/results
-contract exists (D12, verification-and-screening.md §11)**; nothing here pretends otherwise. As of this writing, how RXIL actually hands over a batch of
+contract exists (verification-and-screening.md §11)**; nothing here pretends otherwise. As of this writing, how RXIL actually hands over a batch of
 checks — a synchronous API call, a file drop, an event stream — is genuinely
 unknown; nothing below guesses at one. `verify_batch` accepts plain
 `VerificationRequest`s whose `payload` already carries the check's outcome
@@ -50,14 +50,14 @@ from app.shared.enums.kyb import KYBVendorProcessingMode, VendorHealthStatusEnum
 
 #: What this stub reports as `VerificationOutcome.provider` — persisted
 #: verbatim onto `VerificationResult.provider` by `VerificationService`,
-#: never rewritten (the same guarantee EXP-2 already proved for the
+#: never rewritten (the same guarantee already proved for the
 #: single-result case; `test_stub_rxil_adapter.py`'s
 #: `test_batch_provider_is_never_rewritten` extends it to the batch case).
 #:
-#: **Lower-case and says "stub"** (Dev4B 4B-6, verification-and-screening.md §4): providers are
-#: stored lower-case (decision D4 of the earlier plan), and a row this stub wrote
+#: **Lower-case and says "stub"** (verification-and-screening.md §4): providers are
+#: stored lower-case, and a row this stub wrote
 #: must never be mistaken for RXIL's own answer once a real RXIL adapter exists
-#: and reports `"rxil"`. Rows written before 4B-6 carry `"RXIL"`; they are not
+#: and reports `"rxil"`. Older rows carry `"RXIL"`; they are not
 #: rewritten, and `verification_result.STUB_PROVIDERS` labels both as a stub.
 #: The registry key stays `"rxil"` (`VerificationProvider` is unchanged).
 PROVIDER_NAME = "rxil_stub"
@@ -65,7 +65,7 @@ PROVIDER_NAME = "rxil_stub"
 #: The registry key this stub is looked up by. Deliberately lower-case and
 #: distinct from `PROVIDER_NAME`: a registry key is a caller-facing routing
 #: string ("which adapter do I want"), not the provider's own self-reported
-#: identity — `tests/integration/test_exp2_verification_service.py`'s
+#: identity — `tests/integration/test_verification_service.py`'s
 #: `_FakeRxilAdapter` already established that the two need not (and for a
 #: real vendor, generally won't) coincide.
 REGISTRY_KEY = "rxil"

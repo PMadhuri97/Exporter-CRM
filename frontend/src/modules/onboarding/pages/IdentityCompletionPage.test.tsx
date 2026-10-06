@@ -40,7 +40,7 @@ function renderPage() {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('IdentityCompletionPage (R-28)', () => {
+describe('IdentityCompletionPage', () => {
   it('groups what a rule requires apart from what is only worth doing', async () => {
     vi.mocked(listIdentityCompletion).mockResolvedValue({
       items: [
@@ -64,10 +64,10 @@ describe('IdentityCompletionPage (R-28)', () => {
     const required = await screen.findByRole('region', { name: 'Required' });
     const optional = screen.getByRole('region', { name: 'Worth completing' });
     expect(within(required).getByText('Rotterdam Trading BV')).toBeInTheDocument();
-    expect(within(required).getByText(/Needs: Registration number/)).toBeInTheDocument();
+    expect(within(required).getByText(/Missing: Registration number/)).toBeInTheDocument();
     expect(within(required).getByText(/Buyer only/)).toBeInTheDocument();
     expect(within(required).getByText(/Created from a deal buyer/)).toBeInTheDocument();
-    expect(within(optional).getByText(/Needs: PAN/)).toBeInTheDocument();
+    expect(within(optional).getByText(/Missing: PAN/)).toBeInTheDocument();
     // Each row opens the company, where the edit that completes it lives.
     expect(within(required).getByRole('link')).toHaveAttribute(
       'href',
@@ -93,8 +93,8 @@ describe('IdentityCompletionPage (R-28)', () => {
   });
 });
 
-describe('IdentityGapNotice (R-28)', () => {
-  it('asks a foreign company for its registration number, as IQ-7 requires', () => {
+describe('IdentityGapNotice', () => {
+  it('asks a foreign company for its registration number, as the CRM requires', () => {
     render(<IdentityGapNotice country="NL" canEdit />);
     const notice = screen.getByTestId('identity-gap-notice');
     expect(notice).toHaveTextContent(/registration number its own registrar issued/);

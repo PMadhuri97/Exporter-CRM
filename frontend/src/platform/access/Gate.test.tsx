@@ -41,7 +41,7 @@ function renderGate(children: React.ReactNode) {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('Gate (R-33 Phase 0)', () => {
+describe('Gate', () => {
   it('renders, and only then loads, a screen the role may open', async () => {
     signInAs('ADMIN');
     const { Screen, load } = lazyScreen();

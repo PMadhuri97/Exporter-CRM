@@ -7,8 +7,10 @@ decision, and what is deliberately not being done.** Audited on **4 October 2026
 the work that follows from them is planned in §12. A UAT and demo-readiness audit on
 `main` @ `46097bd` (the redesign merged) on **5 October 2026** built R-19 and R-47 early,
 fixed four demo issues and rebuilt the demo database (§13). A walkthrough for the CEO demo
-deck on `main` @ `9ed6cb6` the same day found four display issues, fixed as R-57 – R-60
-(§14).
+deck on `main` @ `9ed6cb6` the same day found four display issues, fixed as R-58 – R-61
+(§15). On **6 October 2026** the
+second frontend plan — a standard enterprise CRM look in place of the redesign's, which the
+TL rejected — was built on `feature/frontend-redesign` (R-57, §14).
 
 It replaces `open-items.md` (merged in here and deleted on 4 October 2026) and the three
 lane lists `dev1/dev2/dev3-remaining-work.md` (deleted earlier the same day). §11 says where
@@ -36,10 +38,11 @@ unhyphenated D1–D17 are in `contracts/background-check.md` §14 and
 |---|---|
 | **Audited** | `feature/company-foundation-and-compliance-guard` @ `6cd71db` (4 commits since `dfcb2d2`: R-01–R-05, R-06–R-11, R-12–R-23, R-24–R-33 Phase 0), 4 October 2026. **Merged** to `main` (`05b43eb`, fast-forward plus the audit's documentation commit; local `main` not yet pushed). Code since `6cd71db` changed in comments only, and every gate was re-run on `main` (§9) |
 | **Implementation** | Every allocated task of the three lanes is built and tested except **P4-10** (R-25, blocked on purpose) and the optional **P6-4** (R-30); task 3.2's script is built but its reports are still owed (OPS-0). One plan requirement was never allocated and is only partly built (R-34). The post-merge audit found five more items (R-43–R-46 and the decided R-19, R-47–R-50). Details in §2, §3 and §12 |
-| **Quality gates** | All pass at the baseline (§9, and §13.5 and §14.4 for 5 October) |
+| **Quality gates** | All pass at the baseline (§9, and §13.5 and §15.4 for 5 October) |
 | **Migration head** | One head, `onboarding_0043_identity_type`. Next free number **0044**. Upgrade from an empty database, `downgrade -3` and back, and `alembic check` are clean (re-run on `main`) |
 | **Merge readiness** | Merged. No blocker was found |
-| **Demo readiness** | **Ready — re-verified 5 October 2026 on the redesigned UI (§13).** `crm_demo` was rebuilt clean that day (the rehearsal copy is kept as `crm_demo_rehearsal_1005`); the paragraph that follows is the 4 October state. **4 October:** ready. Sign-in accounts on `crm_demo`: one ADMIN, two COMPLIANCE (maker-checker needs the second), one RM (OPERATIONS) and one DEVELOPER, each with a full name; passwords kept outside the repository. Demo database `crm_demo` built fresh at head with the sample companies (demo.md §1); `demo.md` §3 and §5 rehearsed against a copy of it through the API and, for 91 screens across four roles, in a headless browser on the production build: no error, no failed request, role gating as §5 says. `demo.md` corrected where the sample data had moved on |
+| **Demo readiness** | **Ready — re-verified 5 October 2026 on the redesigned UI (§13).** Later that day, at the lead's request, `aner_settlement` was rebuilt clean as the **only** CRM database on the development server and every other one dropped, `crm_demo` included (§13.6); the paragraph that follows is the 4 October state. **4 October:** ready. Sign-in accounts on `crm_demo`: one ADMIN, two COMPLIANCE (maker-checker needs the second), one RM (OPERATIONS) and one DEVELOPER, each with a full name; passwords kept outside the repository. Demo database `crm_demo` built fresh at head with the sample companies (demo.md §1); `demo.md` §3 and §5 rehearsed against a copy of it through the API and, for 91 screens across four roles, in a headless browser on the production build: no error, no failed request, role gating as §5 says. `demo.md` corrected where the sample data had moved on |
+| **Frontend** | **R-57 built, not merged** (6 October 2026, §14): the enterprise look of `frontend-plan.md` (second version), all three phases, unstaged on `feature/frontend-redesign` off `b209cc7`. Waiting on the TL's sign-off of the style guide and the company record, then the formal `demo.md` walk. Decision D-22 is open |
 | **Release readiness** | **Not ready to release.** The buyer migration (P4-6) has run in no environment (§8). The rehearsal copy's "325 rows for a person" and "13 handed-over deals without a snapshot" turned out to be **test-suite debris**, not data problems (§8), so a real rehearsal on a copy of each environment is still owed. The decided work in §12 is not built. No real document or customer data may be stored yet (P7-7, §5) |
 
 ---
@@ -51,7 +54,7 @@ unhyphenated D1–D17 are in `contracts/background-check.md` §14 and
 | **Compliance engine** (Developer 1, merged in PR #16) | F1; P2-1a–c, P2-2, P2-3a–d, P2-4a, P3-1a–d, P3-2, P3-3a–c, P4-5, P4-11; `CompanyComplianceSummary` (1.20) | `ComplianceFactsReader` (`application/compliance_facts.py`), check cycles and their route, maker-checker with `CRM_BACKGROUND_CHECK_MAKER_CHECKER` refused off outside local/test, rule B (`ClearPolicy.required_passed_types`), Clear expiry and `GET /background-check/due`, company-keyed buyer checks (`subject_company_id`). Tests `test_dev1_*.py`, `test_l4a_*`/`test_l4b_*`; the decisions behind them are in `contracts/background-check.md` §12, §14 |
 | **Deals and handover** (Developer 2) | F2; P2-7, P2-5a/b, P4-4, P3-3b/P3-4/P4-7 (guard), P4-8 (deals), P6-6, P6-7; 2.11, 2.12 | `domain/handover_conditions.py` (eight conditions: CUSTOMER, CLEAR, required documents, seller current and no failed sanctions/AML, buyer sanctions and AML PASSED, branch recorded, branch not flagged, branch not deactivated — the last added 5 October, R-19), both parties share-locked by `customer_id`; handover snapshot (0029); invoicing branch (0036). `test_l3b_*`, `test_crm_end_to_end.py` |
 | **Buyer migration command** | P4-6 (code) | `migrate_deal_buyers.py`, map table (0038), 0039, `ALREADY_LINKED` (0041); 32 safety tests; rehearsed (§8). **Not run on any live database** |
-| **Company record, settings, GST, trade** (Developer 3) | F3; P0-3 (script), P0-4, P1-1, P1-2, P1-4, P1-5, P2-4b, P2-6, P4-1–P4-3, P4-9, P6-1, P6-2, P6-5, P6-3's warn-only consequences, P5-1–P5-8 | `CompanyDirectory`, `/companies/match` (BQ-2, audited), `pipeline_status` and `NOT_IN_PIPELINE`, GST registrations as branches (0035) with flags, trade relationships, invoices and outcomes (0037), relationship backfill command, masking sweep (`test_dev3_masking_sweep.py`), `backend/scripts/crm_data_inventory.sql` |
+| **Company record, settings, GST, trade** (Developer 3) | F3; P0-3 (script), P0-4, P1-1, P1-2, P1-4, P1-5, P2-4b, P2-6, P4-1–P4-3, P4-9, P6-1, P6-2, P6-5, P6-3's warn-only consequences, P5-1–P5-8 | `CompanyDirectory`, `/companies/match` (BQ-2, audited), `pipeline_status` and `NOT_IN_PIPELINE`, GST registrations as branches (0035) with flags, trade relationships, invoices and outcomes (0037), relationship backfill command, masking sweep (`test_masking_sweep.py`), `backend/scripts/crm_data_inventory.sql` |
 | **PR audit fixes** | R-01 – R-24, R-27 – R-29 (not R-19) | §6 and the commits `436731d`, `ccc42cc`, `0713986`, `6cd71db` |
 | **Fail-closed screens** | R-33 Phase 0 (G1–G7) | `src/platform/access`, module table `src/routes/modules.ts`, route gates, No workspace, lazy screens, ESLint rule against role literals; `src/routes/access.matrix.test.tsx` |
 
@@ -68,7 +71,7 @@ equality after normalisation, `company_directory._by_name`); the D14 history tex
 ### 3.1 Merge blockers
 
 **None.** Every gate passes (§9). No route lacks a role gate (`test_route_authorization_coverage.py`),
-no CRM read serves an unmasked identifier to a masked role (`test_dev3_masking_sweep.py`),
+no CRM read serves an unmasked identifier to a masked role (`test_masking_sweep.py`),
 the generated API artifacts are current (`test_openapi_artifact_is_current.py`; `schema.ts`
 regenerated and compared, identical), and nothing found in this audit is unsafe to merge.
 What is left is release work (§3.2, §8), decisions (§4) and planned later phases.
@@ -127,7 +130,7 @@ come before R-25 and R-26.
 
 | | |
 |---|---|
-| Status | **DONE — VERIFIED** (5 October 2026). Phases 1–5 merged to `main` in PR #19 (`a77725d`, `46097bd`); walked in the UAT of §13 |
+| Status | **DONE — VERIFIED** (5 October 2026). Phases 1–5 merged to `main` in PR #19 (`a77725d`, `46097bd`); walked in the UAT of §13. **Its look is superseded by R-57** (the TL rejected it as reading AI-generated); its structure — fail-closed access, lazy screens, the token mechanism, the shell registry, the component logic — is kept |
 | Priority | Medium |
 | Why it remains | — (kept for its record: tokens and primitives, shell, signature components, screens, polish) |
 | Source | `frontend-plan.md` §14 |
@@ -138,6 +141,21 @@ come before R-25 and R-26.
 | Decision required? | No |
 | Owner | The developer completing the project |
 
+#### R-57 — Frontend plan, second version: the enterprise look
+
+| | |
+|---|---|
+| Status | **BUILT, NOT MERGED** (6 October 2026). Phases 1–3 of `frontend-plan.md` §14 built and verified, unstaged on `feature/frontend-redesign` (§14 here) |
+| Priority | Medium |
+| Why it remains | The TL signs off the style guide (`/__design`) and the company record before it merges (`frontend-plan.md` §14, Phase 1 "done when"); the formal `demo.md` §3–§5 walk as each role at 1366 × 768 and 1440 × 900, with screenshots to the TL, is still owed (Phase 2 "done when"); D-22 is open |
+| Source | `frontend-plan.md` (second version, 5 October 2026) |
+| Affected code | `frontend/src` (about 200 files), `frontend/package.json` and `pnpm-lock.yaml`, `frontend/index.html`, `frontend/public/favicon.svg`; `docs/demo.md` §2–§5; `docs/frontend-plan.md` §14 status lines |
+| Required implementation | Built as the plan says. Backend asks A1, A3, A4 and A7 (R-46) are not needed for it: each screen ships its fallback and switches over when the ask lands |
+| Validation | `frontend-plan.md` §15; gates in §14.3 here; the role-matrix test stays green |
+| Dependencies | The TL's sign-off; D-22 |
+| Decision required? | D-22 (the identifier eye) |
+| Owner | The developer completing the project |
+
 #### Smaller items
 
 | Id | Item | Status | Priority | Source | Required implementation and validation | Decision? |
@@ -146,7 +164,7 @@ come before R-25 and R-26.
 | R-35 | Retire `GET /exporters/activities/pending` | STILL OPEN | Low | `engagement.md` §5.6; plan §19.3 | Superseded by `GET /follow-ups`, still lists completed follow-ups, no screen calls it. Remove the route, its authorisation rows and OpenAPI entry; confirm no outside caller first | No |
 | R-36 | The qualification-criteria screen shows a version's `created_by` as a user id | STILL OPEN | Low | architecture §8; plan §19.3 | Serve `created_by_name`, as every other history-like read does | No |
 | R-37 | The company search returns no `total` | STILL OPEN | Low | plan §19.3 | Add `total` to `GET /exporters`; Home and Companies then show exact counts | No |
-| R-38 | Two tests fail intermittently (a third of the same kind found 5 October, §14.4: `test_l3b_buyer_migration_safety.py::test_a_created_company_gets_one_creation_row_saying_where_it_came_from`, because `migrate_deal_buyers.py` breaks a `created_at` tie by a random deal id) | STILL OPEN | Low | `development.md` §9 | `test_dev1_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle`: the listing **already** orders by `decided_at DESC, id DESC`, and that cannot fix it — ids are random UUIDs, and on Windows two quick decisions can share a timestamp — so order ties by the decision chain (a decision follows the one it supersedes) and keep the assertion; `test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index` (asserts a query plan; whole suite only). §12, PR-E | No |
+| R-38 | Two tests fail intermittently (a third of the same kind found 5 October, §15.4: `test_buyer_migration_safety.py::test_a_created_company_gets_one_creation_row_saying_where_it_came_from`, because `migrate_deal_buyers.py` breaks a `created_at` tie by a random deal id) | STILL OPEN | Low | `development.md` §9 | `test_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle`: the listing **already** orders by `decided_at DESC, id DESC`, and that cannot fix it — ids are random UUIDs, and on Windows two quick decisions can share a timestamp — so order ties by the decision chain (a decision follows the one it supersedes) and keep the assertion; `test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index` (asserts a query plan; whole suite only). §12, PR-E | No |
 | R-39 | The OpenAPI artifact test compares `info.title`, which comes from `APP_NAME` | STILL OPEN | Low | `development.md` §8 | Pin the title in code, or leave it out of the comparison | No |
 | R-40 | The suite cannot run inside the `aner-app` container | STILL OPEN | Low | — | `test_openapi_artifact_is_current.py` needs `./frontend`; mount it in compose | No |
 | R-41 | Accounts created before 29 September with a special-use address (`admin@demo.local`) cannot sign in | STILL OPEN (data) | Low | — | Make a new account with a real-looking address and deactivate the old one (Settings cannot change an email). Neither `crm_release_audit` nor the shared development database has one (checked 4 October); it can only concern `crm_uat_walk` | No |
@@ -197,7 +215,8 @@ changes with the code).
 | **D-17** *(new)* | Which databases are "every environment" for OPS-0 – OPS-6 and R-25? | **Only those holding data someone needs:** `crm_uat_walk` (on another server; the lead runs the steps there), `crm_release_audit`, the demo database. Development and test databases are rebuilt from empty plus sample data, never migrated through P4-6 | §8; R-25's precondition |
 | **D-18** *(new)* | R-31: what happens to companies that already have no name? | **Pre-check, then `NOT NULL`.** Code stops creating them now; the contract migration refuses while any exists and lands after OPS-0 shows none in scope. (A `NOT VALID` check was rejected: Postgres re-checks it on every update, and the gauges live on the company row.) | R-31 (PR-E, PR-L) |
 | **D-19** *(new)* | Which frontend-plan backend asks are built? | **A1, A3, A4, A7.** A6 and A8 deferred; A5 stays deferred (§5) | R-46 |
-| **D-20** *(new)* | Frontend plan §17 Q1–Q3 | **The designed defaults:** placeholder brand mark until a logo exists, a read-only Developer desk, Review in the Admin rail | R-33 Phases 1–4 as `frontend-plan.md` describes |
+| **D-20** *(new)* | Frontend plan §17 Q1–Q3 | **The designed defaults:** placeholder brand mark until a logo exists, a read-only Developer desk, Review in the Admin rail | R-33 Phases 1–4 as `frontend-plan.md` describes. Still applies under the second plan, with its names: a read-only Developer Home, Approvals for Admin |
+| **D-21** *(new, 5 October)* | The second frontend plan's §17 Q1 and Q4, and its font (§5.3) | **The plan's recommendations:** the placeholder brand blue `#0B5CAD` and the "Aner Labs" wordmark until Aner's brand colour and logo exist; the system UI font (Segoe UI), not IBM Plex Sans; light by default with dark in the user menu. To be confirmed by the TL with the style guide | R-57 |
 | — | Contract open items: `company-record.md` O1 (rename `customer_id`), O4 (mask CIN); `criterion-result.md` Q1 (range criteria), Q2 (`qualification_initial` row), Q3 (acknowledgement), Q4 (RXIL package) | **Closed:** O1 no rename; O4 CIN masked (architecture §9); Q1 not needed; **Q2 won't be built** (the column default stands for it); Q3 obsolete; Q4 is D12 (§5) | PR-A |
 | — | The DPDP meeting | **Nothing in the plan depends on it.** P7-4, P7-5 and P7-7 stay deferred, and only sample data is used | §5 |
 
@@ -208,7 +227,15 @@ the maker-checker details, the expiry backfill, keeping `BuyerChecks` until P4-1
 verification side, no D2 amendment for placeholders, and no document required to `CLEAR`
 (to be revisited with P7-7).
 
-**No decision is open.** A new one gets the next id, D-21.
+**One decision is open.**
+
+| Id | Question | Options | Blocks |
+|---|---|---|---|
+| **D-22** *(DECISION REQUIRED)* | The second frontend plan's §17 Q3: Compliance and Admin read identifiers in full by decision, so the identifier's eye changes nothing for them | Drop the eye; **or** mask identifiers for those roles too until revealed | Nothing; R-57 keeps today's behaviour until it is answered |
+
+`frontend-plan.md` §17 Q2 (the demo date) is a scheduling question for the lead, not a
+decision: if a demo comes first, the screens it walks are already built. A new decision
+gets the next id, D-23.
 
 ---
 
@@ -248,34 +275,34 @@ Not current work. Each starts only when its trigger happens.
 | R-03 | Ruff `I001` | DONE — VERIFIED | 16 findings, all pre-existing |
 | R-04 | Stale closed-deal buyer test | DONE — VERIFIED | `test_a_closed_deals_buyer_company_is_filled_once_then_frozen_in_raw_sql` passes |
 | R-05 | No invoicing-branch picker | DONE — VERIFIED | `InvoicingBranchPicker` (13 tests) and 7 deal-page tests |
-| R-06 | Name-only buyers merged | DONE — VERIFIED | `test_l3b_buyer_migration_safety.py`; rehearsal §8 |
+| R-06 | Name-only buyers merged | DONE — VERIFIED | `test_buyer_migration_safety.py`; rehearsal §8 |
 | R-07 | Already-linked buyers re-pointed | DONE — VERIFIED | `ALREADY_LINKED` (0041); validation checks 8–9 are 0 on the rehearsal copy |
 | R-08 | Arbitrary PAN holder through a GSTIN | DONE — VERIFIED | `CONFLICT` with every holder; safety tests |
 | R-09 | `--confirm-name` unchecked | DONE — VERIFIED | `check_confirmations` before any write; exit 2 on a bad line |
 | R-10 | §17.2 gaps (contacts, history row, one-character numbers, query 5) | DONE — VERIFIED | Safety tests; validation query 5 is 0 |
 | R-11 | Data commands crash on a Windows console | DONE — VERIFIED | `command_console.prepare_console`; cp1252 subprocess tests |
-| R-12 | Payment outcome not atomic | DONE — VERIFIED | `test_dev3_trade_integrity.py` |
+| R-12 | Payment outcome not atomic | DONE — VERIFIED | `test_trade_integrity.py` |
 | R-13 | Concurrent outcomes give a 500 | DONE — VERIFIED | Invoice locked; 409 `TRADE_OUTCOME_STALE`; concurrency tests |
 | R-14 | Two invoices for one deal under a race | DONE — VERIFIED (the lock); one invoice per deal is D-03 | Deal locked `FOR UPDATE`; concurrency test |
 | R-15 | `registration_number` unmasked in history | DONE — VERIFIED | Masked on write and on read; the sweep edits it first |
 | R-16 | `identity_type` stale on edit | DONE — VERIFIED | Recomputed on edit; IQ-7 on edit; 0043 |
 | R-17 | Invoice accepts any `deal_id` | DONE — VERIFIED | Service checks; FKs in 0042 (`NOT VALID` where old rows violate) |
 | R-18 | Handover and a branch flag interleave | DONE — VERIFIED | `flag`/`unflag`/`deactivate` lock the company; concurrency test |
-| R-19 | A deactivated invoicing branch does not block handover | DONE — VERIFIED (5 October) | Guard condition 8; `test_l3b_invoicing_branch.py`, `test_l3b_handover_conditions.py`; `deal-and-buyer.md` §6.1 |
+| R-19 | A deactivated invoicing branch does not block handover | DONE — VERIFIED (5 October) | Guard condition 8; `test_invoicing_branch.py`, `test_handover_conditions.py`; `deal-and-buyer.md` §6.1 |
 | R-20 | Registration key disagrees with the index | DONE — VERIFIED | ASCII key; the collision test gets a 409 |
 | R-21 | `POST /exporters` accepts `DEAL_BUYER` | DONE — VERIFIED | Refused by the route and by the CSV import |
 | R-22 | Match audit actor type | DONE — VERIFIED | `actor_type_for_role` |
 | R-23 | Buyer's history lacks trade rows | DONE — VERIFIED | Read-side union; `trade-history.md` §6 |
-| R-24 | Create a buyer company from the deal | DONE — VERIFIED | `test_l3b_deal_buyer_company_create.py` (17 cases: pipeline count unchanged, refusals, roles, masking); picker and deal-page tests |
+| R-24 | Create a buyer company from the deal | DONE — VERIFIED | `test_deal_buyer_company_create.py` (17 cases: pipeline count unchanged, refusals, roles, masking); picker and deal-page tests |
 | R-25 | Retire `deal_buyer` writes (P4-10) | BLOCKED | §3.2 |
 | R-26 | Delete `BuyerChecks` | BLOCKED | §3.2 |
 | R-27 | Past-invoice form | DONE — VERIFIED | `RecordPastTradeForm` (7 tests) and 4 panel tests |
-| R-28 | IQ-7 completion list | DONE — VERIFIED | `test_dev3_identity_completion.py` (9), `IdentityCompletionPage.test.tsx` (6) |
-| R-29 | `pipeline_status` on the Re-KYC due list | DONE — VERIFIED | Due-list test in `test_dev1_clear_expiry.py`; `HomeCards.test.tsx` |
+| R-28 | IQ-7 completion list | DONE — VERIFIED | `test_identity_completion.py` (9), `IdentityCompletionPage.test.tsx` (6) |
+| R-29 | `pipeline_status` on the Re-KYC due list | DONE — VERIFIED | Due-list test in `test_clear_expiry.py`; `HomeCards.test.tsx` |
 | R-30 | PAN from GSTIN (P6-4) | DEFERRED | §5 |
 | R-31 | `name`/`country` `NOT NULL` | STILL OPEN (D-18) | §3.2; §12 PR-E, PR-L |
 | R-32 | Name matching at scale | DEFERRED | §5 |
-| R-33 | Frontend plan | DONE — VERIFIED (5 October; PR #19) | §3.2; `access.matrix.test.tsx`; §13 |
+| R-33 | Frontend plan | DONE — VERIFIED (5 October; PR #19); look superseded by R-57 | §3.2; `access.matrix.test.tsx`; §13 |
 
 ### 6.2 Rows carried from `open-items.md` (deleted 4 October 2026)
 
@@ -319,7 +346,8 @@ Not current work. Each starts only when its trigger happens.
 ## 8. On live databases — in this order, do not reorder
 
 **Environments (D-17):** `crm_uat_walk` (on another server; the lead runs these steps
-there), `crm_release_audit` (on the development server, at `onboarding_0022`: 11 companies,
+there), `crm_release_audit` (**dropped 5 October 2026 at the lead's request; its dump is
+kept, §13.6** — restore it before running these steps there, or take it out of scope) (on the development server, at `onboarding_0022`: 11 companies,
 5 legacy deal buyers, 2 open deals, IEC pre-check 0) and the demo database. Development and
 test databases (`aner_settlement`, the scratch copies) are not migrated through P4-6: they
 are rebuilt from empty plus sample data when they need to be current. The procedure for
@@ -353,9 +381,9 @@ about any environment. Read-only `--validate` re-run on 4 October 2026:
   command works and is idempotent on a large, messy copy.
 - 325 deals / 330 rows "need a person" because they share registration `NL-8899`.
   **Test debris** (post-merge audit): `NL-8899` is the registration number the test fixtures
-  use (`test_l3b_deal_buyer.py`, `test_l3b_handover.py`, `test_l3b_handover_snapshot.py`).
+  use (`test_deal_buyer.py`, `test_handover.py`, `test_handover_snapshot.py`).
 - 13 handed-over deals have no handover snapshot. **Test debris**, not a P2-7 failure: all 13
-  were made on 2 October by raw SQL in `test_l4b_buyer_checks.py::_mark_handed_over` and
+  were made on 2 October by raw SQL in `test_buyer_checks.py::_mark_handed_over` and
   `test_crm_integrity_guards_0022.py::_deal_at`, which set the stage directly; none has a
   handover history row and 10 have no buyer at all — states the product cannot produce.
 - The relationship backfill has not been run on this copy (458 deals with a buyer company
@@ -461,7 +489,8 @@ number: **0044**.
 | 6 | PR-F Backend asks | R-46 (A1, A4, A7) | PR-B for A3 only | — |
 | 7 | PR-G Refresh-token reuse window | R-49 | — | possibly `auth_0006` |
 | 8 | PR-H CI | R-50 | the lead enables Actions | — |
-| 9 | PR-I1 – I5 Redesign | R-33 Phases 1 – 5 | PR-F for the asks' fallbacks to switch off | — |
+| 9 | PR-I1 – I5 Redesign | R-33 Phases 1 – 5 — **merged as PR #19**; its look superseded by PR-M | — | — |
+| 9a | PR-M Enterprise frontend | R-57 — **built** (§14) | The TL's sign-off; PR-F only to switch each ask's fallback off | — |
 | ops | OPS-0 – OPS-6 per environment (§8) | run by the lead | PR-A (inventory, notice) | — |
 | 10 | PR-J Retire `deal_buyer` writes | R-25 | OPS-5 passed in every environment in scope | **0044** |
 | 11 | PR-K Delete `BuyerChecks` | R-26 | PR-J | — |
@@ -634,7 +663,8 @@ not run in parallel (plan §16.1): PR-B is the only one here.
 
 ### PR-I1 – I5 — The redesign (R-33 Phases 1 – 5)
 
-As `frontend-plan.md` §14 lays out, one PR per phase and one per screen in Phase 4, with
+**Merged as PR #19 on 5 October 2026; its look is superseded by PR-M.** Kept for the record:
+as the first `frontend-plan.md` §14 laid out, one PR per phase and one per screen in Phase 4, with
 D-20's defaults. Phase 1 tokens, type and primitives (Ink & Paper; Instrument Serif/Sans and
 JetBrains Mono; the raw-palette lint rule; the 21 files of §3.2 moved to tokens); Phase 2 the
 shell (rail, context bar, ⌘K, shortcuts; Pipeline folded into Companies; lucide removed);
@@ -643,6 +673,16 @@ Phase 3 the signature components; Phase 4 the screens in §14's order, re-compos
 rebuilding them; Phase 5 polish, and each landed ask's fallback switched off. The role-matrix
 test stays green throughout and gains PR-F's drift check. Gates per phase: `frontend-plan.md`
 §15.
+
+### PR-M — The enterprise frontend (R-57)
+
+Built on `feature/frontend-redesign` (§14). One pull request or three (one per phase of the
+second `frontend-plan.md` §14), as the lead prefers; Phase 1 touches most of `frontend/src`,
+so it lands before any other frontend change. **Before merging:** the TL signs off
+`/__design` and the company record; the `demo.md` §3–§5 walk as RM, Compliance, Admin and
+Developer at 1366 × 768 and 1440 × 900 with screenshots to the TL; D-22 answered or left at
+today's behaviour. Gates: `frontend-plan.md` §15 and `development.md` §7 (frontend). No
+backend change, no migration.
 
 ### PR-J — Retire `deal_buyer` writes (R-25), after OPS-5 everywhere in scope
 
@@ -716,15 +756,15 @@ database clean; restore this file's answered decisions (they had been left in
 | — | P1 | Docs | `demo.md` described the screens before the redesign; this file's decisions were only in a stash | **Fixed** |
 | R-31 | P2 | Gap | `POST /exporters` still accepts a company with no name or country (the form requires both) | Open — PR-E / PR-L as planned |
 | R-53 | P2 | UX | Two refusals put internal ids in `human_readable_message` ("Deal `<uuid>` cannot be handed over: …", `TRADE_INVOICE_ALREADY_RECORDED`). The screens show their own text for the first; the second is not reachable from the UI | Open |
-| R-54 | P2 | UX | Raw codes in UI text: the handover refusal ("PRE_SHIPMENT", "MISSING, not PASSED", "PROSPECT, not CUSTOMER"), the risk options ("LOW"), check types title-cased from codes ("Kyb", "Aml") | Open — the check-type half is done (R-60, §14); the refusal half is A3 (PR-B) |
+| R-54 | P2 | UX | Raw codes in UI text: the handover refusal ("PRE_SHIPMENT", "MISSING, not PASSED", "PROSPECT, not CUSTOMER"), the risk options ("LOW"), check types title-cased from codes ("Kyb", "Aml") | Open — the check-type half is done (R-61, §15); the refusal half is A3 (PR-B) |
 | R-55 | P3 | A11y | The branch flag form's reason field has no label | Open |
 | R-56 | P3 | UX | Deactivating a branch is one click with no confirmation (reversible: adding the GSTIN again reactivates it) | Open |
 | — | P3 | Data | The Desk greets by the first word of the full name, so the demo account "Relationship Manager" reads "Good morning, Relationship" | Not work: name the account |
 
 **Operational notes.** `uvicorn --reload` on this machine stopped reloading at some point
 on 5 October, and its spawned worker kept serving `:8000` after the reloader was stopped:
-check the worker's PID, not only the reloader's, when restarting. `crm_demo`'s backend now
-runs **without** `--reload`, so nothing changes under the demo. `vite preview` reads its
+check the worker's PID, not only the reloader's, when restarting. Run the demo's
+backend **without** `--reload`, so nothing changes under it. `vite preview` reads its
 file list at start-up: restart it after every build. It listens on `localhost` (IPv6 on
 this machine); a client that only tries `127.0.0.1` is refused.
 
@@ -732,8 +772,8 @@ this machine); a client that only tries `127.0.0.1` is refused.
 
 | Area | Files |
 |---|---|
-| R-19 | `domain/handover_conditions.py` (condition 8, `BranchFlagReader.is_active`, `NoBranchFlags` answers "active"), `application/branch_flags.py`; tests `unit/test_l3b_handover_conditions.py`, `integration/test_l3b_invoicing_branch.py` |
-| R-47 | `api/schemas/gst_registration.py` (`withholds_branch_flags`; `flag_status` nullable), `api/gst_registration_router.py` (`flagged_count` nullable), `api/history_router.py` (`_EVENTS_HIDDEN_FROM_DEVELOPER`, `flag_status` detail), `application/history_service.py` and the history repository (`exclude_event_types`, page and total); tests in `integration/test_dev3_gst_branch.py`, `GstRegistrationsSection.test.tsx`; `frontend/openapi.json`, `src/lib/api/schema.ts` regenerated |
+| R-19 | `domain/handover_conditions.py` (condition 8, `BranchFlagReader.is_active`, `NoBranchFlags` answers "active"), `application/branch_flags.py`; tests `unit/test_handover_conditions.py`, `integration/test_invoicing_branch.py` |
+| R-47 | `api/schemas/gst_registration.py` (`withholds_branch_flags`; `flag_status` nullable), `api/gst_registration_router.py` (`flagged_count` nullable), `api/history_router.py` (`_EVENTS_HIDDEN_FROM_DEVELOPER`, `flag_status` detail), `application/history_service.py` and the history repository (`exclude_event_types`, page and total); tests in `integration/test_gst_branch.py`, `GstRegistrationsSection.test.tsx`; `frontend/openapi.json`, `src/lib/api/schema.ts` regenerated |
 | R-51, R-52 | `HistoryTimeline.tsx` (+ test), `CompanyPicker.tsx` (+ test) |
 | Docs | `architecture.md` §5, §9; `contracts/deal-and-buyer.md` §6.1; `contracts/company-record.md` (DEVELOPER and flags); `contracts/history-row.md`; `demo.md` (rewritten); this file |
 
@@ -759,28 +799,86 @@ script in `demo.md`.
 | Production build | Passes, no chunk warning (entry 448 kB, 146 kB gzip) |
 | Generated artifacts | `openapi.json` and `schema.ts` regenerated; only R-47's fields and descriptions changed |
 
+### 13.6 Databases (5 October 2026, afternoon)
+
+At the lead's request the development server (`aner-postgres`, port 5433) now holds **one**
+CRM database, `aner_settlement`, rebuilt from empty: migrations to `onboarding_0043`, the
+sample companies, and one account per role with two COMPLIANCE — `admin@`, `compliance@`,
+`compliance2@`, `rm@` (OPERATIONS), `dev@` (DEVELOPER) and `apiuser@aner.com` (API_USER);
+passwords in `C:/Users/ArshadMughal/crm_demo_accounts.txt`. `backend/.env` already pointed
+at it. Every other database was dumped (`pg_dump -Fc`, each checked with `pg_restore -l`)
+to `C:/Users/ArshadMughal/db-backups-2026-10-05/` and dropped: `crm_demo` (and its
+rehearsal copy), `crm_release_audit` (a D-17 environment — §8), `pr_f3_audit` and
+`pr_f3_buyers`, `p46_scratch`, `dev2_audit_*`, `dev3_audit_merged`, `audit_*`, and this
+audit's scratch copies. The pre-rebuild `aner_settlement` is in the same folder.
+`postgres`, `temporal` and `temporal_visibility` were kept (system and Temporal's own).
+
+**Consequence for the gates:** the test suite's database (`pr_f3_audit`) is gone. Run
+`pytest --crm` against a throwaway database created from empty and upgraded to head
+(`DATABASE_URL` and `DATABASE_SYNC_URL` both set), never against `aner_settlement`, which
+it would fill with test companies again. A dump restores with
+`pg_restore -U aner -d <new db> <file>.dump` into an empty database.
+
 ---
 
-## 14. CEO-demo walkthrough fixes (5 October 2026)
+## 14. The enterprise frontend (6 October 2026)
+
+R-57: the second `frontend-plan.md` built on `feature/frontend-redesign`, branched from
+`main` @ `b209cc7`. Every change is unstaged, for the lead to review and commit. The
+developer reviewed each step in the browser as it was built: the style guide, then the
+shell, then each screen.
+
+### 14.1 What was built
+
+| Phase | What |
+|---|---|
+| 1. Look and shell | Tokens: neutral greys, the placeholder brand blue as four `accent` tokens, the status colours kept, light by default (D-21). The system UI font; the three bundled fonts removed. Fluent UI System Icons in place of Phosphor. Primitives: `Badge`, `Card` with a header row, `SidePanel` (was `Composer`), `Path`, `RecordHeader`, `RecordListItem`, `Breadcrumbs`, underlined `Tabs`. Shell: app header (wordmark, search, *+ New*, user menu), labelled side navigation with *Collapse* and a drawer under 1024 px, keyboard cut to `/`, Ctrl+K and Ctrl+/ (the `g` chords and single-letter keys removed). Names: Home, Companies, Pipeline, Follow-ups, Approvals (`/approvals`; `/review` redirects); tabs Details, Activity, Deals, History. Every status a worded badge; page morphs removed; the style guide rebuilt as the TL's review page |
+| 2. The demo's screens | Company record (header, journey path, right column of related cards, Activity tab with composer and timeline, Background check status card); deal record (stage moves as header actions, handover readiness, seller and buyer cards, history column); Companies list as record list items, Pipeline board, *New company* as a side panel; Home as a grid of work cards (*Items to approve*, *My follow-ups* with *Mark done*, *Check back on*, pipeline counts, Re-KYC due, setup, recent companies); Follow-ups by due-date cards; Approvals as a split view |
+| 3. The rest and clean-up | Import, RXIL intake, identity completion and Settings restyled; *Qualification criteria* and *Required documents* inside the Settings frame. Removed: `Lamp`, `lamps.ts` (wording kept in `components/record/status.ts`), the unused `DocumentList`, the motion helpers, the old shell (`Rail`, `ContextBar`, `CommandBar`, `BottomBar`, `Shortcuts`). Renamed per `frontend-plan.md` §18.1, with `components/standing/` now `components/record/`. Comments citing the first plan's sections updated. `demo.md` §2–§5 names updated |
+
+### 14.2 How it was verified
+
+Headless Chrome on this branch's development server, signed in through the sign-in form as
+four throwaway users (RM, Compliance, Admin, Developer) created in `aner_settlement` for the
+purpose — `ui-check-{operations,compliance,admin,developer}-*@aner-test.com`. Every screen
+was walked as the roles that reach it, at 1366 and 1440 px, and the main screens in dark:
+no console error and no failed request, and each role saw what `frontend-plan.md` §4.1
+says. **The four users were deactivated afterwards** (6 October 2026: `is_active` false, 15
+sessions revoked; sign-in now answers "Account is inactive"). No sample company was
+changed. The formal `demo.md` walk with screenshots for the TL is still owed (R-57).
+
+### 14.3 Gates (6 October 2026, `b209cc7` + the unstaged changes)
+
+| Gate | Result |
+|---|---|
+| TypeScript | 0 errors |
+| ESLint | 0 errors, 2 warnings (`AuthContext.tsx`, pre-existing) |
+| Frontend tests | 63 files, **880** passed. Tests were rewritten with the screens they cover; the tests for removed behaviour (the `g` chords, page single-letter keys, the command palette's actions, the page morph) were replaced by tests that those keys do nothing and by tests for the header search and the shortcut list |
+| Production build | Passes; entry 157 kB gzip (146 kB before; the new header menus and tooltips), within the plan's 250 kB budget. `/__design` is not in the build |
+| Backend | Not touched |
+
+---
+
+## 15. CEO-demo walkthrough fixes (5 October 2026)
 
 While a CEO demo deck was being built, the CRM was driven end to end on `main` @ `9ed6cb6`
 in a browser: the production build, an empty database, and a real user for each role. No
 control was affected, but four screens showed wrong or unpolished information. Each fix
-has its own id, continuing from R-56, and changes only `backend/app/modules/onboarding`
+has its own id, continuing from R-57, and changes only `backend/app/modules/onboarding`
 and `frontend/src/modules/onboarding`, plus the regenerated API artifacts, a one-line
 addition to architecture §8 and this file. No migration was added; the next free number is
 still **0044**.
 
-### 14.1 Items
+### 15.1 Items
 
 | Id | Pri | Kind | Finding | Fix | Covered by | Status |
 |---|---|---|---|---|---|---|
-| R-57 | P1 | Bug | A seller's **Deals & trade** tab read "No buyer recorded yet" for a deal whose buyer is a company record, while the deal page and "Trade — sold to" named it. `DealService.list_for_company` read `buyer_name` only from the legacy `deal_buyer` row and ignored `buyer_company_id`, which every new deal uses (P4-4) | On the seller side `buyer_name` is the buyer company's name, read in one query for every row as the buyer side already did for sellers. The legacy name is used only when no buyer company is set. A company name is not a masked identifier (architecture §9), so every reader, DEVELOPER included, gets it as stored. Neither the response shape nor the component changed | `test_l3b_deals_as_buyer.py`: `test_the_seller_side_names_the_buyer_company_then_the_legacy_buyer` (company, legacy and no buyer on one seller) and `test_the_seller_side_names_a_buyer_company_to_every_reader` (route, as OPERATIONS, COMPLIANCE and DEVELOPER). Both fail without the fix | **DONE — VERIFIED** |
-| R-58 | P1 | Bug | The Agenda's **Done** tab read "Done by 853ef096-3113-… on …": a completion was served with `completed_by` (a user id) only | `completed_by_name` on the follow-up list's completion and on the completion route's response, resolved through `api/actor_names.py` in the same lookup as `actor_name` (OPERATIONS, COMPLIANCE and ADMIN get the full name or the email; DEVELOPER gets the full name only, architecture §8). `FollowUpsPage` renders it with `actorLabel`, the fallback every other screen uses. OpenAPI and `schema.ts` regenerated (two additive fields) | `test_actor_names.py::test_a_completed_follow_up_names_who_completed_it` (named and unnamed completer, staff and DEVELOPER); `FollowUpsPage.test.tsx` (the named row, and the shortened-id fallback) | **DONE — VERIFIED** |
-| R-59 | P2 | UX | A document cited as verification evidence read "Document 1c068d09…" (for example the IEC certificate on a KYB result, Background check tab) | `EvidenceList` names it by `file_name`, read through a new `useDocument` query hook (`['document', id]`, five-minute cache, no retry, fetched only when a cited document is rendered). The shortened id shows while it loads and stays if the read is refused. It reads the same `GET /documents/{id}` the download already called, which the server serves to all four roles and which the Documents tab already names, so no role can see more. DEVELOPER is still refused the Background check tab (D8) | `EvidenceList.test.tsx` (named, cached across two citations, refused read, nothing cited) | **DONE — VERIFIED** |
-| R-60 | P2 | UX | Check types read "Kyb", "Aml", "Iec", … wherever the raw code went through `humanize()` (part of R-54) | `verificationTypeLabel()` in `VerificationResultRow`, `BuyerChecks`, the `ManualResultForm` options and the screenings panel's "N check types have no result" chips. The Ledger (`HistoryTimeline`), `DecisionHistory` and `ComplianceCheckChip` already used it. Non-acronym types are now in sentence case like the others ("Bank account", "Company registry") | `VerificationResultRow.test.tsx` (KYB, AML, Sanctions, Company registry), `ManualResultForm.test.tsx`, `VerificationSection.test.tsx` (the chips; "Bank Account" became "Bank account"), `BuyerChecks.test.tsx` | **DONE — VERIFIED** |
+| R-58 | P1 | Bug | A seller's **Deals & trade** tab read "No buyer recorded yet" for a deal whose buyer is a company record, while the deal page and "Trade — sold to" named it. `DealService.list_for_company` read `buyer_name` only from the legacy `deal_buyer` row and ignored `buyer_company_id`, which every new deal uses (P4-4) | On the seller side `buyer_name` is the buyer company's name, read in one query for every row as the buyer side already did for sellers. The legacy name is used only when no buyer company is set. A company name is not a masked identifier (architecture §9), so every reader, DEVELOPER included, gets it as stored. Neither the response shape nor the component changed | `test_deals_as_buyer.py`: `test_the_seller_side_names_the_buyer_company_then_the_legacy_buyer` (company, legacy and no buyer on one seller) and `test_the_seller_side_names_a_buyer_company_to_every_reader` (route, as OPERATIONS, COMPLIANCE and DEVELOPER). Both fail without the fix | **DONE — VERIFIED** |
+| R-59 | P1 | Bug | The Agenda's **Done** tab read "Done by 853ef096-3113-… on …": a completion was served with `completed_by` (a user id) only | `completed_by_name` on the follow-up list's completion and on the completion route's response, resolved through `api/actor_names.py` in the same lookup as `actor_name` (OPERATIONS, COMPLIANCE and ADMIN get the full name or the email; DEVELOPER gets the full name only, architecture §8). `FollowUpsPage` renders it with `actorLabel`, the fallback every other screen uses. OpenAPI and `schema.ts` regenerated (two additive fields) | `test_actor_names.py::test_a_completed_follow_up_names_who_completed_it` (named and unnamed completer, staff and DEVELOPER); `FollowUpsPage.test.tsx` (the named row, and the shortened-id fallback) | **DONE — VERIFIED** |
+| R-60 | P2 | UX | A document cited as verification evidence read "Document 1c068d09…" (for example the IEC certificate on a KYB result, Background check tab) | `EvidenceList` names it by `file_name`, read through a new `useDocument` query hook (`['document', id]`, five-minute cache, no retry, fetched only when a cited document is rendered). The shortened id shows while it loads and stays if the read is refused. It reads the same `GET /documents/{id}` the download already called, which the server serves to all four roles and which the Documents tab already names, so no role can see more. DEVELOPER is still refused the Background check tab (D8) | `EvidenceList.test.tsx` (named, cached across two citations, refused read, nothing cited) | **DONE — VERIFIED** |
+| R-61 | P2 | UX | Check types read "Kyb", "Aml", "Iec", … wherever the raw code went through `humanize()` (part of R-54) | `verificationTypeLabel()` in `VerificationResultRow`, `BuyerChecks`, the `ManualResultForm` options and the screenings panel's "N check types have no result" chips. The Ledger (`HistoryTimeline`), `DecisionHistory` and `ComplianceCheckChip` already used it. Non-acronym types are now in sentence case like the others ("Bank account", "Company registry") | `VerificationResultRow.test.tsx` (KYB, AML, Sanctions, Company registry), `ManualResultForm.test.tsx`, `VerificationSection.test.tsx` (the chips; "Bank Account" became "Bank account"), `BuyerChecks.test.tsx` | **DONE — VERIFIED** |
 
-### 14.2 Not done here: handover reasons in system words (rest of R-54; A3, PR-B)
+### 15.2 Not done here: handover reasons in system words (rest of R-54; A3, PR-B)
 
 The deal's "Not ready to hand over" box still shows the server's sentence, for example
 "the company is PROSPECT, not CUSTOMER; …". It was left out of this pull request on
@@ -797,7 +895,7 @@ purpose, and the browser does not rewrite it:
 
 So R-54's refusal half stays open under PR-B, as planned (§12).
 
-### 14.3 How it was verified
+### 15.3 How it was verified
 
 Each repro was walked again in a headless browser. The setup:
 
@@ -813,19 +911,19 @@ the same routes the screens call. The steps each repro is about were done in the
 
 | Repro | OPERATIONS | COMPLIANCE | DEVELOPER |
 |---|---|---|---|
-| R-57 Deals & trade row | "Nordsee Handels GmbH · opened 05 Oct 2026" | the same | the same |
-| R-58 Agenda → Done | Recorded "Done" through Record outcome; the row reads "Done by Riya Operations". The unnamed account's row reads its email | the same | "Done by Riya Operations"; the unnamed account's row reads "User 5137a620…", never the email |
-| R-59 Evidence | KYB result reads "IEC-certificate-Coastal-Spice.pdf · Download" | Recorded the KYB result citing the certificate through "Record a result"; the row names the file | Background check tab not offered; no document read made |
-| R-60 Check types | "KYB", "AML", "IEC", "Sanctions", "Company registry"; no "Kyb"-style label anywhere on the tab | the same, and the manual form offers "KYB, Company registry, GST, IEC, UBO, AML, CFT, Sanctions, PEP, Adverse media" | not applicable (D8) |
+| R-58 Deals & trade row | "Nordsee Handels GmbH · opened 05 Oct 2026" | the same | the same |
+| R-59 Agenda → Done | Recorded "Done" through Record outcome; the row reads "Done by Riya Operations". The unnamed account's row reads its email | the same | "Done by Riya Operations"; the unnamed account's row reads "User 5137a620…", never the email |
+| R-60 Evidence | KYB result reads "IEC-certificate-Coastal-Spice.pdf · Download" | Recorded the KYB result citing the certificate through "Record a result"; the row names the file | Background check tab not offered; no document read made |
+| R-61 Check types | "KYB", "AML", "IEC", "Sanctions", "Company registry"; no "Kyb"-style label anywhere on the tab | the same, and the manual form offers "KYB, Company registry, GST, IEC, UBO, AML, CFT, Sanctions, PEP, Adverse media" | not applicable (D8) |
 
 No console error and no 5xx response on any of these screens.
 
-### 14.4 Gates (5 October 2026, `main` @ `9ed6cb6` + this branch)
+### 15.4 Gates (5 October 2026, `main` @ `9ed6cb6` + this branch)
 
 | Gate | Result |
 |---|---|
 | Migration head | One: `onboarding_0043_identity_type`; `alembic check` reports no new upgrade operations |
-| CRM suite (`pytest --crm`) | **2,723 passed, 1 skipped, 0 failed** of 2,724 (the 5 October baseline of 2,721 plus the 3 new tests); the skip is the Windows symlink test. Run in six chunks against a scratch database at head. On the first pass two tests failed on a timestamp tie and each then passed four runs in a row; neither file is touched here: `test_l4a_background_check_service.py::TestChain::test_two_concurrent_moves_serialise_and_only_one_wins` (two decisions share `decided_at`, so the order falls to a random id: R-38) and `test_l3b_buyer_migration_safety.py::test_a_created_company_gets_one_creation_row_saying_where_it_came_from` (`migrate_deal_buyers.py` picks the "earliest" deal by `(created_at, deal_id)`, so two deals created in the same tick tie the same way; a new instance of R-38). Passing chunk paths explicitly also collected 229 legacy `onboarding_request` tests that `--crm` leaves out; 5 of them failed and are not part of the gate |
+| CRM suite (`pytest --crm`) | **2,723 passed, 1 skipped, 0 failed** of 2,724 (the 5 October baseline of 2,721 plus the 3 new tests); the skip is the Windows symlink test. Run in six chunks against a scratch database at head. On the first pass two tests failed on a timestamp tie and each then passed four runs in a row; neither file is touched here: `test_background_check_service.py::TestChain::test_two_concurrent_moves_serialise_and_only_one_wins` (two decisions share `decided_at`, so the order falls to a random id: R-38) and `test_buyer_migration_safety.py::test_a_created_company_gets_one_creation_row_saying_where_it_came_from` (`migrate_deal_buyers.py` picks the "earliest" deal by `(created_at, deal_id)`, so two deals created in the same tick tie the same way; a new instance of R-38). Passing chunk paths explicitly also collected 229 legacy `onboarding_request` tests that `--crm` leaves out; 5 of them failed and are not part of the gate |
 | Ruff | 16 findings, all pre-existing (none in a changed file) |
 | import-linter | 19 kept, 0 broken |
 | TypeScript | 0 errors |

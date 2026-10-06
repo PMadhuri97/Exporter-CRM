@@ -1,4 +1,4 @@
-"""Qualification routes — **owner: Developer 2** (L2-09, L2-10).
+"""Qualification routes.
 
 Criteria are managed by ADMIN only; results and outcomes are recorded by
 OPERATIONS, COMPLIANCE and ADMIN; every CRM reader may read (architecture
@@ -250,7 +250,7 @@ async def record_exporter_qualification_outcome(
 
 def _for_viewer(response: QualificationResponse, viewer: User) -> QualificationResponse:
     """What this viewer may do next, from the service's own rules: nothing
-    once the company is QUALIFIED (final, A2), and nothing for a role that
+    once the company is QUALIFIED (final), and nothing for a role that
     may not record results or outcomes."""
     open_for_review = response.state is not QualificationState.QUALIFIED
     may_record = viewer.role in _RECORDING_ROLES and open_for_review

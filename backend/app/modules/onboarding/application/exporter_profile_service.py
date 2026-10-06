@@ -1,7 +1,7 @@
-"""``ExporterProfileService`` — the company record's service (EXP-1), mirroring
+"""``ExporterProfileService`` — the company record's service, mirroring
 ``OnboardingRequestService``'s method-per-operation style.
 
-**Idempotency (judgment call — the ticket explicitly asks for one here).**
+**Idempotency (a judgment call, asked for explicitly).**
 ``create_or_get_profile`` accepts an *optional* ``idempotency_key``. When the
 caller supplies one, this follows ``OnboardingRequestService.
 initiate_onboarding``'s exact pattern: an imperative ``register_key`` /
@@ -20,7 +20,7 @@ be pure overhead for no benefit.
 
 The lean is toward keeping idempotency-key *support* in the method's
 signature now rather than retrofitting it later: the plan names RXIL
-ingestion (a later ticket) as an untrusted, retrying caller of this exact
+ingestion as an untrusted, retrying caller of this exact
 operation, and adding a caller-facing parameter to an already-shipped,
 already-called method is a breaking signature change every existing caller
 would need to be revisited for — cheaper to add the parameter once, unused by
@@ -132,7 +132,7 @@ _UPDATE_FORBIDDEN_FIELDS = frozenset(
     }
 )
 
-#: The company fields staff may edit through `update_profile` (L2-07), with
+#: The company fields staff may edit through `update_profile`, with
 #: every change recorded in the history log. Each may be cleared except those
 #: in `_NOT_CLEARABLE`.
 _EDITABLE_FIELDS = frozenset(
@@ -158,16 +158,16 @@ _NOT_CLEARABLE = frozenset({"name", "country"})
 #: Identifiers written to the history log masked. The history read route
 #: shows a row's details to every CRM reader, including roles that only ever
 #: see these masked on the company itself, so a full value in the log would
-#: undo the company route's masking (company-record contract §6, O5).
-#: `registration_number` joined in R-15: masked like a CIN on the company since
-#: task 3.8, it had been written to history in full.
+#: undo the company route's masking (company-record contract §6).
+#: `registration_number` joined later: masked like a CIN on the company, it had
+#: been written to history in full.
 _MASKED_IN_HISTORY = frozenset({"gstins", "pan", "iec", "cin", "registration_number"})
 
 #: History dimensions and event types this service writes
 #: (`docs/contracts/company-record.md` §6).
 HISTORY_DIMENSION_PROFILE = "profile"
-#: A company entering the sales pipeline (task 3.11). Taken from Developer 1's one
-#: list of dimensions rather than restated, so the read route's D8 rule and this
+#: A company entering the sales pipeline. Taken from the one
+#: list of dimensions rather than restated, so the read route's DEVELOPER rule and this
 #: writer cannot disagree about the spelling.
 HISTORY_DIMENSION_PIPELINE = history_dimensions.PIPELINE
 PROFILE_EDIT_EVENT = "profile_transition"
@@ -185,7 +185,7 @@ _MARKER_MOVES: dict[tuple[ExporterMarker, ExporterMarker], bool] = {
 }
 
 class ExporterProfileService:
-    """Read/write access to `exporter_profile` and its detail projection (EXP-1)."""
+    """Read/write access to `exporter_profile` and its detail projection."""
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
@@ -301,7 +301,8 @@ class ExporterProfileService:
         registration_number = normalise_registration_number(registration_number)
         gstin_values = normalise_gstins(gstins)
         check_gstins_match_pan(pan, gstin_values)
-        # Decision IQ-7, on every create path at once rather than once per caller.
+        # A foreign company's registration number, on every create path at once
+        # rather than once per caller.
         require_foreign_registration_number(
             country=country,
             pan=pan,
@@ -368,9 +369,9 @@ class ExporterProfileService:
                 pan=pan, registration_number=registration_number
             ),
             # The channel, derived from the one string that already names it, so this
-            # and migration 0033's backfill cannot disagree (plan P4-1).
+            # and migration 0033's backfill cannot disagree.
             created_via=created_via_for_history_source(history_source),
-            # The state comes from the GSTIN (task 3.12), here as well as on the
+            # The state comes from the GSTIN, here as well as on the
             # `gst-registrations` route: a registration created on this path and one
             # created there must be the same kind of row, or the branch flag reader
             # has no state to name in "the invoicing branch Maharashtra is flagged"
@@ -452,7 +453,7 @@ class ExporterProfileService:
         Identifiers are checked on the company's state *after* the edit: a new
         PAN must fit the GSTINs the company holds.
 
-        **`gstins` is not editable here** (task 3.13). It used to replace the whole
+        **`gstins` is not editable here**. It used to replace the whole
         list, which deleted the row of every GSTIN dropped — and a GST registration is
         a branch the company traded through, named by any deal that invoiced from it
         (`deal.seller_gst_registration_id`). `GstRegistrationService` adds one,
@@ -466,7 +467,7 @@ class ExporterProfileService:
         every row of the same edit. A supplied value equal to the current one
         writes nothing. The values live in `details` rather than in
         `from_value`/`to_value` because those columns hold 64 characters and
-        refuse an empty value (company-record contract §6, O7).
+        refuse an empty value (company-record contract §6).
 
         The column writes and the history rows are committed together, once,
         at the end — the writer flushes and never commits — so a company can
@@ -532,10 +533,11 @@ class ExporterProfileService:
                 wanted.get("country") or profile.country,  # type: ignore[arg-type]
                 customer_id,
             )
-        # IQ-7 on the company as it will be (R-16), whenever the edit touches what
-        # identifies it: moving a company abroad, clearing a foreign company's number,
-        # or clearing the PAN that made it Indian must leave it identifiable. A buyer
-        # the P4-6 migration created without a number keeps IQ-7's exception until
+        # The foreign-identity rule on the company as it will be, whenever the edit
+        # touches what identifies it: moving a company abroad, clearing a foreign
+        # company's number, or clearing the PAN that made it Indian must leave it
+        # identifiable. A company the buyer migration created without a number keeps
+        # the rule's exception until
         # one is added — an edit cannot meet the rule retroactively either.
         identity_fields = {"country", "pan", "registration_number"}
         if any(
@@ -585,8 +587,8 @@ class ExporterProfileService:
                 },
             )
         # Derived from what the company holds, so it moves with the PAN and the
-        # registration number (R-16). It was set on create only, and went stale on
-        # exactly the edit IQ-7's completion flow makes.
+        # registration number. It was set on create only, and went stale on
+        # exactly the edit the identity completion flow makes.
         if {"pan", "registration_number"} & set(edits):
             profile.identity_type = decide_identity_type(
                 pan=profile.pan, registration_number=profile.registration_number
@@ -617,7 +619,7 @@ class ExporterProfileService:
         )
         return profile
 
-    # ── Marker (L2-08) ──────────────────────────────────────────────────────
+    # ── Marker ──────────────────────────────────────────────────────────────
 
     async def set_marker(
         self,
@@ -713,19 +715,19 @@ class ExporterProfileService:
         matter.
 
         **`ENDED` companies are left out of the default working list and stay
-        searchable** (assumption A11): with no `marker` filter and no search
+        searchable**: with no `marker` filter and no search
         term (`name_contains`, `pan`, `gstin`, `iec`), `ENDED` companies are
         excluded; any search term includes them; `marker=ENDED` lists only
         them. `source`, `journey` and `qualification` are list filters, not search
         terms, and do not bring `ENDED` companies back.
 
-        **`NOT_IN_PIPELINE` companies follow the same rule** (plan P4-2, task 3.9).
+        **`NOT_IN_PIPELINE` companies follow the same rule**.
         A company that exists only because it was somebody's buyer is not a lead:
         it must not appear in the working list, or in any count drawn from it, or
         creating a buyer would silently raise this month's lead numbers. It is
         still a full company record, so a search term finds it — a person who
         types a buyer's name is looking for that buyer — and `pipeline_status=`
-        lists them deliberately, which is what the IQ-7 completion list needs.
+        lists them deliberately, which is what the identity completion list needs.
 
         The two exclusions are deliberately separate: `marker=ENDED` must not
         drag buyer-only companies into its list, and `pipeline_status=` must not
@@ -806,7 +808,7 @@ class ExporterProfileService:
             details={"terminal": False},
         )
 
-    # ── Into the sales pipeline (task 3.11) ──────────────────────────────────
+    # ── Into the sales pipeline ──────────────────────────────────────────────
 
     async def bring_into_pipeline(
         self, customer_id: uuid.UUID, *, actor_id: str | None, reason: str | None = None
@@ -814,7 +816,7 @@ class ExporterProfileService:
         """Move a buyer-only company into the sales pipeline: the one way in.
 
         A company created as somebody's buyer is `NOT_IN_PIPELINE` and has no
-        journey history (plan P4-6) — nobody was selling to it. If we decide to,
+        journey history — nobody was selling to it. If we decide to,
         this is what starts that: `pipeline_status` becomes `IN_PIPELINE` and the
         journey history begins at `LEAD`, exactly as it would for a company
         entered by hand. From here on it is an ordinary lead, so qualification and
@@ -866,7 +868,7 @@ class ExporterProfileService:
         )
         return profile
 
-    # ── The move to CUSTOMER (L2-11) ─────────────────────────────────────────
+    # ── The move to CUSTOMER ─────────────────────────────────────────────────
 
     async def promote_to_customer_if_ready(
         self,
@@ -877,12 +879,12 @@ class ExporterProfileService:
         source: str,
     ) -> CustomerAnnouncement | None:
         """Make the company a ``CUSTOMER`` if it is a ``PROSPECT`` whose background
-        check is ``CLEAR`` — whichever of the two became true second (decision 2,
-        assumption A1, company-record contract §3.2).
+        check is ``CLEAR`` — whichever of the two became true second (company-record
+        contract §3.2).
 
         **Called by the move that completes the condition, in that move's
-        transaction** (decision U4, taken as one transaction): Developer 4A's
-        ``CLEAR`` and Developer 2's ``QUALIFIED`` outcome each call this after their
+        transaction**: the background check's
+        ``CLEAR`` and qualification's ``QUALIFIED`` outcome each call this after their
         own write and before their one commit. So the company can never be seen
         ``PROSPECT`` and ``CLEAR`` at once, and a failure anywhere rolls the whole
         move back — there is no half-finished promotion to retry.
@@ -898,8 +900,7 @@ class ExporterProfileService:
         background check is read through the compliance engine's published
         readers, never from its tables.
 
-        **The Clear must be current** (IQ-18, plan P3-3b; Developer 1's one edit to
-        this method, allocation §2.2): the condition is
+        **The Clear must be current**: the condition is
         ``ComplianceFactsReader.for_company(...).is_clear_current`` at the injectable
         clock's ``now``. A ``PROSPECT`` whose Clear has expired stays a ``PROSPECT``
         until a new Clear promotes it.

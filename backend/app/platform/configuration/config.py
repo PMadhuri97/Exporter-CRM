@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # ── API ───────────────────────────────────────────────────────────────────
     API_V1_PREFIX: str = "/api/v1"
 
-    # ── Exporter CRM (EXP-3) ─────────────────────────────────────────────────
+    # ── Exporter CRM ─────────────────────────────────────────────────────────
     # `OnboardingRequest.tenant_id` is inherited multi-tenant schema that
     # predates the Exporter CRM narrowing (see the real platform's `cases`
     # module for where multi-tenant actually matters). ANER is a single
@@ -31,14 +31,14 @@ class Settings(BaseSettings):
     # if ANER genuinely becomes multi-tenant.
     ANER_TENANT_ID: str = "00000000-0000-0000-0000-000000000001"
 
-    # ── Exporter CRM: compliance engine (Developer 1, plan P3-1b, P3-3) ───────
-    # Maker-checker (decision A, IQ-17): a CLEAR, FLAGGED or ON_HOLD needs a second
+    # ── Exporter CRM: compliance engine ──────────────────────────────────────
+    # Maker-checker: a CLEAR, FLAGGED or ON_HOLD needs a second
     # COMPLIANCE/ADMIN user to approve it. On by default. It may be turned off only
     # where ENVIRONMENT is local or test — not development, the default; anywhere else
     # the application refuses to start with it off
     # (`onboarding.application.compliance_settings.enforce_compliance_settings`).
     CRM_BACKGROUND_CHECK_MAKER_CHECKER: bool = True
-    # How long a new CLEAR stays current (decision E). Each CLEAR stores its own
+    # How long a new CLEAR stays current. Each CLEAR stores its own
     # `expires_at`, so changing this never re-dates an existing Clear. At least 1.
     CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS: int = 365
     # How far ahead "Re-KYC due" looks (the Home card, the gauge badge, and the
@@ -192,8 +192,8 @@ class Settings(BaseSettings):
 
     # ── Auth / self-service sign-up ───────────────────────────────────────────
     # `POST /auth/register` is unauthenticated and always grants API_USER, which
-    # reaches nothing in the CRM. It stays on by default (planning assumption
-    # A10) so the current behaviour is unchanged, and this is the per-deployment
+    # reaches nothing in the CRM. It stays on by default
+    # so the current behaviour is unchanged, and this is the per-deployment
     # kill switch for an environment that wants no public sign-up at all. Off
     # makes the route 404, not 403: a disabled route should not advertise that
     # it exists.

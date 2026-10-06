@@ -61,7 +61,7 @@ router.include_router(roles_router)
 router.include_router(roles_me_router)
 
 # Managing other people's accounts is permission-gated, not role-gated: role
-# management (Phase 2) exists so this can be granted to another role without a
+# management exists so this can be granted to another role without a
 # code change. Only the ADMIN role is seeded with these, so out of the box this
 # is exactly the ADMIN-only rule section 3.7 of the architecture plan describes.
 _CAN_VIEW_USERS = require_permission("users", "view")

@@ -69,7 +69,7 @@ function renderPage() {
   );
 }
 
-describe('ExportersListPage — PAN/GSTIN masking (EXP-F2 acceptance criterion)', () => {
+describe('ExportersListPage — PAN/GSTIN masking', () => {
   beforeEach(() => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({
       profiles: [PROFILE],
@@ -106,7 +106,7 @@ describe('ExportersListPage — PAN/GSTIN masking (EXP-F2 acceptance criterion)'
   });
 });
 
-describe('ExportersListPage — the journey, qualification and marker filters (L2-14)', () => {
+describe('ExportersListPage — the journey, qualification and marker filters', () => {
   beforeEach(() => {
     mockUser('OPERATIONS', 'someone-else');
     vi.mocked(searchExporterProfiles).mockReset();
@@ -181,16 +181,16 @@ describe('ExportersListPage — RXIL intake link', () => {
   );
 });
 
-describe('ExportersListPage — write screens by role (R-33, G3)', () => {
+describe('ExportersListPage — write screens by role', () => {
   beforeEach(() => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
   });
 
-  it.each(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s Add company and Import CSV', (role) => {
+  it.each(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s New company and Import companies', (role) => {
     mockUser(role, 'user-1');
     renderPage();
-    expect(screen.getByRole('link', { name: /Add company/ })).toHaveAttribute('href', '/companies/new');
-    expect(screen.getByRole('link', { name: /Import CSV/ })).toHaveAttribute('href', '/companies/import');
+    expect(screen.getByRole('link', { name: /New company/ })).toHaveAttribute('href', '/companies/new');
+    expect(screen.getByRole('link', { name: /Import companies/ })).toHaveAttribute('href', '/companies/import');
   });
 
   it.each(['DEVELOPER', 'API_USER'])(
@@ -198,9 +198,9 @@ describe('ExportersListPage — write screens by role (R-33, G3)', () => {
     (role) => {
       mockUser(role, 'user-1');
       renderPage();
-      expect(screen.queryByRole('link', { name: /Add company/ })).not.toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: /Import CSV/ })).not.toBeInTheDocument();
-      expect(screen.queryByText(/Add company|Import CSV/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /New company/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /Import companies/ })).not.toBeInTheDocument();
+      expect(screen.queryByText(/New company|Import companies/)).not.toBeInTheDocument();
     },
   );
 

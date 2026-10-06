@@ -1,10 +1,10 @@
 /**
- * The journey pipeline — **owner: Developer 2** (L2-14).
+ * The journey pipeline.
  *
  * Three columns, one per journey stage, each filled by its own server query
  * (`journey=`). There is no drag and no "move to" here on purpose: the
  * journey is never moved by hand. A QUALIFIED outcome moves a lead to
- * prospect, and the move to customer follows the background check (L2-11).
+ * prospect, and the move to customer follows the background check.
  * PAUSED companies stay in their column with a badge; ENDED companies are
  * left out by the server, as in the list.
  */
@@ -15,7 +15,7 @@ import { Link } from 'react-router-dom';
 import { EmptyLine, Input, PageHeader, Skeleton } from '@/components';
 import { Icon } from '@/design/icons';
 
-import { CompaniesViewSwitch, JourneyDots, Standing } from '../components';
+import { CompaniesViewSwitch, CompanyBadges } from '../components';
 import { JOURNEY_LABEL, JOURNEY_STAGES } from '../constants';
 import { useExporterProfiles, usePrefetchCompany } from '../hooks';
 import { preloadExporterDetailPage } from '../lazyPages';
@@ -47,19 +47,19 @@ function PipelineCard({
       data-testid="pipeline-card"
       onMouseEnter={() => onIntent(profile.customer_id)}
       onFocus={() => onIntent(profile.customer_id)}
-      className="block rounded-xl border border-line bg-surface p-3.5 transition-colors duration-quick hover:border-ink-3"
+      className="block rounded border border-line bg-surface p-3 transition-colors duration-quick hover:border-line-strong hover:bg-sunken"
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="font-display text-lead leading-snug text-ink">
+        <span className="text-body font-semibold leading-snug text-accent">
           {profile.name ?? <span className="italic text-ink-3">Unnamed lead</span>}
         </span>
         {profile.country && <span className="shrink-0 text-caption text-ink-3">{profile.country}</span>}
       </div>
       <div className="mt-2">
-        <Standing size="inline" qualification={profile.qualification} marker={profile.marker} />
+        <CompanyBadges size="inline" qualification={profile.qualification} marker={profile.marker} />
       </div>
       {profile.relationship_manager && (
-        <div className="mt-2 text-caption text-ink-3">{profile.relationship_manager}</div>
+        <div className="mt-2 text-caption text-ink-3">RM {profile.relationship_manager}</div>
       )}
     </Link>
   );
@@ -72,7 +72,7 @@ function PipelineColumn({ journey, name }: { journey: ExporterJourney; name: str
     limit: COLUMN_LIMIT,
   });
   const prefetch = usePrefetchCompany();
-  // Ahead of the click: the dossier's code and the company's record.
+  // Ahead of the click: the company record's code and the company's data.
   const prepare = (customerId: string) => {
     void preloadExporterDetailPage();
     void prefetch(customerId);
@@ -81,23 +81,20 @@ function PipelineColumn({ journey, name }: { journey: ExporterJourney; name: str
 
   return (
     <section aria-label={JOURNEY_LABEL[journey]} className="flex min-w-0 flex-col">
-      <header className="border-b border-ink pb-2">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="flex items-center gap-2 font-display text-display-sm text-ink">
-            <JourneyDots journey={journey} />
-            {JOURNEY_LABEL[journey]}
-          </h2>
+      <header className="rounded border border-line bg-surface px-3 py-2.5">
+        <h2 className="text-heading font-semibold text-ink">
+          {JOURNEY_LABEL[journey]}
           {!isLoading && !isError && (
-            <span className="font-display text-display-sm tabular-nums text-ink-2">
-              {profiles.length}
-              {profiles.length === COLUMN_LIMIT ? '+' : ''}
+            <span className="ml-1.5 font-normal tabular-nums text-ink-3">
+              ({profiles.length}
+              {profiles.length === COLUMN_LIMIT ? '+' : ''})
             </span>
           )}
-        </div>
+        </h2>
         <p className="mt-0.5 text-caption text-ink-3">{COLUMN_NOTE[journey]}</p>
       </header>
-      <div className="flex flex-col gap-2 pt-3">
-        {isLoading && Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+      <div className="flex flex-col gap-2 pt-2">
+        {isLoading && Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
         {isError && <p className="py-6 text-secondary text-negative">Couldn't load this stage.</p>}
         {!isLoading &&
           !isError &&

@@ -1,5 +1,5 @@
-"""Read-model views and the pure decision rules for the background check —
-**owner: Developer 4A** (L4-03, L4-06, L4-08; ``docs/contracts/background-check.md``).
+"""Read-model views and the pure decision rules for the background check
+(``docs/contracts/background-check.md``).
 
 Pure data structures and pure functions — no I/O, no session — the same pattern as
 ``deal_views.py`` and ``engagement_views.py``. ``BackgroundCheckService`` assembles
@@ -7,18 +7,18 @@ the views and calls the rules.
 
 Two things live here, and both are here for the same reason:
 
-- **The view types** the service returns and (phase 4A-7) the router serialises.
+- **The view types** the service returns and the router serialises.
 - **The ``CLEAR`` prerequisite rule**, as one pure function over
   ``CompanyComplianceInputs`` plus the decision's own inputs. The task requires the
   rule to be one function rather than conditions spread through repository queries
-  (``background-check.md`` §14.1), so that when D1–D3 are answered exactly one function and its
-  unit tests change.
+  (``background-check.md`` §14.1), so that a change to what it means touches exactly
+  one function and its unit tests.
 
-**The prerequisite rule is parameterised.** A3 fixes *which* four prerequisites
-exist; D1–D3 fix what two of its phrases mean ("pending", "answered") and D4 what
-"evidence recorded" covers. Those meanings are ``ClearPolicy`` fields rather than
-literals in the rule body, so an answer is one value rather than a scattered edit.
-**D1–D4 were decided on 28 September 2026** and ``CLEAR_POLICY`` carries them;
+**The prerequisite rule is parameterised.** The contract fixes *which* four
+prerequisites exist; ``ClearPolicy`` fixes what two of its phrases mean ("pending",
+"answered") and what "evidence recorded" covers. Those meanings are fields rather than
+literals in the rule body, so a change is one value rather than a scattered edit.
+``CLEAR_POLICY`` carries the settled meanings (28 September 2026);
 ``docs/contracts/background-check.md`` §14 records each answer and who made it.
 """
 
@@ -40,23 +40,23 @@ from app.modules.onboarding.domain.entities.background_check_enums import (
     BackgroundCheckState,
 )
 
-# ── Rules versions (Developer 1, plan P2-4a, decision K) ──────────────────────
+# ── Rules versions ────────────────────────────────────────────────────────────
 
-#: The Clear rules before 1 October 2026: A3's four prerequisites over the
+#: The Clear rules before 1 October 2026: the four prerequisites over the
 #: **eight**-item screening checklist (``website-reviewed`` first). Never written:
 #: it is what a decision with ``rules_version IS NULL`` means by the documented read
-#: rule (allocation §2.3), because those decisions cannot be updated.
+#: rule, because those decisions cannot be updated.
 CLEAR_RULES_V1 = "clear-2026-09-28-8items"
 
 #: The Clear rules since 1 October 2026: the same four prerequisites over the
-#: **seven**-item checklist (``website-reviewed`` retired with the website field, R11),
-#: scoped to the company's current check cycle (plan P2-3b). Written on every new
-#: decision and on every new cycle.
+#: **seven**-item checklist (``website-reviewed`` retired with the website field),
+#: scoped to the company's current check cycle. Written on every new decision and on
+#: every new cycle.
 CLEAR_RULES_V2 = "clear-2026-10-01-7items"
 
-#: The Clear rules since rule B (plan P3-2, decision B, 1 October 2026): V2's four
+#: The Clear rules since the passed-checks rule (1 October 2026): V2's four
 #: prerequisites, plus KYB, AML and sanctions each **passed** in the current cycle
-#: (IQ-2's meaning of "passed": ``compliance_facts.check_state``). Written on every
+#: ("passed" as ``compliance_facts.check_state`` means it). Written on every
 #: decision, proposal and cycle since.
 CLEAR_RULES_V3 = "clear-2026-10-01-7items-kyb-aml-sanctions"
 
@@ -85,18 +85,18 @@ class BackgroundCheckMove:
     to: BackgroundCheckState
     reason_required: bool
     risk_required: bool
-    #: Maker-checker (P3-1b): this move is recorded as a proposal and takes effect only
+    #: Maker-checker: this move is recorded as a proposal and takes effect only
     #: when a different COMPLIANCE or ADMIN user approves it.
     approval_required: bool = False
 
 
 @dataclass(frozen=True)
 class BackgroundCheckCycleAction:
-    """One new check cycle this viewer may start now (plan P2-3c/d).
+    """One new check cycle this viewer may start now.
 
     Served like ``allowed_moves``, so the Re-KYC / Re-KYB buttons appear exactly when
     the server would accept them. ``reopens`` says the start also moves a ``CLEAR``
-    company back to ``IN_REVIEW`` in the same transaction (IQ-3), so the screen can say
+    company back to ``IN_REVIEW`` in the same transaction, so the screen can say
     so before anyone presses it.
     """
 
@@ -132,20 +132,20 @@ class BackgroundCheckDecisionView:
     risk_rating: BackgroundCheckRisk | None
     supersedes_decision_id: uuid.UUID | None
     evidence: tuple[EvidenceItemView, ...] = ()
-    #: The Clear rules in force when it was taken (P2-4a); ``None`` = v1 by rule.
+    #: The Clear rules in force when it was taken; ``None`` = v1 by rule.
     rules_version: str | None = None
-    #: The check cycle it was taken in (P2-3a); ``None`` = cycle 1 by rule.
+    #: The check cycle it was taken in; ``None`` = cycle 1 by rule.
     cycle_id: uuid.UUID | None = None
-    #: Maker-checker (P3-1a): the proposal it approved, who approved it and when.
+    #: Maker-checker: the proposal it approved, who approved it and when.
     proposal_id: uuid.UUID | None = None
     approved_by: str | None = None
     approved_at: datetime | None = None
-    #: When a CLEAR stops being current (P3-3a); ``None`` on other moves, and on a
+    #: When a CLEAR stops being current; ``None`` on other moves, and on a
     #: CLEAR before 0027 (read as ``decided_at`` + one year).
     expires_at: datetime | None = None
 
 
-# ── Maker-checker (Developer 1, plan P3-1a/b) ────────────────────────────────
+# ── Maker-checker ────────────────────────────────────────────────────────────
 
 #: What a viewer may do with an open proposal — served, like ``allowed_moves``.
 PROPOSAL_APPROVE = "APPROVE"
@@ -192,7 +192,7 @@ def proposal_actions(
     viewer_may_resolve: bool,
     is_stale: bool,
 ) -> tuple[str, ...]:
-    """What this viewer may do with ``proposal`` — role- **and user**-aware (P3-1b).
+    """What this viewer may do with ``proposal`` — role- **and user**-aware.
 
     The proposer may only withdraw; any other COMPLIANCE or ADMIN user may approve or
     reject. A stale proposal (the chain or the inputs moved) can no longer be approved,
@@ -230,7 +230,7 @@ class EvidenceSelection:
 
     documents: tuple[uuid.UUID, ...] = ()
     """``crm_document.id`` of the company's own documents that passed the scan gate
-    (**D4, settled 28 September 2026**). Deal paperwork is not pinned: it belongs to
+    (settled 28 September 2026). Deal paperwork is not pinned: it belongs to
     the deal, not to the company's standing."""
 
     @property
@@ -243,14 +243,14 @@ class DocumentInput:
     """One of the company's documents, as the evidence rule sees it.
 
     Deliberately not the ``CrmDocument`` entity: the rule stays pure and unit-testable
-    without the ORM, and Developer 3B's row shape can change without touching this.
+    without the ORM, and the document row's shape can change without touching this.
     """
 
     document_id: uuid.UUID
     scan_status: str  # DocumentScanStatus value
 
 
-#: **D4, settled 28 September 2026.** Only a document that passed the scan gate is
+#: **Settled 28 September 2026.** Only a document that passed the scan gate is
 #: pinned. A `PENDING_SCAN`, `QUARANTINED` or `SCAN_FAILED` document is never served
 #: (`storage-and-documents.md` §4), so pinning one would name evidence that cannot be
 #: opened.
@@ -267,9 +267,9 @@ def select_evidence(
     decision" (contract §6) — and a snapshot may legitimately be empty, which is the
     normal case for move 1 on a company with no inputs yet.
 
-    Pins the verification results, the screening rows, and — **D4, settled 28
-    September 2026** — the company's own ``AVAILABLE`` documents. The caller supplies
-    the document list so this function stays pure; applying D4's scan-status rule
+    Pins the verification results, the screening rows, and — **settled 28 September
+    2026** — the company's own ``AVAILABLE`` documents. The caller supplies the
+    document list so this function stays pure; applying the scan-status rule
     *here* rather than in the query is what keeps the decision in one testable place.
     """
     return EvidenceSelection(
@@ -290,7 +290,7 @@ def select_evidence(
 
 
 def inputs_fingerprint(inputs: CompanyComplianceInputs, evidence: EvidenceSelection) -> str:
-    """A SHA-256 (hex) of what a decision would rest on (maker-checker, P3-1b).
+    """A SHA-256 (hex) of what a decision would rest on (maker-checker).
 
     Taken when a move is proposed and again when it is approved; approval is refused if
     they differ, so the checker never approves a decision on inputs the maker did not
@@ -322,7 +322,7 @@ def inputs_fingerprint(inputs: CompanyComplianceInputs, evidence: EvidenceSelect
 
 # ── The CLEAR prerequisite rule ──────────────────────────────────────────────
 
-#: The four prerequisite names A3 fixes. Returned verbatim to the caller so a
+#: The four prerequisite names the contract fixes. Returned verbatim to the caller so a
 #: refusal names each unmet one (contract §13).
 CLEAR_RISK_REQUIRED = "risk_rating"
 CLEAR_NO_CHECKS_PENDING = "no_checks_pending"
@@ -335,7 +335,7 @@ def passed_prerequisite(verification_type: str) -> str:
     return f"{verification_type.lower()}_passed"
 
 
-#: Rule B's three, by name (plan P3-2).
+#: The passed-checks rule's three, by name.
 CLEAR_KYB_PASSED = passed_prerequisite("KYB")
 CLEAR_AML_PASSED = passed_prerequisite("AML")
 CLEAR_SANCTIONS_PASSED = passed_prerequisite("SANCTIONS")
@@ -343,29 +343,30 @@ CLEAR_SANCTIONS_PASSED = passed_prerequisite("SANCTIONS")
 
 @dataclass(frozen=True)
 class ClearPolicy:
-    """What A3's two ambiguous phrases mean.
+    """What the prerequisites' two ambiguous phrases mean.
 
-    A3 states the four prerequisites; it does not define "pending" or "answered".
+    The contract states the four prerequisites; it does not define "pending" or "answered".
     Those meanings are fields here rather than literals inside
     :func:`evaluate_clear_prerequisites`, so the answers live in one value that a test
-    can vary — which is what let the mechanism be built and tested while D2–D4 were
-    still open, and what makes a future change to any of them a one-line change.
+    can vary — which is what let the mechanism be built and tested while those
+    meanings were still open, and what makes a future change to any of them a
+    one-line change.
     """
 
     pending_verification_statuses: frozenset[str]
-    """D2 — which ``VerificationInput.status`` values count as "still pending"."""
+    """Which ``VerificationInput.status`` values count as "still pending"."""
 
     placeholder_counts_as_pending: bool
-    """D2 — whether a result created without a provider (``is_placeholder``) is pending."""
+    """Whether a result created without a provider (``is_placeholder``) is pending."""
 
     answered_screening_statuses: frozenset[str]
-    """D3 — which ``ScreeningItemInput.status`` values count as "answered"."""
+    """Which ``ScreeningItemInput.status`` values count as "answered"."""
 
     evidence_required: bool
-    """D4 — whether "evidence recorded" means at least one pinned id."""
+    """Whether "evidence recorded" means at least one pinned id."""
 
     concluding_review_statuses: frozenset[str] = frozenset()
-    """D2 — which ``latest_review_status`` values mean a human has finished with a
+    """Which ``latest_review_status`` values mean a human has finished with a
     result whose ``status`` alone would count as pending.
 
     Needed because a review never changes ``status``: ``VerificationService.review``
@@ -375,36 +376,36 @@ class ClearPolicy:
     anything. A placeholder row is never concluded by a review — nothing ran."""
 
     required_passed_types: tuple[str, ...] = ()
-    """Rule B (decision B, plan P3-2) — the verification types that must each have
-    **passed** in the current cycle, in the order a refusal names them. "Passed" is
-    IQ-2's (``compliance_facts.check_state`` is ``PASSED``): the latest real result of
+    """The passed-checks rule — the verification types that must each have
+    **passed** in the current cycle, in the order a refusal names them. "Passed" means
+    ``compliance_facts.check_state`` is ``PASSED``: the latest real result of
     that type is ``PASSED``, or ``REVIEW`` with an ``ACCEPTED`` review; placeholders
     never count. A set in meaning; a tuple so the refusal's order is stable. Empty (the
     default) requires none, which is the rule before 1 October 2026."""
 
 
-#: **The settled CLEAR rule — D1, D2, D3 and D4, decided 28 September 2026** (recorded
-#: with the decider in ``docs/contracts/background-check.md`` §14).
+#: **The settled CLEAR rule, decided 28 September 2026** (recorded with the decider
+#: in ``docs/contracts/background-check.md`` §14).
 #:
-#: D1: the prerequisites are exactly A3's four, and no others.
+#: The prerequisites are exactly the contract's four, and no others.
 CLEAR_POLICY = ClearPolicy(
-    # D2: a check is pending unless it reached a terminal answer with a real provider.
+    # A check is pending unless it reached a terminal answer with a real provider.
     # `REVIEW` means a human has not finished; a placeholder row means nothing ever ran.
     pending_verification_statuses=frozenset({"PENDING", "REVIEW"}),
     placeholder_counts_as_pending=True,
-    # D2, clarified 28 September 2026 in the Dev4A PR review: `REVIEW` blocks while
+    # Clarified 28 September 2026: `REVIEW` blocks while
     # "a human has not finished with it". A human has finished once the result has an
     # `ACCEPTED` or `REJECTED` review — the answer compliance then weighs, exactly as
     # it weighs a `FAILED` result. `ESCALATED` is not finished, so it still blocks.
     concluding_review_statuses=frozenset({"ACCEPTED", "REJECTED"}),
-    # D3: "answered" means answered satisfactorily. A `FAILED` item blocks `CLEAR` —
+    # "Answered" means answered satisfactorily. A `FAILED` item blocks `CLEAR` —
     # a company with a failed screening item is `FLAGGED`, which is what that state is
     # for (architecture §3.3). `NEEDS_REVIEW` and a never-recorded item also block.
     answered_screening_statuses=frozenset({"PASSED", "EXEMPT"}),
-    # D4: a cleared company must rest on something recorded.
+    # A cleared company must rest on something recorded.
     evidence_required=True,
-    # Rule B (decision B, plan P3-2, 1 October 2026): KYB, AML and sanctions each
-    # passed in the current cycle (IQ-2).
+    # The passed-checks rule (1 October 2026): KYB, AML and sanctions each
+    # passed in the current cycle.
     required_passed_types=("KYB", "AML", "SANCTIONS"),
 )
 
@@ -427,15 +428,15 @@ def evaluate_clear_prerequisites(
     evidence: EvidenceSelection,
     policy: ClearPolicy = CLEAR_POLICY,
 ) -> ClearPrerequisites:
-    """A3's four prerequisites for ``IN_REVIEW → CLEAR``, as one pure function.
+    """The four prerequisites for ``IN_REVIEW → CLEAR``, as one pure function.
 
     Pure over ``CompanyComplianceInputs`` plus the decision's own inputs (the risk the
     actor gave and the evidence about to be pinned), so it is unit-testable with no
     database and no session — which is the point of the seam returning facts rather
     than judgements (``background-check.md`` §12.1 invariant 1).
 
-    **The prerequisites are A3's; their precise meaning is D1–D4**, settled 28
-    September 2026 and carried by ``policy``. Returns every unmet prerequisite rather
+    **The prerequisites are the contract's; their precise meaning was** settled 28
+    September 2026 and is carried by ``policy``. Returns every unmet prerequisite rather
     than the first, so a refusal can name them all (contract §13).
     """
     unmet: list[str] = []
@@ -444,7 +445,7 @@ def evaluate_clear_prerequisites(
     if risk is None:
         unmet.append(CLEAR_RISK_REQUIRED)
 
-    # 2. "no checks still pending" — D2 supplies what pending means. A status that
+    # 2. "no checks still pending" — the policy supplies what pending means. A status that
     #    reads as pending is concluded by a finishing review; a placeholder never is.
     if any(
         (
@@ -457,7 +458,7 @@ def evaluate_clear_prerequisites(
         unmet.append(CLEAR_NO_CHECKS_PENDING)
 
     # 3. "all eight screening items answered" — the catalogue is the seam's, so the
-    #    count is never hard-coded here; D3 supplies what answered means.
+    #    count is never hard-coded here; the policy supplies what answered means.
     answered = {
         item.item_key
         for item in inputs.screening_items
@@ -466,7 +467,7 @@ def evaluate_clear_prerequisites(
     if any(key not in answered for key in inputs.screening_catalogue):
         unmet.append(CLEAR_SCREENING_ANSWERED)
 
-    # 4. "evidence recorded" — D4 supplies what counts.
+    # 4. "evidence recorded" — the policy supplies what counts.
     if policy.evidence_required and evidence.count == 0:
         unmet.append(CLEAR_EVIDENCE_RECORDED)
 
@@ -481,7 +482,7 @@ def evaluate_clear_prerequisites(
 
 @dataclass(frozen=True)
 class RequiredCheckState:
-    """One verification type rule B requires, and where it stands in the current cycle
+    """One verification type the passed-checks rule requires, and where it stands in the current cycle
     — served by the background-check read so the screen keeps no list of its own."""
 
     verification_type: str
@@ -491,7 +492,7 @@ class RequiredCheckState:
 def required_check_states(
     inputs: CompanyComplianceInputs, policy: ClearPolicy = CLEAR_POLICY
 ) -> tuple[RequiredCheckState, ...]:
-    """Each of ``policy.required_passed_types`` with its IQ-2 state, in policy order."""
+    """Each of ``policy.required_passed_types`` with its check state, in policy order."""
     return tuple(
         RequiredCheckState(
             verification_type=verification_type,

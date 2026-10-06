@@ -78,7 +78,7 @@ beforeEach(() => {
   vi.mocked(recordTradeOutcome).mockResolvedValue(outcome);
 });
 
-describe('RecordPastTradeForm (R-27)', () => {
+describe('RecordPastTradeForm', () => {
   it('says who the invoice is with and that it records no deal', () => {
     renderForm();
     const form = screen.getByRole('form', { name: 'Record past invoice' });

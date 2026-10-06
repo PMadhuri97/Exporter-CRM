@@ -1,6 +1,6 @@
 /**
- * Required documents for a handover — **owner: Developer 2** (plan P2-5a).
- * ADMIN only, guarded at the route (`settings.requiredDocuments`, R-33 G5): any other
+ * Required documents for a handover.
+ * ADMIN only, guarded at the route (`settings.requiredDocuments`): any other
  * role gets the generic NotFound there and never loads this page.
  *
  * Which paperwork a deal must have before it goes to the lending team is a
@@ -14,7 +14,7 @@
  * earlier version, but has no edit or delete anywhere. The same shape as
  * `QualificationCriteriaPage`, for the same reason.
  *
- * Laid out as the deal's categories, one row each (frontend-plan §8.9): a lamp
+ * Laid out as the deal's categories, one row each (frontend-plan §8.9): a mark
  * says whether the category is required, the requirements recorded for it sit in
  * its row, and the change history runs underneath.
  *
@@ -29,7 +29,8 @@ import { toast } from 'sonner';
 
 import {
   Button,
-  Composer,
+  Card,
+  SidePanel,
   EmptyLine,
   ErrorState,
   Field,
@@ -43,7 +44,6 @@ import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
 import { cn } from '@/lib/cn';
 import { formatDateTime } from '@/lib/format';
-import { useCrumbs } from '@/platform/shell';
 
 import {
   useDealRequiredDocuments,
@@ -116,7 +116,7 @@ function RequireComposer({ initialCategory, onClose }: { initialCategory: string
   }
 
   return (
-    <Composer
+    <SidePanel
       open
       onOpenChange={(open) => {
         if (!open) onClose();
@@ -173,18 +173,18 @@ function RequireComposer({ initialCategory, onClose }: { initialCategory: string
         in this category will be refused, naming it. Deals already handed over are
         unaffected.
       </p>
-    </Composer>
+    </SidePanel>
   );
 }
 
-/** Required or not, at a glance: a filled ink lamp with a tick, or an empty ring. */
+/** Required or not, at a glance: a filled blue circle with a tick, or an empty ring. */
 function RequiredLamp({ on }: { on: boolean }) {
   return (
     <span
       aria-hidden
       className={cn(
         'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full',
-        on ? 'bg-ink text-paper' : 'border border-dashed border-line-strong',
+        on ? 'bg-accent-solid text-white' : 'border border-dashed border-line-strong',
       )}
     >
       {on && <Icon.check size={12} />}
@@ -214,7 +214,7 @@ function History({ rows }: { rows: DealRequiredDocument[] }) {
                 {row.created_by ? (
                   <>
                     {' · by user id '}
-                    <span className="font-mono">{row.created_by}</span>
+                    <span className="">{row.created_by}</span>
                   </>
                 ) : (
                   ' · seeded'
@@ -225,7 +225,7 @@ function History({ rows }: { rows: DealRequiredDocument[] }) {
         ))}
       </ol>
       {sorted.length > HISTORY_PREVIEW && (
-        <Button size="sm" variant="quiet" className="mt-2" onClick={() => setAll((shownAll) => !shownAll)}>
+        <Button size="sm" variant="subtle" className="mt-2" onClick={() => setAll((shownAll) => !shownAll)}>
           {all ? 'Show the latest only' : `Show all ${sorted.length} changes`}
         </Button>
       )}
@@ -236,7 +236,6 @@ function History({ rows }: { rows: DealRequiredDocument[] }) {
 export function DealRequiredDocumentsPage() {
   const rule = useDealRequiredDocuments();
   const mutation = useSetDealRequiredDocument();
-  useCrumbs([{ label: 'Settings', to: '/settings' }, { label: 'Required documents' }]);
   // `''` opens the composer with no category chosen; a value opens it on that one.
   const [requiring, setRequiring] = useState<string | null>(null);
 
@@ -271,6 +270,7 @@ export function DealRequiredDocumentsPage() {
   return (
     <div className="max-w-reading">
       <PageHeader
+        as="h2"
         title="Required documents"
         description="What a deal must have on file before it can be handed to the lending team. Every change is a new version; a deal already handed over is never re-judged."
         actions={
@@ -290,71 +290,73 @@ export function DealRequiredDocumentsPage() {
           <Skeleton className="h-12" />
         </div>
       ) : (
-        <div className="space-y-10">
-          {requirements.every((row) => !row.active) && (
-            <EmptyLine>
-              Nothing is required yet — a deal can be handed over with no paperwork on file.
-            </EmptyLine>
-          )}
-          <ul className="divide-y divide-line border-y border-line" aria-label="Deal document categories">
-            {categories.map((category) => {
-              const rows = requirements.filter((row) => row.category === category.value);
-              const required = rows.some((row) => row.active);
-              const anyTypeRequired = rows.some((row) => row.active && row.document_type === null);
-              return (
-                <li key={category.value} className="flex items-start gap-3 py-3.5" data-testid="category-row">
-                  <RequiredLamp on={required} />
-                  <div className="min-w-0 flex-1">
-                    {rows.length === 0 ? (
-                      <>
-                        <p className="text-body text-ink-2">{category.label}</p>
-                        <p className="text-caption text-ink-3">Not required</p>
-                      </>
-                    ) : (
-                      <ul className="space-y-2">
-                        {rows.map((row) => (
-                          <li
-                            key={row.id}
-                            className="flex flex-wrap items-center gap-x-3 gap-y-1"
-                            data-testid="requirement-row"
-                          >
-                            <span className="min-w-0 text-body font-medium text-ink">{describe(row)}</span>
-                            <Tag tone={row.active ? 'ink' : 'idle'}>{row.active ? 'Required' : 'Not required'}</Tag>
-                            <span className="font-mono text-caption tabular-nums text-ink-3">v{row.version}</span>
-                            {/* Only an active requirement can be removed; an inactive row
-                                is shown because it was removed, and "remove" again would
-                                be refused by the server. */}
-                            {row.active && (
-                              <Button
-                                size="sm"
-                                variant="quiet"
-                                className="ml-auto"
-                                disabled={mutation.isPending}
-                                onClick={() => void stopRequiring(row)}
-                              >
-                                Stop requiring
-                              </Button>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
+        <div className="space-y-4">
+          <Card title="Categories" as="h3" flush>
+            {requirements.every((row) => !row.active) && (
+              <EmptyLine className="px-4 pb-3">
+                Nothing is required yet — a deal can be handed over with no paperwork on file.
+              </EmptyLine>
+            )}
+            <ul className="divide-y divide-line border-t border-line" aria-label="Deal document categories">
+              {categories.map((category) => {
+                const rows = requirements.filter((row) => row.category === category.value);
+                const required = rows.some((row) => row.active);
+                const anyTypeRequired = rows.some((row) => row.active && row.document_type === null);
+                return (
+                  <li key={category.value} className="flex items-start gap-3 px-4 py-3" data-testid="category-row">
+                    <RequiredLamp on={required} />
+                    <div className="min-w-0 flex-1">
+                      {rows.length === 0 ? (
+                        <>
+                          <p className="text-body text-ink-2">{category.label}</p>
+                          <p className="text-caption text-ink-3">Not required</p>
+                        </>
+                      ) : (
+                        <ul className="space-y-2">
+                          {rows.map((row) => (
+                            <li
+                              key={row.id}
+                              className="flex flex-wrap items-center gap-x-3 gap-y-1"
+                              data-testid="requirement-row"
+                            >
+                              <span className="min-w-0 text-body font-medium text-ink">{describe(row)}</span>
+                              <Tag tone={row.active ? 'ink' : 'idle'}>{row.active ? 'Required' : 'Not required'}</Tag>
+                              <span className="text-caption tabular-nums text-ink-3">v{row.version}</span>
+                              {/* Only an active requirement can be removed; an inactive row
+                                  is shown because it was removed, and "remove" again would
+                                  be refused by the server. */}
+                              {row.active && (
+                                <Button
+                                  size="sm"
+                                  variant="subtle"
+                                  className="ml-auto"
+                                  disabled={mutation.isPending}
+                                  onClick={() => void stopRequiring(row)}
+                                >
+                                  Stop requiring
+                                </Button>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    {!anyTypeRequired && (
+                      <Button
+                        size="sm"
+                        onClick={() => setRequiring(category.value)}
+                        aria-label={`Require ${category.label}`}
+                      >
+                        Require
+                      </Button>
                     )}
-                  </div>
-                  {!anyTypeRequired && (
-                    <Button
-                      size="sm"
-                      onClick={() => setRequiring(category.value)}
-                      aria-label={`Require ${category.label}`}
-                    >
-                      Require
-                    </Button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
 
-          <Panel title="Every change" description="Newest first. A change is a new version; none is ever edited.">
+          <Panel as="h3" title="Every change" description="Newest first. A change is a new version; none is ever edited.">
             <History rows={history} />
           </Panel>
         </div>

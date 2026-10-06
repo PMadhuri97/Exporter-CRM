@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { Composer, composerFieldError, Field, Input, Select } from '@/components';
+import { SidePanel, sidePanelFieldError, Field, Input, Select } from '@/components';
 import { roleLabel, useCurrentUser } from '@/platform/auth';
 
 import { useCreateUser, useRoles, useUpdateUser } from '../hooks';
@@ -19,7 +19,7 @@ interface UserFormDialogProps {
 
 const FIELDS = ['email', 'full_name', 'role', 'role_id', 'password'] as const;
 
-/** Add a user, or edit one — a composer (frontend-plan §6.10), not a box mid-page. */
+/** Add a user, or edit one — a composer (frontend-plan §6.9), not a box mid-page. */
 export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
   const isEdit = user !== undefined;
   const currentUser = useCurrentUser();
@@ -85,7 +85,7 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
   }
 
   return (
-    <Composer
+    <SidePanel
       open
       onOpenChange={(open) => {
         if (!open) onClose();
@@ -106,7 +106,7 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
       <Field
         label="Email"
         htmlFor="user-email"
-        error={composerFieldError(error, 'email')}
+        error={sidePanelFieldError(error, 'email')}
         hint={
           isEdit
             ? 'Email cannot be changed — no address-confirmation flow exists yet, so a silent change would lock the account out.'
@@ -123,7 +123,7 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
         />
       </Field>
 
-      <Field label="Full name" htmlFor="user-name" error={composerFieldError(error, 'full_name')}>
+      <Field label="Full name" htmlFor="user-name" error={sidePanelFieldError(error, 'full_name')}>
         <Input
           id="user-name"
           type="text"
@@ -135,7 +135,7 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
       <Field
         label="Role"
         htmlFor="user-role"
-        error={composerFieldError(error, 'role')}
+        error={sidePanelFieldError(error, 'role')}
         hint={
           isSelf
             ? 'You cannot change your own role — ask another administrator.'
@@ -159,7 +159,7 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
       <Field
         label="Permission role"
         htmlFor="user-permission-role"
-        error={composerFieldError(error, 'role_id')}
+        error={sidePanelFieldError(error, 'role_id')}
         hint={
           isSelf
             ? 'You cannot change your own permission role — ask another administrator.'
@@ -191,6 +191,6 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
           required
         />
       )}
-    </Composer>
+    </SidePanel>
   );
 }

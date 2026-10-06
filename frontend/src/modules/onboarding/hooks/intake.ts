@@ -1,4 +1,4 @@
-/** Company intake — **owner: Developer 2**: RXIL packages and CSV import. */
+/** Company intake: RXIL packages and CSV import. */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 

@@ -6,7 +6,7 @@
  * so the stage counts are the length of one capped search per stage, shown as
  * "200+" when the cap is hit — the same honesty the pipeline's "100+" uses.
  *
- * Developer 1 (compliance engine, plans P3-1c and P3-3c) adds two: "Proposals awaiting
+ * The compliance engine adds two: "Proposals awaiting
  * me" — background-check decisions proposed by another officer, approvable from here in
  * two clicks (Approve, then confirm) — and "Re-KYC due", the companies whose Clear has
  * expired or soon will. Both are server lists (`GET /background-check/proposals`,
@@ -18,7 +18,9 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import {
+  Badge,
   Button,
+  Card,
   Count,
   EmptyLine,
   Input,
@@ -47,12 +49,10 @@ import { paths } from '../../paths';
 import type {
   BackgroundCheckProposal,
   BackgroundCheckProposalAction,
-  CheckBack,
   ExporterJourney,
   FollowUp,
   FollowUpOutcome,
 } from '../../types';
-import { JourneyDots } from '../CompanyChips';
 import { actorLabel } from '../actor-label';
 import { proposedMoveLabel } from '../background-check-labels';
 import { ProposalResolveDialog } from '../ProposalResolveDialog';
@@ -92,8 +92,8 @@ export function CompleteFollowUp({ followUp }: { followUp: FollowUp }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button size="sm" variant="secondary" className="h-7 px-2.5" aria-label={`Done: ${followUp.subject}`}>
-          Done
+        <Button size="sm" aria-label={`Mark done: ${followUp.subject}`}>
+          Mark done
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
@@ -120,7 +120,7 @@ export function CompleteFollowUp({ followUp }: { followUp: FollowUp }) {
             );
           }}
         >
-          <p className="text-body font-medium text-ink">{followUp.subject}</p>
+          <p className="text-body font-semibold text-ink">{followUp.subject}</p>
           <Segmented label="Outcome" size="sm" value={outcome} onValueChange={setOutcome} options={OUTCOMES} />
           {outcome === 'RESCHEDULED' && (
             <label className="block text-caption font-medium text-ink-2">
@@ -140,121 +140,128 @@ export function CompleteFollowUp({ followUp }: { followUp: FollowUp }) {
   );
 }
 
-type UpNextItem =
-  | { kind: 'follow-up'; at: string; row: FollowUp }
-  | { kind: 'check-back'; at: string; row: CheckBack };
-
 /**
- * Up next (frontend-plan §8.2): overdue follow-ups and due check-backs as **one**
- * time-ordered queue — still two kinds, each labelled. A follow-up can be marked done
- * here (staff); a check-back cannot be "completed" at all: it clears when the
- * conversation moves, so it opens the conversation instead (the rule from
- * `FollowUpsPage`). Mine shows only what this user logged; Team, everyone's.
+ * My follow-ups (frontend-plan §8.2): what is still open, overdue first then soonest
+ * (the server's order). *Mark done* records the outcome in a popover (staff); Mine
+ * shows only what this user logged, Team everyone's. `is_overdue` is the server's,
+ * never worked out here.
  */
-export function UpNextCard({ userId, canComplete = false }: { userId: string; canComplete?: boolean }) {
-  const [mine, setMine] = useState(canComplete);
+export function MyFollowUpsCard({ userId, canComplete = false }: { userId: string; canComplete?: boolean }) {
+  const [whose, setWhose] = useState<'MINE' | 'TEAM'>(canComplete ? 'MINE' : 'TEAM');
   const query = useFollowUps({
-    state: 'OVERDUE',
-    actorId: mine ? userId : undefined,
-    includeCheckBacks: true,
-    checkBacksDueOnly: true,
+    state: 'OUTSTANDING',
+    actorId: whose === 'MINE' ? userId : undefined,
+    includeCheckBacks: false,
     limit: PREVIEW,
   });
-  const items: UpNextItem[] = [
-    ...(query.data?.follow_ups ?? []).map((row) => ({ kind: 'follow-up' as const, at: row.due_at ?? row.occurred_at, row })),
-    ...(query.data?.check_backs ?? []).map((row) => ({ kind: 'check-back' as const, at: row.check_back_on, row })),
-  ].sort((a, b) => a.at.localeCompare(b.at));
+  const items = query.data?.follow_ups ?? [];
 
   return (
-    <Panel
-      title={
-        <span className="inline-flex items-center gap-2">
-          Up next
-          {query.data && (
-            <span
-              className={`rounded-sm px-1.5 py-0.5 text-caption tabular-nums ${
-                query.data.follow_ups_total > 0 ? 'bg-negative-tint text-negative' : 'bg-sunken text-ink-2'
-              }`}
-              data-testid="overdue-count"
-              title="Overdue follow-ups"
-            >
-              {query.data.follow_ups_total}
-            </span>
-          )}
-        </span>
-      }
+    <Card
+      title="My follow-ups"
+      count={query.data ? <span data-testid="open-count">{query.data.follow_ups_total}</span> : undefined}
       actions={
-        <div className="inline-flex gap-0.5 rounded-md bg-sunken p-0.5 text-caption font-medium" role="group" aria-label="Whose follow-ups">
-          {[
-            { value: true, label: 'Mine' },
-            { value: false, label: 'Team' },
-          ].map((option) => (
-            <button
-              key={option.label}
-              type="button"
-              aria-pressed={mine === option.value}
-              onClick={() => setMine(option.value)}
-              className={`rounded px-2.5 py-1 ${
-                mine === option.value ? 'bg-surface text-ink ring-1 ring-line-strong' : 'text-ink-2 hover:text-ink'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Whose follow-ups"
+          size="sm"
+          value={whose}
+          onValueChange={setWhose}
+          options={[
+            { value: 'MINE', label: 'Mine' },
+            { value: 'TEAM', label: 'Team' },
+          ]}
+        />
       }
+      footer={{ label: 'View all', to: paths.followUps }}
+      flush
     >
       {query.isLoading ? (
-        <div className="space-y-2" aria-hidden>
+        <div className="space-y-2 px-4 pb-4" aria-hidden>
           <Skeleton className="h-10" />
           <Skeleton className="h-10" />
         </div>
       ) : query.isError ? (
-        <p role="alert" className="text-body text-negative">Couldn't load what is next.</p>
+        <p role="alert" className="px-4 pb-4 text-body text-negative">Couldn&apos;t load follow-ups.</p>
       ) : items.length === 0 ? (
-        <EmptyLine>{mine ? 'Nothing you logged is overdue, and no check-back is due.' : 'Nothing is overdue across the team.'}</EmptyLine>
+        <EmptyLine className="px-4 pb-3">
+          {whose === 'MINE' ? 'No follow-ups due.' : 'No follow-ups open across the team.'}
+        </EmptyLine>
       ) : (
-        <ul className="divide-y divide-line">
-          {items.map((item) =>
-            item.kind === 'follow-up' ? (
-              <li key={`f-${item.row.activity_id}`} className="grid grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-3 py-2.5" data-testid="up-next-follow-up">
-                <span className="inline-flex items-center gap-1.5 text-caption font-medium text-negative">
-                  <Icon.followUp size={13} aria-hidden />
-                  {formatDate(item.row.due_at)}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-body font-medium text-ink">{item.row.subject}</span>
-                  <Link to={paths.company(item.row.customer_id)} className="text-secondary text-ink-3 hover:text-ink">
-                    {item.row.exporter_display_name ?? 'Unnamed company'}
-                  </Link>
-                </span>
-                {canComplete ? <CompleteFollowUp followUp={item.row} /> : <span />}
-              </li>
-            ) : (
-              <li key={`c-${item.row.customer_id}`} className="grid grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-3 py-2.5" data-testid="up-next-check-back">
-                <span className={`inline-flex items-center gap-1.5 text-caption font-medium ${item.row.is_overdue ? 'text-negative' : 'text-attention'}`}>
-                  <Icon.pause size={13} aria-hidden />
-                  {formatDate(item.row.check_back_on)}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-body text-ink-2">Check back — they said "not now"</span>
-                  <Link
-                    to={paths.company(item.row.customer_id, 'conversation')}
-                    className="text-secondary font-medium text-ink hover:underline"
-                  >
-                    {item.row.exporter_display_name ?? 'Unnamed company'}
-                  </Link>
-                </span>
-                <span />
-              </li>
-            ),
-          )}
+        <ul className="divide-y divide-line border-t border-line">
+          {items.map((row) => (
+            <li key={row.activity_id} className="flex items-center gap-3 px-4 py-2.5" data-testid="my-follow-up">
+              <span className="w-28 shrink-0">
+                {row.is_overdue ? (
+                  <Badge tone="negative">Overdue</Badge>
+                ) : (
+                  <span className="text-secondary text-ink-2">{formatDate(row.due_at)}</span>
+                )}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-body font-semibold text-ink">{row.subject}</span>
+                <Link
+                  to={paths.company(row.customer_id)}
+                  className="text-secondary text-accent underline-offset-2 hover:underline"
+                >
+                  {row.exporter_display_name ?? 'Unnamed company'}
+                </Link>
+              </span>
+              {canComplete && <CompleteFollowUp followUp={row} />}
+            </li>
+          ))}
         </ul>
       )}
-      <div className="mt-3">
-        <ViewAll to={paths.followUps} label="The whole agenda" />
-      </div>
-    </Panel>
+    </Card>
+  );
+}
+
+/**
+ * Check back on (frontend-plan §8.2): companies parked at "Not now" whose date has
+ * come. Its own card, never mixed with follow-ups: a check-back cannot be marked
+ * done — it clears when the conversation moves, so each one opens the company's
+ * Activity tab instead.
+ */
+export function CheckBackCard() {
+  const query = useFollowUps({
+    state: 'OVERDUE',
+    includeCheckBacks: true,
+    checkBacksDueOnly: true,
+    limit: PREVIEW,
+  });
+  const rows = query.data?.check_backs ?? [];
+
+  return (
+    <Card title="Check back on" count={query.data?.check_backs_total} flush>
+      {query.isLoading ? (
+        <div className="px-4 pb-4" aria-hidden>
+          <Skeleton className="h-10" />
+        </div>
+      ) : query.isError ? (
+        <p role="alert" className="px-4 pb-4 text-body text-negative">Couldn&apos;t load check-backs.</p>
+      ) : rows.length === 0 ? (
+        <EmptyLine className="px-4 pb-3">No check-backs due.</EmptyLine>
+      ) : (
+        <ul className="divide-y divide-line border-t border-line">
+          {rows.map((row) => (
+            <li key={row.customer_id} className="flex items-center gap-3 px-4 py-2.5" data-testid="check-back">
+              <span className="w-28 shrink-0">
+                <Badge tone={row.is_overdue ? 'negative' : 'attention'}>Due {formatDate(row.check_back_on)}</Badge>
+              </span>
+              <span className="min-w-0 flex-1 truncate text-body font-semibold text-ink">
+                {row.exporter_display_name ?? 'Unnamed company'}
+              </span>
+              <Link
+                to={paths.company(row.customer_id, 'conversation')}
+                className={`shrink-0 text-secondary ${LINK_CLASSES}`}
+                aria-label={`Open activity: ${row.exporter_display_name ?? 'Unnamed company'}`}
+              >
+                Open activity
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 
@@ -271,22 +278,19 @@ function StageCount({ journey }: { journey: ExporterJourney }) {
       {query.isLoading ? (
         <Skeleton className="h-10 w-16" />
       ) : query.isError || count === undefined ? (
-        <span className="font-display text-display-xl text-ink-3">—</span>
+        <span className="text-title font-semibold text-ink-3">—</span>
       ) : (
         <Count value={count} cap={COUNT_CAP} className="group-hover:underline group-hover:decoration-1 group-hover:underline-offset-4" />
       )}
-      <span className="mt-1 flex items-center gap-1.5 text-secondary text-ink-3">
-        <JourneyDots journey={journey} />
-        {JOURNEY_LABEL[journey]}s
-      </span>
+      <span className="mt-1 block text-secondary text-ink-2">{JOURNEY_LABEL[journey]}s</span>
     </Link>
   );
 }
 
-/** How many companies sit at each journey stage — three serif numerals, capped honestly. */
+/** How many companies sit at each journey stage — three counts, capped honestly. */
 export function PipelineSummaryCard() {
   return (
-    <Panel title="Pipeline" actions={<ViewAll to={paths.board} label="Board" />}>
+    <Panel title="Pipeline" actions={<ViewAll to={paths.board} label="View pipeline" />}>
       <div className="grid grid-cols-3 gap-4">
         {JOURNEY_STAGES.map((journey) => (
           <StageCount key={journey} journey={journey} />
@@ -320,12 +324,12 @@ export function SetupCard() {
   );
 }
 
-// ── Developer 1: maker-checker (P3-1c) and Re-KYC due (P3-3c) ──────────────
+// ── Maker-checker and Re-KYC due ───────────────────────────
 
 function CountChip({ count, alert, testId }: { count: number; alert: boolean; testId: string }) {
   return (
     <span
-      className={`rounded-sm px-2 py-0.5 text-xs tabular-nums ${
+      className={`rounded-sm px-2 py-0.5 text-caption tabular-nums ${
         alert && count > 0 ? 'bg-negative-tint text-negative' : 'bg-sunken text-ink-2'
       }`}
       data-testid={testId}
@@ -345,11 +349,11 @@ function ProposalRow({ proposal }: { proposal: BackgroundCheckProposal }) {
         <div className="min-w-0">
           <Link
             to={paths.company(proposal.company_id, 'background-check')}
-            className="truncate text-sm font-medium text-ink hover:text-ink"
+            className="truncate text-body font-medium text-ink hover:text-ink"
           >
             {proposal.company_name ?? 'Unnamed company'}
           </Link>
-          <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-2">
+          <p className="flex flex-wrap items-center gap-1.5 text-caption text-ink-2">
             <span className="font-medium text-ink">{proposedMoveLabel(proposal.to_value)}</span>
             {proposal.risk_rating && <RiskChip risk={proposal.risk_rating} />}
             <span>
@@ -401,7 +405,7 @@ export function ProposalsAwaitingMeCard() {
       title={
         <span className="inline-flex items-center gap-2">
           <Icon.backgroundCheck size={15} className="text-ink-3" />
-          Awaiting your signature
+          Items to approve
           {query.data && (
             <CountChip count={query.data.total} alert testId="proposals-awaiting-count" />
           )}
@@ -414,7 +418,7 @@ export function ProposalsAwaitingMeCard() {
           <Skeleton className="h-10" />
         </div>
       ) : query.isError ? (
-        <p role="alert" className="text-sm text-negative">
+        <p role="alert" className="text-body text-negative">
           Couldn't load the proposals awaiting approval.
         </p>
       ) : rows.length === 0 ? (
@@ -453,7 +457,7 @@ export function ReKycDueCard() {
       {query.isLoading ? (
         <Skeleton className="h-16" />
       ) : query.isError ? (
-        <p role="alert" className="text-sm text-negative">
+        <p role="alert" className="text-body text-negative">
           Couldn't load the companies due for Re-KYC.
         </p>
       ) : rows.length === 0 ? (
@@ -472,18 +476,18 @@ export function ReKycDueCard() {
               <span className="flex min-w-0 items-center gap-2">
                 <Link
                   to={paths.company(row.company_id, 'background-check')}
-                  className="min-w-0 truncate text-sm font-medium text-ink hover:text-ink"
+                  className="min-w-0 truncate text-body font-medium text-ink hover:text-ink"
                 >
                   {row.company_name ?? 'Unnamed company'}
                 </Link>
-                {/* R-29: a renewal for a company that exists only as a buyer is not a
+                {/* A renewal for a company that exists only as a buyer is not a
                     lead's, and should not read as one. */}
                 {row.pipeline_status === 'NOT_IN_PIPELINE' ? (
-                  <span className="shrink-0 text-xs text-ink-2">Buyer only</span>
+                  <span className="shrink-0 text-caption text-ink-2">Buyer only</span>
                 ) : null}
               </span>
               <span
-                className={`shrink-0 text-xs font-medium ${
+                className={`shrink-0 text-caption font-medium ${
                   row.is_expired ? 'text-negative' : 'text-attention'
                 }`}
               >

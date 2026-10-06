@@ -1,13 +1,13 @@
 """Superseding verification reviews, the reviewed-outcome freeze, evidence and
-subject snapshots on verification results, and the screening status check —
-**owner: Developer 4B** (``docs/contracts/verification-and-screening.md``).
+subject snapshots on verification results, and the screening status check
+(``docs/contracts/verification-and-screening.md``).
 
 Revision ID: onboarding_0021_verif_review
 Revises: auth_0004_rbac
 
 ``onboarding_0021_verif_review`` is 28 characters, inside the register's 32-character
 limit on ``alembic_version.version_num``. 0021 is the next free label after 0020 so
-Dev4A's ``onboarding_0015_bg_check`` and this file never share a filename; both
+``onboarding_0015_bg_check`` and this file never share a filename; both
 branches start from the same head, and whichever merges second re-parents its own
 ``down_revision`` onto the other (a one-line change, never a merge revision).
 
@@ -57,7 +57,7 @@ What it adds, all in the ``onboarding`` schema
   ``NEEDS_REVIEW``, ``PASSED``, ``FAILED``, ``EXEMPT``; until now only the API's
   ``Literal`` said so. ``trg_screening_review_item_append_only`` is untouched.
 
-Nothing here touches the background check (Dev4A), its gauge, decisions or risk.
+Nothing here touches the background check, its gauge, decisions or risk.
 
 A narrow race the trigger alone does not close: a raw-SQL ``UPDATE`` of a result racing
 a raw-SQL review ``INSERT`` in another uncommitted transaction can pass the ``EXISTS``
@@ -83,7 +83,7 @@ from sqlalchemy.dialects import postgresql
 
 revision: str = "onboarding_0021_verif_review"
 # Re-parented when `main` was merged in. Written against `onboarding_0019_documents`,
-# which Dev4A's `onboarding_0015_bg_check` took as its parent first, followed on `main`
+# which `onboarding_0015_bg_check` took as its parent first, followed on `main`
 # by `auth_0003_user_admin` and `auth_0004_rbac`; this merged second, so it moves onto
 # the head (`migration-register.md` §2). Nothing here depends on the background check or auth
 # schema — the parent only fixes where it sits in the order.

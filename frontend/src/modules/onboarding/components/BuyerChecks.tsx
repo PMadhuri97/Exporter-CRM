@@ -1,5 +1,5 @@
 /**
- * Checks on a deal's buyer — **owner: Developer 4B** (verification-and-screening.md §6, phase 4B-5).
+ * Checks on a deal's buyer (verification-and-screening.md §6).
  *
  * A buyer check is recorded against the buyer (`deal_buyer.id`), never the company,
  * and never moves the company's background check (architecture §3.5, decision 9).
@@ -14,16 +14,16 @@
  * deal's.
  *
  * Mounted on the deal page, for staff, once the deal has a buyer. On a closed deal
- * the server stops offering `can_record_result` (D17); existing checks stay
+ * the server stops offering `can_record_result`; existing checks stay
  * reviewable.
  *
- * **Legacy (Developer 1, plan P4-5).** Checks are company-keyed now: a buyer company's
+ * **Legacy.** Checks are company-keyed now: a buyer company's
  * checks are recorded on its own background-check panel, and a deal shows that company
- * through `CompanyComplianceSummary` — the one compliance summary (task 1.20; mounted
- * by Developer 2's task 2.4 once a deal names a buyer company). This list remains only
+ * through `CompanyComplianceSummary` — the one compliance summary (mounted once a deal
+ * names a buyer company). This list remains only
  * for a deal whose buyer is still a `deal_buyer` row, the one place that buyer's
  * sanctions and AML can be recorded, until the deal-buyer migration maps it to a
- * company (P4-6) and `deal_buyer` writes are retired (P4-10), when it is removed.
+ * company and `deal_buyer` writes are retired, when it is removed.
  */
 
 import { useState } from 'react';
@@ -41,7 +41,7 @@ import { BUYER_CHECK_TYPES, provenanceLabel, verificationTypeLabel } from './ver
 import { VerificationStatusChip } from './VerificationStatusChip';
 
 const SECONDARY_BUTTON =
-  'rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
+  'rounded-lg border border-line px-2.5 py-1.5 text-caption font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
 
 export function BuyerChecks({ dealId, dealBuyerId }: { dealId: string; dealBuyerId: string }) {
   const query = useVerificationResults('BUYER', dealBuyerId);
@@ -60,7 +60,7 @@ export function BuyerChecks({ dealId, dealBuyerId }: { dealId: string; dealBuyer
             <Icon.backgroundCheck size={18} className="text-ink" />
             <h2 className="font-semibold text-ink">Buyer checks</h2>
           </div>
-          <p className="mt-1 text-sm text-ink-2">
+          <p className="mt-1 text-body text-ink-2">
             Checks on this deal&apos;s buyer. They never change the company&apos;s background
             check.
           </p>
@@ -84,13 +84,13 @@ export function BuyerChecks({ dealId, dealBuyerId }: { dealId: string; dealBuyer
 
       <div className="mt-4">
         {query.isLoading ? (
-          <p className="text-sm text-ink-2">Loading buyer checks…</p>
+          <p className="text-body text-ink-2">Loading buyer checks…</p>
         ) : query.isError ? (
-          <p role="alert" className="text-sm text-negative">
+          <p role="alert" className="text-body text-negative">
             Buyer checks could not be loaded.
           </p>
         ) : results.length === 0 ? (
-          <p className="text-sm text-ink-2">No checks have been recorded on this buyer yet.</p>
+          <p className="text-body text-ink-2">No checks have been recorded on this buyer yet.</p>
         ) : (
           <ul className="divide-y divide-line">
             {results.map((result) => (
@@ -128,7 +128,7 @@ function BuyerCheckRow({
         {result.risk_level && <VerificationStatusChip value={result.risk_level} />}
         {result.review_status && <VerificationStatusChip value={result.review_status} />}
       </div>
-      <p className="mt-1 text-xs text-ink-3">
+      <p className="mt-1 text-caption text-ink-3">
         {result.is_placeholder ? 'Placeholder · no provider ran this check' : provenanceLabel(result)}
         {' · '}
         {formatDateTime(result.performed_at)}
@@ -149,7 +149,7 @@ function BuyerCheckRow({
 
 function SubjectSnapshot({ snapshot }: { snapshot: BuyerSnapshot }) {
   return (
-    <div data-testid="buyer-snapshot" className="mt-3 rounded-lg bg-paper p-3 text-xs">
+    <div data-testid="buyer-snapshot" className="mt-3 rounded-lg bg-paper p-3 text-caption">
       <p className="text-ink-3">Checked against the buyer as recorded at the time</p>
       <dl className="mt-1 grid gap-x-4 gap-y-1 sm:grid-cols-2">
         <div>

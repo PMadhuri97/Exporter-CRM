@@ -1,5 +1,5 @@
-"""Request/response schemas for the background check — **owner: Developer 4A**
-(L4-03, L4-13; ``docs/contracts/background-check.md``).
+"""Request/response schemas for the background check
+(``docs/contracts/background-check.md``).
 
 **What a client may not send.** The move request carries a destination, a reason, a
 risk rating and the value the client was looking at, and nothing else. It may not name the actor, the source, the
@@ -12,23 +12,23 @@ the field is not theirs and a caller believing it worked.
 **No identifiers here to mask.** A decision carries a destination, a reason, a risk
 and ids; it embeds no PAN, GSTIN or buyer contact detail, so there is nothing for
 ``masking.py`` to do. If a field ever arrives that does carry one, it goes through
-Developer 1's helpers exactly as ``deal.py`` does — it does not get special-cased
+the shared masking helpers exactly as ``deal.py`` does — it does not get special-cased
 here.
 
 The reason *is* free text a person typed, which is why DEVELOPER may not read it
-(**D8**, settled 28 September 2026): DEVELOPER does not reach these routes at all, so
+(settled 28 September 2026): DEVELOPER does not reach these routes at all, so
 the question does not arise in this schema.
 
-Developer 1 (compliance engine) added, 1 October 2026: the company's compliance facts
-on the standing (F1), the check cycles and the actions that start one (P2-3c/d), each
-decision's rules version and cycle (P2-4a, P2-3a), and the resolved evidence of one
-decision (P2-1a). **None of them carries an identifier** — no PAN, GSTIN, IEC, CIN,
-buyer tax id or contact detail — so ``masking.py`` still has nothing to do here; the
-masking tests assert that for OPERATIONS, and DEVELOPER is refused (D8).
+Added 1 October 2026: the company's compliance facts on the standing, the check
+cycles and the actions that start one, each decision's rules version and cycle, and
+the resolved evidence of one decision. **None of them carries an identifier** — no
+PAN, GSTIN, IEC, CIN, buyer tax id or contact detail — so ``masking.py`` still has
+nothing to do here; the masking tests assert that for OPERATIONS, and DEVELOPER is
+refused.
 
-Developer 1 added, tranche 2 (1 October 2026): maker-checker proposals and their
-approval (P3-1b/c), rule B's required checks (P3-2), each Clear's expiry and the
-"Re-KYC due" list (P3-3). Still no identifier: a proposal carries a move, a reason, a
+Also added 1 October 2026: maker-checker proposals and their approval, the
+passed-checks rule's required checks, each Clear's expiry and the "Re-KYC due" list.
+Still no identifier: a proposal carries a move, a reason, a
 risk, user ids and names; the due list a company's **name**, journey and expiry —
 never its PAN, GSTIN, IEC, CIN or contacts.
 """
@@ -199,7 +199,7 @@ class BackgroundCheckDecisionResponse(BaseModel):
         )
 
 
-# ── Compliance facts, cycles (Developer 1, F1 and P2-3) ─────────────────────
+# ── Compliance facts, cycles ────────────────────────────────────────────────
 
 CheckStateValue = Literal["PASSED", "FAILED", "MISSING", "PENDING"]
 
@@ -291,7 +291,7 @@ class StartCheckCycleResponse(BaseModel):
     )
 
 
-# ── Maker-checker, rule B, expiry (Developer 1, P3-1, P3-2, P3-3) ───────────
+# ── Maker-checker, required checks, expiry ──────────────────────────────────
 
 ProposalStatusValue = Literal["OPEN", "APPROVED", "REJECTED", "WITHDRAWN"]
 ProposalActionValue = Literal["APPROVE", "REJECT", "WITHDRAW"]
@@ -373,7 +373,7 @@ class ApproveBackgroundCheckProposalResponse(BaseModel):
 
 
 class RequiredCheckResponse(BaseModel):
-    """One verification type CLEAR requires (rule B), and its state in the current cycle."""
+    """One verification type CLEAR requires, and its state in the current cycle."""
 
     verification_type: str
     state: CheckStateValue = Field(
@@ -395,7 +395,7 @@ class ReKycDueCompanyResponse(BaseModel):
     is_expired: bool
     current_cycle_number: int | None
     #: `IN_PIPELINE`, or `NOT_IN_PIPELINE` for a company that exists only as a buyer
-    #: (R-29) — so the list can say which renewals are for a buyer rather than a lead.
+    #: — so the list can say which renewals are for a buyer rather than a lead.
     pipeline_status: CompanyPipelineStatus
 
 
@@ -418,7 +418,7 @@ class BackgroundCheckResponse(BaseModel):
             "The risk of the most recent CLEAR decision (only CLEAR carries one). "
             "Read `value` before trusting it: a company cleared at LOW and then "
             "reopened still reports LOW while it sits at IN_REVIEW — the last "
-            "recorded risk, to be labelled as such (D6)."
+            "recorded risk, to be labelled as such."
         ),
     )
     latest_decision_id: uuid.UUID | None = None
@@ -471,7 +471,7 @@ class BackgroundCheckResponse(BaseModel):
     required_checks: list[RequiredCheckResponse] = Field(
         default_factory=list,
         description=(
-            "The verification types CLEAR requires (KYB, AML, SANCTIONS — rule B) and "
+            "The verification types CLEAR requires (KYB, AML, SANCTIONS) and "
             "the state of each in the current cycle."
         ),
     )
@@ -490,7 +490,7 @@ class RecordBackgroundCheckDecisionRequest(BaseModel):
 
     Four fields, and `extra="forbid"`. The actor comes from the login session, the
     source and decided-by kind are the server's, and the evidence snapshot is
-    assembled by the server from the 4A ↔ 4B seam and Developer 3B's documents. A
+    assembled by the server from the compliance-inputs seam and the CRM's documents. A
     request naming any of them is refused (422) rather than quietly ignored.
     """
 
@@ -534,7 +534,7 @@ class BackgroundCheckDecisionListResponse(BaseModel):
     offset: int
 
 
-# ── One decision's evidence, resolved (Developer 1, P2-1a) ──────────────────
+# ── One decision's evidence, resolved ───────────────────────────────────────
 
 
 class DecisionEvidencePinnedReview(BaseModel):

@@ -138,7 +138,7 @@ it('shows each invoice with its amount, its currency and its outcome', async () 
   expect(screen.getByText('Paid')).toBeInTheDocument();
 });
 
-it('totals nothing, because there is no reporting currency (IQ-4)', async () => {
+it('totals nothing, because there is no reporting currency', async () => {
   vi.mocked(getTradeRelationship).mockResolvedValue(
     detail([
       invoice(),
@@ -283,12 +283,12 @@ it('does not show a failed read as an empty history', async () => {
   expect(screen.queryByText(/No trade relationship/)).not.toBeInTheDocument();
 });
 
-it('serves no identifiers for the counterparty, whatever the role (IQ-19)', async () => {
+it('serves no identifiers for the counterparty, whatever the role', async () => {
   const { container } = renderPanel();
   await screen.findByText('INV-2026-0041');
 
   // The response shape carries none, so there is nothing here to mask. This asserts
   // the component invents no identifier line of its own — the counterparty's PAN and
-  // GSTIN live on its company page, where D8's masking governs them.
+  // GSTIN live on its company page, where its masking governs them.
   expect(container.textContent).not.toMatch(/PAN|GSTIN|CIN|IEC/);
 });

@@ -124,7 +124,7 @@ beforeEach(() => {
   vi.mocked(getDecisionEvidence).mockResolvedValue(evidence());
 });
 
-describe('DecisionHistory — the evidence behind each decision (P2-1c)', () => {
+describe('DecisionHistory — the evidence behind each decision', () => {
   it('shows counts first and fetches nothing until a row is opened', () => {
     renderWithClient(
       <DecisionHistory decisions={[decision()]} isLoading={false} isError={false} customerId={COMPANY_ID} />,
@@ -205,7 +205,7 @@ describe('DecisionHistory — the evidence behind each decision (P2-1c)', () => 
   });
 });
 
-describe('DecisionHistory — cycles (P2-3d)', () => {
+describe('DecisionHistory — cycles', () => {
   it('groups decisions by cycle, newest cycle first and marked current', () => {
     const decisions = [
       decision({ id: 'd3', from_value: 'CLEAR', to_value: 'IN_REVIEW', cycle_number: 2, cycle_id: 'cycle-2', reason: 'Re-KYC: annual' }),

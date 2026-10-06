@@ -1,4 +1,4 @@
-"""Where local-disk storage keeps its files — **owner: Developer 3B** (L3-07).
+"""Where local-disk storage keeps its files.
 
 Read from the environment here rather than added to ``platform.configuration.Settings``:
 that class is platform-wide and not this developer's to extend, and a storage

@@ -1,5 +1,4 @@
-"""Repository for ``background_check_proposal`` and its resolution — **owner: Developer
-1** (maker-checker, plan P3-1a/b).
+"""Repository for ``background_check_proposal`` and its resolution (maker-checker).
 
 Append-only: ``AppendOnlyRepository`` exposes no ``update`` and no ``delete``, and both
 tables' triggers refuse them at the database.

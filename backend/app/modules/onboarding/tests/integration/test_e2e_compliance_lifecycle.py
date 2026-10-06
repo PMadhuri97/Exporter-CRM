@@ -1,13 +1,12 @@
-"""The compliance lifecycle end to end, through the API — Developer 1's lane end-to-end
-test (allocation §2.2: lane e2e tests go in `test_e2e_compliance_*.py`; the main path is
-Developer 2's `test_crm_end_to_end.py`).
+"""The compliance lifecycle end to end, through the API (the main CRM path is
+`test_crm_end_to_end.py`).
 
 One company, real routes, real users, nothing substituted: an RM starts the check;
-compliance answers the checklist and records KYB, AML and sanctions (rule B); a maker
+compliance answers the checklist and records KYB, AML and sanctions; a maker
 proposes CLEAR; the RM and DEVELOPER are refused; a second officer rejects it, then
 approves the next — and only then does the qualified PROSPECT become a CUSTOMER; the
 Clear carries its expiry and shows on the Re-KYC list; a Re-KYC starts cycle 2 with
-nothing carried over. Every Dev 1 route also refuses a caller with no token.
+nothing carried over. Every compliance route also refuses a caller with no token.
 """
 
 from __future__ import annotations
@@ -158,7 +157,7 @@ async def test_the_compliance_lifecycle_with_two_officers(client: AsyncClient, p
     assert [c["state"] for c in standing["required_checks"]] == ["MISSING"] * 3
     assert await api.journey(company) == "CUSTOMER"  # a reopen never demotes
 
-    # The whole story is in the history log — not for DEVELOPER (D8).
+    # The whole story is in the history log — not for DEVELOPER.
     history = await api.call("maker", "GET", f"/exporters/{company}/history", 200,
                              params={"limit": 200})
     dimensions = {e["dimension"] for e in history["entries"]}
@@ -171,7 +170,7 @@ async def test_the_compliance_lifecycle_with_two_officers(client: AsyncClient, p
     }
 
 
-DEV1_ROUTES = [
+COMPLIANCE_ROUTES = [
     ("GET", f"/exporters/{_ID}/background-check"),
     ("POST", f"/exporters/{_ID}/background-check/decisions"),
     ("GET", f"/exporters/{_ID}/background-check/decisions"),
@@ -187,14 +186,14 @@ DEV1_ROUTES = [
 ]
 
 
-@pytest.mark.parametrize(("method", "path"), DEV1_ROUTES, ids=[f"{m} {p}" for m, p in DEV1_ROUTES])
-async def test_every_dev1_route_refuses_a_caller_with_no_token(client: AsyncClient, method, path):
+@pytest.mark.parametrize(("method", "path"), COMPLIANCE_ROUTES, ids=[f"{m} {p}" for m, p in COMPLIANCE_ROUTES])
+async def test_every_compliance_route_refuses_a_caller_with_no_token(client: AsyncClient, method, path):
     response = await client.request(method, f"{BASE}{path}", json={})
     assert response.status_code == 401, response.text
 
 
-@pytest.mark.parametrize(("method", "path"), DEV1_ROUTES, ids=[f"{m} {p}" for m, p in DEV1_ROUTES])
-async def test_every_dev1_route_refuses_developer_and_api_user(
+@pytest.mark.parametrize(("method", "path"), COMPLIANCE_ROUTES, ids=[f"{m} {p}" for m, p in COMPLIANCE_ROUTES])
+async def test_every_compliance_route_refuses_developer_and_api_user(
     client: AsyncClient, people, method, path
 ):
     for who in ("developer", "api_user"):

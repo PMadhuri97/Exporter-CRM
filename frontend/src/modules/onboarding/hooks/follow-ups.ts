@@ -1,8 +1,8 @@
 /**
- * React Query hooks for follow-ups — **owner: Developer 3A, Phase 2** (L3-04b).
+ * React Query hooks for follow-ups.
  *
- * Created as a stub in the seam commit with its barrel line in `hooks/index.ts`, and
- * filled here, so Phase 2 never opened the barrel.
+ * Created as a stub with its barrel line in `hooks/index.ts`, and filled here, so
+ * filling it never opened the barrel.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,8 +27,8 @@ export function useFollowUps(params: FollowUpListParams = {}) {
  *   replacement follow-up the server logs), so no single cached page can be patched
  *   in place.
  * - `exporterActivities` for the company — a reschedule logs a new activity, which
- *   the company page's activity list shows. Developer 3A owns that key too, so this
- *   is not a cross-owner reach.
+ *   the company page's activity list shows. Engagement owns that key too, so this
+ *   is not a cross-area reach.
  *
  * The conversation gauge is deliberately **not** invalidated: completing a follow-up
  * does not move it. A check-back row leaves this list by someone moving the gauge on

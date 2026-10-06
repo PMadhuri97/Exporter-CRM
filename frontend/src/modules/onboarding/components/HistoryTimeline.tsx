@@ -1,6 +1,6 @@
 /**
- * The ledger — the company's story, from the shared history log (architecture §3.1,
- * L1-11; drawn as frontend-plan §6.5 lays out).
+ * History — the company's story, from the shared history log (architecture §3.1;
+ * drawn as frontend-plan §8.5 lays out).
  *
  * Days are separated by a dated rule; each event has its time, its lane (the row's
  * dimension) and one line saying what changed. **Rows the server wrote together —
@@ -55,12 +55,12 @@ const DIMENSION_LOOK: Record<string, { label: string; icon: IconComponent }> = {
   profile: { label: 'Profile', icon: Icon.profile },
   verification: { label: 'Verification', icon: Icon.backgroundCheck },
   screening: { label: 'Screening', icon: Icon.checklist },
-  // The five F1 dimensions (`history-row.md` §2), added once for every lane.
+  // The five newer dimensions (`history-row.md` §2), added together.
   check_cycle: { label: 'Check cycle', icon: Icon.backgroundCheck },
   background_check_approval: { label: 'Approval', icon: Icon.shield },
   gst_registration: { label: 'GST registration', icon: Icon.branch },
   trade: { label: 'Trade', icon: Icon.trade },
-  pipeline: { label: 'Pipeline', icon: Icon.explore },
+  pipeline: { label: 'Pipeline', icon: Icon.journey },
 };
 
 const FALLBACK_LOOK = { label: 'Change', icon: Icon.history };
@@ -126,14 +126,14 @@ function BuyerSummary({ entry }: { entry: HistoryEntry }) {
   const fields = changed.map((field) => BUYER_FIELD_LABEL[field] ?? humanize(field).toLowerCase());
   if (entry.details?.created === true) {
     return (
-      <p className="text-sm text-ink">
+      <p className="text-body text-ink">
         <span className="font-medium">Buyer recorded</span>
         {buyer && <span className="text-ink-2">: {buyer}</span>}
       </p>
     );
   }
   return (
-    <p className="text-sm text-ink">
+    <p className="text-body text-ink">
       <span className="font-medium">Buyer updated</span>
       <span className="text-ink-2">
         {fields.length > 0 ? `: ${fields.join(', ')}` : ' — nothing changed'}
@@ -211,7 +211,7 @@ function subjectOf(entry: HistoryEntry, labels: HistoryLabels): string | null {
     const subject = onBuyer ? `Buyer ${check.charAt(0).toLowerCase()}${check.slice(1)}` : check;
     return entry.event_type === 'verification_reviewed' ? `${subject} reviewed` : subject;
   }
-  // Developer 1's dimensions: a proposal's status means nothing without the move it
+  // The compliance engine's dimensions: a proposal's status means nothing without the move it
   // proposes ("Clear proposal: Open → Approved"), and a cycle row names its kind.
   if (entry.dimension === 'background_check_approval' && typeof details.to_value === 'string') {
     return `${proposedMoveLabel(details.to_value)} proposal`;
@@ -228,7 +228,7 @@ function Summary({ entry, labels }: { entry: HistoryEntry; labels: HistoryLabels
   const line = eventLine(entry);
   if (line) {
     return (
-      <p className="text-sm text-ink">
+      <p className="text-body text-ink">
         <span className="font-medium">{line.label}</span>
         {line.value && <span className="text-ink-2">: {line.value}</span>}
       </p>
@@ -239,7 +239,7 @@ function Summary({ entry, labels }: { entry: HistoryEntry; labels: HistoryLabels
     const before = text(entry.details?.from);
     const after = text(entry.details?.to);
     return (
-      <p className="text-sm text-ink">
+      <p className="text-body text-ink">
         <span className="font-medium">{humanize(field)}</span>
         {' changed'}
         {before && <span className="text-ink-2"> from {before}</span>}
@@ -251,7 +251,7 @@ function Summary({ entry, labels }: { entry: HistoryEntry; labels: HistoryLabels
   // Screening items are questions: "Has the website been reviewed? Passed", not "?:".
   const separator = subject?.endsWith('?') ? ' ' : ': ';
   return (
-    <p className="text-sm text-ink">
+    <p className="text-body text-ink">
       {subject && `${subject}${separator}`}
       <Move entry={entry} />
     </p>
@@ -259,13 +259,24 @@ function Summary({ entry, labels }: { entry: HistoryEntry; labels: HistoryLabels
 }
 
 /** One row of an event: lane, what changed, why, and who. */
-function LedgerLine({ entry, labels }: { entry: HistoryEntry; labels: HistoryLabels }) {
+function LedgerLine({
+  entry,
+  labels,
+  compact,
+}: {
+  entry: HistoryEntry;
+  labels: HistoryLabels;
+  compact: boolean;
+}) {
   const look = DIMENSION_LOOK[entry.dimension] ?? FALLBACK_LOOK;
   const Glyph = look.icon;
   const checkBack = text(entry.details?.check_back_on);
 
   return (
-    <li className="grid gap-x-4 gap-y-0.5 sm:grid-cols-[11rem_1fr]" data-testid="history-row">
+    <li
+      className={cn('grid gap-x-4 gap-y-0.5', !compact && 'sm:grid-cols-[11rem_1fr]')}
+      data-testid="history-row"
+    >
       <p className="flex items-center gap-2 text-secondary text-ink-3">
         <Glyph size={15} className="shrink-0" aria-hidden />
         {look.label}
@@ -307,7 +318,15 @@ function toDays(entries: HistoryEntry[]): LedgerDay[] {
   return days;
 }
 
-function Ledger({ entries, labels }: { entries: HistoryEntry[]; labels: HistoryLabels }) {
+function Ledger({
+  entries,
+  labels,
+  compact,
+}: {
+  entries: HistoryEntry[];
+  labels: HistoryLabels;
+  compact: boolean;
+}) {
   return (
     <div className="space-y-6">
       {toDays(entries).map(({ day, events }) => (
@@ -320,7 +339,7 @@ function Ledger({ entries, labels }: { entries: HistoryEntry[]; labels: HistoryL
             {events.map((event) => (
               <li
                 key={event.at + event.entries[0]!.id}
-                className="grid gap-x-4 sm:grid-cols-[3.5rem_1fr]"
+                className={cn('grid gap-x-4', !compact && 'sm:grid-cols-[3.5rem_1fr]')}
               >
                 <time className="pt-px text-secondary tabular-nums text-ink-3" dateTime={event.at}>
                   {format(new Date(event.at), 'HH:mm')}
@@ -338,7 +357,7 @@ function Ledger({ entries, labels }: { entries: HistoryEntry[]; labels: HistoryL
                     )}
                   >
                     {event.entries.map((entry) => (
-                      <LedgerLine key={entry.id} entry={entry} labels={labels} />
+                      <LedgerLine key={entry.id} entry={entry} labels={labels} compact={compact} />
                     ))}
                   </ol>
                 </div>
@@ -378,6 +397,7 @@ function HistoryBody({
   onOffsetChange,
   emptyText,
   labels = KEY_LABELS,
+  compact = false,
 }: {
   query: {
     data?: HistoryList;
@@ -390,6 +410,8 @@ function HistoryBody({
   onOffsetChange: (offset: number) => void;
   emptyText: string;
   labels?: HistoryLabels;
+  /** One column, for a narrow side column: the time, then the lane, then the change. */
+  compact?: boolean;
 }) {
   if (query.isLoading) {
     return (
@@ -414,7 +436,7 @@ function HistoryBody({
   return (
     <>
       <div className={cn(query.isFetching && 'opacity-60 transition-opacity duration-pop')}>
-        <Ledger entries={entries} labels={labels} />
+        <Ledger entries={entries} labels={labels} compact={compact} />
       </div>
       {total > PAGE_SIZE && (
         <div className="mt-6 flex items-center justify-between border-t border-line pt-3">
@@ -482,7 +504,7 @@ export function CompanyHistory({ customerId }: { customerId: string }) {
               className={cn(
                 'rounded-md border px-2.5 py-1 text-secondary font-medium transition-colors duration-quick',
                 active
-                  ? 'border-ink bg-ink text-paper'
+                  ? 'border-accent-solid bg-accent-solid text-white'
                   : 'border-line-strong text-ink-2 hover:border-ink-3 hover:text-ink',
               )}
             >
@@ -503,7 +525,7 @@ export function CompanyHistory({ customerId }: { customerId: string }) {
 }
 
 /** One deal's own changes: its stages, its buyer and its handover. */
-export function DealHistory({ dealId }: { dealId: string }) {
+export function DealHistory({ dealId, compact = false }: { dealId: string; compact?: boolean }) {
   const [offset, setOffset] = useState(0);
   const query = useDealHistory(dealId, { limit: PAGE_SIZE, offset });
   return (
@@ -512,6 +534,7 @@ export function DealHistory({ dealId }: { dealId: string }) {
       offset={offset}
       onOffsetChange={setOffset}
       emptyText="Nothing has been recorded for this deal yet."
+      compact={compact}
     />
   );
 }

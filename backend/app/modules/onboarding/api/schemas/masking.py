@@ -1,11 +1,10 @@
 """Server-side masking of tax identifiers and contact details — the viewer's
-role decides what a response may carry (architecture decision 12, task L1-10).
+role decides what a response may carry (architecture decision 12).
 
-**Owner: Developer 1** (tax-ID visibility is L1-10). Shared by the company
-shapes (`exporter.py`, Developer 2) and the contact shapes (`engagement.py`,
-Developer 3), which is why it is its own file: it used to live inside
+Shared by the company shapes (`exporter.py`) and the contact shapes
+(`engagement.py`), which is why it is its own file: it used to live inside
 `exporter.py`, and once the contact shapes moved out that would have made the
-two schema files import each other. Moved without change (L2-01).
+two schema files import each other. Moved without change.
 """
 
 from __future__ import annotations

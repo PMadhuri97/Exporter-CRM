@@ -34,7 +34,7 @@ export type RecordResultsRequest = Schemas['RecordResultsRequest'];
 export type RecordOutcomeRequest = Schemas['RecordOutcomeRequest'];
 export type ReasonCode = Schemas['ReasonCodeResponse'];
 /** One version of a qualification criterion. Every change is a new version;
- * a version is never edited (L2-09). */
+ * a version is never edited. */
 export type Criterion = Schemas['CriterionResponse'];
 export type CriterionKind = Schemas['CriterionKind'];
 export type ThresholdComparison = Schemas['ThresholdComparison'];
@@ -102,7 +102,7 @@ export type ScreeningChecklistStatus = ScreeningReviewItem['status'];
 // nothing is hand-written, so a backend reshape is a compile error at the use
 // site rather than a silent mismatch.
 
-// ── Conversation gauge — owner: Developer 3A (L3-02, L3-03) ──
+// ── Conversation gauge ──
 /** How the sales conversation is going. One thing only — not the journey, not
  * qualification, not the background check. Any value may follow any other. */
 export type ExporterConversation = Schemas['ExporterConversation'];
@@ -112,7 +112,7 @@ export type Conversation = Schemas['ConversationResponse'];
 export type ConversationMove = Schemas['ConversationMoveResponse'];
 export type SetConversationRequest = Schemas['SetConversationRequest'];
 /**
- * One row of the shared CRM history log (Developer 1's route).
+ * One row of the shared CRM history log.
  *
  * `details` is `dict | None` on the server, which openapi-typescript generates as
  * `Record<string, never>` — a type that admits no keys, so every reader had to
@@ -135,7 +135,7 @@ export type HistoryDimension =
   | 'profile'
   | 'verification'
   | 'screening'
-  // The five F1 dimensions (Developer 1, `history-row.md` §2), added once for every lane.
+  // The five newer dimensions (`history-row.md` §2), added together.
   | 'check_cycle'
   | 'background_check_approval'
   | 'gst_registration'
@@ -147,7 +147,7 @@ export interface HistoryListParams {
   offset?: number;
 }
 
-// ── Follow-ups — owner: Developer 3A (L3-04) ──
+// ── Follow-ups ──
 /** One follow-up: an activity with a due date, plus its completion if it has one. */
 export type FollowUp = Schemas['FollowUpResponse'];
 /** OUTSTANDING / OVERDUE / DONE. Derived on the server from whether a completion
@@ -172,17 +172,16 @@ export interface FollowUpListParams {
   offset?: number;
 }
 
-// ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
+// ── Deals, buyers, storage and documents ──
 export type Deal = Schemas['DealResponse'];
 export type DealListItem = Schemas['DealListItemResponse'];
 export type DealList = Schemas['DealListResponse'];
 export type OpenDealRequest = Schemas['OpenDealRequest'];
 export type TransitionDealStageRequest = Schemas['TransitionDealStageRequest'];
 export type SetDealBuyerRequest = Schemas['SetDealBuyerRequest'];
-/** A buyer company to create and name in one step (R-24). */
+/** A buyer company to create and name in one step. */
 export type CreateBuyerCompanyRequest = Schemas['CreateBuyerCompanyRequest'];
-/** Which of the seller's GST registrations a deal is invoiced from; `null` clears it
- * (task 2.8, plan P6-6). */
+/** Which of the seller's GST registrations a deal is invoiced from; `null` clears it. */
 export type SetDealInvoicingBranchRequest = Schemas['SetDealInvoicingBranchRequest'];
 export type DealBuyer = Schemas['DealBuyerResponse'];
 /** One move this user may make from a deal's current stage — served by the API so
@@ -191,7 +190,7 @@ export type DealStageMove = Schemas['DealStageMoveResponse'];
 /** OPEN -> GATHERING_PAPERWORK -> HANDED_OVER, or WITHDRAWN. Both ends terminal. */
 export type DealStage = Schemas['DealStage'];
 
-/** Which document categories a deal must have before handover (plan P2-5a). */
+/** Which document categories a deal must have before handover. */
 export type DealRequiredDocument = Schemas['DealRequiredDocumentResponse'];
 export type DealRequiredDocuments = Schemas['DealRequiredDocumentsResponse'];
 export type SetDealRequiredDocumentRequest = Schemas['SetDealRequiredDocumentRequest'];
@@ -202,7 +201,7 @@ export interface DealListParams {
   /** Repeatable: several stages narrow the list to those stages. */
   stages?: DealStage[];
   /**
-   * Which side of its deals to list (task 2.7). `seller` (the default) is the deals
+   * Which side of its deals to list. `seller` (the default) is the deals
    * this company sells on; `buyer` the ones it buys on. Two lists, never one: the
    * same company can be seller on one deal and buyer on another, and `buyer_name`
    * means "the other party", so a mixed list would read differently row by row.
@@ -215,11 +214,11 @@ export interface DealListParams {
 /** `seller` | `buyer` — which side of a deal a company is on. */
 export type DealSide = Schemas['DealSide'];
 
-/** "Do we already have this company?" — `POST /companies/match` (task 3.10). */
+/** "Do we already have this company?" — `POST /companies/match`. */
 export type CompanyMatchRequest = Schemas['CompanyMatchRequest'];
 export type CompanyMatch = Schemas['CompanyMatchResponse'];
 export type CompanyMatchCandidate = Schemas['CompanyMatchCandidate'];
-/** One company with no `identity_type` and what it lacks (IQ-7's completion list, R-28). */
+/** One company with no `identity_type` and what it lacks (the identity completion list). */
 export type IdentityCompletionItem = Schemas['IdentityCompletionItem'];
 export type IdentityCompletionList = Schemas['IdentityCompletionListResponse'];
 /** MATCHED | POSSIBLE_DUPLICATE | CONFLICT | NEW. */
@@ -254,13 +253,10 @@ export interface UploadDocumentInput {
   source?: DocumentSource;
 }
 
-// ══ Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0) ══
-// Two parallel pull requests add aliases here, so each owner adds only inside its
-// own block. Dev4B may also edit the existing `Verification*` / `Screening*` /
-// `BankActivity*` aliases above; Dev4A may not.
+// ══ Compliance blocks ══
+// Each area adds aliases only inside its own block.
 
-// ── Background check — owner: Developer 4A ──
-// (4A appends here; 4B does not.)
+// ── Background check ──
 //
 // Aliases of the generated schema, never hand-written shapes: if the API changes
 // and the panel does not, `tsc` says so here rather than the screen quietly
@@ -282,8 +278,7 @@ export type BackgroundCheckEvidenceItem =
 export type RecordBackgroundCheckDecisionRequest =
   components['schemas']['RecordBackgroundCheckDecisionRequest'];
 
-// ── Verification and screening — owner: Developer 4B ──
-// (4B appends here; 4A does not.)
+// ── Verification and screening ──
 //
 // Aliases of the generated schema only, like everything above.
 export type VerificationResultStatus =
@@ -308,14 +303,14 @@ export type ScreeningCatalogueItem =
 export type ScreeningCapabilities = components['schemas']['ScreeningCapabilities'];
 export type ScreeningItemHistory = components['schemas']['ScreeningItemHistoryResponse'];
 
-// ── Compliance engine — owner: Developer 1 (allocation §3) ──
-// (Developer 1 appends here.) Aliases of the generated schema only.
-/** The company's compliance facts now: Clear, its expiry, sanctions and AML (F1). */
+// ── Compliance engine ──
+// Aliases of the generated schema only.
+/** The company's compliance facts now: Clear, its expiry, sanctions and AML. */
 export type CompanyComplianceFacts =
   components['schemas']['CompanyComplianceFactsResponse'];
 /** PASSED | FAILED | MISSING | PENDING. */
 export type ComplianceCheckState = CompanyComplianceFacts['sanctions'];
-/** One KYC/KYB round of the background check (P2-3). */
+/** One KYC/KYB round of the background check. */
 export type CheckCycle = components['schemas']['CheckCycleResponse'];
 export type CheckCycleList = components['schemas']['CheckCycleListResponse'];
 /** A Re-KYC / Re-KYB this viewer may start now, as served. */
@@ -323,7 +318,7 @@ export type BackgroundCheckCycleAction =
   components['schemas']['BackgroundCheckCycleActionResponse'];
 export type StartCheckCycleRequest = components['schemas']['StartCheckCycleRequest'];
 export type StartCheckCycleResponse = components['schemas']['StartCheckCycleResponse'];
-/** What one decision rested on, resolved (P2-1a). */
+/** What one decision rested on, resolved. */
 export type DecisionEvidence = components['schemas']['DecisionEvidenceResponse'];
 export type DecisionEvidenceItem = components['schemas']['DecisionEvidenceItemResponse'];
 export type DecisionEvidenceVerification =
@@ -331,7 +326,7 @@ export type DecisionEvidenceVerification =
 export type DecisionEvidenceScreeningItem =
   components['schemas']['DecisionEvidenceScreeningItem'];
 export type DecisionEvidenceDocument = components['schemas']['DecisionEvidenceDocument'];
-/** A proposed CLEAR, FLAGGED or ON_HOLD and how it ended — maker-checker (P3-1). */
+/** A proposed CLEAR, FLAGGED or ON_HOLD and how it ended — maker-checker. */
 export type BackgroundCheckProposal =
   components['schemas']['BackgroundCheckProposalResponse'];
 export type BackgroundCheckProposalList =
@@ -342,16 +337,16 @@ export type BackgroundCheckProposalAction = NonNullable<
 >[number];
 export type ApproveBackgroundCheckProposalResponse =
   components['schemas']['ApproveBackgroundCheckProposalResponse'];
-/** One verification type CLEAR requires (rule B, P3-2) and its state. */
+/** One verification type CLEAR requires and its state. */
 export type RequiredCheck = components['schemas']['RequiredCheckResponse'];
-/** A company whose Clear has expired or soon will (P3-3c). */
+/** A company whose Clear has expired or soon will. */
 export type ReKycDueCompany = components['schemas']['ReKycDueCompanyResponse'];
 export type ReKycDueList = components['schemas']['ReKycDueListResponse'];
 
-/** Bring a buyer-only company into the sales pipeline (task 3.11). */
+/** Bring a buyer-only company into the sales pipeline. */
 export type BringIntoPipelineRequest = Schemas['BringIntoPipelineRequest'];
 
-// ── GST registrations: a company's branches (tasks 3.12–3.17) ────────────────
+// ── GST registrations: a company's branches ──────────────────────────────────
 
 /** One branch: a state, an address, a portal status, and possibly a flag. */
 export type GstRegistration = Schemas['GstRegistrationResponse'];
@@ -365,7 +360,7 @@ export type GstRegistrationStatus = GstRegistration['status'];
 
 /** The other party on a relationship: an id, a name, a country, a pipeline status.
  * **No identifiers, for any role** — a counterparty's PAN or GSTIN is on its own
- * company page, where D8's masking applies to it (IQ-19). */
+ * company page, where its masking applies to it. */
 export type TradeCounterparty = Schemas['TradeCounterparty'];
 /** One ordered (seller, buyer) pair. A selling to B is not B selling to A. */
 export type TradeRelationship = Schemas['TradeRelationshipResponse'];

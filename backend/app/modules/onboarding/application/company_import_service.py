@@ -1,12 +1,11 @@
-"""``CompanyImportService`` — bulk CSV import of companies (L2-13, assumption
-A14). **Owner: Developer 2.**
+"""``CompanyImportService`` — bulk CSV import of companies.
 
 **The template** is ``TEMPLATE_COLUMNS``, one header row, UTF-8. A file that
 is not UTF-8, is not valid CSV, has a header other than an accepted set of
 columns, or holds more than ``MAX_ROWS`` rows is refused as a whole, and all of
 that is checked before any row is saved.
 
-**Two headers are accepted** (R11, decision IQ-16). ``website`` left the
+**Two headers are accepted**. ``website`` left the
 template, but a file somebody downloaded before that release still carries the
 column, and this importer refuses any header it does not recognise — so a
 header carrying ``website`` is still read, and the column's values are
@@ -35,7 +34,7 @@ complete or absent — never half-written — and a row that fails later cannot
 reach back into rows already committed. A failure inside a row rolls that row
 back and is reported; the import carries on. This is the boundary the services
 already provide: a whole-file transaction would need the services to stop
-committing, which is the open decision U4 and is not assumed here. A later
+committing, which is not assumed here. A later
 row in the same file therefore sees earlier rows' companies: a second row with
 the same PAN is ``matched`` to the first.
 
@@ -73,10 +72,10 @@ _REQUIRED_COLUMNS: tuple[str, ...] = (
     "name", "country", "pan", "gstins", "iec", "cin", "source", "industry",
 )
 
-#: Columns a file may carry. ``registration_number`` is new in task 3.8 and
+#: Columns a file may carry. ``registration_number`` is newer than the template and
 #: optional rather than required, so a file written against the older template
 #: still imports — the rule that actually matters (a foreign company carries a
-#: registration number, IQ-7) is enforced per row, where it can name the row.
+#: registration number) is enforced per row, where it can name the row.
 _OPTIONAL_COLUMNS: tuple[str, ...] = ("registration_number",)
 
 #: Columns the template used to carry, still read and **ignored**
@@ -101,7 +100,7 @@ MAX_ROWS = 1000
 
 #: Sources a row may give. `RXIL` companies arrive through RXIL intake only.
 #: RXIL companies arrive through the partner intake, and DEAL_BUYER companies through
-#: the buyer-company path, which creates them outside the pipeline (R-21). An import
+#: the buyer-company path, which creates them outside the pipeline. An import
 #: creates leads, so neither is a source it can claim.
 _IMPORTABLE_SOURCES = {
     s.value: s for s in ExporterSource if s not in (ExporterSource.RXIL, ExporterSource.DEAL_BUYER)
@@ -217,11 +216,11 @@ class CompanyImportService:
         if len(cell("industry") or "") > 255:
             reasons.append(Reason("INVALID_INDUSTRY", "industry is longer than 255"))
         # A `website` column, if the file still has one, is neither checked nor
-        # stored (R11): a value that would once have rejected the row no longer
+        # stored: a value that would once have rejected the row no longer
         # stops a company being imported.
         try:
             normalise_registration_number(cell("registration_number"))
-            # Decision IQ-7, checked here as well as in the service so the report
+            # The foreign-identity rule, checked here as well as in the service so the report
             # names the row and the column instead of failing it late. `country`
             # is read from the raw cell rather than from `identity`, which is
             # `None` when the identity itself did not pass.

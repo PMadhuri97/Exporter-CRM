@@ -206,7 +206,7 @@ BUILTIN_ROLE_METADATA: dict[UserRole, tuple[str, str, str]] = {
     UserRole.OPERATIONS: (
         # The slug stays `operations` and the enum member stays `OPERATIONS`: both
         # are written into rows already recorded. Only the display name changed
-        # (IQ-13) — the people in this role are relationship managers.
+        # — the people in this role are relationship managers.
         "operations",
         "RM (Relationship Manager)",
         "Day-to-day CRM work: companies, contacts, activities and deals. "

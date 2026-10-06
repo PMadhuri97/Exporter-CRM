@@ -1,20 +1,19 @@
-"""The background check's read seam — **owner: Developer 4A** (L4-01, L4-05 first half;
-``docs/contracts/background-check.md`` §10).
+"""The background check's read seam (``docs/contracts/background-check.md`` §10).
 
-What other developers read the gauge through: Developer 3's handover guard today
-(§11.2), Developer 2's customer move when U4 is settled (§11.3). Publishing it as a
-seam is what keeps ``background_check_decision`` and its evidence private to Dev4A —
+What the rest of the CRM reads the gauge through: the handover guard (§11.2) and the
+customer move (§11.3). Publishing it as a seam is what keeps
+``background_check_decision`` and its evidence private to the background check —
 a consumer needs the standing, never the chain.
 
 **Read-only, and deliberately weak.** It never commits, never flushes, never writes and
 **never locks**. The caller owns locking, because only the caller knows what it is about
-to do with the answer. Dev3's handover guard share-locks the company row on the move
-(**D10**, settled 28 September 2026) and reads it unlocked on a page render. Dev4A's own
+to do with the answer. The handover guard share-locks the company row on the move
+(settled 28 September 2026) and reads it unlocked on a page render. The background check's own
 moves always take the row lock, so a consumer that also locks is fully serialised
 against them.
 
 **"Not ``CLEAR``" is never "clear".** Every consumer compares against ``CLEAR``
-explicitly. There is no "is_ok" convenience here, for the same reason the 4A ↔ 4B seam
+explicitly. There is no "is_ok" convenience here, for the same reason the compliance-inputs seam
 exposes no ``is_clear_ready``: a judgement belongs to whoever is making the decision,
 not to the thing being read.
 """
@@ -42,11 +41,11 @@ from app.modules.onboarding.infrastructure.repositories.background_check_decisio
 
 @dataclass(frozen=True)
 class BackgroundCheckStanding:
-    """Where a company's background check stands, for a consumer outside Dev4A.
+    """Where a company's background check stands, for a consumer outside the background check.
 
     Strings rather than enums on purpose: a consumer comparing against ``"CLEAR"``
-    does not have to import Dev4A's enum, which is what lets the gauge's internals
-    change without a cross-developer edit.
+    does not have to import the background check's enum, which is what lets the gauge's internals
+    change without an edit elsewhere.
     """
 
     company_id: uuid.UUID
@@ -57,7 +56,7 @@ class BackgroundCheckStanding:
     """The risk of the latest decision that set one — only ``CLEAR`` decisions can.
 
     **Read ``value`` before trusting this.** A company that was cleared at ``LOW`` and
-    then reopened still reports ``LOW`` here while it sits at ``IN_REVIEW``: **D6**
+    then reopened still reports ``LOW`` here while it sits at ``IN_REVIEW``: the rule
     (settled 28 September 2026) keeps the last recorded risk, explicitly labelled. It
     is the last clearance's rating, not a claim about the company now.
     """
@@ -78,15 +77,15 @@ class BackgroundCheckStanding:
     """When the latest decision was made. ``None`` with no decisions."""
 
     expires_at: datetime | None = None
-    """When the current ``CLEAR`` stops being current (Developer 1, plan P3-3b): the
+    """When the current ``CLEAR`` stops being current: the
     clearing decision's stored ``expires_at``, or — for a ``CLEAR`` recorded before
-    migration 0027 — its ``decided_at`` + one year (BQ-5, the documented read rule).
+    migration 0027 — its ``decided_at`` + one year (the documented read rule).
     ``None`` unless ``value == "CLEAR"``. Expiry never moves the gauge: an expired
     Clear still reads ``CLEAR`` here, and :meth:`is_clear_and_current` says whether it
     is still current."""
 
     def is_clear_and_current(self, now: datetime) -> bool:
-        """``CLEAR`` **and** not yet expired at ``now`` (P3-3b). ``is_clear`` is kept
+        """``CLEAR`` **and** not yet expired at ``now``. ``is_clear`` is kept
         as it is for consumers that ask only about the gauge."""
         return self.is_clear and self.expires_at is not None and now < self.expires_at
 
@@ -102,15 +101,15 @@ class BackgroundCheckStanding:
 
 
 def clear_expiry(decided_at: datetime, stored: datetime | None) -> datetime:
-    """A CLEAR decision's expiry: its stored ``expires_at``, else the legacy rule (BQ-5,
-    ``compliance_facts.legacy_clear_expiry`` — the one place the year is defined)."""
+    """A CLEAR decision's expiry: its stored ``expires_at``, else the legacy rule
+    (``compliance_facts.legacy_clear_expiry`` — the one place the year is defined)."""
     return stored if stored is not None else legacy_clear_expiry(decided_at)
 
 
 def current_background_check(company: ExporterProfile) -> str:
     """The loaded company's current gauge value, as a string. Pure: no I/O.
 
-    For a caller that already holds the company row — Developer 3's handover guard
+    For a caller that already holds the company row — the handover guard
     loads it to check the journey anyway, so making it query again would be a second
     round trip for a column it is already holding.
 
@@ -133,7 +132,7 @@ class BackgroundCheckReader:
         """Where this company's check stands.
 
         Raises:
-            ExporterProfileNotFoundError: no company has this id. Developer 2's
+            ExporterProfileNotFoundError: no company has this id. The company record's
                 existing error, so a consumer handles one "unknown company" case
                 rather than one per gauge.
         """
@@ -174,7 +173,7 @@ class BackgroundCheckReader:
 
         Not simply the chain head's risk: only ``CLEAR`` may carry a risk, so the head
         of a reopened company has none and the last recorded rating would otherwise
-        vanish from the read (D6). ``decided_at`` is insert-time wall clock, taken after
+        vanish from the read. ``decided_at`` is insert-time wall clock, taken after
         the row lock, so it orders decisions the way the chain does.
         """
         risk = await self._db.scalar(

@@ -1,8 +1,8 @@
 /**
- * The Follow-ups screen — **owner: Developer 3A, Phase 2** (L3-11a-ii).
+ * The Follow-ups screen.
  *
- * What we owe companies next, and whether we did it. **The whole team's list**
- * (decision D2): no owner filter is applied by default, and the "mine" filter is a
+ * What we owe companies next, and whether we did it. **The whole team's list**:
+ * no owner filter is applied by default, and the "mine" filter is a
  * convenience, not a permission — the server would serve the same rows either way.
  *
  * **Two sections, because there are two different things.** A *follow-up* is an
@@ -28,13 +28,17 @@ import { toast } from 'sonner';
 
 import {
   Button,
+  Card,
   EmptyLine,
   Input,
-  Tag,
   PageHeader,
-  Panel,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Segmented,
   Select,
   Skeleton,
+  Tag,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -44,7 +48,6 @@ import { Icon } from '@/design/icons';
 import { formatDate, formatDateTime, humanize } from '@/lib/format';
 import { useCan } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
-import { usePageShortcuts } from '@/platform/shell';
 
 import { actorLabel } from '../components';
 import { useCompleteFollowUp, useFollowUps } from '../hooks';
@@ -138,11 +141,12 @@ function CompleteForm({
   return (
     <form
       onSubmit={submit}
-      className="mt-3 space-y-3 rounded-lg border border-line bg-paper p-3"
+      className="space-y-3"
       data-extension="complete-follow-up"
     >
-      <div className="grid gap-3 md:grid-cols-[180px_1fr]">
-        <label className="text-xs font-medium text-ink-2">
+      <p className="text-body font-semibold text-ink">{row.subject}</p>
+      <div className="grid gap-3">
+        <label className="text-caption font-medium text-ink-2">
           Outcome
           <Select
             className="mt-1"
@@ -158,7 +162,7 @@ function CompleteForm({
           </Select>
         </label>
         {needsNextDue && (
-          <label className="text-xs font-medium text-ink-2">
+          <label className="text-caption font-medium text-ink-2">
             New due date and time
             <Input
               type="datetime-local"
@@ -170,7 +174,7 @@ function CompleteForm({
           </label>
         )}
       </div>
-      <label className="block text-xs font-medium text-ink-2">
+      <label className="block text-caption font-medium text-ink-2">
         Note
         <Textarea
           className="mt-1 min-h-20 resize-y"
@@ -180,13 +184,13 @@ function CompleteForm({
         />
       </label>
       {needsNextDue && (
-        <p className="text-xs text-ink-3">
+        <p className="text-caption text-ink-3">
           Rescheduling logs a new follow-up for the new date. This one stays on the
           record with the date it was promised for — an activity is never edited.
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <Button variant="quiet" size="sm" onClick={onDone}>
+        <Button size="sm" onClick={onDone}>
           Cancel
         </Button>
         <Button type="submit" variant="primary" size="sm" loading={mutation.isPending}>
@@ -201,84 +205,75 @@ function FollowUpRow({ row, isStaff }: { row: FollowUp; isStaff: boolean }) {
   const [completing, setCompleting] = useState(false);
 
   return (
-    <div className="py-3.5" data-testid="follow-up-row">
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+    <li className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3" data-testid="follow-up-row">
+      <div className="flex w-36 shrink-0 flex-col items-start gap-1">
         <StateBadge row={row} />
-        <div className="min-w-0 flex-1">
-          <p className="text-body font-medium text-ink">{row.subject}</p>
-          <Link
-            to={paths.company(row.customer_id)}
-            className="mt-0.5 inline-flex items-center gap-1 text-sm text-ink-2 hover:text-ink"
-          >
-            {row.exporter_display_name ?? 'Unnamed company'}
-            <Icon.caretRight size={13} />
-          </Link>
-          {row.notes && (
-            <p className="mt-1 whitespace-pre-wrap text-sm text-ink-2">{row.notes}</p>
-          )}
-        </div>
-        <div className="text-left text-xs text-ink-3 md:text-right">
-          <p
-            className={`inline-flex items-center gap-1 font-medium ${
-              row.state === 'OVERDUE' ? 'text-negative' : ''
-            }`}
-          >
-            <Icon.followUp size={12} /> Due {formatDateTime(row.due_at)}
-          </p>
-          <p className="mt-1">Logged by {actorLabel(row.actor_name, row.actor_id)}</p>
-        </div>
+        <span className={`text-secondary ${row.state === 'OVERDUE' ? 'text-negative' : 'text-ink-2'}`}>
+          Due {formatDateTime(row.due_at)}
+        </span>
       </div>
-
-      {row.completion ? (
-        <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-lg bg-sunken px-3 py-2">
-          <span className="inline-flex items-center gap-1 text-sm font-medium text-ink">
-            <Icon.done size={13} /> {humanize(row.completion.outcome)}
-          </span>
-          <span className="text-xs text-ink-3">
-            by {actorLabel(row.completion.completed_by_name, row.completion.completed_by)} on{' '}
-            {formatDateTime(row.completion.completed_at)}
-          </span>
-          {row.completion.next_due_at && (
-            <span className="text-xs font-medium text-attention">
-              moved to {formatDateTime(row.completion.next_due_at)}
+      <div className="min-w-0 flex-1">
+        <p className="text-body font-semibold text-ink">{row.subject}</p>
+        <Link
+          to={paths.company(row.customer_id)}
+          className="text-secondary text-accent underline-offset-2 hover:underline"
+        >
+          {row.exporter_display_name ?? 'Unnamed company'}
+        </Link>
+        <span className="text-secondary text-ink-3"> · Logged by {actorLabel(row.actor_name, row.actor_id)}</span>
+        {row.notes && <p className="mt-1 whitespace-pre-wrap text-secondary text-ink-2">{row.notes}</p>}
+        {row.completion && (
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded bg-sunken px-3 py-2">
+            <span className="inline-flex items-center gap-1 text-body font-semibold text-ink">
+              <Icon.done size={14} aria-hidden /> {humanize(row.completion.outcome)}
             </span>
-          )}
-          {row.completion.note && (
-            <p className="w-full text-sm text-ink-2">{row.completion.note}</p>
-          )}
-        </div>
-      ) : (
-        isStaff &&
-        (completing ? (
-          <CompleteForm row={row} onDone={() => setCompleting(false)} />
-        ) : (
-          <Button size="sm" className="mt-2" data-complete onClick={() => setCompleting(true)}>
-            Record outcome
-          </Button>
-        ))
+            <span className="text-secondary text-ink-3">
+              by {actorLabel(row.completion.completed_by_name, row.completion.completed_by)} on{' '}
+              {formatDateTime(row.completion.completed_at)}
+            </span>
+            {row.completion.next_due_at && (
+              <span className="text-secondary font-semibold text-attention">
+                moved to {formatDateTime(row.completion.next_due_at)}
+              </span>
+            )}
+            {row.completion.note && <p className="w-full text-body text-ink-2">{row.completion.note}</p>}
+          </div>
+        )}
+      </div>
+      {!row.completion && isStaff && (
+        <Popover open={completing} onOpenChange={setCompleting}>
+          <PopoverTrigger asChild>
+            <Button size="sm" data-complete>
+              Mark done
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80">
+            <CompleteForm row={row} onDone={() => setCompleting(false)} />
+          </PopoverContent>
+        </Popover>
       )}
-    </div>
+    </li>
   );
 }
 
 function CheckBackRow({ row }: { row: CheckBack }) {
   return (
-    <div className="flex flex-wrap items-start gap-x-3 gap-y-1 py-3" data-testid="check-back-row">
+    <div className="flex flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3" data-testid="check-back-row">
       <Icon.pause size={16} className="mt-0.5 shrink-0 text-ink-3" />
       <div className="min-w-0 flex-1">
         <Link
           to={paths.company(row.customer_id, 'conversation')}
-          className="inline-flex items-center gap-1 font-medium text-ink hover:text-ink"
+          className="inline-flex items-center gap-1 font-semibold text-accent underline-offset-2 hover:underline"
         >
           {row.exporter_display_name ?? 'Unnamed company'}
           <Icon.caretRight size={13} />
         </Link>
-        <p className="mt-0.5 text-sm text-ink-2">
+        <p className="mt-0.5 text-body text-ink-2">
           Said not now. Pick the conversation back up on this company's page.
         </p>
       </div>
       <p
-        className={`text-xs font-medium ${row.is_overdue ? 'text-negative' : 'text-attention'}`}
+        className={`text-caption font-medium ${row.is_overdue ? 'text-negative' : 'text-attention'}`}
       >
         Check back {formatDate(row.check_back_on)}
       </p>
@@ -342,7 +337,7 @@ function Pager({
       className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3"
       data-testid="follow-ups-pager"
     >
-      <span className="text-sm tabular-nums text-ink-2">
+      <span className="text-body tabular-nums text-ink-2">
         {offset + 1}–{offset + shown} of {total}
       </span>
       <div className="flex gap-2">
@@ -375,7 +370,8 @@ export function FollowUpsPage() {
   const isStaff = useCan('crm.write');
 
   const [tab, setTab] = useState<TabKey>('overdue');
-  const [mineOnly, setMineOnly] = useState(false);
+  const [whose, setWhose] = useState<'MINE' | 'TEAM'>('TEAM');
+  const mineOnly = whose === 'MINE';
   const [offset, setOffset] = useState(0);
 
   // A new tab or filter is a new list, so it starts from its first page.
@@ -408,159 +404,116 @@ export function FollowUpsPage() {
     }
   }, [total, offset]);
 
-  // `c` records the outcome of the first open follow-up on screen (staff).
-  usePageShortcuts(
-    isStaff
-      ? [
-          {
-            key: 'c',
-            label: 'Record the next outcome',
-            run: () => document.querySelector<HTMLButtonElement>('[data-complete]')?.click(),
-          },
-        ]
-      : [],
-  );
+  const rows = query.data?.follow_ups ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
-        title="Agenda"
-        description="What we owe companies next, across every company — the whole team's list."
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Tabs value={tab} onValueChange={(next) => selectTab(next as TabKey)} variant="pill">
-          <TabsList aria-label="Follow-up state">
-            {TABS.map((item) => (
-              <TabsTrigger key={item.key} value={item.key}>
-                {item.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-        <label className="flex items-center gap-2 text-sm text-ink-2">
-          <input
-            type="checkbox"
-            checked={mineOnly}
-            onChange={(event) => {
-              setMineOnly(event.target.checked);
+        title="Follow-ups"
+        description="What we owe companies next, across every company."
+        actions={
+          <Segmented
+            label="Whose follow-ups"
+            value={whose}
+            onValueChange={(next) => {
+              setWhose(next);
               setOffset(0);
             }}
-            className="h-4 w-4 rounded border-line-strong accent-ink"
+            options={[
+              { value: 'MINE', label: 'Mine' },
+              { value: 'TEAM', label: 'Team' },
+            ]}
           />
-          Only the ones I logged
-        </label>
-      </div>
-
-      <div className="grid gap-10 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-      <Panel
-        data-extension="follow-ups"
-        title={
-          <span className="inline-flex items-center gap-2">
-            <Icon.checklist size={16} className="text-ink-3" />
-            Follow-ups
-          </span>
         }
-        actions={
-          query.data && (
-            <span className="text-sm tabular-nums text-ink-3">{query.data.follow_ups_total}</span>
-          )
-        }
-      >
-        {query.isLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-20" />
-            <Skeleton className="h-20" />
-          </div>
-        ) : query.isError ? (
-          <p className="text-sm text-negative">
-            Could not load follow-ups. {query.error.message}
-          </p>
-        ) : query.data && query.data.follow_ups.length > 0 ? (
-          <div className="space-y-6">
-            {BUCKETS.map((bucket) => {
-              const rows = query.data.follow_ups.filter((row) => bucketOf(row) === bucket);
-              if (rows.length === 0) return null;
-              return (
-                <section key={bucket} aria-label={bucket}>
-                  <h3
-                    className={`flex items-center gap-3 text-caption font-medium ${bucket === 'Overdue' ? 'text-negative' : 'text-ink-3'}`}
-                  >
-                    {bucket}
-                    <span aria-hidden className="h-px flex-1 bg-line" />
-                    <span className="tabular-nums">{rows.length}</span>
-                  </h3>
-                  <div className="divide-y divide-line">
-                    {rows.map((row) => (
-                      <FollowUpRow key={row.activity_id} row={row} isStaff={isStaff} />
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
-            <Pager
-              offset={offset}
-              shown={query.data.follow_ups.length}
-              total={query.data.follow_ups_total}
-              onChange={setOffset}
-            />
-          </div>
-        ) : (
-          <EmptyLine>
-            {tab === 'overdue'
-              ? 'Nothing is overdue. '
-              : tab === 'done'
-                ? 'Nothing has been recorded as dealt with yet. '
-                : 'No follow-ups here. '}
-            A follow-up is an activity logged with a due date, on a company's page.
-          </EmptyLine>
-        )}
-      </Panel>
+      />
 
-      {(tab === 'overdue' || tab === 'all') && (
-        <Panel
-          className="xl:self-start"
-          data-extension="check-backs"
-          title={
-            <span className="inline-flex items-center gap-2">
-              <Icon.pause size={16} className="text-ink-3" />
-              {tab === 'overdue' ? 'Check-backs due' : 'Check-backs'}
-            </span>
-          }
-          actions={
-            query.data && (
-              <span className="text-sm tabular-nums text-ink-3">{query.data.check_backs_total}</span>
-            )
-          }
-        >
-          <p className="mb-3 text-sm text-ink-2">
-            Companies that said not now
-            {tab === 'overdue' ? ', due to be picked up today or earlier' : ''}. These are
-            not completed here — move the conversation on the company's page and the
-            check-back clears itself.
-          </p>
+      <Tabs value={tab} onValueChange={(next) => selectTab(next as TabKey)} variant="pill">
+        <TabsList aria-label="Follow-up state">
+          {TABS.map((item) => (
+            <TabsTrigger key={item.key} value={item.key}>
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22.5rem] xl:items-start">
+        <div className="flex min-w-0 flex-col gap-4" data-extension="follow-ups">
           {query.isLoading ? (
-            <Skeleton className="h-12" />
+            <Card>
+              <div className="space-y-3">
+                <Skeleton className="h-14" />
+                <Skeleton className="h-14" />
+              </div>
+            </Card>
           ) : query.isError ? (
-            <p className="text-sm text-negative">
-              Could not load check-backs. {query.error.message}
-            </p>
-          ) : query.data && query.data.check_backs.length > 0 ? (
-            <div className="divide-y divide-line">
-              {query.data.check_backs.map((row) => (
-                <CheckBackRow key={row.customer_id} row={row} />
-              ))}
-            </div>
+            <Card>
+              <p className="text-body text-negative">Could not load follow-ups. {query.error.message}</p>
+            </Card>
+          ) : rows.length > 0 ? (
+            <>
+              {BUCKETS.map((bucket) => {
+                const inBucket = rows.filter((row) => bucketOf(row) === bucket);
+                if (inBucket.length === 0) return null;
+                return (
+                  <Card key={bucket} as="h2" title={bucket} count={inBucket.length} flush aria-label={bucket}>
+                    <ul className="divide-y divide-line border-t border-line">
+                      {inBucket.map((row) => (
+                        <FollowUpRow key={row.activity_id} row={row} isStaff={isStaff} />
+                      ))}
+                    </ul>
+                  </Card>
+                );
+              })}
+              <Pager
+                offset={offset}
+                shown={rows.length}
+                total={query.data?.follow_ups_total ?? 0}
+                onChange={setOffset}
+              />
+            </>
           ) : (
-            <EmptyLine>
-              {tab === 'overdue'
-                ? 'No check-back is due yet.'
-                : 'No company is parked waiting for a check-back.'}
-            </EmptyLine>
+            <Card>
+              <EmptyLine className="py-0">
+                {tab === 'overdue'
+                  ? 'Nothing is overdue. '
+                  : tab === 'done'
+                    ? 'Nothing has been recorded as dealt with yet. '
+                    : 'No follow-ups here. '}
+                A follow-up is an activity logged with a due date, on a company's page.
+              </EmptyLine>
+            </Card>
           )}
-        </Panel>
-      )}
+        </div>
+
+        {(tab === 'overdue' || tab === 'all') && (
+          <Card
+            as="h2"
+            data-extension="check-backs"
+            title={tab === 'overdue' ? 'Check-backs due' : 'Check-backs'}
+            count={query.data?.check_backs_total}
+            description="Companies that said not now. Not completed here — move the conversation on the company's page and the check-back clears itself."
+            flush
+          >
+            {query.isLoading ? (
+              <div className="px-4 pb-4">
+                <Skeleton className="h-12" />
+              </div>
+            ) : query.isError ? (
+              <p className="px-4 pb-4 text-body text-negative">Could not load check-backs. {query.error.message}</p>
+            ) : query.data && query.data.check_backs.length > 0 ? (
+              <div className="divide-y divide-line border-t border-line">
+                {query.data.check_backs.map((row) => (
+                  <CheckBackRow key={row.customer_id} row={row} />
+                ))}
+              </div>
+            ) : (
+              <EmptyLine className="px-4 pb-3">
+                {tab === 'overdue' ? 'No check-back is due yet.' : 'No company is parked waiting for a check-back.'}
+              </EmptyLine>
+            )}
+          </Card>
+        )}
       </div>
     </div>
   );

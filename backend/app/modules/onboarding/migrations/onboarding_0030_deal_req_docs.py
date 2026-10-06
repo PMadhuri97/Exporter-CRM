@@ -1,5 +1,4 @@
-"""Required document categories for a deal — **owner: Developer 2** (plan P2-5a,
-allocation task 2.2).
+"""Required document categories for a deal.
 
 Revision ID: onboarding_0030_deal_req_docs
 Revises: onboarding_0029_deal_snapshot
@@ -25,10 +24,10 @@ nothing is ever updated or deleted, so what was required when stays readable.
 
 It reuses ``crm_document_category_enum`` from migration 0019 rather than declaring
 a second list of the same ten values, and carries the provenance columns every new
-table carries (plan BQ-7): ``created_by``, ``created_at``, ``source``,
+table carries: ``created_by``, ``created_at``, ``source``,
 ``source_ref``.
 
-**This changes behaviour**, and that is the point (IQ-10): version 1 seeds one
+**This changes behaviour**, and that is the point: version 1 seeds one
 requirement, category ``PRE_SHIPMENT`` with ``document_type = ''`` ("any type in
 the category" — a proforma invoice, purchase order, sales contract or letter of
 credit all satisfy it). From this migration on, a deal with no ``AVAILABLE``
@@ -83,7 +82,7 @@ def upgrade() -> None:
         ),
         sa.Column("version", sa.Integer(), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False),
-        # Provenance — plan BQ-7.
+        # Provenance.
         sa.Column("created_by", sa.String(length=255), nullable=True),
         sa.Column("source", sa.String(length=100), nullable=False),
         sa.Column("source_ref", sa.String(length=255), nullable=True),
@@ -112,7 +111,7 @@ def upgrade() -> None:
         "FOR EACH STATEMENT EXECUTE FUNCTION public.prevent_mutation();"
     )
 
-    # ── Seed: version 1, one requirement (IQ-10) ─────────────────────────────
+    # ── Seed: version 1, one requirement ─────────────────────────────────────
     op.bulk_insert(
         sa.table(
             TABLE,

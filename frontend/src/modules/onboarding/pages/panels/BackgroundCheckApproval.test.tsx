@@ -1,6 +1,5 @@
 /**
- * Maker-checker, rule B and Re-KYC on the background-check panel — **Developer 1**
- * (plans P3-1c, P3-2, P3-3c).
+ * Maker-checker, the required checks and Re-KYC on the background-check panel.
  *
  * Everything asserted here is served: whether a proposal awaits approval and what this
  * user may do with it (`open_proposal.allowed_actions`), whether a move needs approval
@@ -325,7 +324,7 @@ describe('BackgroundCheckPanel — awaiting approval', () => {
   });
 });
 
-describe('BackgroundCheckPanel — rule B, expiry and the trail', () => {
+describe('BackgroundCheckPanel — required checks, expiry and the trail', () => {
   it('lists the checks CLEAR requires, with their state in this cycle', async () => {
     renderPanel();
     const required = await screen.findByTestId('required-checks');
@@ -336,7 +335,7 @@ describe('BackgroundCheckPanel — rule B, expiry and the trail', () => {
     );
   });
 
-  it('words rule B’s outstanding prerequisites', async () => {
+  it('words the required checks’ outstanding prerequisites', async () => {
     vi.mocked(getBackgroundCheck).mockResolvedValue(
       standing({ clear_blocked_reasons: ['sanctions_passed'] }),
     );

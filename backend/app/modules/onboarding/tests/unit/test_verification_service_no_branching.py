@@ -1,4 +1,4 @@
-"""Structural proof of EXP-2's central acceptance criterion.
+"""Structural proof of the verification service's central acceptance criterion.
 
 "Triggering a KYC check against entity_type=DIRECTOR and a BANK_ACCOUNT check
 against entity_type=EXPORTER both route through the exact same
@@ -86,7 +86,7 @@ def test_get_verification_status_never_branches_on_verification_type():
 
 
 def test_trigger_verification_batch_never_branches_on_verification_type():
-    """Piece 3's own extension of the same acceptance criterion: a batch that
+    """The batch extension of the same acceptance criterion: a batch that
     mixes KYB + AML + INVOICE_DUPLICATION checks together is handled by one
     loop over `(request, outcome)` pairs, never a branch on any request's
     `verification_type`. `verification_type` is only ever reached here via

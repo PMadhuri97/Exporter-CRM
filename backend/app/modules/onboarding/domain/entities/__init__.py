@@ -122,37 +122,33 @@ __all__ = [
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Section 9.3 — anchor blocks for Developers 3A and 3B
+# Area blocks
 #
-# This index is Developer 1's (architecture §8.1). Three people add entities and enums to it —
-# 3A in each of its two phases, and 3B — and appending to the single `__all__`
-# list above puts all three in the same hunk, every time. So the seam commit cuts
-# the tail into owned blocks: each owner's import **and** its `__all__` entry go
-# inside its own block, so no two owners ever touch the same line.
+# This index is shared (architecture §8.1), and several areas add entities and enums
+# to it; appending to the single `__all__` list above would put every change in the
+# same hunk. So the tail is cut into one block per area: each area's import **and**
+# its `__all__` entry go inside its own block, so two changes to different areas
+# never touch the same line.
 #
 # `__all__ += [...]` rather than more entries in the list above is what makes that
-# possible, and the empty list in each block is the block's real content, so the
-# blocks are separated even before anyone has added anything.
+# possible.
 #
 # Imports below the list are deliberate and are not a style slip — they are what lets
-# each owner's import and export sit in one block nobody else touches. Ruff's E402
-# ("module level import not at top of file") does not know that, and flags every such
-# import after the first, so each one carries an explicit `# noqa: E402` naming this
-# comment. **3B: yours needs one too.**
+# each area's import and export sit in one block. Ruff's E402 ("module level import
+# not at top of file") does not know that, and flags every such import after the
+# first, so each one carries an explicit `# noqa: E402` naming this comment.
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
-# (3A appends here; 3B does not.)
-# Cut into the two phase sub-anchors below — phase agreement §6.3.
+# ── Conversation and follow-ups ──
 
-# ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
+# ── Conversation gauge ──
 from app.modules.onboarding.domain.entities.engagement_enums import (  # noqa: E402
     ExporterConversation,
 )
 
 __all__ += ["ExporterConversation"]
 
-# ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
+# ── Follow-ups ──
 from app.modules.onboarding.domain.entities.follow_up_completion import (  # noqa: E402
     FollowUpCompletion,
     FollowUpOutcome,
@@ -160,8 +156,7 @@ from app.modules.onboarding.domain.entities.follow_up_completion import (  # noq
 
 __all__ += ["FollowUpCompletion", "FollowUpOutcome"]
 
-# ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
-# (3B appends here; 3A does not.)
+# ── Deals, buyers, storage and documents ──
 from app.modules.onboarding.domain.entities.deal import Deal  # noqa: E402
 from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer  # noqa: E402
 from app.modules.onboarding.domain.entities.deal_enums import DealStage  # noqa: E402
@@ -175,7 +170,7 @@ from app.modules.onboarding.domain.entities.document_enums import (  # noqa: E40
 )
 
 __all__ += ["CrmDocument", "DocumentCategory", "DocumentOwnerKind", "DocumentSource"]
-# Developer 2 (plan P2-5a): which paperwork a deal must have before handover.
+# Which paperwork a deal must have before handover.
 from app.modules.onboarding.domain.entities.deal_required_document import (  # noqa: E402
     ANY_DOCUMENT_TYPE,
     DealRequiredDocument,
@@ -185,17 +180,13 @@ __all__ += ["ANY_DOCUMENT_TYPE", "DealRequiredDocument"]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0)
+# Compliance blocks
 #
-# The same cut as the §9.3 blocks above, for the two Dev4 pull requests that run
-# in parallel: each owner's import **and** its `__all__` entry go inside its own
-# block, so the 4A and 4B branches never touch the same line. The empty list in
-# each block is the block's real content until its owner adds to it. Imports here
-# need `# noqa: E402` for the reason given in the §9.3 header.
+# The same cut as the area blocks above. Imports here need `# noqa: E402` for the
+# reason given in that header.
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Background check — owner: Developer 4A ──
-# (4A appends here; 4B does not.)
+# ── Background check ──
 from app.modules.onboarding.domain.entities.background_check_decision import (  # noqa: E402
     BackgroundCheckDecision,
     BackgroundCheckEvidence,
@@ -218,16 +209,14 @@ __all__ += [
     "BackgroundCheckState",
 ]
 
-# ── Verification and screening — owner: Developer 4B ──
-# (4B appends here; 4A does not.)
+# ── Verification and screening ──
 from app.modules.onboarding.domain.entities.verification_review import (  # noqa: E402
     VerificationReview,
 )
 
 __all__ += ["VerificationReview"]
 
-# ── Compliance engine — owner: Developer 1 (allocation §3) ──
-# (Developer 1 appends here.)
+# ── Compliance engine: check cycles and maker-checker ──
 from app.modules.onboarding.domain.entities.check_cycle import (  # noqa: E402
     CheckCycle,
     CheckCycleKind,
@@ -249,7 +238,7 @@ __all__ += [
     "ProposalOutcome",
 ]
 
-# Trade history (Developer 3, tasks 3.18 and 3.19; plan P5-1, P5-2). Imported here so
+# Trade history. Imported here so
 # the metadata carries the three tables — the ORM drift test and Alembic's autogenerate
 # both read this barrel.
 from app.modules.onboarding.domain.entities.trade_enums import (  # noqa: E402
@@ -273,7 +262,7 @@ __all__ += [
 ]
 
 
-# The buyer migration's mapping table (Developer 2, task 2.6; plan P4-6, §17.2).
+# The buyer migration's mapping table.
 from app.modules.onboarding.domain.entities.deal_buyer_company_map import (  # noqa: E402
     BuyerMatchRule,
     DealBuyerCompanyMap,

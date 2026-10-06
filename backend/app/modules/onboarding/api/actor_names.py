@@ -1,4 +1,4 @@
-"""Who acted, by name, for the CRM's list responses — **owner: Developer 1**.
+"""Who acted, by name, for the CRM's list responses.
 
 History rows, background-check decisions, activities and follow-ups store the person
 who acted as a user id. Each response that carries one also carries the person's

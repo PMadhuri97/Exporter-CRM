@@ -1,5 +1,5 @@
-"""``VerificationReview`` — one compliance review of a verification result —
-**owner: Developer 4B** (``docs/contracts/verification-and-screening.md`` §1, migration
+"""``VerificationReview`` — one compliance review of a verification result
+(``docs/contracts/verification-and-screening.md`` §1, migration
 ``onboarding_0021_verif_review``).
 
 **A verdict changes by adding a record, never by editing one.** The first review of

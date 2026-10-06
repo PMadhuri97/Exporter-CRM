@@ -1,14 +1,13 @@
-"""Deals and their buyers (L3-05, L3-06).
+"""Deals and their buyers.
 
 Revision ID: onboarding_0018_deal_buyer
 Revises: onboarding_0016_engagement
 
 Numbered 0018 per the migration register, and parented on 0016 because 0016 is
-the head when this is written: Developer 3A merged their conversation gauge
-first, exactly as the agreed order (0016 → 0018 → 0019) expects. Numbers are
-labels, not order — ``down_revision`` is the order (register §2) — and because 3A
-landed first, **nothing is re-parented here**: re-parenting falls to the later
-merger, and that was not me.
+the head when this is written: the conversation gauge merged first, exactly as
+the agreed order (0016 → 0018 → 0019) expects. Numbers are labels, not order —
+``down_revision`` is the order (register §2) — and because 0016 landed first,
+**nothing is re-parented here**: re-parenting falls to the later merger.
 
 ``onboarding_0018_deal_buyer`` is 26 characters, inside the register's
 32-character limit on ``alembic_version.version_num``.
@@ -18,8 +17,8 @@ What it adds, all in the ``onboarding`` schema:
 * ``deal_stage_enum`` — the four architecture §3.3 values.
 * ``deal`` — many per company, a real foreign key to
   ``exporter_profile.customer_id`` with ``ON DELETE RESTRICT``, the stage, a
-  withdrawal reason required exactly when the stage is ``WITHDRAWN``
-  (assumption A7), and ``handed_over_at``, which Phase 4 fills.
+  withdrawal reason required exactly when the stage is ``WITHDRAWN``,
+  and ``handed_over_at``, which the handover fills.
 * ``deal_buyer`` — one row per deal (unique ``deal_id``), the buyer's name,
   country and identifiers (architecture §3.3).
 
@@ -29,10 +28,10 @@ something that has broken this repository before, and
 ``onboarding_0016_engagement`` is the pattern followed here.
 
 **Nothing on ``exporter_profile`` is touched.** The conversation gauge that
-opening a deal moves is Developer 3A's column, written through their service
-(seam S1), and ``background_check`` is Developer 4's column in 0015, which has
-not landed — this migration does not create it, and Phase 4's handover guard
-reads it through their published helper rather than declaring it here
+opening a deal moves is engagement's column, written through its service
+(seam S1), and ``background_check`` is the background check's column in 0015,
+which has not landed — this migration does not create it, and the handover guard
+reads it through the published helper rather than declaring it here
 (``company-record.md`` §2.4).
 
 Downgrade drops both tables and the enum, **losing every deal and buyer row** —
@@ -65,7 +64,7 @@ deal_stage_enum = postgresql.ENUM(
     *DEAL_STAGES, name="deal_stage_enum", schema=SCHEMA, create_type=False
 )
 
-#: Assumption A7: a withdrawal carries its reason, and nothing else does. Both
+#: A withdrawal carries its reason, and nothing else does. Both
 #: halves, so the column cannot fill with reasons for live deals.
 _WITHDRAWAL_REASON_CONSTRAINT = (
     "(stage = 'WITHDRAWN' AND withdrawal_reason IS NOT NULL)"

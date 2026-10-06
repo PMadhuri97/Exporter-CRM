@@ -28,7 +28,7 @@ export interface UserSearchParams {
   offset?: number;
 }
 
-// ── Role management (Phase 2) ───────────────────────────────────────────────
+// ── Role management ───────────────────────────────────────────────
 export type Role = components['schemas']['RoleResponse'];
 export type RoleList = components['schemas']['RoleListResponse'];
 export type CreateRoleRequest = components['schemas']['CreateRoleRequest'];

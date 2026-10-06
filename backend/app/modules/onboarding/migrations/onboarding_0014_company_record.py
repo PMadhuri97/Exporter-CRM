@@ -1,5 +1,4 @@
-"""The company record: identity, tax-ID rules, the marker, and real links
-(L2-05, L2-06, L2-08).
+"""The company record: identity, tax-ID rules, the marker, and real links.
 
 Revision ID: onboarding_0014_company_record
 Revises: onboarding_0013_shared_history
@@ -56,7 +55,7 @@ What it adds:
   names several kinds of subject.
 
 The three-value journey is **not** here: the ten old statuses stay until
-L2-04 replaces them. The gauge fields (qualification, conversation,
+migration 0020 replaces them. The gauge fields (qualification, conversation,
 background check) are added by their owners' migrations.
 
 Downgrade restores the previous shape but **not the data**: the emptied rows

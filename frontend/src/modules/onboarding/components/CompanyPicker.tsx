@@ -1,6 +1,5 @@
 /**
- * Pick a company, or create one — **owner: Developer 3** (allocation task 3.10,
- * plan P4-3). Mounted on the deal page by Developer 2's task 2.4.
+ * Pick a company, or create one. Mounted on the deal page as the buyer picker.
  *
  * Two ways to find a company, because an RM has one of two things in hand:
  *
@@ -11,14 +10,14 @@
  *   point of this control is that an RM stops creating a second record for a buyer
  *   we already have.
  * * **A full identifier.** A complete PAN, GSTIN or registration number names the
- *   company that holds it — including for a role that sees identifiers masked
- *   (decision BQ-2). The identifier is sent, never displayed back: the response
+ *   company that holds it — including for a role that sees identifiers masked.
+ *   The identifier is sent, never displayed back: the response
  *   carries no identifiers at all, and every such lookup is audited server-side.
  *
  * **Partial identifiers are refused by the server, so this does not offer them.**
  * The field asks for the whole value and says so; a prefix search would be a way to
  * read identifiers out of the CRM one character at a time, which is exactly what
- * BQ-2's "exact only" rule exists to prevent. The component does not try to
+ * the "exact only" rule exists to prevent. The component does not try to
  * validate formats itself — the server owns that, and a client-side regex that
  * disagreed with it would refuse values the CRM accepts.
  *
@@ -29,17 +28,17 @@
  * | `MATCHED` | one company, ready to select |
  * | `POSSIBLE_DUPLICATE` | "check these first" — candidates, nothing preselected |
  * | `CONFLICT` | a warning naming every company involved; the RM decides |
- * | `NEW` | "no company matches" — and **Create buyer company** (R-24) |
+ * | `NEW` | "no company matches" — and **Create buyer company** |
  *
  * `POSSIBLE_DUPLICATE` and `CONFLICT` both set `needs_a_person`, and neither
  * preselects anything — picking one for the RM is how a deal ends up attached to
- * the wrong company (decision IQ-8).
+ * the wrong company.
  *
- * **Creating** (R-24) is offered only when the caller passes `onCreate`, and only
+ * **Creating** is offered only when the caller passes `onCreate`, and only
  * once the server has answered `NEW` — or `POSSIBLE_DUPLICATE` after the RM says none
- * of the look-alikes is the buyer: a name is never an identity (IQ-8), but the RM
+ * of the look-alikes is the buyer: a name is never an identity, but the RM
  * must have seen them first. It creates a buyer company **outside the pipeline**
- * through the deal's buyer route, never an ordinary lead — the failure P4-2 exists to
+ * through the deal's buyer route, never an ordinary lead — the failure that rule exists to
  * prevent. `MATCHED` and `CONFLICT` never offer it: an identifier already names a
  * company on file, and the server would refuse a duplicate anyway.
  */
@@ -92,7 +91,7 @@ export interface CompanyPickerProps {
    */
   country?: string;
   /**
-   * Create the buyer as a company outside the pipeline (R-24). Rejects with the
+   * Create the buyer as a company outside the pipeline. Rejects with the
    * server's refusal, which the form shows. Without it, nothing here creates.
    */
   onCreate?(draft: CreateBuyerCompanyRequest): Promise<unknown>;
@@ -151,7 +150,7 @@ export function CompanyPicker({
 
   return (
     <div className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1 text-sm">
+      <label className="flex flex-col gap-1 text-body">
         <span className="font-medium text-ink">Find the company</span>
         <span className="relative">
           <Icon.search
@@ -182,7 +181,7 @@ export function CompanyPicker({
       </label>
 
       <details className="rounded-lg border border-line px-3 py-2">
-        <summary className="cursor-pointer text-sm font-medium text-ink">
+        <summary className="cursor-pointer text-body font-medium text-ink">
           Search by identifier
         </summary>
         <div className="mt-3 flex flex-col gap-2">
@@ -196,9 +195,9 @@ export function CompanyPicker({
                   setIdentifierKind(kind);
                   match.reset();
                 }}
-                className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
+                className={`rounded-md border px-3 py-1 text-caption font-medium transition-colors ${
                   identifierKind === kind
-                    ? 'border-ink bg-sunken text-ink'
+                    ? 'border-accent bg-accent-tint text-ink'
                     : 'border-line text-ink-2 hover:bg-paper'
                 }`}
               >
@@ -217,7 +216,7 @@ export function CompanyPicker({
               setCreating(false);
             }}
           />
-          <p className="text-xs text-ink-3">
+          <p className="text-caption text-ink-3">
             {IDENTIFIER_HINT[identifierKind]}. Partial values are not accepted, and
             the identifier is never shown back to you.
           </p>
@@ -242,7 +241,7 @@ export function CompanyPicker({
       {matched?.kind === 'CONFLICT' ? (
         <div
           role="alert"
-          className="flex gap-2 rounded-lg border border-attention/40 bg-attention-tint p-3 text-sm text-ink"
+          className="flex gap-2 rounded-lg border border-attention/40 bg-attention-tint p-3 text-body text-ink"
         >
           <Icon.warning size={16} className="mt-0.5 shrink-0 text-attention" />
           <span>
@@ -253,7 +252,7 @@ export function CompanyPicker({
       ) : null}
 
       {matched?.kind === 'POSSIBLE_DUPLICATE' ? (
-        <p className="text-sm text-ink-2">
+        <p className="text-body text-ink-2">
           <span className="font-medium text-ink">Check these first.</span> {matched.reason}
         </p>
       ) : null}
@@ -267,7 +266,7 @@ export function CompanyPicker({
           initial={{
             name: trimmed,
             country,
-            // The RM's own input, never a value the server sent back (BQ-2).
+            // The RM's own input, never a value the server sent back.
             ...(identifier.trim() ? { [identifierKind]: identifier.trim() } : {}),
           }}
           onCreate={onCreate}
@@ -277,7 +276,7 @@ export function CompanyPicker({
       ) : onCreate &&
         (matched?.kind === 'NEW' || matched?.kind === 'POSSIBLE_DUPLICATE') ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-line px-4 py-3">
-          <span className="text-sm text-ink-2">
+          <span className="text-body text-ink-2">
             {matched.kind === 'NEW'
               ? 'No company on file matches. Create the buyer as a company of its own.'
               : 'None of these is the buyer? Create it as a company of its own.'}
@@ -289,7 +288,7 @@ export function CompanyPicker({
       ) : null}
 
       {!ready && !matched ? (
-        <p className="text-xs text-ink-3">
+        <p className="text-caption text-ink-3">
           Type at least two characters, or search by identifier.
         </p>
       ) : query.isLoading || match.isPending ? (
@@ -314,14 +313,14 @@ export function CompanyPicker({
                   <span className="font-medium text-ink">
                     {company.name ?? 'Unnamed company'}
                   </span>
-                  <span className="mt-0.5 block text-xs text-ink-2">
+                  <span className="mt-0.5 block text-caption text-ink-2">
                     {company.country ?? '—'} ·{' '}
                     {company.pipeline_status === 'NOT_IN_PIPELINE'
                       ? 'Not in pipeline'
                       : company.journey}
                   </span>
                 </span>
-                <span className="text-xs font-medium text-ink">Select</span>
+                <span className="text-caption font-medium text-ink">Select</span>
               </button>
             </li>
           ))}
@@ -351,14 +350,14 @@ function CandidateList({
               <span className="font-medium text-ink">
                 {candidate.name ?? 'Unnamed company'}
               </span>
-              <span className="mt-0.5 block text-xs text-ink-2">
+              <span className="mt-0.5 block text-caption text-ink-2">
                 {candidate.country ?? '—'}
                 {candidate.pipeline_status === 'NOT_IN_PIPELINE'
                   ? ' · Not in pipeline — exists as a buyer'
                   : ''}
               </span>
             </span>
-            <span className="text-xs font-medium text-ink">Select</span>
+            <span className="text-caption font-medium text-ink">Select</span>
           </button>
         </li>
       ))}

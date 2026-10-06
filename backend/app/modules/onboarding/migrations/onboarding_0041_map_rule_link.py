@@ -1,13 +1,13 @@
-"""The buyer migration can say "this buyer was already linked to that company" —
-**owner: Developer 2** (allocation task 2.6, plan P4-6, ``remaining-work.md`` R-07).
+"""The buyer migration can say "this buyer was already linked to that company".
 
 Revision ID: onboarding_0041_map_rule_link
 Revises: onboarding_0040_iec_format
 
 Why
 ---
-Since task 2.4 a user can name a deal's buyer **company** on the deal page, and a deal
-written before that also carries a legacy ``deal_buyer`` row. Since P4-5 a BUYER
+A user can name a deal's buyer **company** on the deal page, and a deal
+written before that also carries a legacy ``deal_buyer`` row. Since checks became
+company-keyed a BUYER
 result can carry a ``subject_company_id``. Both links are set once and frozen, so the
 buyer migration must map such a row to the company it is already linked to: mapping
 it anywhere else would leave the deal, or its results, naming a company the map does

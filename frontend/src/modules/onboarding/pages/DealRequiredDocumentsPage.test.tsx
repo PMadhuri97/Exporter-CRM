@@ -117,7 +117,7 @@ describe('DealRequiredDocumentsPage', () => {
     expect(within(row).getByText('Required')).toBeInTheDocument();
   });
 
-  // Who may open this screen is decided at the route now (R-33, G5): any other role
+  // Who may open this screen is decided at the route now: any other role
   // gets the generic NotFound and never loads the page. That is asserted, role by
   // role, in `src/routes/access.matrix.test.tsx`, which replaces the in-page
   // "Administrators only" checks that used to be here.

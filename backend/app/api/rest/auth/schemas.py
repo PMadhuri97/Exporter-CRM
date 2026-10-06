@@ -66,7 +66,7 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Administrator user management (Phase 1) ─────────────────────────────────
+# ── Administrator user management ───────────────────────────────────────────
 
 
 class AdminUserResponse(UserResponse):

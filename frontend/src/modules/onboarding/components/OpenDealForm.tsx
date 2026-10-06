@@ -1,5 +1,5 @@
 /**
- * Open a deal on a company — **owner: Developer 3B** (L3-05).
+ * Open a deal on a company.
  *
  * One form, used from the Deals tab and from the conversation's READY_NOW
  * prompt (seam S2), so the two can never ask for different things. A deal

@@ -1,8 +1,8 @@
-"""Request/response schemas for documents — **owner: Developer 3B** (L3-09).
+"""Request/response schemas for documents.
 
 Contract: ``docs/contracts/storage-and-documents.md`` §5, §6.
 
-**No response carries a storage key.** It is an internal address (decision D8) and
+**No response carries a storage key.** It is an internal address and
 publishing it would invite a client to build its own URLs — exactly the coupling the
 port exists to prevent. Content comes from an explicit link request instead.
 """
@@ -41,7 +41,7 @@ class DocumentResponse(BaseModel):
     uploaded_at: datetime
     scan_status: DocumentScanStatus
     #: Which scanner reached the verdict. ``"pass-through"`` in the prototype —
-    #: a placeholder, not a scan (assumption A9). Screens display it so nobody
+    #: a placeholder, not a scan. Screens display it so nobody
     #: mistakes a pass-through for a clean result.
     scanner_name: str | None
     #: Whether content may be fetched at all. ``False`` for `PENDING_SCAN`,
@@ -106,7 +106,7 @@ class DocumentCategoryListResponse(BaseModel):
 
     ``scanner_name`` rides along so a screen can label the upload control with the
     scanner that will actually judge the file — ``"pass-through"`` today, which the
-    screen must say out loud (assumption A9, gate §7.6).
+    screen must say out loud (gate §7.6).
     """
 
     categories: list[DocumentCategoryResponse]

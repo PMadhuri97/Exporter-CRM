@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
 
-import { LINK_CLASSES } from './styles';
+import { buttonClasses } from './styles';
 
 /** The heading every unknown — or forbidden — address shows; tests read it from here. */
-export const NOT_FOUND_TITLE = 'Nothing here.';
+export const NOT_FOUND_TITLE = 'Page not found';
 
 /**
  * Any address the app does not know, and any module a role may not use: the same
@@ -12,17 +12,17 @@ export const NOT_FOUND_TITLE = 'Nothing here.';
  */
 export function NotFound({
   title = NOT_FOUND_TITLE,
-  children = 'The address may be mistyped, or the page may have moved.',
+  children = "The page you asked for doesn't exist.",
 }: {
   title?: string;
   children?: React.ReactNode;
 }) {
   return (
-    <div className="max-w-xl py-16 sm:py-24">
-      <h1 className="font-display text-display-xl text-ink">{title}</h1>
-      <p className="mt-3 text-lead text-ink-2">{children}</p>
-      <Link to="/" className={`mt-6 inline-block text-body ${LINK_CLASSES}`}>
-        Back to your desk
+    <div className="mx-auto max-w-lg rounded border border-line bg-surface px-6 py-10 text-center">
+      <h1 className="text-title font-semibold text-ink">{title}</h1>
+      <p className="mt-2 text-body text-ink-2">{children}</p>
+      <Link to="/" className={buttonClasses({ variant: 'primary', className: 'mt-6' })}>
+        Go to Home
       </Link>
     </div>
   );

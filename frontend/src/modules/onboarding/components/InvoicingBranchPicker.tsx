@@ -1,8 +1,7 @@
 /**
- * Which of the seller's GST registrations a deal is invoiced from — allocation task
- * 2.8 (plan P6-6), on the deal page.
+ * Which of the seller's GST registrations a deal is invoiced from, on the deal page.
  *
- * The handover guard asks for it (task 2.9, `deal-and-buyer.md` §6.1, conditions 6
+ * The handover guard asks for it (`deal-and-buyer.md` §6.1, conditions 6
  * and 7): a deal whose seller has an **active** GST registration but names none is
  * refused with "the invoicing branch is not recorded", and a deal invoiced through a
  * **flagged** branch is refused too. `PUT /deals/{id}/invoicing-branch` is the only
@@ -18,7 +17,7 @@
  * * **The GSTIN exactly as the server sent it**, beside the state: masked for
  *   OPERATIONS and DEVELOPER by `GET …/gst-registrations` itself. Nothing here builds,
  *   stores or unmasks one.
- * * **Changeable and clearable until the deal closes** (decision IQ-20), then
+ * * **Changeable and clearable until the deal closes**, then
  *   read-only: `prevent_terminal_deal_change()` freezes it with a handed-over or
  *   withdrawn deal, and the route refuses a change (409).
  * * **The notes under it come from the facts the guard reads** — whether the seller
@@ -188,7 +187,7 @@ export function InvoicingBranchPicker({
           {shownId !== null && (
             <Button
               size="sm"
-              variant="quiet"
+              variant="subtle"
               disabled={mutation.isPending}
               onClick={() => record(null)}
             >
@@ -202,7 +201,7 @@ export function InvoicingBranchPicker({
             {shown ? (
               <span className="inline-flex flex-wrap items-center gap-2">
                 <span className="font-medium text-ink">{stateName(shown)}</span>
-                <span className="font-mono text-xs text-ink-2">{shown.gstin}</span>
+                <span className="text-caption text-ink-2">{shown.gstin}</span>
                 <BranchStatus registration={shown} />
               </span>
             ) : shownId !== null ? (
@@ -217,7 +216,7 @@ export function InvoicingBranchPicker({
       )}
 
       {editable && shown && (shown.flag_status === 'FLAGGED' || !shown.active) && (
-        <p className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
+        <p className="flex flex-wrap items-center gap-2 text-caption text-ink-2">
           <BranchStatus registration={shown} />
         </p>
       )}
@@ -225,7 +224,7 @@ export function InvoicingBranchPicker({
       {!closed && shownId === null && (
         <p
           role="status"
-          className="rounded-lg border border-attention/30 bg-attention-tint px-3 py-2 text-sm text-ink"
+          className="rounded-lg border border-attention/30 bg-attention-tint px-3 py-2 text-body text-ink"
         >
           <span className="font-medium">Not recorded.</span>{' '}
           <span className="text-ink-2">
@@ -238,7 +237,7 @@ export function InvoicingBranchPicker({
       {!closed && shown?.flag_status === 'FLAGGED' && (
         <p
           role="status"
-          className="rounded-lg border border-attention/30 bg-attention-tint px-3 py-2 text-sm text-ink"
+          className="rounded-lg border border-attention/30 bg-attention-tint px-3 py-2 text-body text-ink"
         >
           <span className="font-medium">This branch is flagged.</span>{' '}
           <span className="text-ink-2">
@@ -249,7 +248,7 @@ export function InvoicingBranchPicker({
       )}
 
       {closed && (
-        <p className="text-xs text-ink-3">
+        <p className="text-caption text-ink-3">
           Frozen with the deal: a closed deal's invoicing branch no longer changes.
         </p>
       )}

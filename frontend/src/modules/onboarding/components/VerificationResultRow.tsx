@@ -1,6 +1,6 @@
 /**
- * One company verification result in the workspace — **owner: Developer 4B**
- * (verification-and-screening.md §4, §8, §9; 4B-7).
+ * One company verification result in the workspace
+ * (verification-and-screening.md §4, §8, §9).
  *
  * Provenance and placeholder status are the server's (`provenance`, `is_placeholder`)
  * and are never inferred here: a stub is labelled as the RXIL stub, not RXIL, and a
@@ -48,7 +48,7 @@ export function VerificationResultRow({
             <span className="font-medium text-ink">{verificationTypeLabel(result.verification_type)}</span>
             {placeholder ? (
               // Deliberately not the PENDING chip a real in-flight check gets.
-              <span className="inline-flex items-center gap-1 rounded-sm border border-dashed border-line-strong bg-sunken px-2 py-1 text-xs font-medium text-ink-3">
+              <span className="inline-flex items-center gap-1 rounded-sm border border-dashed border-line-strong bg-sunken px-2 py-1 text-caption font-medium text-ink-3">
                 <Icon.notStarted size={12} /> Not run
               </span>
             ) : (
@@ -57,15 +57,15 @@ export function VerificationResultRow({
             {result.risk_level && <VerificationStatusChip value={result.risk_level} />}
             {result.review_status && <VerificationStatusChip value={result.review_status} />}
           </div>
-          <p className="mt-1 text-xs text-ink-3">
+          <p className="mt-1 text-caption text-ink-3">
             {placeholder ? 'Placeholder · no provider ran this check' : provenanceLabel(result)}
             {' · '}
             {formatDateTime(result.performed_at)}
           </p>
           {result.entity_type === 'BUYER' && (
-            // Company-keyed checks (P4-5): a check recorded on a deal, against that
+            // Company-keyed checks: a check recorded on a deal, against that
             // deal's buyer, before the buyer was a company — now one of its checks.
-            <p data-testid="recorded-as-buyer-check" className="mt-0.5 text-xs text-ink-3">
+            <p data-testid="recorded-as-buyer-check" className="mt-0.5 text-caption text-ink-3">
               Recorded on a deal as the buyer&apos;s check
               {result.subject_snapshot?.name ? ` (${result.subject_snapshot.name})` : ''}
             </p>
@@ -74,7 +74,7 @@ export function VerificationResultRow({
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="inline-flex items-center gap-1 text-xs font-medium text-ink-2 hover:text-ink"
+          className="inline-flex items-center gap-1 text-caption font-medium text-ink-2 hover:text-ink"
         >
           {expanded ? <Icon.caretUp size={14} /> : <Icon.caretDown size={14} />}
           {expanded ? 'Hide details' : 'View details'}
@@ -82,7 +82,7 @@ export function VerificationResultRow({
       </div>
       <EvidenceList note={result.evidence_note} refs={result.evidence_refs} />
       {expanded && (
-        <div className="mt-3 grid gap-3 rounded-lg bg-paper p-3 text-xs md:grid-cols-2">
+        <div className="mt-3 grid gap-3 rounded-lg bg-paper p-3 text-caption md:grid-cols-2">
           <div>
             <span className="text-ink-3">Provider reference</span>
             <p className="mt-0.5 break-all text-ink">{result.provider_reference ?? '—'}</p>

@@ -1,4 +1,4 @@
-"""L2-07 — every edit of a company field leaves a history row.
+"""Every edit of a company field leaves a history row.
 
 What these prove:
 

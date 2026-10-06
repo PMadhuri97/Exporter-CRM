@@ -204,7 +204,7 @@ checks, is [`remaining-work.md`](remaining-work.md) §9):
 
 | Gate | Baseline |
 |---|---|
-| CRM suite (`pytest --crm`) | **2,711 passed, 1 skipped, 0 failed** (53 minutes on a busy Windows machine). The skip is the symlink test in `test_l3b_local_disk_storage.py`, which Windows refuses without developer mode |
+| CRM suite (`pytest --crm`) | **2,711 passed, 1 skipped, 0 failed** (53 minutes on a busy Windows machine). The skip is the symlink test in `test_local_disk_storage.py`, which Windows refuses without developer mode |
 | Whole suite (without `--crm`) | **5,350 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (36 minutes) |
 | Temporal workflow tests (`test_onboarding_workflow*.py`, whole suite only) | Pass within the whole suite. They download the Temporal test server, so they need internet access; the opt-in restart suite needs `RUN_RESILIENCE_TESTS=1` |
 | `ruff check .` | 16 findings, all pre-existing: two auto-generated Alembic merge revisions and two package index files |
@@ -223,7 +223,7 @@ Any failure is new.
 Two tests can still fail intermittently (`remaining-work.md` R-38):
 `platform/idempotency/tests/test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index`
 asserts a query plan, which depends on the size and statistics of the database; and
-`test_dev1_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle`
+`test_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle`
 reads two decisions that can share a `decided_at`.
 
 Two environment traps turn a clean run red: without `google-cloud-logging` and

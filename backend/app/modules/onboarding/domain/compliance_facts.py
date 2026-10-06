@@ -1,7 +1,6 @@
-"""``ComplianceFactsReader`` — a party's compliance standing, for other lanes —
-**owner: Developer 1** (allocation §3, F1; plan P3-3b, P3-4, P4-7).
+"""``ComplianceFactsReader`` — a party's compliance standing, for the rest of the CRM.
 
-Published so that Developer 2's handover guard and Developer 3's customer promotion
+Published so that the handover guard and the customer promotion
 ask one question — "what do we know about this party's compliance, right now?" —
 without reading the background check's decisions, cycles or verification tables.
 Pure data structures, one ``Protocol`` and the pure rules the implementation applies;
@@ -20,12 +19,12 @@ is answerable at any moment without sleeping.
 
 What the facts mean today
 -------------------------
-* **Expiry (decision E, BQ-5; plan P3-3a/b).** Each Clear since migration 0027 stores
+* **Expiry.** Each Clear since migration 0027 stores
   its own ``expires_at`` (``decided_at`` + the validity setting, default 365 days). A
   Clear recorded before then is read by the legacy rule: its ``decided_at`` +
   ``LEGACY_CLEAR_VALIDITY``. An expired Clear stays ``is_clear`` — nothing moves the
-  gauge (P3-3b) — but is not ``is_clear_current``.
-* **Sanctions and AML (IQ-2, answered 1 October 2026).** The latest real result of
+  gauge — but is not ``is_clear_current``.
+* **Sanctions and AML (decided 1 October 2026).** The latest real result of
   that type in the company's current cycle decides:
 
   ============================================  ==========
@@ -40,10 +39,10 @@ What the facts mean today
   ``PENDING``                                    ``PENDING``
   ============================================  ==========
 
-  IQ-2 fixes the ``PASSED`` rows. ``REVIEW`` + ``REJECTED`` reading as ``FAILED`` is
+  The decision fixes the ``PASSED`` rows. ``REVIEW`` + ``REJECTED`` reading as ``FAILED`` is
   this module's reading — a person looked at an inconclusive result and concluded
-  against it — and is recorded for the lead to confirm. A ``PASSED`` or ``FAILED``
-  result reads as its status whatever its review says, which is IQ-2's wording.
+  against it. A ``PASSED`` or ``FAILED`` result reads as its status whatever its
+  review says, as the decision words it.
 * **Legacy deal buyers** (``for_legacy_buyer``) have no background check: their gauge
   reads ``NOT_STARTED``, they are never Clear, and their sanctions and AML come from
   the checks recorded on the ``deal_buyer`` row.
@@ -68,7 +67,7 @@ BackgroundCheckValue = Literal[
 #: The state of one kind of check for one party (see the module docstring).
 CheckState = Literal["PASSED", "FAILED", "MISSING", "PENDING"]
 
-#: How long a Clear recorded before expiry was stored stays current (BQ-5: one year
+#: How long a Clear recorded before expiry was stored stays current (one year
 #: from the last Clear). 365 days, the same default as the validity setting
 #: (``CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS``).
 LEGACY_CLEAR_VALIDITY = timedelta(days=365)
@@ -122,7 +121,7 @@ def check_state(
 ) -> CheckState:
     """The state of one type of check, from results **newest first** (the seam's order).
 
-    See the module docstring's table. Placeholders never count (IQ-2): a row no
+    See the module docstring's table. Placeholders never count: a row no
     provider ever ran says nothing about the party.
     """
     for check in verifications:

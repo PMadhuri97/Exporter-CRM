@@ -189,7 +189,7 @@ async def test_provider_failure_can_be_retried_but_never_decides(client: AsyncCl
     """The rule under test is the transition table, not the attribution.
 
     This used to drive the two hops with ``source="PROVIDER_CALLBACK"`` and
-    ``source="SYSTEM"``, which an HTTP caller may no longer claim (L1-05). The
+    ``source="SYSTEM"``, which an HTTP caller may no longer claim. The
     legal/illegal pair is unchanged: a failed provider run cannot approve the
     case, but it can be sent back for another attempt.
     """
@@ -404,7 +404,7 @@ async def test_an_http_caller_cannot_claim_a_machine_transition_source(client: A
     This test previously asserted the opposite: that an authenticated caller
     sending ``source="SYSTEM"`` had its own identity erased from the transition
     row, leaving a human approval recorded as a machine's with nobody's name on
-    it. That was the forged-approver hole (L1-05). Both machine sources are now
+    it. That was the forged-approver hole. Both machine sources are now
     refused at the schema boundary, so the case is never touched.
     """
     token = await _api_token(client)

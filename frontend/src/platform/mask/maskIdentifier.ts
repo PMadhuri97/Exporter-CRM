@@ -22,7 +22,7 @@ import { can } from '@/platform/access';
  */
 export function canReveal(role: UserRole): boolean {
   // The `identifiers.reveal` capability (`platform/access`), so the role list lives in
-  // one place (R-33, G6). A role nobody listed reveals nothing.
+  // one place. A role nobody listed reveals nothing.
   return can(role, 'identifiers.reveal');
 }
 

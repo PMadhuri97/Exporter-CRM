@@ -1,4 +1,4 @@
-"""Read models and inputs for qualification — **owner: Developer 2**.
+"""Read models and inputs for qualification.
 
 Pure data, no I/O.
 """

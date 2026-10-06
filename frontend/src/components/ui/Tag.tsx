@@ -2,38 +2,43 @@ import type { HTMLAttributes, ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
 
-import { TAG_DOT_CLASSES, TAG_TONE_CLASSES, type TagTone } from './styles';
+import { Badge } from './Badge';
+import type { BadgeTone, TagTone } from './styles';
 
 export interface TagProps extends HTMLAttributes<HTMLSpanElement> {
-  /** A meaning from the status language (frontend-plan §5.2). Domain tags that
-   * draw their own look (the journey, the marker) pass `className` instead. */
+  /** A meaning from the status language (frontend-plan §5.2). `ink` is an
+   * emphasis that is not a state ("Primary", "Required"), drawn as an outline. */
   tone?: TagTone;
-  /** A leading dot in the meaning's solid colour — for a list where the tag sits
-   * beside other text and needs a stronger cue than its tint. */
+  /** A leading dot in the meaning's solid colour. */
   dot?: boolean;
   icon?: ReactNode;
 }
 
+const TONE: Record<TagTone, BadgeTone> = {
+  neutral: 'neutral',
+  idle: 'neutral',
+  ink: 'neutral',
+  positive: 'positive',
+  negative: 'negative',
+  attention: 'attention',
+  progress: 'progress',
+};
+
 /**
- * The one small label every state in the app renders through: 4px corners, a
- * tint and its text colour, never a pill (§5.4). Colour is never the only cue —
- * the words say the state, and the dot or icon only repeats it.
+ * The older name for `Badge`, kept while screens move over: the same 20px worded
+ * label, with no dot unless asked for (a tag sits among other text).
  */
-export function Tag({ tone = 'idle', dot, icon, className, children, ...rest }: TagProps) {
+export function Tag({ tone = 'idle', dot = false, icon, className, children, ...rest }: TagProps) {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-caption font-medium',
-        TAG_TONE_CLASSES[tone],
-        className,
-      )}
+    <Badge
+      tone={TONE[tone]}
+      variant={tone === 'ink' ? 'outline' : 'tint'}
+      dot={dot}
+      icon={icon}
+      className={cn(tone === 'ink' && 'text-ink', className)}
       {...rest}
     >
-      {dot && (
-        <span aria-hidden className={cn('h-1.5 w-1.5 shrink-0 rounded-full', TAG_DOT_CLASSES[tone])} />
-      )}
-      {icon}
       {children}
-    </span>
+    </Badge>
   );
 }

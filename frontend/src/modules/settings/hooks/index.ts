@@ -134,7 +134,7 @@ export function useRevokeOwnSession() {
   });
 }
 
-// ── Role management (Phase 2) ───────────────────────────────────────────────
+// ── Role management ───────────────────────────────────────────────
 
 export function useRoles() {
   return useQuery({

@@ -1,7 +1,7 @@
 /**
- * Wording for the background check's server-supplied keys — **owner: Developer 4A**.
+ * Wording for the background check's server-supplied keys.
  *
- * `clear_blocked_reasons` carries the four prerequisite names of A3
+ * `clear_blocked_reasons` carries the four prerequisite names
  * (`background-check.md` §13, §14.1). They are identifiers, not sentences, so the
  * screen says what each one asks of the person. This is wording only: which
  * prerequisites apply, and when, stays the server's decision. A key this file does
@@ -15,7 +15,7 @@ const CLEAR_PREREQUISITE_LABELS: Record<string, string> = {
   screening_items_answered:
     'every screening item must be passed or exempt (a failed item means flagging the company instead)',
   evidence_recorded: 'at least one document, check or screening item must be on record',
-  // Rule B (plan P3-2): each required check passed in the current cycle.
+  // Rule B: each required check passed in the current cycle.
   kyb_passed: 'a KYB check must have passed in this cycle',
   aml_passed: 'an AML check must have passed in this cycle',
   sanctions_passed: 'a sanctions check must have passed in this cycle',
@@ -25,7 +25,7 @@ export function describeClearBlocker(key: string): string {
   return CLEAR_PREREQUISITE_LABELS[key] ?? key;
 }
 
-// ── Developer 1 (compliance engine): check cycles (P2-3d) ──
+// ── Compliance engine: check cycles ──
 
 const CYCLE_KIND_LABELS: Record<string, string> = {
   INITIAL: 'Initial check',
@@ -39,7 +39,7 @@ export function cycleKindLabel(kind: string): string {
   return CYCLE_KIND_LABELS[kind] ?? kind;
 }
 
-// ── Developer 1: maker-checker (P3-1c) ──
+// ── Maker-checker ──
 
 const MOVE_NOUNS: Record<string, string> = {
   CLEAR: 'Clear',

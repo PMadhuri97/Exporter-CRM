@@ -1,4 +1,4 @@
-"""``ExporterContactActivityService`` — EXP-1's contact and activity-log
+"""``ExporterContactActivityService`` — the contact and activity-log
 service, mirroring ``OnboardingRequestService``'s method-per-operation style.
 
 Kept as a separate service from ``ExporterProfileService`` because it owns a
@@ -14,7 +14,7 @@ an ``ExporterProfile`` to exist, because a contact could be recorded the moment
 Sales had a ``customer_id`` to hang it on. There is no such moment any more: a
 company *is* an ``exporter_profile`` row from creation
 (``docs/contracts/company-record.md`` §1). So both writers check the company
-first (L3-02) and raise ``ExporterProfileNotFoundError`` — a 404 naming the
+first and raise ``ExporterProfileNotFoundError`` — a 404 naming the
 company, rather than the 500 an ``IntegrityError`` would surface as.
 """
 
@@ -46,7 +46,7 @@ class ExporterContactActivityService:
         self._contacts = ExporterContactRepository(db)
         self._activities = ExporterActivityRepository(db)
         # Read-only. This service never writes the company row — that is
-        # Developer 2's — but both of its writers have to know the company is
+        # the company record's — but both of its writers have to know the company is
         # real before the foreign key finds out for them.
         self._profiles = ExporterProfileRepository(db)
 
@@ -165,7 +165,7 @@ class ExporterContactActivityService:
         """Refuse a write for a company that does not exist, with a 404.
 
         The database refuses it too — that is what the two foreign keys are for,
-        and ``test_l3a_contact_activity_links.py`` proves it in raw SQL. This
+        and ``test_contact_activity_links.py`` proves it in raw SQL. This
         check exists so the *API* answer is a 404 naming the company instead of
         the 500 an ``IntegrityError`` escaping a request handler produces.
 
@@ -177,7 +177,7 @@ class ExporterContactActivityService:
         if await self._profiles.get_by_customer_id(customer_id) is None:
             raise ExporterProfileNotFoundError(customer_id)
 
-    # ── Cross-exporter pending/follow-up list (Piece 2) ──────────────────────
+    # ── Cross-exporter pending/follow-up list ────────────────────────────────
 
     async def list_pending_activities(
         self,

@@ -1,5 +1,5 @@
 /**
- * Deals — **owner: Developer 3B** (architecture §9.3, L3-05, L3-06, L3-11b).
+ * Deals (architecture §9.3).
  *
  * The company's deal list, the control that opens one, and the way through to
  * a deal. Shown on the company page's Deals tab.
@@ -16,7 +16,7 @@ import { Button, buttonClasses, EmptySection, Panel, Skeleton } from '@/componen
 import { Icon } from '@/design/icons';
 import { formatDate } from '@/lib/format';
 
-import { OpenDealForm, StageRoute } from '../../components';
+import { OpenDealForm, DealStagePath } from '../../components';
 import { useCompanyDeals } from '../../hooks';
 import { paths } from '../../paths';
 import type { DealListItem } from '../../types';
@@ -30,12 +30,12 @@ function DealRow({ deal }: { deal: DealListItem }) {
       >
         <div className="min-w-0">
           <span className="font-medium text-ink group-hover:text-ink">{deal.reference}</span>
-          <p className="mt-0.5 text-xs text-ink-2">
+          <p className="mt-0.5 text-caption text-ink-2">
             {deal.buyer_name ?? 'No buyer recorded yet'} · opened {formatDate(deal.created_at)}
           </p>
         </div>
         <span className="flex items-center gap-2">
-          <StageRoute stage={deal.stage} compact />
+          <DealStagePath stage={deal.stage} compact />
           <Icon.caretRight size={15} className="text-ink-3" />
         </span>
       </Link>
@@ -53,7 +53,7 @@ export function DealsPanel({
   const [opening, setOpening] = useState(false);
   const { data, isLoading, isError } = useCompanyDeals(customerId);
   const deals = data?.deals ?? [];
-  // The server says whether this viewer may open a deal here (§7.5): a staff role,
+  // The server says whether this viewer may open a deal here: a staff role,
   // and a company that is a PROSPECT or CUSTOMER — a LEAD is refused.
   const canOpen = data?.can_open_deal ?? false;
 
@@ -86,7 +86,7 @@ export function DealsPanel({
         </div>
       )}
 
-      {isError && <p className="text-sm text-negative">Could not load this company's deals.</p>}
+      {isError && <p className="text-body text-negative">Could not load this company's deals.</p>}
 
       {!isLoading && !isError && deals.length === 0 && (
         <EmptySection>

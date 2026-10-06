@@ -1,5 +1,4 @@
 """``CompanyMatcher`` — is an incoming company one the CRM already has?
-(L2-12, L2-13). **Owner: Developer 2.**
 
 The one matching algorithm, used by RXIL intake and bulk import alike, built on
 the company record's own identity rules (``docs/contracts/company-record.md``

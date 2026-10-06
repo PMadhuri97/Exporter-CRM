@@ -20,7 +20,7 @@ const BAR_COLOR = [
   'bg-negative-solid',
   'bg-negative-solid',
   'bg-attention-solid',
-  'bg-ink',
+  'bg-progress-solid',
   'bg-positive-solid',
 ] as const;
 

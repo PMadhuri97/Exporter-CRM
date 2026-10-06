@@ -1,8 +1,7 @@
 /**
- * One compliance check's state as a chip, and rule B's required checks — **owner:
- * Developer 1** (allocation F1; plan P3-2).
+ * One compliance check's state as a chip, and the required checks.
  *
- * The state is served (`PASSED` / `FAILED` / `PENDING` / `MISSING`, IQ-2's meaning of
+ * The state is served (`PASSED` / `FAILED` / `PENDING` / `MISSING`, the meaning of
  * "passed" applied on the server); this only words and colours it.
  */
 
@@ -45,7 +44,7 @@ export function ComplianceCheckChip({
 }
 
 /**
- * The checks CLEAR requires (rule B: KYB, AML and sanctions, each passed in the current
+ * The checks CLEAR requires (KYB, AML and sanctions, each passed in the current
  * cycle), as the server lists them — the screen keeps no list of its own. Nothing is
  * rendered when the server lists none.
  */

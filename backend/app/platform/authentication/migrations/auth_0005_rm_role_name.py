@@ -1,9 +1,9 @@
-"""The built-in OPERATIONS role is shown as "RM (Relationship Manager)" (IQ-13)
+"""The built-in OPERATIONS role is shown as "RM (Relationship Manager)"
 
 `auth_0004_rbac` seeded the built-in roles' display names into `auth.role`, and
 that row — not `catalog.py`'s `BUILTIN_ROLE_METADATA`, which nothing reads at
 runtime — is what the product shows: the Roles tab, the user form's role picker,
-and "Signed in as …" on Settings. So the rename of task 3.6 (P1-5) has to reach
+and "Signed in as …" on Settings. So the rename has to reach
 the row.
 
 Only the display name and description change. The slug stays `operations` and the

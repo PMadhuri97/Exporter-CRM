@@ -1,6 +1,6 @@
 /**
- * Which Home cards each role sees — Developer 1's compliance cards (plans P3-1c,
- * P3-3c). The cards themselves are tested in `HomeCards.test.tsx`; here they are stubs,
+ * Which Home cards each role sees — the compliance cards. The cards themselves are
+ * tested in `HomeCards.test.tsx`; here they are stubs,
  * so only the page's choice of cards is under test.
  */
 
@@ -14,12 +14,13 @@ import { useCurrentUser } from '@/platform/auth';
 import { HomePage } from './HomePage';
 
 vi.mock('@/modules/onboarding', () => ({
-  UpNextCard: () => <div data-testid="card-up-next" />,
+  MyFollowUpsCard: () => <div data-testid="card-follow-ups" />,
+  CheckBackCard: () => <div data-testid="card-check-back" />,
   SetupCard: () => <div data-testid="card-setup" />,
   PipelineSummaryCard: () => <div data-testid="card-pipeline" />,
   ProposalsAwaitingMeCard: () => <div data-testid="card-proposals" />,
   ReKycDueCard: () => <div data-testid="card-rekyc" />,
-  paths: { newCompany: '/companies/new' },
+  paths: { newCompany: '/companies/new', company: (id: string) => `/companies/${id}` },
 }));
 
 vi.mock('@/platform/auth', async (importOriginal) => ({
@@ -59,7 +60,7 @@ describe('HomePage — compliance cards by role', () => {
     expect(screen.getByTestId('card-rekyc')).toBeInTheDocument();
   });
 
-  it('shows DEVELOPER neither (the background-check routes refuse it, D8)', () => {
+  it('shows DEVELOPER neither (the background-check routes refuse it)', () => {
     renderAs('DEVELOPER');
     expect(screen.queryByTestId('card-proposals')).not.toBeInTheDocument();
     expect(screen.queryByTestId('card-rekyc')).not.toBeInTheDocument();
@@ -67,19 +68,7 @@ describe('HomePage — compliance cards by role', () => {
   });
 });
 
-describe('HomePage — Add company by role (R-33, G2)', () => {
-  it.each<UserRole>(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s Add company', (role) => {
-    renderAs(role);
-    expect(screen.getByRole('link', { name: /Add company/ })).toHaveAttribute('href', '/companies/new');
-  });
-
-  it('offers DEVELOPER no Add company, which the server refuses it', () => {
-    renderAs('DEVELOPER');
-    expect(screen.queryByRole('link', { name: /Add company/ })).not.toBeInTheDocument();
-  });
-});
-
-describe('HomePage — one desk per role (frontend-plan §8.2)', () => {
+describe('HomePage — one home per role (frontend-plan §8.2)', () => {
   it('gives the administrator the setup section, and nobody else', () => {
     renderAs('ADMIN');
     expect(screen.getByTestId('card-setup')).toBeInTheDocument();
@@ -90,9 +79,14 @@ describe('HomePage — one desk per role (frontend-plan §8.2)', () => {
     expect(screen.queryByTestId('card-setup')).not.toBeInTheDocument();
   });
 
+  it('has no create button of its own: New company is in the header', () => {
+    renderAs('OPERATIONS');
+    expect(screen.queryByRole('link', { name: /Add company|New company/ })).not.toBeInTheDocument();
+  });
+
   it('tells a read-only role so, in one line', () => {
     renderAs('DEVELOPER');
     expect(screen.getByText('Read-only access. Identifiers are masked.')).toBeInTheDocument();
-    expect(screen.getByTestId('card-up-next')).toBeInTheDocument();
+    expect(screen.getByTestId('card-follow-ups')).toBeInTheDocument();
   });
 });

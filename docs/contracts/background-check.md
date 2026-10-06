@@ -3,9 +3,9 @@
 **Owner:** Developer 1 — the compliance engine (`docs/developer-allocation.md` §2.1, from
 1 October 2026); built by Developer 4A (task L4-01; Developer 4A's task document was removed on
 2 October 2026 — this contract and git history hold it) ·
-**Migrations:** `onboarding_0015_bg_check`; `onboarding_0023_dev1_foundation`,
-`onboarding_0024_dev1_evidence`, `onboarding_0025_dev1_check_cycle`,
-`onboarding_0026_dev1_approval`, `onboarding_0027_dev1_expiry` · **Status:** published
+**Migrations:** `onboarding_0015_bg_check`; `onboarding_0023_compliance_core`,
+`onboarding_0024_screen_evidence`, `onboarding_0025_check_cycle`,
+`onboarding_0026_maker_checker`, `onboarding_0027_clear_expiry` · **Status:** published
 28 Sep 2026; **seam v2** (§12) published 1 October 2026 with F1; **maker-checker, rule B
 and Clear expiry** (§12.5–§12.7) 1 October 2026, Developer 1 tranche 2
 
@@ -409,12 +409,12 @@ guard and the handover are Developer 3's. Dev4A's part is the read helper (§10)
   review. Its name and signature do not change. (Built in 4A-6; the D10 lock below and the
   docstrings the swap made false were also changed in `deal_service.py` — **Developer 3 review
   required**.)
-- The `clear_background_check` fixture in `test_l3b_handover.py` stays until a real `CUSTOMER` can
+- The `clear_background_check` fixture in `test_handover.py` stays until a real `CUSTOMER` can
   be produced (L2-11).
 - **D10, settled 28 Sep 2026:** Developer 3's guard share-locks the company row (`FOR SHARE`) on
   the handover move, and takes no lock on the read that renders a deal. Dev4A's moves take
   `FOR UPDATE`, so a reopen issued while a handover is in flight waits for the handover to commit.
-  Proved by a two-session test (`test_l4a_background_check_reader.py::TestTheHandoverLock`) that
+  Proved by a two-session test (`test_background_check_reader.py::TestTheHandoverLock`) that
   fails if the lock is removed.
 
 ### 11.3 Customer transition (Developer 2)
@@ -448,7 +448,7 @@ verification and screening rules behind the inputs are `verification-and-screeni
 ### 12.1 Shape
 
 The v1 fields, then three fields **appended** in v2, each with a `None` default so every v1
-construction still builds (`unit/test_l4b_compliance_inputs_contract.py` pins the whole shape):
+construction still builds (`unit/test_compliance_inputs_contract.py` pins the whole shape):
 
 ```python
 @dataclass(frozen=True)
@@ -888,5 +888,5 @@ is the behaviour already described in the section named.
 | Company-keyed checks: `subject_company_id` on every new company-subject result; every read by the subject company; legacy rows by `entity_reference`; `buyer_checks` / `for_legacy_buyer` kept (§12.2, P4-5) | built (no migration; nothing rewritten). Buyer companies themselves (`deal.buyer_company_id`, the migration filling legacy buyer rows) are Developer 2's F2/P4-4/P4-6 |
 | Buyer-only companies (`NOT_IN_PIPELINE`) run the same check — cycles, rule B, maker-checker, expiry — and are never promoted (P4-11) | built: no special-casing; promotion needs a `PROSPECT`, which Developer 3's P4-1 rule keeps such a company from being |
 | `CompanyComplianceSummary` full version (task 1.20): gauge with badges, expiry, sanctions/AML, link to the company's panel | built; `BuyerChecks` stays only for legacy `deal_buyer` deals until P4-10 |
-| Final-integration concurrency (allocation §6), in two sessions with the existing locks (moves `FOR UPDATE`, input writers and the handover `FOR SHARE`) | built: `test_dev1_concurrency.py` — a Re-KYC waits for an in-flight handover; a handover waits for an in-flight approval and reads it committed; a flag committed first refuses the handover; an input in flight makes an approval wait and then refuse (stale); an approval in flight makes an input wait and stay outside the decision; a move waits for a cycle start and lands in the new cycle; a cycle start waits for an approval and reopens it. The buyer-company form of the first needs Developer 2's F2 and P4-7 guard |
+| Final-integration concurrency (allocation §6), in two sessions with the existing locks (moves `FOR UPDATE`, input writers and the handover `FOR SHARE`) | built: `test_compliance_concurrency.py` — a Re-KYC waits for an in-flight handover; a handover waits for an in-flight approval and reads it committed; a flag committed first refuses the handover; an input in flight makes an approval wait and then refuse (stale); an approval in flight makes an input wait and stay outside the decision; a move waits for a cycle start and lands in the new cycle; a cycle start waits for an approval and reopens it. The buyer-company form of the first needs Developer 2's F2 and P4-7 guard |
 | `ComplianceFactsReader` for consumers | the Protocol (`domain/compliance_facts.py`) and a fake for consumers' tests, `tests/fixtures/compliance.StaticComplianceFactsReader` / `party_facts`, so Developer 2's guard (task 2.5) is built and tested without Dev 1 code |

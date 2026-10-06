@@ -1,14 +1,13 @@
 /**
- * Record a manual verification result — **owner: Developer 4B** (verification-and-screening.md §3,
- * §9; L4-07; 4B-7).
+ * Record a manual verification result (verification-and-screening.md §3, §9).
  *
  * A person records what they checked, with its real outcome and what it rests on:
  *
- * - `provider` is always `manual`. The route accepts nothing else (D7), and the form
+ * - `provider` is always `manual`. The route accepts nothing else, and the form
  *   offers no choice, so nobody can record a result as RXIL's.
  * - Outcomes are `PASSED`, `FAILED` and `REVIEW`. `PENDING` is never offered: nothing
  *   would ever resolve a manual pending result (§8).
- * - A `PASSED` needs evidence — a note, a document or a link (D16). Checked here to
+ * - A `PASSED` needs evidence — a note, a document or a link. Checked here to
  *   save a round trip; the server checks it too, and its refusal is shown as worded.
  * - Only documents the subject owns and that are `AVAILABLE` are offered: nothing
  *   else can be opened, and the server refuses it.
@@ -35,11 +34,11 @@ import type {
 import { isWebLink, MANUAL_OUTCOMES, RISK_LEVELS, verificationTypeLabel } from './verification-labels';
 
 const FIELD =
-  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60';
+  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-caption text-ink outline-none focus:border-accent disabled:opacity-60';
 const SECONDARY_BUTTON =
-  'rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
+  'rounded-lg border border-line px-2.5 py-1.5 text-caption font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
 const PRIMARY_BUTTON =
-  'rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-paper disabled:opacity-50';
+  'rounded-md bg-accent-solid px-2.5 py-1.5 text-caption font-medium text-white disabled:opacity-50';
 
 /** Whose documents may be evidence: the company's, or the buyer's deal's. */
 export type EvidenceDocumentOwner = { kind: 'company' | 'deal'; id: string };
@@ -103,7 +102,7 @@ export function ManualResultForm({
     }
     if (link) refs.push({ type: 'url', ref: link });
     const trimmedNote = note.trim();
-    // D16: a manual PASSED needs a note or at least one reference.
+    // A manual PASSED needs a note or at least one reference.
     if (outcome === 'PASSED' && !trimmedNote && refs.length === 0) {
       setError('A passed check needs evidence: a note, a document or a link.');
       return;
@@ -119,7 +118,7 @@ export function ManualResultForm({
       toast.success('Check recorded');
       onClose();
     } catch (caught) {
-      // The server's words: a 422 on evidence, or a 409 DEAL_CLOSED on a buyer (D17).
+      // The server's words: a 422 on evidence, or a 409 DEAL_CLOSED on a buyer.
       setError(caught instanceof ApiError ? caught.message : 'Could not record the check.');
     }
   }
@@ -127,7 +126,7 @@ export function ManualResultForm({
   return (
     <div
       data-testid="manual-result-form"
-      className="mt-4 rounded-lg border border-line p-4 text-xs"
+      className="mt-4 rounded-lg border border-line p-4 text-caption"
     >
       <p className="font-medium text-ink">Record a manual result</p>
       <p className="mt-0.5 text-ink-3">Recorded as a manual check by you.</p>

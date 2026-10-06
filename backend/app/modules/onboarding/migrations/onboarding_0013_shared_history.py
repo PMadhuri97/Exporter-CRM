@@ -37,8 +37,8 @@ The default is then **dropped**. Keeping it would mean a writer that forgot
 to prevent. After the drop, an insert must say which dimension it is, and
 ``ExporterLifecycleHistory`` passes it explicitly.
 
-**No foreign key** (decision U3). ``customer_id`` stays a bare indexed uuid.
-Migration 0014 (Dev 2) recreates the CRM's own tables and already owns the real
+**No foreign key**. ``customer_id`` stays a bare indexed uuid.
+Migration 0014 recreates the CRM's own tables and already owns the real
 links for contacts, activities and screening items; the history link goes in
 with them. Adding it here would force 0014 to drop the constraint before
 recreating ``exporter_profile`` and re-add it afterwards, for no gain — both
@@ -102,7 +102,7 @@ def upgrade() -> None:
 
     # ── deal_id ──────────────────────────────────────────────────────────────
     # Bare uuid, like `customer_id`: the deal table does not exist yet (0018),
-    # and the FK story for this table is 0014's (decision U3).
+    # and the FK story for this table is 0014's.
     op.add_column(
         TABLE,
         sa.Column("deal_id", postgresql.UUID(as_uuid=True), nullable=True),

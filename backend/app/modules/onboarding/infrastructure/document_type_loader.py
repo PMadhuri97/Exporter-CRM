@@ -1,5 +1,4 @@
-"""Load the GitOps-managed document-type settings — **owner: Developer 3B**
-(L3-09).
+"""Load the GitOps-managed document-type settings.
 
 Architecture §3.4: categories are fixed and server-checked, **types are settings**
 — a new type needs no code change and no migration. This is the file I/O for that

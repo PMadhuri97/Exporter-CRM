@@ -1,4 +1,4 @@
-"""Phase 1 user management: administrator user list and self-service profile.
+"""User management: administrator user list and self-service profile.
 
 Every gated route gets a refusal test per role that must not reach it — the
 gate is a dependency, so a 403 also proves the handler never ran. Beyond the

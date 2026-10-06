@@ -1,4 +1,4 @@
-"""Repository for ``check_cycle`` — **owner: Developer 1** (plan P2-3a).
+"""Repository for ``check_cycle``.
 
 Append-only: ``AppendOnlyRepository`` exposes no ``update`` and no ``delete``, and
 ``trg_check_cycle_append_only`` refuses both at the database.

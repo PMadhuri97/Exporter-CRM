@@ -1,15 +1,15 @@
 
 import { Icon } from '@/design/icons';
 /**
- * "This company cannot be identified yet" — IQ-7's completion list, seen from the
- * company itself (`remaining-work.md` R-28).
+ * "This company cannot be identified yet" — the identity completion list, seen from the
+ * company itself.
  *
  * Shown when the company holds neither a PAN nor a registration number
  * (`identity_type` is null). It says what would identify it, and whether a rule
- * requires it — a foreign company's registration number is IQ-7's requirement; an
+ * requires it — a foreign company's registration number is required; an
  * Indian company's PAN is only worth having. It goes away by itself once the edit is
- * saved, because the server recomputes `identity_type` on every identifier edit
- * (R-16). The edit itself is the company panel's, so this offers no second form.
+ * saved, because the server recomputes `identity_type` on every identifier edit.
+ * The edit itself is the company panel's, so this offers no second form.
  */
 
 
@@ -31,7 +31,7 @@ export function IdentityGapNotice({ country, canEdit }: IdentityGapNoticeProps) 
     <div
       role="status"
       data-testid="identity-gap-notice"
-      className={`flex gap-3 rounded-lg border p-4 text-sm ${
+      className={`flex gap-3 rounded-lg border p-4 text-body ${
         required
           ? 'border-attention/40 bg-attention-tint'
           : 'border-dashed border-line-strong bg-paper'
@@ -46,7 +46,7 @@ export function IdentityGapNotice({ country, canEdit }: IdentityGapNoticeProps) 
         <span className="text-ink-2">
           It needs {needed}
           {required
-            ? ' — required for a company outside India (IQ-7).'
+            ? ' — required for a company outside India.'
             : ' — not required, but it cannot be matched by identifier without one.'}
           {canEdit ? ' Add it with Edit below.' : ''}
         </span>

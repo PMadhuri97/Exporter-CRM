@@ -1,10 +1,10 @@
 /**
- * The profile chapter (frontend-plan §8.5): the company's facts as inline edits for
+ * The Details tab (frontend-plan §8.5): the company's facts as inline edits for
  * staff — click a fact, change it, Enter — and as plain text for everyone else. No
  * edit form. Each change is a one-field PATCH; the server's refusal stays under the
  * field in its words, and a duplicate PAN names its holder by link, never by id.
  *
- * The company record — **owner: Developer 2** (architecture §8.1, §9.2).
+ * The company record (architecture §8.1, §9.2).
  *
  * The company's own attributes: identity, identifiers, industry and
  * footprint, where it stands (journey, qualification, marker) and the
@@ -13,7 +13,7 @@
  * server refuses them on this route.
  *
  * The onboarding-history table that used to sit below the conversation panel
- * is gone (L2-03). The company's name was taken from it; the name is now part
+ * is gone. The company's name was taken from it; the name is now part
  * of the company's own identity, shown in the page header, and the legacy
  * onboarding path's records stay with that path.
  */
@@ -174,9 +174,9 @@ export function CompanyPanel({
         </section>
       )}
 
-      <section aria-labelledby="company-profile-heading">
+      <section aria-labelledby="company-profile-heading" className="rounded border border-line bg-surface p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 id="company-profile-heading" className="text-lead font-semibold text-ink">
+          <h2 id="company-profile-heading" className="text-heading font-semibold text-ink">
             Company profile
           </h2>
           {canEdit && <p className="text-secondary text-ink-3">Click a fact to change it.</p>}
@@ -203,7 +203,7 @@ export function CompanyPanel({
                 <Identifier value={profile.registration_number} />,
               )}
             </Fact>
-            {/* The GSTINs themselves are the branches below (task 3.13); the count
+            {/* The GSTINs themselves are the branches below; the count
                 stays, because "how many states" belongs in the summary. */}
             <Fact label="GST registrations">
               {profile.gstins.length === 0

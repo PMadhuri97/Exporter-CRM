@@ -1,12 +1,11 @@
-"""Trade history routes — **owner: Developer 3** (allocation task 3.20, plan P5-3,
-P5-4; decision IQ-19).
+"""Trade history routes.
 
 What two companies have traded, and how it went. A relationship hangs off neither
 company in particular — it is the pair — so reading one company's relationships is a
 company sub-resource while a relationship and an invoice have their own paths.
 
-Who may do what (IQ-19)
------------------------
+Who may do what
+---------------
 * **Read** — OPERATIONS, COMPLIANCE, ADMIN and **DEVELOPER**. DEVELOPER is included
   deliberately: these responses carry no identifiers for anyone (see
   ``schemas/trade_history.py``), which is what makes "DEVELOPER reads masked" true
@@ -63,11 +62,11 @@ from app.platform.database.services import get_db
 router = APIRouter(tags=["Exporter CRM"])
 
 #: Every CRM reader, DEVELOPER included — these responses carry no identifiers
-#: (module docstring, decision IQ-19).
+#: (module docstring).
 _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )
-#: RM, Compliance, Admin record invoices and outcomes (IQ-19).
+#: RM, Compliance, Admin record invoices and outcomes.
 _WRITER = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 
 
@@ -293,7 +292,7 @@ def _evidence_refs(body: RecordTradeOutcomeRequest) -> list[dict] | None:
         "A fact about the past: its identity — the relationship, number, date, amount "
         "and currency — is frozen once written, so there is no edit route. A mistake "
         "is corrected by recording the right invoice; the wrong one stays visible.\n\n"
-        "The currency is stored as issued and **never converted** (decision IQ-4). "
+        "The currency is stored as issued and **never converted**. "
         "Amounts come back as strings, because money is not a float and JSON numbers "
         "would invite adding two currencies together.\n\n"
         "`deal_id` is omitted for past trade — what the two companies did before they "

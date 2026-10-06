@@ -1,14 +1,14 @@
-"""The company share lock for writers of compliance inputs — **owner: Developer 4B**.
+"""The company share lock for writers of compliance inputs.
 
-``docs/contracts/background-check.md`` §12.1 invariant 5: Developer 4A decides the background
-check under a ``SELECT … FOR UPDATE`` on the company row and reads the inputs
-through ``ComplianceInputsService`` while it holds that lock. Every Dev4B write of
+``docs/contracts/background-check.md`` §12.1 invariant 5: the background check is decided
+under a ``SELECT … FOR UPDATE`` on the company row, and reads the inputs
+through ``ComplianceInputsService`` while it holds that lock. Every write of
 a company-scoped input — a screening decision; a verification result, a status
 update or a review whose subject is the company — takes ``FOR SHARE`` on the same
 row first, in the writer's own transaction. ``FOR SHARE`` conflicts with
 ``FOR UPDATE``, so a ``CLEAR`` and a new pending input cannot interleave: whichever
 commits second sees the first. Share locks do not conflict with each other, so
-Dev4B's writers never wait on one another because of it.
+the input writers never wait on one another because of it.
 
 A separate module rather than a function in ``compliance_inputs.py``: the reader
 there imports the screening catalogue from ``screening_review_service.py``, and the

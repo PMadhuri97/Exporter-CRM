@@ -2,9 +2,9 @@
 
 **Owner:** Developer 1 — the compliance engine (`docs/developer-allocation.md` §2.1, from
 1 October 2026); built by Developer 4B (L4-02, L4-04 review half, L4-07, L4-09, L4-11) ·
-**Migrations:** `onboarding_0021_verif_review`; since then `onboarding_0023_dev1_foundation`
-(`subject_company_id`), `onboarding_0024_dev1_evidence` (screening evidence),
-`onboarding_0025_dev1_check_cycle` (`cycle_id`, the seven-item checklist) · **Status:** built
+**Migrations:** `onboarding_0021_verif_review`; since then `onboarding_0023_compliance_core`
+(`subject_company_id`), `onboarding_0024_screen_evidence` (screening evidence),
+`onboarding_0025_check_cycle` (`cycle_id`, the seven-item checklist) · **Status:** built
 28 September 2026; this file replaces Developer 4B's task document (`dev4/4b-task.md`, removed
 2 October 2026 — git history keeps it).
 
@@ -201,8 +201,8 @@ All decided by the programme lead on 28 September 2026 unless stated. Shared num
 ## 12. Database tests
 
 Every constraint and trigger above has a direct-SQL violation test that bypasses the ORM
-(`migration-register.md` §2): `test_l4b_verification_schema.py`, `test_l4b_verification_reviews.py`,
-`test_l4b_polling_safety.py`, `test_l4b_evidence_and_subjects.py`,
-`test_l4b_screening_integrity.py`, `test_l4b_buyer_checks.py`,
-`test_l4b_placeholders_provenance.py`; the pure rules in
-`unit/test_l4b_verification_integrity_rules.py`.
+(`migration-register.md` §2): `test_verification_review_schema.py`, `test_verification_reviews.py`,
+`test_polling_safety.py`, `test_evidence_and_subjects.py`,
+`test_screening_integrity.py`, `test_buyer_checks.py`,
+`test_placeholders_provenance.py`; the pure rules in
+`unit/test_verification_integrity_rules.py`.

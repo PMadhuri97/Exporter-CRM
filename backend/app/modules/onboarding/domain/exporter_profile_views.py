@@ -1,12 +1,11 @@
-"""Read-model view types for the company record (EXP-1) — **owner:
-Developer 2** (architecture §8.1, §9.2).
+"""Read-model view types for the company record (architecture §8.1, §9.2).
 
 Pure data structures — no I/O, no session — mirroring
 ``onboarding_request_views.py``'s pattern: ``ExporterProfileService``
 assembles these from ORM rows; nothing here reaches for a database.
 
 The contact, activity and pending-activity views moved to
-``engagement_views.py`` (Developer 3) in L2-01. The detail view below still
+``engagement_views.py``. The detail view below still
 embeds the first two, because the company page shows them.
 
 ``name`` and ``country`` are the company's identity
@@ -52,7 +51,7 @@ class ExporterProfileDetail:
 
     There is no onboarding-request history here any more. The company page
     used to derive the company's display name from it; the name is now part
-    of the company's own identity (L2-03), and the legacy onboarding path's
+    of the company's own identity, and the legacy onboarding path's
     records stay where they are, served by that path's own routes.
     """
 
@@ -75,13 +74,13 @@ class ExporterProfileDetail:
     products: list | None
     year_established: int | None
     #: Whatever the company's own registrar issued, for a company not identified by
-    #: a PAN. Masked like CIN on the way out (task 3.8).
+    #: a PAN. Masked like CIN on the way out.
     registration_number: str | None
     #: Which registration identifies the company; ``None`` for a company that holds
     #: neither identifier, which is a question left open rather than a guess.
     identity_type: CompanyIdentityType | None
     #: Whether this company is in the sales pipeline at all. A buyer-only company is
-    #: ``NOT_IN_PIPELINE``, and its journey and gauges do not apply (plan P4-2).
+    #: ``NOT_IN_PIPELINE``, and its journey and gauges do not apply.
     pipeline_status: CompanyPipelineStatus
     date_added: datetime
     created_at: datetime
@@ -118,13 +117,13 @@ class ExporterProfileListItem:
     industry: str | None
     year_established: int | None
     #: Whatever the company's own registrar issued, for a company not identified by
-    #: a PAN. Masked like CIN on the way out (task 3.8).
+    #: a PAN. Masked like CIN on the way out.
     registration_number: str | None
     #: Which registration identifies the company; ``None`` for a company that holds
     #: neither identifier, which is a question left open rather than a guess.
     identity_type: CompanyIdentityType | None
     #: Whether this company is in the sales pipeline at all. A buyer-only company is
-    #: ``NOT_IN_PIPELINE``, and its journey and gauges do not apply (plan P4-2).
+    #: ``NOT_IN_PIPELINE``, and its journey and gauges do not apply.
     pipeline_status: CompanyPipelineStatus
     date_added: datetime
     created_at: datetime

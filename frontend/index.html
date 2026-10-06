@@ -6,15 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aner Labs Exporter CRM</title>
     <script>
-      // Apply a stored light/dark choice before first paint, so the page never
-      // flashes the wrong theme. Same key and rule as src/platform/theme/theme.ts.
+      // Light is the default (src/platform/theme/theme.ts); apply a stored dark choice
+      // before first paint, so a dark-theme viewer never sees a light flash.
       try {
-        var theme = window.localStorage.getItem('aner.theme');
-        if (theme === 'light' || theme === 'dark') {
-          document.documentElement.setAttribute('data-theme', theme);
+        if (window.localStorage.getItem('aner.theme') === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
         }
       } catch (e) {
-        // No storage: the system preference applies.
+        // No storage: light applies.
       }
     </script>
   </head>

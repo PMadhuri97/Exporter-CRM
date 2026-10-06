@@ -82,7 +82,7 @@ export function revokeOwnSession(sessionId: Session['id']): Promise<void> {
   });
 }
 
-// ── Role management (Phase 2) ───────────────────────────────────────────────
+// ── Role management ───────────────────────────────────────────────
 
 export function listRoles(): Promise<RoleList> {
   return apiRequest<RoleList>('/auth/roles');

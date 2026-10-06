@@ -1,5 +1,4 @@
-"""Company identity and pipeline status — **owner: Developer 3** (allocation F3,
-plan P4-1).
+"""Company identity and pipeline status.
 
 Revision ID: onboarding_0032_company_identity
 Revises: auth_0005_rm_role_name
@@ -9,18 +8,18 @@ on ``alembic_version.version_num``, so it fits and nothing longer would.
 
 Why
 ---
-A company record has so far meant "an exporter we are selling to". Phase 4 makes it
-mean "a company", so the same record can be a seller on one deal and a buyer on
-another (plan §1's keystone). Two things have to become explicit before that:
+A company record has so far meant "an exporter we are selling to". Buyers as companies
+make it mean "a company", so the same record can be a seller on one deal and a buyer on
+another. Two things have to become explicit before that:
 
 * **which registration identifies it.** An Indian company is identified by its PAN; a
   foreign one by whatever its own jurisdiction issues. "Has a PAN?" cannot stand in
   for the question, because a buyer company the migration creates may have neither
-  (IQ-7 excuses migrated buyers), and "we do not know" must not read as "foreign".
+  (migrated buyers are excused), and "we do not know" must not read as "foreign".
 * **whether it is in the pipeline at all.** A company that exists only because it was
   somebody's buyer is not a lead and must not appear in pipeline counts or be chased
-  by sales (plan §8). It is still a full company record — Developer 1's P4-11 screens
-  and clears buyer-only companies — so this is a separate axis from the journey, not a
+  by sales. It is still a full company record — full-depth buyer checks screen
+  and clear buyer-only companies — so this is a separate axis from the journey, not a
   new journey value.
 
 What it adds, all on ``onboarding.exporter_profile``
@@ -31,7 +30,7 @@ What it adds, all on ``onboarding.exporter_profile``
 * ``identity_type`` (nullable), ``registration_number`` (nullable),
   ``pipeline_status`` (``NOT NULL DEFAULT 'IN_PIPELINE'``), ``created_via``,
   ``created_via_deal_id``.
-* ``ExporterSource.DEAL_BUYER`` (IQ-6) — added to the **existing**
+* ``ExporterSource.DEAL_BUYER`` — added to the **existing**
   ``exporter_source_enum``, which is why this migration must stay transactional.
 * ``ck_exporter_profile_not_in_pipeline_start``: ``NOT_IN_PIPELINE`` implies the
   journey has not started (LEAD / NOT_YET_REVIEWED / NOT_CONTACTED). In the database
@@ -44,7 +43,7 @@ What it adds, all on ``onboarding.exporter_profile``
 Data steps
 ----------
 ``identity_type = 'IN_PAN'`` wherever ``pan`` is already set — the only case that can
-be inferred safely. Every other existing company keeps ``NULL``: task 3.8's create
+be inferred safely. Every other existing company keeps ``NULL``: the create
 paths set it going forward, and backfilling a guess would make "unknown" unreadable.
 ``pipeline_status`` needs no backfill: the server default makes every existing company
 ``IN_PIPELINE``, which is what they all are.
@@ -101,7 +100,7 @@ def upgrade() -> None:
     _IDENTITY_TYPE.create(bind, checkfirst=False)
     _PIPELINE_STATUS.create(bind, checkfirst=False)
 
-    # IQ-6. In the transactional body: `ALTER TYPE … ADD VALUE` inside an autocommit
+    # `DEAL_BUYER`. In the transactional body: `ALTER TYPE … ADD VALUE` inside an autocommit
     # block has broken this repository before (register §2) — the value commits, the
     # rest of the migration does not, and `alembic_version` still names the old
     # revision. `IF NOT EXISTS` so a re-run after a failed later step is clean.

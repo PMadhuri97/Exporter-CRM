@@ -76,8 +76,8 @@ class User(AnerModel):
     )
     #: When `is_active` last went false. Cleared on reactivation so it always
     #: describes the current state rather than accumulating history — the
-    #: audit trail of who deactivated whom belongs in the history log
-    #: (Developer 1's task L1-11), not in this column.
+    #: audit trail of who deactivated whom belongs in the history log,
+    #: not in this column.
     deactivated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

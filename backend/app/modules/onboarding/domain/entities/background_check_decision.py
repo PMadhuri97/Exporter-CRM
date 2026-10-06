@@ -1,5 +1,5 @@
-"""``BackgroundCheckDecision`` and ``BackgroundCheckEvidence`` — **owner: Developer 4A**
-(L4-04, L4-06; ``docs/contracts/background-check.md`` §5, §6).
+"""``BackgroundCheckDecision`` and ``BackgroundCheckEvidence``
+(``docs/contracts/background-check.md`` §5, §6).
 
 Both are locked at both layers, the same pair of guarantees ``FollowUpCompletion``
 and ``ExporterLifecycleHistory`` have: ``AppendOnlyRepository`` exposes no update
@@ -128,7 +128,7 @@ class BackgroundCheckDecision(AppendOnlyModel):
             text("decided_at DESC"),
             text("id DESC"),
         ),
-        # 0025 (Developer 1, P2-3a): the cycle a decision was taken in, and a cycle
+        # 0025: the cycle a decision was taken in, and a cycle
         # of the same company.
         ForeignKeyConstraint(
             ["cycle_id", "company_id"],
@@ -141,7 +141,7 @@ class BackgroundCheckDecision(AppendOnlyModel):
             "cycle_id",
             postgresql_where=text("cycle_id IS NOT NULL"),
         ),
-        # 0026 (Developer 1, P3-1a): an approved decision names its proposal — of the
+        # 0026: an approved decision names its proposal — of the
         # same company, by the same proposer (`decided_by`), for the same move — and
         # was approved by someone else. `use_alter`: the proposal names its base
         # decision too, so the two tables refer to each other.
@@ -171,7 +171,7 @@ class BackgroundCheckDecision(AppendOnlyModel):
             "approved_by IS NULL OR approved_by <> decided_by",
             name="ck_background_check_decision_maker_checker",
         ),
-        # 0027 (Developer 1, P3-3a): only a CLEAR expires, and after it was decided.
+        # 0027: only a CLEAR expires, and after it was decided.
         CheckConstraint(
             "expires_at IS NULL OR (to_value = 'CLEAR' AND expires_at > decided_at)",
             name="ck_background_check_decision_expiry",
@@ -198,7 +198,7 @@ class BackgroundCheckDecision(AppendOnlyModel):
         nullable=False,
     )
     #: Who, from the login session — never from a request body. `NULL` only for a
-    #: platform-originated move (`AUTOMATED`), and none exists until RXIL intake (D12).
+    #: platform-originated move (`AUTOMATED`), and none exists until RXIL intake.
     decided_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     decided_by_kind: Mapped[BackgroundCheckDecidedByKind] = mapped_column(
         Enum(
@@ -238,25 +238,25 @@ class BackgroundCheckDecision(AppendOnlyModel):
     details: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
-    #: The Clear rules in force when the decision was taken (Developer 1, P2-4a):
+    #: The Clear rules in force when the decision was taken:
     #: `background_check_views.CLEAR_RULES_V2` on every decision recorded since
     #: migration 0025. `NULL` on the decisions before it, which the documented read
-    #: rule takes as `CLEAR_RULES_V1` — the eight-item checklist (decision K).
+    #: rule takes as `CLEAR_RULES_V1` — the eight-item checklist.
     rules_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    #: The check cycle the decision was taken in (P2-3a); `NULL` = cycle 1 by rule.
+    #: The check cycle the decision was taken in; `NULL` = cycle 1 by rule.
     cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    #: Maker-checker (Developer 1, P3-1a/b, decision A): the proposal this decision
+    #: Maker-checker: the proposal this decision
     #: approved, who approved it and when. All three or none
     #: (`ck_background_check_decision_approval`); the approver is never the decider
     #: (`ck_background_check_decision_maker_checker`). `NULL` on every decision recorded
-    #: by one person — before maker-checker, or a move that needs no approval (IQ-1).
+    #: by one person — before maker-checker, or a move that needs no approval.
     proposal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     approved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    #: When this CLEAR stops being current (Developer 1, P3-3a, decision E): `decided_at`
+    #: When this CLEAR stops being current: `decided_at`
     #: + the validity setting, on every CLEAR since migration 0027. `NULL` on a CLEAR
-    #: before it, which the documented read rule takes as `decided_at` + one year
-    #: (BQ-5), and on every other move.
+    #: before it, which the documented read rule takes as `decided_at` + one year,
+    #: and on every other move.
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -265,7 +265,7 @@ class BackgroundCheckEvidence(AppendOnlyModel):
 
     IDs only, never content (contract §6). Exactly the column for ``kind`` is set
     (``ck_background_check_evidence_kind``). ``verification_review_id`` is a bare uuid
-    with no foreign key on purpose: Developer 4B's review table is theirs (contract §6.1).
+    with no foreign key on purpose: the review table belongs to verification (contract §6.1).
     """
 
     __tablename__ = "background_check_evidence"
@@ -328,7 +328,7 @@ class BackgroundCheckEvidence(AppendOnlyModel):
         ),
         nullable=False,
     )
-    #: Developer 3B's `crm_document` — no second document system.
+    #: The CRM's `crm_document` — no second document system.
     crm_document_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(

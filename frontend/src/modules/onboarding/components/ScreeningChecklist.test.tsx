@@ -86,7 +86,7 @@ describe('ScreeningChecklist — rendered from the server’s catalogue', () => 
       screeningList({ items: [screeningItem({ item_key: 'address-physical', status: 'PASSED' })] }),
     );
     renderChecklist();
-    // Seven items since plan P2-4a retired `website-reviewed`.
+    // Seven items since `website-reviewed` retired.
     expect(await screen.findByText(/1\/7 items reviewed/)).toBeInTheDocument();
   });
 
@@ -185,7 +185,7 @@ function cycle(overrides: Partial<CheckCycle> = {}): CheckCycle {
   };
 }
 
-describe('ScreeningChecklist — evidence on an answer (P2-1b/c)', () => {
+describe('ScreeningChecklist — evidence on an answer', () => {
   it('shows the evidence a saved answer was given', async () => {
     vi.mocked(getScreeningReview).mockResolvedValue(
       screeningList({
@@ -251,7 +251,7 @@ describe('ScreeningChecklist — evidence on an answer (P2-1b/c)', () => {
   });
 });
 
-describe('ScreeningChecklist — check cycles (P2-3d)', () => {
+describe('ScreeningChecklist — check cycles', () => {
   it('names the cycle it shows', async () => {
     vi.mocked(getScreeningReview).mockResolvedValue(screeningList({ cycle: cycle({ number: 1, kind: 'INITIAL', id: 'cycle-1' }) }));
     renderChecklist();

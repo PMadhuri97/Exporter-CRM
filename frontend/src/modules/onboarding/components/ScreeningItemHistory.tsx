@@ -1,6 +1,6 @@
 /**
- * One checklist item's full decision history — **owner: Developer 4B** (verification-and-screening.md
- * §5; architecture §3.3, "whose full history is shown"; 4B-7).
+ * One checklist item's full decision history (verification-and-screening.md
+ * §5; architecture §3.3, "whose full history is shown").
  *
  * The checklist table is append-only, so the server's history route *is* the item's
  * complete record: newest first, paged. Fetched only when opened, and shown exactly

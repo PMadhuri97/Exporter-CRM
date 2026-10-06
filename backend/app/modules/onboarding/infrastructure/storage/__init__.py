@@ -1,11 +1,11 @@
-"""Storage implementations — **owner: Developer 3B** (L3-07, L3-08).
+"""Storage implementations.
 
 Replaces the empty ``app/integrations/object_storage`` scaffold (audit note E34):
 one storage implementation, behind ``onboarding/domain/storage.py``'s port, in the
 module that owns the documents it stores.
 
 ``LocalDiskStorage`` is the prototype's only implementation. An S3 one (Object
-Lock, KMS — decision D8, gate §7.6) lands here beside it, satisfying the same
+Lock, KMS — gate §7.6) lands here beside it, satisfying the same
 port, and local disk stays for development and tests.
 """
 

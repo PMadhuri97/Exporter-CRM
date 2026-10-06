@@ -1,5 +1,4 @@
-"""Response schemas for RXIL intake and bulk import — **owner: Developer 2**
-(L2-12, L2-13)."""
+"""Response schemas for RXIL intake and bulk import."""
 
 from __future__ import annotations
 

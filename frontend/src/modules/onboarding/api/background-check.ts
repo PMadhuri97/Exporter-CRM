@@ -1,5 +1,5 @@
 /**
- * Background check — **owner: Developer 4A** (L4-03, L4-13).
+ * Background check.
  *
  * Contract: `docs/contracts/background-check.md`. Three calls, matching the three
  * routes, and nothing else.
@@ -45,7 +45,7 @@ export async function getBackgroundCheck(customerId: string): Promise<Background
  * are the server's, and the evidence snapshot is assembled server-side. Sending any
  * of them is a 422, so there is no point trying from here.
  *
- * **Maker-checker (P3-1b).** A move the server marks `approval_required` (CLEAR,
+ * **Maker-checker.** A move the server marks `approval_required` (CLEAR,
  * FLAGGED, ON_HOLD) is not recorded: the answer (202) is a **proposal**, and the check
  * moves only when a different compliance officer approves it; the screen reloads the
  * standing either way, which then shows it awaiting approval.
@@ -76,9 +76,9 @@ export async function listBackgroundCheckDecisions(
   );
 }
 
-// ── Developer 1 (compliance engine) ────────────────────────────────────────
+// ── Compliance engine ────────────────────────────────────────
 
-/** What one decision rested on, each pinned id resolved into a readable item (P2-1a). */
+/** What one decision rested on, each pinned id resolved into a readable item. */
 export async function getDecisionEvidence(
   customerId: string,
   decisionId: string,
@@ -88,7 +88,7 @@ export async function getDecisionEvidence(
   );
 }
 
-/** Every check cycle of the company, cycle 1 first (P2-3d). */
+/** Every check cycle of the company, cycle 1 first. */
 export async function listCheckCycles(customerId: string): Promise<CheckCycleList> {
   return apiRequest<CheckCycleList>(
     `/onboarding/exporters/${customerId}/background-check/cycles`,
@@ -96,7 +96,7 @@ export async function listCheckCycles(customerId: string): Promise<CheckCycleLis
 }
 
 /**
- * Start a Re-KYC or Re-KYB (P2-3c). On a CLEAR company the server also reopens it in
+ * Start a Re-KYC or Re-KYB. On a CLEAR company the server also reopens it in
  * the same request. Offer it only when `allowed_cycle_actions` lists the kind.
  */
 export async function startCheckCycle(
@@ -109,7 +109,7 @@ export async function startCheckCycle(
   );
 }
 
-// ── Developer 1: maker-checker (P3-1b/c) and Re-KYC due (P3-3c) ────────────
+// ── Maker-checker and Re-KYC due ─────────────────────────
 
 /** One company's proposals, newest first, each with what this user may do with it. */
 export async function listBackgroundCheckProposals(

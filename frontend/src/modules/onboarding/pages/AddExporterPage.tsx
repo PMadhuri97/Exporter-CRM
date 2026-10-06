@@ -1,12 +1,16 @@
 /**
- * Add a company — smart entry (frontend-plan §8.4). One field first: an identifier
+ * New company, in a side panel over the Companies list (frontend-plan §8.4, §6.9) —
+ * Dynamics quick create with duplicate detection. `/companies/new` opens the list
+ * with the panel open; closing it goes back to the list.
+ *
+ * One field first: an identifier
  * (PAN, GSTIN, IEC, CIN) or the name. Its kind is detected, and once the name and
  * the country are known the server is asked whether the company is already in Aner
  * (`POST /companies/match`, read-only and audited). Then only what the create needs:
  * name, country, source — and, outside India without a PAN, the registration number
- * its own registrar issued (IQ-7). Everything else is added on the company itself.
+ * its own registrar issued. Everything else is added on the company itself.
  *
- * Add a company — **owner: Developer 2** (L2-06, L2-14).
+ * Add a company.
  *
  * Limited to `CreateExporterProfileRequest`'s real fields. The person adding
  * the company is never asked for their own contact — the backend takes it
@@ -22,12 +26,14 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { Button, Field, FormError, Input, PageHeader, Select } from '@/components';
+import { Button, Field, FormError, Input, Select, Sheet } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 
-import { detectEntry, DuplicatePanMessage, duplicatePanHolder, SmartEntry } from '../components';
+import { detectEntry, DuplicatePanMessage, duplicatePanHolder, IdentifierLookup } from '../components';
 import { useCreateExporterLead } from '../hooks';
 import { paths } from '../paths';
+
+import { ExportersListPage } from './ExportersListPage';
 
 const addCompanySchema = z.object({
   // The company's identity (docs/contracts/company-record.md §2.1).
@@ -50,8 +56,8 @@ const addCompanySchema = z.object({
   ]),
   registration_number: z.string().max(100).optional().or(z.literal('')),
 });
-// Decision IQ-7 (a company outside India is identified by its registrar's number unless
-// it holds a PAN) is checked in onSubmit: the PAN comes from the smart entry, not a field.
+// The foreign-identity rule (a company outside India is identified by its registrar's number unless
+// it holds a PAN) is checked in onSubmit: the PAN comes from the identifier lookup, not a field.
 
 type AddCompanyFormValues = z.infer<typeof addCompanySchema>;
 
@@ -71,7 +77,20 @@ function emptyToUndefined(value: string | undefined): string | undefined {
   return value === '' ? undefined : value;
 }
 
+/** `/companies/new`: the list, with the New company panel open over it. */
 export function AddExporterPage() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <ExportersListPage />
+      <NewCompanyPanel onClose={() => navigate(paths.companies)} />
+    </>
+  );
+}
+
+const FORM_ID = 'new-company';
+
+export function NewCompanyPanel({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const createLead = useCreateExporterLead();
   const [serverError, setServerError] = useState<ReactNode>(null);
@@ -92,12 +111,12 @@ export function AddExporterPage() {
   });
   const name = watch('name') ?? '';
   const country = (watch('country') ?? '').trim().toUpperCase();
-  // A PAN — typed, or inside a GSTIN — is itself an identity (IQ-7).
+  // A PAN — typed, or inside a GSTIN — is itself an identity.
   const holdsPan = Boolean(detected.pan);
 
   const onSubmit = async (values: AddCompanyFormValues) => {
     setServerError(null);
-    // IQ-7: outside India and without a PAN, the registrar's number is the identity.
+    // Outside India and without a PAN, the registrar's number is the identity.
     if (values.country !== 'IN' && !holdsPan && !values.registration_number?.trim()) {
       setError('registration_number', { message: 'Required for a company outside India' });
       return;
@@ -131,14 +150,24 @@ export function AddExporterPage() {
   };
 
   return (
-    <div className="max-w-2xl">
-      <PageHeader
-        title="Add a company"
-        description="Every company starts as a lead. Qualification moves it on from there."
-      />
-
-      <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="space-y-6">
-        <SmartEntry
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="New company"
+      description="Every company starts as a lead. Qualification moves it on from there."
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" form={FORM_ID} variant="primary" loading={isSubmitting}>
+            Create lead
+          </Button>
+        </>
+      }
+    >
+      <form id={FORM_ID} onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="space-y-5">
+        <IdentifierLookup
           value={entry}
           onChange={(next) => {
             setEntry(next);
@@ -197,20 +226,10 @@ export function AddExporterPage() {
 
         <FormError>{serverError}</FormError>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
-          <p className="text-secondary text-ink-3">
-            Contacts, branches and industry are added on the company itself.
-          </p>
-          <div className="flex gap-2">
-            <Button variant="quiet" onClick={() => navigate(paths.companies)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" loading={isSubmitting}>
-              Create lead
-            </Button>
-          </div>
-        </div>
+        <p className="text-secondary text-ink-3">
+          Contacts, branches and industry are added on the company itself.
+        </p>
       </form>
-    </div>
+    </Sheet>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * How an invoice was settled — **owner: Developer 3** (task 3.22, plan P5-7).
+ * How an invoice was settled.
  *
  * The same chip grammar every other status uses, so a reader learns it once: green
  * for settled, amber while something is outstanding, red for a dispute, neutral for

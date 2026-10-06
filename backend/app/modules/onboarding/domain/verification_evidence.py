@@ -1,5 +1,5 @@
-"""Evidence on a verification result, and the rule for a manual result —
-**owner: Developer 4B** (``docs/contracts/verification-and-screening.md`` §3, §8; L4-07).
+"""Evidence on a verification result, and the rule for a manual result
+(``docs/contracts/verification-and-screening.md`` §3, §8).
 
 Pure: no I/O. The shape mirrors the qualification contract's evidence
 (``criterion-result.md``): a note and/or references ``{type, ref}``. A verification
@@ -11,12 +11,12 @@ outcome must carry.
 A ``url`` reference must be an absolute ``http`` or ``https`` link with a host. It is
 stored as given and shown to other staff as a link, so anything else — a
 ``javascript:`` or ``data:`` URL above all — would be script run in the reader's
-session (PR audit, 28 Sep 2026).
+session (found in review, 28 Sep 2026).
 
 **``check_manual_outcome`` is the one place the rule lives.**
 
-D16 — minimum evidence for a manual ``PASSED`` (decided by the lead, 28 Sep 2026)
--------------------------------------------------------------------------------
+Minimum evidence for a manual ``PASSED`` (decided 28 Sep 2026)
+--------------------------------------------------------------
 A non-blank note **or** at least one reference — the qualification contract's rule.
 ``FAILED`` and ``REVIEW`` need no evidence.
 
@@ -25,7 +25,7 @@ A manual ``PENDING``
 A manual entry is synchronous: the operator's input *is* the outcome, and nothing will
 ever poll it. A manual ``PENDING`` is therefore a row nothing can resolve — the
 "pending-forever" placeholder the contract's §8 retires — so it is refused. Whether any pending
-check counts toward ``CLEAR`` is Dev4A's D2; if D2 ever needs a pending manual entry,
+check counts toward ``CLEAR`` is the Clear policy's question; if it ever needs a pending manual entry,
 that exception goes here.
 """
 
@@ -113,7 +113,7 @@ def check_manual_outcome(
 
     Raises:
         ValidationError: a ``PENDING`` manual entry, or a ``PASSED`` one with no
-            evidence (D16).
+            evidence.
     """
     check_evidence_shape(evidence)
     if status is VerificationResultStatus.PENDING:
@@ -123,7 +123,7 @@ def check_manual_outcome(
             "(PASSED, FAILED or REVIEW); a manual PENDING result could never resolve"
         )
     if status is VerificationResultStatus.PASSED and (evidence is None or evidence.is_empty):
-        # D16: a note or at least one reference.
+        # A note or at least one reference.
         raise ValidationError(
             "a manual PASSED result needs evidence: a note or at least one reference"
         )

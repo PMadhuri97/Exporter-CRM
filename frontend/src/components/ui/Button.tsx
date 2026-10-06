@@ -25,7 +25,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={buttonClasses({ variant, size, className })}
       {...rest}
     >
-      {loading && <Icon.spinner size={14} className="animate-spin" aria-hidden />}
+      {loading && <Icon.spinner size={16} className="animate-spin" aria-hidden />}
       {children}
     </button>
   );

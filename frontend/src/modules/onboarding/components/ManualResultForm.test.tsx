@@ -80,7 +80,7 @@ describe('ManualResultForm — what it offers', () => {
     expect(types).toEqual(COMPANY_CHECK_TYPES);
   });
 
-  it('labels the check types for a person: acronyms in capitals (R-60)', () => {
+  it('labels the check types for a person: acronyms in capitals (R-61)', () => {
     const form = renderForm();
     const labels = within(within(form).getByLabelText('Check'))
       .getAllByRole('option')
@@ -113,7 +113,7 @@ describe('ManualResultForm — what it offers', () => {
   });
 });
 
-describe('ManualResultForm — the evidence rule (D16)', () => {
+describe('ManualResultForm — the evidence rule', () => {
   it('refuses a PASSED with no evidence before calling the server', async () => {
     const form = renderForm();
     fireEvent.change(within(form).getByLabelText('Outcome'), { target: { value: 'PASSED' } });

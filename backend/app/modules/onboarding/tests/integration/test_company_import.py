@@ -1,4 +1,4 @@
-"""Bulk CSV company import (L2-13).
+"""Bulk CSV company import.
 
 Every row is judged by the CRM's own rules — the same identity checks, the
 same matcher, the same creation service as a company entered by hand — and
@@ -240,7 +240,7 @@ async def test_a_gstin_held_elsewhere_is_a_warning_on_an_accepted_row():
         ({"country": "India"}, "INVALID_COUNTRY"),
         ({"source": "RXIL"}, "INVALID_SOURCE"),
         # A deal's buyer is created outside the pipeline by the buyer-company path; an
-        # import creates leads (R-21).
+        # import creates leads.
         ({"source": "DEAL_BUYER"}, "INVALID_SOURCE"),
         ({"source": "CARRIER_PIGEON"}, "INVALID_SOURCE"),
     ],
@@ -367,7 +367,7 @@ async def _import_on_the_apps_kind_of_engine(*rows: str):
 
     The suite swaps the app's pooled engine for NullPool (`backend/conftest.py`),
     which opens a fresh connection for the first statement after every
-    commit. Import commits once per row (decision U4 is open), so under
+    commit. Import commits once per row, so under
     NullPool a 1,000-row file spends most of its time connecting — measured at
     one connection and ~150 ms per row on a developer machine, against one
     connection in all at 46 ms per row pooled. A time budget measured on
@@ -555,7 +555,7 @@ async def test_a_line_that_is_not_valid_csv_saves_nothing():
     previous = csv.field_size_limit(64)
     try:
         # Any cell longer than the limit will do; `industry` is the longest free-text
-        # column left now that `website` has retired (R11). The point is that the CSV
+        # column left now that `website` has retired. The point is that the CSV
         # reader itself gives up, before a single row is judged or saved.
         with pytest.raises(ValidationError, match="not valid CSV near line 3"):
             await _import(_row(pan=pan), _row(industry="Textiles " + "x" * 100))

@@ -1,6 +1,6 @@
 """Direct-SQL test for ``onboarding_0007_reg_optional``: the database itself
 must accept a NULL ``registration_number``/``registered_address``, not just
-"the service didn't crash" — following ``test_exp1_exporter_crm_schema.py``'s
+"the service didn't crash" — following ``test_exporter_crm_schema.py``'s
 established convention (BUILD.md #12) of proving a constraint (or, here, the
 deliberate absence of one) directly against Postgres rather than through the
 ORM.

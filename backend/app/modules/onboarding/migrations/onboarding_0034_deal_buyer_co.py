@@ -1,5 +1,4 @@
-"""``deal.buyer_company_id`` becomes set-once and freezes with the deal —
-**owner: Developer 2** (allocation task 2.4, plan P4-4).
+"""``deal.buyer_company_id`` becomes set-once and freezes with the deal.
 
 Revision ID: onboarding_0034_deal_buyer_co
 Revises: onboarding_0033_created_via
@@ -14,19 +13,19 @@ the column was dead:
 #. **Set once.** Once a deal names its buyer company, that is the company. The
    buyer's sanctions and AML results are recorded against it and read back through
    it (``for_company(buyer_company_id)``, contract §3.0), the handover guard's
-   condition 5 asks about *that* company (BQ-4), and the handover snapshot records
+   condition 5 asks about *that* company, and the handover snapshot records
    it. Re-pointing the column afterwards would silently reinterpret all of that:
    checks somebody ran on one company would start answering for another, and no
    row would record that it had happened. A deal pointed at the wrong buyer is
    withdrawn and reopened, which leaves a trail.
 
    ``prevent_field_mutation_when_set`` is the right shape: ``NULL`` → a value is
-   allowed once, so the buyer migration (P4-6) can still fill a deal whose buyer
+   allowed once, so the buyer migration can still fill a deal whose buyer
    is only a ``deal_buyer`` row today, and every later change is refused.
 
 #. **Frozen with the deal.** ``prevent_terminal_deal_change()`` already refuses
    changes to a closed deal's ``stage``, ``handed_over_at``,
-   ``withdrawal_reason``, ``company_id`` and ``reference``. P4-4 adds
+   ``withdrawal_reason``, ``company_id`` and ``reference``. This migration adds
    ``buyer_company_id``: a handed-over deal's buyer is what the lending team was
    given.
 
@@ -48,7 +47,7 @@ added to its first condition, and the downgrade restores 0029's body exactly.
 
 (The first version of this migration did drop that block. Migration register §2's
 rule — every constraint gets a direct-SQL violation test — is what caught it, in
-``test_l3b_handover_snapshot.py``. Worth recording, because the next migration to
+``test_handover_snapshot.py``. Worth recording, because the next migration to
 touch this function faces the same trap.)
 
 Rollback
@@ -103,7 +102,7 @@ BEGIN
 
     -- 0029's rule, restated because CREATE OR REPLACE rewrites the whole body.
     -- Set once, then never again: a snapshot may be filled in for a deal handed
-    -- over before snapshots existed (0029, and P4-6's buyer migration), but what
+    -- over before snapshots existed (0029, and the buyer migration), but what
     -- the lending team was given is never rewritten.
     IF OLD.stage IN ('HANDED_OVER', 'WITHDRAWN')
        AND OLD.handover_snapshot IS NOT NULL

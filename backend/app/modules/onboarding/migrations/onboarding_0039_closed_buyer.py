@@ -1,5 +1,4 @@
-"""A closed deal's buyer company may be **filled in** once — **owner: Developer 2**
-(allocation task 2.6, plan §17.2).
+"""A closed deal's buyer company may be **filled in** once.
 
 Revision ID: onboarding_0039_closed_buyer
 Revises: onboarding_0038_buyer_map

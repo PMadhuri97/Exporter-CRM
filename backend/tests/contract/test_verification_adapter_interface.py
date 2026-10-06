@@ -1,4 +1,4 @@
-"""Contract test for EXP-2's `VerificationAdapter` Protocol and registry.
+"""Contract test for the `VerificationAdapter` Protocol and registry.
 
 Mirrors `test_kyb_interface.py`'s shape for `KYBAdapter`: a small dummy
 adapter proves the Protocol's shape and the registry's round-trip, without
@@ -113,7 +113,7 @@ def test_verification_adapter_methods():
     assert health.response_time_ms == 150
 
 
-# ── Piece 3: BatchVerificationAdapter — a second, independent Protocol ────────
+# ── BatchVerificationAdapter — a second, independent Protocol ─────────────────
 
 
 class DummyBatchOnlyAdapter:

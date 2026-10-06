@@ -1,5 +1,4 @@
-"""Request/response schemas for qualification — **owner: Developer 2**
-(L2-09, L2-10, ``docs/contracts/criterion-result.md``).
+"""Request/response schemas for qualification (``docs/contracts/criterion-result.md``).
 
 What a caller can **not** send, on purpose, with ``extra="forbid"`` refusing
 it: who recorded or decided anything (always the signed-in user), and a
@@ -7,7 +6,7 @@ result's or outcome's ``source``, ``decided_by_kind`` or ``confidence``. A
 person entering results through the API is ``MANUAL`` by definition; the
 other sources (import, RXIL, automation) are the platform's own callers of the
 service, never a claim a request body can make — the same reasoning that
-keeps a caller from forging a ``SYSTEM`` approval (L1-05).
+keeps a caller from forging a ``SYSTEM`` approval.
 """
 
 from __future__ import annotations
@@ -278,7 +277,7 @@ class QualificationResponse(BaseModel):
     results: list[ResultResponse]
     outcomes: list[OutcomeResponse]
     #: The outcomes the signed-in user may record now: none once QUALIFIED
-    #: (final, A2) or for a role that may not record outcomes.
+    #: (final) or for a role that may not record outcomes.
     allowed_outcomes: list[QualificationOutcomeValue] = Field(default_factory=list)
     #: Whether the signed-in user may record criterion results now.
     can_record_results: bool = False

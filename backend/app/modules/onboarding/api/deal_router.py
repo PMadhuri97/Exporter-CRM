@@ -1,7 +1,6 @@
-"""Deal and buyer routes — **owner: Developer 3B** (L3-05, L3-06).
+"""Deal and buyer routes.
 
-Empty until now; see `follow_up_router.py`'s docstring for why it was mounted in
-the seam commit rather than when it was filled.
+Mounted by `router.py` before it was filled; see `follow_up_router.py`'s docstring.
 
 No prefix: a deal is its own thing, not a company sub-resource, so its paths are
 absolute (`/deals/...`) the way `history_router.py`'s deal route already is. The
@@ -57,7 +56,7 @@ _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )
 # Changing which paperwork a handover needs is a settings change, so ADMIN only —
-# the same gate `/qualification/criteria` writes use (plan P2-5a).
+# the same gate `/qualification/criteria` writes use.
 _SETTINGS_ADMIN = require_role(UserRole.ADMIN)
 #: The same, as data: who `can_edit` may say yes to.
 _SETTINGS_WRITE_ROLES = frozenset({UserRole.ADMIN})
@@ -73,7 +72,7 @@ _SETTINGS_WRITE_ROLES = frozenset({UserRole.ADMIN})
         "`READY_NOW` in the same transaction (architecture §3.3). A company may "
         "have any number of deals.\n\n"
         "Only a `PROSPECT` or a `CUSTOMER` may have a deal opened: the conversation "
-        "gauge applies from `PROSPECT` onward (assumption A4), so a `LEAD` is refused "
+        "gauge applies from `PROSPECT` onward, so a `LEAD` is refused "
         "with 409 `DEAL_COMPANY_NOT_READY` and nothing is written.\n\n"
         "The stage is not a field on this request: a deal always starts at "
         "`OPEN`, and accepting one would let a caller skip every stage guard."
@@ -107,7 +106,7 @@ async def open_deal(
         "omitted, every stage is returned, including withdrawn and handed-over "
         "deals — a company's deal history is part of its record.\n\n"
         "`as` chooses which side: `seller` (the default) lists the deals this "
-        "company sells on, `buyer` the deals it buys on (task 2.7). The two are "
+        "company sells on, `buyer` the deals it buys on. The two are "
         "separate lists on purpose — the same company can be the seller on one deal "
         "and the buyer on another, and one list mixing them would show rows whose "
         "meaning changed line by line. On the buyer side, `buyer_name` carries **the "
@@ -115,7 +114,7 @@ async def open_deal(
         "repeated in every row.\n\n"
         "The buyer side matches `buyer_company_id` only. A deal whose buyer is still "
         "a legacy `deal_buyer` row does not appear, because nothing yet says that "
-        "buyer is this company; the buyer migration (P4-6) is what makes it appear."
+        "buyer is this company; the buyer migration is what makes it appear."
         "\n\n"
         "`can_open_deal` says whether this caller may open another deal on the "
         "company now — always about selling, whichever side is listed."
@@ -161,7 +160,7 @@ async def list_company_deals(
     description=(
         "`allowed_stage_moves` is what **this** deal may do next, as data, so the "
         "screen does not keep its own copy of the stage graph (§7.5). A handover "
-        "that is legal by the graph but blocked by assumption A5's guard is "
+        "that is legal by the graph but blocked by the handover guard is "
         "absent from that list, and `handover_blocked_reason` says why."
     ),
     responses={
@@ -184,11 +183,11 @@ async def get_deal(
     summary="Move a deal to another stage",
     description=(
         "The only way a deal's stage changes. The move must be one the stage graph "
-        "allows (deal contract §1.1); `WITHDRAWN` requires a reason (assumption "
-        "A7) and every other stage refuses one.\n\n"
+        "allows (deal contract §1.1); `WITHDRAWN` requires a reason "
+        "and every other stage refuses one.\n\n"
         "`HANDED_OVER` additionally requires a buyer, and every condition of the "
         "handover guard (deal contract §6.1). Live today: the company must be a "
-        "`CUSTOMER` with a `CLEAR` background check (assumption A5), and the deal "
+        "`CUSTOMER` with a `CLEAR` background check, and the deal "
         "must have an `AVAILABLE` document in every category "
         "`/settings/deal-required-documents` requires.\n\n"
         "A refusal is 409 `DEAL_HANDOVER_BLOCKED` and names **every** unmet "
@@ -234,28 +233,28 @@ async def transition_deal_stage(
     summary="Record the deal's buyer, as a company or as details",
     description=(
         "Three forms, exactly one per request.\n\n"
-        "**`{buyer_company_id}`** names the company the buyer **is** (plan P4-4). "
+        "**`{buyer_company_id}`** names the company the buyer **is**. "
         "Use this one. The buyer is then a full company record: it can be screened "
-        "on its own timeline, the handover guard reads its sanctions and AML "
-        "(decision BQ-4), and the same company can be the seller on another deal. "
+        "on its own timeline, the handover guard reads its sanctions and AML, "
+        "and the same company can be the seller on another deal. "
         "It is **set once** — a deal pointed at the wrong buyer is withdrawn and a "
         "new one opened, so that the correction leaves a trail. Setting the same "
         "company again changes nothing and is not an error. The company must exist "
         "and must not be the seller on this deal.\n\n"
         "**`{create: {name, country, pan?, gstin?, registration_number?}}`** creates "
         "the buyer as a company that is **not in the pipeline** (not a lead) and names "
-        "it, in one step (plan P4-3). The server matches first, as "
+        "it, in one step. The server matches first, as "
         "`POST /companies/match` does, and audits every identifier lookup: an "
         "identifier a company on file holds is refused with 409 "
         "`BUYER_COMPANY_ALREADY_KNOWN` naming that company, rather than duplicated. A "
-        "name that only resembles one does not stop it (IQ-8). A company outside India "
-        "needs its registration number unless it has a PAN (IQ-7).\n\n"
+        "name that only resembles one does not stop it. A company outside India "
+        "needs its registration number unless it has a PAN.\n\n"
         "**`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer "
         "per deal, so it replaces that row rather than adding another (deal "
         "contract §3); `PUT` rather than `POST` for the same reason. Still accepted "
         "because deals written before the buyer migration have one, and because a "
-        "`deal_buyer`'s own sanctions and AML are the only thing BQ-4's rule can "
-        "read for such a deal. These writes retire in P4-10.\n\n"
+        "`deal_buyer`'s own sanctions and AML are the only thing the buyer-compliance "
+        "rule can read for such a deal. These writes will retire.\n\n"
         "A buyer's problems stay on the buyer: a failed buyer check is recorded "
         "against the buyer and never against the selling company "
         "(architecture §3.5).\n\n"
@@ -334,13 +333,13 @@ async def set_deal_buyer(
     summary="Record which of the seller's GST branches this deal is invoiced from",
     description=(
         "The registration's id, never its GSTIN — which is what makes it impossible "
-        "to point a deal at another company's copy of a shared GSTIN (decision "
-        "IQ-9). It must be one of **this deal's seller's** registrations and must be "
+        "to point a deal at another company's copy of a shared GSTIN. "
+        "It must be one of **this deal's seller's** registrations and must be "
         "active; `fk_deal_seller_gst_registration_id` is composite and would refuse "
         "another company's anyway.\n\n"
-        "May be set and changed freely before handover (decision IQ-20) and is frozen "
+        "May be set and changed freely before handover and is frozen "
         "with the deal afterwards. `null` clears it.\n\n"
-        "Two handover rules read it (plan P6-7): a deal invoiced through a **flagged** "
+        "Two handover rules read it: a deal invoiced through a **flagged** "
         "branch is blocked, and a deal whose seller has an active registration but "
         "names none is asked to name one. A seller with no registration at all is not "
         "asked."
@@ -372,7 +371,7 @@ async def set_deal_invoicing_branch(
     return DealResponse.from_view(view, current_user)
 
 
-# ── Settings: which paperwork a handover needs (plan P2-5a) ──────────────────
+# ── Settings: which paperwork a handover needs ───────────────────────────────
 #
 # Under `/settings/...` rather than `/deals/...` because it is a rule about every
 # deal, not a property of one — the same shape `/qualification/criteria` already
@@ -402,7 +401,7 @@ async def list_deal_required_documents(
     # `_READER`, not `_STAFF`: the plan says "read Staff", but every other
     # settings read in the CRM admits DEVELOPER (`GET /qualification/criteria`),
     # which is read-only across the module, and this rule carries no identifiers
-    # and nothing decision D8 protects. One convention beats two.
+    # and nothing the DEVELOPER rule protects. One convention beats two.
     current_user: Annotated[User, Depends(_READER)],
     db: AsyncSession = Depends(get_db),
 ) -> DealRequiredDocumentsResponse:

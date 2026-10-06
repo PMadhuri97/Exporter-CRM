@@ -1,9 +1,8 @@
-"""A company's GST registrations, as the API serves them — **owner: Developer 3**
-(allocation tasks 3.13, 3.14, 3.15, 3.17; plan P6-2, P6-5).
+"""A company's GST registrations, as the API serves them.
 
 Its own file rather than ``exporter.py``: a registration is a record in its own
-right now (task 3.12), with its own routes, and the company shapes are already a
-long file three lanes edit.
+right now, with its own routes, and the company shapes are already a
+long file.
 """
 
 from __future__ import annotations
@@ -27,15 +26,15 @@ from app.platform.authentication.models import User, UserRole
 
 #: The GST portal's own search page. The link is built per registration so a
 #: COMPLIANCE or ADMIN user can check a GSTIN against the source without copying it
-#: out by hand (task 3.17). Not an API we call: it is a page for a person.
+#: out by hand. Not an API we call: it is a page for a person.
 GST_PORTAL_SEARCH = "https://services.gst.gov.in/services/searchtp?tin="
 
 
 def withholds_branch_flags(viewer: User) -> bool:
     """Whether a branch's flag status, reason and count are withheld from `viewer`.
 
-    DEVELOPER only (R-47, decision D-05 of 4 October 2026): a flag is a compliance
-    judgement, and D8 already refuses DEVELOPER the background check, its decisions
+    DEVELOPER only (decided 4 October 2026): a flag is a compliance
+    judgement, and DEVELOPER is already refused the background check, its decisions
     and the screening answers for the same reason. OPERATIONS keeps them — a flag
     blocks the deals it is working on, and the refusal names it.
     """
@@ -43,7 +42,7 @@ def withholds_branch_flags(viewer: User) -> bool:
 
 
 class AddGstRegistrationRequest(BaseModel):
-    """Record a GST registration for a company (task 3.13).
+    """Record a GST registration for a company.
 
     **No state.** ``state_code`` and ``state_name`` come from the GSTIN's first two
     characters (``domain/gst_states.py``); accepting them here would let someone
@@ -75,7 +74,7 @@ class DeactivateGstRegistrationRequest(BaseModel):
 
 
 class FlagGstRegistrationRequest(BaseModel):
-    """Flag or unflag a branch (task 3.14). The reason is **required** both ways.
+    """Flag or unflag a branch. The reason is **required** both ways.
 
     Flagging: the reason is what the blocked handover will say, so without it the
     person who hits the block has nothing to act on. Unflagging: "why we decided the
@@ -93,7 +92,7 @@ class GstRegistrationResponse(BaseModel):
 
     ``gstin`` is masked for a role that may not reveal identifiers, by the same rule
     as the company's own. ``verify_url`` is served **only** to a role that sees the
-    full GSTIN (task 3.17): the link contains the GSTIN, so sending it to a masked
+    full GSTIN: the link contains the GSTIN, so sending it to a masked
     role would hand over the value the masking exists to withhold.
     """
 
@@ -109,7 +108,7 @@ class GstRegistrationResponse(BaseModel):
     status: GstRegistrationStatus
     address: str | None
     #: `null` for DEVELOPER: a flag is a compliance judgement, withheld from that role
-    #: like the background check itself (D8; R-47, decision D-05 of 4 October 2026).
+    #: like the background check itself (decided 4 October 2026).
     flag_status: GstRegistrationFlag | None
     #: Why it is flagged. `null` when it is not, and always `null` for DEVELOPER.
     flag_reason: str | None
@@ -117,10 +116,10 @@ class GstRegistrationResponse(BaseModel):
     deactivated_at: datetime | None
     created_at: datetime
     #: A link to the GST portal's own search page for this GSTIN. `null` for a role
-    #: that sees the GSTIN masked — the link would carry the value (task 3.17).
+    #: that sees the GSTIN masked — the link would carry the value.
     verify_url: str | None = None
-    #: Other companies whose active registrations include this GSTIN (decision IQ-9:
-    #: a warning, never a refusal). A flag here does not touch theirs.
+    #: Other companies whose active registrations include this GSTIN (a warning,
+    #: never a refusal). A flag here does not touch theirs.
     also_held_by: list[uuid.UUID] = Field(default_factory=list)
 
     def masked_for(self, viewer: User) -> Self:
@@ -145,7 +144,7 @@ class GstRegistrationListResponse(BaseModel):
     registrations: list[GstRegistrationResponse]
     #: How many **active** branches are flagged — what the company page's warning
     #: chip counts, served rather than recomputed so the screen and the guard agree.
-    #: `null` for DEVELOPER, who is not served flags (R-47).
+    #: `null` for DEVELOPER, who is not served flags.
     flagged_count: int | None = 0
 
 

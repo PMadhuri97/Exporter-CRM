@@ -60,12 +60,12 @@ class EventType(str, enum.Enum):
     # outcomes; the teams that receive these own the decisions that follow.
     #
     # `company.became_customer` fires when a company is a Prospect and its
-    # background check is CLEAR, whichever happens second (assumption A1). The
+    # background check is CLEAR, whichever happens second. The
     # customers team builds the receiver later (decision 10), so nothing
     # consumes it yet — which is expected, and why the CRM only announces.
     #
     # `deal.handed_over` fires when a deal passes to the lending team, which is
-    # permitted only for a CUSTOMER whose check is CLEAR (assumption A5).
+    # permitted only for a CUSTOMER whose check is CLEAR.
     COMPANY_BECAME_CUSTOMER = "company.became_customer"
     DEAL_HANDED_OVER = "deal.handed_over"
 
@@ -178,8 +178,8 @@ class EventEnvelope(BaseModel):
     (`company.became_customer`, `deal.handed_over`), whose contract puts the
     company, the deal and the actor on the envelope rather than burying them in
     `payload` where nothing would keep producers consistent. Both are optional
-    and default to `None`; nothing populates them yet — the CRM event helper
-    (L1-12) is the first writer. See `docs/contracts/event-envelope.md`.
+    and default to `None`; the CRM event helper is the first writer. See
+    `docs/contracts/event-envelope.md`.
     """
 
     event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))

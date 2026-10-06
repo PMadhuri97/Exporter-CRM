@@ -1,6 +1,6 @@
 /**
- * The compliance screening checklist — **owner: Developer 4B** (verification-and-screening.md §5,
- * §9; 4B-7); evidence and cycles by **Developer 1** (plans P2-1b/c, P2-3d).
+ * The compliance screening checklist (verification-and-screening.md §5, §9), with
+ * evidence and cycles.
  *
  * Rendered from the server: the items, their labels, sections and order come from
  * `catalogue` (the one backend catalogue, `SCREENING_CATALOGUE_ITEMS`), and whether
@@ -10,15 +10,15 @@
  * Screening is a compliance list inside the background check. It is not
  * qualification, and not a gauge (architecture §5.5).
  *
- * Developer 1, 1 October 2026:
- * - **Evidence** (P2-1b/c): each answer shows the evidence it was given (`EvidenceList`),
+ * Since 1 October 2026:
+ * - **Evidence**: each answer shows the evidence it was given (`EvidenceList`),
  *   and a new answer may carry some — the company's scanned-clean documents or an
- *   http(s) link. Optional (IQ-14). Answers are append-only, so evidence belongs to the
+ *   http(s) link. Optional. Answers are append-only, so evidence belongs to the
  *   answer it was given with; a new answer starts with none attached.
- * - **Cycles** (P2-3d): the list is one check cycle's — the current one, where answers
+ * - **Cycles**: the list is one check cycle's — the current one, where answers
  *   are recorded; an earlier one, read-only, when chosen. Whether the viewer may record
  *   still comes only from `capabilities`, which the server sets false on earlier cycles.
- * - The catalogue is seven items since `website-reviewed` was retired (P2-4a).
+ * - The catalogue is seven items since `website-reviewed` was retired.
  */
 
 import { useState } from 'react';
@@ -64,11 +64,11 @@ function CyclePicker({
   const options = cycles.data?.cycles ?? [];
   if (options.length < 2) return null;
   return (
-    <label className="mt-2 flex items-center gap-2 text-xs text-ink-2">
+    <label className="mt-2 flex items-center gap-2 text-caption text-ink-2">
       Cycle
       <select
         aria-label="Check cycle"
-        className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink"
+        className="rounded-md border border-line bg-surface px-2 py-1 text-caption text-ink"
         value={value ?? ''}
         onChange={(event) => onChange(event.target.value || undefined)}
       >
@@ -131,7 +131,7 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
           <div>
             <h3 className="font-semibold text-ink">Review checklist</h3>
             {!query.isLoading && !query.isError && (
-              <p className="mt-0.5 text-xs text-ink-2">
+              <p className="mt-0.5 text-caption text-ink-2">
                 {completed}/{catalogue.length} items reviewed
                 {unrecognised.length > 0 && ` · ${unrecognised.length} unrecognised`}
               </p>
@@ -139,7 +139,7 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
           </div>
         </div>
         {cycle && (
-          <p data-testid="screening-cycle" className="mt-2 text-xs text-ink-2">
+          <p data-testid="screening-cycle" className="mt-2 text-caption text-ink-2">
             Cycle {cycle.number} · {cycleKindLabel(cycle.kind)} · started {formatDate(cycle.started_at)}
             {!isCurrentCycle && ' · earlier cycle, read-only'}
           </p>
@@ -152,7 +152,7 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
             onChange={setCycleId}
           />
         )}
-        <p className="mt-3 rounded-md bg-paper px-3 py-2 text-xs leading-5 text-ink-3">
+        <p className="mt-3 rounded-md bg-paper px-3 py-2 text-caption leading-5 text-ink-3">
           Decisions and comments are stored with reviewer and timestamp; every earlier
           decision stays in each item&apos;s history.
         </p>
@@ -162,7 +162,7 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
         {query.isLoading ? (
           <div className="h-32 animate-pulse rounded bg-sunken" />
         ) : query.isError ? (
-          <div role="alert" className="rounded-md border border-negative/30 bg-negative-tint p-3 text-xs text-negative">
+          <div role="alert" className="rounded-md border border-negative/30 bg-negative-tint p-3 text-caption text-negative">
             Could not load checklist.{' '}
             <button type="button" className="underline" onClick={() => void query.refetch()}>
               Retry
@@ -171,7 +171,7 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
         ) : (
           sections.map((section) => (
             <div key={section} data-testid="screening-section">
-              <p className="mb-2 text-xs font-semibold text-ink">{section}</p>
+              <p className="mb-2 text-caption font-semibold text-ink">{section}</p>
               <div className="space-y-2">
                 {catalogue
                   .filter((item) => item.section === section)
@@ -202,7 +202,7 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
 
         {!query.isLoading && !query.isError && unrecognised.length > 0 && (
           <div>
-            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-attention">
+            <p className="mb-2 flex items-center gap-1.5 text-caption font-semibold text-attention">
               <Icon.warning size={13} /> Unrecognised items
             </p>
             <p className="mb-2 text-[11px] leading-5 text-ink-2">
@@ -216,7 +216,7 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
                   data-testid="unrecognised-item"
                   className="rounded-lg border border-dashed border-attention/30 bg-attention-tint px-3 py-2.5"
                 >
-                  <p className="break-all font-mono text-[11px] text-ink">{item.item_key}</p>
+                  <p className="break-all text-[11px] text-ink">{item.item_key}</p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
                     <VerificationStatusChip value={item.status} />
                     <span className="text-[11px] text-ink-3">
@@ -224,7 +224,7 @@ export function ScreeningChecklist({ customerId }: { customerId: string }) {
                     </span>
                   </div>
                   {item.comment && (
-                    <p className="mt-1.5 text-xs leading-5 text-ink-2">{item.comment}</p>
+                    <p className="mt-1.5 text-caption leading-5 text-ink-2">{item.comment}</p>
                   )}
                 </div>
               ))}
@@ -399,10 +399,10 @@ function ChecklistCard({
       data-item-key={item.key}
       className="rounded-lg border border-line bg-paper px-3 py-2.5"
     >
-      <p className="text-xs leading-5 text-ink-2">{item.label}</p>
+      <p className="text-caption leading-5 text-ink-2">{item.label}</p>
       <select
         aria-label={`${item.label} status`}
-        className="mt-2 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60"
+        className="mt-2 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-caption text-ink outline-none focus:border-accent disabled:opacity-60"
         value={status}
         disabled={disabled}
         onChange={(event) => setStatus(event.target.value as ScreeningChecklistStatus)}
@@ -414,7 +414,7 @@ function ChecklistCard({
       </select>
       <textarea
         aria-label={`${item.label} comment`}
-        className="mt-2 min-h-16 w-full resize-y rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60"
+        className="mt-2 min-h-16 w-full resize-y rounded-md border border-line bg-surface px-2 py-1.5 text-caption text-ink outline-none focus:border-accent disabled:opacity-60"
         placeholder={canRecord ? 'Add review comment (optional)' : undefined}
         value={comment}
         disabled={disabled}
@@ -444,7 +444,7 @@ function ChecklistCard({
           <button
             type="button"
             onClick={() => void save()}
-            className="rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-paper"
+            className="rounded-md bg-accent-solid px-2.5 py-1.5 text-caption font-medium text-white"
           >
             Save
           </button>

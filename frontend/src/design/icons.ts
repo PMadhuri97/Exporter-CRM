@@ -1,10 +1,10 @@
 /**
- * Every icon the app draws, named by what it means (frontend-plan §5.5).
+ * Every icon the app draws, named by what it means (frontend-plan §5.8).
  *
  * Screens say `<Icon.followUp />`, never a glyph's own name, so the set can change
- * in one place: `icon-names.ts`. The shapes are Phosphor's (regular weight, the
- * 1.5px look), copied into `icon-paths.ts` by `scripts/build-icons.mjs` so the
- * bundle carries only the one weight it draws.
+ * in one place: `icon-names.ts`. The shapes are Fluent UI System Icons' (20 px,
+ * regular style, as Dynamics 365 draws them), copied into `icon-paths.ts` by
+ * `scripts/build-icons.mjs` so the bundle carries only the glyphs it draws.
  *
  * A glyph carries meaning only beside a label or a shape: pass `aria-hidden` where
  * the text next to it already says the thing, and an `aria-label` on the control
@@ -29,7 +29,7 @@ export type IconComponent = ReturnType<typeof makeIcon>;
 
 function makeIcon(glyph: string) {
   const drawn = ICON_PATHS[glyph];
-  const component = forwardRef<SVGSVGElement, IconProps>(function PhosphorGlyph(
+  const component = forwardRef<SVGSVGElement, IconProps>(function FluentGlyph(
     { size = '1em', weight = 'regular', ...rest },
     ref,
   ) {
@@ -39,7 +39,7 @@ function makeIcon(glyph: string) {
       {
         ref,
         xmlns: 'http://www.w3.org/2000/svg',
-        viewBox: '0 0 256 256',
+        viewBox: '0 0 20 20',
         width: size,
         height: size,
         fill: 'currentColor',

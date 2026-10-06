@@ -1,7 +1,7 @@
-"""Unit tests for `ManualEntryAdapter` — EXP-2's one shipped `VerificationAdapter`.
+"""Unit tests for `ManualEntryAdapter` — the one shipped `VerificationAdapter`.
 
-Dev4B 4B-4: a manual PASSED carries evidence and a manual PENDING is refused
-(`domain.verification_evidence.check_manual_outcome`, D16), so
+A manual PASSED carries evidence and a manual PENDING is refused
+(`domain.verification_evidence.check_manual_outcome`), so
 the PASSED requests below carry a note.
 """
 
@@ -138,7 +138,7 @@ def test_get_vendor_health_is_always_healthy():
     assert health.response_time_ms == 0
 
 
-# ── Dev4B 4B-4 / 4B-6: the manual outcome rule ──────────────────────────────
+# ── The manual outcome rule ─────────────────────────────────────────────────
 
 
 def test_a_passed_result_without_evidence_is_refused():
@@ -161,7 +161,7 @@ def test_a_passed_result_with_a_reference_and_no_note_is_accepted():
 
 @pytest.mark.parametrize("status", ["FAILED", "REVIEW"])
 def test_failed_and_review_need_no_evidence(status: str):
-    """D16 (lead, 28 Sep 2026): only a manual PASSED needs evidence."""
+    """Decided 28 Sep 2026: only a manual PASSED needs evidence."""
     outcome = ManualEntryAdapter().verify(_request(evidence=None, status=status))
     assert outcome.status.value == status
 

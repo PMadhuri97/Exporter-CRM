@@ -1,9 +1,9 @@
 /**
- * Follow-ups and completions — **owner: Developer 3A, Phase 2** (L3-04b).
+ * Follow-ups and completions.
  *
- * Created as a stub in the seam commit, together with its
+ * Created as a stub, together with its
  * `export * from './follow-ups'` line in `api/index.ts`, and filled here — so the
- * barrel, which every owner shares, was never opened twice.
+ * barrel, which every area shares, was never opened twice.
  *
  * The paths are `/onboarding/follow-ups`, not under `/onboarding/exporters/...`: a
  * follow-ups list spans every company, so it is not a company sub-resource. See
@@ -23,7 +23,7 @@ import type {
 /**
  * What we owe exporters next: follow-ups, and companies parked at NOT_NOW.
  *
- * No owner filter by default — follow-ups are the whole team's (decision D2).
+ * No owner filter by default — follow-ups are the whole team's.
  * `actorId` narrows the list; it is never a permission.
  */
 export function listFollowUps(params: FollowUpListParams = {}): Promise<FollowUpList> {

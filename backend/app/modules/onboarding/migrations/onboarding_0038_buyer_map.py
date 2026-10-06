@@ -1,5 +1,4 @@
-"""The buyer migration's mapping table — **owner: Developer 2** (allocation task
-2.6, plan P4-6, §17.2).
+"""The buyer migration's mapping table.
 
 Revision ID: onboarding_0038_buyer_map
 Revises: onboarding_0037_trade_history
@@ -20,7 +19,7 @@ remembering.
 
 This migration adds **only the table**. It moves no data: the migration itself is a
 command (``python -m app.modules.onboarding.migrate_deal_buyers``), because it needs
-a dry-run report and a human confirmation of name-only duplicates (decision IQ-8)
+a dry-run report and a human confirmation of name-only duplicates
 between reading and writing — which an Alembic revision cannot have.
 
 Append-only

@@ -1,8 +1,7 @@
 /**
- * What these two companies have traded before — **owner: Developer 3**
- * (allocation F3 and task 3.22, plan P5-7).
+ * What these two companies have traded before.
  *
- * The F3 stub's props are unchanged, so task 2.11's mounting on the deal page did not
+ * The first stub's props are unchanged, so its mounting on the deal page did not
  * have to move: `{ sellerId, buyerId, dealId }` still, and `dealId` still optional for
  * the company page.
  *
@@ -12,9 +11,9 @@
  *   what the seller invoiced the buyer, and the other direction is a different
  *   relationship with different invoices and different risk. The arrow is the point.
  * - **No relationship is a real answer**, and a different one from no invoices. Every
- *   deal recorded since task 3.18 has a relationship, so a pair without one is a deal
- *   the buyer migration has not reached (P4-6) or whose relationship backfill has not
- *   run (P5-5) — not two companies that have never traded. The empty state says which.
+ *   deal recorded since trade relationships has one, so a pair without one is a deal
+ *   the buyer migration has not reached or whose relationship backfill has not
+ *   run — not two companies that have never traded. The empty state says which.
  *
  * It asks for the pair through `useTradeRelationshipForPair`, which filters the
  * seller's list rather than calling a route per pair: the list is the request the
@@ -22,7 +21,7 @@
  *
  * It renders **no heading of its own**: both mount sites wrap it in a `Panel` titled
  * "Trade history", the grammar every other section on those pages uses, and the stub's
- * own heading would have read twice. The props are untouched — what the F3 stub fixed
+ * own heading would have read twice. The props are untouched — what the stub fixed
  * was the mounting, not the markup.
  */
 
@@ -50,7 +49,7 @@ export interface TradeHistoryPanelProps {
  * a buyer the migration created from a `deal_buyer` row may have had only a tax id. */
 function Pair({ seller, buyer }: { seller: TradeCounterparty; buyer: TradeCounterparty }) {
   return (
-    <p className="text-sm text-ink-2">
+    <p className="text-body text-ink-2">
       <Link
         to={paths.company(seller.company_id)}
         className="font-medium text-ink hover:underline"
@@ -102,7 +101,7 @@ export function TradeHistoryPanel({ sellerId, buyerId, dealId }: TradeHistoryPan
         <Pair seller={relationship.seller} buyer={relationship.buyer} />
         <Link
           to={paths.company(relationship.buyer.company_id)}
-          className="flex items-center gap-1 text-xs font-medium text-ink hover:underline"
+          className="flex items-center gap-1 text-caption font-medium text-ink hover:underline"
         >
           {relationship.buyer.name ?? 'The buyer'}
           <Icon.caretRight size={13} />

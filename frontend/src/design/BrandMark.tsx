@@ -1,36 +1,42 @@
 import { cn } from '@/lib/cn';
 
 /**
- * The brand mark (frontend-plan §5.7): a solid ink square with a lower-case
- * italic serif *a* knocked out in paper, beside "Aner Labs" in the sans at 600.
- * No hue and no gradient. A placeholder until the business supplies a logo
- * (D-20); the favicon (`public/favicon.svg`) is the square alone.
+ * The brand (frontend-plan §5.8): the "Aner Labs" wordmark at 16/600 with the
+ * product, "Exporter CRM", in grey beside it — the way Salesforce and Dynamics name
+ * the app in their header. A placeholder until a logo exists. The favicon
+ * (`public/favicon.svg`) is a white "A" on the brand blue, the same as `mark`.
  */
 export function BrandMark({
   wordmark = true,
-  size = 'md',
+  product = true,
+  mark = false,
   className,
 }: {
-  /** Off where only the square fits (the collapsed rail). */
+  /** Off where only the square fits (the collapsed side navigation). */
   wordmark?: boolean;
-  size?: 'sm' | 'md';
+  /** "Exporter CRM" beside the wordmark. */
+  product?: boolean;
+  /** The square "A", as on the favicon. */
+  mark?: boolean;
   className?: string;
 }) {
   return (
-    <span className={cn('inline-flex items-center gap-2.5', className)}>
-      <span
-        aria-hidden
-        className={cn(
-          'flex shrink-0 items-center justify-center rounded-[5px] bg-ink font-display italic leading-none text-paper',
-          size === 'md' ? 'h-8 w-8 pb-1 text-[22px]' : 'h-6 w-6 pb-0.5 text-[17px]',
-        )}
-      >
-        a
-      </span>
+    <span className={cn('inline-flex items-center gap-2', className)}>
+      {(mark || !wordmark) && (
+        <span
+          aria-hidden
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-accent-solid text-[13px] font-bold leading-none text-white"
+        >
+          A
+        </span>
+      )}
       {wordmark ? (
-        <span className="whitespace-nowrap text-body font-semibold text-ink">Aner Labs</span>
+        <span className="flex items-baseline gap-2 whitespace-nowrap">
+          <span className="text-heading font-semibold text-ink">Aner Labs</span>
+          {product && <span className="text-body text-ink-3">Exporter CRM</span>}
+        </span>
       ) : (
-        <span className="sr-only">Aner Labs</span>
+        <span className="sr-only">Aner Labs Exporter CRM</span>
       )}
     </span>
   );

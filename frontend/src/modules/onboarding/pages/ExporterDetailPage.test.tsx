@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useCurrentUser } from '@/platform/auth';
-import { ShellProvider, useShellState } from '@/platform/shell';
+import { ShellProvider } from '@/platform/shell';
 
 import {
   getExporterProfileDetail,
@@ -51,9 +51,9 @@ vi.mock('../api', () => ({
   getScreeningReview: vi.fn(),
   updateScreeningReviewItem: vi.fn(),
   getBankActivity: vi.fn(),
-  // Developer 3A, L3-03. `ConversationPanel` calls these itself rather than
-  // taking them as props — the shell was never given the gauge to hold, and
-  // Developer 3 does not edit this page. The factory has to list them, because
+  // `ConversationPanel` calls these itself rather than
+  // taking them as props — the shell was never given the gauge to hold.
+  // The factory has to list them, because
   // `vi.mock` with a factory replaces the whole module: a function left out is
   // `undefined` at the call site, not a passthrough.
   getExporterConversation: vi.fn(),
@@ -64,7 +64,7 @@ vi.mock('../api', () => ({
   listCompanyDocuments: vi.fn(),
   getDocumentCategories: vi.fn(),
   listCompanyHistory: vi.fn(),
-  // The Deals tab's trade history, both sides (task 3.22).
+  // The Deals tab's trade history, both sides.
   listTradeRelationships: vi.fn(),
   getTradeRelationship: vi.fn(),
   getTradeInvoice: vi.fn(),
@@ -145,19 +145,6 @@ function mockUser(role: string, id: string) {
 }
 
 /** Opens the company page, on `tab` when given (`?tab=`). */
-/** The page's own keys as buttons, run the way the shell runs them. */
-function Keys() {
-  const { shortcuts } = useShellState();
-  return (
-    <div>
-      {shortcuts.map((shortcut) => (
-        <button key={shortcut.key} type="button" onClick={shortcut.run}>
-          key {shortcut.key}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function renderPage(tab?: string, withShell = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -173,7 +160,6 @@ function renderPage(tab?: string, withShell = false) {
         {withShell ? (
           <ShellProvider>
             {routes}
-            <Keys />
           </ShellProvider>
         ) : (
           routes
@@ -183,7 +169,7 @@ function renderPage(tab?: string, withShell = false) {
   );
 }
 
-describe('ExporterDetailPage — E9', () => {
+describe('ExporterDetailPage — screening review', () => {
   beforeEach(() => {
     vi.mocked(getExporterProfileDetail).mockResolvedValue(DETAIL);
     vi.mocked(listExporterContacts).mockResolvedValue({
@@ -261,7 +247,7 @@ describe('ExporterDetailPage — E9', () => {
     expect(await screen.findByText('No screening results yet')).toBeInTheDocument();
   });
 
-  it('opens on the tab named in the URL, and on Overview otherwise', async () => {
+  it('opens on the tab named in the URL, and on Details otherwise', async () => {
     mockUser('COMPLIANCE', 'someone-else');
     const { unmount } = renderPage('qualification');
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
@@ -271,26 +257,8 @@ describe('ExporterDetailPage — E9', () => {
 
     renderPage('no-such-tab');
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: 'Company profile' })).toBeInTheDocument();
-  });
-
-  it('lets staff press l to log an activity, and gives DEVELOPER no such key', async () => {
-    mockUser('OPERATIONS', 'someone-else');
-    const { unmount } = renderPage(undefined, true);
-    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    fireEvent.click(await screen.findByRole('button', { name: 'key l' }));
-    expect(await screen.findByRole('dialog', { name: 'Log an activity' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Conversation', hidden: true })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    unmount();
-
-    mockUser('DEVELOPER', 'someone-else');
-    renderPage(undefined, true);
-    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.queryByRole('button', { name: 'key l' })).not.toBeInTheDocument();
   });
 
   it('gives DEVELOPER no Background check tab, since the server refuses it the results', async () => {
@@ -298,7 +266,7 @@ describe('ExporterDetailPage — E9', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
     expect(screen.queryByRole('tab', { name: 'Background check' })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Ledger' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'History' })).toBeInTheDocument();
   });
 
   it('shows the company history, with who changed what and why', async () => {
@@ -373,14 +341,14 @@ describe('ExporterDetailPage — E9', () => {
     // `registration_number` are null in this fixture, and a null value renders no
     // reveal control — there is nothing to reveal.
     //
-    // Four, not five: the panel's own GSTIN row went with task 3.13. The GSTINs are
+    // Four, not five: the panel's own GSTIN row went with the branch routes. The GSTINs are
     // `GstRegistrationsSection` now, where each is a branch with a state, a status and
     // possibly a flag rather than a bare value.
     expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(4);
   });
 
   it('shows no website at all, whatever is stored', async () => {
-    // R11, decision IQ-16: the field retired. Stored values are kept — nothing is
+    // The field retired. Stored values are kept — nothing is
     // destroyed — and simply never shown. This replaces the test that proved an
     // http(s) value became a link and anything else stayed text: with nothing
     // rendered, the `javascript:` href that rule existed for cannot arise here.
@@ -400,7 +368,7 @@ describe('ExporterDetailPage — E9', () => {
 
   it('replaces the journey chip and both gauges for a buyer-only company', async () => {
     // Its `journey` column reads LEAD because the column is NOT NULL, not because
-    // anyone judged it (plan P4-2) — and the server refuses to qualify it. Showing a
+    // anyone judged it — and the server refuses to qualify it. Showing a
     // Lead chip and an empty qualification form would invite exactly the action that
     // 409s.
     mockUser('COMPLIANCE', 'someone-else');
@@ -428,7 +396,10 @@ describe('ExporterDetailPage — E9', () => {
     });
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getAllByTestId('journey-chip')[0]).toHaveTextContent('Lead');
+    // The journey is a read-only path: Lead is the current step, and no step is a button.
+    const journey = screen.getByRole('list', { name: 'Journey' });
+    expect(within(journey).getByText('Lead').closest('li')).toHaveAttribute('aria-current', 'step');
+    expect(within(journey).queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getAllByText('Paused').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /move to/i })).not.toBeInTheDocument();
     // No retired lifecycle label anywhere on the page.
@@ -490,7 +461,7 @@ describe('ExporterDetailPage — E9', () => {
     expect(screen.getByTestId('qualification-suggestion')).toHaveTextContent('Suggested: Qualified');
     expect(screen.queryByRole('form', { name: 'Record results' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Record:/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'Profile' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
     expect(await screen.findByRole('heading', { name: 'Company profile' })).toBeInTheDocument();
     // Facts are inline edits for staff (frontend-plan §8.5); a read-only role gets text.
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();

@@ -1,5 +1,5 @@
 /**
- * Qualification — **owner: Developer 2** (L2-09, L2-10, L2-14).
+ * Qualification.
  *
  * Shows where each criterion stands, the server's suggestion and the decisions
  * people have recorded, and lets a permitted user record results and an
@@ -186,12 +186,12 @@ function Scorecard({
     >
       {rows}
       {entries.length > 0 && (
-        <div className="sticky bottom-0 z-10 -mx-1 mt-3 flex items-center justify-between gap-3 rounded-xl border border-line bg-raised px-4 py-2.5 shadow-float">
+        <div className="sticky bottom-0 z-10 -mx-1 mt-3 flex items-center justify-between gap-3 rounded border border-line bg-raised px-4 py-2.5 shadow-float">
           <span className="text-secondary text-ink-2">
             {entries.length} {entries.length === 1 ? 'result' : 'results'} to record. Earlier results stay on the record.
           </span>
           <div className="flex gap-2">
-            <Button variant="quiet" size="sm" onClick={() => setDrafts({})}>
+            <Button variant="subtle" size="sm" onClick={() => setDrafts({})}>
               Discard
             </Button>
             <Button type="submit" variant="primary" size="sm" loading={mutation.isPending}>
@@ -226,7 +226,7 @@ function OutcomeForm({
   if (!outcome) {
     return (
       <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
-        <span className="mr-1 text-sm text-ink-2">Decide:</span>
+        <span className="mr-1 text-body text-ink-2">Decide:</span>
         {allowed.map((value) => (
           <Button
             key={value}
@@ -271,19 +271,19 @@ function OutcomeForm({
         );
       }}
     >
-      <h3 className="text-sm font-semibold text-ink">Record: {QUALIFICATION_LABEL[outcome]}</h3>
+      <h3 className="text-body font-semibold text-ink">Record: {QUALIFICATION_LABEL[outcome]}</h3>
       {outcome === 'QUALIFIED' && (
-        <p className="text-xs text-ink-2">
+        <p className="text-caption text-ink-2">
           Qualifying a lead makes it a prospect. The decision is final.
         </p>
       )}
       {available.length > 0 && (
         <fieldset className="space-y-1.5">
-          <legend className="mb-1 text-xs font-medium text-ink-3">
+          <legend className="mb-1 text-caption font-medium text-ink-3">
             Reasons
           </legend>
           {available.map((code) => (
-            <label key={code.code} className="flex items-center gap-2 text-sm text-ink">
+            <label key={code.code} className="flex items-center gap-2 text-body text-ink">
               <input
                 type="checkbox"
                 className="h-4 w-4 accent-ink"
@@ -309,7 +309,7 @@ function OutcomeForm({
         onChange={(e) => setNote(e.target.value)}
       />
       <div className="flex justify-end gap-2">
-        <Button variant="quiet" size="sm" onClick={reset}>
+        <Button variant="subtle" size="sm" onClick={reset}>
           Cancel
         </Button>
         <Button type="submit" variant="primary" size="sm" loading={mutation.isPending}>
@@ -331,7 +331,7 @@ export function QualificationPanel({ customerId }: { customerId: string }) {
       description="Criteria are set by an administrator. The suggestion is not the decision — a person decides."
       actions={
         data && (
-          <div className="flex items-center gap-2 text-sm text-ink-2">
+          <div className="flex items-center gap-2 text-body text-ink-2">
             <QualificationChip state={data.state} />
             {data.state === 'NOT_YET_REVIEWED' && (
               <span data-testid="qualification-suggestion" className="inline-flex items-center gap-1">
@@ -344,7 +344,7 @@ export function QualificationPanel({ customerId }: { customerId: string }) {
       }
     >
       {isLoading && <Skeleton className="h-24" />}
-      {isError && <p className="text-sm text-negative">Couldn't load qualification.</p>}
+      {isError && <p className="text-body text-negative">Couldn't load qualification.</p>}
 
       {data && (
         <>
@@ -356,10 +356,10 @@ export function QualificationPanel({ customerId }: { customerId: string }) {
 
           {data.outcomes.length > 0 && (
             <div className="mt-5">
-              <h3 className="text-xs font-medium text-ink-3">
+              <h3 className="text-caption font-medium text-ink-3">
                 Decisions
               </h3>
-              <ol className="mt-2 space-y-2 border-l border-line pl-4 text-sm">
+              <ol className="mt-2 space-y-2 border-l border-line pl-4 text-body">
                 {data.outcomes.map((outcome) => (
                   <li key={outcome.id} className="relative text-ink">
                     <span

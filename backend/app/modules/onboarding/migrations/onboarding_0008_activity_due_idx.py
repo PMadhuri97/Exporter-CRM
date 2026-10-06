@@ -1,5 +1,4 @@
-"""Index `exporter_activity` for the cross-exporter pending/follow-up list
-(Exporter CRM Piece 2).
+"""Index `exporter_activity` for the cross-exporter pending/follow-up list.
 
 `ExporterContactActivityService.list_pending_activities` answers "everything
 pending, across every exporter, for a given person" (or, with no `actor_id`,

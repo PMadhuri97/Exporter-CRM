@@ -1,15 +1,14 @@
-"""Which registration identifies a company, and which channel created it —
-**owner: Developer 3** (allocation task 3.8, plan P4-1).
+"""Which registration identifies a company, and which channel created it.
 
 Pure: no I/O, no ORM. A company stopped being "an Indian exporter we went
-looking for" when a buyer became a company record (plan §8), so two questions
+looking for" when a buyer became a company record, so two questions
 now have to be answered on every create path, and answered the same way on all
 of them:
 
 * **Which registration identifies it?** A PAN for an Indian company, whatever
   its own jurisdiction issues for the rest (``CompanyIdentityType``). A foreign
-  company must carry that number (decision IQ-7) — the one exception is a buyer
-  the P4-6 migration created, which may have nothing but a name and a country,
+  company must carry that number — the one exception is a buyer
+  the buyer migration created, which may have nothing but a name and a country,
   because the rule cannot be met retroactively.
 * **Which channel created it?** ``created_via``. ``ExporterSource`` cannot
   answer this: it mixes "how we found them" (``REFERRAL``, ``EVENT``) with
@@ -42,7 +41,7 @@ PAN_COUNTRY = "IN"
 
 
 class CreatedVia(StrEnum):
-    """The channel that created a company record (plan P4-1).
+    """The channel that created a company record.
 
     Values are written to ``exporter_profile.created_via`` as plain text; see
     the module docstring for why the column is not a database enum.
@@ -88,7 +87,7 @@ def registration_key(registration_number: str) -> str:
     refuses as a duplicate — ``KVK 12.345`` and ``kvk-12345`` are one registration,
     and a registrar's punctuation is presentation. It used to keep every Unicode
     letter and digit (``str.isalnum``), which the index drops, so a number written
-    partly in another script matched nothing and then failed the insert (R-20).
+    partly in another script matched nothing and then failed the insert.
     """
     return "".join(ch for ch in registration_number if ch.isascii() and ch.isalnum()).upper()
 
@@ -138,7 +137,7 @@ def decide_identity_type(
     ``None`` when it holds neither, which is not a gap to be filled by guessing:
     deciding from the country alone would mark every migrated buyer in the
     Netherlands ``FOREIGN_REG`` while its ``registration_number`` stayed empty,
-    and the completion list (IQ-7) would have nothing to work from. A PAN wins
+    and the completion list would have nothing to work from. A PAN wins
     over a registration number, because a company holding a PAN is Indian
     however it reached us.
     """
@@ -150,10 +149,10 @@ def decide_identity_type(
 
 
 class IdentityGap(StrEnum):
-    """What a company with no ``identity_type`` lacks (IQ-7's completion list, R-28)."""
+    """What a company with no ``identity_type`` lacks (the identity completion list)."""
 
-    #: Outside India, holding neither a PAN nor a registration number. IQ-7 requires
-    #: the number; only P4-6's migrated buyers were created without one.
+    #: Outside India, holding neither a PAN nor a registration number. The CRM requires
+    #: the number; only the buyer migration's companies were created without one.
     REGISTRATION_NUMBER = "REGISTRATION_NUMBER"
     #: Indian, with no PAN. Not required by a rule — a lead may start without one — but
     #: the company cannot be matched by identifier until it has one.
@@ -172,7 +171,7 @@ def identity_gap(country: str | None) -> IdentityGap:
 
 
 def gap_is_required(gap: IdentityGap) -> bool:
-    """Whether a CRM rule requires the gap to be closed — IQ-7 for a foreign company,
+    """Whether a CRM rule requires the gap to be closed — a registration number for a foreign company,
     and a country for any company — rather than it being worth doing."""
     return gap is not IdentityGap.PAN
 
@@ -184,16 +183,16 @@ def require_foreign_registration_number(
     registration_number: str | None,
     allow_missing: bool = False,
 ) -> None:
-    """Decision IQ-7: a foreign company carries a registration number.
+    """A foreign company carries a registration number.
 
     Checked only when the country says the company is foreign *and* it holds no
     PAN — a company with a PAN is Indian whatever its ``country`` column says,
     and a company with no country at all has not claimed to be either.
 
     Args:
-        allow_missing: for the P4-6 buyer migration and the buyer-create path it
+        allow_missing: for the buyer migration and the buyer-create path it
             feeds, where a buyer may be nothing but a name and a country
-            (IQ-7's one exception). Those companies keep ``identity_type NULL``
+            (the rule's one exception). Those companies keep ``identity_type NULL``
             and appear on the completion list rather than being refused.
 
     Raises:

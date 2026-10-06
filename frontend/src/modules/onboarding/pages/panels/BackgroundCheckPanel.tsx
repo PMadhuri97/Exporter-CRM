@@ -1,6 +1,5 @@
 /**
- * The background check — **owner: Developer 4A** for the gauge (L4-03, L4-08, L4-13);
- * **Developer 4B** for `VerificationSection`, which is rendered below and untouched.
+ * The background check: the gauge, with `VerificationSection` rendered below it.
  *
  * The gauge answers "is it safe and lawful to work with this company?" (architecture
  * §3.3). The verification results and the eight-item screening checklist below it are
@@ -17,32 +16,32 @@
  * is actually there.
  *
  * The one role check that remains is the one the page already applied: DEVELOPER may
- * read the CRM but the background-check routes refuse it (D8, settled 28 September
+ * read the CRM but the background-check routes refuse it (settled 28 September
  * 2026), so the panel is not rendered for it rather than rendered broken.
  *
- * Developer 1, 1 October 2026: the panel names the current check cycle and, when the
- * server offers them (`allowed_cycle_actions`), the Re-KYC / Re-KYB buttons (P2-3c/d);
- * a Clear's expiry is shown (F1); each decision opens to the evidence it rested on
- * (P2-1c) and decisions are grouped by cycle.
+ * Since 1 October 2026 the panel names the current check cycle and, when the
+ * server offers them (`allowed_cycle_actions`), the Re-KYC / Re-KYB buttons;
+ * a Clear's expiry is shown; each decision opens to the evidence it rested on
+ * and decisions are grouped by cycle.
  *
- * Developer 1, tranche 2: maker-checker (P3-1c) — a proposed CLEAR, FLAGGED or ON_HOLD
+ * Maker-checker: a proposed CLEAR, FLAGGED or ON_HOLD
  * shows as "Awaiting approval" with exactly the actions the server allows this user
- * (approve / reject for a second officer, withdraw for the proposer); rule B's required
- * checks and their state in the current cycle (P3-2); a "Re-KYC due" badge when the
- * Clear has expired or soon will (P3-3c); the proposals already resolved — approved,
+ * (approve / reject for a second officer, withdraw for the proposer); the required
+ * checks and their state in the current cycle; a "Re-KYC due" badge when the
+ * Clear has expired or soon will; the proposals already resolved — approved,
  * rejected with the reason, or withdrawn — so the maker sees how theirs ended.
  */
 
 import { useState } from 'react';
 
-import { Button, FormPanel } from '@/components';
+import { Button, Card, FormPanel } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 import { formatDate } from '@/lib/format';
 
 import {
   BackgroundCheckGauge,
   BackgroundCheckMoveDialog,
-  CheckRunway,
+  CheckStatus,
   DecisionHistory,
   RiskChip,
   VerificationSection,
@@ -64,7 +63,7 @@ import type { BackgroundCheckState } from '../../types';
 
 function GaugeSection({ customerId }: { customerId: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
-  // The move chosen on the runway, opened already selected (frontend-plan §6.3).
+  // The move chosen in the status card, opened already selected (frontend-plan §8.5.1).
   const [initialMove, setInitialMove] = useState<BackgroundCheckState | null>(null);
   const check = useBackgroundCheck(customerId);
   const decisions = useBackgroundCheckDecisions(customerId);
@@ -81,7 +80,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
   if (check.isError || !check.data) {
     return (
       <section>
-        <h3 className="text-lead font-semibold text-ink">Background check</h3>
+        <h3 className="text-heading font-semibold text-ink">Background check</h3>
         <p role="alert" className="mt-2 text-body text-negative">
           The background check could not be loaded.
         </p>
@@ -97,10 +96,10 @@ function GaugeSection({ customerId }: { customerId: string }) {
 
   return (
     <section>
+      <Card as="h3" title="Background check">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lead font-semibold text-ink">Background check</h3>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <BackgroundCheckGauge
               value={standing.value}
               awaitingApproval={standing.awaiting_approval}
@@ -108,7 +107,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
             />
           </div>
           {cycle && (
-            <p data-testid="current-cycle" className="mt-2 text-xs text-ink-2">
+            <p data-testid="current-cycle" className="mt-2 text-caption text-ink-2">
               Cycle {cycle.number} · {cycleKindLabel(cycle.kind)} · started{' '}
               {formatDate(cycle.started_at)}
               {cycle.reason && ` — ${cycle.reason}`}
@@ -117,7 +116,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
           {compliance?.is_clear && compliance.clear_expires_at && (
             <p
               data-testid="clear-expiry"
-              className={`mt-1 text-xs ${compliance.is_clear_current ? 'text-ink-2' : 'font-medium text-negative'}`}
+              className={`mt-1 text-caption ${compliance.is_clear_current ? 'text-ink-2' : 'font-medium text-negative'}`}
             >
               {compliance.is_clear_current
                 ? `Clear until ${formatDate(compliance.clear_expires_at)}`
@@ -127,7 +126,6 @@ function GaugeSection({ customerId }: { customerId: string }) {
         </div>
         {moves.length > 0 && !dialogOpen && (
           <Button
-            variant="primary"
             size="sm"
             onClick={() => {
               setInitialMove(null);
@@ -139,12 +137,13 @@ function GaugeSection({ customerId }: { customerId: string }) {
         )}
       </div>
 
-      {/* The check as a map: every state drawn, only the served moves clickable. */}
-      <div className="mt-5 rounded-xl border border-line bg-surface p-4">
-        <CheckRunway
+      {/* Only the served moves, as buttons; and an open proposal, if there is one. */}
+      <div className="mt-4 border-t border-line pt-4">
+        <CheckStatus
           value={standing.value}
           moves={moves}
           openProposal={standing.open_proposal}
+          showStatus={false}
           onChoose={(to) => {
             setInitialMove(to);
             setDialogOpen(true);
@@ -154,11 +153,12 @@ function GaugeSection({ customerId }: { customerId: string }) {
 
       {standing.risk_rating && (
         <div className="mt-3 flex items-center gap-2">
+          <span className="text-caption text-ink-3">Risk</span>
           <RiskChip risk={standing.risk_rating} />
           {standing.value !== 'CLEAR' && (
             // The risk is the last one anyone recorded, not a statement about the
-            // company now — the reader's D6 caveat, said plainly rather than hidden.
-            <span className="text-xs text-ink-3">
+            // company now — the reader's caveat, said plainly rather than hidden.
+            <span className="text-caption text-ink-3">
               from the most recent decision that set one
             </span>
           )}
@@ -179,10 +179,14 @@ function GaugeSection({ customerId }: { customerId: string }) {
       )}
 
       {standing.value === 'IN_REVIEW' && blocked.length > 0 && (
-        <p className="mt-3 rounded-md border-l-2 border-line-strong bg-sunken px-3 py-2 text-secondary text-ink-2">
-          Before this company can be cleared: {blocked.map(describeClearBlocker).join('; ')}.
-        </p>
+        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-3">
+          <span className="text-caption text-ink-3">Still needed</span>
+          <p className="min-w-0 flex-1 text-secondary text-ink-2">
+            Before this company can be cleared: {blocked.map(describeClearBlocker).join('; ')}.
+          </p>
+        </div>
       )}
+      </Card>
 
       {dialogOpen && (
         <FormPanel title="Record a decision" onClose={() => setDialogOpen(false)}>
@@ -209,21 +213,18 @@ function GaugeSection({ customerId }: { customerId: string }) {
         </FormPanel>
       )}
 
-      <div className="mt-5">
+      <div className="mt-4 empty:hidden">
         <ProposalHistory customerId={customerId} />
       </div>
 
-      <div className="mt-5">
-        <h4 className="text-lead font-semibold text-ink">Decisions</h4>
-        <div className="mt-2">
-          <DecisionHistory
-            decisions={decisions.data?.decisions ?? []}
-            isLoading={decisions.isLoading}
-            isError={decisions.isError}
-            customerId={customerId}
-          />
-        </div>
-      </div>
+      <Card as="h3" title="Decisions" className="mt-4">
+        <DecisionHistory
+          decisions={decisions.data?.decisions ?? []}
+          isLoading={decisions.isLoading}
+          isError={decisions.isError}
+          customerId={customerId}
+        />
+      </Card>
     </section>
   );
 }
@@ -237,9 +238,9 @@ export function BackgroundCheckPanel({
 }) {
   if (!isStaff) return null;
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-4">
       <GaugeSection customerId={customerId} />
-      {/* Developer 4B's, unchanged and rendered below the gauge: the checks are the
+      {/* The verification section, rendered below the gauge: the checks are the
           inputs to the decision, so they read in that order. */}
       <VerificationSection customerId={customerId} />
     </div>

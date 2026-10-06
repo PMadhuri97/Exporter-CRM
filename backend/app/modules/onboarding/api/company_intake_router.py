@@ -1,5 +1,4 @@
-"""RXIL company intake and bulk CSV import routes — **owner: Developer 2**
-(L2-12, L2-13).
+"""RXIL company intake and bulk CSV import routes.
 
 Bulk import creates companies, so it admits OPERATIONS, COMPLIANCE and ADMIN,
 as company creation does.
@@ -12,7 +11,7 @@ record a decision as someone else's. Until RXIL delivers through its own
 authenticated integration, a package is pasted in by hand, so the route is
 limited to the role trusted to vouch that a package really came from RXIL.
 ``API_USER`` is deliberately not admitted: public sign-up grants it, and it
-reaches nothing in the CRM (assumption A10).
+reaches nothing in the CRM.
 
 The actor is always the signed-in user — neither an RXIL package nor a CSV
 file can name one.

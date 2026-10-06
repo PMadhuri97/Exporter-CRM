@@ -170,7 +170,7 @@ it('does not show a failed read as an empty list', async () => {
   expect(screen.queryByText(/Nobody recorded/)).not.toBeInTheDocument();
 });
 
-it('shows no counterparty identifiers, whatever the role (IQ-19)', async () => {
+it('shows no counterparty identifiers, whatever the role', async () => {
   const { container } = renderPanel('seller');
   await screen.findByText(/2 invoices/);
 
@@ -179,7 +179,7 @@ it('shows no counterparty identifiers, whatever the role (IQ-19)', async () => {
   expect(container.textContent).not.toMatch(/PAN|GSTIN|CIN|IEC/);
 });
 
-describe('recording past trade (R-27)', () => {
+describe('recording past trade', () => {
   it('offers staff a past invoice on every relationship row', async () => {
     renderPanel('seller', true);
     fireEvent.click(await screen.findByRole('button', { name: 'Record past invoice' }));
@@ -190,7 +190,7 @@ describe('recording past trade (R-27)', () => {
     expect(screen.queryByRole('form', { name: 'Record past invoice' })).not.toBeInTheDocument();
   });
 
-  it('offers a read-only role nothing to record (DEVELOPER, D8)', async () => {
+  it('offers a read-only role nothing to record (DEVELOPER)', async () => {
     renderPanel('seller', false);
     await screen.findByText(/2 invoices/);
     expect(screen.queryByRole('button', { name: 'Record past invoice' })).not.toBeInTheDocument();

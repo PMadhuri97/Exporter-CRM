@@ -1,5 +1,5 @@
 /**
- * Companies has two views of one list (frontend-plan §8.3): the register (rows) and
+ * Companies has two views of one list (frontend-plan §8.3): the list (rows) and
  * the board (three journey columns). Two links on a sunken track, so each view is
  * its own URL — shareable, and the browser's back button moves between them.
  */
@@ -11,30 +11,30 @@ import { cn } from '@/lib/cn';
 import { paths } from '../paths';
 
 const SEGMENT =
-  'rounded px-3 py-1 text-secondary font-medium transition-colors duration-quick';
+  'rounded-sm px-2.5 py-1 text-secondary transition-colors duration-quick';
 
-export function CompaniesViewSwitch({ view }: { view: 'register' | 'board' }) {
+export function CompaniesViewSwitch({ view }: { view: 'list' | 'board' }) {
   return (
-    <nav aria-label="Companies view" className="inline-flex gap-0.5 rounded-md bg-sunken p-0.5">
+    <nav aria-label="Companies view" className="inline-flex gap-0.5 rounded border border-line-strong bg-surface p-0.5">
       <Link
         to={paths.companies}
-        aria-current={view === 'register' ? 'page' : undefined}
+        aria-current={view === 'list' ? 'page' : undefined}
         className={cn(
           SEGMENT,
-          view === 'register' ? 'bg-surface text-ink ring-1 ring-line-strong' : 'text-ink-2 hover:text-ink',
+          view === 'list' ? 'bg-accent-tint font-semibold text-accent' : 'text-ink-2 hover:bg-sunken hover:text-ink',
         )}
       >
-        Register
+        List
       </Link>
       <Link
         to={paths.board}
         aria-current={view === 'board' ? 'page' : undefined}
         className={cn(
           SEGMENT,
-          view === 'board' ? 'bg-surface text-ink ring-1 ring-line-strong' : 'text-ink-2 hover:text-ink',
+          view === 'board' ? 'bg-accent-tint font-semibold text-accent' : 'text-ink-2 hover:bg-sunken hover:text-ink',
         )}
       >
-        Board
+        Pipeline
       </Link>
     </nav>
   );

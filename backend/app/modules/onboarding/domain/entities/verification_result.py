@@ -1,17 +1,16 @@
-"""`VerificationResult` — EXP-2's generalized verification-results table.
+"""`VerificationResult` — the generalized verification-results table.
 
 One row per check ever run — KYC on a director, a bank-account check on an
 exporter, a shipment/vessel check, or anything not yet anticipated — through
 the `VerificationAdapter` protocol (`workflow_dependencies.py`). This is the
-new, broader table the EXP-2 plan calls for; it is *inspired by*
+new, broader table the CRM calls for; it is *inspired by*
 `kyb_vendor_result.py`'s shape (a vendor name, a vendor reference, a
 normalised result, a raw response) but is not built on it and does not
 replace it.
 
 `KybVendorResult` is left exactly as it is — unmigrated, still written by
 `kyb`'s existing path. This table is additive, for everything
-`KybVendorResult` doesn't cover (confirmed in the EXP-2 plan as an
-implementation-time call: don't touch `KybVendorResult` in this ticket).
+`KybVendorResult` doesn't cover (`KybVendorResult` itself is left untouched).
 
 No foreign keys on the subject
 -------------------------------
@@ -23,15 +22,15 @@ in this checkout). This is the same bare-reference convention
 uses for exactly this situation — a record that can point at more than one
 kind of subject, with no cross-module or not-yet-existent-table referential
 integrity mechanism to enforce it. The service validates the subjects that do
-exist as tables (Dev4B 4B-4/4B-5): an ``EXPORTER`` reference must be a company,
+exist as tables: an ``EXPORTER`` reference must be a company,
 a ``BUYER`` reference must be a ``deal_buyer.id``.
 
 Provenance
 ----------
 ``provider`` is stored exactly as the adapter reported it and never rewritten.
 ``provenance_of`` turns it into an honest label: ``manual`` is a person; the RXIL
-stub (``rxil_stub``, and the upper-case ``RXIL`` it reported before 4B-6) is a
-**stub**, not RXIL, until the RXIL results contract exists (D12).
+stub (``rxil_stub``, and the upper-case ``RXIL`` it reported before that name) is a
+**stub**, not RXIL, until the RXIL results contract exists.
 """
 
 import uuid
@@ -66,7 +65,7 @@ from app.platform.database.models import AnerModel
 SCHEMA = "onboarding"
 
 #: Stored providers that are a stub, not the provider they are named after. The
-#: RXIL stub reported ``"RXIL"`` until 4B-6 and ``"rxil_stub"`` since; both are
+#: RXIL stub once reported ``"RXIL"`` and ``"rxil_stub"`` since; both are
 #: kept here because stored values are never rewritten.
 STUB_PROVIDERS: frozenset[str] = frozenset({"rxil_stub", "RXIL"})
 #: Stored providers that mean "a person recorded this".
@@ -87,7 +86,8 @@ def provenance_of(provider: str) -> Provenance:
 def is_placeholder_result(normalized_result: Any, provider_reference: str | None) -> bool:
     """A placeholder row: ``normalized_result.stub`` is ``true`` and no provider
     reference — what the retired dev generator created. Flagged, never deleted
-    (verification-and-screening.md §8); whether it counts as pending is Dev4A's D2."""
+    (verification-and-screening.md §8); whether it counts as pending is the Clear
+    policy's question."""
     return (
         isinstance(normalized_result, dict)
         and normalized_result.get("stub") is True
@@ -100,7 +100,7 @@ def subject_company_of(
     entity_reference: uuid.UUID,
     subject_company_id: uuid.UUID | None,
 ) -> uuid.UUID | None:
-    """The company a result is about (P4-5): its ``subject_company_id``, or — for a row
+    """The company a result is about: its ``subject_company_id``, or — for a row
     recorded before checks were company-keyed — the ``entity_reference`` of an
     ``EXPORTER`` result. ``None`` for a subject with no company (a legacy deal buyer
     not yet mapped, a director, an invoice …)."""
@@ -114,8 +114,8 @@ def subject_company_of(
 class VerificationResult(AnerModel):
     """One verification check's request and outcome.
 
-    Reviews (Dev4B 4B-2)
-    --------------------
+    Reviews
+    -------
     Reviews live in ``verification_review`` (``verification_review.py``), as
     superseding records. **The legacy ``reviewed_by`` / ``review_status``
     columns here are no longer written** by any code path: migration
@@ -126,16 +126,16 @@ class VerificationResult(AnerModel):
     — protection is never dropped — and read only as a fallback for a row
     written outside the service.
 
-    Frozen once reviewed (4B-3)
-    ---------------------------
+    Frozen once reviewed
+    --------------------
     Once a result has any review, ``status``, ``risk_level``,
     ``normalized_result`` and ``valid_until`` never change:
     ``VerificationService.get_verification_status`` ignores (and logs) a later
     provider answer, and ``trg_verification_result_outcome_freeze`` refuses the
     ``UPDATE`` at the database.
 
-    Evidence (4B-4) and subject snapshot (4B-5)
-    -------------------------------------------
+    Evidence and subject snapshot
+    -----------------------------
     ``evidence_note`` / ``evidence_refs`` hold what a result rests on, in the
     qualification contract's shape (``{type, ref}``, ``type`` ``document`` —
     a ``crm_document.id`` — or ``url``). ``evidence_reference`` is **retired**:
@@ -144,26 +144,26 @@ class VerificationResult(AnerModel):
     identity at record time. Evidence and snapshot are frozen once set
     (``trg_verification_result_input_immutability``).
 
-    Subject company and cycle (Developer 1, F1 and P2-3a)
-    -----------------------------------------------------
+    Subject company and cycle
+    -------------------------
     ``subject_company_id`` is the company a result is *about*, whatever role it plays
-    in a deal (seam v2, ``docs/contracts/background-check.md`` §12). Nullable and
+    in a deal (``docs/contracts/background-check.md`` §12). Nullable and
     set once, then frozen — ``NULL`` → value is allowed, any later change is refused
     by ``trg_verification_result_input_immutability`` (migration
-    ``onboarding_0023_dev1_foundation``) — so the buyer migration (P4-6) can fill it
+    ``onboarding_0023_compliance_core``) — so the buyer migration can fill it
     on rows recorded before it existed without being able to re-point a result
     afterwards.
 
-    **Company-keyed checks (Developer 1, plan P4-5).** ``VerificationService`` sets it
+    **Company-keyed checks.** ``VerificationService`` sets it
     on every new company-subject (``EXPORTER``) result — any company, seller or buyer
     alike — to the company itself. A legacy ``BUYER`` result (keyed by
-    ``deal_buyer.id``) gets it only when the deal-buyer migration (P4-6) maps its
+    ``deal_buyer.id``) gets it only when the deal-buyer migration maps its
     buyer to a company. Which company a result is about is read by one rule,
     :func:`subject_company_of` / :func:`about_company`: the stored
     ``subject_company_id``, else — for a legacy row — ``entity_reference`` of an
     ``EXPORTER`` result. No existing row is rewritten to apply it.
 
-    ``cycle_id`` is the check cycle a company-subject result belongs to (P2-3a),
+    ``cycle_id`` is the check cycle a company-subject result belongs to,
     stamped by ``VerificationService`` when the result is recorded and frozen by the
     same trigger. ``NULL`` on rows recorded before cycles existed reads as the
     company's cycle 1; ``NULL`` on a legacy ``BUYER`` result means "no cycle" (legacy
@@ -251,7 +251,7 @@ class VerificationResult(AnerModel):
     #: registration_number, tax_id}`` as they were when the check was recorded.
     subject_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
-    #: The company this result is about (seam v2). Set once, then frozen. See the
+    #: The company this result is about. Set once, then frozen. See the
     #: class docstring.
     subject_company_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -262,7 +262,7 @@ class VerificationResult(AnerModel):
         ),
         nullable=True,
     )
-    #: The check cycle this result belongs to (P2-3a). Set once, then frozen.
+    #: The check cycle this result belongs to. Set once, then frozen.
     cycle_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(

@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
         temporal_enabled=settings.TEMPORAL_ENABLED,
     )
 
-    # Maker-checker may be off only in local/test (IQ-17): a server that
+    # Maker-checker may be off only in local/test: a server that
     # would let one person clear a company must not start at all.
     from app.modules.onboarding.application.compliance_settings import (
         enforce_compliance_settings,

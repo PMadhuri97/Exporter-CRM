@@ -319,7 +319,7 @@ class OnboardingTransitionNotPermittedError(AnerBaseException):
         )
 
 
-# ── EXP-2: VerificationResult ────────────────────────────────────────────────
+# ── VerificationResult ───────────────────────────────────────────────────────
 
 
 class VerificationResultNotFoundError(AnerBaseException):
@@ -332,7 +332,7 @@ class VerificationResultNotFoundError(AnerBaseException):
 class VerificationReviewStaleError(AnerBaseException):
     """A review did not name the result's **current** review as the one it supersedes.
 
-    Replaces the one-review-only rule (Dev4B 4B-2, verification-and-screening.md §1): a verdict now
+    Replaces the one-review-only rule (verification-and-screening.md §1): a verdict now
     changes by adding a review that supersedes the current one, never by editing
     one. The caller must name the chain head it saw — like a compare-and-set — so a
     reviewer who acted on a stale view gets 409 instead of silently overruling a
@@ -420,7 +420,7 @@ class OnboardingStatusConflictError(AnerBaseException):
         )
 
 
-# ── EXP-1: Exporter CRM (ExporterProfile / ExporterContact / ExporterActivity) ─
+# ── Exporter CRM (ExporterProfile / ExporterContact / ExporterActivity) ──────
 
 
 class ExporterProfileNotFoundError(AnerBaseException):
@@ -623,8 +623,8 @@ class QualificationCriterionChangedError(AnerBaseException):
 
 
 class QualificationClosedError(AnerBaseException):
-    """The company is already QUALIFIED. In the prototype that is final
-    (assumption A2): no further results or outcomes are recorded; re-review is
+    """The company is already QUALIFIED. In the prototype that is final:
+    no further results or outcomes are recorded; re-review is
     for NOT_QUALIFIED companies."""
 
     def __init__(self, customer_id: object) -> None:
@@ -670,31 +670,28 @@ class IntakeNeedsReviewError(AnerBaseException):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Section 9.3 — anchor blocks for Developers 3A and 3B
+# Area blocks
 #
-# This file is Developer 1's (architecture §8.1): additions only, owner reviews.
-# Three people append exceptions to it — 3A in each of its two phases, and 3B —
-# and a single shared append point means the same conflicting hunk every time.
-# So the tail is cut into owned blocks in one commit (the seam commit), and from
-# then on each owner adds classes inside their own block and nowhere else.
+# This file is shared (architecture §8.1): additions only. Several areas append
+# exceptions to it, and a single shared append point means the same conflicting
+# hunk every time. So the tail is cut into one block per area, and each area adds
+# classes inside its own block and nowhere else.
 #
 # The blocks are separated by their own comment headers, which is what keeps two
-# owners' additions in different diff hunks: git's three lines of context reach
-# the header rather than the neighbouring owner's last class.
+# areas' additions in different diff hunks: git's three lines of context reach
+# the header rather than the neighbouring area's last class.
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Conversation and follow-ups — owner: Developer 3A (L3-02 … L3-04) ──
-# (3A appends here; 3B does not.)
-# Cut into the two phase sub-anchors below — phase agreement §6.3.
+# ── Conversation and follow-ups ──
 
 
-# ── 3A·1 Conversation gauge (L3-02, L3-03) — Phase 1 appends here ──
+# ── Conversation gauge ──
 
 
 class ConversationNotAvailableError(AnerBaseException):
     """The conversation gauge does not apply to this company yet.
 
-    Assumption A4: the gauge applies **from ``PROSPECT`` onward**. A ``LEAD``
+    The gauge applies **from ``PROSPECT`` onward**. A ``LEAD``
     carries the column — it is ``NOT NULL`` — reading ``NOT_CONTACTED``, but
     nobody has judged its conversation and nobody may: a ``LEAD`` becomes a
     ``PROSPECT`` when a qualification outcome says ``QUALIFIED``, and tracking
@@ -709,7 +706,7 @@ class ConversationNotAvailableError(AnerBaseException):
         super().__init__(
             detail=(
                 f"Company {customer_id} is a {journey!s} — the conversation gauge "
-                "applies from PROSPECT onward (assumption A4); qualify the company first"
+                "applies from PROSPECT onward; qualify the company first"
             ),
             error_code="CONVERSATION_NOT_AVAILABLE",
             status_code=409,
@@ -801,7 +798,7 @@ class ConversationCheckBackInPastError(AnerBaseException):
 
 
 
-# ── 3A·2 Follow-ups (L3-04) — Phase 2 appends here ──
+# ── Follow-ups ──
 
 
 class FollowUpNotFoundError(AnerBaseException):
@@ -873,7 +870,7 @@ class FollowUpRescheduleNeedsDateError(AnerBaseException):
     exists to prevent — so it is refused here with a code a screen can act on rather
     than left to the constraint.
 
-    Phase 1 reserved ``CONVERSATION_CHECK_BACK_REQUIRED`` for reuse on this path
+    ``CONVERSATION_CHECK_BACK_REQUIRED`` was reserved for reuse on this path
     (``engagement.md`` §7). It is not reused: that code names the *conversation*
     gauge's check-back date, on the company record, and this is a follow-up's next due
     moment, on an activity. One code covering both would tell a caller the wrong place
@@ -939,7 +936,7 @@ class FollowUpCompletionIsImmutableError(AnerBaseException):
     ``trg_follow_up_completion_append_only`` raises at the database whatever code
     tries. This exception exists so that an attempt through the service is a 409
     naming the rule rather than a 500 carrying a Postgres message — which is what
-    Phase 2 owes in place of a new direct-SQL constraint test (prompt §3).
+    follow-ups owe in place of a new direct-SQL constraint test.
     """
 
     def __init__(self, completion_id: object) -> None:
@@ -954,8 +951,7 @@ class FollowUpCompletionIsImmutableError(AnerBaseException):
 
 
 
-# ── Deals, buyers, storage and documents — owner: Developer 3B (L3-05 … L3-10) ──
-# (3B appends here; 3A does not.)
+# ── Deals, buyers, storage and documents ──
 
 
 class DealNotFoundError(AnerBaseException):
@@ -990,7 +986,7 @@ class DealCompanyNotReadyError(AnerBaseException):
     """A deal was opened for a company that is still a ``LEAD``.
 
     A deal follows a sales conversation, and the conversation gauge applies from
-    ``PROSPECT`` onward (assumption A4, ``engagement.md`` §2.2). Opening a deal also
+    ``PROSPECT`` onward (``engagement.md`` §2.2). Opening a deal also
     sets the conversation to ``READY_NOW`` (seam S1), so without this refusal a lead
     that was never qualified would end up with a conversation value it may not
     hold. 409 rather than 422: the request is well formed; the company is not there
@@ -1049,7 +1045,7 @@ class DealTerminalError(AnerBaseException):
 
 
 class DealWithdrawalReasonRequiredError(AnerBaseException):
-    """``WITHDRAWN`` without a reason (assumption A7).
+    """``WITHDRAWN`` without a reason.
 
     ``ck_deal_withdrawal_reason`` refuses the row as well, so this is the service
     saying the same thing first, with the deal's id in it.
@@ -1151,7 +1147,7 @@ class DocumentNotAvailableError(AnerBaseException):
     """Content was requested for a document that is not `AVAILABLE`.
 
     Refused to **every** role: `PENDING_SCAN`, `QUARANTINED` and `SCAN_FAILED` are
-    states, not permissions (architecture §3.4, assumption A9). There is no role,
+    states, not permissions (architecture §3.4). There is no role,
     and no flag, that opens a quarantined file.
     """
 
@@ -1201,7 +1197,7 @@ class DealHandoverBlockedError(AnerBaseException):
     """A handover whose guard is unmet.
 
     The guard is the ordered list in `domain/handover_conditions.py`: the company a
-    `CUSTOMER` with a `CLEAR` check (assumption A5), the required documents present,
+    `CUSTOMER` with a `CLEAR` check, the required documents present,
     and the conditions still waiting for their providers. The reason names **every**
     unmet condition, joined with "; " (`deal-and-buyer.md` §6.1).
 
@@ -1239,18 +1235,14 @@ class DealRequiredDocumentChangedError(AnerBaseException):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Dev4 seam — anchor blocks for Developers 4A and 4B (4B-0)
+# Compliance blocks
 #
-# Same reason as the §9.3 blocks above: two people append exceptions here in
-# parallel pull requests, and one shared append point is one conflicting hunk
-# every time. The Dev4 seam commit cuts two more owned blocks below the 3B block,
-# and from then on each Dev4 owner adds classes inside its own block and nowhere
-# else. Dev4B may additionally edit the existing `EXP-2: VerificationResult`
-# classes above; Dev4A may not.
+# Same reason as the area blocks above: one shared append point is one
+# conflicting hunk every time, so each compliance area adds classes inside its
+# own block below and nowhere else.
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Background check — owner: Developer 4A ──
-# (4A appends here; 4B does not.)
+# ── Background check ──
 
 
 def _bc_value(value: object) -> str:
@@ -1331,7 +1323,7 @@ class BackgroundCheckRiskRequiredError(AnerBaseException):
     """``CLEAR`` without a risk rating.
 
     Risk is set by compliance as part of the decision and is required on ``CLEAR``
-    (architecture §3.3, A3, §4.1 step 9; contract §7), enforced here and by
+    (architecture §3.3, §4.1 step 9; contract §7), enforced here and by
     ``ck_background_check_decision_clear_risk``.
     """
 
@@ -1390,11 +1382,11 @@ class BackgroundCheckStateChangedError(AnerBaseException):
 
 
 class BackgroundCheckPrerequisitesUnmetError(AnerBaseException):
-    """``IN_REVIEW → CLEAR`` with one or more of A3's prerequisites unmet.
+    """``IN_REVIEW → CLEAR`` with one or more of the four prerequisites unmet.
 
     Names every unmet prerequisite rather than the first, so the screen can list what
     is outstanding instead of revealing them one refusal at a time. The prerequisites
-    are A3's; what two of its phrases mean is D1–D4 (``background_check_views``).
+    are the contract's; what two of its phrases mean is ``background_check_views.ClearPolicy``.
     """
 
     def __init__(self, company_id: object, unmet: object) -> None:
@@ -1410,8 +1402,7 @@ class BackgroundCheckPrerequisitesUnmetError(AnerBaseException):
         )
 
 
-# ── Verification and screening — owner: Developer 4B ──
-# (4B appends here; 4A does not.)
+# ── Verification and screening ──
 
 
 class ComplianceInputsBuyerNotFoundError(AnerBaseException):
@@ -1436,7 +1427,7 @@ class ComplianceInputsBuyerNotFoundError(AnerBaseException):
 class VerificationBuyerDealClosedError(AnerBaseException):
     """A new buyer check named a buyer whose deal is ``HANDED_OVER`` or ``WITHDRAWN``.
 
-    Decision **D17** (lead, 28 Sep 2026): buyer checks are refused once the deal is
+    Decided 28 Sep 2026: buyer checks are refused once the deal is
     terminal — the handover snapshot is the final word on a handed-over deal, and a
     withdrawn deal has no financing need left to check. Checks already recorded stay
     readable and reviewable. 409: the request is well-formed, the deal's state
@@ -1488,8 +1479,7 @@ class VerificationLegacyReviewUnchainedError(AnerBaseException):
         )
 
 
-# ── Compliance engine — owner: Developer 1 (allocation §3) ──
-# (Developer 1 appends here.)
+# ── Compliance engine: check cycles and maker-checker ──
 
 
 class BackgroundCheckDecisionNotFoundError(AnerBaseException):
@@ -1519,7 +1509,7 @@ class CheckCycleNotFoundError(AnerBaseException):
 
 
 class CheckCycleNotAllowedError(AnerBaseException):
-    """A new cycle was asked for from a state that does not allow one (plan P2-3c).
+    """A new cycle was asked for from a state that does not allow one.
 
     ``FLAGGED`` and ``ON_HOLD`` companies are reassessed first: a new round of checks
     is not how a concern already on record is dealt with. 409: the request is
@@ -1541,7 +1531,7 @@ class CheckCycleNotAllowedError(AnerBaseException):
 
 class CheckCycleEmptyError(AnerBaseException):
     """The current cycle has nothing recorded in it yet, so a new one would replace an
-    empty round with another empty round (plan P2-3c).
+    empty round with another empty round.
 
     This is also what makes two simultaneous starts produce **one** cycle: the second
     finds the first's new cycle still empty and is refused. 409.
@@ -1560,7 +1550,7 @@ class CheckCycleEmptyError(AnerBaseException):
 
 
 class CheckCycleRoleNotAllowedError(AnerBaseException):
-    """Only COMPLIANCE and ADMIN may start a check cycle (plan P2-3c, IQ-3). 403."""
+    """Only COMPLIANCE and ADMIN may start a check cycle. 403."""
 
     def __init__(self, role: object) -> None:
         super().__init__(
@@ -1570,11 +1560,11 @@ class CheckCycleRoleNotAllowedError(AnerBaseException):
         )
 
 
-# ── Maker-checker (Developer 1, plan P3-1b, decision A) ──
+# ── Maker-checker ──
 
 
 class BackgroundCheckApprovalRequiredError(AnerBaseException):
-    """A move that needs a second approver (IQ-1) was asked to take effect directly.
+    """A move that needs a second approver was asked to take effect directly.
 
     With maker-checker on, ``CLEAR``, ``FLAGGED`` and ``ON_HOLD`` are recorded as a
     proposal and take effect only when a different COMPLIANCE or ADMIN user approves
@@ -1594,7 +1584,7 @@ class BackgroundCheckApprovalRequiredError(AnerBaseException):
 
 
 class BackgroundCheckProposalOpenError(AnerBaseException):
-    """The company already has a proposal awaiting approval (one per company, P3-1a).
+    """The company already has a proposal awaiting approval (one per company).
 
     While it is open nothing else moves the check — no second proposal, no other move
     and no new cycle: approve, reject or withdraw it first. 409.
@@ -1682,7 +1672,7 @@ class BackgroundCheckProposalNotYoursError(AnerBaseException):
 
 class BackgroundCheckApproverRoleNotAllowedError(AnerBaseException):
     """Only COMPLIANCE and ADMIN propose, approve or reject — never OPERATIONS (the RM
-    never approves compliance, plan §8). 403."""
+    never approves compliance). 403."""
 
     def __init__(self, role: object) -> None:
         super().__init__(
@@ -1699,7 +1689,7 @@ class CompanyNotInPipelineError(AnerBaseException):
     """A sales step asked of a company that is not in the sales pipeline.
 
     A company record is no longer always somebody we are selling to: a buyer on
-    a deal is a company too (plan §8), created ``NOT_IN_PIPELINE`` with
+    a deal is a company too, created ``NOT_IN_PIPELINE`` with
     ``journey='LEAD'`` only because the column is ``NOT NULL``. Qualifying such a
     company, or recording how the conversation with it is going, would record an
     opinion about a sales process that was never started — and, worse, qualifying
@@ -1707,12 +1697,12 @@ class CompanyNotInPipelineError(AnerBaseException):
     ``ck_exporter_profile_not_in_pipeline_start`` then refuses at the database,
     turning a sales action into a constraint violation.
 
-    This is the refusal Developer 1's P4-11 relies on to know a buyer-only
-    company can never be promoted by accident (allocation task 1.19).
+    This is the refusal full-depth buyer checks rely on to know a buyer-only
+    company can never be promoted by accident.
 
     409 rather than 422: the request is well formed, and the answer depends on
     the company's current pipeline status rather than on anything the caller
-    sent. ``POST /exporters/{id}/pipeline`` is the way in (task 3.11).
+    sent. ``POST /exporters/{id}/pipeline`` is the way in.
     """
 
     def __init__(self, customer_id: object) -> None:
@@ -1737,7 +1727,7 @@ class DuplicateRegistrationNumberError(AnerBaseException):
     loses whichever history we overwrote.
 
     Unlike a GSTIN, a registration number is **not** warn-only. A GSTIN can
-    legitimately appear on two companies (decision IQ-9 — a shared premises or a
+    legitimately appear on two companies (a shared premises or a
     transferred registration), but ``(country, registration number)`` is the
     foreign equivalent of a PAN: it is the identity itself, which is why
     ``uq_exporter_profile_country_registration_number`` exists.
@@ -1792,10 +1782,10 @@ class CompanyAlreadyInPipelineError(AnerBaseException):
 class DealBuyerCompanyAlreadySetError(AnerBaseException):
     """A second, different ``buyer_company_id`` on one deal.
 
-    Set once (migration 0034, plan P4-4). The buyer company is what a deal's buyer
+    Set once (migration 0034). The buyer company is what a deal's buyer
     checks are recorded against and read back through
     (``for_company(buyer_company_id)``), what the handover guard's condition 5 asks
-    about (BQ-4), and what the handover snapshot records. Re-pointing it would
+    about, and what the handover snapshot records. Re-pointing it would
     silently reinterpret all three: sanctions and AML somebody ran on one company
     would start answering for another, with nothing recording that it had happened.
 
@@ -2043,7 +2033,7 @@ class DealBuyerIsNotACompanyError(AnerBaseException):
 
     A trade relationship is a pair of **company records**. A ``deal_buyer`` row is a
     set of details with nothing to pair with, so a deal written before the buyer
-    migration (P4-6) cannot carry trade history until that migration links it to a
+    migration cannot carry trade history until that migration links it to a
     company.
 
     Said plainly rather than worked around: the alternative would be inventing a
@@ -2064,12 +2054,11 @@ class DealBuyerIsNotACompanyError(AnerBaseException):
 
 
 class BuyerCompanyAlreadyKnownError(AnerBaseException):
-    """A buyer company to create carries an identifier a company on file already holds
-    (R-24, plan P4-3).
+    """A buyer company to create carries an identifier a company on file already holds.
 
     Creating it would make a second record of one company — the thing the match step
     exists to prevent. The company (or, for a conflict, the companies) is named so the
-    screen can offer it instead; its identifiers stay masked per role (BQ-2), and none
+    screen can offer it instead; its identifiers stay masked per role, and none
     of the submitted values is echoed back.
     """
 
@@ -2092,7 +2081,7 @@ class BuyerCompanyAlreadyKnownError(AnerBaseException):
 
 
 class TradeInvoiceDealNotThisPairError(AnerBaseException):
-    """An invoice naming a deal between two other companies (R-17).
+    """An invoice naming a deal between two other companies.
 
     A relationship is one seller and one buyer company, and an invoice's ``deal_id``
     says which of their deals it came from. A deal whose seller or buyer company is a

@@ -1,8 +1,7 @@
-"""``CompanyDirectory`` — find a company, or create one for a buyer — **owner:
-Developer 3** (allocation F3; plan P4-1, P4-3, P4-6).
+"""``CompanyDirectory`` — find a company, or create one for a buyer.
 
-Published so Developer 2's buyer migration (P4-6) and the RM's "record this deal's
-buyer" screen (P4-4) can turn a name and a country into a company record without
+Published so the buyer migration and the RM's "record this deal's
+buyer" screen can turn a name and a country into a company record without
 either of them reaching into the company service's create paths. Pure data structures
 and one ``Protocol``; no I/O. ``application/company_directory.py::CompanyDirectoryService``
 implements it.
@@ -14,12 +13,12 @@ Two questions, deliberately apart
   never writes.
 * **``create_buyer_company``** — "make one, as somebody's buyer." Writes a company at
   ``pipeline_status = NOT_IN_PIPELINE`` and ``source = DEAL_BUYER``, so it is a real
-  company record that is not a lead (plan §8: a buyer becomes a lead only when
-  somebody onboards it, task 3.11).
+  company record that is not a lead (a buyer becomes a lead only when
+  somebody onboards it).
 
 Keeping them apart is what lets the buyer migration do the thing the plan asks for:
 match first, hand ``POSSIBLE_DUPLICATE`` and ``CONFLICT`` to Compliance for review
-(IQ-8), and create only for ``NEW``.
+and create only for ``NEW``.
 
 What ``match`` means by each answer
 -----------------------------------
@@ -38,9 +37,9 @@ kinds found, so a reviewer sees what the matcher saw.
 
 **Identifier disclosure is the caller's problem, not this module's.** ``match`` takes
 ``actor_role`` and records it on the result so a route can decide what it may say
-(BQ-2: a full identifier may name a company; identifiers themselves stay masked). The
-lead's decision D-07 in ``remaining-work.md`` bounds what task 3.10's response may carry;
-this module reports what it found and lets the route narrow it.
+(a full identifier may name a company; identifiers themselves stay masked). What the
+match route's response may carry is the route's decision; this module reports what it
+found and lets the route narrow it.
 """
 
 from __future__ import annotations
@@ -52,7 +51,7 @@ from typing import Protocol
 
 
 class MatchKind(str, enum.Enum):
-    """How confident the directory is, in the four words the plan uses (P4-3)."""
+    """How confident the directory is, in four words."""
 
     MATCHED = "MATCHED"
     POSSIBLE_DUPLICATE = "POSSIBLE_DUPLICATE"
@@ -80,7 +79,7 @@ class MatchResult:
 
     @property
     def needs_a_person(self) -> bool:
-        """Whether the buyer migration must stop and ask (IQ-8)."""
+        """Whether the buyer migration must stop and ask."""
         return self.kind in (MatchKind.POSSIBLE_DUPLICATE, MatchKind.CONFLICT)
 
 
@@ -89,7 +88,7 @@ class BuyerCompanyDraft:
     """What is known about a buyer at the moment it becomes a company.
 
     Everything but ``name`` and ``country`` is optional, because that is all a legacy
-    ``deal_buyer`` row is guaranteed to have (``deal-and-buyer.md`` §3). IQ-7's
+    ``deal_buyer`` row is guaranteed to have (``deal-and-buyer.md`` §3). The
     "a foreign company needs a registration number" rule does **not** apply to these:
     requiring one would make the buyer migration impossible for rows that never had it.
     """
@@ -103,7 +102,7 @@ class BuyerCompanyDraft:
     contact_phone: str | None = None
     #: The deal this buyer came from, recorded on the company as ``created_via_deal_id``.
     created_via_deal_id: uuid.UUID | None = None
-    #: Where the row came from, for ``source_ref`` (BQ-7) — a migration run id, or the
+    #: Where the row came from, for ``source_ref`` — a migration run id, or the
     #: route that recorded the buyer.
     source_ref: str | None = None
 

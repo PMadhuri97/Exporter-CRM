@@ -1,7 +1,6 @@
-"""Document and storage routes — **owner: Developer 3B** (L3-07 … L3-10).
+"""Document and storage routes.
 
-Empty until now; see `follow_up_router.py`'s docstring for why it was mounted in
-the seam commit rather than when it was filled.
+Mounted by `router.py` before it was filled; see `follow_up_router.py`'s docstring.
 
 No prefix, because documents hang off deals as well as companies: a single router
 prefix would fit neither. The upload and list paths name their owner
@@ -155,7 +154,7 @@ _SourceField = Annotated[DocumentSource, Form()]
         "are settings — adding one is a GitOps change, not a release.\n\n"
         "`scanner_name` is the scanner that will judge an upload. It is "
         "`pass-through` in the prototype: a labelled placeholder that checks "
-        "nothing, and a screen must say so (assumption A9)."
+        "nothing, and a screen must say so."
     ),
     responses={401: _401, 403: _403_READ},
 )
@@ -327,7 +326,7 @@ async def list_company_documents(
     description=(
         "As for a company, except the category must be one that belongs on a deal "
         "(architecture §3.4). These are the documents a handover's snapshot will "
-        "list (Phase 4)."
+        "list."
     ),
     responses={
         401: _401,

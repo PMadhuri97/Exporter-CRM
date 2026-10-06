@@ -5,7 +5,7 @@
  * may see identifiers (`identifiers.reveal`): the API refuses an identifier search
  * from a masked role (decision 12), so for those roles an identifier-shaped query
  * sends nothing at all and the bar shows a hint towards the match flow instead
- * (BQ-2: Add company / Choose buyer). Reads only — the list is `GET /exporters`.
+ * (Add company / Choose buyer). Reads only — the list is `GET /exporters`.
  */
 
 import { useQuery } from '@tanstack/react-query';

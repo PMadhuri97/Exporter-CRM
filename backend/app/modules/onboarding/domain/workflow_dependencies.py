@@ -45,15 +45,14 @@ reference the workflow already holds — the vendor reference, the approval requ
 id, or the document id — so the workflow can ignore an answer that is not for the
 work it is waiting on.
 
-EXP-2: :class:`VerificationAdapter`
-------------------------------------
+:class:`VerificationAdapter`
+----------------------------
 The one exception to "keyed by the onboarding request" above.
 :class:`VerificationAdapter` and its dataclasses (:class:`VerificationRequest`,
 :class:`VerificationOutcome`, :class:`VerificationCapabilityDeclaration`) are not
 one of the onboarding workflow's own dependencies — nothing here is added to
 :class:`OnboardingWorkflowDependencies` or its ``_DEPENDENCY_PROTOCOLS`` table.
-They live in this file because the ticket that introduced them (EXP-2, since
-retired with the rest of the original build tickets) was explicit: "same file, same
+They live in this file because the design that introduced them was explicit: "same file, same
 one-Protocol-per-capability convention as the existing 9 ... do not create a new
 ``ports.py`` for this." The methods are plain ``def``, not ``async def``, and the
 dataclass fields hold real enum members rather than validated value-strings: unlike
@@ -443,7 +442,7 @@ class CompletionNotifier(Protocol):
         ...
 
 
-# ── EXP-2: generalized verification adapter ────────────────────────────────────
+# ── Generalized verification adapter ──────────────────────────────────────────
 
 
 @dataclass(frozen=True)
@@ -458,7 +457,7 @@ class VerificationRequest:
     between. ``ManualEntryAdapter`` additionally uses ``payload`` to carry the
     manually-observed result itself (see its module docstring).
 
-    ``evidence`` (Dev4B 4B-4) is what the outcome rests on — a note and/or
+    ``evidence`` is what the outcome rests on — a note and/or
     references. It is not part of ``payload``: the service stores it on the
     result and validates its document references against the subject, whatever
     the adapter. An adapter that has an evidence rule of its own
@@ -548,7 +547,7 @@ class VerificationCapabilityDeclaration:
 class VerificationAdapter(Protocol):
     """One extensible mechanism to trigger and record *any* verification check.
 
-    The generalization this ticket (EXP-2) exists for: a KYC check on a
+    The generalization this protocol exists for: a KYC check on a
     director and a bank-account check on an exporter both call
     ``application/verification_service.py``'s ``trigger_verification``, which
     resolves *this* Protocol by provider name via the registry below and calls
@@ -589,13 +588,13 @@ class VerificationAdapter(Protocol):
 
 @runtime_checkable
 class BatchVerificationAdapter(Protocol):
-    """The optional, additive "one payload produces many results" capability
-    (EXP-2 plan point 6 / Exporter CRM Piece 3): a provider like RXIL hands
+    """The optional, additive "one payload produces many results" capability:
+    a provider like RXIL hands
     over a batch of already-run checks in one package, unlike Middesk/
     Trulioo/``ManualEntryAdapter``'s one-call-one-result shape.
 
     **Design decision — a separate Protocol, not a method added to**
-    :class:`VerificationAdapter`. The alternative this ticket also considered
+    :class:`VerificationAdapter`. The alternative also considered
     was a ``verify_batch`` method on :class:`VerificationAdapter` itself,
     defaulting to "not supported" for adapters that don't implement it. That
     would mean either turning :class:`VerificationAdapter` from a pure
@@ -606,8 +605,8 @@ class BatchVerificationAdapter(Protocol):
     fits this module's own stated rule: "Rules every contract follows" this
     file's own docstring and comments describe one Protocol per capability,
     each independent of the others (``EntityVerifier``, ``UboMapper``,
-    ``Screener``, ... nine of them, plus :class:`VerificationAdapter` itself
-    for EXP-2). Batch verification is its own capability by that same logic —
+    ``Screener``, ... nine of them, plus :class:`VerificationAdapter` itself).
+    Batch verification is its own capability by that same logic —
     it gets its own Protocol, exactly like every other capability here, and
     an adapter that has no use for it (every adapter except an RXIL-shaped
     one, for the foreseeable future) simply never implements it. A caller
@@ -660,8 +659,8 @@ def register_adapter(name: str, adapter_cls: type[VerificationAdapter]) -> None:
 #: body, so an unrestricted path is caller-chosen import-and-invoke. Adapters
 #: live in exactly two packages; nothing outside them is a legitimate target.
 #:
-#: Kept byte-identical to ``kyb.domain.ports.ADAPTER_MODULE_ALLOWLIST`` — EXP-2
-#: specifies this registry as a straight copy of kyb's, so the two must not
+#: Kept byte-identical to ``kyb.domain.ports.ADAPTER_MODULE_ALLOWLIST`` — this
+#: registry is a straight copy of kyb's, so the two must not
 #: drift in what they admit.
 ADAPTER_MODULE_ALLOWLIST: tuple[str, ...] = (
     "app.modules.onboarding.infrastructure.adapters",

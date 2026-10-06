@@ -1,5 +1,5 @@
 /**
- * Contacts and the activity log — **owner: Developer 3**.
+ * Contacts and the activity log.
  *
  * Split out of the single `hooks/index.ts`; the barrel re-exports everything,
  * so no component changed. Mechanical move — every hook below is
@@ -80,7 +80,7 @@ export function useLogExporterActivity(customerId: string) {
   });
 }
 
-// ── Conversation gauge (L3-03, L3-04a) ───────────────────────────────
+// ── Conversation gauge ───────────────────────────────
 
 export function useExporterConversation(customerId: string | undefined) {
   return useQuery({
@@ -107,11 +107,11 @@ export function useConversationHistory(customerId: string | undefined) {
  *   which are different after every move.
  * - `conversationHistory` — the move just added a row.
  * - `followUps` — moving to or away from NOT_NOW adds or removes a check-back on
- *   the Follow-ups page. Developer 3A's own key.
+ *   the Follow-ups page. Engagement's own key.
  * - `exporterProfile` — the company's record changed. The company response does
  *   not carry the gauge today, but its `updated_at` does move, and any view built
- *   on that key should not show a stale record. This is Developer 2's query key,
- *   invalidated from Developer 3's mutation; the barrel's docstring notes that the
+ *   on that key should not show a stale record. This is the company record's query key,
+ *   invalidated from an engagement mutation; the barrel's docstring notes that the
  *   engagement mutations already do this, and it is the existing convention rather
  *   than a new coupling.
  */

@@ -1,11 +1,10 @@
-"""``DealBuyer`` — who the exporter is selling to on one deal — **owner:
-Developer 3B** (L3-06).
+"""``DealBuyer`` — who the exporter is selling to on one deal.
 
 Contract: ``docs/contracts/deal-and-buyer.md`` §3. Architecture §3.3, §3.5,
 decision 9, migration 0018.
 
-**Its own table, not columns on ``deal``.** Developer 4 attaches buyer checks to
-*the buyer* (plan §8.2): a verification result needs something with an id to point
+**Its own table, not columns on ``deal``.** Buyer checks attach to
+*the buyer*: a verification result needs something with an id to point
 at, and an ``entity_reference`` pointing at the deal would make "a check about the
 buyer" and "a check about the deal" indistinguishable. A separate row gives the
 buyer its own identity without pretending it is a company — it is not in

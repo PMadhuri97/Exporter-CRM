@@ -1,4 +1,4 @@
-"""Qualification — criteria, results, outcomes, re-review (L2-09, L2-10).
+"""Qualification — criteria, results, outcomes, re-review.
 
 Criteria are global settings and append-only, so these tests never version
 the seeded criteria (that would change every other test's suggestion). Tests
@@ -515,7 +515,7 @@ def _set_reason_code_active(code: str, active: bool) -> None:
 
 
 async def test_a_domestic_company_qualifies_without_export_evidence():
-    """P1-1's acceptance test: the whole point of the domestic-first change.
+    """The acceptance test for the domestic-first change.
 
     A company with nothing recorded against `export_history` or `export_licence` —
     not a FAIL, no result at all — is suggested QUALIFIED, because neither is
@@ -561,7 +561,7 @@ async def test_failing_an_export_criterion_no_longer_blocks_the_suggestion():
 
 
 async def test_a_retired_export_reason_code_is_refused_on_a_new_outcome():
-    """P1-2: no new decision may cite a reason that assumes export (IQ-12)."""
+    """No new decision may cite a reason that assumes export."""
     customer_id = await make_company()
     await _results(customer_id, [_fail("revenue")])
     with pytest.raises(ValidationError):
@@ -571,7 +571,7 @@ async def test_a_retired_export_reason_code_is_refused_on_a_new_outcome():
 
 
 async def test_a_past_outcome_keeps_rendering_its_retired_reason_code():
-    """The other half of P1-2, and why deactivation beats deletion.
+    """The other half of retiring export reasons, and why deactivation beats deletion.
 
     An outcome stores its codes as JSONB **strings**, not foreign keys, so one
     decided while the code was live reads back unchanged afterwards. Staged the way a

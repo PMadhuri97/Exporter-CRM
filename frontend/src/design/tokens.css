@@ -1,37 +1,44 @@
 /*
- * Ink & Paper — the design tokens (docs/frontend-plan.md §5.2, R-33 Phase 1).
+ * The design tokens (docs/frontend-plan.md §5.2): a standard enterprise palette.
  *
- * The chrome is ink on paper with no brand hue: every coloured pixel on screen
- * means a state. Each meaning has three roles — the bare name is the text/icon
- * colour (AA on `surface`), `-tint` a background, `-solid` a dot, fill or lamp.
+ * Neutral greys carry the chrome: a grey page, white cards, grey lines and text.
+ * Colour has two jobs. `accent` is the brand blue and marks what can be acted on:
+ * primary buttons, links, the selected nav row and the current path step. The five
+ * meanings mark state, each in three roles — the bare name is the text/icon colour
+ * (AA on `surface`), `-tint` a background, `-solid` a dot or fill.
+ *
+ * The blue is a placeholder until Aner's brand colour is confirmed; changing it is
+ * the four `accent` values in each block, and no screen.
  *
  * Every value is an RGB triplet so Tailwind's opacity modifiers work
  * (`tailwind.config.ts` wraps them as `rgb(var(--x) / <alpha-value>)`).
- * `tokens.contrast.test.ts` reads this file and checks every text pair against
- * WCAG AA in both themes; three values differ from §5.2 because they failed it:
- * attention-solid and idle-solid (light) were under 3:1 as lamps, and
- * negative-solid (dark) left CRITICAL's white text under 4.5:1.
+ * `tokens.contrast.test.ts` reads this file and checks every pair against WCAG AA
+ * in both themes.
  *
- * Light is the default. Dark applies under `data-theme="dark"`, or when the
- * system prefers dark and the viewer has not picked light. The bare attribute
- * selectors also work below the root, so the style guide can show both themes
- * side by side. The two dark blocks must stay identical (the test checks).
+ * Light is the default, and the system preference does not switch it. Dark applies
+ * under `data-theme="dark"`, set from the user menu. The attribute selectors also
+ * work below the root, so the style guide can show both themes side by side.
  */
 
 :root,
 [data-theme='light'] {
   color-scheme: light;
 
-  --paper: 245 243 238; /* #F5F3EE */
+  --paper: 243 243 243; /* #F3F3F3 */
   --surface: 255 255 255; /* #FFFFFF */
   --raised: 255 255 255; /* #FFFFFF */
-  --sunken: 238 235 228; /* #EEEBE4 */
-  --line: 227 223 213; /* #E3DFD5 */
-  --line-strong: 207 201 188; /* #CFC9BC */
-  --ink: 23 22 15; /* #17160F */
-  --ink-2: 74 71 62; /* #4A473E */
-  --ink-3: 107 103 92; /* #6B675C */
-  --ink-4: 156 151 138; /* #9C978A */
+  --sunken: 245 245 245; /* #F5F5F5 */
+  --line: 224 224 224; /* #E0E0E0 */
+  --line-strong: 138 138 138; /* #8A8A8A */
+  --ink: 36 36 36; /* #242424 */
+  --ink-2: 66 66 66; /* #424242 */
+  --ink-3: 97 97 97; /* #616161 */
+  --ink-4: 138 138 138; /* #8A8A8A */
+
+  --accent: 11 92 173; /* #0B5CAD */
+  --accent-solid: 11 92 173; /* #0B5CAD */
+  --accent-solid-hover: 9 76 143; /* #094C8F */
+  --accent-tint: 232 241 251; /* #E8F1FB */
 
   --positive: 29 107 63; /* #1D6B3F */
   --positive-tint: 230 242 234; /* #E6F2EA */
@@ -45,86 +52,55 @@
   --progress: 47 93 140; /* #2F5D8C */
   --progress-tint: 232 239 246; /* #E8EFF6 */
   --progress-solid: 74 125 181; /* #4A7DB5 */
-  --idle: 107 103 92; /* #6B675C */
-  --idle-tint: 238 235 228; /* #EEEBE4 */
-  --idle-solid: 135 130 117; /* #878275 */
+  --idle: 97 97 97; /* #616161 */
+  --idle-tint: 240 240 240; /* #F0F0F0 */
+  --idle-solid: 138 138 138; /* #8A8A8A */
 
-  --shadow-float: 0 1px 0 rgb(var(--line)), 0 16px 40px -16px rgb(23 22 15 / 0.22);
+  --shadow-float: 0 4px 16px rgb(0 0 0 / 0.14);
 }
 
 [data-theme='dark'] {
   color-scheme: dark;
 
-  --paper: 18 17 14; /* #12110E */
-  --surface: 26 25 21; /* #1A1915 */
-  --raised: 32 31 26; /* #201F1A */
-  --sunken: 36 34 29; /* #24221D */
-  --line: 46 44 37; /* #2E2C25 */
-  --line-strong: 62 59 51; /* #3E3B33 */
-  --ink: 242 239 230; /* #F2EFE6 */
-  --ink-2: 207 202 189; /* #CFCABD */
-  --ink-3: 163 158 144; /* #A39E90 */
-  --ink-4: 110 105 94; /* #6E695E */
+  --paper: 27 27 27; /* #1B1B1B */
+  --surface: 36 36 36; /* #242424 */
+  --raised: 44 44 44; /* #2C2C2C */
+  --sunken: 46 46 46; /* #2E2E2E */
+  --line: 58 58 58; /* #3A3A3A */
+  --line-strong: 143 143 143; /* #8F8F8F */
+  --ink: 240 240 240; /* #F0F0F0 */
+  --ink-2: 214 214 214; /* #D6D6D6 */
+  --ink-3: 173 173 173; /* #ADADAD */
+  --ink-4: 122 122 122; /* #7A7A7A */
+
+  --accent: 117 178 240; /* #75B2F0 */
+  --accent-solid: 34 102 184; /* #2266B8 */
+  --accent-solid-hover: 29 90 163; /* #1D5AA3 */
+  --accent-tint: 23 42 64; /* #172A40 */
 
   --positive: 108 203 143; /* #6CCB8F */
   --positive-tint: 23 41 30; /* #17291E */
   --positive-solid: 63 174 106; /* #3FAE6A */
   --negative: 240 138 128; /* #F08A80 */
   --negative-tint: 46 23 21; /* #2E1715 */
-  --negative-solid: 200 58 46; /* #C83A2E */
+  --negative-solid: 212 64 47; /* #D4402F */
   --attention: 233 192 101; /* #E9C065 */
   --attention-tint: 45 36 18; /* #2D2412 */
   --attention-solid: 217 163 58; /* #D9A33A */
   --progress: 141 182 226; /* #8DB6E2 */
   --progress-tint: 22 33 45; /* #16212D */
   --progress-solid: 90 140 196; /* #5A8CC4 */
-  --idle: 163 158 144; /* #A39E90 */
-  --idle-tint: 36 34 29; /* #24221D */
-  --idle-solid: 110 105 94; /* #6E695E */
+  --idle: 173 173 173; /* #ADADAD */
+  --idle-tint: 46 46 46; /* #2E2E2E */
+  --idle-solid: 122 122 122; /* #7A7A7A */
 
-  --shadow-float: 0 1px 0 rgb(var(--line)), 0 16px 40px -16px rgb(0 0 0 / 0.6);
+  --shadow-float: 0 4px 16px rgb(0 0 0 / 0.5);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    color-scheme: dark;
-
-    --paper: 18 17 14; /* #12110E */
-    --surface: 26 25 21; /* #1A1915 */
-    --raised: 32 31 26; /* #201F1A */
-    --sunken: 36 34 29; /* #24221D */
-    --line: 46 44 37; /* #2E2C25 */
-    --line-strong: 62 59 51; /* #3E3B33 */
-    --ink: 242 239 230; /* #F2EFE6 */
-    --ink-2: 207 202 189; /* #CFCABD */
-    --ink-3: 163 158 144; /* #A39E90 */
-    --ink-4: 110 105 94; /* #6E695E */
-
-    --positive: 108 203 143; /* #6CCB8F */
-    --positive-tint: 23 41 30; /* #17291E */
-    --positive-solid: 63 174 106; /* #3FAE6A */
-    --negative: 240 138 128; /* #F08A80 */
-    --negative-tint: 46 23 21; /* #2E1715 */
-    --negative-solid: 200 58 46; /* #C83A2E */
-    --attention: 233 192 101; /* #E9C065 */
-    --attention-tint: 45 36 18; /* #2D2412 */
-    --attention-solid: 217 163 58; /* #D9A33A */
-    --progress: 141 182 226; /* #8DB6E2 */
-    --progress-tint: 22 33 45; /* #16212D */
-    --progress-solid: 90 140 196; /* #5A8CC4 */
-    --idle: 163 158 144; /* #A39E90 */
-    --idle-tint: 36 34 29; /* #24221D */
-    --idle-solid: 110 105 94; /* #6E695E */
-
-    --shadow-float: 0 1px 0 rgb(var(--line)), 0 16px 40px -16px rgb(0 0 0 / 0.6);
-  }
-}
-
-/* Motion (§5.4): hover/press, popovers/sheets, a lamp travelling its track. */
+/* Motion (§5.6): hover and press; menus, popovers, dialogs and the side panel. */
 :root {
-  --dur-quick: 120ms;
-  --dur-pop: 180ms;
-  --dur-travel: 240ms;
+  --dur-quick: 100ms;
+  --dur-pop: 150ms;
   --ease-enter: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 }
@@ -133,6 +109,5 @@
   :root {
     --dur-quick: 0ms;
     --dur-pop: 0ms;
-    --dur-travel: 0ms;
   }
 }

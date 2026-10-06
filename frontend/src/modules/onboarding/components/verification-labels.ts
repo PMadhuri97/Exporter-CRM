@@ -1,5 +1,5 @@
 /**
- * Words, colours and option lists for verification results — **owner: Developer 4B**.
+ * Words, colours and option lists for verification results.
  *
  * Nothing here decides what a user may do. Who may record or review a result comes
  * from the server's `capabilities`, never from a role comparison (verification-and-screening.md §9).
@@ -50,9 +50,9 @@ export const RISK_LEVELS: VerificationRiskLevel[] = ['LOW', 'MEDIUM', 'HIGH', 'C
 export const REVIEW_OUTCOMES: VerificationReviewStatus[] = ['ACCEPTED', 'REJECTED', 'ESCALATED'];
 
 export function chipClasses(value: string): string {
-  // CRITICAL is the one filled, hatched mark (frontend-plan §5.2): it has to read as a
+  // CRITICAL is the one solid badge (frontend-plan §5.2): it has to read as a
   // different *class* of signal at a glance, not as a slightly darker HIGH.
-  if (value === 'CRITICAL') return 'hatch bg-negative-solid font-bold text-white';
+  if (value === 'CRITICAL') return 'bg-negative-solid font-bold text-white';
   if (['PASSED', 'LOW', 'ACCEPTED', 'CLOSED'].includes(value)) return 'bg-positive-tint text-positive';
   if (value === 'HIGH') return 'bg-negative-tint text-negative ring-1 ring-inset ring-negative/50';
   if (['FAILED', 'REJECTED'].includes(value)) return 'bg-negative-tint text-negative';
@@ -63,7 +63,7 @@ export function chipClasses(value: string): string {
 /**
  * Where a result came from, said honestly. `provenance` is served by the backend:
  * `MANUAL` is a person; `STUB` is the RXIL stub — not RXIL, whose results contract
- * (D12) is unpublished; `PROVIDER` is a real integration, shown by its stored name.
+ * is unpublished; `PROVIDER` is a real integration, shown by its stored name.
  */
 export function provenanceLabel(result: Pick<VerificationResult, 'provenance' | 'provider'>): string {
   if (result.provenance === 'MANUAL') return 'Manual (person)';

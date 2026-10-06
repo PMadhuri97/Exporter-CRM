@@ -1,7 +1,6 @@
-"""Request/response schemas for follow-ups and completions — **owner: Developer
-3A, Phase 2** (L3-04b).
+"""Request/response schemas for follow-ups and completions.
 
-Created as a stub in the seam commit and filled here. The completion shape these
+Created as a stub and filled here. The completion shape these
 render is fixed by `docs/contracts/engagement.md` §5.
 
 Two row types, not one. A **follow-up** is an activity with a due date, dealt with

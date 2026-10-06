@@ -1,6 +1,5 @@
 /**
- * Verification results, the screening checklist and bank activity —
- * **owner: Developer 4**.
+ * Verification results, the screening checklist and bank activity.
  *
  * Everything the background-check gauge reads or writes (architecture §9.4).
  * The screening checklist here is the eight-item *compliance* list, not the
@@ -9,8 +8,8 @@
  *
  * Split out of the single `api/index.ts`; the barrel re-exports everything, so
  * no caller changed. Mechanical move — every function below is byte-identical
- * to the one it replaced, except `getScreeningItemHistory`, which Developer 4B
- * added for the checklist's per-item history (verification-and-screening.md §5, 4B-7).
+ * to the one it replaced, except `getScreeningItemHistory`, which was
+ * added for the checklist's per-item history (verification-and-screening.md §5).
  */
 
 import { apiRequest } from '@/lib/api/client';
@@ -48,7 +47,7 @@ export function reviewVerification(
 }
 
 /** The checklist in one check cycle — the current one unless `cycleId` names another
- * (earlier cycles are read-only; Developer 1, P2-3d). */
+ * (earlier cycles are read-only). */
 export function getScreeningReview(
   customerId: string,
   cycleId?: string,
@@ -80,7 +79,7 @@ export function updateScreeningReviewItem(
   payload: {
     status: import('../types').ScreeningChecklistStatus;
     comment: string | null;
-    /** Optional (IQ-14): the company's AVAILABLE documents or http(s) links. */
+    /** Optional: the company's AVAILABLE documents or http(s) links. */
     evidence_refs?: import('../types').VerificationEvidenceRef[];
   },
 ): Promise<import('../types').ScreeningReviewItem> {

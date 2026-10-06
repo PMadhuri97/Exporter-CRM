@@ -1,5 +1,4 @@
-"""Give every deal that has a buyer company a trade relationship — **owner:
-Developer 3** (allocation task 3.23, plan P5-5).
+"""Give every deal that has a buyer company a trade relationship.
 
     python -m app.modules.onboarding.backfill_trade_relationships --dry-run
     python -m app.modules.onboarding.backfill_trade_relationships --apply --run-id 2026-10-03a
@@ -9,8 +8,8 @@ Run it with ``LOG_LEVEL=WARNING DEBUG=false``: with the development settings the
 engine echoes every statement and the report is lost in it. Its output is ASCII, so a
 Windows console can show it (``command_console``).
 
-**Run it only after Developer 2's buyer migration (P4-6) has been applied** — step 3
-of the operational order in `developer-allocation.md` §6. Before that, most deals have
+**Run it only after the buyer migration (``migrate_deal_buyers``) has been applied.**
+Before that, most deals have
 no ``buyer_company_id`` and this would create relationships for the few that do and
 report the rest as unmigrated, which is noise rather than a result. The dry run says
 so out loud when it sees a large unmigrated remainder.
@@ -19,17 +18,17 @@ so out loud when it sees a large unmigrated remainder.
 database. Like the buyer migration, the intended sequence is ``pg_dump``,
 ``--dry-run``, read the report, ``--apply``, ``--validate``.
 
-One departure from P5-5, and why
---------------------------------
-P5-5 says *"set ``deal.relationship_id`` (the terminal-deal trigger must allow this
+No ``deal.relationship_id``, and why
+------------------------------------
+The original design said *"set ``deal.relationship_id`` (the terminal-deal trigger must allow this
 one-time set, or the column is added to the trigger only after the backfill)"*. There
 is **no such column**, and the backfill needs none: a relationship is keyed on the
 ordered pair ``(seller_company_id, buyer_company_id)`` by
-``uq_trade_relationship_pair`` (task 3.18), and a deal already carries both sides —
+``uq_trade_relationship_pair``, and a deal already carries both sides —
 ``company_id`` and ``buyer_company_id``. So a deal's relationship is a lookup, not a
 stored link, and ``relationship_for_pair`` is what the deal page asks.
 
-That is worth stating plainly because it removes the whole difficulty P5-5
+That is worth stating plainly because it removes the whole difficulty the design
 anticipated: nothing is written to ``deal``, so the terminal-deal freeze is never
 involved, a handed-over deal needs no exception, and migration 0039's problem cannot
 recur here. The cost is a join rather than a column, which for a page that already
@@ -38,7 +37,7 @@ loads the deal is nothing.
 What it writes
 --------------
 ``trade_relationship`` rows, through ``TradeHistoryService.get_or_create_relationship``
-with ``source='backfill'`` and ``source_ref`` the run id (BQ-7) — the same method the
+with ``source='backfill'`` and ``source_ref`` the run id — the same method the
 deal path uses, so a backfilled relationship and one created by recording a buyer are
 the same kind of row, built by the same code. Nothing else: no invoices (a deal having
 had a buyer is not evidence that an invoice existed — an invoice is a fact about
@@ -52,17 +51,17 @@ There is no mapping table to consult and none is needed.
 Which deals need it
 -------------------
 Only the ones linked **without** going through ``DealService.set_buyer_company``. That
-method creates the relationship itself, in the same transaction (task 3.18's acceptance
-criterion: *every deal with a buyer company has a relationship*), so every deal recorded
+method creates the relationship itself, in the same transaction (*every deal with a
+buyer company has a relationship*), so every deal recorded
 since 3.18 shipped already has one and this command reports it as already there.
 
-What is left is exactly P5-5's subject: the deals the buyer migration linked, since
+What is left is exactly this command's subject: the deals the buyer migration linked, since
 ``migrate_deal_buyers`` writes ``deal.buyer_company_id`` with an ``UPDATE`` and creates
-no relationship. Hence the ordering — P4-6, then this.
+no relationship. Hence the ordering — the buyer migration, then this.
 
 Which deals count
 -----------------
-Every deal with a ``buyer_company_id``, at any stage, including ``WITHDRAWN`` — P5-5's
+Every deal with a ``buyer_company_id``, at any stage, including ``WITHDRAWN`` — the design's
 wording, and the right reading: a relationship is *"these two companies have dealt with
 each other"*, not *"these two companies completed a trade"*. What happened is carried
 by the invoices and their outcomes, and a withdrawn deal contributes none. A pair whose
@@ -114,7 +113,7 @@ logger = structlog.get_logger(__name__)
 #: migration's lesson: a report that prints 568 rows is a report nobody reads.
 DEFAULT_ROWS_SHOWN = 20
 
-#: Above this share of deals still unmigrated, the dry run says P4-6 looks unapplied
+#: Above this share of deals still unmigrated, the dry run says the buyer migration looks unapplied
 #: rather than letting the operator read a report about the remainder.
 UNMIGRATED_WARNING_SHARE = 0.5
 
@@ -158,7 +157,7 @@ class Report:
 
     @property
     def looks_unapplied(self) -> bool:
-        """Whether P4-6 looks unapplied, so the operator is told rather than handed a
+        """Whether the buyer migration looks unapplied, so the operator is told rather than handed a
         report about whichever deals happen to be linked already."""
         total = self.deals_with_a_buyer_company + self.deals_without_one
         if not total:
@@ -166,7 +165,7 @@ class Report:
         return self.deals_without_one / total > UNMIGRATED_WARNING_SHARE
 
     def render(self, *, show: int = DEFAULT_ROWS_SHOWN) -> str:
-        lines = ["", "Trade relationship backfill (P5-5)", "=" * 60]
+        lines = ["", "Trade relationship backfill", "=" * 60]
         lines.append(f"deals with a buyer company:   {self.deals_with_a_buyer_company}")
         lines.append(f"deals with none:              {self.deals_without_one}")
         lines.append(f"company pairs:                {len(self.pairs)}")
@@ -179,11 +178,11 @@ class Report:
             lines += [
                 "",
                 "WARNING: most deals have no buyer company, so the buyer migration "
-                "(P4-6) looks unapplied.",
-                "  This backfill is step 3 of the operational order; running it now "
+                "looks unapplied.",
+                "  This backfill runs after the buyer migration; running it now "
                 "covers only the few",
                 "  deals already linked and the rest would need a second run. Apply "
-                "P4-6 first.",
+                "the buyer migration first.",
             ]
 
         if self.to_create:
@@ -503,8 +502,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         prog="python -m app.modules.onboarding.backfill_trade_relationships",
         description=(
-            "Create a trade relationship for every deal that has a buyer company "
-            "(P5-5). Run it only after the buyer migration (P4-6) has been applied. "
+            "Create a trade relationship for every deal that has a buyer company. "
+            "Run it only after the buyer migration has been applied. "
             "Take a pg_dump first, read the --dry-run report, then --apply and "
             "--validate."
         ),
@@ -512,7 +511,7 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="report, write nothing")
     mode.add_argument("--apply", action="store_true", help="create the relationships")
-    mode.add_argument("--validate", action="store_true", help="run P5-5's checks")
+    mode.add_argument("--validate", action="store_true", help="run the backfill's checks")
     mode.add_argument(
         "--report-run",
         action="store_true",

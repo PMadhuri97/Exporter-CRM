@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import axe from 'axe-core';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
@@ -33,14 +33,18 @@ async function violations(container: Element) {
 }
 
 describe('the style guide', () => {
-  it('shows every primitive in a light and a dark pane', () => {
+  it('opens in light, and shows every primitive in a light and a dark pane', () => {
     renderGuide();
+    expect(screen.getByTestId('styleguide-light')).toBeInTheDocument();
+    expect(screen.queryByTestId('styleguide-dark')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: 'Both' }));
     expect(screen.getByTestId('styleguide-light')).toHaveAttribute('data-theme', 'light');
     expect(screen.getByTestId('styleguide-dark')).toHaveAttribute('data-theme', 'dark');
   });
 
-  it('has no accessibility violations in either theme', async () => {
+  it.each(['Light', 'Dark'])('has no accessibility violations in the %s theme', async (theme) => {
     const { container } = renderGuide();
+    fireEvent.click(screen.getByRole('radio', { name: theme }));
     expect(await violations(container)).toEqual([]);
   }, 30_000);
 });

@@ -1,14 +1,14 @@
-"""The move to CUSTOMER (L2-11 / 4A-9): whichever of PROSPECT and CLEAR comes second.
+"""The move to CUSTOMER: whichever of PROSPECT and CLEAR comes second.
 
 Architecture §3.2 and decision 2: a company becomes a ``CUSTOMER`` when it is a
 ``PROSPECT`` and its background check is ``CLEAR``, whichever becomes true second.
-Decision U4 is taken as **one transaction**: the move that completes the condition —
-Developer 4A's ``CLEAR`` or Developer 2's ``QUALIFIED`` outcome — promotes the
+It is **one transaction**: the move that completes the condition —
+the background check's ``CLEAR`` or qualification's ``QUALIFIED`` outcome — promotes the
 company before its own commit, so there is never a committed company that is
 ``PROSPECT`` and ``CLEAR`` at once, and ``company.became_customer`` is announced once,
 after the commit (``company-record.md`` §3.2, ``background-check.md`` §11.3).
 
-Everything here runs through the real services, the real 4A ↔ 4B reader and the
+Everything here runs through the real services, the real compliance-inputs reader and the
 shipped ``CLEAR_POLICY`` — nothing about the check is substituted.
 """
 
@@ -51,7 +51,7 @@ from app.platform.messaging.schemas import EventType
 pytestmark = pytest.mark.asyncio
 
 COMPLIANCE = "compliance-officer"
-#: Maker-checker (plan P3-1d): the second officer who approves what COMPLIANCE proposes.
+#: Maker-checker: the second officer who approves what COMPLIANCE proposes.
 CHECKER = "second-compliance-officer"
 
 
@@ -69,8 +69,8 @@ def _became_customer(bus: InMemoryEventBus) -> list:
 
 
 async def _answer_the_screening(company_id: uuid.UUID) -> None:
-    """All eight checklist items PASSED, through Developer 4B's service — the inputs
-    the shipped CLEAR policy needs (A3; D1–D4)."""
+    """All eight checklist items PASSED, through the screening service — the inputs
+    the shipped CLEAR policy needs."""
     for key in SCREENING_CATALOGUE:
         async with db_services.AsyncSessionLocal() as db:
             await ScreeningReviewService(db).upsert_review_item(
@@ -80,7 +80,7 @@ async def _answer_the_screening(company_id: uuid.UUID) -> None:
 
 async def _in_review_and_answered(company_id: uuid.UUID) -> None:
     await _answer_the_screening(company_id)
-    # Rule B (plan P3-2): KYB, AML and sanctions passed in the current cycle.
+    # Rule B: KYB, AML and sanctions passed in the current cycle.
     await record_required_checks(company_id, actor_id=COMPLIANCE)
     async with db_services.AsyncSessionLocal() as db:
         await BackgroundCheckService(db).start_review(
@@ -89,7 +89,7 @@ async def _in_review_and_answered(company_id: uuid.UUID) -> None:
 
 
 async def _clear(company_id: uuid.UUID, risk: BackgroundCheckRisk = BackgroundCheckRisk.LOW):
-    """COMPLIANCE proposes the CLEAR and CHECKER approves it (maker-checker, P3-1b): the
+    """COMPLIANCE proposes the CLEAR and CHECKER approves it (maker-checker): the
     approval is the transaction that writes the decision and promotes."""
     async with db_services.AsyncSessionLocal() as db:
         proposal = await BackgroundCheckService(db).propose(
@@ -221,7 +221,7 @@ async def test_a_lead_that_is_cleared_stays_a_lead(bus: InMemoryEventBus):
 async def test_reopening_and_clearing_a_customer_again_promotes_and_announces_nothing(
     bus: InMemoryEventBus,
 ):
-    """A customer stays a customer through a reopen (A5), and the second clearance
+    """A customer stays a customer through a reopen, and the second clearance
     finds nothing to do — the move is idempotent."""
     company_id = await make_prospect()
     await _in_review_and_answered(company_id)
@@ -263,7 +263,7 @@ async def test_a_clear_and_a_qualification_landing_together_promote_exactly_once
 async def test_a_failed_promotion_rolls_the_clear_back_with_it(
     bus: InMemoryEventBus, monkeypatch: pytest.MonkeyPatch
 ):
-    """U4 as one transaction: if the promotion fails, the CLEAR decision, its
+    """One transaction: if the promotion fails, the CLEAR decision, its
     evidence, the gauge and its history row are not left behind either — there is no
     committed state that is PROSPECT and CLEAR at once."""
     company_id = await make_prospect()

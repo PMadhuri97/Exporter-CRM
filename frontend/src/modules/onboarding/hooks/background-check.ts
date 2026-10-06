@@ -1,5 +1,5 @@
 /**
- * React Query hooks for the background check — **owner: Developer 4A** (L4-03, L4-13).
+ * React Query hooks for the background check.
  *
  * Recording a decision invalidates **both** the standing and the decision list: the
  * standing carries `allowed_moves`, so a stale copy would keep offering the move that
@@ -77,7 +77,7 @@ export function useRecordBackgroundCheckDecision(customerId: string) {
   });
 }
 
-// ── Developer 1 (compliance engine) ────────────────────────────────────────
+// ── Compliance engine ────────────────────────────────────────
 
 const proposalsKey = (customerId: string) => ['backgroundCheckProposals', customerId] as const;
 /** Every cross-company proposal read (the Home queue), whatever its parameters. */
@@ -134,7 +134,7 @@ export function useStartCheckCycle(customerId: string) {
   });
 }
 
-// ── Maker-checker (P3-1b/c) and Re-KYC due (P3-3c) ─────────────────────────
+// ── Maker-checker and Re-KYC due ─────────────────────────
 
 /** One company's proposals, newest first. */
 export function useBackgroundCheckProposals(customerId: string | undefined) {

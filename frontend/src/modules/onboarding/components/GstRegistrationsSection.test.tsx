@@ -139,7 +139,7 @@ describe('GstRegistrationsSection', () => {
     expect(screen.getByText(/Returns unfiled/)).toBeInTheDocument();
   });
 
-  it('shows no flag and no count when the server withholds them (DEVELOPER, R-47)', async () => {
+  it('shows no flag and no count when the server withholds them (DEVELOPER)', async () => {
     // The server sends `null` for a role it does not serve flags to; the screen
     // renders what it is given and decides nothing about roles itself.
     vi.mocked(listGstRegistrations).mockResolvedValue({
@@ -219,7 +219,7 @@ describe('GstRegistrationsSection', () => {
   });
 
   it('warns that a shared GSTIN is not flagged on the other company', async () => {
-    // Decision IQ-9 keeps duplicates warn-only, so the flag belongs to one row.
+    // Duplicates are warn-only, so the flag belongs to one row.
     // Somebody who did not know that would believe they had stopped trade that is
     // still running on the other company.
     vi.mocked(listGstRegistrations).mockResolvedValue({

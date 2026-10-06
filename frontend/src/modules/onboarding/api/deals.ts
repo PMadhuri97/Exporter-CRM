@@ -1,14 +1,14 @@
 /**
- * Deals and buyers — **owner: Developer 3B** (L3-05, L3-06).
+ * Deals and buyers.
  *
- * Created as a stub in the seam commit, together with its
+ * Created as a stub, together with its
  * `export * from './deals'` line in `api/index.ts`, and filled here — so the
- * barrel, which every owner shares, was never opened twice.
+ * barrel, which every area shares, was never opened twice.
  *
- * **Seam S2 lives here.** Developer 3A's Conversation panel offers to open a deal
+ * **Seam S2 lives here.** The Conversation panel offers to open a deal
  * when the gauge is `READY_NOW`; it imports `openDeal` and `useOpenDeal` through
  * the barrel (`../../api`, `../../hooks`), never from this file directly, and
- * defines no deal request function or deal type of its own (prompt §4.2).
+ * defines no deal request function or deal type of its own.
  *
  * A deal's own paths are absolute (`/onboarding/deals/...`) because a deal is its
  * own thing, not a company sub-resource; only the list hangs off a company, which
@@ -52,7 +52,7 @@ export function openDeal(
 /** One company's deals, newest first. Every stage unless `stages` narrows it —
  * withdrawn and handed-over deals are part of the company's record.
  *
- * `as: 'buyer'` lists the deals this company **buys** on instead (task 2.7). On that
+ * `as: 'buyer'` lists the deals this company **buys** on instead. On that
  * side `buyer_name` carries the seller's name, because the company whose page this is
  * would otherwise be repeated in every row. A deal whose buyer is still a legacy
  * `deal_buyer` row does not appear there: nothing yet says that buyer is this company.
@@ -75,7 +75,7 @@ export function listCompanyDeals(
  * One deal, its buyer, and the moves allowed from here.
  *
  * `allowed_stage_moves` is what this deal may do next, as data; a handover that is
- * blocked by assumption A5's guard is absent from it and
+ * blocked by the handover guard is absent from it and
  * `handover_blocked_reason` says why, so a screen explains rather than offering a
  * button that 409s.
  */
@@ -108,9 +108,9 @@ export function setDealBuyer(
 }
 
 /**
- * Record which of the seller's GST registrations the deal is invoiced from (task 2.8,
- * plan P6-6). By the registration's id, never its GSTIN, so a shared GSTIN can only
- * ever mean this seller's copy (IQ-9). It must be the seller's and active (422
+ * Record which of the seller's GST registrations the deal is invoiced from. By the
+ * registration's id, never its GSTIN, so a shared GSTIN can only
+ * ever mean this seller's copy. It must be the seller's and active (422
  * otherwise); `null` clears it. Changeable until the deal closes, then frozen (409).
  */
 export function setDealInvoicingBranch(
@@ -123,7 +123,7 @@ export function setDealInvoicingBranch(
   });
 }
 
-// ── Which paperwork a handover needs (plan P2-5a) ────────────────────────────
+// ── Which paperwork a handover needs ────────────────────────────
 //
 // A settings rule about every deal, not a property of one, so its path is
 // `/settings/...` like the qualification criteria. Any CRM reader may read it;

@@ -1,20 +1,20 @@
-"""Sample data for the background check — **owner: Developer 4A**, with the screening
-inputs through Developer 4B's service.
+"""Sample data for the background check, with the screening inputs through
+``ScreeningReviewService``.
 
 Called from ``sample_data.py``'s hook, after every sample company exists and before
 the deals hook: company B must be a ``CUSTOMER`` before one of its deals can be handed
 over.
 
 Architecture §3.9: company B's check is ``CLEAR`` — which makes the qualified
-``PROSPECT`` a ``CUSTOMER`` in the same transaction (L2-11,
-``ExporterProfileService.promote_to_customer_if_ready``) — and company C's is
+``PROSPECT`` a ``CUSTOMER`` in the same transaction
+(``ExporterProfileService.promote_to_customer_if_ready``) — and company C's is
 ``FLAGGED``, so its deal cannot be handed over.
 
 **Through the services, nothing written directly.** The screening decisions (seven
-items since plan P2-4a) go through ``ScreeningReviewService``; every move goes through
+items) go through ``ScreeningReviewService``; every move goes through
 ``BackgroundCheckService`` with its default reader and the shipped ``CLEAR_POLICY``. So B
-is cleared only because its inputs really meet A3's prerequisites, and C is flagged the
-way the architecture says a failed screening item leads to (D3): a ``FAILED`` item, then
+is cleared only because its inputs really meet the four prerequisites, and C is flagged the
+way the architecture says a failed screening item leads to: a ``FAILED`` item, then
 ``FLAGGED`` with a reason.
 
 Converges like every other seeder: an item already at its sample answer is not
@@ -22,12 +22,12 @@ answered again, and a company already at its target value records no decision, s
 repeat run reports zero. A company found somewhere else on the gauge (someone moved it
 by hand) is left alone and logged, never forced.
 
-**Maker-checker and rule B (Developer 1, plan P3-1d / P3-2).** No single seeded actor
+**Maker-checker and the passed-checks rule.** No single seeded actor
 takes a company to ``CLEAR`` or ``FLAGGED``: ``SAMPLE_DATA_ACTOR`` proposes and a second
 seeded officer, ``SAMPLE_DATA_CHECKER``, approves — the two-person path every user
 takes. Company B's KYB, AML and sanctions are recorded as manual ``PASSED`` results
-(through Developer 4B's ``VerificationService``) before it is proposed, because a Clear
-needs them (rule B). A proposal a previous run left open for the sample's target is
+(through ``VerificationService``) before it is proposed, because a Clear
+needs them. A proposal a previous run left open for the sample's target is
 approved rather than proposed again.
 """
 
@@ -68,7 +68,7 @@ logger = structlog.get_logger(__name__)
 _State = BackgroundCheckState
 
 #: The second seeded compliance officer, who approves what ``SAMPLE_DATA_ACTOR``
-#: proposes (maker-checker, decision A). Not a user account, like the first.
+#: proposes (maker-checker). Not a user account, like the first.
 SAMPLE_DATA_CHECKER = "sample-data-checker"
 
 
@@ -92,7 +92,7 @@ SAMPLE_CHECKS: dict[str, _SampleCheck] = {
         reason="Sample data: every screening item passed; nothing adverse found.",
         risk=BackgroundCheckRisk.LOW,
     ),
-    # §3.9 company C: flagged. A failed screening item is what FLAGGED is for (D3).
+    # §3.9 company C: flagged. A failed screening item is what FLAGGED is for.
     "company-c": _SampleCheck(
         target=_State.FLAGGED,
         exceptions=(
@@ -129,7 +129,7 @@ async def load_background_check_sample_data() -> int:
 
 
 async def _ensure_required_checks(company_id: uuid.UUID, *, actor_id: str) -> None:
-    """Rule B (plan P3-2): record a manual ``PASSED`` result of each type a Clear
+    """The passed-checks rule: record a manual ``PASSED`` result of each type a Clear
     requires that has not passed in the current cycle yet."""
     async with db_services.AsyncSessionLocal() as db:
         inputs = await ComplianceInputsService(db).company_inputs(company_id)
@@ -155,7 +155,7 @@ async def _ensure_required_checks(company_id: uuid.UUID, *, actor_id: str) -> No
 
 async def _ensure_screening(company_id: uuid.UUID, sample: _SampleCheck, *, actor_id: str) -> None:
     """Answer every catalogue item as the sample says, skipping any already answered
-    that way. Read through Developer 4B's seam, written through their service."""
+    that way. Read through the compliance-inputs seam, written through the screening service."""
     exceptions = {key: (status, comment) for key, status, comment in sample.exceptions}
     async with db_services.AsyncSessionLocal() as db:
         inputs = await ComplianceInputsService(db).company_inputs(company_id)

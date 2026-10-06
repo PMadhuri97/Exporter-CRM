@@ -1,5 +1,4 @@
-"""Trade history as the API serves it — **owner: Developer 3** (allocation task
-3.20, plan P5-3, P5-4; decision IQ-19).
+"""Trade history as the API serves it.
 
 What two companies have traded, and how it went. Its own file, like the other
 records that are not companies.
@@ -7,7 +6,7 @@ records that are not companies.
 **No identifiers, for any role.** A relationship names its two companies by id,
 name and country — the same four fields `CompanyMatchCandidate` carries — and
 nothing here holds a PAN, GSTIN, IEC, CIN or registration number. That is what
-makes decision IQ-19's "DEVELOPER reads masked" true of these routes without a
+makes "DEVELOPER reads masked" true of these routes without a
 masking pass: there is nothing to mask. It matches the rule the history log already
 follows for `trade` rows (`history-row.md`: those rows go to DEVELOPER, and their
 writers store identifiers already masked).
@@ -15,7 +14,7 @@ writers store identifiers already masked).
 A reader who needs a counterparty's identifiers opens that company, where the
 role matrix applies as usual.
 
-**Amounts are exact and never converted** (decision IQ-4). `amount` and
+**Amounts are exact and never converted**. `amount` and
 `amount_paid` are serialised as strings, not floats: a float is the wrong type for
 money, and JSON numbers would invite a client to add two currencies together.
 There is no total anywhere in these shapes for the same reason — summing an AED
@@ -65,10 +64,10 @@ class RecordTradeInvoiceRequest(BaseModel):
     invoice_date: date
     #: Exact, positive. Sent as a string or a number; stored as `Numeric`.
     amount: Decimal = Field(gt=0)
-    #: ISO 4217, three letters. Stored as issued and **never converted** (IQ-4).
+    #: ISO 4217, three letters. Stored as issued and **never converted**.
     currency: str = Field(min_length=3, max_length=3)
     #: The deal this invoice came from, when it came from one. Omitted for past
-    #: trade — what the two companies did before they came to us (task 3.21).
+    #: trade — what the two companies did before they came to us.
     deal_id: uuid.UUID | None = None
 
 
@@ -89,7 +88,7 @@ class RecordTradeOutcomeRequest(BaseModel):
     payment_status: TradePaymentStatus
     #: Required for `PARTIAL`; optional otherwise. In the invoice's own currency —
     #: there is no second currency, because a payment in another one is a conversion
-    #: and IQ-4 rules those out.
+    #: and the CRM rules those out.
     amount_paid: Decimal | None = Field(default=None, ge=0)
     #: `CLAIMED` (somebody told us) or `PROVEN` (there is evidence on file). Kept
     #: apart from `payment_status` so a reader can weigh a history rather than just
@@ -106,7 +105,7 @@ class RecordTradeOutcomeRequest(BaseModel):
 
 
 class RecordDealPaymentOutcomeRequest(RecordTradeOutcomeRequest):
-    """How a handed-over deal was actually paid (task 3.21).
+    """How a handed-over deal was actually paid.
 
     The outcome fields of `RecordTradeOutcomeRequest`, plus the invoice's identity —
     **required only when this deal has no invoice yet**, and refused when it already
@@ -226,7 +225,7 @@ class TradeRelationshipResponse(BaseModel):
     id: uuid.UUID
     seller: TradeCounterparty
     buyer: TradeCounterparty
-    #: How the row came to exist (BQ-7) — `deal_buyer_recorded`, `backfill`, `manual`.
+    #: How the row came to exist — `deal_buyer_recorded`, `backfill`, `manual`.
     source: str | None
     created_at: datetime
     #: How many invoices are recorded. Served so a list can say "nothing recorded

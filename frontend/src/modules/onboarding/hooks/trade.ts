@@ -1,5 +1,5 @@
 /**
- * React Query hooks for trade history — **owner: Developer 3** (tasks 3.20–3.22).
+ * React Query hooks for trade history.
  *
  * Two reads the panels use, one lookup derived from the first, and the writes.
  *
@@ -64,7 +64,7 @@ export function useTradeInvoice(invoiceId: string | undefined) {
  * compile error here rather than a wrong row there.
  *
  * `data` is the relationship, or `null` when this pair has none — a real answer, and
- * the one every deal had before task 3.18 shipped.
+ * the one every deal had before trade relationships existed.
  */
 export function useTradeRelationshipForPair(
   sellerId: string | undefined,
@@ -119,7 +119,7 @@ export function useRecordTradeOutcome(invoiceId: string, relationshipId: string)
 }
 
 /**
- * Record how a handed-over deal was settled (P5-6).
+ * Record how a handed-over deal was settled.
  *
  * Invalidates by prefix rather than by id: this one request may create a relationship
  * *and* an invoice *and* an outcome, so which keys hold stale data depends on what the

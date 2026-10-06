@@ -1,5 +1,4 @@
-"""When two company names are the same company — **owner: Developer 3**
-(allocation task 3.10, plan P4-3).
+"""When two company names are the same company.
 
 Pure: no I/O. Used by ``CompanyDirectoryService.match`` to answer
 ``POSSIBLE_DUPLICATE``, which is the only answer in the matcher that rests on a
@@ -9,7 +8,7 @@ Why not trigram similarity
 --------------------------
 The plan proposes ``pg_trgm`` and records its availability as UNKNOWN / NEEDS
 VERIFICATION, with the fallback being "normalised-name equality plus legal-suffix
-stripping" (P4-3). This module is that fallback, and it is deliberate rather than
+stripping". This module is that fallback, and it is deliberate rather than
 temporary. A similarity *score* needs a threshold, and a threshold on company
 names is a bad trade in both directions: loose enough to catch "Rotterdam Trading"
 against "Rotterdam Trading BV" also catches "Gupta Exports" against "Gupta
@@ -20,7 +19,7 @@ Equality after normalisation says something a person can check: *these two names
 differ only in punctuation, spacing, case, or the legal form at the end*. That is
 a claim worth putting in front of someone. "These names are 0.83 similar" is not.
 
-``POSSIBLE_DUPLICATE`` is never acted on automatically (IQ-8), so the cost of
+``POSSIBLE_DUPLICATE`` is never acted on automatically, so the cost of
 missing a near-duplicate is that a person compares two companies; the cost of a
 false one is that a deal is attached to the wrong company. The asymmetry is the
 argument for the stricter rule.

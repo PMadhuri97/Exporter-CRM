@@ -1,7 +1,7 @@
 /**
  * Opens (downloads) one document: asks for a short-lived link, fetches it, and hands
  * the browser the file under its original name. Shared by `DocumentList` and the
- * `Shelf`. A refusal is shown in the server's words.
+ * `DocumentsByCategory`. A refusal is shown in the server's words.
  */
 
 import { toast } from 'sonner';

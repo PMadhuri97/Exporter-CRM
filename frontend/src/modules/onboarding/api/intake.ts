@@ -1,5 +1,5 @@
 /**
- * Company intake — **owner: Developer 2** (L2-12, L2-13): RXIL packages and
+ * Company intake: RXIL packages and
  * bulk CSV import. Validation, matching and every refusal are the server's;
  * these functions only carry the request and return its report.
  */

@@ -1,8 +1,8 @@
 """A company's identifiers — name, country and the Indian tax IDs:
-normalising and checking them (L2-03, L2-06).
+normalising and checking them.
 
-**Owner: Developer 2.** Pure functions — no I/O — so the service, the sample
-data and later the bulk import (L2-13) all apply the same rules
+Pure functions — no I/O — so the service, the sample
+data and the bulk import all apply the same rules
 (``docs/contracts/company-record.md`` §4). The database repeats each format
 check as a ``CHECK`` constraint (migration 0014), so a value that skips the
 service is still refused.

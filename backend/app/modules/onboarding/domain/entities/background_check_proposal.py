@@ -1,8 +1,7 @@
-"""``BackgroundCheckProposal`` and ``BackgroundCheckProposalResolution`` — maker-checker
-(decision A) — **owner: Developer 1** (compliance engine; plan P3-1a, IQ-1).
+"""``BackgroundCheckProposal`` and ``BackgroundCheckProposalResolution`` — maker-checker.
 
 A background-check move that needs a second person — ``IN_REVIEW → CLEAR``,
-``IN_REVIEW → FLAGGED``, ``FLAGGED → ON_HOLD`` (IQ-1) — is recorded first as a
+``IN_REVIEW → FLAGGED``, ``FLAGGED → ON_HOLD`` — is recorded first as a
 **proposal**: what the proposer decided, on which inputs (the SHA-256 fingerprint of
 the evidence selection), in which cycle, under which Clear rules. The gauge does not
 move. A different COMPLIANCE or ADMIN user then **approves** it — which writes the
@@ -14,10 +13,10 @@ Both are **append-only** at both layers — ``AppendOnlyRepository`` exposes no 
 and no delete, and ``public.prevent_mutation()`` refuses both at the database
 (``trg_background_check_proposal_append_only``,
 ``trg_background_check_proposal_resolution_append_only``, migration
-``onboarding_0026_dev1_approval``).
+``onboarding_0026_maker_checker``).
 
-Provenance (BQ-7)
------------------
+Provenance
+----------
 ``created_by`` / ``created_at`` / ``source`` / ``source_ref`` on both. On a proposal,
 ``created_by`` **is the proposer** and ``created_at`` when it was proposed; on a
 resolution, the resolver and when. The API names them ``proposed_by`` /
@@ -57,7 +56,7 @@ from app.platform.database.models import AppendOnlyModel
 
 SCHEMA = "onboarding"
 
-#: The moves that need a second approver (IQ-1, answered 1 October 2026). Not
+#: The moves that need a second approver (decided 1 October 2026). Not
 #: `MORE_INFO`, the start, the answer to a request, a reassessment or a reopen.
 APPROVAL_MOVES: frozenset[tuple[BackgroundCheckState, BackgroundCheckState]] = frozenset(
     {

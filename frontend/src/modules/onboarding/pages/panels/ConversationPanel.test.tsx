@@ -1,5 +1,5 @@
 /**
- * The Conversation panel's gauge control and history (L3-11a-i).
+ * The Conversation panel's gauge control and history.
  *
  * The panel is mounted directly rather than through `ExporterDetailPage`, because
  * what is under test is the gauge section and not the shell's query timing — the
@@ -66,8 +66,6 @@ function renderPanel(props: Partial<Parameters<typeof ConversationPanel>[0]> = {
             element={
               <ConversationPanel
                 customerId={CUSTOMER_ID}
-                contacts={[]}
-                contactsLoading={false}
                 activities={[]}
                 activitiesLoading={false}
                 activitiesFetching={false}
@@ -107,7 +105,7 @@ describe('ConversationPanel — the conversation gauge', () => {
 
   it('shows the current value and exactly the moves the server served', async () => {
     renderPanel();
-    expect(await screen.findByTestId('conversation-chip')).toHaveTextContent('Spoke To Them');
+    expect(await screen.findByTestId('conversation-chip')).toHaveTextContent('Spoke to them');
     expect(screen.getByRole('button', { name: /interested/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /not now/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /ready now/i })).toBeInTheDocument();
@@ -123,7 +121,9 @@ describe('ConversationPanel — the conversation gauge', () => {
     expect(screen.getByLabelText(/^Reason$/)).toBeRequired();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    // A step on the path is chosen first, then marked as current (Salesforce Path).
     fireEvent.click(screen.getByRole('button', { name: /interested/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as current' }));
     expect(screen.queryByLabelText(/Check back on/)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/Reason \(optional\)/)).not.toBeRequired();
   });
@@ -151,6 +151,7 @@ describe('ConversationPanel — the conversation gauge', () => {
   it('never sends a check-back date on a move that does not take one', async () => {
     renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: /interested/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as current' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     await waitFor(() =>
@@ -254,8 +255,8 @@ describe('ConversationPanel — the conversation gauge', () => {
           // `HistoryEntryResponse.details` is `dict | None` on the server, which
           // openapi-typescript generates as `Record<string, never>` — a type that
           // accepts no properties at all. The cast is the narrowest way to build a
-          // realistic row without touching Developer 1's schema, which is theirs and
-          // not Developer 3's to retype. The panel reads the key defensively
+          // realistic row without touching the shared history schema, which is not
+          // this panel's to retype. The panel reads the key defensively
           // (`typeof … === 'string'`) for the same reason.
           details: { check_back_on: '2027-04-01' } as unknown as HistoryEntry['details'],
           occurred_at: '2026-09-27T10:00:00Z',
@@ -290,7 +291,7 @@ describe('ConversationPanel — the conversation gauge', () => {
     // knowing the current value is useful even when the log will not load.
     vi.mocked(listConversationHistory).mockRejectedValue(new Error('history is down'));
     renderPanel();
-    expect(await screen.findByTestId('conversation-chip')).toHaveTextContent('Spoke To Them');
+    expect(await screen.findByTestId('conversation-chip')).toHaveTextContent('Spoke to them');
     expect(
       await screen.findByText(/Could not load the conversation history\. history is down/),
     ).toBeInTheDocument();

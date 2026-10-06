@@ -1,5 +1,5 @@
 /**
- * Re-KYC / Re-KYB — start a new check cycle — **owner: Developer 1** (plans P2-3c/d).
+ * Re-KYC / Re-KYB — start a new check cycle.
  *
  * The buttons are the server's `allowed_cycle_actions`, exactly: the server offers a
  * kind only when it would accept the start (COMPLIANCE or ADMIN; not on a FLAGGED or
@@ -7,7 +7,7 @@
  * role list and no state table.
  *
  * A start needs a reason. When `reopens` is set the company is CLEAR, and the same
- * request moves it back to IN_REVIEW (IQ-3) — said before anyone confirms, because it
+ * request moves it back to IN_REVIEW — said before anyone confirms, because it
  * pauses the company's handovers until the new cycle is cleared.
  */
 
@@ -48,7 +48,7 @@ export function CheckCycleActions({
               key={action.kind}
               type="button"
               onClick={() => setChosen(action)}
-              className="rounded border border-line-strong px-3 py-1.5 text-sm text-ink hover:bg-sunken"
+              className="rounded border border-line-strong px-3 py-1.5 text-body text-ink hover:bg-sunken"
             >
               Start {cycleKindLabel(action.kind)}
             </button>
@@ -61,27 +61,27 @@ export function CheckCycleActions({
           aria-label={`Start ${cycleKindLabel(chosen.kind)}`}
           className="rounded border border-line p-3"
         >
-          <p className="text-sm font-medium text-ink">
+          <p className="text-body font-medium text-ink">
             Start a {cycleKindLabel(chosen.kind)}
           </p>
-          <p className="mt-1 text-xs text-ink-2">
+          <p className="mt-1 text-caption text-ink-2">
             A new check cycle starts with every screening item unanswered and no results;
             the current cycle stays readable.
             {chosen.reopens &&
               ' This company is Clear: starting it moves the check back to In review, and its deals cannot be handed over until the new cycle is cleared.'}
           </p>
-          <label className="mt-2 block text-xs text-ink-2">
+          <label className="mt-2 block text-caption text-ink-2">
             Reason
             <textarea
               aria-label="Reason"
-              className="mt-1 w-full rounded border border-line-strong p-2 text-sm"
+              className="mt-1 w-full rounded border border-line-strong p-2 text-body"
               value={reason}
               disabled={start.isPending}
               onChange={(event) => setReason(event.target.value)}
             />
           </label>
           {start.isError && (
-            <p role="alert" className="mt-2 text-xs text-negative">
+            <p role="alert" className="mt-2 text-caption text-negative">
               {start.error instanceof ApiError
                 ? start.error.message
                 : 'The new cycle could not be started.'}
@@ -90,14 +90,14 @@ export function CheckCycleActions({
           <div className="mt-2 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded border border-line-strong px-3 py-1.5 text-sm"
+              className="rounded border border-line-strong px-3 py-1.5 text-body"
               onClick={close}
             >
               Cancel
             </button>
             <button
               type="button"
-              className="rounded bg-ink px-3 py-1.5 text-sm text-paper disabled:opacity-50"
+              className="rounded bg-accent-solid px-3 py-1.5 text-body text-white disabled:opacity-50"
               disabled={start.isPending || (chosen.reason_required && !reason.trim())}
               onClick={() =>
                 start.mutate(

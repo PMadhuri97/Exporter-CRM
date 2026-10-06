@@ -1,5 +1,4 @@
-"""The handover snapshot: backfilled, then frozen — **owner: Developer 2**
-(plan P2-7, allocation task 2.1).
+"""The handover snapshot: backfilled, then frozen.
 
 Revision ID: onboarding_0029_deal_snapshot
 Revises: onboarding_0028_deal_foundation
@@ -13,8 +12,8 @@ Until now a handover's buyer existed only as the live ``deal_buyer`` row
 (``deal_service.py``'s ``_handover_snapshot`` built a dict, announced it on the bus
 and kept nothing). The history row carried ``document_ids`` and no buyer at all.
 Once buyers become shared company records their details change after the handover,
-so "what the lending team was given" has to be a persisted snapshot — audit finding
-F-02, and the prerequisite for the buyer migration (P4-6).
+so "what the lending team was given" has to be a persisted snapshot — and it is the
+prerequisite for the buyer migration.
 
 What it does
 ------------
@@ -30,7 +29,7 @@ What it does
 2. **Freezes it**, by replacing ``prevent_terminal_deal_change()`` with a version
    that adds ``handover_snapshot`` under a **set-once** rule: on a terminal deal it
    may go from ``NULL`` to a value once, and never change again. Frozen outright
-   would refuse this migration's own backfill and P4-6's; not frozen at all would
+   would refuse this migration's own backfill and the buyer migration's; not frozen at all would
    let the record of a handover be rewritten.
 
 The five columns 0022 froze outright (``stage``, ``handed_over_at``,
@@ -111,7 +110,7 @@ BEGIN
     END IF;
 
     -- Set once, then never again: a snapshot may be filled in for a deal handed
-    -- over before snapshots existed (this migration, and P4-6's buyer
+    -- over before snapshots existed (this migration, and the buyer
     -- migration), but what the lending team was given is never rewritten.
     IF OLD.stage IN ('HANDED_OVER', 'WITHDRAWN')
        AND OLD.handover_snapshot IS NOT NULL

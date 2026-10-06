@@ -1,6 +1,6 @@
--- CRM data inventory — read-only (plan P0-3, allocation task 3.2).
+-- CRM data inventory — read-only.
 --
--- Sizes the P4 and P6 migrations with facts instead of assumptions. Run it against
+-- Sizes the buyer and GST-branch migrations with facts instead of assumptions. Run it against
 -- **every live database** and attach the output to the migration tickets; each
 -- migration then states which environments it must run on.
 --
@@ -28,19 +28,18 @@
 --
 -- ── What each answer is for ──────────────────────────────────────────────────
 --
---   1  How big is the buyer migration (P4-6), and how many buyers look like Indian
+--   1  How big is the buyer migration, and how many buyers look like Indian
 --      companies we could match to an existing record rather than create new.
 --   2  How many BUYER verification results must survive being re-pointed when the
 --      buyer becomes a company.
---   3  GSTINs held by more than one company — IQ-9 decided these warn rather than
+--   3  GSTINs held by more than one company — these warn rather than
 --      block, so this is the size of the warning, not of a blocker.
---   4  PAN-less companies that hold GSTINs: candidates for deriving a PAN (task
---      3.16, which is explicitly "only if the report shows it is worth doing").
+--   4  PAN-less companies that hold GSTINs: candidates for deriving a PAN (explicitly
+--      "only if the report shows it is worth doing").
 --   5  CLEAR companies and when they were cleared — the input to re-KYC cycles and
 --      Clear expiry.
---   6  Screening rows on `website-reviewed`, retired from the checklist by Developer 1's
---      task 1.5 (0025; eight-item decisions keep reading it), and the website field
---      that task 3.7 removes.
+--   6  Screening rows on `website-reviewed`, retired from the checklist by migration
+--      0025 (eight-item decisions keep reading it), and the retired website field.
 --   7  Documents per category on deals — the size of the per-deal evidence rule.
 
 \echo ''
@@ -76,7 +75,7 @@ ORDER BY buyers DESC, country;
 
 \echo ''
 \echo '-- 1c. Buyer names used on more than one deal ----------------------------'
-\echo '--     (name-only duplicates; Compliance reviews these before P4-6, IQ-8)'
+\echo '--     (name-only duplicates; Compliance reviews these before the buyer migration)'
 SELECT lower(btrim(name)) AS normalised_name, count(*) AS deals
 FROM onboarding.deal_buyer
 GROUP BY 1
@@ -100,7 +99,7 @@ ORDER BY results DESC;
 -- ── 3. GSTINs held by more than one company ──────────────────────────────────
 
 \echo ''
-\echo '-- 3. GSTINs on more than one company (IQ-9: warn, never block) ----------'
+\echo '-- 3. GSTINs on more than one company (warn, never block) ---------------'
 SELECT gstin, count(DISTINCT customer_id) AS companies
 FROM onboarding.exporter_gstin
 GROUP BY gstin
@@ -110,7 +109,7 @@ LIMIT 50;
 
 -- ── 4. Companies with no PAN that hold GSTINs ────────────────────────────────
 -- A GSTIN embeds its holder's PAN at characters 3-12, so a PAN can be derived.
--- Whether that is worth doing is task 3.16, decided from this count.
+-- Whether that is worth doing is decided from this count.
 
 \echo ''
 \echo '-- 4. PAN-less companies holding at least one GSTIN ----------------------'
@@ -129,7 +128,7 @@ FROM (
 
 -- ── 5. CLEAR companies and when they were cleared ────────────────────────────
 -- The chain head is the decision nothing supersedes. Age is computed from the
--- decision date rather than `expires_at` (Dev 1's `onboarding_0027_dev1_expiry`), so
+-- decision date rather than `expires_at` (`onboarding_0027_clear_expiry`), so
 -- this also runs on a database that has not reached that revision.
 
 \echo ''
@@ -167,7 +166,7 @@ ORDER BY companies DESC;
 -- ── 6. The website screening item ────────────────────────────────────────────
 
 \echo ''
-\echo '-- 6. Screening rows on website-reviewed (retired in 0025, task 1.5) -----'
+\echo '-- 6. Screening rows on website-reviewed (retired in 0025) ---------------'
 SELECT status, count(*) AS rows_recorded
 FROM onboarding.screening_review_item
 WHERE item_key = 'website-reviewed'
@@ -175,7 +174,7 @@ GROUP BY status
 ORDER BY rows_recorded DESC;
 
 \echo ''
-\echo '-- 6b. Companies with a website recorded (the field task 3.7 removes) ----'
+\echo '-- 6b. Companies with a website recorded (the retired field) -------------'
 SELECT
     count(*)                                        AS companies,
     count(*) FILTER (WHERE website IS NOT NULL)     AS with_website

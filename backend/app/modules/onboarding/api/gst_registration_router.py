@@ -1,5 +1,4 @@
-"""GST registration routes — **owner: Developer 3** (allocation tasks 3.13, 3.14,
-3.15, 3.17; plan P6-2, P6-5).
+"""GST registration routes.
 
 A GST registration is a branch (``domain/entities/exporter_gstin.py``). Reading and
 adding one is a company sub-resource, so those paths sit under
@@ -13,8 +12,8 @@ Who may do what, and why
   else.
 * **Add** and **deactivate** — ``STAFF``. Which branches a company trades through is
   a record a relationship manager keeps.
-* **Flag** and **unflag** — **COMPLIANCE and ADMIN only** (plan P6-5). A flag blocks
-  handovers for every deal invoiced through that branch (task 2.9), so it is a
+* **Flag** and **unflag** — **COMPLIANCE and ADMIN only**. A flag blocks
+  handovers for every deal invoiced through that branch, so it is a
   compliance decision, not a sales one. This is the one place in these routes where
   OPERATIONS is refused.
 
@@ -52,7 +51,7 @@ _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )
 _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
-#: A flag stops trade. Compliance's decision, never sales' (plan P6-5).
+#: A flag stops trade. Compliance's decision, never sales'.
 _COMPLIANCE = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
 
 
@@ -76,7 +75,7 @@ def _response(registration, viewer: User, *, also_held_by=()) -> GstRegistration
         "`flagged_count` is how many active branches compliance has flagged, which "
         "is what the company page's warning chip shows.\n\n"
         "DEVELOPER is not served flags: `flag_status`, `flag_reason` and "
-        "`flagged_count` are `null` for that role (R-47, decision D-05)."
+        "`flagged_count` are `null` for that role."
     ),
     responses={
         200: {"model": GstRegistrationListResponse},
@@ -119,7 +118,7 @@ async def list_gst_registrations(
         "forever — which keeps a handed-over deal's invoicing branch pointing at the "
         "branch it really used. Re-adding an **active** one is a 409.\n\n"
         "A GSTIN another company also holds is **allowed** and reported in "
-        "`also_held_by` (decision IQ-9: duplicates stay warn-only), never refused."
+        "`also_held_by` (duplicates stay warn-only), never refused."
     ),
     responses={
         201: {"model": GstRegistrationResponse},
@@ -192,10 +191,10 @@ async def deactivate_gst_registration(
         "A reason is required: it is what a blocked handover will say, so without it "
         "whoever hits the block has nothing to act on.\n\n"
         "Flagging a branch blocks a handover for deals invoiced **through that "
-        "branch** and leaves the company's other branches alone (decision BQ-6) — a "
+        "branch** and leaves the company's other branches alone — a "
         "company trading through five states may have a problem in one of them.\n\n"
         "The flag belongs to **this** company's row. When another company holds the "
-        "same GSTIN (allowed, decision IQ-9), `also_held_by` names it: that copy is "
+        "same GSTIN (allowed), `also_held_by` names it: that copy is "
         "**not** flagged, and whoever flags this one needs to know trade may still be "
         "running on the other."
     ),

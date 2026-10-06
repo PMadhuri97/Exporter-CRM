@@ -5,7 +5,7 @@
 //   2. FastAPI's own default RequestValidationError handler (nothing
 //      registers a custom one for it) — { detail: [{ loc, msg, type }, ...] }
 //      — this is exactly the shape a Pydantic `extra="forbid"` 422 returns,
-//      which EXP-F1's own acceptance criterion needs surfaced correctly.
+//      which the forms need surfaced correctly.
 interface FieldError {
   loc: (string | number)[];
   msg: string;
@@ -34,7 +34,7 @@ export class ApiError extends Error {
    * A 422's per-field messages, keyed by the field's path without `body`
    * (`check_back_on`, `buyer.name`), so a form can place each one against its field
    * (frontend-plan §9). `message` still carries them all joined. `null` when the
-   * refusal named no field. Additive (R-33 Phase 3).
+   * refusal named no field. Additive.
    */
   readonly fieldErrors: Record<string, string> | null;
 

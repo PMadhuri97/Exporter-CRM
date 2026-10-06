@@ -1,8 +1,8 @@
 """``DealRequiredDocument`` — which paperwork a deal must have before it may be
-handed over — **owner: Developer 2** (plan P2-5a, migration 0030).
+handed over (migration 0030).
 
-Contract: ``docs/contracts/deal-and-buyer.md`` §6.1 condition 3. Answers R7
-("verify each deal with evidence before handover") together with the evidence
+Contract: ``docs/contracts/deal-and-buyer.md`` §6.1 condition 3. Answers the
+requirement to "verify each deal with evidence before handover" together with the evidence
 pinned to each compliance check.
 
 **Versioned, append-only — the same shape as ``qualification_criterion``.** A
@@ -22,7 +22,7 @@ nullable column would let the same requirement be added twice at one version. Th
 API maps ``''`` to ``null`` in both directions, so no caller sees the sentinel.
 
 **Not the legacy ``document_requirements_service.py``.** That policy serves the
-``onboarding_request`` state machine (assumption A6, not built on) and knows
+``onboarding_request`` state machine (not built on) and knows
 nothing about deals.
 
 **A category a deal cannot hold is refused by the service**, not by a check
@@ -87,7 +87,7 @@ class DealRequiredDocument(AppendOnlyModel):
     #: is a new version with ``False``, never a delete.
     active: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
-    # ── Provenance on every new table (plan BQ-7) ────────────────────────────
+    # ── Provenance on every new table ────────────────────────────────────────
     #: Who wrote this version, from the session. ``NULL`` for the seeded v1.
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     #: How it arrived: ``settings_api`` for the route, ``migration_0030_seed`` for

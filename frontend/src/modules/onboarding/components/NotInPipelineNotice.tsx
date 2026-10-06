@@ -1,6 +1,5 @@
 /**
- * "This company is not in the sales pipeline" — **owner: Developer 3**
- * (allocation tasks 3.9 and 3.11, plan P4-2).
+ * "This company is not in the sales pipeline".
  *
  * A company that exists only because it was somebody's buyer is a full company
  * record — it can be screened, cleared and traded with — but nobody is selling to
@@ -11,7 +10,7 @@
  * the server refuses to qualify (`COMPANY_NOT_IN_PIPELINE`, 409).
  *
  * This replaces those controls with the reason, and — for a role that may act — the
- * one action that changes it (task 3.11). That is the difference between a screen
+ * one action that changes it. That is the difference between a screen
  * that explains itself and one that offers a button which 409s, the same principle
  * `handover_blocked_reason` follows on the deal page.
  *
@@ -35,7 +34,7 @@ export interface NotInPipelineNoticeProps {
 export function NotInPipelineNotice({ what, onBringIn, busy }: NotInPipelineNoticeProps) {
   return (
     <div
-      className="flex flex-col gap-3 rounded-lg border border-dashed border-line-strong bg-paper p-5 text-sm"
+      className="flex flex-col gap-3 rounded-lg border border-dashed border-line-strong bg-paper p-5 text-body"
       data-testid="not-in-pipeline-notice"
     >
       <p className="flex items-start gap-2 font-medium text-ink">
@@ -51,7 +50,7 @@ export function NotInPipelineNotice({ what, onBringIn, busy }: NotInPipelineNoti
           <Button size="sm" variant="secondary" onClick={onBringIn} disabled={busy}>
             Bring into the pipeline <Icon.forward size={14} />
           </Button>
-          <span className="text-xs text-ink-3">
+          <span className="text-caption text-ink-3">
             Do this if we are going to sell to them. Its journey starts at LEAD.
           </span>
         </div>

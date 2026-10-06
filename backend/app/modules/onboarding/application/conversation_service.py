@@ -1,5 +1,4 @@
-"""``ConversationService`` — the conversation gauge (L3-03, L3-04a). **Owner:
-Developer 3A.**
+"""``ConversationService`` — the conversation gauge.
 
 The conversation gauge answers *how is the sales conversation going?* and nothing
 else. The contract is ``docs/contracts/engagement.md``; architecture §3.3 defines
@@ -8,11 +7,11 @@ the six values.
 **It is the only writer of ``exporter_profile.conversation`` and of
 ``exporter_profile.conversation_check_back_on``.** ``docs/contracts/company-record.md``
 §2.4: only a gauge's owner writes its field, "including just to keep it in sync".
-Developer 3B moves the gauge by calling ``mark_ready_now_for_opened_deal``, not by
-assigning to the column; Phase 2 reads the check-back date and never writes it.
+Deals move the gauge by calling ``mark_ready_now_for_opened_deal``, not by
+assigning to the column; follow-ups read the check-back date and never write it.
 
 **One transaction per operation.** ``set_conversation`` locks the company row,
-validates, assigns, writes the history row through Developer 1's shared
+validates, assigns, writes the history row through the shared
 ``HistoryService`` — which flushes and never commits — and commits once at the
 end. Architecture §3.8: the current value and the record of how it got there
 commit together or not at all. An illegal move raises before anything is
@@ -28,7 +27,7 @@ and is deliberately the same shape.
 
 **Nothing here touches an activity.** ``exporter_activity`` is append-only and a
 check-back date is not a mark on an activity — it lives on the company, and
-completion is a row in a table Phase 2 owns. Architecture §9.3's "Watch out for"
+completion is a row in a table follow-ups own. Architecture §9.3's "Watch out for"
 lists this first because it is the mistake this design invites.
 """
 
@@ -66,7 +65,7 @@ logger = structlog.get_logger(__name__)
 #: invented: the contract is what records what the value means.
 HISTORY_DIMENSION_CONVERSATION = "conversation"
 
-#: The journeys the gauge applies to — assumption A4, "from PROSPECT onward".
+#: The journeys the gauge applies to — "from PROSPECT onward".
 #: `CUSTOMER` is "onward": an existing customer's next shipment is a fresh
 #: conversation.
 _GAUGED_JOURNEYS = frozenset({ExporterJourney.PROSPECT, ExporterJourney.CUSTOMER})
@@ -82,7 +81,7 @@ class ConversationService:
     """Reads and writes the conversation gauge.
 
     Holds the caller's session and never opens its own, so
-    ``mark_ready_now_for_opened_deal`` can join a transaction Developer 3B
+    ``mark_ready_now_for_opened_deal`` can join a transaction ``DealService``
     started.
     """
 
@@ -118,8 +117,8 @@ class ConversationService:
         conversation is a judgement, not a pipeline — so this is every value
         except the one already held, which would record nothing.
 
-        Empty on a ``LEAD``: the gauge applies from ``PROSPECT`` onward
-        (assumption A4), so there is no move to offer and
+        Empty on a ``LEAD``: the gauge applies from ``PROSPECT`` onward,
+        so there is no move to offer and
         ``set_conversation`` would refuse every one of them.
 
         A ``staticmethod`` because it is the rule table and touches no session —
@@ -155,7 +154,7 @@ class ConversationService:
         assigned, so a refused move leaves no partial write and no history row:
 
         1. The company exists (404).
-        2. Its journey is ``PROSPECT`` or ``CUSTOMER`` — assumption A4 (409).
+        2. Its journey is ``PROSPECT`` or ``CUSTOMER`` (409).
         3. The move is not to the value already held (409).
         4. ``NOT_NOW`` carries a reason (422) and a check-back date (422), and
            that date is today or later (422).
@@ -241,17 +240,17 @@ class ConversationService:
         history row and this gauge move land together or not at all.
 
         Architecture §3.3: "READY_NOW … The screen offers to open a deal; opening
-        a deal also sets this." Developer 3B calls this from
+        a deal also sets this." ``DealService`` calls this from
         ``DealService.open_deal``, in the same session, passing ``deal_id`` so the
         history row says which deal did it (history contract §2).
 
         Three deliberate differences from ``set_conversation``, each stated in the
-        engagement contract §6 so Developer 3B can rely on them:
+        engagement contract §6 so deals can rely on them:
 
         * **No journey check.** A deal is only opened for a company that got that
           far, and refusing the gauge move *after* the deal row is written would
-          fail Developer 3B's whole transaction over a gauge.
-        * **No role check.** The deal route's roles are Developer 3B's to enforce;
+          fail the deal's whole transaction over a gauge.
+        * **No role check.** The deal route's roles are the deal route's to enforce;
           a second gate here would be a second copy of them, drifting.
         * **Idempotent rather than refusing.** Opening a second deal for a
           company that is already ready is normal, not an error — so this is the
@@ -290,7 +289,7 @@ class ConversationService:
         # change above was dirty when it did, so both statements are on the wire by
         # now. This call is therefore usually a no-op — it is here so that "flushes;
         # does not commit" is true of *this* method rather than true only as long as
-        # the shared history writer keeps flushing. Developer 3B relies on that
+        # the shared history writer keeps flushing. ``DealService`` relies on that
         # sentence, and it should not depend on another service's internals.
         await self._db.flush()
 
@@ -371,7 +370,7 @@ class ConversationService:
         profile = result.scalar_one_or_none()
         if profile is None:
             raise ExporterProfileNotFoundError(company_id)
-        # A buyer-only company is not being sold to (plan P4-1). Refused on the
+        # A buyer-only company is not being sold to. Refused on the
         # locking path, which every write in this service goes through, rather
         # than once per route: a sales step that slipped past would move the
         # journey and be refused by `ck_exporter_profile_not_in_pipeline_start`

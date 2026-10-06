@@ -14,6 +14,7 @@ import {
   logout as logoutRequest,
 } from '@/lib/api/authApi';
 import { refreshSession, registerRefreshFailureHandler } from '@/lib/api/client';
+import { queryClient } from '@/lib/queryClient';
 import {
   clearTokens,
   getAccessToken,
@@ -101,6 +102,10 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       expiresInSeconds: tokens.expires_in,
     });
     const currentUser = await fetchCurrentUser(tokens.access_token);
+    // Whatever an earlier sign-in on this tab fetched was fetched with that
+    // user's role; the new user starts with nothing cached. Done here, while
+    // only the sign-in page is mounted, so nothing refetches against it.
+    queryClient.clear();
     setUser(currentUser);
     setStatus('authenticated');
   }, []);

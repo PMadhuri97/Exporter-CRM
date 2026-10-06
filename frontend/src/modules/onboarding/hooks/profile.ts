@@ -1,8 +1,8 @@
 /**
- * Company record — **owner: Developer 2**.
+ * Company record.
  *
  * Query keys: `['exporterProfiles', params]` for lists, `['exporterProfile',
- * id]` for one company (Developer 3's engagement hooks invalidate the latter
+ * id]` for one company (the engagement hooks invalidate the latter
  * too, because the detail embeds contacts and activities).
  */
 
@@ -30,7 +30,7 @@ import type {
   UpdateExporterProfileRequest,
 } from '../types';
 
-/** IQ-7's completion list (R-28). Keyed under `exporterProfiles` so an edit that
+/** The identity completion list. Keyed under `exporterProfiles` so an edit that
  * completes a company — which invalidates the company queries — refreshes it too. */
 export function useIdentityCompletion(params: { limit?: number; offset?: number } = {}) {
   return useQuery({
@@ -54,8 +54,8 @@ export const COUNT_CAP = 200;
 
 /**
  * How many companies stand at one journey stage, up to `COUNT_CAP`: the list route
- * has no total yet (ask A2), so a full page reads "200+". Shares its cache with the
- * desk's pipeline counts.
+ * has no total yet, so a full page reads "200+". Shares its cache with the
+ * Home's pipeline counts.
  */
 export function useJourneyCount(journey: ExporterSearchParams['journey']) {
   const query = useQuery({
@@ -66,9 +66,8 @@ export function useJourneyCount(journey: ExporterSearchParams['journey']) {
 }
 
 /**
- * Loads a company's dossier ahead of a click — on hover or focus of its row (§12.3).
- * Resolves `true` once the record is cached, so a morph can tell the dossier will
- * draw at once; it never rejects.
+ * Loads a company's record ahead of a click — on hover or focus of its row (§12.3).
+ * Resolves `true` once the record is cached; it never rejects.
  */
 export function usePrefetchCompany() {
   const queryClient = useQueryClient();
@@ -148,7 +147,7 @@ export function useSetExporterMarker(customerId: string) {
   });
 }
 
-/** Bring a buyer-only company into the sales pipeline (task 3.11). */
+/** Bring a buyer-only company into the sales pipeline. */
 export function useBringIntoPipeline(customerId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -160,7 +159,7 @@ export function useBringIntoPipeline(customerId: string) {
   });
 }
 
-// ── GST registrations (tasks 3.13, 3.14, 3.17) ───────────────────────────────
+// ── GST registrations ───────────────────────────────
 
 export function useGstRegistrations(customerId: string | undefined) {
   return useQuery({

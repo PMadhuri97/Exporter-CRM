@@ -1,4 +1,4 @@
-"""The background check's vocabularies — **owner: Developer 4A** (L4-01, L4-03, L4-08).
+"""The background check's vocabularies.
 
 Each Python enum maps to one Postgres type created by ``onboarding_0015_bg_check``,
 and the values are ``docs/contracts/background-check.md``'s. Pure: no I/O, no model.
@@ -29,9 +29,9 @@ class BackgroundCheckState(str, enum.Enum):
 class BackgroundCheckRisk(str, enum.Enum):
     """The CRM risk scale (decision 6), set by compliance on a decision.
 
-    ``onboarding.background_check_risk_enum`` — a type Developer 4A owns (D13, settled
-    28 Sep 2026). It is deliberately **not** ``VerificationRiskLevel`` /
-    ``verification_risk_level_enum``, which is Developer 4B's, so neither Dev4
+    ``onboarding.background_check_risk_enum`` — a type the background check owns
+    (settled 28 Sep 2026). It is deliberately **not** ``VerificationRiskLevel`` /
+    ``verification_risk_level_enum``, which belongs to verification, so neither
     migration depends on the other's schema. "Prohibited" is not a risk; it is
     ``FLAGGED``.
     """
@@ -46,7 +46,8 @@ class BackgroundCheckDecidedByKind(str, enum.Enum):
     """Whether a person or the platform made a decision — ``criterion-result.md``'s words.
 
     ``onboarding.background_check_decided_by_kind_enum``. Always ``MANUAL`` in the
-    prototype: the only automatic move (the start on RXIL results) is blocked on D12.
+    prototype: the only automatic move (the start on RXIL results) is blocked on the
+    RXIL results contract.
     """
 
     MANUAL = "MANUAL"
@@ -56,7 +57,7 @@ class BackgroundCheckDecidedByKind(str, enum.Enum):
 class BackgroundCheckDecisionSource(str, enum.Enum):
     """Where a decision came from. ``onboarding.background_check_decision_source_enum``.
 
-    ``RXIL`` is reserved for the blocked RXIL results intake (D12) and nothing writes it.
+    ``RXIL`` is reserved for the blocked RXIL results intake and nothing writes it.
     """
 
     MANUAL = "MANUAL"

@@ -57,7 +57,7 @@ describe('VerificationResultRow — provenance, as the server states it', () => 
     ['AML', 'AML'],
     ['SANCTIONS', 'Sanctions'],
     ['COMPANY_REGISTRY', 'Company registry'],
-  ] as const)('names the %s check type as %s (R-60)', (type, label) => {
+  ] as const)('names the %s check type as %s (R-61)', (type, label) => {
     const row = renderRow(verificationResult({ verification_type: type }));
     expect(within(row).getByText(label)).toBeInTheDocument();
   });

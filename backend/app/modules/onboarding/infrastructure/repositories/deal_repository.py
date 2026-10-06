@@ -1,4 +1,4 @@
-"""Repository for ``deal`` — **owner: Developer 3B** (L3-05).
+"""Repository for ``deal``.
 
 Mutable, unlike the append-only tables in this module: a deal's stage genuinely
 changes, and the record of *how* it changed is a history row
@@ -55,7 +55,7 @@ class DealRepository(BaseRepository[Deal]):
         return select(Deal).where(Deal.company_id == company_id)
 
     def _for_buyer_company(self, company_id: uuid.UUID) -> Select[tuple[Deal]]:
-        """Deals this company is the **buyer** on (task 2.7).
+        """Deals this company is the **buyer** on.
 
         Only ``buyer_company_id``, never the legacy ``deal_buyer`` row: a
         ``deal_buyer`` is a set of details, not a company, so there is nothing to

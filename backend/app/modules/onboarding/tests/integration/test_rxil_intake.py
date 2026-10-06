@@ -1,4 +1,4 @@
-"""RXIL company intake (L2-12).
+"""RXIL company intake.
 
 A company RXIL hands over is created or matched by the CRM's own identity
 rules, becomes a PROSPECT through RXIL's own QUALIFIED outcome, and keeps

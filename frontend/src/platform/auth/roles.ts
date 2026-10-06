@@ -2,7 +2,7 @@
  * Role names, as people read them.
  *
  * What a role may *do* is not here: that is `@/platform/access` (`useCan`, `Gate`),
- * the one client-side copy of the server's role groups (R-33, frontend plan §4.2).
+ * the one client-side copy of the server's role groups (frontend plan §4.2).
  * The `isStaffRole` / `isAdminRole` / `isComplianceRole` helpers that used to live in
  * this file were replaced by its capabilities.
  */
@@ -12,7 +12,7 @@ import type { UserRole } from '@/lib/api/types';
 /**
  * What a role is called on screen.
  *
- * `OPERATIONS` reads **"RM (Relationship Manager)"** (IQ-13): the people in that role
+ * `OPERATIONS` reads **"RM (Relationship Manager)"**: the people in that role
  * are relationship managers, and "Operations" meant nothing to them. The **enum value
  * is deliberately unchanged** — it is written into every history row already recorded
  * and into every route-authorisation table, so renaming it would make the past read as

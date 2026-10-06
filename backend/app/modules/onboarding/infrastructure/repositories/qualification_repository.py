@@ -1,5 +1,4 @@
-"""Queries for qualification criteria, results and outcomes — **owner:
-Developer 2** (L2-09, L2-10).
+"""Queries for qualification criteria, results and outcomes.
 
 Reads and appends only. The three versioned/decision tables are append-only in
 the database; nothing here updates or deletes, and there is no method that

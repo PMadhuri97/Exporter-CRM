@@ -16,16 +16,17 @@ directly). A demo on it shows noise and impossible records, and so does a demo
 database somebody rehearsed on. Rebuild it from empty, and never run the test suite
 against it.
 
-On this machine the demo database is `crm_demo` on the `aner-postgres` container
-(port 5433); the backend on `:8000` and the preview on `:4173` serve it. To rebuild
-it, with `DATABASE_URL` **and** `DATABASE_SYNC_URL` pointing at a new, empty database
-(alembic reads the second):
+On this machine the one CRM database is `aner_settlement` on the `aner-postgres`
+container (port 5433), rebuilt clean on 5 October 2026; `backend/.env` points at it, so
+a plain start of the backend on `:8000` serves it. **Do not run the test suite against
+it** — create a throwaway database for that. To rebuild it, with `DATABASE_URL` **and**
+`DATABASE_SYNC_URL` pointing at a new, empty database (alembic reads the second):
 
 ```bash
 cd backend
 python -m alembic upgrade head
 python -m app.modules.onboarding.sample_data                  # the §3 companies
-python -m uvicorn app.main:app --port 8000
+python -m uvicorn app.main:app --port 8000                     # add --reload only off-demo
 
 cd ../frontend
 pnpm install --frozen-lockfile                               # the redesign added packages
@@ -41,9 +42,12 @@ server does. Opening several tabs at once is safe; reloading several times withi
 second can still sign you out (a reload that lands while a token refresh is answering
 — R-49 in `remaining-work.md`), so reload once and let the page settle.
 
-**Logins.** One per role you will show. `crm_demo` has five, each with a full name
-(history, decisions and activities show who acted by name); the passwords are in
-`C:/Users/ArshadMughal/crm_demo_accounts.txt`, never in this file.
+**Logins.** One per role you will show. `aner_settlement` has one per role and two
+COMPLIANCE (maker-checker needs the second), each with a full name (history, decisions
+and activities show who acted by name); the passwords are in
+`C:/Users/ArshadMughal/crm_demo_accounts.txt`, never in this file. After a rebuild,
+copy the `auth.users` rows across (their hashes keep the passwords) or create the
+accounts again.
 
 | Account | Role | Used for |
 |---|---|---|
@@ -52,6 +56,7 @@ second can still sign you out (a reload that lands while a token refresh is answ
 | `compliance2@aner.com` (Compliance Approver) | COMPLIANCE | the second signature |
 | `admin@aner.com` (Admin) | ADMIN | settings |
 | `dev@aner.com` (Developer) | DEVELOPER | read-only and masking |
+| `apiuser@aner.com` (API User) | API_USER | "no workspace" — reaches nothing in the CRM |
 
 A new account must use a real-looking address (`ops@example.com`), never `.local` or
 `.test`: the sign-in form refuses those, and so do `bootstrap` and `promote`.
@@ -63,30 +68,30 @@ exporter's documents — see §6.
 
 | Screen | Where |
 |---|---|
-| **Desk** — greeting, *Up next* (mine / team), pipeline counts, *Re-KYC due*; for a compliance officer *Awaiting your signature* | `/` |
-| **Companies** — list, or the **board** by journey stage (`/pipeline` opens it); *Add company*, CSV import, RXIL intake (ADMIN) | `/companies`, `/companies?view=board`, `/companies/new`, `/companies/import`, `/companies/rxil-intake` |
-| **A company** — hero standing (journey, qualification, conversation, background check) and the chapters *Profile*, *Qualification*, *Conversation*, *Deals & trade*, *Documents*, *Background check*, *Ledger* | `/companies/:id` (`?tab=` selects a chapter) |
-| **A deal** — *Stage*, *Parties* (seller, invoicing branch, buyer), *Trade between these two*, *Paperwork*, *What was handed over*, *Ledger* | `/deals/:id` |
-| **Agenda** — follow-ups and check-backs due | `/follow-ups` |
-| **Review** — the compliance working day (COMPLIANCE, ADMIN) | `/review` |
+| **Home** — *My follow-ups* (mine / team, with *Mark done*), *Check back on*, pipeline counts, *Re-KYC due*, recent companies; for a compliance officer *Items to approve* first | `/` |
+| **Companies** — the list, or **Pipeline** (the board by journey stage; `/pipeline` opens it); *New company* (a side panel), *Import companies*, RXIL intake (ADMIN) | `/companies`, `/companies?view=board`, `/companies/new`, `/companies/import`, `/companies/rxil-intake` |
+| **A company** — the record header (key fields, the actions the server allows, the journey path), the tabs *Details*, *Qualification*, *Activity*, *Deals*, *Documents*, *Background check*, *History*, and related records on the right | `/companies/:id` (`?tab=` selects a tab) |
+| **A deal** — the record header (stage, *Hand over to lending*, *Withdraw*), *Handover readiness*, the seller and buyer cards, *Trade between these two*, *Paperwork*, *What was handed over*, *History* | `/deals/:id` |
+| **Follow-ups** — follow-ups by due date, and check-backs due | `/follow-ups` |
+| **Approvals** — the compliance working day (COMPLIANCE, ADMIN) | `/approvals` (`/review` still works) |
 | **Settings** — your profile for everyone; users, roles, *Qualification criteria* and *Required documents* for ADMIN | `/settings/profile`, `/settings/users`, `/settings/roles`, `/settings/qualification-criteria`, `/settings/deal-required-documents` |
 
-**Find…** (`Ctrl K`) jumps to any company or screen. An address a role may not use
-shows the same **"Nothing here."** as an address that does not exist.
+**Search** in the header (`/` or `Ctrl K`) finds any company or page. An address a role
+may not use shows the same **"Page not found"** as an address that does not exist.
 
 ## 3. Tour the sample companies (architecture §3.9)
 
 1. **Company B — Bharat Precision Metals Ltd.** A **customer**: qualified, its
-   background check `CLEAR` at low risk, two GST branches. On *Deals & trade*, the
+   background check `CLEAR` at low risk, two GST branches. On *Deals*, the
    Hamburg order is **handed over** and the Rotterdam shipment is still gathering
    paperwork. Open the handed-over deal: *What was handed over* shows the buyer and
-   paperwork as they stood. Open the company's *Ledger* to show the whole story in
+   paperwork as they stood. Open the company's *History* to show the whole story in
    one place, including the journey's move to `CUSTOMER`.
 
    The Rotterdam shipment is not ready to hand over even though B is a customer: it
    has no pre-shipment document, and its buyer's sanctions and AML have not been
    checked. The sample data is written by the platform, not by a person, so its
-   ledger rows read "By the platform" and its proposal and decision read
+   history rows read "By the platform" and its proposal and decision read
    `sample-data` and `sample-data-checker`. Everything done live in §4 shows the
    signed-in person's name.
 
@@ -103,7 +108,7 @@ shows the same **"Nothing here."** as an address that does not exist.
    `CUSTOMER`; its check is `FLAGGED`, not `CLEAR`; the deal has no pre-shipment
    document; and the buyer's sanctions and AML checks are `MISSING`, not `PASSED`.
 3. **Company A — Aarav Textiles Pvt Ltd.** A prospect who said **"not now"**: the
-   conversation is `NOT_NOW` with a check-back date, which shows on the Agenda.
+   conversation is `NOT_NOW` with a check-back date, which shows under *Check back on*.
 4. **D** Deccan Leather Works (not qualified, and **paused**), **E** Eastern Spice
    Traders (**ended** — hidden from the default list, still found by searching), **F**
    Falcon Agro Exports (a new lead with no PAN, listed under *Identity to complete*)
@@ -114,9 +119,9 @@ shows the same **"Nothing here."** as an address that does not exist.
 
 As **OPERATIONS** (`rm@aner.com`) unless noted.
 
-1. **Add a lead.** Desk → **Add company**. Type a PAN under *Start with an
-   identifier*, then *Company name* and *Country* (`IN`) → **Create lead**. It starts
-   as a `LEAD`. On *Profile* → *GST registrations*, **Add registration** with a GSTIN
+1. **Add a lead.** **+ New** → **New company** (a side panel). Type a PAN under
+   *Start with an identifier*, then *Company name* and *Country* (`IN`) → **Create
+   lead**. It starts as a `LEAD`. On *Details* → *GST registrations*, **Add registration** with a GSTIN
    carrying the same PAN (`27` + PAN + `1Z5` is Maharashtra) → **Add**; the state comes
    from the GSTIN. Adding a second company with the same PAN is refused; the same
    GSTIN only warns. *(Also available: CSV import, and RXIL intake as ADMIN — an RXIL
@@ -126,12 +131,13 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
 3. **Qualify.** *Qualification*: for the two required criteria (*Annual revenue*,
    *Years in business*) press **Pass**, fill the observed value and the evidence, then
    **Record 2 results**. The header shows the server's suggestion. **Record: Qualified**
-   → a note → **Confirm**. The journey moves to **`PROSPECT`** (the hero updates). The
+   → a note → **Confirm**. The journey moves to **`PROSPECT`** (the path updates). The
    person decides: recording the opposite of the suggestion is allowed and is kept
    with the suggestion it overrode.
-4. **Talk to them.** *Conversation*: press **Interested** → **Confirm**. **Log an
-   activity** for a call or a follow-up with a due date.
-5. **Open a deal.** *Deals & trade* → **Open a deal** → a *Reference* → **Open deal**.
+4. **Talk to them.** *Activity*: click **Interested** on the path → **Mark as
+   current** → **Confirm**. In the composer below, log a **Call**, or add a
+   **Follow-up** with a due date (the header's **Log a call** jumps there).
+5. **Open a deal.** *Deals* → **Open a deal** → a *Reference* → **Open deal**.
    Opening a deal sets the conversation to **Ready now** in the same step (the toast
    says so). Open the deal and press **Start gathering paperwork**.
 
@@ -150,7 +156,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    company and names it as this deal's buyer **in one step**, and records the **trade
    relationship** between the two companies (*Trade between these two* appears). Show
    what it did *not* do: the new company is **not in the pipeline** — no lead, no
-   journey, the board's counts unchanged — and the deal's *Ledger* says "Created as a
+   journey, the board's counts unchanged — and the deal's *History* says "Created as a
    deal's buyer: not in the pipeline".
 
    Show the refusals too. A name that only *looks like* one on file gives **Check these
@@ -173,8 +179,9 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    listed by its state and its GSTIN as the server sends it (masked for OPERATIONS);
    choosing records it at once (toast "Invoiced from …"). **Clear** removes the choice
    until the deal closes.
-8. **Start the background check** on the company's *Background check* chapter: press
-   **In review** → **Record decision** (OPERATIONS may start one).
+8. **Start the background check**: the header's **Start background check** (or the
+   *Background check* tab) → **In review** → **Record decision** (OPERATIONS may start
+   one).
 9. **Switch to COMPLIANCE** (`compliance@aner.com`). On *Background check*:
    - *Review checklist*: set each of the seven items to **Passed** (or **Exempt** for
      the two exception questions) and **Save** each.
@@ -182,12 +189,12 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
      **Passed**, an *Evidence note* → **Record check**. *Required for Clear (this cycle)*
      turns to *KYB: Passed · AML: Passed · Sanctions: Passed* (rule B).
    - **Propose Clear** → *Risk rating* `LOW` and a reason → **Propose for approval**.
-     Nothing moves yet: the hero shows **Awaiting approval**; the proposer can only
+     Nothing moves yet: the header shows **Awaiting approval**; the proposer can only
      withdraw it.
-10. **The second signature.** Sign in as `compliance2@aner.com`. The Desk shows
-    **Awaiting your signature 1** → **Approve** → **Approve** (two clicks; also on
-    *Review*). On approval the company becomes a **`CUSTOMER`** in the same step — show
-    the hero — the decision names both people, the Clear shows when it expires (one
+10. **The second signature.** Sign in as `compliance2@aner.com`. Home shows
+    **Items to approve 1** → **Approve** → **Approve** (two clicks; also on
+    *Approvals*). On approval the company becomes a **`CUSTOMER`** in the same step — show
+    the journey path — the decision names both people, the Clear shows when it expires (one
     year), and "became customer" is announced (nobody receives it yet; §6). The
     proposer cannot approve their own proposal.
 11. **Screen the buyer** (still COMPLIANCE). On the deal, the buyer's card shows
@@ -212,12 +219,12 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
       says nobody has shown proof yet, which is deliberately not the same as `Paid`.
     - **Nothing is totalled.** Each row carries its own amount *and* currency, and there
       is no total anywhere (IQ-4). A *past* invoice — trade from before either company
-      came to us — is recorded on the seller's *Deals & trade* chapter under *Trade —
+      came to us — is recorded on the seller's *Deals* tab under *Trade —
       sold to*.
 
     Then correct it: record a new outcome; the first stays under **Outcome history**,
     marked superseded.
-14. **Show the Ledger** — on the deal and on the company. Each row says what changed
+14. **Show the History** — on the deal and on the company. Each row says what changed
     and who did it: "Buyer company recorded: …", "Invoicing branch recorded:
     Maharashtra", "Invoice … recorded: 48250.00 EUR", "Payment outcome recorded: Paid
     (claimed)", "Branch added: Maharashtra", the screening item's question, the
@@ -227,16 +234,16 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
 
 - **A lead fails qualification:** **Record: Not qualified** with a reason code; it
   stays a lead and can be re-reviewed later with new results.
-- **"Interested, but not now":** *Conversation* → **Not now** with a check-back date;
-  it appears on the Agenda.
+- **"Interested, but not now":** *Activity* → **Not now** with a check-back date;
+  it appears under *Check back on* on Home and on Follow-ups.
 - **Compliance needs more:** **More information needed** with a note of what is
   needed; staff answer it back to **In review** with a note of what arrived.
-- **A flagged branch** (COMPLIANCE, company B's *Profile* → *GST registrations*):
+- **A flagged branch** (COMPLIANCE, company B's *Details* → *GST registrations*):
   **Flag** → a reason → **Flag branch**. It blocks only the deals invoiced through
   *that* branch — open the Rotterdam shipment: the refusal names the flagged state and
   the picker marks it "— flagged"; choosing B's other branch removes that reason.
 - **A deactivated branch blocks too** (R-19, decided 4 October). Record a branch on a
-  deal, then **Deactivate** that registration on the seller's *Profile*: the deal says
+  deal, then **Deactivate** that registration on the seller's *Details*: the deal says
   "the invoicing branch … is deactivated", the picker shows it as "— deactivated", and
   choosing an active branch clears it.
 - **New information about a customer:** as COMPLIANCE, reopen company B (**Record a
@@ -252,11 +259,12 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
   PAN and GSTIN are masked for OPERATIONS and shown in full (with reveal and copy) to
   COMPLIANCE. As DEVELOPER the CRM is read-only, identifiers are masked, and the
   background check is not shown at all; **branch flags are not shown either** (R-47):
-  no flag chip, no flag count, no flag rows in the Ledger. Companies has no **Add
-  company** or **Import**, and typing `/companies/new` gives the same "Nothing here."
+  no flag badge, no flag count, no flag rows in the History. Companies has no **New
+  company** or **Import companies**, there is no **+ New** in the header, and typing
+  `/companies/new` gives the same "Page not found"
   as an address that does not exist. Only ADMIN sees **Qualification criteria** and
-  **Required documents** in Settings, and only COMPLIANCE and ADMIN see **Review**. An
-  API user signing in gets no workspace at all: no rail, a short "ask an administrator"
+  **Required documents** in Settings, and only COMPLIANCE and ADMIN see **Approvals**. An
+  API user signing in gets no workspace at all: no navigation, a short "ask an administrator"
   page, and only My profile.
 
 ## 6. Say this plainly during the demo
@@ -277,6 +285,6 @@ Avoid:
 - uploading real exporter documents;
 - presenting role and permission editing in Settings as controlling CRM access — the CRM
   still checks the five built-in roles;
-- relying on the order of two ledger rows made in the same step — both are there,
+- relying on the order of two history rows made in the same step — both are there,
   grouped as "Same moment", but not ordered between themselves;
 - reloading repeatedly in quick succession (R-49).

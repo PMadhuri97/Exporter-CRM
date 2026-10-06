@@ -1,4 +1,4 @@
-"""First-admin command (L1-09).
+"""First-admin command.
 
 The command exists so that granting a privileged role is a reviewed, tested
 operation instead of a hand-written `UPDATE auth.users`. These tests therefore

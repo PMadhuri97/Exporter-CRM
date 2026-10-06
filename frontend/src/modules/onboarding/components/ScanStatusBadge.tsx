@@ -1,5 +1,5 @@
 /**
- * A document's scan status, and who decided it — **owner: Developer 3B** (L3-11b).
+ * A document's scan status, and who decided it.
  *
  * Two things on purpose, not one.
  *
@@ -8,13 +8,13 @@
  *
  * **The scanner's name**, whenever a verdict has actually been reached. In this
  * build that is always `pass-through` — a placeholder that checks nothing
- * (assumption A9) — so a badge reading only "Available" would quietly imply a
+ * — so a badge reading only "Available" would quietly imply a
  * malware scan happened. Gate §7.6 blocks real exporter documents until a real
  * scanner is behind the interface, and until then the screen says which "scanner"
  * cleared the file.
  *
  * Provider-style values are stored lowercase and displayed uppercase, the same rule
- * verification providers follow (§7.5, decision D4).
+ * verification providers follow.
  */
 
 
@@ -72,7 +72,7 @@ export function ScanStatusBadge({
       </Tag>
       {scannerName && (
         <span
-          className="text-xs uppercase tracking-wide text-ink-3"
+          className="text-caption uppercase tracking-wide text-ink-3"
           title={
             scannerName === 'pass-through'
               ? 'This build ships a labelled pass-through: no malware check was performed.'

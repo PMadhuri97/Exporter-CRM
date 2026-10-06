@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearTokens } from '@/lib/api/tokenStorage';
+import { queryClient } from '@/lib/queryClient';
 
 import { AuthProvider, useAuth } from './AuthContext';
 
@@ -85,5 +86,40 @@ describe('AuthProvider boot', () => {
     expect(await screen.findByText('unauthenticated')).toBeInTheDocument();
     // This tab could not sign in, but the other tab's session is left alone.
     expect(localStorage.getItem(REFRESH_KEY)).toMatch(/^newer-/);
+  });
+});
+
+describe('AuthProvider sign-in', () => {
+  it('drops everything the previous user had fetched', async () => {
+    queryClient.setQueryData(['companies'], ['fetched by the previous user']);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/auth/login')) {
+        return json({ access_token: 'access', refresh_token: 'refresh', expires_in: 900 });
+      }
+      if (url.endsWith('/auth/me')) {
+        return json({ id: 'u2', email: 'compliance@example.com', role: 'COMPLIANCE' });
+      }
+      return json({ detail: 'not found' }, 404);
+    });
+
+    function SignIn() {
+      const { login } = useAuth();
+      return (
+        <button type="button" onClick={() => void login('compliance@example.com', 'Secret123')}>
+          Sign in
+        </button>
+      );
+    }
+
+    render(
+      <AuthProvider>
+        <Status />
+        <SignIn />
+      </AuthProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByText('signed in as compliance@example.com')).toBeInTheDocument();
+    expect(queryClient.getQueryData(['companies'])).toBeUndefined();
   });
 });

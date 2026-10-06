@@ -13,7 +13,7 @@ import tseslint from 'typescript-eslint';
 // here."). `src/platform/**` (auth, the query client, the api client) is
 // shared infrastructure every module may depend on, mirroring the backend's
 // `app/platform/` split from `app/modules/`.
-// Role checks live in one place, `src/platform/access` (R-33 Phase 0); see the block
+// Role checks live in one place, `src/platform/access`; see the block
 // that uses these below.
 const ROLE_SELECTORS = [
   {
@@ -33,10 +33,10 @@ const ROLE_SELECTORS = [
   },
 ];
 
-// Ink & Paper (R-33 Phase 1, docs/frontend-plan.md §5): colour only ever means a
+// Ink & Paper (docs/frontend-plan.md §5): colour only ever means a
 // state, and only through the tokens in tailwind.config.ts. These refuse, in any
 // string or template literal, (1) Tailwind's raw palette (`text-slate-600`,
-// `bg-violet-50`), (2) the token names Phase 1 retired (`text-ink-muted`,
+// `bg-violet-50`), (2) the retired token names (`text-ink-muted`,
 // `bg-status-passed`, `border-border`, `shadow-card`, …), and (3) white or black
 // fills that vanish in one of the two themes. Checked with a deliberate
 // `bg-violet-50`, `text-brand-600` and `bg-white` in a probe file: each errors.
@@ -52,14 +52,14 @@ const RETIRED_TOKEN =
   String.raw`(brand-\d|surface-(subtle|sunken)|ink-(muted|faint)|status-(passed|failed|review|pending|info)|journey-(lead|prospect|customer)|marker-(paused|ended)|risk-(low|medium|high)|border(-strong)?(?![\w-])|card(?![\w-])|overlay(?![\w-]))`;
 const THEME_BLIND = String.raw`(^|[^\w-])(bg-white|text-black|bg-black(?!\x2F))(?![\w-])`;
 // Icons come from one map, `src/design/icons.ts` (frontend-plan §5.5): lucide was the
-// generated-UI default and is gone (R-33 Phase 2).
+// generated-UI default and is gone.
 const ICON_IMPORTS = [
   { name: 'lucide-react', message: 'Use the Icon map from @/design/icons (frontend-plan §5.5).' },
 ];
 
 const DESIGN_SELECTORS = [
   [RAW_PALETTE, 'Raw Tailwind palette classes are not part of Ink & Paper: use a token (text-ink-2, bg-positive-tint, border-line …) from tailwind.config.ts.'],
-  [RETIRED_TOKEN, 'This token was retired in R-33 Phase 1: paper, sunken, line, ink-2/3, positive, negative, attention, progress, idle (docs/frontend-plan.md §5.2).'],
+  [RETIRED_TOKEN, 'This token was retired: paper, sunken, line, ink-2/3, positive, negative, attention, progress, idle (docs/frontend-plan.md §5.2).'],
   [THEME_BLIND, 'White and black disappear in one of the two themes: use surface, paper or ink (text-paper on an ink fill).'],
 ].flatMap(([pattern, message]) => [
   { selector: `Literal[value=/${pattern}/]`, message },
@@ -127,7 +127,7 @@ export default tseslint.config(
       // `-internals-are-private` import-linter contracts. `default: 'allow'`
       // on purpose: only `module`-type targets get an entry-point
       // restriction at all (two policies below); `app`/`platform` stay
-      // unrestricted, since nothing in the ticket doc calls for gating
+      // unrestricted, since nothing in the design calls for gating
       // them too. (A stricter "no module may import another module's
       // index.ts either" rule was considered and dropped — not specced,
       // and eslint-plugin-boundaries' same-type exception syntax for that
@@ -167,8 +167,8 @@ export default tseslint.config(
       ],
     },
   },
-  // Who may use what is decided in one place: `src/platform/access` (R-33 Phase 0,
-  // docs/frontend-plan.md §4.4). Anywhere else, comparing against a role name — or
+  // Who may use what is decided in one place: `src/platform/access`
+  // (docs/frontend-plan.md §4.4). Anywhere else, comparing against a role name — or
   // switching on one — is a second copy of the server's role groups that can drift
   // from it, so it is refused here; ask `useCan(capability)` or wrap a route in
   // `<Gate>` instead. Tests are exempt: a role matrix has to name the roles.
@@ -185,7 +185,7 @@ export default tseslint.config(
             {
               name: '@/platform/auth',
               importNames: ['isStaffRole', 'isAdminRole', 'isComplianceRole'],
-              message: 'Replaced by useCan(capability) from @/platform/access (R-33).',
+              message: 'Replaced by useCan(capability) from @/platform/access.',
             },
             ...ICON_IMPORTS,
           ],

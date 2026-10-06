@@ -1,5 +1,4 @@
-"""``identity_type`` agrees with what each company holds again — **owner: Developer 3**
-(allocation task 3.8, ``remaining-work.md`` R-16).
+"""``identity_type`` agrees with what each company holds again.
 
 Revision ID: onboarding_0043_identity_type
 Revises: onboarding_0042_deal_fks
@@ -10,7 +9,7 @@ Why
 holds a PAN, ``FOREIGN_REG`` when it holds a registration number and no PAN, ``NULL``
 when it holds neither (``decide_identity_type``). Migration 0032 backfilled it and the
 create paths set it — but ``update_profile`` never recomputed it, so a company that
-gained a PAN by edit (IQ-7's completion flow) kept ``NULL``, and one that lost it kept
+gained a PAN by edit (the identity completion flow) kept ``NULL``, and one that lost it kept
 ``IN_PAN``. The service now recomputes it on every edit of either field; this puts
 right every row edited before that.
 

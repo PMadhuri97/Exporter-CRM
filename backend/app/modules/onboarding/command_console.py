@@ -1,5 +1,5 @@
-"""Console set-up for the onboarding data commands — the buyer migration (P4-6) and
-the trade relationship backfill (P5-5) (``remaining-work.md`` R-11).
+"""Console set-up for the onboarding data commands — the buyer migration and
+the trade relationship backfill.
 
 Both are run by an operator at a terminal, often a Windows one, and both print a
 report somebody has to read and attach to a ticket. Two things went wrong there:

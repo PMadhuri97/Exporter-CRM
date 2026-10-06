@@ -4,7 +4,7 @@
  * duplicates, created or matched — each in the server's words. The client re-checks
  * nothing.
  *
- * Bulk company import — **owner: Developer 2** (L2-13, L2-14).
+ * Bulk company import.
  *
  * Download the server's template, upload a CSV, read the per-row report. Every
  * check and every match is the server's — the same rules as adding a company
@@ -57,8 +57,8 @@ async function downloadTemplate() {
 /**
  * What is about to be sent, so the person can see it is the right file: the header
  * and the first five lines, read locally. Nothing here checks a value — every check
- * is the server's, in the report that comes back (ask A8 would make this preview the
- * server's own dry run).
+ * is the server's, in the report that comes back (a server-side dry run would make this
+ * preview the server's own).
  */
 function usePreview(file: File | null) {
   const [preview, setPreview] = useState<{ file: File; rows: string[][] } | null>(null);
@@ -81,8 +81,8 @@ function usePreview(file: File | null) {
 
 function Report({ report }: { report: ImportReport }) {
   return (
-    <section aria-label="Import report" className="space-y-6">
-      <div className="flex flex-wrap items-end gap-x-10 gap-y-4 border-t border-line pt-5">
+    <section aria-label="Import report" className="space-y-4">
+      <div className="flex flex-wrap items-end gap-x-10 gap-y-4 rounded border border-line bg-surface p-4">
         <div>
           <Count value={report.created} size="lg" />
           <p className="text-caption text-ink-3">created</p>
@@ -114,15 +114,15 @@ function Report({ report }: { report: ImportReport }) {
         if (rows.length === 0) return null;
         const Glyph = Icon[group.glyph];
         return (
-          <div key={group.status} role="group" aria-label={group.title}>
-            <h2 className="flex items-center gap-2 text-lead font-semibold text-ink">
-              <Glyph size={17} className="text-ink-3" aria-hidden />
+          <div key={group.status} role="group" aria-label={group.title} className="rounded border border-line bg-surface">
+            <h2 className="flex items-center gap-2 px-4 py-3 text-heading font-semibold text-ink">
+              <Glyph size={20} className="text-ink-3" aria-hidden />
               {group.title}
-              <span className="text-secondary font-normal tabular-nums text-ink-3">{rows.length}</span>
+              <span className="font-normal tabular-nums text-ink-3">({rows.length})</span>
             </h2>
-            <ul className="mt-2 divide-y divide-line">
+            <ul className="divide-y divide-line border-t border-line">
               {rows.map((row) => (
-                <li key={row.line} className="grid gap-x-4 gap-y-1 py-2.5 sm:grid-cols-[4.5rem_1fr_auto]">
+                <li key={row.line} className="grid gap-x-4 gap-y-1 px-4 py-2.5 sm:grid-cols-[4.5rem_1fr_auto]">
                   <span className="text-secondary tabular-nums text-ink-3">Line {row.line}</span>
                   <div className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
@@ -139,12 +139,12 @@ function Report({ report }: { report: ImportReport }) {
                   </div>
                   <span className="flex flex-wrap gap-3 text-secondary">
                     {row.customer_id ? (
-                      <Link to={paths.company(row.customer_id)} className="font-medium text-ink underline underline-offset-[3px]">
+                      <Link to={paths.company(row.customer_id)} className="font-semibold text-accent underline-offset-2 hover:underline">
                         Open
                       </Link>
                     ) : (
                       row.candidates.map((id, i) => (
-                        <Link key={id} to={paths.company(id)} className="font-medium text-ink underline underline-offset-[3px]">
+                        <Link key={id} to={paths.company(id)} className="font-semibold text-accent underline-offset-2 hover:underline">
                           Candidate {i + 1}
                         </Link>
                       ))
@@ -174,20 +174,20 @@ export function CompanyImportPage() {
   };
 
   return (
-    <div className="max-w-reading space-y-6">
+    <div className="space-y-4">
       <PageHeader
         title="Import companies"
         description="Each row is checked and matched like a company added by hand. New companies start as leads; possible duplicates are reported, never merged. Up to 1,000 rows per file."
         actions={
-          <Button variant="quiet" onClick={() => void downloadTemplate()}>
-            <Icon.download size={15} aria-hidden />
+          <Button onClick={() => void downloadTemplate()}>
+            <Icon.download size={16} aria-hidden />
             Download template
           </Button>
         }
       />
 
       <form
-        className="space-y-4"
+        className="space-y-4 rounded border border-line bg-surface p-4"
         onSubmit={(e) => {
           e.preventDefault();
           if (!file) return;
@@ -206,12 +206,12 @@ export function CompanyImportPage() {
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
           className={cn(
-            'flex cursor-pointer flex-col items-start gap-1 rounded-xl border border-dashed px-5 py-6 transition-colors duration-quick',
-            dragging ? 'border-ink bg-sunken' : 'border-line-strong hover:border-ink-3',
+            'flex cursor-pointer flex-col items-start gap-1 rounded border border-dashed px-5 py-6 transition-colors duration-quick',
+            dragging ? 'border-accent bg-accent-tint' : 'border-line-strong hover:border-ink-3',
           )}
         >
-          <span className="flex items-center gap-2.5 text-body font-medium text-ink">
-            <Icon.csv size={20} className="text-ink-3" aria-hidden />
+          <span className="flex items-center gap-2.5 text-body font-semibold text-ink">
+            <Icon.upload size={20} className="text-ink-3" aria-hidden />
             {file ? file.name : 'Drop a CSV here, or choose one'}
           </span>
           <span className="text-secondary text-ink-3">
@@ -227,11 +227,20 @@ export function CompanyImportPage() {
         </label>
 
         {preview && preview.rows.length > 0 && (
-          <div role="group" aria-label="What will be sent" className="space-y-1">
-            <p className="text-caption text-ink-3">What will be sent — the header and the first lines, as read here</p>
-            <pre className="overflow-x-auto rounded-xl border border-line bg-surface p-3 font-mono text-data text-ink-2">
-              {preview.rows.map((cells) => cells.join('  ·  ')).join('\n')}
-            </pre>
+          <div role="group" aria-label="What will be sent">
+            <p className="text-caption text-ink-3">
+              What will be sent — the header and the first lines, as read here. The server checks every row.
+            </p>
+            <ul className="mt-1 divide-y divide-line rounded border border-line">
+              {preview.rows.map((cells, index) => (
+                <li key={index} className="flex gap-3 px-3 py-2 text-secondary">
+                  <span className="w-16 shrink-0 text-ink-3">{index === 0 ? 'Header' : `Row ${index + 1}`}</span>
+                  <span className={index === 0 ? 'min-w-0 truncate font-semibold text-ink' : 'min-w-0 truncate text-ink-2'}>
+                    {cells.map((cell) => cell.trim()).filter(Boolean).join(' · ')}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 

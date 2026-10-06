@@ -297,7 +297,7 @@ async def test_feed_requires_privileged_role(client: AsyncClient, seeded):
     """The negative case, so it mints its own unprivileged token.
 
     Every other test in this file now uses `compliance_token` because the read
-    routes are COMPLIANCE/ADMIN-only (L1-07). This one is asserting the
+    routes are COMPLIANCE/ADMIN-only. This one is asserting the
     refusal, so it needs the opposite — an API_USER token, created here rather
     than as a shared fixture so nothing can accidentally reuse it for a
     positive assertion again.

@@ -1,4 +1,4 @@
-"""`ManualEntryAdapter` — the one real `VerificationAdapter` this ticket ships.
+"""`ManualEntryAdapter` — the one real `VerificationAdapter` that ships.
 
 Satisfies the Protocol by accepting a manually-supplied result rather than
 calling any vendor: a compliance operator who has, say, phoned a bank to
@@ -27,12 +27,12 @@ adapter's whole job is validating that `payload` and repackaging it as a
 * ``risk_level`` (optional): one of `VerificationRiskLevel`'s values.
 * ``valid_until`` (optional): a `datetime`, for checks that expire.
 
-The evidence rule (Dev4B 4B-4, L4-07)
---------------------------------------
+The evidence rule
+-----------------
 A person's word is not evidence by itself. ``verify`` applies
 ``domain.verification_evidence.check_manual_outcome`` to the outcome and
 ``VerificationRequest.evidence``: a ``PASSED`` needs evidence, and a ``PENDING``
-is refused because nothing would ever resolve it (D16, decided by the lead) —
+is refused because nothing would ever resolve it —
 the rule lives in that one function, not here.
 """
 

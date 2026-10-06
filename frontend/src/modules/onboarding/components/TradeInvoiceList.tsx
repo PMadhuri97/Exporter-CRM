@@ -1,6 +1,5 @@
 /**
- * One relationship's invoices and what became of them — **owner: Developer 3**
- * (task 3.22, plan P5-7).
+ * One relationship's invoices and what became of them.
  *
  * Shared by both places trade history appears: the deal page's `TradeHistoryPanel`,
  * which is about one pair, and the company page's `CompanyTradePanel`, which lists
@@ -12,7 +11,7 @@
  *
  * - **No outcome is not `UNKNOWN`.** Nobody has followed this invoice up, versus
  *   somebody did and could not say. `TradeOutcomeChip` holds the line.
- * - **Nothing is totalled** (decision IQ-4). Amounts are stored in their own currency
+ * - **Nothing is totalled**. Amounts are stored in their own currency
  *   and never converted, so a sum would need a rate that does not exist. Each row
  *   carries its own currency instead.
  * - **Superseded outcomes stay visible.** An invoice corrected from "Paid" to
@@ -58,16 +57,16 @@ function OutcomeChain({ outcomes }: { outcomes: TradeOutcome[] }) {
               proofStatus={outcome.proof_status}
             />
             {outcome.amount_paid && (
-              <span className="text-xs tabular-nums text-ink-2">
+              <span className="text-caption tabular-nums text-ink-2">
                 {outcome.amount_paid} paid
               </span>
             )}
-            {!outcome.is_current && <span className="text-xs text-ink-3">Superseded</span>}
+            {!outcome.is_current && <span className="text-caption text-ink-3">Superseded</span>}
           </div>
-          <p className="mt-0.5 text-xs text-ink-3">
+          <p className="mt-0.5 text-caption text-ink-3">
             {`${outcome.recorded_by ?? 'Unknown'} · ${formatDate(outcome.recorded_at)}`}
           </p>
-          {/* P5-7 asks for `EvidenceList` here. An outcome's references are stored
+          {/* The design asks for `EvidenceList` here. An outcome's references are stored
               in verification's `{type, ref}` shape, which is what this list reads. */}
           <EvidenceList note={outcome.evidence_note} refs={outcome.evidence_refs ?? []} />
         </li>
@@ -101,8 +100,8 @@ function InvoiceRow({ invoice, isThisDeal }: { invoice: TradeInvoice; isThisDeal
               </Tag>
             )}
           </p>
-          <p className="mt-0.5 text-xs text-ink-2">
-            {/* Amount and currency together, never converted (IQ-4). The amount is a
+          <p className="mt-0.5 text-caption text-ink-2">
+            {/* Amount and currency together, never converted. The amount is a
                 string because the server sends `Numeric` as one; it is shown as sent
                 and never parsed. */}
             <span className="font-medium tabular-nums text-ink">
@@ -125,7 +124,7 @@ function InvoiceRow({ invoice, isThisDeal }: { invoice: TradeInvoice; isThisDeal
             <button
               type="button"
               onClick={() => setOpen((was) => !was)}
-              className="text-xs font-medium text-ink hover:underline"
+              className="text-caption font-medium text-ink hover:underline"
               aria-expanded={open}
             >
               {open ? 'Hide history' : 'Outcome history'}

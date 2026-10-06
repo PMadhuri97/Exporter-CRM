@@ -1,4 +1,4 @@
-"""Repository for ``crm_document`` — **owner: Developer 3B** (L3-09).
+"""Repository for ``crm_document``.
 
 Mutable in one respect only: the scan status moves once a verdict arrives.
 Everything else about a stored document is fixed — there is no edit route, and
@@ -77,7 +77,7 @@ class CrmDocumentRepository(BaseRepository[CrmDocument]):
     ) -> list[CrmDocument]:
         """Every document on any of these deals.
 
-        One statement rather than one per deal: Phase 4's handover snapshot needs
+        One statement rather than one per deal: the handover snapshot needs
         the document ids for a deal at the moment it is handed over, and a company
         panel counting paperwork across deals asks the same question.
         """

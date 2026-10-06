@@ -1,6 +1,6 @@
 /**
- * A verification result's review chain, and the dialog that adds to it — **owner:
- * Developer 4B** (verification-and-screening.md §1, §9; 4B-7).
+ * A verification result's review chain, and the dialog that adds to it
+ * (verification-and-screening.md §1, §9).
  *
  * Reviews are append-only. A verdict never changes by editing: a later review
  * *supersedes* the current one by naming it (`supersedes_review_id =
@@ -31,17 +31,17 @@ import { formatReviewer, REVIEW_OUTCOMES } from './verification-labels';
 import { VerificationStatusChip } from './VerificationStatusChip';
 
 const FIELD =
-  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-ink disabled:opacity-60';
+  'mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-caption text-ink outline-none focus:border-accent disabled:opacity-60';
 const SECONDARY_BUTTON =
-  'rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
+  'rounded-lg border border-line px-2.5 py-1.5 text-caption font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
 const PRIMARY_BUTTON =
-  'rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-paper disabled:opacity-50';
+  'rounded-md bg-accent-solid px-2.5 py-1.5 text-caption font-medium text-white disabled:opacity-50';
 
 /** Every review, first to current. Superseded reviews stay visible, as recorded. */
 export function ReviewChain({ reviews }: { reviews: VerificationReview[] }) {
   if (reviews.length === 0) return null;
   return (
-    <div data-testid="review-chain" className="mt-3 text-xs">
+    <div data-testid="review-chain" className="mt-3 text-caption">
       <p className="flex items-center gap-1 text-ink-3">
         <Icon.history size={12} /> Reviews
       </p>
@@ -93,7 +93,7 @@ export function ReviewDialog({
   // A PENDING result has no finding to accept or reject; the server refuses (422).
   if (result.status === 'PENDING') {
     return (
-      <p className="mt-3 flex items-start gap-2 text-xs text-ink-3">
+      <p className="mt-3 flex items-start gap-2 text-caption text-ink-3">
         <Icon.info size={14} className="mt-0.5 shrink-0" />
         {result.is_placeholder
           ? 'Placeholder record — no provider ran this check, so it cannot be reviewed.'
@@ -153,7 +153,7 @@ export function ReviewDialog({
   }
 
   return (
-    <div data-testid="review-form" className="mt-3 rounded-lg border border-line p-3 text-xs">
+    <div data-testid="review-form" className="mt-3 rounded-lg border border-line p-3 text-caption">
       <label className="block text-ink-3">
         Verdict
         <select

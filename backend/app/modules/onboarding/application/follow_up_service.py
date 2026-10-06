@@ -1,5 +1,4 @@
-"""``FollowUpService`` — completing follow-ups, and the due/overdue list
-(L3-04b). **Owner: Developer 3A, Phase 2.**
+"""``FollowUpService`` — completing follow-ups, and the due/overdue list.
 
 What we owe an exporter next, and whether we did it. The contract is
 ``docs/contracts/engagement.md`` §5.
@@ -18,7 +17,7 @@ promised, and the promise did get broken. So ``RESCHEDULED`` writes the completi
 *and* logs a fresh follow-up for the new moment, in one transaction, so the list can
 never show a rescheduled follow-up with nothing to replace it.
 
-**Follow-ups are the whole team's** (decision D2). The list is a reader route with no
+**Follow-ups are the whole team's**. The list is a reader route with no
 default owner filter; ``actor_id`` narrows it and never gates it. Who may *complete*
 one is the route's business, via ``require_role`` — the three staff roles, per
 contract §5.5.
@@ -28,8 +27,8 @@ contract §5.5.
 ``journey``, ``qualification``, ``marker``, ``profile``, ``deal``,
 ``background_check``, ``verification``. None of them is a follow-up, ``engagement.md``
 does not ask for one, and this prompt's §7.4 says not to invent a ``follow_up``
-dimension. The conversation gauge is what the history log carries for this
-developer's slice, and that is Phase 1's. Recorded explicitly in ``engagement.md``
+dimension. The conversation gauge is what the history log carries for
+engagement. Recorded explicitly in ``engagement.md``
 §5.7 so the next reader does not have to infer it from silence.
 
 **One transaction per operation.** Every write goes through the session the service
@@ -92,8 +91,7 @@ class FollowUpService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._completions = FollowUpCompletionRepository(db)
-        # Phase 1's repository, **used** and not extended: the phase agreement (§6.3)
-        # forbids adding a method to it, not calling the ones it has. A reschedule
+        # The activity repository, **used** and not extended. A reschedule
         # needs to log a replacement activity, and `AppendOnlyRepository.create` is
         # already the way every activity in this CRM is written.
         self._activities = ExporterActivityRepository(db)
@@ -233,7 +231,7 @@ class FollowUpService:
         """The Follow-ups screen's answer: follow-ups, and companies parked at
         ``NOT_NOW``.
 
-        No default owner filter — follow-ups are the whole team's (decision D2), and
+        No default owner filter — follow-ups are the whole team's, and
         ``actor_id`` narrows the list rather than gating it.
 
         ``now`` is taken **once** and used for every ``is_overdue`` in the response, so
@@ -312,8 +310,8 @@ class FollowUpService:
     async def refuse_completion_edit(self, completion_id: uuid.UUID) -> None:
         """Always raises ``FollowUpCompletionIsImmutableError``.
 
-        Phase 2 adds no constraint, so what it owes the database instead is the
-        service-level proof that the existing lock holds (prompt §3). There is no
+        Follow-ups add no constraint, so what they owe the database instead is the
+        service-level proof that the existing lock holds. There is no
         "edit a completion" route and there never will be one; this method exists so
         that the refusal is a named, tested behaviour of the service rather than an
         absence somebody could fill in later without noticing.

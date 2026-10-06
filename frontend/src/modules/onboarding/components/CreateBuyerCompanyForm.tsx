@@ -1,5 +1,5 @@
 /**
- * Create a deal's buyer as a company — `remaining-work.md` R-24 (plan P4-3).
+ * Create a deal's buyer as a company.
  *
  * Opened by `CompanyPicker` once a search has found no company on file. It collects
  * the least a buyer company needs and hands it to the caller, which sends it as the
@@ -7,7 +7,7 @@
  * the pipeline** — a buyer, not a lead — and names it as the deal's buyer in one step.
  *
  * What it does not do is decide anything the server decides. It asks for a
- * registration number when the country is not India, because IQ-7 requires one and
+ * registration number when the country is not India, because the CRM requires one and
  * saying so up front saves a round trip — but whether the value is acceptable, whether
  * a company on file already holds it, and whether a PAN fits a GSTIN are the server's
  * answers, shown as they come back. When the server says a company on file already
@@ -91,7 +91,7 @@ export function CreateBuyerCompanyForm({
       aria-label="Create buyer company"
       className="flex flex-col gap-3 rounded-lg border border-line p-4"
     >
-      <p className="text-sm text-ink-2">
+      <p className="text-body text-ink-2">
         A buyer company is created <span className="font-medium text-ink">outside the
         pipeline</span>: it is not a lead and changes no pipeline count. It is named as
         this deal's buyer at once.
@@ -151,7 +151,7 @@ export function CreateBuyerCompanyForm({
       {error ? (
         <div
           role="alert"
-          className="rounded-lg border border-negative/30 bg-negative-tint px-3 py-2 text-sm text-ink"
+          className="rounded-lg border border-negative/30 bg-negative-tint px-3 py-2 text-body text-ink"
         >
           {error}
           {existing ? (
@@ -165,7 +165,7 @@ export function CreateBuyerCompanyForm({
       ) : null}
 
       <div className="flex justify-end gap-2">
-        <Button variant="quiet" onClick={onCancel} disabled={pending}>
+        <Button variant="subtle" onClick={onCancel} disabled={pending}>
           Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={!ready} loading={pending}>

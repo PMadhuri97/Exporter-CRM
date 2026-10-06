@@ -1,8 +1,8 @@
 """Read routes for the shared CRM history log.
 
 Its own file rather than rows in `exporter_router.py`: section 8.1 of the
-architecture makes the company routes Developer 2's and says others add their
-own route files beside them. The history log is Developer 1's, and the deal
+architecture gives the company routes their own file and says other areas add their
+own route files beside them. The history log is shared, and the deal
 route is not a company route at all.
 
 Read-only on purpose. History is written by the service that made the change,
@@ -47,30 +47,30 @@ _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )
 
-#: Dimensions DEVELOPER does not see here. Decision D8 (settled 28 September 2026)
+#: Dimensions DEVELOPER does not see here. The rule (settled 28 September 2026)
 #: refuses DEVELOPER the background-check gauge, its decision reasons and evidence
 #: ids, and the verification and screening routes (`background-check.md` §14,
 #: `verification-and-screening.md` §11). Their history rows carry the same values, reasons, review notes
 #: and screening comments, so serving them here would hand DEVELOPER exactly what
-#: those routes refuse it. Every other dimension stays readable. F1 added the
-#: background check's own new dimensions, `check_cycle` and
+#: those routes refuse it. Every other dimension stays readable. The
+#: background check's own newer dimensions, `check_cycle` and
 #: `background_check_approval`, for the same reason (`domain/history_dimensions.py`).
 _HIDDEN_FROM_DEVELOPER = HIDDEN_FROM_DEVELOPER
 
 #: `details` keys DEVELOPER does not see on the rows it does receive. The move to
 #: `CUSTOMER` is a journey row, and it records the clearing decision and its risk
-#: rating — background-check data D8 refuses DEVELOPER on the check's own route. The
+#: rating — background-check data DEVELOPER is refused on the check's own route. The
 #: row itself stays: the journey is readable, and `CUSTOMER` already says the check
 #: cleared.
 #: A GST registration's add and deactivate rows also carry the branch's
-#: `flag_status`, which DEVELOPER is not served (R-47, decision D-05).
+#: `flag_status`, which DEVELOPER is not served.
 _DETAILS_HIDDEN_FROM_DEVELOPER = frozenset(
     {"risk_rating", "clearing_decision_id", "flag_status"}
 )
 
 #: Rows DEVELOPER does not see inside a dimension it otherwise reads: flagging and
 #: unflagging a branch. Their from/to *is* the flag status and their reason the
-#: flag's reason — the compliance judgement R-47 (decision D-05, 4 October 2026)
+#: flag's reason — the compliance judgement the rule of 4 October 2026
 #: withholds from DEVELOPER on the registrations route as well.
 _EVENTS_HIDDEN_FROM_DEVELOPER = frozenset(
     {"gst_registration_flagged", "gst_registration_unflagged"}
@@ -120,9 +120,9 @@ _ORDERING = (
         "gauges, its marker and its deals, interleaved. Filter to one with "
         "`dimension`. DEVELOPER does not receive `background_check`, "
         "`verification`, `screening`, `check_cycle` or `background_check_approval` "
-        "rows, nor a row's `risk_rating` or `clearing_decision_id` details "
-        "(decision D8), nor a branch's flag and unflag rows or its `flag_status` "
-        "detail (R-47). " + _ORDERING
+        "rows, nor a row's `risk_rating` or `clearing_decision_id` details, "
+        "nor a branch's flag and unflag rows or its `flag_status` "
+        "detail. " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},
@@ -173,8 +173,8 @@ async def list_company_history(
         "Every recorded change to one deal, including the changes it caused "
         "elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does "
         "not receive `background_check`, `verification` or `screening` rows, nor a "
-        "row's `risk_rating` or `clearing_decision_id` details (decision D8), nor a "
-        "branch's flag and unflag rows or its `flag_status` detail (R-47). " + _ORDERING
+        "row's `risk_rating` or `clearing_decision_id` details, nor a "
+        "branch's flag and unflag rows or its `flag_status` detail. " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},

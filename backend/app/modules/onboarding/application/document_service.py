@@ -1,8 +1,8 @@
-"""Documents on a company or a deal — **owner: Developer 3B** (L3-09).
+"""Documents on a company or a deal.
 
 Contract: ``docs/contracts/storage-and-documents.md`` §4-§6. Architecture §3.4.
 
-This is where Phase 1's storage meets the database. The order is the rule the whole
+This is where storage meets the database. The order is the rule the whole
 scan step rests on, and it is not negotiable:
 
 1. the owner exists, the category belongs on that owner, and the type is one the
@@ -82,7 +82,7 @@ logger = structlog.get_logger(__name__)
 def build_storage_service() -> StorageService:
     """The prototype's storage: local disk, behind a labelled pass-through scanner.
 
-    One place to change when S3 and a real scanner arrive (decision D8, gate §7.6),
+    One place to change when S3 and a real scanner arrive (gate §7.6),
     rather than a constructor call in every route. Not a FastAPI dependency: it
     holds no session and nothing about it varies per request.
     """
@@ -100,7 +100,7 @@ class DocumentService:
     @property
     def scanner_name(self) -> str:
         """Which scanner verdicts will be attributed to — ``"pass-through"`` in the
-        prototype. Exposed so a screen can say so honestly (assumption A9)."""
+        prototype. Exposed so a screen can say so honestly."""
         return self._storage.scanner_name
 
     # ── Read ─────────────────────────────────────────────────────────────────

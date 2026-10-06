@@ -1,5 +1,5 @@
 /**
- * modules/onboarding: route trees — **owner: Developer 1**.
+ * modules/onboarding: route trees.
  *
  * The app router mounts these through the module facade:
  *
@@ -12,7 +12,7 @@
  * `paths.ts`.
  *
  * The app router gates `/companies/*` on `crm.read`; the write screens below it are
- * gated again on their own capability, **at the route** (R-33, G4): a role the server
+ * gated again on their own capability, **at the route**: a role the server
  * refuses gets the same `NotFound` as an address that does not exist, and the page's
  * code is never downloaded.
  */
@@ -34,7 +34,7 @@ import {
 import { paths } from './paths';
 
 /**
- * Companies has two views of one list (frontend-plan §8.3): the register (rows) and
+ * Companies has two views of one list (frontend-plan §8.3): the list (rows) and
  * the board (three journey columns). `?view=board` picks the board, so a view is a
  * URL that can be shared.
  */
@@ -91,7 +91,7 @@ function CompanyRedirect({ documents = false }: { documents?: boolean }) {
   return <Redirect to={paths.company(customerId, documents ? 'documents' : undefined)} />;
 }
 
-/** `/pipeline` was its own screen until Phase 2 folded it into Companies as the board. */
+/** `/pipeline` was its own screen until the redesign folded it into Companies as the board. */
 export function PipelineRedirect() {
   return <Redirect to={paths.board} />;
 }

@@ -1,4 +1,4 @@
-"""Deterministic CRM sample data — **owner: Developer 2** (L2-05).
+"""Deterministic CRM sample data.
 
 Run from ``backend/``::
 
@@ -33,10 +33,10 @@ is CLEAR, which makes it a CUSTOMER, and one of its two deals is handed over; C'
 check is FLAGGED and its deal stays open. D is NOT_QUALIFIED. Each company carries
 its §3.9 target in ``SampleCompany.target``.
 
-**Each owner seeds its own part.** Not by editing each other's code: this file
-calls one hook per owner — ``sample_data_engagement`` (the conversation gauge,
-Developer 3A), ``sample_data_follow_ups`` (Developer 3A), ``sample_data_background_check``
-(Developer 4A, with 4B's screening inputs) and ``sample_data_deals`` (Developer 3B)
+**Each area seeds its own part.** Not by editing each other's code: this file
+calls one hook per area — ``sample_data_engagement`` (the conversation gauge),
+``sample_data_follow_ups``, ``sample_data_background_check`` (with the screening
+inputs) and ``sample_data_deals``
 — after every company exists, in the order their rules need: B's check must be
 CLEAR before its deal can be handed over.
 """
@@ -72,11 +72,10 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
 )
 from app.modules.onboarding.domain.qualification_views import ResultEntry
 
-# ── Section 9.3's own seeders, one per owner (the seam commit) ───────────────
+# ── The area seeders, one per area ───────────────────────────────────────────
 #
-# Each is a hook in its owner's own file, called once below. Adding them here in
-# one commit is what keeps this file — Developer 2's — closed to Developer 3
-# afterwards: nobody edits it again, in either of 3A's phases or in 3B's work.
+# Each is a hook in its area's own file, called once below, so adding to an area's
+# sample data never means editing this file.
 from app.modules.onboarding.sample_data_background_check import (
     load_background_check_sample_data,
 )
@@ -421,7 +420,7 @@ async def load_sample_data() -> dict[str, dict[str, int | bool]]:
     # The owners' seeders, after every company exists — each of them moves a
     # gauge or hangs a record off a company, so none of them can run first. The
     # background check comes before the handover: B must be a CLEAR customer
-    # before its deal can be handed over (assumption A5). Each converges the same
+    # before its deal can be handed over. Each converges the same
     # way the steps above do, so a repeat run reports zeros.
     report[SECTION_9_3_SLUG] = {
         "conversation_moved": await load_conversation_sample_data(),

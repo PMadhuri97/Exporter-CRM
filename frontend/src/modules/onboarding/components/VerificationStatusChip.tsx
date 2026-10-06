@@ -1,6 +1,6 @@
 /**
- * A status, risk or verdict tag for the verification workspace — **owner:
- * Developer 4B**. Shows the server's value, humanized; the colour is from
+ * A status, risk or verdict tag for the verification workspace.
+ * Shows the server's value, humanized; the colour is from
  * `chipClasses`.
  */
 

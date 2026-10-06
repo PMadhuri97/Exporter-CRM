@@ -1,5 +1,4 @@
-"""A deal's invoicing branch must be its seller's — **owner: Developer 2**
-(allocation task 2.8, plan P6-6).
+"""A deal's invoicing branch must be its seller's.
 
 Revision ID: onboarding_0036_deal_branch
 Revises: onboarding_0035_gst_branch
@@ -12,13 +11,13 @@ what writes it, and a plain FK is not enough for the rule that matters: it admit
 **any** registration, including another company's. A deal invoiced through a branch
 belonging to someone else would put a stranger's GSTIN on the invoice, and the
 handover guard would be asking about a branch whose flag belongs to a different
-company (task 2.9).
+company.
 
 What it does
 ------------
 #. Replaces the single-column FK with a **composite** one,
    ``(seller_gst_registration_id, company_id)`` → ``(exporter_gstin.id, customer_id)``,
-   against the unique key task 3.12 added for exactly this. The database now refuses a
+   against the unique key 0035 added for exactly this. The database now refuses a
    deal pointing at another company's branch; ``DealService`` checks it too, so the
    caller gets a 422 naming the problem rather than an integrity error.
 
@@ -26,7 +25,7 @@ What it does
    cannot be deleted at all since 0035.
 #. Adds ``seller_gst_registration_id`` to ``prevent_terminal_deal_change()``, so a
    closed deal's invoicing branch no longer changes. Before handover it may be set
-   and **changed** freely (decision IQ-20: "may be set any time before handover") —
+   and **changed** freely ("may be set any time before handover") —
    unlike ``buyer_company_id``, which is set once, because choosing the wrong branch
    has no consequence until the handover reads it, while a buyer company accumulates
    compliance results under it.
@@ -37,7 +36,7 @@ Replacing the freeze function, carefully
 the function carries: 0022's list, 0029's ``handover_snapshot`` set-once block, and
 0034's ``buyer_company_id``. Rebuilding from any one of those alone would silently
 drop the others — which is a mistake this project has made once already, in 0034's
-first draft, caught by ``test_l3b_handover_snapshot.py``'s direct-SQL tests.
+first draft, caught by ``test_handover_snapshot.py``'s direct-SQL tests.
 
 Rollback
 --------
