@@ -16,18 +16,22 @@ in `GATED_ROUTES` and a refusal test.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.schemas.deal import (
+    AllDealsResponse,
+    DealCorridorResponse,
     DealListItemResponse,
     DealListResponse,
     DealRequiredDocumentResponse,
     DealRequiredDocumentsResponse,
     DealResponse,
     DealSide,
+    DealSummaryResponse,
     OpenDealRequest,
     SetDealBuyerRequest,
     SetDealInvoicingBranchRequest,
@@ -38,6 +42,7 @@ from app.modules.onboarding.application.deal_required_documents_service import (
     DealRequiredDocumentsService,
 )
 from app.modules.onboarding.application.deal_service import DealService
+from app.modules.onboarding.domain.deal_views import UNKNOWN_CORRIDOR, DealFilters
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.platform.authentication.models import User, UserRole
 from app.platform.authorization.services import require_role
@@ -150,6 +155,72 @@ async def list_company_deals(
         # the company half is the service's rule.
         can_open_deal=current_user.role in _OPENING_ROLES
         and await service.can_open_deal(company_id),
+    )
+
+
+def _aware(moment: datetime | None) -> datetime | None:
+    """A timestamp without a zone is read as UTC, so it can be compared with
+    `created_at` at all."""
+    if moment is None or moment.tzinfo is not None:
+        return moment
+    return moment.replace(tzinfo=UTC)
+
+
+@router.get(
+    "/deals",
+    response_model=AllDealsResponse,
+    summary="List every deal, across companies",
+    description=(
+        "Newest first, every stage unless `stage` narrows it. Each row names the "
+        "seller and the buyer — the buyer company once the deal has one, the older "
+        "buyer details otherwise — and the **corridor**, worked out as the seller's "
+        "country then the buyer's (`IN-US`).\n\n"
+        "Filters, all optional and all applied together: `corridor` (repeatable; "
+        f"`{UNKNOWN_CORRIDOR}` matches deals whose corridor is not known yet), "
+        "`stage` (repeatable), `q` (part of the reference, the seller's name or the "
+        "buyer's name, any case), `company_id` (that company as seller **or** buyer "
+        "company), and `opened_from` (inclusive) / `opened_before` (exclusive). A "
+        "timestamp without a zone is read as UTC.\n\n"
+        "`corridors` lists every corridor in use, ignoring the filters."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "CRM read role required"},
+    },
+)
+async def list_all_deals(
+    current_user: Annotated[User, Depends(_READER)],
+    corridor: Annotated[
+        list[Annotated[str, Query(pattern=rf"^([A-Z]{{2}}-[A-Z]{{2}}|{UNKNOWN_CORRIDOR})$")]]
+        | None,
+        Query(),
+    ] = None,
+    stage: Annotated[list[DealStage] | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    company_id: uuid.UUID | None = None,
+    opened_from: datetime | None = None,
+    opened_before: datetime | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> AllDealsResponse:
+    service = DealService(db)
+    filters = DealFilters(
+        corridors=tuple(corridor or ()),
+        stages=tuple(stage or ()),
+        search=(q or "").strip() or None,
+        company_id=company_id,
+        opened_from=_aware(opened_from),
+        opened_before=_aware(opened_before),
+    )
+    views, total = await service.list_all(filters, limit=limit, offset=offset)
+    return AllDealsResponse(
+        deals=[DealSummaryResponse.from_view(view) for view in views],
+        total=total,
+        limit=limit,
+        offset=offset,
+        corridors=[DealCorridorResponse.from_view(view) for view in await service.corridors()],
+        can_open_deal=current_user.role in _OPENING_ROLES,
     )
 
 

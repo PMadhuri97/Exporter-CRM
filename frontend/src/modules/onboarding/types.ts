@@ -214,6 +214,28 @@ export interface DealListParams {
 /** `seller` | `buyer` — which side of a deal a company is on. */
 export type DealSide = Schemas['DealSide'];
 
+/** Every deal, across companies — `GET /deals`. */
+export type AllDeals = Schemas['AllDealsResponse'];
+/** One row of it: both parties, and the corridor between them. */
+export type DealSummary = Schemas['DealSummaryResponse'];
+/** A corridor some deal is on (`IN-US`, or `null` for not known yet) and how many are. */
+export type DealCorridor = Schemas['DealCorridorResponse'];
+
+export interface AllDealsParams {
+  /** `IN-US` form, or `UNKNOWN_CORRIDOR` (`constants.ts`). Several widen the list to any of them. */
+  corridors?: string[];
+  stages?: DealStage[];
+  /** Part of the reference, the seller's name or the buyer's name. */
+  q?: string;
+  /** That company as seller or as buyer company. */
+  companyId?: string;
+  /** ISO timestamps: from inclusive, before exclusive. */
+  openedFrom?: string;
+  openedBefore?: string;
+  limit?: number;
+  offset?: number;
+}
+
 /** "Do we already have this company?" — `POST /companies/match`. */
 export type CompanyMatchRequest = Schemas['CompanyMatchRequest'];
 export type CompanyMatch = Schemas['CompanyMatchResponse'];

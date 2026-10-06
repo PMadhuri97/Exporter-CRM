@@ -18,6 +18,8 @@
 import { apiRequest } from '@/lib/api/client';
 
 import type {
+  AllDeals,
+  AllDealsParams,
   Deal,
   DealList,
   DealListParams,
@@ -69,6 +71,26 @@ export function listCompanyDeals(
   return apiRequest<DealList>(
     `/onboarding/exporters/${companyId}/deals?${query.toString()}`,
   );
+}
+
+/**
+ * Every deal, across companies, newest first, with both parties and the corridor
+ * (seller's country, then buyer's) on each row. Every filter runs on the server.
+ *
+ * `corridors` on the response lists every corridor in use, ignoring the filters,
+ * so a filter's choices stay put as it is applied.
+ */
+export function listAllDeals(params: AllDealsParams = {}): Promise<AllDeals> {
+  const query = new URLSearchParams();
+  for (const corridor of params.corridors ?? []) query.append('corridor', corridor);
+  for (const stage of params.stages ?? []) query.append('stage', stage);
+  if (params.q) query.set('q', params.q);
+  if (params.companyId) query.set('company_id', params.companyId);
+  if (params.openedFrom) query.set('opened_from', params.openedFrom);
+  if (params.openedBefore) query.set('opened_before', params.openedBefore);
+  query.set('limit', String(params.limit ?? 50));
+  query.set('offset', String(params.offset ?? 0));
+  return apiRequest<AllDeals>(`/onboarding/deals?${query.toString()}`);
 }
 
 /**

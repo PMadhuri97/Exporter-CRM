@@ -8,20 +8,21 @@
 
 import { Tag, type TagTone } from '@/components';
 
+import { DEAL_STAGE_LABEL } from '../constants';
 import type { DealStage } from '../types';
 
-const STAGE_LOOK: Record<DealStage, { label: string; tone: TagTone; className?: string }> = {
-  OPEN: { label: 'Open', tone: 'idle' },
-  GATHERING_PAPERWORK: { label: 'Gathering paperwork', tone: 'progress' },
-  HANDED_OVER: { label: 'Handed over', tone: 'positive' },
-  WITHDRAWN: { label: 'Withdrawn', tone: 'idle', className: 'text-ink-3' },
+const STAGE_LOOK: Record<DealStage, { tone: TagTone; className?: string }> = {
+  OPEN: { tone: 'idle' },
+  GATHERING_PAPERWORK: { tone: 'progress' },
+  HANDED_OVER: { tone: 'positive' },
+  WITHDRAWN: { tone: 'idle', className: 'text-ink-3' },
 };
 
 export function DealStageChip({ stage }: { stage: DealStage }) {
   const look = STAGE_LOOK[stage];
   return (
     <Tag dot tone={look.tone} className={look.className}>
-      {look.label}
+      {DEAL_STAGE_LABEL[stage]}
     </Tag>
   );
 }

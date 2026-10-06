@@ -17,7 +17,8 @@
  * checked by hand in review:
  *
  *   READERS              OPERATIONS COMPLIANCE ADMIN DEVELOPER   GET /exporters, /follow-ups,
- *                                                                /deals/{id}, /companies/identity-completion
+ *                                                                /deals, /deals/{id},
+ *                                                                /companies/identity-completion
  *   STAFF                OPERATIONS COMPLIANCE ADMIN             POST /exporters, /imports/companies,
  *                                                                every CRM write, GET /background-check/due
  *                                                                and a company's background check

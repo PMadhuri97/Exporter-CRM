@@ -1444,6 +1444,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/deals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every deal, across companies
+         * @description Newest first, every stage unless `stage` narrows it. Each row names the seller and the buyer — the buyer company once the deal has one, the older buyer details otherwise — and the **corridor**, worked out as the seller's country then the buyer's (`IN-US`).
+         *
+         *     Filters, all optional and all applied together: `corridor` (repeatable; `UNKNOWN` matches deals whose corridor is not known yet), `stage` (repeatable), `q` (part of the reference, the seller's name or the buyer's name, any case), `company_id` (that company as seller **or** buyer company), and `opened_from` (inclusive) / `opened_before` (exclusive). A timestamp without a zone is read as UTC.
+         *
+         *     `corridors` lists every corridor in use, ignoring the filters.
+         */
+        get: operations["list_all_deals_api_v1_onboarding_deals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/deals/{deal_id}": {
         parameters: {
             query?: never;
@@ -2309,6 +2333,30 @@ export interface components {
             created_at: string;
             /** Role Id */
             role_id: string | null;
+        };
+        /**
+         * AllDealsResponse
+         * @description ``total`` is the count matching the filters, not the length of this page.
+         */
+        AllDealsResponse: {
+            /** Deals */
+            deals: components["schemas"]["DealSummaryResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Corridors
+             * @description Every corridor some deal is on, with its count, **ignoring the filters**, so the choices a screen offers do not disappear as filters are applied. Known corridors first, alphabetically, then `null`.
+             */
+            corridors: components["schemas"]["DealCorridorResponse"][];
+            /**
+             * Can Open Deal
+             * @description Whether this caller's role may open deals. Which companies may have one is the company's own `can_open_deal` — only a `PROSPECT` or `CUSTOMER`.
+             */
+            can_open_deal: boolean;
         };
         /**
          * ApprovalDecision
@@ -3597,6 +3645,19 @@ export interface components {
             /** Contact Phone */
             contact_phone: string | null;
         };
+        /** DealCorridorResponse */
+        DealCorridorResponse: {
+            /**
+             * Corridor
+             * @description `IN-US` form; `null` for the deals whose corridor is not known yet.
+             */
+            corridor: string | null;
+            /**
+             * Deals
+             * @description How many deals are on it, across every deal.
+             */
+            deals: number;
+        };
         /** DealListItemResponse */
         DealListItemResponse: {
             /**
@@ -3784,6 +3845,54 @@ export interface components {
             to_stage: components["schemas"]["DealStage"];
             /** Reason Required */
             reason_required: boolean;
+        };
+        /**
+         * DealSummaryResponse
+         * @description One row of the list of every deal. Names both parties; the buyer's name and
+         *     country are visible to every reader, as on the deal itself.
+         */
+        DealSummaryResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reference */
+            reference: string;
+            stage: components["schemas"]["DealStage"];
+            /**
+             * Seller Company Id
+             * Format: uuid
+             */
+            seller_company_id: string;
+            /** Seller Name */
+            seller_name: string | null;
+            /** Seller Country */
+            seller_country: string | null;
+            /**
+             * Buyer Company Id
+             * @description The buyer as a company record. `null` when no buyer is recorded, or when the buyer is still the older set of details (`buyer_name` and `buyer_country` are filled either way).
+             */
+            buyer_company_id: string | null;
+            /** Buyer Name */
+            buyer_name: string | null;
+            /** Buyer Country */
+            buyer_country: string | null;
+            /**
+             * Corridor
+             * @description The seller's country, then the buyer's, as `IN-US`. Worked out, never stored. `null` while either country is unknown — usually because no buyer has been recorded yet.
+             */
+            corridor: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * DecidedByKind
@@ -10884,6 +10993,58 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_all_deals_api_v1_onboarding_deals_get: {
+        parameters: {
+            query?: {
+                corridor?: string[] | null;
+                stage?: components["schemas"]["DealStage"][] | null;
+                q?: string | null;
+                company_id?: string | null;
+                opened_from?: string | null;
+                opened_before?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllDealsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description CRM read role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

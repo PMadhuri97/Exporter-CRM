@@ -76,7 +76,7 @@ Any one of these could be defended. Together they look like a generated demo, no
 | **Masking by role**; a role that cannot reveal gets **no reveal control at all** | One `Identifier` component owns the rule. Copy is offered only on a revealed value |
 | **Anything not yet real is labelled** | Every "Prototype" label stays: pass-through scanner, bank feed, placeholders, legacy buyer |
 | **CRITICAL risk must look different** (PDF §3.3) | Critical is the only solid risk badge (§5.2) |
-| No cross-company deal or document list; search has no `total` | Don't fake either one. Keep the "200+" caps, and hide a section until its backend ask lands (§13) |
+| No cross-company document list; company search has no `total` (the Deals list, `GET /deals`, has both a cross-company list and a `total`) | Don't fake either one. Keep the "200+" caps, and hide a section until its backend ask lands (§13) |
 
 The **roles** (architecture §9, route matrix in `test_route_authorization.py`). The UI says **RM** for `OPERATIONS`.
 

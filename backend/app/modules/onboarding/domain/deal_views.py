@@ -119,3 +119,65 @@ class DealListItemView:
     buyer_name: str | None
     created_at: datetime
     updated_at: datetime
+
+
+#: The ``corridor`` filter value for deals whose corridor cannot be worked out yet:
+#: no buyer recorded, or a party with no country on its record.
+UNKNOWN_CORRIDOR = "UNKNOWN"
+
+
+@dataclass(frozen=True)
+class DealSummaryView:
+    """One row of the list of every deal, across companies.
+
+    Both parties are named, because unlike a company's own list there is no page
+    whose company goes without saying. The buyer is the buyer company once the deal
+    has one, and the older ``deal_buyer`` details otherwise.
+
+    ``corridor`` is worked out, never stored: the seller's country, then the
+    buyer's, as ``"IN-US"``. ``None`` while either country is unknown — most often
+    because no buyer has been recorded yet. Stored, it could disagree with the
+    parties it is about.
+    """
+
+    id: uuid.UUID
+    reference: str
+    stage: DealStage
+    seller_company_id: uuid.UUID
+    seller_name: str | None
+    seller_country: str | None
+    buyer_company_id: uuid.UUID | None
+    buyer_name: str | None
+    buyer_country: str | None
+    corridor: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class CorridorCountView:
+    """A corridor some deal is on, and how many deals are. ``corridor`` is ``None``
+    for the deals whose corridor is not known yet."""
+
+    corridor: str | None
+    deals: int
+
+
+@dataclass(frozen=True)
+class DealFilters:
+    """What the list of every deal is narrowed by. Every field is optional, and the
+    ones given must all hold.
+
+    ``corridors`` may include ``UNKNOWN_CORRIDOR``. ``company_id`` matches the
+    company on **either** side; a buyer that is still a ``deal_buyer`` row is not a
+    company, so it cannot match. ``opened_from`` is inclusive and ``opened_before``
+    exclusive, so a day is ``[midnight, next midnight)`` in whatever zone the
+    caller meant.
+    """
+
+    corridors: tuple[str, ...] = ()
+    stages: tuple[DealStage, ...] = ()
+    search: str | None = None
+    company_id: uuid.UUID | None = None
+    opened_from: datetime | None = None
+    opened_before: datetime | None = None

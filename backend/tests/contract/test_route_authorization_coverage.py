@@ -265,6 +265,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # must never be one: `WITHDRAWN` is how a deal ends (deal contract §2).
     ("POST", f"{CRM}/exporters/{{company_id}}/deals"): STAFF,
     ("GET", f"{CRM}/exporters/{{company_id}}/deals"): READERS,
+    ("GET", f"{CRM}/deals"): READERS,
     ("GET", f"{CRM}/deals/{{deal_id}}"): READERS,
     ("POST", f"{CRM}/deals/{{deal_id}}/transitions"): STAFF,
     ("PUT", f"{CRM}/deals/{{deal_id}}/buyer"): STAFF,

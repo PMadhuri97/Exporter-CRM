@@ -45,6 +45,7 @@ vi.mock('@/modules/onboarding/lazyPages', () => ({
   AddExporterPage: stub('add-company'),
   CompanyImportPage: stub('import-companies'),
   DealDetailPage: stub('deal'),
+  DealsPage: stub('deals'),
   DealRequiredDocumentsPage: stub('required-documents'),
   ExporterDetailPage: stub('company'),
   ExportersListPage: stub('companies'),
@@ -92,6 +93,7 @@ const SCREENS: [string, string, UserRole[]][] = [
   ['/approvals', 'review', ['COMPLIANCE', 'ADMIN']],
   ['/review', 'review', ['COMPLIANCE', 'ADMIN']],
   ['/pipeline', 'pipeline', READERS],
+  ['/deals', 'deals', READERS],
   [`/deals/${ID}`, 'deal', READERS],
   // The old addresses redirect into the CRM, so they are the CRM's too.
   [`/exporters/${ID}`, 'company', READERS],
@@ -107,6 +109,7 @@ const NAV: [string, UserRole[], string, boolean][] = [
   ['Home', READERS, 'home', true],
   ['Companies', READERS, 'companies', true],
   ['Pipeline', READERS, 'pipeline', true],
+  ['Deals', READERS, 'deals', true],
   ['Follow-ups', READERS, 'follow-ups', true],
   ['Approvals', ['COMPLIANCE', 'ADMIN'], 'review', true],
   ['Settings', READERS, 'settings', true],
@@ -230,6 +233,14 @@ describe('the side navigation', () => {
     expect(within(nav).getByRole('link', { name: 'Pipeline' })).toHaveAttribute('aria-current', 'page');
     expect(within(nav).getByRole('link', { name: 'Companies' })).not.toHaveAttribute('aria-current');
   });
+
+  it("keeps Deals current on a deal's own page", async () => {
+    signInAs('OPERATIONS');
+    renderAt(`/deals/${ID}`);
+    await screen.findByTestId('screen');
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(nav).getByRole('link', { name: 'Deals' })).toHaveAttribute('aria-current', 'page');
+  });
 });
 
 describe('search and the keyboard (§7.5)', { timeout: 30_000 }, () => {
@@ -286,7 +297,7 @@ describe('a user with no workspace', () => {
     renderAt('/');
     expect(await screen.findByText(/doesn.t have access to a workspace/)).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
-    for (const word of ['Home', 'Companies', 'Pipeline', 'Follow-ups', 'Approvals', 'Qualification criteria']) {
+    for (const word of ['Home', 'Companies', 'Pipeline', 'Deals', 'Follow-ups', 'Approvals', 'Qualification criteria']) {
       expect(screen.queryByText(word)).not.toBeInTheDocument();
     }
     expect(screen.getByRole('link', { name: 'My profile' })).toHaveAttribute('href', '/settings');

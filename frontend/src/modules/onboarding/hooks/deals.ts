@@ -9,10 +9,17 @@
  * conversation keys as well as the deal ones — see `useOpenDeal`.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 
 import {
   getDeal,
+  listAllDeals,
   listCompanyDeals,
   listDealRequiredDocuments,
   openDeal,
@@ -22,6 +29,7 @@ import {
   transitionDealStage,
 } from '../api';
 import type {
+  AllDealsParams,
   DealListParams,
   OpenDealRequest,
   SetDealBuyerRequest,
@@ -41,6 +49,16 @@ export function useCompanyDeals(
   });
 }
 
+/** Every deal, across companies. A changed filter keeps the rows on screen until the
+ * answer arrives, as the Companies list does. */
+export function useAllDeals(params: AllDealsParams) {
+  return useQuery({
+    queryKey: ['allDeals', params],
+    queryFn: () => listAllDeals(params),
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useDeal(dealId: string | undefined) {
   return useQuery({
     queryKey: ['deal', dealId],
@@ -52,10 +70,11 @@ export function useDeal(dealId: string | undefined) {
 /**
  * Open a deal, then refresh everything opening one changed.
  *
- * Four invalidations, and the third is the one worth explaining:
+ * Four groups of invalidations, and the third is the one worth explaining:
  *
  * - `deals` for the company — the new deal belongs in the list, and the
- *   company page's Deals tab shows the count.
+ *   company page's Deals tab shows the count. `allDeals` too: the Deals page lists
+ *   every company's.
  * - `exporterProfile` for the company — its `updated_at` moves.
  * - `exporterConversation` **and** `conversationHistory` for the company — the
  *   server moved the gauge to `READY_NOW` as part of this request (architecture
@@ -72,19 +91,36 @@ export function useOpenDeal(customerId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: OpenDealRequest) => openDeal(customerId, body),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['deals', customerId] });
-      void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
-      void queryClient.invalidateQueries({
-        queryKey: ['exporterProfile', customerId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ['exporterConversation', customerId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ['conversationHistory', customerId],
-      });
-    },
+    onSuccess: () => invalidateAfterOpening(queryClient, customerId),
+  });
+}
+
+/**
+ * Open a deal on a company chosen at the time — the Deals page's *New deal*, where
+ * the seller is picked in the form rather than known when the hook is created.
+ * The same request and the same invalidations as `useOpenDeal`.
+ */
+export function useOpenDealOnCompany() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ companyId, body }: { companyId: string; body: OpenDealRequest }) =>
+      openDeal(companyId, body),
+    onSuccess: (_deal, { companyId }) => invalidateAfterOpening(queryClient, companyId),
+  });
+}
+
+function invalidateAfterOpening(queryClient: QueryClient, customerId: string) {
+  void queryClient.invalidateQueries({ queryKey: ['deals', customerId] });
+  void queryClient.invalidateQueries({ queryKey: ['allDeals'] });
+  void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
+  void queryClient.invalidateQueries({
+    queryKey: ['exporterProfile', customerId],
+  });
+  void queryClient.invalidateQueries({
+    queryKey: ['exporterConversation', customerId],
+  });
+  void queryClient.invalidateQueries({
+    queryKey: ['conversationHistory', customerId],
   });
 }
 
@@ -102,6 +138,8 @@ export function useTransitionDealStage(dealId: string, customerId?: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['deal', dealId] });
       void queryClient.invalidateQueries({ queryKey: ['dealHistory', dealId] });
+      // The Deals page shows each deal's stage.
+      void queryClient.invalidateQueries({ queryKey: ['allDeals'] });
       if (customerId !== undefined) {
         void queryClient.invalidateQueries({ queryKey: ['deals', customerId] });
         void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
@@ -117,6 +155,8 @@ export function useSetDealBuyer(dealId: string, customerId?: string) {
     onSuccess: (_deal, body) => {
       void queryClient.invalidateQueries({ queryKey: ['deal', dealId] });
       void queryClient.invalidateQueries({ queryKey: ['dealHistory', dealId] });
+      // The Deals page shows the buyer and the corridor it decides.
+      void queryClient.invalidateQueries({ queryKey: ['allDeals'] });
       if (body.create) {
         // A company was created: it now exists for every company search.
         void queryClient.invalidateQueries({ queryKey: ['exporterProfiles'] });

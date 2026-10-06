@@ -19,6 +19,9 @@ export const CompanyImportPage = lazy(() =>
 export const DealDetailPage = lazy(() =>
   import('./pages/DealDetailPage').then((m) => ({ default: m.DealDetailPage })),
 );
+export const DealsPage = lazy(() =>
+  import('./pages/DealsPage').then((m) => ({ default: m.DealsPage })),
+);
 export const DealRequiredDocumentsPage = lazy(() =>
   import('./pages/DealRequiredDocumentsPage').then((m) => ({
     default: m.DealRequiredDocumentsPage,

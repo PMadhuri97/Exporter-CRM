@@ -320,6 +320,27 @@ move a deal (OPERATIONS, COMPLIANCE, ADMIN). DEVELOPER is served no moves and no
 reason: it could act on neither, and the reason names the company's background check,
 which decision D8 keeps from DEVELOPER.
 
+### 4.2 Every deal, across companies
+
+`GET /onboarding/deals` lists every deal, newest first, for any CRM reader (the
+Deals page). Each row names the seller and the buyer — the buyer company once
+`buyer_company_id` is set, the `deal_buyer` details otherwise, the same authority
+the deal page gives them — and the **corridor**: the seller's country, then the
+buyer's, as `IN-US`. The corridor is worked out on every read and never stored, so
+it cannot disagree with the parties; it is `null` while either country is unknown,
+most often because no buyer has been recorded yet.
+
+Filters, all optional and all applied together: `corridor` (repeatable; `UNKNOWN`
+matches a `null` corridor), `stage` (repeatable), `q` (part of the reference, the
+seller's name or the buyer's name, any case, wildcards literal), `company_id` (that
+company as seller **or** as buyer company — a `deal_buyer` row is not a company, so
+it cannot match), and `opened_from` (inclusive) / `opened_before` (exclusive); a
+timestamp without a zone is read as UTC. `total` counts the matches.
+
+`corridors` lists every corridor in use with its count, **ignoring the filters**, so
+a screen's choices do not vanish as they are applied. `can_open_deal` there is the
+role half only: which companies may have a deal is the company's own rule (§2).
+
 ---
 
 ## 5. Seam S1 — opening a deal sets `READY_NOW`

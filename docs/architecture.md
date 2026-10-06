@@ -451,7 +451,8 @@ The prototype is built to be honest about what is not real yet.
   handover snapshot includes deal documents whatever their scan status; masked roles are
   told which company holds a full PAN or GSTIN they typed (BQ-2), and the shared-GSTIN
   warnings name the other holder (D-07); changing a `NOT_NOW` check-back date takes two
-  moves; there are no cross-company deal or document lists; documents cannot be deleted
+  moves; there is no cross-company document list (deals have one, `GET /deals`, with the
+  corridor worked out from the parties' countries); documents cannot be deleted
   (seven-year retention argues against it, and the database refuses it); there is no CI.
   [`remaining-work.md`](remaining-work.md) tracks each.
 
