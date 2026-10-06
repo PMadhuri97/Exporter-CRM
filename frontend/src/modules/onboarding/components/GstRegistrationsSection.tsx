@@ -116,7 +116,6 @@ export function GstRegistrationsSection({
   return (
     <Panel
       title="GST registrations"
-      description="One per state the company is registered in. A registration is kept even after it stops being used, because a handed-over deal may have been invoiced through it."
       actions={
         canEdit &&
         !adding && (
@@ -126,6 +125,14 @@ export function GstRegistrationsSection({
         )
       }
     >
+      {/* Not the Panel's `description`: the card header wraps, and a line this long
+          pushed "Add registration" onto a row of its own below it. In the body the text
+          reads the same and the button keeps the top-right corner. */}
+      {/* <p className="mb-3 text-secondary text-ink-3">
+        One per state the company is registered in. A registration is kept even after it stops
+        being used, because a handed-over deal may have been invoiced through it.
+      </p> */}
+
       {flaggedCount > 0 && (
         <div
           role="alert"

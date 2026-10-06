@@ -242,13 +242,64 @@ describe('DocumentsByCategory', () => {
     expect(screen.getByRole('button', { name: 'Download pan.pdf' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Download bad.pdf' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Download invoice.pdf' })).not.toBeInTheDocument();
+    // Once, above the list — not on each row. The rows used to repeat "pass-through"
+    // beside every status; the panel's own notice is what keeps "Available" from reading
+    // as "a malware scan passed this".
     expect(screen.getAllByText(/pass-through scanner/)).toHaveLength(1);
+    expect(screen.queryByText('pass-through', { exact: true })).not.toBeInTheDocument();
     // Present means served: an AVAILABLE file. One still waiting on the scan is missing.
     expect(screen.getByTestId('required-category-KYC')).toHaveTextContent('present');
     expect(screen.getByTestId('required-category-PRE_SHIPMENT')).toHaveTextContent('missing');
     expect(screen.getByTestId('required-category-INSURANCE')).toHaveTextContent('missing');
     // No upload for a role the page gave none.
     expect(screen.queryByRole('button', { name: 'Upload a document' })).not.toBeInTheDocument();
+  });
+
+  it('offers View beside Download only for a file the browser can render', () => {
+    wrap(
+      <DocumentsByCategory
+        isLoading={false}
+        emptyMessage="None"
+        documents={[
+          file({ file_name: 'pan.pdf', content_type: 'application/pdf' }),
+          file({ file_name: 'photo.png', content_type: 'image/png' }),
+          // A .docx would "view" by downloading, so it is a download only.
+          file({
+            file_name: 'contract.docx',
+            content_type:
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          }),
+          // A blob URL inherits this origin, so a script inside an uploaded SVG would run
+          // as this application. Never viewed, whatever the browser could draw.
+          file({ file_name: 'logo.svg', content_type: 'image/svg+xml' }),
+          // Not served at all: neither action.
+          file({
+            file_name: 'bad.pdf',
+            content_type: 'application/pdf',
+            scan_status: 'QUARANTINED',
+            is_downloadable: false,
+          }),
+        ]}
+        required={[{ category: 'KYC', label: 'KYC' }]}
+      />,
+    );
+
+    for (const name of ['pan.pdf', 'photo.png']) {
+      expect(screen.getByRole('button', { name: `View document ${name}` })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: `Download ${name}` })).toBeInTheDocument();
+    }
+
+    for (const name of ['contract.docx', 'logo.svg']) {
+      expect(
+        screen.queryByRole('button', { name: `View document ${name}` }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: `Download ${name}` })).toBeInTheDocument();
+    }
+
+    expect(
+      screen.queryByRole('button', { name: 'View document bad.pdf' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Download bad.pdf' })).not.toBeInTheDocument();
   });
 });
 

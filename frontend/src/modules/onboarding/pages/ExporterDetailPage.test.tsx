@@ -316,8 +316,8 @@ describe('ExporterDetailPage — screening review', () => {
     mockUser('OPERATIONS', 'someone-else');
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    // In the header's summary strip and in the profile, masked in both.
-    expect(screen.getAllByText('••••••234F')).toHaveLength(2);
+    // In the profile, masked. The header's summary strip no longer carries PAN.
+    expect(screen.getAllByText('••••••234F')).toHaveLength(1);
     expect(screen.queryByRole('button', { name: /reveal value/i })).not.toBeInTheDocument();
   });
 
@@ -329,7 +329,7 @@ describe('ExporterDetailPage — screening review', () => {
     mockUser('OPERATIONS', DETAIL.relationship_manager_user_id!);
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    expect(screen.getAllByText('••••••234F')).toHaveLength(2);
+    expect(screen.getAllByText('••••••234F')).toHaveLength(1);
     expect(screen.queryByRole('button', { name: /reveal value/i })).not.toBeInTheDocument();
   });
 
@@ -337,14 +337,14 @@ describe('ExporterDetailPage — screening review', () => {
     mockUser('COMPLIANCE', 'someone-else');
     renderPage();
     await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
-    // PAN and IEC in the profile, plus PAN and GSTIN in the header strip. `cin` and
-    // `registration_number` are null in this fixture, and a null value renders no
-    // reveal control — there is nothing to reveal.
+    // PAN and IEC in the profile. `cin` and `registration_number` are null in this
+    // fixture, and a null value renders no reveal control — there is nothing to reveal.
     //
-    // Four, not five: the panel's own GSTIN row went with the branch routes. The GSTINs are
-    // `GstRegistrationsSection` now, where each is a branch with a state, a status and
-    // possibly a flag rather than a bare value.
-    expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(4);
+    // Two, not four: PAN and GSTIN left the header's summary strip, which carries state
+    // rather than identifiers. The panel's own GSTIN row had already gone with the branch
+    // routes — the GSTINs are `GstRegistrationsSection` now, where each is a branch with a
+    // state, a status and possibly a flag rather than a bare value.
+    expect(screen.getAllByRole('button', { name: /reveal value/i })).toHaveLength(2);
   });
 
   it('shows no website at all, whatever is stored', async () => {

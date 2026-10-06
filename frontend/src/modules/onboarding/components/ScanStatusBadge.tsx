@@ -6,12 +6,17 @@
  * **The status**, in the semantic colours the design principles fix: green for a
  * clean result, red for quarantined, amber for a failed scan, neutral for pending.
  *
- * **The scanner's name**, whenever a verdict has actually been reached. In this
- * build that is always `pass-through` — a placeholder that checks nothing
- * — so a badge reading only "Available" would quietly imply a
- * malware scan happened. Gate §7.6 blocks real exporter documents until a real
- * scanner is behind the interface, and until then the screen says which "scanner"
- * cleared the file.
+ * **The scanner's name**, when the caller passes one. In this build that is always
+ * `pass-through` — a placeholder that checks nothing — so a badge reading only
+ * "Available" must not be left to imply that a malware scan happened. Gate §7.6 blocks
+ * real exporter documents until a real scanner is behind the interface, and until then
+ * the screen has to say which "scanner" cleared the file.
+ *
+ * That disclosure is no longer made per row. `DocumentsByCategory` prints
+ * "Prototype: pass-through scanner" once above its list, which says the same thing for
+ * every file under it instead of repeating a word on each line. A caller that shows
+ * documents **without** such a notice should pass `scannerName`, or the claim goes
+ * unqualified.
  *
  * Provider-style values are stored lowercase and displayed uppercase, the same rule
  * verification providers follow.

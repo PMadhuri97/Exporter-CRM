@@ -8,14 +8,21 @@
  * addresses.)
  */
 
-/** The company page's tabs, in display order. */
+/**
+ * The company page's tabs, in display order.
+ *
+ * The order runs roughly in the order the work happens: judge the company
+ * (qualification, activity), gather and check its papers (documents, background check),
+ * then trade with it (deals), with history last. `background-check` is filtered out for
+ * anyone without `compliance.read`, which leaves deals directly after documents.
+ */
 export const COMPANY_TABS = [
   'overview',
   'qualification',
   'conversation',
-  'deals',
   'documents',
   'background-check',
+  'deals',
   'history',
 ] as const;
 

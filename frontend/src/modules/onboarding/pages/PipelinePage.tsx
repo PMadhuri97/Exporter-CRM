@@ -118,7 +118,7 @@ export function PipelinePage() {
       <PageHeader
         title="Companies"
         meta={<CompaniesViewSwitch view="board" />}
-        description="The same companies as three journey columns. Nothing here moves a company: the journey moves on its own, when the decisions behind it are made."
+        // description="The same companies as three journey columns. Nothing here moves a company: the journey moves on its own, when the decisions behind it are made."
         actions={
           <form
             role="search"
