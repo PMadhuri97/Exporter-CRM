@@ -34,6 +34,7 @@ from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationOutcomeValue
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
+from app.modules.onboarding.tests.fixtures.companies import ensure_relationship_manager
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -53,6 +54,7 @@ async def _seller(name: str, country: str | None = "IN") -> uuid.UUID:
         await ExporterProfileService(db).create_or_get_profile(
             customer_id, source=ExporterSource.SALES, name=name, country=country
         )
+    await ensure_relationship_manager(customer_id)
     async with db_services.AsyncSessionLocal() as db:
         await QualificationService(db).record_outcome(
             customer_id, QualificationOutcomeValue.QUALIFIED, actor_id="test"

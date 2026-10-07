@@ -163,14 +163,14 @@ beforeEach(() => {
         label: 'User management',
         description: 'Accounts that can sign in',
         enforced: true,
-        actions: [{ key: 'view', label: 'View', description: 'See the user list' }],
+        actions: [{ key: 'view', label: 'View', description: 'See the user list', enforced: true }],
       },
       {
         key: 'exporters',
         label: 'Companies',
         description: 'Exporter profiles',
         enforced: false,
-        actions: [{ key: 'view', label: 'View', description: 'See companies' }],
+        actions: [{ key: 'view', label: 'View', description: 'See companies', enforced: false }],
       },
     ],
   });

@@ -7,3 +7,4 @@ export {
   ReKycDueCard,
   SetupCard,
 } from './HomeCards';
+export { InfoRequestedCard, RecentDecisionsCard } from './AssignmentCards';

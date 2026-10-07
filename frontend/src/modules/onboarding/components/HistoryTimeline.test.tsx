@@ -337,3 +337,31 @@ describe('rows whose move alone says nothing', () => {
     expect(added).toHaveTextContent('Branch added: 42');
   });
 });
+
+describe('CompanyHistory — who is working on it', () => {
+  it('names the RM and the reviewer as they were recorded', async () => {
+    vi.mocked(listCompanyHistory).mockResolvedValue(
+      page([
+        entry({
+          dimension: 'relationship_manager',
+          event_type: 'relationship_manager_reassigned',
+          from_value: 'a',
+          to_value: 'b',
+          reason: 'territory',
+          details: { from_user_name: 'Asha Rao', to_user_name: 'Vikram Shah' },
+        }),
+        entry({
+          dimension: 'background_check_assignment',
+          event_type: 'review_claimed',
+          from_value: 'UNASSIGNED',
+          to_value: 'c',
+          details: { from_user_name: null, to_user_name: 'Meera Iyer' },
+        }),
+      ]),
+    );
+    renderWith(<CompanyHistory customerId={COMPANY_ID} />);
+    const [rm, review] = await rows();
+    expect(rm).toHaveTextContent('Relationship manager changed: Asha Rao → Vikram Shah');
+    expect(review).toHaveTextContent('Review taken: Meera Iyer');
+  });
+});

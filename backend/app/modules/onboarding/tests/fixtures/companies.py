@@ -9,6 +9,12 @@ Both insert a **bare** company row — no journey history row, no GSTINs — so 
 test that counts the history rows it writes still sees only its own. They are
 test scaffolding, not a way to create companies: the service
 (``ExporterProfileService.create_or_get_profile``) is.
+
+**Each has a relationship manager by default** — one shared, active OPERATIONS
+fixture user (:func:`fixture_relationship_manager`), set directly with no history
+row. Starting a background check and recording QUALIFIED need an RM on an
+in-pipeline company, and a test about something else should not have to supply one.
+Pass ``relationship_manager=False`` for a company with none.
 """
 
 from __future__ import annotations
@@ -17,10 +23,29 @@ import uuid
 
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.platform.authentication.models import UserRole
+from app.platform.authentication.testing import create_user_direct
 from app.platform.database import services as db_services
 
+_FIXTURE_RM: dict[str, uuid.UUID] = {}
 
-async def make_company(customer_id: uuid.UUID | None = None) -> uuid.UUID:
+
+def fixture_relationship_manager() -> uuid.UUID:
+    """The shared fixture RM: an active OPERATIONS user, created once per test run."""
+    if "id" not in _FIXTURE_RM:
+        _FIXTURE_RM["id"] = uuid.UUID(
+            create_user_direct(
+                f"fixture-rm-{uuid.uuid4().hex[:10]}@aner-test.com",
+                UserRole.OPERATIONS,
+                full_name="Fixture RM",
+            )
+        )
+    return _FIXTURE_RM["id"]
+
+
+async def make_company(
+    customer_id: uuid.UUID | None = None, *, relationship_manager: bool = True
+) -> uuid.UUID:
     """Insert a bare company through the ORM and return its id."""
     customer_id = customer_id or uuid.uuid4()
     async with db_services.AsyncSessionLocal() as db:
@@ -28,10 +53,32 @@ async def make_company(customer_id: uuid.UUID | None = None) -> uuid.UUID:
             ExporterProfile(
                 customer_id=customer_id,
                 source=ExporterSource.SALES,
+                relationship_manager_user_id=(
+                    fixture_relationship_manager() if relationship_manager else None
+                ),
             )
         )
         await db.commit()
     return customer_id
+
+
+async def ensure_relationship_manager(customer_id: uuid.UUID) -> uuid.UUID:
+    """Give a company with no RM the fixture RM, directly (scaffolding, no history row).
+    Returns the company's RM."""
+    from sqlalchemy import update
+
+    rm = fixture_relationship_manager()
+    async with db_services.AsyncSessionLocal() as db:
+        await db.execute(
+            update(ExporterProfile)
+            .where(
+                ExporterProfile.customer_id == customer_id,
+                ExporterProfile.relationship_manager_user_id.is_(None),
+            )
+            .values(relationship_manager_user_id=rm)
+        )
+        await db.commit()
+    return rm
 
 
 async def make_prospect(customer_id: uuid.UUID | None = None) -> uuid.UUID:
@@ -70,4 +117,10 @@ def insert_company(cursor, customer_id: uuid.UUID | None = None) -> uuid.UUID:
     return customer_id
 
 
-__all__ = ["insert_company", "make_company", "make_prospect"]
+__all__ = [
+    "ensure_relationship_manager",
+    "fixture_relationship_manager",
+    "insert_company",
+    "make_company",
+    "make_prospect",
+]

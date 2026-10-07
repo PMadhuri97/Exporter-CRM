@@ -13,6 +13,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  assignBackgroundCheckReview,
+  claimBackgroundCheckReview,
+  getWorklistCounts,
+  listComplianceWork,
+  listInfoRequests,
+  listRecentDecisions,
+  releaseBackgroundCheckReview,
   approveBackgroundCheckProposal,
   getBackgroundCheck,
   getDecisionEvidence,
@@ -26,7 +33,11 @@ import {
   startCheckCycle,
   withdrawBackgroundCheckProposal,
 } from '../api';
-import type { RecordBackgroundCheckDecisionRequest, StartCheckCycleRequest } from '../types';
+import type {
+  ComplianceWorkView,
+  RecordBackgroundCheckDecisionRequest,
+  StartCheckCycleRequest,
+} from '../types';
 
 import { invalidateJourney } from './profile';
 
@@ -67,6 +78,7 @@ export function useRecordBackgroundCheckDecision(customerId: string) {
       void queryClient.invalidateQueries({ queryKey: decisionsKey(customerId) });
       void queryClient.invalidateQueries({ queryKey: proposalsKey(customerId) });
       void queryClient.invalidateQueries({ queryKey: PROPOSAL_QUEUE_KEY });
+      void queryClient.invalidateQueries({ queryKey: WORKLIST_KEY });
       // The header, journey chip, lists, deals' handover state and the history
       // timeline (the gauge is part of the company's story) change too.
       invalidateJourney(queryClient, customerId);
@@ -180,6 +192,7 @@ export function useResolveBackgroundCheckProposal(customerId: string) {
     void queryClient.invalidateQueries({ queryKey: backgroundCheckKey(customerId) });
     void queryClient.invalidateQueries({ queryKey: proposalsKey(customerId) });
     void queryClient.invalidateQueries({ queryKey: PROPOSAL_QUEUE_KEY });
+    void queryClient.invalidateQueries({ queryKey: WORKLIST_KEY });
   };
   return useMutation({
     mutationFn: async ({
@@ -205,5 +218,80 @@ export function useResolveBackgroundCheckProposal(customerId: string) {
       invalidateJourney(queryClient, customerId);
     },
     onError: refresh,
+  });
+}
+
+// ── Who holds the review, and the worklists ──────────
+
+/** Every worklist, count and recent-decision read, whatever its parameters. */
+const WORKLIST_KEY = ['worklist'] as const;
+
+export type ReviewChange =
+  | { kind: 'CLAIM' }
+  | { kind: 'ASSIGN'; userId: string; reason: string | null }
+  | { kind: 'RELEASE'; note: string | null };
+
+/** Claim, assign or release a review. The standing (with its `allowed_moves`, which
+ * follow the reviewer) and every worklist reload; a refusal reloads them too. */
+export function useChangeReviewer(customerId: string) {
+  const queryClient = useQueryClient();
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: backgroundCheckKey(customerId) });
+    void queryClient.invalidateQueries({ queryKey: WORKLIST_KEY });
+    void queryClient.invalidateQueries({ queryKey: PROPOSAL_QUEUE_KEY });
+    void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
+    void queryClient.invalidateQueries({ queryKey: ['staff'] });
+  };
+  return useMutation({
+    mutationFn: (change: ReviewChange) => {
+      switch (change.kind) {
+        case 'CLAIM':
+          return claimBackgroundCheckReview(customerId);
+        case 'ASSIGN':
+          return assignBackgroundCheckReview(customerId, {
+            user_id: change.userId,
+            reason: change.reason,
+          });
+        case 'RELEASE':
+          return releaseBackgroundCheckReview(customerId, change.note);
+      }
+    },
+    onSuccess: refresh,
+    onError: refresh,
+  });
+}
+
+export function useComplianceWork(view: ComplianceWorkView, enabled = true) {
+  return useQuery({
+    queryKey: [...WORKLIST_KEY, 'view', view],
+    queryFn: () => listComplianceWork(view),
+    enabled,
+  });
+}
+
+export function useInfoRequests(relationshipManager?: 'me' | 'none', enabled = true) {
+  return useQuery({
+    queryKey: [...WORKLIST_KEY, 'info', relationshipManager ?? 'all'],
+    queryFn: () => listInfoRequests(relationshipManager),
+    enabled,
+  });
+}
+
+/** The nav badges: refetched on focus and every minute. Counts only. */
+export function useWorklistCounts(enabled = true) {
+  return useQuery({
+    queryKey: [...WORKLIST_KEY, 'counts'],
+    queryFn: getWorklistCounts,
+    enabled,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useRecentDecisions(days = 14, enabled = true) {
+  return useQuery({
+    queryKey: [...WORKLIST_KEY, 'recent', days],
+    queryFn: () => listRecentDecisions(days),
+    enabled,
   });
 }

@@ -82,3 +82,10 @@ export {
 
 // The company record's right column: related records as cards (frontend-plan §6.6).
 export { CompanyRelatedCards } from './CompanyRelatedCards';
+export { RelationshipManagerField, RelationshipManagerName } from './RelationshipManagerField';
+export { BulkReassignPanel } from './BulkReassignPanel';
+export { RelationshipManagerChoice } from './RelationshipManagerChoice';
+export { ReviewerLine } from './ReviewerLine';
+export { DueChip, WorkItemChips } from './WorkItemChips';
+export { STAGE_LABEL, waitedFor } from './work-item-labels';
+export { WorklistBadge, type WorklistBadgeKind } from './WorklistBadge';

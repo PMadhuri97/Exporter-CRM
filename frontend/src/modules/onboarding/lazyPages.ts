@@ -65,3 +65,9 @@ export const RxilIntakePage = lazy(() =>
 export const ApprovalsPage = lazy(() =>
   import('./pages/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
 );
+
+// The navigation's computed badges: loaded after the shell, so their queries and the
+// compliance API stay out of the entry chunk.
+export const WorklistBadge = lazy(() =>
+  import('./components/WorklistBadge').then((m) => ({ default: m.WorklistBadge })),
+);

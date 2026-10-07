@@ -19,6 +19,7 @@ import { actorLabel } from './actor-label';
 import { proposedMoveLabel } from './background-check-labels';
 import { ProposalResolveDialog } from './ProposalResolveDialog';
 import { RiskChip } from './RiskChip';
+import { DueChip } from './WorkItemChips';
 
 const BUTTONS: Record<BackgroundCheckProposalAction, { label: string; primary: boolean }> = {
   APPROVE: { label: 'Approve', primary: true },
@@ -41,6 +42,10 @@ export function AwaitingApproval({ proposal }: { proposal: BackgroundCheckPropos
           {proposedMoveLabel(proposal.to_value)}
         </span>
         {proposal.risk_rating && <RiskChip risk={proposal.risk_rating} />}
+        {proposal.needs_senior_approval && (
+          <span className="text-caption font-medium text-attention">Senior approval</span>
+        )}
+        <DueChip dueAt={proposal.due_at} isOverdue={proposal.is_overdue} isDueSoon={proposal.is_due_soon} />
       </div>
       <p className="mt-1 text-caption text-ink-2">
         Proposed by {actorLabel(proposal.proposed_by_name, proposal.proposed_by)},{' '}
@@ -52,7 +57,17 @@ export function AwaitingApproval({ proposal }: { proposal: BackgroundCheckPropos
           approved: reject or withdraw it, and record the decision again.
         </p>
       )}
-      {actions.length === 0 && (
+      {proposal.approval_blocked_reason && (
+        <p data-testid="approval-blocked" className="mt-2 text-caption text-ink-2">
+          {proposal.approval_blocked_reason}
+        </p>
+      )}
+      {proposal.eligible_checker_count === 0 && (
+        <p className="mt-2 rounded bg-negative-tint p-2 text-caption text-negative">
+          Nobody can approve this now: a compliance lead needs to step in.
+        </p>
+      )}
+      {actions.length === 0 && !proposal.approval_blocked_reason && (
         <p className="mt-2 text-caption text-ink-3">
           A second compliance officer must approve or reject it.
         </p>

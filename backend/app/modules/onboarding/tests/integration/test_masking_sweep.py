@@ -187,6 +187,17 @@ async def world(
     world.ids["customer_id"] = company_id
     world.ids["company_id"] = company_id
 
+    # The swept OPERATIONS user is the seller's relationship manager: ownership grants
+    # nothing, so every read must still come back masked for them.
+    me = await client.get("/api/v1/auth/me", headers=auth_header(ops))
+    assert me.status_code == 200, me.text
+    await ok(
+        "POST",
+        f"/exporters/{company_id}/relationship-manager",
+        ops,
+        json={"user_id": me.json()["id"], "seen_user_id": None},
+    )
+
     # A foreign buyer, whose registration number is the sixth secret: it is masked
     # like a CIN, because it names the company in its registrar's index.
     registration_number = f"KVK-{uuid.uuid4().hex[:8].upper()}"
@@ -396,6 +407,14 @@ EXPECTED_REFUSALS: dict[str, frozenset[UserRole]] = {
     # proposal is a pending compliance judgement, and OPERATIONS is neither the maker
     # nor the checker.
     f"{BASE}/background-check/proposals": BOTH,
+    # Who is working on what. The review worklists are compliance's; the information
+    # requests, badge counts, recent decisions and the staff picker are every staff
+    # user's — and none of them DEVELOPER's.
+    f"{BASE}/background-check/reviews": BOTH,
+    f"{BASE}/background-check/info-requests": frozenset({DEV}),
+    f"{BASE}/background-check/recent-decisions": frozenset({DEV}),
+    f"{BASE}/worklist/counts": frozenset({DEV}),
+    f"{BASE}/staff": frozenset({DEV}),
     # The bulk importer is a staff tool. DEVELOPER may read the CRM, masked; the
     # template is the first step of creating companies, which is not reading.
     f"{BASE}/imports/companies/template": frozenset({DEV}),

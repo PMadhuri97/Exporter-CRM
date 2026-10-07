@@ -46,6 +46,7 @@ from app.modules.onboarding.application.exporter_profile_service import (
     announce_became_customer,
 )
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.domain.assignment import Permission
 from app.modules.onboarding.domain.company_intake import PartnerQualification
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
@@ -87,6 +88,7 @@ from app.modules.onboarding.exceptions import (
 from app.modules.onboarding.infrastructure.repositories.qualification_repository import (
     QualificationRepository,
 )
+from app.platform.authentication.models import UserRole
 from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
@@ -226,9 +228,19 @@ class QualificationService:
         actor_id: str | None,
         source: QualificationSource = QualificationSource.MANUAL,
         decided_by_kind: DecidedByKind = DecidedByKind.MANUAL,
+        actor_role: UserRole | None = None,
+        actor_permissions: frozenset[Permission] = frozenset(),
+        relationship_manager_user_id: uuid.UUID | None = None,
     ) -> QualificationOutcome:
         """Record a reviewer's decision, and move the gauge — and, for a
         `QUALIFIED` lead, the journey — to match. All in one transaction.
+
+        **A person recording `QUALIFIED` makes the company somebody's**: a company with
+        no RM needs `relationship_manager_user_id` (an OPERATIONS caller names
+        themselves; ADMIN or `exporters:assign_rm` names any RM), set in this
+        transaction, or 409 `RELATIONSHIP_MANAGER_REQUIRED`. The RXIL intake
+        (`record_partner_decision`), imports and the platform's own loaders
+        (`actor_id=None`) are exempt.
 
         Allowed from `NOT_YET_REVIEWED` and, as a re-review, from
         `NOT_QUALIFIED`; `QUALIFIED` is final. A re-review is a
@@ -255,6 +267,18 @@ class QualificationService:
         codes = list(dict.fromkeys(code.strip() for code in reason_codes if code.strip()))
         cleaned_note = _clean(note)
         await self._check_reason_codes(outcome, codes, cleaned_note)
+        # A person's QUALIFIED; the platform acting on its own (`actor_id=None`: sample
+        # data, a loader) is exempt like an import.
+        if outcome is QualificationOutcomeValue.QUALIFIED and actor_id is not None:
+            await ExporterProfileService(self._db).ensure_relationship_manager(
+                profile,
+                user_id=relationship_manager_user_id,
+                action="record it as qualified",
+                actor_id=actor_id or "",
+                actor_role=actor_role,  # type: ignore[arg-type]
+                actor_permissions=actor_permissions,
+                source="qualification_service.record_outcome",
+            )
         suggested, result_ids = await self._suggestion(customer_id)
 
         row, announcement = await self._write_outcome(

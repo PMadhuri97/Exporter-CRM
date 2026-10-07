@@ -76,6 +76,7 @@ const DETAIL: ExporterProfileDetail = {
   country: 'IN',
   gstins: ['27ABCDE1234F1Z5'],
   cin: null,
+  relationship_manager_inactive: false,
   journey: 'LEAD',
   qualification: 'NOT_YET_REVIEWED',
   marker: 'NONE',
@@ -497,6 +498,8 @@ describe('ExporterDetailPage — screening review', () => {
     await waitFor(() =>
       expect(updateExporterProfile).toHaveBeenCalledWith(DETAIL.customer_id, {
         year_established: 'twenty',
+        // What the screen showed: a field someone else changed since is refused.
+        seen: { year_established: 2019 },
       }),
     );
   });
@@ -525,6 +528,7 @@ describe('ExporterDetailPage — screening review', () => {
         outcome: 'NOT_QUALIFIED',
         reason_codes: ['low_turnover'],
         note: null,
+        relationship_manager_user_id: null,
       }),
     );
   });
@@ -573,6 +577,8 @@ describe('ExporterDetailPage — screening review', () => {
         outcome: 'QUALIFIED',
         reason_codes: [],
         note: 'Meets all four',
+        // The company has an RM already, so none is sent.
+        relationship_manager_user_id: null,
       }),
     );
   });

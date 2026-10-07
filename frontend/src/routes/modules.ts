@@ -13,7 +13,7 @@
  * (`modules/onboarding/routes.tsx`: add company, import, RXIL intake).
  *
  * Nav names are the standard CRM ones (frontend-plan §18.1): Home, Companies,
- * Pipeline, Deals, Follow-ups, Approvals, Settings. Pipeline is the Companies board
+ * Pipeline, Deals, Follow-ups, Compliance work (once "Approvals"), Settings. Pipeline is the Companies board
  * (`/pipeline` redirects to it), and `/review` redirects to `/approvals`, so old
  * links keep working.
  */
@@ -31,6 +31,7 @@ import {
   PipelineRedirect,
   QualificationCriteriaPage,
   ApprovalsPage,
+  type WorklistBadgeKind,
 } from '@/modules/onboarding';
 import type { IconName } from '@/design/icons';
 import { SettingsRoutes, SettingsSectionFrame } from '@/modules/settings';
@@ -48,6 +49,8 @@ export interface NavRow {
   /** Off for a Settings section reached from the Settings frame: it is still a page
    * search offers, but the side navigation shows only *Settings* (§7.3). */
   sideNav?: boolean;
+  /** A computed count beside the row (`WorklistBadge`). */
+  badge?: WorklistBadgeKind;
 }
 
 export interface AppModule {
@@ -105,7 +108,7 @@ export const APP_MODULES: readonly AppModule[] = [
     path: '/companies/*',
     requires: ['crm.read'],
     Screen: CompanyRoutes,
-    nav: { label: 'Companies', to: '/companies', icon: 'company', group: 'main' },
+    nav: { label: 'Companies', to: '/companies', icon: 'company', group: 'main', badge: 'infoRequested' },
   },
   // The Companies board. `/pipeline` redirects to `/companies?view=board`, where the
   // nav marks Pipeline, not Companies, as current (`navRowForPath`).
@@ -130,13 +133,14 @@ export const APP_MODULES: readonly AppModule[] = [
     Screen: FollowUpsPage,
     nav: { label: 'Follow-ups', to: '/follow-ups', icon: 'followUps', group: 'main' },
   },
-  // Items to approve and Re-KYC due (frontend-plan §8.8). Absent for every other role.
+  // Compliance work: reviews, items to approve and Re-KYC due (frontend-plan §8.8).
+  // Absent for every other role. The address stays `/approvals`.
   {
     id: 'approvals',
     path: '/approvals',
     requires: ['compliance.queue'],
     Screen: ApprovalsPage,
-    nav: { label: 'Approvals', to: '/approvals', icon: 'approvals', group: 'main' },
+    nav: { label: 'Compliance work', to: '/approvals', icon: 'approvals', group: 'main', badge: 'compliance' },
   },
   { id: 'review', path: '/review', requires: ['compliance.queue'], Screen: ReviewRedirect },
   { id: 'deal', path: '/deals/:dealId', requires: ['crm.read'], Screen: DealDetailPage },

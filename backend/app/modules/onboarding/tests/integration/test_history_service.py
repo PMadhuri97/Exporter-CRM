@@ -32,7 +32,10 @@ from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationOutcomeValue
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import (
+    ensure_relationship_manager,
+    make_company,
+)
 from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
 
@@ -309,6 +312,7 @@ async def test_the_journey_still_records_what_it_always_did():
         await ExporterProfileService(db).create_or_get_profile(
             company_id, source=ExporterSource.SALES
         )
+    await ensure_relationship_manager(company_id)
     async with db_services.AsyncSessionLocal() as db:
         await QualificationService(db).record_outcome(
             company_id, QualificationOutcomeValue.QUALIFIED, actor_id="rm-jordan"

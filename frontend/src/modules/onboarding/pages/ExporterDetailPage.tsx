@@ -265,7 +265,7 @@ export function ExporterDetailPage() {
     profile.industry,
     profile.country,
     profile.year_established ? `since ${profile.year_established}` : null,
-    profile.relationship_manager ? `RM ${profile.relationship_manager}` : null,
+    profile.relationship_manager_name ? `RM ${profile.relationship_manager_name}` : null,
   ].filter(Boolean);
 
   return (

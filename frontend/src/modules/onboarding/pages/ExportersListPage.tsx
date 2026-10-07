@@ -10,6 +10,11 @@
  * `?qualification=`, `?relationship=`), so a filtered list can be shared and Home's
  * counts link straight into one.
  *
+ * **Whose companies.** The owner filter (`?owner=`) narrows to *My companies*,
+ * *Unassigned* (with the journey lens, *Unassigned prospects*) or companies whose RM
+ * has been deactivated. It is a filter only: every reader sees every company. ADMIN and
+ * holders of `exporters:assign_rm` get **Reassign companies**.
+ *
  * The list route has no total: journey counts are capped ("200+"), and the
  * footer says how many are shown rather than guessing how many exist. Hovering or
  * focusing a row loads its record ahead of the click.
@@ -32,9 +37,9 @@ import {
   useSearchParamState,
 } from '@/components';
 import { Icon } from '@/design/icons';
-import { useCan } from '@/platform/access';
+import { useCan, useHasPermission } from '@/platform/access';
 
-import { CompanyBadges } from '../components';
+import { BulkReassignPanel, CompanyBadges } from '../components';
 import { JOURNEY_LABEL, JOURNEY_STAGES, MARKER_LABEL, QUALIFICATION_LABEL } from '../constants';
 import { COUNT_CAP, useExporterProfiles, useJourneyCount, usePrefetchCompany } from '../hooks';
 import { preloadExporterDetailPage } from '../lazyPages';
@@ -44,12 +49,20 @@ import type {
   ExporterMarker,
   ExporterProfileListItem,
   QualificationState,
+  RelationshipManagerFilter,
 } from '../types';
 
 type Lens = 'ALL' | ExporterJourney;
 const LENSES: readonly Lens[] = ['ALL', ...JOURNEY_STAGES];
 const QUALIFICATIONS: readonly string[] = ['ANY', ...Object.keys(QUALIFICATION_LABEL)];
 const RELATIONSHIPS: readonly string[] = ['ANY', ...Object.keys(MARKER_LABEL)];
+const OWNER_LABEL = {
+  me: 'My companies',
+  none: 'Unassigned',
+  inactive: 'RM deactivated',
+} as const;
+type Owner = 'ANY' | keyof typeof OWNER_LABEL;
+const OWNERS: readonly Owner[] = ['ANY', 'me', 'none', 'inactive'];
 /** A page of rows; "Show more" asks for the next, up to what one request returns. */
 const PAGE_SIZE = 50;
 
@@ -72,7 +85,9 @@ function identityLine(profile: ExporterProfileListItem): string | null {
   const parts = [
     profile.industry,
     profile.country,
-    profile.relationship_manager ? `RM ${profile.relationship_manager}` : null,
+    profile.relationship_manager_name
+      ? `RM ${profile.relationship_manager_name}${profile.relationship_manager_inactive ? ' (deactivated)' : ''}`
+      : 'No RM',
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -114,6 +129,9 @@ export function ExportersListPage() {
   const canCreate = useCan('company.create');
   const canImport = useCan('company.import');
   const canTakeInRxil = useCan('company.rxilIntake');
+  const canReassign = useHasPermission('exporters:assign_rm');
+  const [reassigning, setReassigning] = useState(false);
+  const [owner, setOwner] = useSearchParamState<Owner>('owner', OWNERS, 'ANY');
   const [lens, setLens] = useSearchParamState<Lens>('journey', LENSES, 'ALL');
   const [qualification, setQualification] = useSearchParamState('qualification', QUALIFICATIONS, 'ANY');
   const [relationship, setRelationship] = useSearchParamState('relationship', RELATIONSHIPS, 'ANY');
@@ -133,11 +151,12 @@ export function ExportersListPage() {
     journey: lens === 'ALL' ? undefined : lens,
     qualification: qualification === 'ANY' ? undefined : (qualification as QualificationState),
     marker: relationship === 'ANY' ? undefined : (relationship as ExporterMarker),
+    relationship_manager: owner === 'ANY' ? undefined : (owner as RelationshipManagerFilter),
     limit,
   });
   const profiles = data?.profiles ?? [];
   const filtering = Boolean(
-    name || qualification !== 'ANY' || relationship !== 'ANY' || lens !== 'ALL',
+    name || qualification !== 'ANY' || relationship !== 'ANY' || lens !== 'ALL' || owner !== 'ANY',
   );
   const mayHaveMore = profiles.length === limit && limit < COUNT_CAP;
 
@@ -160,6 +179,11 @@ export function ExportersListPage() {
               <Link to={paths.rxilIntake} className={buttonClasses({ variant: 'subtle' })}>
                 RXIL intake
               </Link>
+            )}
+            {canReassign && (
+              <Button variant="subtle" onClick={() => setReassigning((open) => !open)}>
+                Reassign companies
+              </Button>
             )}
             {canImport && (
               <Link to={paths.importCompanies} className={buttonClasses()}>
@@ -234,6 +258,22 @@ export function ExportersListPage() {
               ))}
             </Select>
             <Select
+              aria-label="Owner"
+              className="sm:w-auto"
+              value={owner === 'ANY' ? '' : owner}
+              onChange={(event) => {
+                setOwner((event.target.value || 'ANY') as Owner);
+                setPages(1);
+              }}
+            >
+              <option value="">Any owner</option>
+              {(Object.keys(OWNER_LABEL) as (keyof typeof OWNER_LABEL)[]).map((value) => (
+                <option key={value} value={value}>
+                  {OWNER_LABEL[value]}
+                </option>
+              ))}
+            </Select>
+            <Select
               aria-label="Relationship"
               className="sm:w-auto"
               value={relationship === 'ANY' ? '' : relationship}
@@ -251,6 +291,14 @@ export function ExportersListPage() {
             </Select>
           </div>
         </div>
+
+        {reassigning && (
+          <BulkReassignPanel
+            shown={profiles}
+            journey={lens === 'ALL' ? undefined : lens}
+            onClose={() => setReassigning(false)}
+          />
+        )}
 
         {isError ? (
           <ErrorState title="Couldn't load companies." className="m-4" onRetry={() => void refetch()}>

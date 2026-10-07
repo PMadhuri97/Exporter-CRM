@@ -2187,3 +2187,248 @@ class TradeInvoiceAlreadyRecordedError(AnerBaseException):
             status_code=422,
             extensions={"invoice_id": str(invoice_id)},
         )
+
+
+# ── Relationship manager and review assignment ──────────────────────────────
+
+
+class RelationshipManagerAssignNotAllowedError(AnerBaseException):
+    """The caller may not make this relationship-manager change (403).
+
+    An OPERATIONS user may set **themselves** on a company with no RM. Assigning
+    someone else, or changing or clearing an RM already set, needs ADMIN or
+    ``exporters:assign_rm``.
+    """
+
+    def __init__(self, company_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"You may not change company {company_id}'s relationship manager. An RM "
+                "may claim a company with no RM for themselves; assigning someone else, "
+                "or changing or clearing an RM, needs an administrator or the "
+                "exporters:assign_rm permission"
+            ),
+            error_code="RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED",
+            status_code=403,
+        )
+
+
+class RelationshipManagerNotEligibleError(AnerBaseException):
+    """The named user cannot be a relationship manager: not an active OPERATIONS user
+    (422)."""
+
+    def __init__(self, user_id: object, why: str) -> None:
+        super().__init__(
+            detail=f"User {user_id} cannot be a relationship manager: {why}",
+            error_code="RELATIONSHIP_MANAGER_NOT_ELIGIBLE",
+            status_code=422,
+            extensions={"user_id": str(user_id), "why": why},
+        )
+
+
+class RelationshipManagerReasonRequiredError(AnerBaseException):
+    """Changing or clearing an RM already set needs a reason (422)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            detail="Changing or clearing a relationship manager needs a reason",
+            error_code="RELATIONSHIP_MANAGER_REASON_REQUIRED",
+            status_code=422,
+        )
+
+
+class RelationshipManagerChangedError(AnerBaseException):
+    """The RM the caller saw is no longer the company's RM (409): someone changed it
+    in the meantime. Reload and decide again."""
+
+    def __init__(self, company_id: object, seen: object, current: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {company_id}'s relationship manager changed since you loaded it. "
+                "Reload it and try again"
+            ),
+            error_code="RELATIONSHIP_MANAGER_CHANGED",
+            status_code=409,
+            extensions={
+                "seen_user_id": str(seen) if seen else None,
+                "current_user_id": str(current) if current else None,
+            },
+        )
+
+
+class RelationshipManagerRequiredError(AnerBaseException):
+    """An accountability action on an in-pipeline company with no RM, and no RM given
+    (409). Starting a background check and recording a person's QUALIFIED need one;
+    a buyer-only company never does."""
+
+    def __init__(self, company_id: object, action: str) -> None:
+        super().__init__(
+            detail=f"Company {company_id} has no relationship manager. Set one to {action}",
+            error_code="RELATIONSHIP_MANAGER_REQUIRED",
+            status_code=409,
+            extensions={"action": action},
+        )
+
+
+class CompanyFieldChangedError(AnerBaseException):
+    """A field the caller edited was changed by someone else since they loaded it (409).
+
+    Names who and when from the latest history row for the field, and the current
+    value as this caller may see it (masked where the company read masks it). Nothing
+    in the edit is written.
+    """
+
+    def __init__(
+        self,
+        company_id: object,
+        *,
+        field: str,
+        current: object,
+        changed_by: str | None,
+        changed_by_name: str | None,
+        changed_at: object,
+    ) -> None:
+        who = changed_by_name or "someone else"
+        super().__init__(
+            detail=(
+                f"{field} on company {company_id} was changed by {who} since you loaded "
+                "it. Reload before saving"
+            ),
+            error_code="COMPANY_FIELD_CHANGED",
+            status_code=409,
+            extensions={
+                "field": field,
+                "current": current,
+                "changed_by": changed_by,
+                "changed_by_name": changed_by_name,
+                "changed_at": changed_at.isoformat() if changed_at is not None else None,
+            },
+        )
+
+
+class ReviewNotAssignableError(AnerBaseException):
+    """The check is not under review (``IN_REVIEW`` or ``MORE_INFO``), so it has no
+    review to claim, assign or release (409)."""
+
+    def __init__(self, company_id: object, current: object) -> None:
+        super().__init__(
+            detail=(
+                f"The background check for company {company_id} is {_bc_value(current)}, "
+                "not under review, so it has no reviewer"
+            ),
+            error_code="REVIEW_NOT_ASSIGNABLE",
+            status_code=409,
+            extensions={"current": _bc_value(current)},
+        )
+
+
+class ReviewAlreadyAssignedError(AnerBaseException):
+    """A claim on a review someone already holds (409)."""
+
+    def __init__(self, company_id: object, reviewer_id: object) -> None:
+        super().__init__(
+            detail=f"The review of company {company_id} is already assigned",
+            error_code="REVIEW_ALREADY_ASSIGNED",
+            status_code=409,
+            extensions={"reviewer_id": str(reviewer_id)},
+        )
+
+
+class ReviewAssignedToOtherError(AnerBaseException):
+    """A reviewer's move (request more information, propose an outcome) by someone who
+    does not hold the review (409)."""
+
+    def __init__(self, company_id: object, reviewer_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"The review of company {company_id} is assigned to someone else. Only "
+                "its reviewer may request information or propose an outcome"
+            ),
+            error_code="REVIEW_ASSIGNED_TO_OTHER",
+            status_code=409,
+            extensions={"reviewer_id": str(reviewer_id)},
+        )
+
+
+class ReviewerIsRelationshipManagerError(AnerBaseException):
+    """The would-be reviewer is the company's relationship manager (409): the RM
+    never reviews their own company."""
+
+    def __init__(self, company_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"That person is company {company_id}'s relationship manager, so someone "
+                "else must review it"
+            ),
+            error_code="REVIEWER_IS_RM",
+            status_code=409,
+        )
+
+
+class ReviewerNotEligibleError(AnerBaseException):
+    """The named user cannot review: not an active COMPLIANCE or ADMIN user (422)."""
+
+    def __init__(self, user_id: object, why: str) -> None:
+        super().__init__(
+            detail=f"User {user_id} cannot review a background check: {why}",
+            error_code="REVIEWER_NOT_ELIGIBLE",
+            status_code=422,
+            extensions={"user_id": str(user_id), "why": why},
+        )
+
+
+class ReviewAssignNotAllowedError(AnerBaseException):
+    """Assigning, reassigning or releasing another person's review needs ADMIN or
+    ``compliance:assign`` (403)."""
+
+    def __init__(self, company_id: object) -> None:
+        super().__init__(
+            detail=(
+                f"Assigning the review of company {company_id} to someone needs an "
+                "administrator or the compliance:assign permission"
+            ),
+            error_code="REVIEW_ASSIGN_NOT_ALLOWED",
+            status_code=403,
+        )
+
+
+class ReviewReasonRequiredError(AnerBaseException):
+    """Taking a review from the person who holds it needs a reason (422)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            detail="Reassigning a review someone holds needs a reason",
+            error_code="REVIEW_REASON_REQUIRED",
+            status_code=422,
+        )
+
+
+class BackgroundCheckConflictOfInterestError(AnerBaseException):
+    """The would-be approver is the review's reviewer or the company's relationship
+    manager (403). Maker-checker needs an independent second person."""
+
+    def __init__(self, proposal_id: object, why: str) -> None:
+        super().__init__(
+            detail=f"You cannot approve or reject {proposal_id}: {why}",
+            error_code="BACKGROUND_CHECK_CONFLICT_OF_INTEREST",
+            status_code=403,
+            extensions={"why": why},
+        )
+
+
+class HighRiskApprovalRequiredError(AnerBaseException):
+    """A CLEAR proposed with HIGH or CRITICAL risk, approved by someone without
+    ``compliance:approve_high_risk`` (403). The senior checker is the second person,
+    not a third."""
+
+    def __init__(self, proposal_id: object, risk: object) -> None:
+        value = getattr(risk, "value", risk)
+        super().__init__(
+            detail=(
+                f"Proposal {proposal_id} clears the company at {value} risk, which needs "
+                "a senior approver (compliance:approve_high_risk)"
+            ),
+            error_code="HIGH_RISK_APPROVAL_REQUIRED",
+            status_code=403,
+            extensions={"risk_rating": str(value)},
+        )

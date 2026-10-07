@@ -24,7 +24,7 @@ export { Button, type ButtonProps } from './ui/Button';
 export { Card, Panel, type CardProps } from './ui/Card';
 export { DatePopover } from './ui/DatePopover';
 export { ConfirmDialog, Dialog, Sheet } from './ui/Dialog';
-export { Editable, type EditableOption } from './ui/Editable';
+export { Editable, EditableRefusal, type EditableOption } from './ui/Editable';
 export { ErrorState } from './ui/ErrorState';
 export { Count, EmptyLine, InlineError, Kbd } from './ui/Feedback';
 export { Field, FormError, Input, Select, Textarea } from './ui/Field';

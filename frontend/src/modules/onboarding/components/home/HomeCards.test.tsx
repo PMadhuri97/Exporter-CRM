@@ -183,6 +183,9 @@ const PROPOSAL: BackgroundCheckProposal = {
   cycle_number: 1,
   rules_version: 'clear-2026-10-01-7items-kyb-aml-sanctions',
   evidence_count: 10,
+  needs_senior_approval: false,
+  is_due_soon: false,
+  is_overdue: false,
   status: 'OPEN',
   allowed_actions: ['APPROVE', 'REJECT'],
 };

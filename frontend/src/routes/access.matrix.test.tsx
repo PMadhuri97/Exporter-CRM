@@ -55,6 +55,8 @@ vi.mock('@/modules/onboarding/lazyPages', () => ({
   QualificationCriteriaPage: stub('criteria'),
   RxilIntakePage: stub('rxil-intake'),
   ApprovalsPage: stub('review'),
+  // The nav badges are not under test here.
+  WorklistBadge: () => null,
 }));
 // The module table wraps this one in `lazy` itself.
 vi.mock('@/pages/HomePage', () => ({ HomePage: () => <Screen id="home" /> }));
@@ -111,7 +113,7 @@ const NAV: [string, UserRole[], string, boolean][] = [
   ['Pipeline', READERS, 'pipeline', true],
   ['Deals', READERS, 'deals', true],
   ['Follow-ups', READERS, 'follow-ups', true],
-  ['Approvals', ['COMPLIANCE', 'ADMIN'], 'review', true],
+  ['Compliance work', ['COMPLIANCE', 'ADMIN'], 'review', true],
   ['Settings', READERS, 'settings', true],
   ['Qualification criteria', ADMIN, 'criteria', false],
   ['Required documents', ADMIN, 'required-documents', false],
@@ -297,7 +299,7 @@ describe('a user with no workspace', () => {
     renderAt('/');
     expect(await screen.findByText(/doesn.t have access to a workspace/)).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
-    for (const word of ['Home', 'Companies', 'Pipeline', 'Deals', 'Follow-ups', 'Approvals', 'Qualification criteria']) {
+    for (const word of ['Home', 'Companies', 'Pipeline', 'Deals', 'Follow-ups', 'Compliance work', 'Qualification criteria']) {
       expect(screen.queryByText(word)).not.toBeInTheDocument();
     }
     expect(screen.getByRole('link', { name: 'My profile' })).toHaveAttribute('href', '/settings');

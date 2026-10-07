@@ -260,6 +260,8 @@ describe('VerificationSection — check cycles', () => {
       decided_at: null,
       allowed_moves: [],
       clear_blocked_reasons: [],
+      reviewer_inactive: false,
+      relationship_manager_required: false,
       compliance: { is_clear: false, clear_expires_at: null, is_clear_current: false, sanctions: 'MISSING', aml: 'MISSING' },
       awaiting_approval: false,
       rekyc_due: false,

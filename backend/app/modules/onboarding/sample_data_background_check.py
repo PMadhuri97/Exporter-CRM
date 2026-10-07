@@ -176,8 +176,12 @@ async def _ensure_gauge(company_id: uuid.UUID, sample: _SampleCheck, *, actor_id
     state = await _state(company_id)
     if state is _State.NOT_STARTED:
         async with db_services.AsyncSessionLocal() as db:
+            # The platform's own loader, like an import: it names no RM.
             await BackgroundCheckService(db).start_review(
-                company_id, actor_id=actor_id, actor_role=UserRole.OPERATIONS
+                company_id,
+                actor_id=actor_id,
+                actor_role=UserRole.OPERATIONS,
+                require_relationship_manager=False,
             )
         decided += 1
         state = _State.IN_REVIEW

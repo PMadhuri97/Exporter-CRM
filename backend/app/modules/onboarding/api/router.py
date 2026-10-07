@@ -43,6 +43,7 @@ from app.modules.onboarding.api.schemas.verification import (
     reviewer_ids,
 )
 from app.modules.onboarding.api.screening_router import router as screening_router
+from app.modules.onboarding.api.staff_router import router as staff_router
 from app.modules.onboarding.api.trade_history_router import (
     router as trade_history_router,
 )
@@ -80,6 +81,8 @@ _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 # mount prefix, giving the documented paths
 # (/onboarding/exporters...) with no prefix duplicated in two places.
 router.include_router(exporter_router)
+# The staff picker and bulk relationship-manager reassignment.
+router.include_router(staff_router)
 # The same `/exporters` routes, split by area: contacts and activities
 # (engagement) and the screening checklist and bank activity (screening).
 # Included straight after the company routes, in the order they were declared

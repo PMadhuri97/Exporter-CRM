@@ -22,7 +22,12 @@ export {
   CheckBackCard,
   MyFollowUpsCard,
   PipelineSummaryCard,
+  InfoRequestedCard,
   ProposalsAwaitingMeCard,
+  RecentDecisionsCard,
   ReKycDueCard,
   SetupCard,
 } from './components/home';
+// The navigation's computed badges (`layout/SideNav.tsx`), loaded lazily.
+export { WorklistBadge } from './lazyPages';
+export type { WorklistBadgeKind } from './components/WorklistBadge';

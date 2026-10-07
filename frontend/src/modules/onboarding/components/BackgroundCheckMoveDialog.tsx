@@ -19,10 +19,17 @@
  * **Maker-checker.** A move the server marks `approval_required`
  * (CLEAR, FLAGGED, ON_HOLD) is proposed, not recorded: the dialog says so and the
  * button reads "Propose for approval". The check moves only when a second compliance
- * officer approves it.
+ * officer approves it. No checker is chosen here: the second person is whoever, in
+ * the pool of eligible officers, approves it.
+ *
+ * **The relationship manager.** Starting the check on an in-pipeline company with no RM
+ * needs one in the same request (`relationshipManagerRequired`); the dialog asks for it
+ * on the start and sends it with the move.
  */
 
 import { useState } from 'react';
+
+import { RelationshipManagerChoice } from './RelationshipManagerChoice';
 
 import type {
   BackgroundCheckMove,
@@ -49,6 +56,7 @@ export function BackgroundCheckMoveDialog({
   onSubmit,
   onCancel,
   initialMove = null,
+  relationshipManagerRequired = false,
 }: {
   moves: BackgroundCheckMove[];
   blockedReasons: string[];
@@ -58,22 +66,30 @@ export function BackgroundCheckMoveDialog({
     to_value: BackgroundCheckState;
     reason: string | null;
     risk_rating: BackgroundCheckRisk | null;
+    relationship_manager_user_id: string | null;
   }) => void;
   onCancel: () => void;
   /** The move chosen in the status card (frontend-plan §8.5.1), already selected. */
   initialMove?: BackgroundCheckState | null;
+  /** The start needs an RM named in the same request (the server says so). */
+  relationshipManagerRequired?: boolean;
 }) {
   const [selected, setSelected] = useState<BackgroundCheckState | null>(initialMove);
   const [reason, setReason] = useState('');
   const [risk, setRisk] = useState<BackgroundCheckRisk | ''>('');
+  // Set by the choice only when this user may name one; otherwise the start waits.
+  const [rmUserId, setRmUserId] = useState<string | null>(null);
 
   const move = moves.find((candidate) => candidate.to_value === selected) ?? null;
   // CLEAR is offered by the server even while its prerequisites are outstanding, so
   // the screen can explain. Sending it anyway would be a 409.
   const clearIsBlocked = selected === 'CLEAR' && blockedReasons.length > 0;
+  // Only the start (the one move to IN_REVIEW a NOT_STARTED check has) asks for an RM.
+  const asksForRm = relationshipManagerRequired && selected === 'IN_REVIEW';
   const canSubmit =
     move !== null &&
     !clearIsBlocked &&
+    (!asksForRm || rmUserId !== null) &&
     (!move.reason_required || reason.trim().length > 0) &&
     (!move.risk_required || risk !== '');
 
@@ -106,6 +122,16 @@ export function BackgroundCheckMoveDialog({
         <p className="mt-3 rounded bg-attention-tint p-2 text-caption text-attention">
           This company cannot be cleared yet: {blockedReasons.map(describeClearBlocker).join('; ')}.
         </p>
+      )}
+
+      {asksForRm && (
+        <div className="mt-3">
+          <RelationshipManagerChoice
+            value={rmUserId}
+            onChange={setRmUserId}
+            action="to start the check"
+          />
+        </div>
       )}
 
       {move?.risk_required && (
@@ -165,6 +191,7 @@ export function BackgroundCheckMoveDialog({
               to_value: move.to_value,
               reason: reason.trim() || null,
               risk_rating: move.risk_required && risk !== '' ? risk : null,
+              relationship_manager_user_id: asksForRm ? rmUserId : null,
             })
           }
           className="rounded bg-accent-solid px-3 py-1.5 text-body text-white disabled:opacity-40"

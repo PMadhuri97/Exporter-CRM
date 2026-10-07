@@ -254,7 +254,8 @@ Not current work. Each starts only when its trigger happens.
 | R-30 — PAN from GSTIN for PAN-less companies (P6-4, task 3.16) | DEFERRED, optional | Only if OPS-0's reports show it is worth doing; with an audit table for rollback | plan P6-4 |
 | R-32 — name matching scans every company in a country, in Python, per lookup | DEFERRED | Past about 50,000 companies in one country: store `name_key` (maintained by `company_names.name_key`) | `company_directory._by_name` |
 | R-42 — group-level `--confirm-name` for the buyer migration | DEFERRED | Only if a live dry run shows many rows sharing one contested identifier. The rehearsal's 330 rows sharing `NL-8899` were test-suite debris (`NL-8899` is the tests' fixture value), so nothing suggests a real environment needs it | §8 |
-| Frontend-plan asks A6 (`relationship_manager_user_id` and a "my companies" lens) and A8 (`dry_run` on CSV import) | DEFERRED (D-19) | A6: a product rule for how RMs are assigned. A8: a business need for a server-checked import preview | `frontend-plan.md` §13 |
+| Frontend-plan ask A8 (`dry_run` on CSV import) | DEFERRED (D-19) | A business need for a server-checked import preview | `frontend-plan.md` §13 |
+| Frontend-plan ask A6 (`relationship_manager_user_id` and a "my companies" lens) | BUILT 7 Oct 2026, unstaged (backend; frontend next) | The RM and review-assignment rules were agreed on 7 October 2026 (`docs/plan.md` §11); built as `company-record.md` §2.5 and `background-check.md` §12.8, migration `onboarding_0044_assignment` + `auth_0006_assignment_perms` | `docs/plan.md` |
 | Cross-company Deals and Documents lists | DEFERRED (product) | A decision to add two paged routes and rail rows | plan §19.3 |
 | Group companies (different PANs) link | DEFERRED | "Later" in the source | plan §19.3 |
 | CSV import above 1,000 rows | DEFERRED | Only if the business needs it: a background job with a pollable report | — |

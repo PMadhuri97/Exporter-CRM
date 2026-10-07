@@ -18,7 +18,11 @@ from httpx import AsyncClient
 
 from app.modules.onboarding.application.screening_review_service import SCREENING_CATALOGUE
 from app.modules.onboarding.events import publisher as publisher_module
-from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
+from app.modules.onboarding.tests.fixtures.auth import (
+    auth_header,
+    token_with_role,
+    user_with_role,
+)
 from app.modules.onboarding.tests.fixtures.compliance import make_compliance_user
 from app.platform.authentication.models import UserRole
 from app.platform.messaging.ports import InMemoryEventBus
@@ -55,8 +59,12 @@ def _events(bus: InMemoryEventBus, event_type: EventType) -> list:
 class _Crm:
     """The API calls the path is made of, each asserting it succeeded."""
 
-    def __init__(self, client: AsyncClient, ops: str, compliance: str, checker: str) -> None:
-        self.client, self.ops, self.compliance = client, ops, compliance
+    def __init__(
+        self, client: AsyncClient, ops: tuple[str, str], compliance: str, checker: str
+    ) -> None:
+        # The RM: a lead they create names them as its relationship manager.
+        (self.ops_id, self.ops), self.compliance = ops, compliance
+        self.client = client
         # Maker-checker: a second compliance officer approves
         # what `compliance` proposes.
         self.checker = checker
@@ -184,7 +192,8 @@ class _Crm:
         resp = await self.client.post(
             f"{BASE}/exporters",
             json={"source": "SALES", "name": f"E2E Exports {pan}", "country": "IN",
-                  "pan": pan, "gstins": [f"27{pan}1Z5"]},
+                  "pan": pan, "gstins": [f"27{pan}1Z5"],
+                  "relationship_manager_user_id": self.ops_id},
             headers={**auth_header(self.ops), "Idempotency-Key": str(uuid.uuid4())},
         )
         assert resp.status_code == 201, resp.text
@@ -194,7 +203,7 @@ class _Crm:
 async def _crm(client: AsyncClient) -> _Crm:
     return _Crm(
         client,
-        await token_with_role(client, UserRole.OPERATIONS),
+        await user_with_role(client, UserRole.OPERATIONS),
         await token_with_role(client, UserRole.COMPLIANCE),
         (await make_compliance_user(client, label="e2e-checker")).token,
     )

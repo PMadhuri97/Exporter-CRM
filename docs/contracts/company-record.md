@@ -117,6 +117,34 @@ The background-check risk rating (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`, decision 6)
 is Developer 4's. Whether it is also carried on the company record for list
 filtering is Developer 4's call in the background-check contract.
 
+### 2.5 Relationship manager (7 October 2026)
+
+`relationship_manager_user_id` names the company's **one** relationship manager: an active
+OPERATIONS user when written. It is written only by
+`ExporterProfileService.set_relationship_manager`, each change a `relationship_manager` history
+row with both ids, both names and the reason (`history-row.md` §2).
+
+- **Claim and change.** An OPERATIONS user may set **themselves** on a company with no RM.
+  Naming someone else, or changing or clearing an RM already set, needs ADMIN or
+  `exporters:assign_rm` (a sales or CRM lead's custom role), and a change or clear needs a
+  reason. `POST /exporters/{id}/relationship-manager {user_id, seen_user_id, reason}`; a stale
+  `seen_user_id` is 409 `RELATIONSHIP_MANAGER_CHANGED`. An RM may also be named on create. The
+  detail read serves `relationship_manager_actions` (`CLAIM`, `ASSIGN`, `CHANGE`, `CLEAR`) and
+  every read the RM's name and `relationship_manager_inactive`.
+- **Bulk.** `POST /relationship-managers/reassign` moves one RM's companies (all, a list, or one
+  journey stage) to another, with a reason and a dry run; companies are locked in id order and
+  any changed meanwhile skipped; one history row each, sharing a `bulk_run_id`.
+- **Lists.** `GET /exporters?relationship_manager=me|none|inactive|<user id>`: My companies,
+  Unassigned, a deactivated RM's companies. A filter only.
+- **Ownership grants nothing**: not visibility and not unmasked identifiers (§5).
+- **Required at the action, never by the database.** A lead may have none. Starting the
+  background check on an in-pipeline company, and a person's `QUALIFIED`, need one in the same
+  request (409 `RELATIONSHIP_MANAGER_REQUIRED`); imports, the RXIL intake, the platform's own
+  loaders and buyer-only companies are exempt.
+- **The legacy `relationship_manager` text** is read-only: no route writes it. The command
+  `python -m app.modules.onboarding.backfill_relationship_managers` matches it, exactly apart
+  from case and spacing, to one active RM account (dry run first) and reports the rest.
+
 ---
 
 ## 3. Journey and marker rules
@@ -346,6 +374,14 @@ Unchanged from what Developer 1 built (L1-10, architecture §3.7, decision 12):
   item O4, applied in L2-05 until the programme lead decides otherwise). There
   is no CIN search filter yet.
 - **Name search** (case-insensitive, partial) is open to every reader.
+- **Being a company's relationship manager changes none of this**: an RM sees their own
+  companies' identifiers masked, and reads every company the role may read (§2.5).
+- **Stale edits.** `PATCH /exporters/{id}` takes an optional `seen` map: each edited field's
+  value as the screen showed it, masked where it was masked. Under the row lock, a field
+  someone else changed since refuses the whole edit (409 `COMPANY_FIELD_CHANGED`, naming who
+  and when from the field's last history row, and the current value as the caller may see it).
+  Field-level on purpose: the gauges share the row, so a record-level check would refuse an
+  RM's edit whenever compliance moved the check.
 
 **The actor is always the logged-in user**, taken from the session by the route
 and passed to the service. No request body carries an actor, a "decided by", or

@@ -11,7 +11,7 @@
  */
 
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { Sheet } from '@/components';
@@ -19,6 +19,7 @@ import { BrandMark } from '@/design/BrandMark';
 import { Icon } from '@/design/icons';
 import type { UserRole } from '@/lib/api/types';
 import { cn } from '@/lib/cn';
+import { WorklistBadge } from '@/modules/onboarding';
 import { navRowForPath, navRowsFor, type NavRow } from '@/routes/modules';
 
 const COLLAPSED_KEY = 'aner.nav.collapsed';
@@ -69,6 +70,11 @@ function NavItem({
     >
       <Glyph size={20} weight={active ? 'fill' : 'regular'} className="shrink-0" aria-hidden />
       <span className={collapsed ? 'sr-only' : 'truncate'}>{row.label}</span>
+      {row.badge && (
+        <Suspense fallback={null}>
+          <WorklistBadge kind={row.badge} collapsed={collapsed} />
+        </Suspense>
+      )}
     </Link>
   );
   if (!collapsed) return <li>{link}</li>;

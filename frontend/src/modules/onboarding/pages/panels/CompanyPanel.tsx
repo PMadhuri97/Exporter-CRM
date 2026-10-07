@@ -12,6 +12,14 @@
  * qualification and marker are not profile fields and are never sent — the
  * server refuses them on this route.
  *
+ * **Two people editing one company.** Each save sends the value this screen showed
+ * (`seen`). If someone else changed that field since, the server refuses and the field
+ * says who and when, with **Reload**: the typed value stays, so it can be saved again
+ * over the current one. A gauge or an RM change on the same company is not a conflict.
+ *
+ * The relationship manager is not an inline fact: it is a user, set through its own
+ * route by the people the server says may (`RelationshipManagerField`).
+ *
  * The onboarding-history table that used to sit below the conversation panel
  * is gone. The company's name was taken from it; the name is now part
  * of the company's own identity, shown in the page header, and the legacy
@@ -22,14 +30,19 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { Editable } from '@/components';
+import { Editable, EditableRefusal } from '@/components';
 import { Icon } from '@/design/icons';
-import { formatDate, humanize } from '@/lib/format';
+import { ApiError } from '@/lib/api/errors';
+import { formatDate, formatDateTime, humanize } from '@/lib/format';
 import { useCan } from '@/platform/access';
 import { Identifier } from '@/platform/mask';
 
-import { DuplicatePanMessage, duplicatePanHolder } from '../../components';
-import { useUpdateExporterProfile } from '../../hooks';
+import {
+  DuplicatePanMessage,
+  duplicatePanHolder,
+  RelationshipManagerField,
+} from '../../components';
+import { useExporterProfileDetail, useUpdateExporterProfile } from '../../hooks';
 import { paths } from '../../paths';
 import type { ExporterProfileDetail, UpdateExporterProfileRequest } from '../../types';
 
@@ -40,7 +53,6 @@ type FieldKey =
   | 'iec'
   | 'cin'
   | 'registration_number'
-  | 'relationship_manager'
   | 'industry'
   | 'export_markets'
   | 'products'
@@ -76,6 +88,22 @@ function patchFor(key: FieldKey, text: string): UpdateExporterProfileRequest {
     return { year_established: value ? (/^\d+$/.test(value) ? Number(value) : value) : null } as UpdateExporterProfileRequest;
   }
   return { [key]: value || null } as UpdateExporterProfileRequest;
+}
+
+/** A field's value as the refusal reports it, for the sentence under the field. */
+function shownValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'empty';
+  if (Array.isArray(value)) return value.length ? value.join(', ') : 'empty';
+  return String(value);
+}
+
+/** "Changed by Priya at 7 Oct, 14:02 to Leather. Reload before saving." */
+function conflictMessage(error: ApiError): string {
+  const context = error.context ?? {};
+  const who = typeof context.changed_by_name === 'string' ? context.changed_by_name : 'someone else';
+  const when =
+    typeof context.changed_at === 'string' ? ` at ${formatDateTime(context.changed_at)}` : '';
+  return `Changed by ${who}${when} to ${shownValue(context.current)}. Reload before saving.`;
 }
 
 /** Shared GSTINs name the other companies by link, never by id. */
@@ -116,6 +144,7 @@ export function CompanyPanel({
   canEdit?: boolean;
 }) {
   const mutation = useUpdateExporterProfile(profile.customer_id);
+  const detail = useExporterProfileDetail(profile.customer_id);
   const reveal = useCan('identifiers.reveal');
   // The company already holding a PAN just typed, shown as a link under the PAN.
   const [panHolder, setPanHolder] = useState<string | null>(null);
@@ -123,9 +152,17 @@ export function CompanyPanel({
   const save = (key: FieldKey) => async (next: string) => {
     if (key === 'pan') setPanHolder(null);
     try {
-      await mutation.mutateAsync(patchFor(key, next));
+      // The value this screen showed, masked where it was masked: the server refuses
+      // the edit if someone else has changed the field since.
+      await mutation.mutateAsync({ ...patchFor(key, next), seen: { [key]: profile[key] ?? null } });
       toast.success('Profile updated');
     } catch (error) {
+      if (error instanceof ApiError && error.errorCode === 'COMPANY_FIELD_CHANGED') {
+        throw new EditableRefusal(conflictMessage(error), {
+          label: 'Reload',
+          onClick: () => void detail.refetch(),
+        });
+      }
       const holder = key === 'pan' ? duplicatePanHolder(error) : null;
       if (holder) {
         setPanHolder(holder);
@@ -228,7 +265,9 @@ export function CompanyPanel({
             <Fact label="Year established">
               {editable('year_established', 'Year established', profile.year_established?.toString() ?? null)}
             </Fact>
-            <Fact label="Owner">{editable('relationship_manager', 'Owner', profile.relationship_manager)}</Fact>
+            <Fact label="Relationship manager">
+              <RelationshipManagerField profile={profile} />
+            </Fact>
             <Fact label="Source">{humanize(profile.source)}</Fact>
             <Fact label="Created">{formatDate(profile.created_at)}</Fact>
             <Fact label="Last updated">{formatDate(profile.updated_at)}</Fact>

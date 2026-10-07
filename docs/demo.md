@@ -73,7 +73,7 @@ exporter's documents — see §6.
 | **A company** — the record header (key fields, the actions the server allows, the journey path), the tabs *Details*, *Qualification*, *Activity*, *Deals*, *Documents*, *Background check*, *History*, and related records on the right | `/companies/:id` (`?tab=` selects a tab) |
 | **A deal** — the record header (stage, *Hand over to lending*, *Withdraw*), *Handover readiness*, the seller and buyer cards, *Trade between these two*, *Paperwork*, *What was handed over*, *History* | `/deals/:id` |
 | **Follow-ups** — follow-ups by due date, and check-backs due | `/follow-ups` |
-| **Approvals** — the compliance working day (COMPLIANCE, ADMIN) | `/approvals` (`/review` still works) |
+| **Compliance work** — the compliance working day: awaiting review, my reviews, awaiting my signature, Re-KYC due, and for a lead everyone's reviews, overdue and needs attention (COMPLIANCE, ADMIN) | `/approvals` (`/review` still works) |
 | **Settings** — your profile for everyone; users, roles, *Qualification criteria* and *Required documents* for ADMIN | `/settings/profile`, `/settings/users`, `/settings/roles`, `/settings/qualification-criteria`, `/settings/deal-required-documents` |
 
 **Search** in the header (`/` or `Ctrl K`) finds any company or page. An address a role
@@ -131,7 +131,11 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
 3. **Qualify.** *Qualification*: for the two required criteria (*Annual revenue*,
    *Years in business*) press **Pass**, fill the observed value and the evidence, then
    **Record 2 results**. The header shows the server's suggestion. **Record: Qualified**
-   → a note → **Confirm**. The journey moves to **`PROSPECT`** (the path updates). The
+   → a note → **Confirm**. The company has no relationship manager yet, so the form says
+   *you will become its RM*: qualifying makes it yours. The journey moves to
+   **`PROSPECT`** (the path updates), and *Details* → *Relationship manager* names you.
+   (On a company with no RM, *Details* also offers **Assign to me** at any time; an
+   administrator sees **Assign**, **Change** and **Clear**, the last two with a reason.) The
    person decides: recording the opposite of the suggestion is allowed and is kept
    with the suggestion it overrode.
 4. **Talk to them.** *Activity*: click **Interested** on the path → **Mark as
@@ -181,8 +185,12 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    until the deal closes.
 8. **Start the background check**: the header's **Start background check** (or the
    *Background check* tab) → **In review** → **Record decision** (OPERATIONS may start
-   one).
-9. **Switch to COMPLIANCE** (`compliance@aner.com`). On *Background check*:
+   one). The company already has its RM from step 3; on one that does not, the dialog
+   asks for one first. The check waits in **Awaiting review**: *Reviewer: Unassigned*.
+9. **Switch to COMPLIANCE** (`compliance@aner.com`). The navigation's **Compliance work**
+   lists the company under *Awaiting review*; open it and press **Assign to me** (or do
+   it on the company's *Background check*, where the reviewer line now names you). Only
+   the reviewer may ask for information or propose an outcome. On *Background check*:
    - *Review checklist*: set each of the seven items to **Passed** (or **Exempt** for
      the two exception questions) and **Save** each.
    - **Record a result** three times — *Check* **KYB**, **AML**, **Sanctions**, *Outcome*
@@ -193,7 +201,10 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
      withdraw it.
 10. **The second signature.** Sign in as `compliance2@aner.com`. Home shows
     **Items to approve 1** → **Approve** → **Approve** (two clicks; also on
-    *Approvals*). On approval the company becomes a **`CUSTOMER`** in the same step — show
+    *Compliance work*, under *Awaiting your signature*). Neither the proposer, the
+    reviewer nor the company's RM can approve; a Clear proposed at `HIGH` or `CRITICAL`
+    risk needs a senior approver (`compliance:approve_high_risk`, granted through a custom
+    role in *Settings → Roles*; ADMIN always may). On approval the company becomes a **`CUSTOMER`** in the same step — show
     the journey path — the decision names both people, the Clear shows when it expires (one
     year), and "became customer" is announced (nobody receives it yet; §6). The
     proposer cannot approve their own proposal.
@@ -263,7 +274,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
   company** or **Import companies**, there is no **+ New** in the header, and typing
   `/companies/new` gives the same "Page not found"
   as an address that does not exist. Only ADMIN sees **Qualification criteria** and
-  **Required documents** in Settings, and only COMPLIANCE and ADMIN see **Approvals**. An
+  **Required documents** in Settings, and only COMPLIANCE and ADMIN see **Compliance work**. An
   API user signing in gets no workspace at all: no navigation, a short "ask an administrator"
   page, and only My profile.
 

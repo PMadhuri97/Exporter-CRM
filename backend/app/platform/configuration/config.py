@@ -44,6 +44,21 @@ class Settings(BaseSettings):
     # How far ahead "Re-KYC due" looks (the Home card, the gauge badge, and the
     # default `before` of GET /background-check/due). At least 0.
     CRM_REKYC_DUE_WINDOW_DAYS: int = 30
+    # Service levels for compliance work, in business time (`3d`, `4h`, `90m`; a
+    # business day is one day of CRM_BUSINESS_HOURS). Computed on every read — no
+    # scheduler moves anything when one passes. Review: from the reviewer's
+    # assignment, paused while information is requested. Approval: from the proposal.
+    # Information request: from the request.
+    CRM_SLA_REVIEW: str = "1d"
+    CRM_SLA_APPROVAL: str = "4h"
+    CRM_SLA_INFO: str = "1d"
+    # "Due soon" once this share of the allowance has passed (1–99).
+    CRM_SLA_DUE_SOON_PERCENT: int = 75
+    # Working days and hours, in CRM_BUSINESS_TIMEZONE: `MON-FRI 09:30-18:30`.
+    CRM_BUSINESS_HOURS: str = "MON-FRI 09:30-18:30"
+    CRM_BUSINESS_TIMEZONE: str = "Asia/Kolkata"
+    # Holidays, as comma-separated ISO dates (`2026-10-20,2026-11-08`). None by default.
+    CRM_HOLIDAYS: str = ""
 
     # ── Database ─────────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql+asyncpg://aner:aner@localhost:5432/aner_settlement"
