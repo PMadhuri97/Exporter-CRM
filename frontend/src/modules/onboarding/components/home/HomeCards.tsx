@@ -33,7 +33,7 @@ import {
   Skeleton,
 } from '@/components';
 import { Icon } from '@/design/icons';
-import { formatDate, formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime, todayForDateInput } from '@/lib/format';
 
 import { JOURNEY_LABEL, JOURNEY_STAGES } from '../../constants';
 import {
@@ -125,7 +125,16 @@ export function CompleteFollowUp({ followUp }: { followUp: FollowUp }) {
           {outcome === 'RESCHEDULED' && (
             <label className="block text-caption font-medium text-ink-2">
               New due date
-              <Input type="date" className="mt-1" value={nextDue} onChange={(e) => setNextDue(e.target.value)} required />
+              {/* Same rule as the Follow-ups page: the server refuses a reschedule into
+                  the past, so today is the earliest the calendar offers. */}
+              <Input
+                type="date"
+                className="mt-1"
+                min={todayForDateInput()}
+                value={nextDue}
+                onChange={(e) => setNextDue(e.target.value)}
+                required
+              />
             </label>
           )}
           <Input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />

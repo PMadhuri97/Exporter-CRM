@@ -9,6 +9,11 @@
  *   — right for a long company name, wrong here: a PAN split over two lines reads as two
  *   fragments, and a reviewer reported exactly that. An identifier is one token or it is
  *   nothing, so it would rather overflow a narrow column than be cut in half.
+ * - One step down the type scale (`text-caption`, 12px) from the facts around it. An
+ *   unbreakable 21-character CIN at 13px ran past its column and under `Editable`'s
+ *   pencil; a smaller size buys that room back without a second line of controls or a
+ *   narrower label column. It applies to every identifier, not just the long one, so a
+ *   column of them stays one size.
  * - The eye exists **only** for a role that may reveal (`identifiers.reveal`). A
  *   masked role gets no eye at all — "a disabled eye icon would still leak 'this
  *   data exists, you're just not allowed'" (architecture §9). The server already
@@ -71,7 +76,7 @@ export function Identifier({
   const onScreen = shown ? value : maskTail(value);
 
   return (
-    <span className={cn('inline-flex items-center gap-1 text-secondary tabular-nums text-ink', className)}>
+    <span className={cn('inline-flex items-center gap-1 text-caption tabular-nums text-ink', className)}>
       <span className="whitespace-nowrap">{onScreen}</span>
       {mayReveal && (
         <button

@@ -32,6 +32,7 @@ from app.modules.onboarding.domain.entities.engagement_enums import ExporterActi
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.exceptions import (
+    ActivityDueInPastError,
     ExporterContactNotFoundError,
     ExporterProfileNotFoundError,
 )
@@ -179,12 +180,28 @@ class ExporterContactActivityService:
         log) may supply it explicitly. The row is append-only from here on —
         see ``exporter_activity.py``'s module docstring.
 
+        ``due_at`` may not fall before ``occurred_at``: a follow-up that exists already
+        overdue is a mistyped date, and it makes the Follow-ups page's overdue count
+        mean less. ``ActivityDueInPastError`` (422), matching the refusals the
+        conversation gauge and the follow-up reschedule already make.
+
         Raises ``ExporterProfileNotFoundError`` (404) when no company has this
         ``customer_id``. The activity table is append-only, so a row written
         against a ghost company could never be corrected — the check is cheap
         insurance for a table nothing can repair.
         """
         await self._require_company(customer_id)
+        # A follow-up cannot be created already overdue — the same rule the conversation
+        # gauge applies to `check_back_on` and the follow-up service to a reschedule.
+        # Compared against `occurred_at` rather than the clock, so that an import
+        # backfilling last month's call with next month's follow-up is not refused for
+        # being in the past of today; for the API, where `occurred_at` is always now,
+        # the two are the same comparison.
+        if due_at is not None:
+            happened = occurred_at or datetime.now(UTC)
+            if due_at < happened:
+                raise ActivityDueInPastError(customer_id, due_at)
+
         activity = ExporterActivity(
             customer_id=customer_id,
             activity_type=activity_type,

@@ -17,7 +17,7 @@ import { Icon, type IconComponent } from '@/design/icons';
 import { cn } from '@/lib/cn';
 import { useCan } from '@/platform/access';
 
-import { CompaniesViewSwitch, CompanyBadges } from '../components';
+import { CompanyBadges } from '../components';
 import { JOURNEY_LABEL, JOURNEY_STAGES } from '../constants';
 import { useExporterProfiles, usePrefetchCompany } from '../hooks';
 import { preloadExporterDetailPage } from '../lazyPages';
@@ -227,9 +227,11 @@ export function PipelinePage() {
 
   return (
     <div>
+      {/* Reached from the side navigation, which marks Pipeline as current while this
+          `/companies?view=board` URL is open (`navRowForPath`). The in-page List/Pipeline
+          switch is gone: it offered the same two screens the navigation already does. */}
       <PageHeader
         title="Companies"
-        meta={<CompaniesViewSwitch view="board" />}
         actions={
           <form
             role="search"

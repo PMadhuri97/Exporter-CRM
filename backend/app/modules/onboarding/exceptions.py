@@ -946,6 +946,32 @@ class FollowUpRescheduleInPastError(AnerBaseException):
         )
 
 
+class ActivityDueInPastError(AnerBaseException):
+    """An activity logged with a follow-up already due.
+
+    The third of the same rule, after ``CONVERSATION_CHECK_BACK_IN_PAST`` and
+    ``FOLLOW_UP_RESCHEDULE_IN_PAST``: a follow-up that starts overdue is a mistyped
+    date, not a plan, and it makes the overdue count on the Follow-ups page mean less.
+    Rescheduling one into the past was already refused; creating one that way was not,
+    which left the same mistake possible by a different door.
+
+    Only ``due_at`` is checked. ``occurred_at`` is not a caller's to set — no request
+    schema carries it, and the server stamps it — so an activity cannot be backdated
+    through the API, only by a seed or an import calling the service directly.
+    """
+
+    def __init__(self, customer_id: object, due_at: object) -> None:
+        super().__init__(
+            detail=(
+                f"A follow-up for company {customer_id} cannot be due at {due_at!s}, "
+                "which is in the past"
+            ),
+            error_code="ACTIVITY_DUE_IN_PAST",
+            status_code=422,
+            extensions={"due_at": str(due_at)},
+        )
+
+
 class FollowUpCompletionIsImmutableError(AnerBaseException):
     """Something tried to change or remove a completion.
 

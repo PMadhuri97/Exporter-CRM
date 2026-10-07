@@ -34,7 +34,7 @@ import {
   Textarea,
 } from '@/components';
 import { Icon, type IconComponent } from '@/design/icons';
-import { formatDate, formatDateTime, humanize } from '@/lib/format';
+import { formatDate, formatDateTime, humanize, nowForDateTimeInput } from '@/lib/format';
 
 import { CONVERSATION_STATUS, ConversationPath, OpenDealPrompt, actorLabel } from '../../components';
 import { ConversationBadge } from '../../components/StatusBadge';
@@ -180,7 +180,16 @@ function ActivityComposer({
         {dueAllowed ? (
           <label className="block w-56 text-caption text-ink-3">
             Due
-            <Input type="datetime-local" className="mt-1" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
+            {/* The calendar does not offer a moment that has already passed: the server
+                refuses a follow-up that would arrive overdue, and an error after the
+                fact is a worse way to learn it than a date that cannot be picked. */}
+            <Input
+              type="datetime-local"
+              className="mt-1"
+              min={nowForDateTimeInput()}
+              value={dueAt}
+              onChange={(event) => setDueAt(event.target.value)}
+            />
           </label>
         ) : (
           <span />
