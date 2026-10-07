@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'backend/**'
+      - 'deployments/**'
       - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:
 
@@ -69,6 +70,10 @@ jobs:
           ECR_REPOSITORY: ${{ env.ECR_BACKEND_REPO }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          # Ensure root deployments directory is present in backend context for Dockerfile
+          if [ -d "./deployments" ]; then
+            cp -r ./deployments ./backend/
+          fi
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest ./backend
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
