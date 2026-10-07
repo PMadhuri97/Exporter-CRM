@@ -1,7 +1,9 @@
 name: Deploy Backend to Amazon ECS
 
 on:
-  push:
+  pull_request:
+    types:
+      - closed
     branches:
       - main
     paths:
@@ -23,12 +25,15 @@ env:
 jobs:
   deploy-backend:
     name: Build & Deploy Backend
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.ref }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -68,7 +73,7 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ env.ECR_BACKEND_REPO }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
         run: |
           # Ensure root deployments directory is present in backend context for Dockerfile
           if [ -d "./deployments" ]; then
