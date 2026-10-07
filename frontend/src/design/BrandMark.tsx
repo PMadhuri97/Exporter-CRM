@@ -32,11 +32,11 @@ export function BrandMark({
       )}
       {wordmark ? (
         <span className="flex items-baseline gap-2 whitespace-nowrap">
-          <span className="text-heading font-semibold text-ink">Aner Lab</span>
+          <span className="text-heading font-semibold text-ink">Aner Labs</span>
           {product && <span className="text-body text-ink-3">Exporter CRM</span>}
         </span>
       ) : (
-        <span className="sr-only">Aner Lab Exporter CRM</span>
+        <span className="sr-only">Aner Labs Exporter CRM</span>
       )}
     </span>
   );
