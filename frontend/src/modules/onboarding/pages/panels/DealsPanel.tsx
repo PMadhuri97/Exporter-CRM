@@ -60,7 +60,6 @@ export function DealsPanel({
   return (
     <Panel
       title="Deals"
-      description="What this company wants financed. A company may have any number, over time and at once."
       actions={
         <>
           <Link to={paths.company(customerId, 'documents')} className={buttonClasses({ size: 'sm' })}>

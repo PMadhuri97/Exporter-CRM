@@ -133,7 +133,8 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    **Record 2 results**. The header shows the server's suggestion. **Record: Qualified**
    → a note → **Confirm**. The company has no relationship manager yet, so the form says
    *you will become its RM*: qualifying makes it yours. The journey moves to
-   **`PROSPECT`** (the path updates), and *Details* → *Relationship manager* names you.
+   **`PROSPECT`** (the path updates), *Details* → *Relationship manager* names you, and
+   the company is now under **My companies** in the side navigation.
    (On a company with no RM, *Details* also offers **Assign to me** at any time; an
    administrator sees **Assign**, **Change** and **Clear**, the last two with a reason.) The
    person decides: recording the opposite of the suggestion is allowed and is kept

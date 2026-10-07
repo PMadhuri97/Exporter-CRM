@@ -348,7 +348,6 @@ export function QualificationPanel({ customerId }: { customerId: string }) {
     <Panel
       aria-label="Qualification"
       title="Qualification"
-      description="Criteria are set by an administrator. The suggestion is not the decision — a person decides."
       actions={
         data && (
           <div className="flex items-center gap-2 text-body text-ink-2">

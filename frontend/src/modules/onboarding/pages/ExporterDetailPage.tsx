@@ -7,7 +7,7 @@
  *   Details            panels/CompanyPanel.tsx
  *   Qualification      panels/QualificationPanel.tsx
  *   Activity           panels/ConversationPanel.tsx
- *   Deals              panels/DealsPanel.tsx and trade
+ *   Deals              panels/CompanyDealsTab.tsx (deals, and trade by counterparty)
  *   Documents          panels/DocumentsPanel.tsx
  *   Background check   panels/BackgroundCheckPanel.tsx
  *   History            components/HistoryTimeline.tsx
@@ -25,7 +25,6 @@ import { Link, useParams } from 'react-router-dom';
 
 import {
   ErrorState,
-  Panel,
   Path,
   RecordHeader,
   Skeleton,
@@ -44,10 +43,8 @@ import { useCurrentUser } from '@/platform/auth';
 import { rememberCompany } from '@/platform/shell';
 
 import {
-  CompanyDealsList,
   CompanyRelatedCards,
   CompanyHistory,
-  CompanyTradePanel,
   GstRegistrationsSection,
   IdentityGapNotice,
   MarkerBadge,
@@ -74,7 +71,7 @@ import type { ExporterActivityType, ExporterJourney, ExporterProfileDetail } fro
 
 import { CompanyPanel } from './panels/CompanyPanel';
 import { ConversationPanel } from './panels/ConversationPanel';
-import { DealsPanel } from './panels/DealsPanel';
+import { CompanyDealsTab } from './panels/CompanyDealsTab';
 import { DocumentsPanel } from './panels/DocumentsPanel';
 import { QualificationPanel } from './panels/QualificationPanel';
 
@@ -374,30 +371,8 @@ export function ExporterDetailPage() {
             )}
           </TabsContent>
           <TabsContent value="deals">
-            {/* Both sides of this company's trade: selling, where a deal is
-                opened, and buying, a plain list. Then what came of it, invoice by
-                invoice — never totalled; amounts stay in their own currency. */}
-            <div className="flex flex-col gap-8">
-              <DealsPanel customerId={customerId} isStaff={isStaff} />
-              <Panel
-                title="Buying"
-                description="Deals where this company is the buyer. A company can be a buyer on one deal and a seller on another."
-              >
-                <CompanyDealsList companyId={customerId} as="buyer" />
-              </Panel>
-              <Panel
-                title="Trade — sold to"
-                description="Who this company has invoiced, and what became of each invoice. Nothing here is totalled: amounts stay in the currency they were invoiced in."
-              >
-                <CompanyTradePanel companyId={customerId} as="seller" canRecord={isStaff} />
-              </Panel>
-              <Panel
-                title="Trade — bought from"
-                description="Who has invoiced this company. The same pair in the other direction is a different relationship, with different invoices."
-              >
-                <CompanyTradePanel companyId={customerId} as="buyer" canRecord={isStaff} />
-              </Panel>
-            </div>
+            {/* Deals and trade as two views: each counterparty once per view. */}
+            <CompanyDealsTab customerId={customerId} isStaff={isStaff} />
           </TabsContent>
           <TabsContent value="documents">
             <DocumentsPanel customerId={customerId} isStaff={isStaff} />

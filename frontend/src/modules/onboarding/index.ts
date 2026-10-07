@@ -1,6 +1,6 @@
 // modules/onboarding — public facade.
 // Other modules import ONLY from here.
-export { CompanyRoutes, LegacyExporterRoutes, PipelineRedirect } from './routes';
+export { CompanyRoutes, LegacyExporterRoutes, MyCompaniesRedirect, PipelineRedirect } from './routes';
 // Loaded on first use: the app router gates each one before it renders.
 export {
   DealDetailPage,

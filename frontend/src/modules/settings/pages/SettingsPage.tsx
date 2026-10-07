@@ -70,16 +70,7 @@ export function SettingsFrame({ section, children }: { section: Section; childre
     <div>
       <PageHeader
         title="Settings"
-        description={
-          <>
-            {canViewUsers || canViewRoles
-              ? 'Your details, the accounts that can sign in, and what each role may do.'
-              : 'Your details and sessions.'}
-            {roleName !== null && !isLoading && (
-              <span className="text-ink-3"> Signed in as {roleName}.</span>
-            )}
-          </>
-        }
+        description={roleName !== null && !isLoading ? `Signed in as ${roleName}.` : undefined}
       />
       <div className="grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)]">
         {/* A permission still loading renders no admin section speculatively: the

@@ -174,7 +174,6 @@ export function DealsPage() {
     <div>
       <PageHeader
         title="Deals"
-        description="Every deal, across companies. The corridor is the seller's country, then the buyer's."
         actions={
           canOpen && (
             <Button variant="primary" onClick={() => update({ new: '1' })}>

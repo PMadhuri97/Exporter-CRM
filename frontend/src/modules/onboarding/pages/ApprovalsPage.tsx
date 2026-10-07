@@ -2,31 +2,32 @@
  * Compliance work — the compliance working day (frontend-plan §8.8), for COMPLIANCE
  * and ADMIN only (`compliance.queue`; the module does not exist for anyone else).
  *
- * The rail on the left is the worklists, computed by the server on every read:
+ * **One list at a time.** Tabs across the top, each with its count:
  *
- * - **Awaiting review** — checks nobody has picked up (`?view=awaiting`); the case
- *   header offers **Assign to me**;
- * - **My reviews** — the reviews this user holds, under review, waiting on
- *   information or with their proposal out for approval (`?view=mine`);
- * - **Awaiting your signature** — proposals this user may approve: not their own, not
- *   one they review, not a company they are RM of, and a high-risk Clear only for a
- *   senior approver (`/background-check/proposals?status=open&awaiting=me`);
+ * - **Awaiting review** — checks nobody has picked up (`?view=awaiting`);
+ * - **My reviews** — the reviews this user holds: under review, waiting on information,
+ *   or with their proposal out for approval (`?view=mine`);
+ * - **To approve** — proposals this user may approve: not their own, not one they
+ *   review, not a company they are RM of, and a high-risk Clear only for a senior
+ *   approver (`/background-check/proposals?status=open&awaiting=me`);
  * - **Re-KYC due**;
- * - for ADMIN and holders of `compliance:assign` only: **In review (everyone)**,
- *   **Overdue** and **Needs attention** (no one can approve it, returned twice, or a
- *   deactivated reviewer).
+ * - **Team**, for ADMIN and holders of `compliance:assign` only: everyone's reviews,
+ *   the overdue and what needs attention, as a filter within the tab.
  *
- * Each row shows how long it has waited and whether it is due soon or overdue, in
- * business time. The selected case is kept in the URL (`?case=`), and the right side is
- * the company's Background check tab — the same component the company record shows —
- * where the reviewer is claimed, released or reassigned and proposals approved.
+ * The list is on the left and the chosen company's Background check on the right —
+ * the same component the company record shows. Both the tab and the company are in the
+ * URL (`?tab=`, `?company=`). The selection is the **company**, not its row: taking a
+ * review (**Assign to me**, on the reviewer line of the case) moves it from *Awaiting
+ * review* to *My reviews*, and the page follows it there with the same company open,
+ * rather than jumping to the top of a list.
+ *
+ * Every list is computed by the server on read, with business-time deadlines.
  */
 
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import { Button, buttonClasses, EmptyLine, PageHeader, Skeleton } from '@/components';
-import { ApiError } from '@/lib/api/errors';
+import { buttonClasses, EmptyLine, PageHeader, Segmented, Skeleton } from '@/components';
 import { cn } from '@/lib/cn';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { useHasPermission } from '@/platform/access';
@@ -37,13 +38,12 @@ import { RiskChip } from '../components/RiskChip';
 import { STAGE_LABEL, waitedFor } from '../components/work-item-labels';
 import { DueChip, WorkItemChips } from '../components/WorkItemChips';
 import {
-  useChangeReviewer,
   useComplianceWork,
   useProposalsAwaitingMe,
   useReKycDue,
 } from '../hooks';
 import { paths } from '../paths';
-import type { BackgroundCheckProposal, ComplianceWorkItem, ComplianceWorkView } from '../types';
+import type { ComplianceWorkItem } from '../types';
 
 const BackgroundCheckPanel = lazy(() =>
   import('./panels/BackgroundCheckPanel').then((m) => ({ default: m.BackgroundCheckPanel })),
@@ -51,50 +51,52 @@ const BackgroundCheckPanel = lazy(() =>
 
 const QUEUE_LIMIT = 50;
 
-type Section = ComplianceWorkView | 'signature' | 'rekyc';
+type Tab = 'awaiting' | 'mine' | 'approve' | 'rekyc' | 'team';
+type TeamView = 'in_review' | 'overdue' | 'needs_attention';
 
-interface Case {
-  key: string;
-  section: Section;
-  companyId: string;
-  companyName: string;
-  proposal?: BackgroundCheckProposal;
-  item?: ComplianceWorkItem;
-}
-
-const SECTION_TITLE: Record<Section, string> = {
+const TAB_LABEL: Record<Tab, string> = {
   awaiting: 'Awaiting review',
   mine: 'My reviews',
-  signature: 'Awaiting your signature',
+  approve: 'To approve',
   rekyc: 'Re-KYC due',
-  in_review: 'In review (everyone)',
-  overdue: 'Overdue',
+  team: 'Team',
+};
+
+const TEAM_LABEL: Record<TeamView, string> = {
   needs_attention: 'Needs attention',
+  overdue: 'Overdue',
+  in_review: 'Everyone’s reviews',
 };
 
-const SECTION_EMPTY: Record<Section, string> = {
+const EMPTY: Record<Tab, string> = {
   awaiting: 'Every started check has a reviewer.',
-  mine: 'You hold no reviews.',
-  signature: 'Nothing is waiting for your signature.',
+  mine: 'You hold no reviews. Take one from Awaiting review.',
+  approve: 'Nothing is waiting for your signature.',
   rekyc: 'No Clear is due for Re-KYC.',
-  in_review: 'No checks are under review.',
-  overdue: 'Nothing is overdue.',
-  needs_attention: 'Nothing needs your attention.',
+  team: 'Nothing here.',
 };
 
-function QueueRow({
-  selected,
-  onSelect,
-  title,
-  detail,
-  extra,
-}: {
-  selected: boolean;
-  onSelect: () => void;
-  title: string;
+/** One row of the list: the company, then one line of what it is waiting for. */
+interface Row {
+  companyId: string;
+  companyName: string;
   detail: string;
   extra?: ReactNode;
-}) {
+}
+
+function workRow(item: ComplianceWorkItem, showReviewer: boolean): Row {
+  const parts = [STAGE_LABEL[item.stage], `waited ${waitedFor(item.waiting_since)}`];
+  if (showReviewer && item.reviewer_name) parts.push(`with ${item.reviewer_name}`);
+  if (item.stage === 'approval' && item.proposed_by_name) parts.push(`by ${item.proposed_by_name}`);
+  return {
+    companyId: item.company_id,
+    companyName: item.company_name ?? 'Unnamed company',
+    detail: parts.join(' · '),
+    extra: <WorkItemChips item={item} />,
+  };
+}
+
+function ListRow({ row, selected, onSelect }: { row: Row; selected: boolean; onSelect: () => void }) {
   return (
     <li>
       <button
@@ -110,259 +112,191 @@ function QueueRow({
         )}
       >
         <span className={cn('block truncate text-body font-semibold', selected ? 'text-accent' : 'text-ink')}>
-          {title}
+          {row.companyName}
         </span>
         <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-caption text-ink-3">
-          {detail}
-          {extra}
+          {row.detail}
+          {row.extra}
         </span>
       </button>
     </li>
   );
 }
 
-/** "In review · waited 3h · with Priya" — never an identifier or a reason. */
-function itemDetail(item: ComplianceWorkItem, section: Section): string {
-  const parts = [STAGE_LABEL[item.stage], `waited ${waitedFor(item.waiting_since)}`];
-  if (section !== 'mine' && item.reviewer_name) parts.push(`with ${item.reviewer_name}`);
-  if (item.stage === 'approval' && item.proposed_by_name) parts.push(`by ${item.proposed_by_name}`);
-  return parts.join(' · ');
-}
-
-function SectionBlock({
-  section,
-  loading,
-  failed,
-  children,
-  count,
-}: {
-  section: Section;
-  loading: boolean;
-  failed: boolean;
-  count: number;
-  children: ReactNode;
-}) {
-  return (
-    <section aria-label={SECTION_TITLE[section]}>
-      <h2 className="flex items-baseline justify-between text-heading font-semibold text-ink">
-        {SECTION_TITLE[section]}
-        <span className="text-secondary font-normal tabular-nums text-ink-3">{count}</span>
-      </h2>
-      {loading ? (
-        <Skeleton className="mt-2 h-12" />
-      ) : failed ? (
-        <p role="alert" className="mt-2 text-secondary text-negative">
-          Couldn't load this list.
-        </p>
-      ) : count === 0 ? (
-        <EmptyLine>{SECTION_EMPTY[section]}</EmptyLine>
-      ) : (
-        <ul className="mt-2 space-y-1">{children}</ul>
-      )}
-    </section>
-  );
-}
-
-/** "Assign to me" for a case from Awaiting review. */
-function ClaimButton({ companyId }: { companyId: string }) {
-  const change = useChangeReviewer(companyId);
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        variant="primary"
-        loading={change.isPending}
-        onClick={() => change.mutate({ kind: 'CLAIM' })}
-      >
-        Assign to me
-      </Button>
-      {change.isError && (
-        <span role="alert" className="text-caption text-negative">
-          {change.error instanceof ApiError ? change.error.message : 'Could not take the review.'}
-        </span>
-      )}
-    </div>
-  );
-}
-
 export function ApprovalsPage() {
   const lead = useHasPermission('compliance:assign');
+  const [params, setParams] = useSearchParams();
+  const tabs: Tab[] = ['awaiting', 'mine', 'approve', 'rekyc', ...(lead ? (['team'] as Tab[]) : [])];
+  const requested = params.get('tab') as Tab | null;
+  const tab: Tab = requested && tabs.includes(requested) ? requested : 'awaiting';
+  const teamRequested = params.get('team') as TeamView | null;
+  const teamView: TeamView =
+    teamRequested && teamRequested in TEAM_LABEL ? teamRequested : 'needs_attention';
+
+  // Every tab's list is read, so each tab can show its count.
   const awaiting = useComplianceWork('awaiting');
   const mine = useComplianceWork('mine');
-  const inReview = useComplianceWork('in_review', lead);
-  const overdue = useComplianceWork('overdue', lead);
-  const attention = useComplianceWork('needs_attention', lead);
+  const team = useComplianceWork(teamView, lead);
   const proposals = useProposalsAwaitingMe({ limit: QUEUE_LIMIT, enabled: true });
   const due = useReKycDue({ limit: QUEUE_LIMIT, enabled: true });
-  const [params, setParams] = useSearchParams();
 
-  const work: [ComplianceWorkView, typeof awaiting][] = [
-    ['awaiting', awaiting],
-    ['mine', mine],
-    ...(lead
-      ? ([
-          ['needs_attention', attention],
-          ['overdue', overdue],
-          ['in_review', inReview],
-        ] as [ComplianceWorkView, typeof awaiting][])
-      : []),
-  ];
-
-  const workCases = (view: ComplianceWorkView, items: ComplianceWorkItem[]): Case[] =>
-    items.map((item) => ({
-      key: `${view}-${item.company_id}`,
-      section: view,
-      companyId: item.company_id,
-      companyName: item.company_name ?? 'Unnamed company',
-      item,
-    }));
-
-  const cases: Case[] = [
-    ...workCases('awaiting', awaiting.data?.items ?? []),
-    ...workCases('mine', mine.data?.items ?? []),
-    ...(proposals.data?.proposals ?? []).map((proposal) => ({
-      key: `p-${proposal.id}`,
-      section: 'signature' as const,
-      companyId: proposal.company_id,
-      companyName: proposal.company_name ?? 'Unnamed company',
-      proposal,
-    })),
-    ...(due.data?.companies ?? []).map((row) => ({
-      key: `d-${row.company_id}`,
-      section: 'rekyc' as const,
-      companyId: row.company_id,
-      companyName: row.company_name ?? 'Unnamed company',
-    })),
-    ...(lead
-      ? [
-          ...workCases('needs_attention', attention.data?.items ?? []),
-          ...workCases('overdue', overdue.data?.items ?? []),
-          ...workCases('in_review', inReview.data?.items ?? []),
-        ]
-      : []),
-  ];
-  const selectedKey = params.get('case') ?? cases[0]?.key ?? null;
-  const selected = cases.find((entry) => entry.key === selectedKey) ?? cases[0] ?? null;
-
-  const select = (key: string) => {
+  const update = (changes: Record<string, string | null>) =>
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
-        next.set('case', key);
+        for (const [key, value] of Object.entries(changes)) {
+          if (value === null) next.delete(key);
+          else next.set(key, value);
+        }
         return next;
       },
       { replace: true },
     );
+
+  const rowsFor = (which: Tab): Row[] => {
+    switch (which) {
+      case 'awaiting':
+        return (awaiting.data?.items ?? []).map((item) => workRow(item, false));
+      case 'mine':
+        return (mine.data?.items ?? []).map((item) => workRow(item, false));
+      case 'team':
+        return (team.data?.items ?? []).map((item) => workRow(item, true));
+      case 'approve':
+        return (proposals.data?.proposals ?? []).map((proposal) => ({
+          companyId: proposal.company_id,
+          companyName: proposal.company_name ?? 'Unnamed company',
+          detail: `${proposedMoveLabel(proposal.to_value)} · by ${actorLabel(proposal.proposed_by_name, proposal.proposed_by)}, ${formatDateTime(proposal.proposed_at)}`,
+          extra: (
+            <>
+              {proposal.risk_rating && <RiskChip risk={proposal.risk_rating} />}
+              <DueChip dueAt={proposal.due_at} isOverdue={proposal.is_overdue} isDueSoon={proposal.is_due_soon} />
+            </>
+          ),
+        }));
+      case 'rekyc':
+        return (due.data?.companies ?? []).map((row) => ({
+          companyId: row.company_id,
+          companyName: row.company_name ?? 'Unnamed company',
+          detail: `${row.is_expired ? 'Clear expired' : 'Clear expires'} ${formatDate(row.expires_at)}`,
+        }));
+    }
   };
 
-  const loading = awaiting.isLoading && mine.isLoading && proposals.isLoading && due.isLoading;
+  const queryFor: Record<Tab, { isLoading: boolean; isError: boolean }> = {
+    awaiting,
+    mine,
+    team,
+    approve: proposals,
+    rekyc: due,
+  };
+  const countFor: Record<Tab, number | undefined> = {
+    awaiting: awaiting.data?.total,
+    mine: mine.data?.total,
+    approve: proposals.data?.total,
+    rekyc: due.data?.total,
+    team: undefined,
+  };
 
-  const workSection = (view: ComplianceWorkView, query: typeof awaiting) => (
-    <SectionBlock
-      key={view}
-      section={view}
-      loading={query.isLoading}
-      failed={query.isError}
-      count={query.data?.total ?? 0}
-    >
-      {(query.data?.items ?? []).map((item) => (
-        <QueueRow
-          key={item.company_id}
-          selected={selected?.key === `${view}-${item.company_id}`}
-          onSelect={() => select(`${view}-${item.company_id}`)}
-          title={item.company_name ?? 'Unnamed company'}
-          detail={itemDetail(item, view)}
-          extra={<WorkItemChips item={item} />}
-        />
-      ))}
-    </SectionBlock>
-  );
+  const rows = rowsFor(tab);
+  const query = queryFor[tab];
+  // The chosen company stays chosen while its row moves between lists (a claim, an
+  // approval): the case is the company, and its name is found in whichever list has it.
+  const chosenId = params.get('company') ?? rows[0]?.companyId ?? null;
+  const chosenName =
+    tabs.flatMap(rowsFor).find((row) => row.companyId === chosenId)?.companyName ?? 'Company';
+  const awaitingIds = new Set((awaiting.data?.items ?? []).map((item) => item.company_id));
+  const mineIds = new Set((mine.data?.items ?? []).map((item) => item.company_id));
+
+  // The chosen company is written to the URL, so it survives its row moving.
+  useEffect(() => {
+    if (!params.get('company') && rows[0]) update({ company: rows[0].companyId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when the list's first row arrives
+  }, [rows[0]?.companyId]);
+
+  // Taking a review (on the reviewer line below) moves it from Awaiting review to My
+  // reviews: the page follows it there, with the same company open.
+  useEffect(() => {
+    if (tab === 'awaiting' && chosenId && !awaitingIds.has(chosenId) && mineIds.has(chosenId)) {
+      update({ tab: 'mine' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reacts to the two lists changing
+  }, [tab, chosenId, awaiting.data, mine.data]);
 
   return (
     <div>
-      <PageHeader
-        title="Compliance work"
-        description="Checks waiting for a reviewer, your reviews, decisions waiting for a second signature, and companies due for Re-KYC. Choose a case to open its background check."
+      <PageHeader title="Compliance work" />
+      <Segmented
+        label="Compliance worklists"
+        value={tab}
+        onValueChange={(next) => update({ tab: next, company: null })}
+        options={tabs.map((value) => ({
+          value,
+          label: TAB_LABEL[value],
+          count: countFor[value] !== undefined && countFor[value]! > 0 ? countFor[value] : undefined,
+        }))}
+        className="mb-4"
       />
+
       <div className="grid gap-4 xl:grid-cols-[22.5rem_minmax(0,1fr)] xl:items-start">
-        <nav aria-label="Review queue" className="space-y-6 rounded border border-line bg-surface p-4 xl:sticky xl:top-0 xl:h-fit">
-          {work.slice(0, 2).map(([view, query]) => workSection(view, query))}
-          <SectionBlock
-            section="signature"
-            loading={proposals.isLoading}
-            failed={proposals.isError}
-            count={proposals.data?.total ?? 0}
-          >
-            {(proposals.data?.proposals ?? []).map((proposal) => (
-              <QueueRow
-                key={proposal.id}
-                selected={selected?.key === `p-${proposal.id}`}
-                onSelect={() => select(`p-${proposal.id}`)}
-                title={proposal.company_name ?? 'Unnamed company'}
-                detail={`${proposedMoveLabel(proposal.to_value)} · by ${actorLabel(proposal.proposed_by_name, proposal.proposed_by)}, ${formatDateTime(proposal.proposed_at)}`}
-                extra={
-                  <>
-                    {proposal.risk_rating && <RiskChip risk={proposal.risk_rating} />}
-                    <DueChip
-                      dueAt={proposal.due_at}
-                      isOverdue={proposal.is_overdue}
-                      isDueSoon={proposal.is_due_soon}
-                    />
-                  </>
-                }
-              />
-            ))}
-          </SectionBlock>
-          <SectionBlock
-            section="rekyc"
-            loading={due.isLoading}
-            failed={due.isError}
-            count={due.data?.total ?? 0}
-          >
-            {(due.data?.companies ?? []).map((row) => (
-              <QueueRow
-                key={row.company_id}
-                selected={selected?.key === `d-${row.company_id}`}
-                onSelect={() => select(`d-${row.company_id}`)}
-                title={row.company_name ?? 'Unnamed company'}
-                detail={`${row.is_expired ? 'Clear expired' : 'Clear expires'} ${formatDate(row.expires_at)}`}
-              />
-            ))}
-          </SectionBlock>
-          {work.slice(2).map(([view, query]) => workSection(view, query))}
+        <nav
+          aria-label={TAB_LABEL[tab]}
+          className="rounded border border-line bg-surface p-3 xl:sticky xl:top-0 xl:h-fit"
+        >
+          {tab === 'team' && (
+            <Segmented
+              size="sm"
+              label="Team view"
+              value={teamView}
+              onValueChange={(next) => update({ team: next, company: null })}
+              options={(Object.keys(TEAM_LABEL) as TeamView[]).map((value) => ({
+                value,
+                label: TEAM_LABEL[value],
+              }))}
+              className="mb-3"
+            />
+          )}
+          {query.isLoading ? (
+            <div className="space-y-2" aria-hidden>
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+            </div>
+          ) : query.isError ? (
+            <p role="alert" className="text-secondary text-negative">
+              Couldn't load this list.
+            </p>
+          ) : rows.length === 0 ? (
+            <EmptyLine className="py-2">{EMPTY[tab]}</EmptyLine>
+          ) : (
+            <ul className="space-y-1">
+              {rows.map((row) => (
+                <ListRow
+                  key={row.companyId}
+                  row={row}
+                  selected={row.companyId === chosenId}
+                  onSelect={() => update({ company: row.companyId })}
+                />
+              ))}
+            </ul>
+          )}
         </nav>
 
         <section aria-label="Case" className="min-w-0">
-          {selected ? (
+          {chosenId ? (
             <>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border border-line bg-surface px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-caption text-ink-3">{SECTION_TITLE[selected.section]}</p>
-                  <p className="truncate text-title font-semibold text-ink">{selected.companyName}</p>
-                  <p className="text-secondary text-ink-2">
-                    {selected.section === 'signature'
-                      ? 'Approve or reject it in the status card below.'
-                      : selected.section === 'rekyc'
-                        ? 'Start the cycle below.'
-                        : selected.section === 'awaiting'
-                          ? 'Nobody is reviewing this yet.'
-                          : 'The background check is below.'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {selected.section === 'awaiting' && <ClaimButton companyId={selected.companyId} />}
-                  <Link to={paths.company(selected.companyId)} className={buttonClasses()}>
-                    Open company
-                  </Link>
-                </div>
+                <p className="min-w-0 truncate text-title font-semibold text-ink">{chosenName}</p>
+                <Link to={paths.company(chosenId)} className={buttonClasses()}>
+                  Open company
+                </Link>
               </div>
               <Suspense fallback={<Skeleton className="h-60 rounded" />}>
-                <BackgroundCheckPanel key={selected.companyId} customerId={selected.companyId} isStaff />
+                <BackgroundCheckPanel key={chosenId} customerId={chosenId} isStaff />
               </Suspense>
             </>
           ) : (
-            !loading && (
+            !query.isLoading && (
               <div className="rounded border border-line bg-surface px-4 py-3">
-                <EmptyLine className="py-0">The queue is empty. Nothing needs a compliance decision right now.</EmptyLine>
+                <EmptyLine className="py-0">Choose a company from the list to open its background check.</EmptyLine>
               </div>
             )
           )}

@@ -177,7 +177,6 @@ export function CompanyImportPage() {
     <div className="space-y-4">
       <PageHeader
         title="Import companies"
-        description="Each row is checked and matched like a company added by hand. New companies start as leads; possible duplicates are reported, never merged. Up to 1,000 rows per file."
         actions={
           <Button onClick={() => void downloadTemplate()}>
             <Icon.download size={16} aria-hidden />

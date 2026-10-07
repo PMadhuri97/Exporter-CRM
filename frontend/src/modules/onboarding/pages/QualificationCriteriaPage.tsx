@@ -423,7 +423,6 @@ export function QualificationCriteriaPage() {
       <PageHeader
         as="h2"
         title="Qualification criteria"
-        description="What a lead is measured against before someone decides whether it qualifies. Every change is a new version; results keep the version they were recorded against."
         actions={
           <Button variant="primary" onClick={() => open(null)}>
             <Icon.add size={15} aria-hidden />

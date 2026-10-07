@@ -241,7 +241,7 @@ it('says "not known" when somebody looked and could not say', async () => {
   expect(screen.queryByText('No outcome recorded')).not.toBeInTheDocument();
 });
 
-it('says a pair with no relationship is unlinked, not that they never traded', async () => {
+it('says when nothing is recorded between the pair', async () => {
   // The seller sells to somebody else, so the list is not empty — this buyer is
   // simply not in it, which is what a deal the buyer migration has not reached
   // looks like.
@@ -260,8 +260,7 @@ it('says a pair with no relationship is unlinked, not that they never traded', a
   );
   renderPanel();
 
-  expect(await screen.findByText(/No trade relationship between these two/)).toBeInTheDocument();
-  expect(screen.getByText(/buyer migration and the relationship backfill/)).toBeInTheDocument();
+  expect(await screen.findByText(/No trade recorded between these two companies/)).toBeInTheDocument();
   // And it does not go on to ask for invoices it has no relationship for.
   expect(getTradeRelationship).not.toHaveBeenCalled();
 });
@@ -270,9 +269,13 @@ it('separates "no invoices yet" from "no relationship"', async () => {
   vi.mocked(getTradeRelationship).mockResolvedValue(detail([]));
   renderPanel();
 
-  expect(await screen.findByText(/no invoice has been recorded/i)).toBeInTheDocument();
+  expect(await screen.findByText(/No invoices recorded yet/)).toBeInTheDocument();
   // The pair is still named: these two are on a deal together.
   expect(screen.getByRole('link', { name: 'Pune Textiles' })).toBeInTheDocument();
+  // Each company is named, and linked, once: no second link to the buyer.
+  expect(screen.getAllByRole('link')).toHaveLength(2);
+  // Each company is named — and linked — once: no second link to the buyer.
+  expect(screen.getAllByRole('link')).toHaveLength(2);
 });
 
 it('does not show a failed read as an empty history', async () => {
@@ -280,7 +283,7 @@ it('does not show a failed read as an empty history', async () => {
   renderPanel();
 
   expect(await screen.findByText(/Couldn't load what these two have traded/)).toBeInTheDocument();
-  expect(screen.queryByText(/No trade relationship/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/No trade recorded/)).not.toBeInTheDocument();
 });
 
 it('serves no identifiers for the counterparty, whatever the role', async () => {

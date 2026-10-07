@@ -28,6 +28,7 @@ import type { UserRole } from '@/lib/api/types';
 import { useAuth, useCurrentUser } from '@/platform/auth';
 
 import { AppRoutes } from './AppRouter';
+import { navRowForPath, navRowsFor } from './modules';
 
 const rendered = vi.hoisted(() => new Set<string>());
 
@@ -110,6 +111,8 @@ const SCREENS: [string, string, UserRole[]][] = [
 const NAV: [string, UserRole[], string, boolean][] = [
   ['Home', READERS, 'home', true],
   ['Companies', READERS, 'companies', true],
+  // An RM's own companies: the list, filtered by owner.
+  ['My companies', ['OPERATIONS'], 'companies', true],
   ['Pipeline', READERS, 'pipeline', true],
   ['Deals', READERS, 'deals', true],
   ['Follow-ups', READERS, 'follow-ups', true],
@@ -319,5 +322,21 @@ describe('a user with no workspace', () => {
     renderAt('/companies');
     expect(await screen.findByRole('heading', { name: NOT_FOUND_TITLE })).toBeInTheDocument();
     expect([...rendered]).toEqual([]);
+  });
+});
+
+describe('My companies', () => {
+  it('is the current row on the list filtered to my companies, and Companies is not', () => {
+    const rows = navRowsFor('OPERATIONS');
+    expect(navRowForPath(rows, '/companies', '?owner=me')?.label).toBe('My companies');
+    expect(navRowForPath(rows, '/companies', '?owner=none')?.label).toBe('Companies');
+    expect(navRowForPath(rows, '/companies', '')?.label).toBe('Companies');
+  });
+
+  it('is offered only to an RM', () => {
+    expect(navRowsFor('OPERATIONS').map((row) => row.label)).toContain('My companies');
+    for (const role of ['COMPLIANCE', 'ADMIN', 'DEVELOPER']) {
+      expect(navRowsFor(role).map((row) => row.label)).not.toContain('My companies');
+    }
   });
 });

@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -15,7 +15,6 @@ import { useHasPermission } from '@/platform/access';
 import { ShellProvider } from '@/platform/shell';
 
 import {
-  claimBackgroundCheckReview,
   listComplianceWork,
   listOpenProposals,
   listReKycDue,
@@ -86,7 +85,7 @@ function item(overrides: Partial<ComplianceWorkItem>): ComplianceWorkItem {
   } as ComplianceWorkItem;
 }
 
-const WORK: Record<ComplianceWorkView, ComplianceWorkItem[]> = {
+const INITIAL_WORK: Record<ComplianceWorkView, ComplianceWorkItem[]> = {
   awaiting: [item({ company_id: 'company-c', company_name: 'Deccan Leather' })],
   mine: [
     item({
@@ -104,11 +103,13 @@ const WORK: Record<ComplianceWorkView, ComplianceWorkItem[]> = {
   needs_attention: [],
 };
 
-function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+let client: QueryClient;
+
+function renderPage(at = '/review') {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/review']}>
+      <MemoryRouter initialEntries={[at]}>
         <ShellProvider>
           <ApprovalsPage />
         </ShellProvider>
@@ -117,8 +118,11 @@ function renderPage() {
   );
 }
 
+let WORK: Record<ComplianceWorkView, ComplianceWorkItem[]>;
+
 beforeEach(() => {
   vi.clearAllMocks();
+  WORK = { ...INITIAL_WORK };
   vi.mocked(useHasPermission).mockReturnValue(false);
   vi.mocked(listComplianceWork).mockImplementation(async (view) => ({
     view,
@@ -147,52 +151,64 @@ beforeEach(() => {
 });
 
 describe('Compliance work', () => {
-  it('lists the reviews, what awaits a signature and what is due, and opens the first case', async () => {
+  it('shows one list at a time, with each tab’s count, and opens the first case', async () => {
     renderPage();
-    const queue = await screen.findByRole('navigation', { name: 'Review queue' });
-    expect(await within(queue).findByText('Bharat Precision Metals')).toBeInTheDocument();
-    expect(within(queue).getByText('Coastal Seafood')).toBeInTheDocument();
-    expect(await within(queue).findByText('Deccan Leather')).toBeInTheDocument();
-    expect(within(queue).getByText('Eastern Spice')).toBeInTheDocument();
-    expect(listOpenProposals).toHaveBeenCalledWith({ awaitingMe: true, limit: 50 });
+    expect(await screen.findByRole('radio', { name: /Awaiting review/ })).toBeChecked();
+    const list = await screen.findByRole('navigation', { name: 'Awaiting review' });
+    expect(await within(list).findByText('Deccan Leather')).toBeInTheDocument();
+    // The other lists are not stacked under it.
+    expect(within(list).queryByText('Eastern Spice')).not.toBeInTheDocument();
+    expect(within(list).queryByText('Bharat Precision Metals')).not.toBeInTheDocument();
     expect(await screen.findByTestId('case-panel')).toHaveTextContent('company-c');
   });
 
   it('says how long, whether it is late and how often it came back', async () => {
-    renderPage();
-    const mine = await screen.findByRole('region', { name: 'My reviews' });
-    expect(await within(mine).findByText('Overdue')).toBeInTheDocument();
-    expect(within(mine).getByText('Returned ×2')).toBeInTheDocument();
-    expect(within(mine).getByText(/In review · waited/)).toBeInTheDocument();
+    renderPage('/review?tab=mine');
+    const list = await screen.findByRole('navigation', { name: 'My reviews' });
+    expect(await within(list).findByText('Overdue')).toBeInTheDocument();
+    expect(within(list).getByText('Returned ×2')).toBeInTheDocument();
+    expect(within(list).getByText(/In review · waited/)).toBeInTheDocument();
   });
 
-  it('offers Assign to me on a review nobody holds', async () => {
-    vi.mocked(claimBackgroundCheckReview).mockResolvedValue({} as never);
+  it('lists what awaits a signature and what is due on their own tabs', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Assign to me' }));
-    await waitFor(() => expect(claimBackgroundCheckReview).toHaveBeenCalledWith('company-c'));
-  });
-
-  it('opens another case when it is chosen', async () => {
-    renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /Coastal Seafood/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: /To approve/ }));
+    const approve = await screen.findByRole('navigation', { name: 'To approve' });
+    expect(await within(approve).findByText('Bharat Precision Metals')).toBeInTheDocument();
+    expect(listOpenProposals).toHaveBeenCalledWith({ awaitingMe: true, limit: 50 });
+    fireEvent.click(screen.getByRole('radio', { name: /Re-KYC due/ }));
+    const due = await screen.findByRole('navigation', { name: 'Re-KYC due' });
+    fireEvent.click(await within(due).findByRole('button', { name: /Coastal Seafood/ }));
     expect(await screen.findByTestId('case-panel')).toHaveTextContent('company-b');
-    expect(screen.queryByRole('button', { name: 'Assign to me' })).not.toBeInTheDocument();
   });
 
-  it('shows everyone’s reviews, the overdue and what needs attention to a lead only', async () => {
+  it('follows a company to My reviews when its review is taken, instead of jumping to the top', async () => {
+    renderPage('/review?tab=awaiting&company=company-c');
+    expect(await screen.findByTestId('case-panel')).toHaveTextContent('company-c');
+    // Someone (the reviewer line in the case) takes the review: the next read moves it.
+    WORK.mine = [...WORK.mine, item({ company_id: 'company-c', company_name: 'Deccan Leather', reviewer_id: 'me' })];
+    WORK.awaiting = [];
+    await act(() => client.invalidateQueries());
+    const list = await screen.findByRole('navigation', { name: 'My reviews' });
+    expect(within(list).getByText('Deccan Leather')).toBeInTheDocument();
+    expect(screen.getByTestId('case-panel')).toHaveTextContent('company-c');
+  });
+
+  it('keeps everyone’s reviews, the overdue and what needs attention from a non-lead', async () => {
     renderPage();
-    await screen.findByRole('region', { name: 'My reviews' });
-    expect(screen.queryByRole('region', { name: 'In review (everyone)' })).not.toBeInTheDocument();
+    await screen.findByRole('navigation', { name: 'Awaiting review' });
+    expect(screen.queryByRole('radio', { name: 'Team' })).not.toBeInTheDocument();
     expect(listComplianceWork).not.toHaveBeenCalledWith('in_review');
   });
 
-  it('gives a compliance lead the lead views', async () => {
+  it('gives a compliance lead the Team tab, filtered within it', async () => {
     vi.mocked(useHasPermission).mockReturnValue(true);
+    WORK.needs_attention = [item({ company_id: 'company-f', company_name: 'Goa Cashew' })];
     renderPage();
-    const everyone = await screen.findByRole('region', { name: 'In review (everyone)' });
-    expect(await within(everyone).findByText('Fortune Textiles')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Overdue' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('radio', { name: 'Team' }));
+    const team = await screen.findByRole('navigation', { name: 'Team' });
+    expect(await within(team).findByText('Goa Cashew')).toBeInTheDocument();
+    fireEvent.click(within(team).getByRole('radio', { name: 'Everyone’s reviews' }));
+    expect(await within(team).findByText('Fortune Textiles')).toBeInTheDocument();
   });
 });

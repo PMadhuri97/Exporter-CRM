@@ -12,7 +12,8 @@
  * The modules' own sub-routes gate their write screens the same way
  * (`modules/onboarding/routes.tsx`: add company, import, RXIL intake).
  *
- * Nav names are the standard CRM ones (frontend-plan §18.1): Home, Companies,
+ * Nav names are the standard CRM ones (frontend-plan §18.1): Home, Companies, My
+ * companies (an RM's own, `/my-companies` redirecting to the list filtered by owner),
  * Pipeline, Deals, Follow-ups, Compliance work (once "Approvals"), Settings. Pipeline is the Companies board
  * (`/pipeline` redirects to it), and `/review` redirects to `/approvals`, so old
  * links keep working.
@@ -28,6 +29,7 @@ import {
   DealRequiredDocumentsPage,
   FollowUpsPage,
   LegacyExporterRoutes,
+  MyCompaniesRedirect,
   PipelineRedirect,
   QualificationCriteriaPage,
   ApprovalsPage,
@@ -108,7 +110,23 @@ export const APP_MODULES: readonly AppModule[] = [
     path: '/companies/*',
     requires: ['crm.read'],
     Screen: CompanyRoutes,
-    nav: { label: 'Companies', to: '/companies', icon: 'company', group: 'main', badge: 'infoRequested' },
+    nav: { label: 'Companies', to: '/companies', icon: 'company', group: 'main' },
+  },
+  // The companies this user is RM of: the list, filtered by owner. Only an RM has
+  // any — ADMIN assigns RMs and COMPLIANCE never is one. Its badge counts the checks
+  // waiting on information for those companies.
+  {
+    id: 'my-companies',
+    path: '/my-companies',
+    requires: ['rm.self'],
+    Screen: MyCompaniesRedirect,
+    nav: {
+      label: 'My companies',
+      to: '/my-companies',
+      icon: 'person',
+      group: 'main',
+      badge: 'infoRequested',
+    },
   },
   // The Companies board. `/pipeline` redirects to `/companies?view=board`, where the
   // nav marks Pipeline, not Companies, as current (`navRowForPath`).
@@ -198,7 +216,8 @@ export function navRowsFor(role: string | null | undefined): NavRow[] {
 
 /**
  * The nav row a location belongs to — the most specific one (`/settings/x` over
- * `/settings`). The Companies board (`?view=board`) belongs to Pipeline.
+ * `/settings`). The Companies board (`?view=board`) belongs to Pipeline, and the list
+ * filtered to the user's own companies (`?owner=me`) to My companies.
  */
 export function navRowForPath(
   rows: readonly NavRow[],
@@ -208,6 +227,10 @@ export function navRowForPath(
   if (pathname === '/companies' && new URLSearchParams(search).get('view') === 'board') {
     const pipeline = rows.find((row) => row.to === '/pipeline');
     if (pipeline) return pipeline;
+  }
+  if (pathname === '/companies' && new URLSearchParams(search).get('owner') === 'me') {
+    const mine = rows.find((row) => row.to === '/my-companies');
+    if (mine) return mine;
   }
   return rows
     .filter((row) => (row.to === '/' ? pathname === '/' : pathname === row.to || pathname.startsWith(`${row.to}/`)))

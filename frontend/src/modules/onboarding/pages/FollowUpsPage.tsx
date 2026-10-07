@@ -413,7 +413,6 @@ export function FollowUpsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Follow-ups"
-        description="What we owe companies next, across every company."
         actions={
           <Segmented
             label="Whose follow-ups"
@@ -495,7 +494,6 @@ export function FollowUpsPage() {
             data-extension="check-backs"
             title={tab === 'overdue' ? 'Check-backs due' : 'Check-backs'}
             count={query.data?.check_backs_total}
-            description="Companies that said not now. Not completed here — move the conversation on the company's page and the check-back clears itself."
             flush
           >
             {query.isLoading ? (

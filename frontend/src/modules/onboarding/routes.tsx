@@ -96,6 +96,12 @@ export function PipelineRedirect() {
   return <Redirect to={paths.board} />;
 }
 
+/** *My companies* in the side navigation: the companies list, filtered to the
+ * companies this user is RM of. */
+export function MyCompaniesRedirect() {
+  return <Redirect to={paths.myCompanies} />;
+}
+
 function DealRedirect() {
   const { dealId = '' } = useParams();
   return <Redirect to={paths.deal(dealId)} />;

@@ -283,7 +283,6 @@ describe('FollowUpsPage', () => {
     // A check-back is dealt with by moving the conversation gauge on the company's
     // page. There is no completion for it and the screen must not imply one.
     expect(within(row).queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.getByText(/move the\s+conversation on the company's page/)).toBeInTheDocument();
   });
 
   it('leaves check-backs out of the tabs where they would be noise', async () => {

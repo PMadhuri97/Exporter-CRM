@@ -87,9 +87,7 @@ export function CompanyDealsList({ companyId, as }: CompanyDealsListProps) {
       <EmptySection>
         {as === 'seller'
           ? 'No deals where this company is the seller.'
-          : // Not simply "none": a deal whose buyer is still a legacy row is
-            // invisible here until the migration links it to this company.
-            'No deals where this company is the buyer. Deals recorded before the buyer migration are not linked to a company yet.'}
+          : 'No deals where this company is the buyer.'}
       </EmptySection>
     );
   }

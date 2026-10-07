@@ -141,8 +141,10 @@ it('offers nothing to open on a relationship with no invoices', async () => {
 
   expect(await screen.findByText(/No invoices recorded/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Invoices/ })).not.toBeInTheDocument();
-  // There is still somewhere to go: the counterparty's own page.
-  expect(screen.getByRole('link', { name: /Open company/ })).toBeInTheDocument();
+  // There is still somewhere to go — the counterparty's own page, through its name —
+  // and only once: no second "Open company" link to the same place.
+  expect(screen.getByRole('link', { name: 'Rotterdam Trading BV' })).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /Open company/ })).not.toBeInTheDocument();
 });
 
 it('marks a counterparty that is not in the sales pipeline', async () => {
@@ -152,12 +154,11 @@ it('marks a counterparty that is not in the sales pipeline', async () => {
   expect(await screen.findByText('Not in the pipeline')).toBeInTheDocument();
 });
 
-it('says an empty seller side is unlinked history, not an absence of trade', async () => {
+it('says when nobody is recorded as a buyer', async () => {
   vi.mocked(listTradeRelationships).mockResolvedValue(list([]));
   renderPanel('seller');
 
   expect(await screen.findByText(/Nobody recorded as a buyer from this company yet/)).toBeInTheDocument();
-  expect(screen.getByText(/buyer migration and the relationship backfill/)).toBeInTheDocument();
 });
 
 it('does not show a failed read as an empty list', async () => {
@@ -196,10 +197,11 @@ describe('recording past trade', () => {
     expect(screen.queryByRole('button', { name: 'Record past invoice' })).not.toBeInTheDocument();
   });
 
-  it('says where past trade can go when there is no relationship yet', async () => {
+  it('offers nothing to record against when there is no relationship yet', async () => {
     vi.mocked(listTradeRelationships).mockResolvedValue(list([]));
     renderPanel('seller', true);
-    expect(await screen.findByText(/once a deal names the other company/)).toBeInTheDocument();
+    expect(await screen.findByText(/Nobody recorded as a buyer/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Record past invoice' })).not.toBeInTheDocument();
   });
 
   it('opens the invoices once a past invoice is recorded', async () => {
