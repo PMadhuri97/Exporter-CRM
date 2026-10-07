@@ -710,6 +710,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/exporters/{customer_id}/contacts/{contact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a contact on an exporter relationship
+         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `name` may be changed but not cleared. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary.
+         */
+        patch: operations["update_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts__contact_id__patch"];
+        trace?: never;
+    };
     "/api/v1/onboarding/exporters/{customer_id}/activities": {
         parameters: {
             query?: never;
@@ -6483,6 +6503,33 @@ export interface components {
             policy_id?: string | null;
         };
         /**
+         * UpdateExporterContactRequest
+         * @description A partial edit: only the fields actually sent are changed.
+         *
+         *     Every field defaults to ``None`` **and** is nullable, which on its own would make
+         *     "leave the phone alone" and "clear the phone" the same request. ``changes()`` below
+         *     tells them apart with ``model_fields_set``, so the router passes on the keys that
+         *     were really in the body — a field left out is untouched, a field sent as ``null`` is
+         *     cleared.
+         *
+         *     ``name`` is the exception: it may be changed but not removed, because a contact with
+         *     no name is a row nobody can act on. ``min_length=1`` refuses both ``null`` and "".
+         */
+        UpdateExporterContactRequest: {
+            /** Name */
+            name?: string | null;
+            /** Role */
+            role?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Department */
+            department?: string | null;
+            /** Is Primary */
+            is_primary?: boolean | null;
+        };
+        /**
          * UpdateExporterProfileRequest
          * @description Update mutable CRM fields. A field left out is unchanged; a field sent
          *     as `null` (or an empty string or list) is cleared — the router keeps the
@@ -8912,6 +8959,61 @@ export interface operations {
                 content?: never;
             };
             /** @description Invalid request body */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts__contact_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateExporterContactRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExporterContactResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such company, or no such contact on it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request body, or a body that changes nothing */
             422: {
                 headers: {
                     [name: string]: unknown;

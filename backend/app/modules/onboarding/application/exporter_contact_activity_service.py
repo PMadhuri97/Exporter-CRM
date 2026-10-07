@@ -21,6 +21,7 @@ company, rather than the 500 an ``IntegrityError`` would surface as.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 import structlog
@@ -30,7 +31,10 @@ from app.modules.onboarding.domain.engagement_views import PendingActivityView
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
-from app.modules.onboarding.exceptions import ExporterProfileNotFoundError
+from app.modules.onboarding.exceptions import (
+    ExporterContactNotFoundError,
+    ExporterProfileNotFoundError,
+)
 from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
     ExporterContactRepository,
@@ -96,6 +100,61 @@ class ExporterContactActivityService:
             customer_id=str(customer_id),
             contact_id=str(contact.id),
             is_primary=is_primary,
+        )
+        return contact
+
+    async def update_contact(
+        self,
+        customer_id: uuid.UUID,
+        contact_id: uuid.UUID,
+        *,
+        changes: Mapping[str, object],
+    ) -> ExporterContact:
+        """Change the fields named in ``changes`` on one contact, and nothing else.
+
+        ``changes`` holds only the fields the caller actually sent, so a field left out
+        keeps its value and a field sent as ``null`` is cleared. Those two cases are not
+        the same thing, which is why this takes a mapping rather than a parameter per
+        column defaulting to ``None`` — with defaults, "leave the phone alone" and
+        "delete the phone" arrive here identically.
+
+        ``is_primary`` is translated to the column's own name and handled like
+        ``add_contact`` does: promoting this contact demotes whichever other one held
+        it, in the same transaction, so the company never has two primaries. Demoting
+        the only primary is allowed — a company with no primary contact is a state the
+        record can be in, and refusing it would trap whoever recorded the wrong one.
+
+        Raises ``ExporterProfileNotFoundError`` when the company does not exist, and
+        ``ExporterContactNotFoundError`` when it does but this contact is not its.
+        """
+        await self._require_company(customer_id)
+        contact = await self._contacts.get_for_customer(customer_id, contact_id)
+        if contact is None:
+            raise ExporterContactNotFoundError(customer_id, contact_id)
+
+        fields = dict(changes)
+        promote = fields.pop("is_primary", None)
+        for name, value in fields.items():
+            setattr(contact, name, value)
+
+        if promote is not None:
+            if promote:
+                # Everyone else, so this row's own flag is not cleared and re-set.
+                await self._contacts.demote_existing_primary(
+                    customer_id, except_id=contact_id
+                )
+            contact.is_primary_contact = bool(promote)
+
+        await self._db.commit()
+        await self._db.refresh(contact)
+
+        logger.info(
+            "exporter_contact.update.ok",
+            customer_id=str(customer_id),
+            contact_id=str(contact_id),
+            # The names only: a contact's email and phone are masked for most roles on
+            # the way out, and a log line is read by people a response is not.
+            changed=sorted(changes),
         )
         return contact
 

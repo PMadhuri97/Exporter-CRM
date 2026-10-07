@@ -45,6 +45,42 @@ class AddExporterContactRequest(BaseModel):
     is_primary: bool = False
 
 
+class UpdateExporterContactRequest(BaseModel):
+    """A partial edit: only the fields actually sent are changed.
+
+    Every field defaults to ``None`` **and** is nullable, which on its own would make
+    "leave the phone alone" and "clear the phone" the same request. ``changes()`` below
+    tells them apart with ``model_fields_set``, so the router passes on the keys that
+    were really in the body — a field left out is untouched, a field sent as ``null`` is
+    cleared.
+
+    ``name`` is the exception: it may be changed but not removed, because a contact with
+    no name is a row nobody can act on. ``min_length=1`` refuses both ``null`` and "".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    role: str | None = Field(default=None, max_length=255)
+    email: Annotated[str | None, NotMasked] = Field(default=None, max_length=255)
+    phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
+    department: str | None = Field(default=None, max_length=255)
+    is_primary: bool | None = None
+
+    def changes(self) -> dict[str, object]:
+        """The fields this request actually carried, under their column names.
+
+        An empty body yields ``{}`` — a request that changes nothing, which the route
+        refuses rather than answering 200 for a write that did not happen.
+        """
+        sent = {name: getattr(self, name) for name in self.model_fields_set}
+        # `name` is the only field that cannot be cleared; a null would have failed
+        # validation above, so this guards the "" that a client might still construct.
+        if sent.get("name") is None:
+            sent.pop("name", None)
+        return sent
+
+
 class ExporterContactResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -266,4 +302,5 @@ __all__ = [
     "PendingActivityListResponse",
     "PendingActivityResponse",
     "SetConversationRequest",
+    "UpdateExporterContactRequest",
 ]

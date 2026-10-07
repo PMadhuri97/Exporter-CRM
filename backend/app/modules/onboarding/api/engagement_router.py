@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.actor_names import actor_names
@@ -38,6 +39,7 @@ from app.modules.onboarding.api.schemas.engagement import (
     PendingActivityListResponse,
     PendingActivityResponse,
     SetConversationRequest,
+    UpdateExporterContactRequest,
 )
 from app.modules.onboarding.application import (
     ConversationService,
@@ -102,6 +104,52 @@ async def add_exporter_contact(
         phone=body.phone,
         department=body.department,
         is_primary=body.is_primary,
+    )
+    return ExporterContactResponse.model_validate(contact).masked_for(current_user)
+
+
+@router.patch(
+    "/{customer_id}/contacts/{contact_id}",
+    response_model=ExporterContactResponse,
+    summary="Change a contact on an exporter relationship",
+    description=(
+        "A partial edit: only the fields present in the body change. A field sent as "
+        "null is cleared; a field left out is untouched. `name` may be changed but not "
+        "cleared. Setting is_primary=true demotes any other primary contact for this "
+        "customer in the same transaction — never two primaries at once; setting it "
+        "false is allowed and leaves the company with no primary."
+    ),
+    responses={
+        200: {"model": ExporterContactResponse},
+        401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        404: {"description": "No such company, or no such contact on it"},
+        422: {"description": "Invalid request body, or a body that changes nothing"},
+    },
+)
+async def update_exporter_contact(
+    customer_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    body: UpdateExporterContactRequest,
+    current_user: Annotated[User, Depends(_STAFF)],
+    db: AsyncSession = Depends(get_db),
+) -> ExporterContactResponse:
+    changes = body.changes()
+    if not changes:
+        # A 200 here would report a write that never happened, and the response would be
+        # indistinguishable from one that did.
+        raise RequestValidationError(
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("body",),
+                    "msg": "Send at least one field to change.",
+                    "input": body.model_dump(exclude_unset=True),
+                }
+            ]
+        )
+    contact = await ExporterContactActivityService(db).update_contact(
+        customer_id, contact_id, changes=changes
     )
     return ExporterContactResponse.model_validate(contact).masked_for(current_user)
 

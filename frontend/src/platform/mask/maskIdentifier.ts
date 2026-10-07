@@ -29,8 +29,15 @@ export function canReveal(role: UserRole): boolean {
 const VISIBLE_SUFFIX_LENGTH = 4;
 const MASK_CHAR = '•';
 
-/** Masks all but the trailing `VISIBLE_SUFFIX_LENGTH` characters. */
-function maskTail(value: string): string {
+/**
+ * Masks all but the trailing `VISIBLE_SUFFIX_LENGTH` characters, **whatever the role**.
+ *
+ * `maskIdentifier` below asks the role first and hands a privileged one the value
+ * untouched. This does not ask: it is for the screen that holds a full value and has
+ * been asked to cover it up — `Identifier`, where the eye starts closed. Passing it a
+ * value the server already masked would mask the mask, so only call it on a full one.
+ */
+export function maskTail(value: string): string {
   if (value.length <= VISIBLE_SUFFIX_LENGTH)
     return MASK_CHAR.repeat(value.length);
   const hiddenLength = value.length - VISIBLE_SUFFIX_LENGTH;

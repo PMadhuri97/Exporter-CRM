@@ -1,7 +1,6 @@
 /**
- * Identifier (frontend-plan §6.6): no reveal or copy control at all for a masked
- * role; compliance and admin read the value in full (as MaskedValue did), with the
- * eye and a copy control.
+ * Identifier (frontend-plan §6.6): no reveal or copy control at all for a masked role;
+ * compliance and admin get an eye that starts closed, and read the value once they ask.
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -31,19 +30,37 @@ describe('Identifier', () => {
     expect(screen.getByText(/234F$/)).toBeInTheDocument();
   });
 
-  it.each<UserRole>(['COMPLIANCE', 'ADMIN'])('shows %s the value in full, with the eye and copy', (role) => {
-    as(role);
-    const write = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText: write } });
-    render(<Identifier kind="PAN" value="AAAPL1234C" />);
+  it.each<UserRole>(['COMPLIANCE', 'ADMIN'])(
+    'covers the value for %s until the eye is opened, and covers it again',
+    (role) => {
+      as(role);
+      const write = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, { clipboard: { writeText: write } });
+      render(<Identifier kind="PAN" value="AAAPL1234C" />);
 
-    expect(screen.getByText('AAAPL1234C')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Reveal value' }));
-    expect(screen.getByRole('button', { name: 'Hide value' })).toHaveAttribute('aria-pressed', 'true');
+      // Closed: the server sent the value in full, and the screen covers it anyway.
+      expect(screen.queryByText('AAAPL1234C')).not.toBeInTheDocument();
+      expect(screen.getByText('••••••234C')).toBeInTheDocument();
+      // Nothing to copy while there is nothing on screen to have read.
+      expect(screen.queryByRole('button', { name: 'Copy value' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy value' }));
-    expect(write).toHaveBeenCalledWith('AAAPL1234C');
-  });
+      // Open.
+      fireEvent.click(screen.getByRole('button', { name: 'Reveal value' }));
+      expect(screen.getByText('AAAPL1234C')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Hide value' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Copy value' }));
+      expect(write).toHaveBeenCalledWith('AAAPL1234C');
+
+      // Closed again — the toggle goes both ways, which is what it failed to do when
+      // the value was shown in full whatever the eye said.
+      fireEvent.click(screen.getByRole('button', { name: 'Hide value' }));
+      expect(screen.queryByText('AAAPL1234C')).not.toBeInTheDocument();
+      expect(screen.getByText('••••••234C')).toBeInTheDocument();
+    },
+  );
 
   it('shows a dash for nothing', () => {
     as('ADMIN');

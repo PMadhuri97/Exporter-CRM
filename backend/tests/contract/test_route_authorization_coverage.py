@@ -204,6 +204,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/imports/companies/template"): STAFF,
     ("POST", f"{CRM}/imports/companies"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/contacts"): STAFF,
+    ("PATCH", f"{CRM}/exporters/{{customer_id}}/contacts/{{contact_id}}"): STAFF,
     ("GET", f"{CRM}/exporters/{{customer_id}}/contacts"): READERS,
     ("POST", f"{CRM}/exporters/{{customer_id}}/activities"): STAFF,
     ("GET", f"{CRM}/exporters/{{customer_id}}/activities"): READERS,

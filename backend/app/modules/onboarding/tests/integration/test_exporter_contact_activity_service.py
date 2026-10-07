@@ -15,6 +15,7 @@ from app.modules.onboarding.application.exporter_contact_activity_service import
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
+from app.modules.onboarding.exceptions import ExporterContactNotFoundError
 from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.database import services as db_services
 
@@ -73,6 +74,100 @@ async def test_add_contact_second_primary_demotes_first():
     assert by_id[first.id].is_primary_contact is False
     assert by_id[second.id].is_primary_contact is True
     assert sum(1 for c in contacts if c.is_primary_contact) == 1
+
+
+async def test_update_contact_changes_only_the_fields_sent():
+    """A partial edit. The field left out of `changes` keeps its value, and the one
+    sent as None is cleared — the distinction the route's `changes()` exists to carry."""
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        contact = await ExporterContactActivityService(db).add_contact(
+            customer_id,
+            name="Jane Doe",
+            role="CFO",
+            email="jane@example.com",
+            phone="+91 99999 11111",
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        await ExporterContactActivityService(db).update_contact(
+            customer_id, contact.id, changes={"role": "CEO", "phone": None}
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        [stored] = await ExporterContactActivityService(db).list_contacts(customer_id)
+
+    assert stored.role == "CEO"
+    assert stored.phone is None
+    # Never sent, so never touched.
+    assert stored.name == "Jane Doe"
+    assert stored.email == "jane@example.com"
+
+
+async def test_update_contact_promoting_demotes_the_other_primary():
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        svc = ExporterContactActivityService(db)
+        first = await svc.add_contact(customer_id, name="Jane Doe", is_primary=True)
+        second = await svc.add_contact(customer_id, name="John Smith")
+
+    async with db_services.AsyncSessionLocal() as db:
+        await ExporterContactActivityService(db).update_contact(
+            customer_id, second.id, changes={"is_primary": True}
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
+
+    by_id = {c.id: c for c in contacts}
+    assert by_id[first.id].is_primary_contact is False
+    assert by_id[second.id].is_primary_contact is True
+    # The unique index would have refused a second one; this proves the demotion ran.
+    assert sum(1 for c in contacts if c.is_primary_contact) == 1
+
+
+async def test_update_contact_may_leave_the_company_with_no_primary():
+    """Demoting the only primary is allowed: refusing it would trap whoever marked the
+    wrong contact, and a company with no primary is a state the record can hold."""
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        contact = await ExporterContactActivityService(db).add_contact(
+            customer_id, name="Jane Doe", is_primary=True
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        await ExporterContactActivityService(db).update_contact(
+            customer_id, contact.id, changes={"is_primary": False}
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        [stored] = await ExporterContactActivityService(db).list_contacts(customer_id)
+
+    assert stored.is_primary_contact is False
+
+
+async def test_update_contact_refuses_another_companys_contact():
+    """The id exists, but not on this company. It reads as missing rather than as
+    somebody else's row, so a guessed id confirms nothing."""
+    customer_id = await make_company()
+    other_customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        theirs = await ExporterContactActivityService(db).add_contact(
+            other_customer_id, name="Not Yours"
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ExporterContactNotFoundError):
+            await ExporterContactActivityService(db).update_contact(
+                customer_id, theirs.id, changes={"name": "Renamed"}
+            )
+
+    # And it is untouched.
+    async with db_services.AsyncSessionLocal() as db:
+        [stored] = await ExporterContactActivityService(db).list_contacts(
+            other_customer_id
+        )
+    assert stored.name == "Not Yours"
 
 
 async def test_list_contacts_returns_all_for_customer():
