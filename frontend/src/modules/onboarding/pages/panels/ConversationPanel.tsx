@@ -34,7 +34,7 @@ import {
   Textarea,
 } from '@/components';
 import { Icon, type IconComponent } from '@/design/icons';
-import { formatDate, formatDateTime, humanize, nowForDateTimeInput } from '@/lib/format';
+import { formatDate, formatDateTime, humanize, nextMinuteForDateTimeInput } from '@/lib/format';
 
 import { CONVERSATION_STATUS, ConversationPath, OpenDealPrompt, actorLabel } from '../../components';
 import { ConversationBadge } from '../../components/StatusBadge';
@@ -186,7 +186,7 @@ function ActivityComposer({
             <Input
               type="datetime-local"
               className="mt-1"
-              min={nowForDateTimeInput()}
+              min={nextMinuteForDateTimeInput()}
               value={dueAt}
               onChange={(event) => setDueAt(event.target.value)}
             />

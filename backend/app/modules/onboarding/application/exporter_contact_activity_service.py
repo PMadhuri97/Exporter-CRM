@@ -21,10 +21,12 @@ company, rather than the 500 an ``IntegrityError`` would surface as.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import structlog
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.engagement_views import PendingActivityView
@@ -34,6 +36,7 @@ from app.modules.onboarding.domain.entities.exporter_contact import ExporterCont
 from app.modules.onboarding.exceptions import (
     ActivityDueInPastError,
     ExporterContactNotFoundError,
+    ExporterContactPrimaryConflictError,
     ExporterProfileNotFoundError,
 )
 from app.modules.onboarding.infrastructure.repositories import (
@@ -43,6 +46,9 @@ from app.modules.onboarding.infrastructure.repositories import (
 )
 
 logger = structlog.get_logger(__name__)
+
+#: The partial unique index behind "at most one primary contact per company".
+_PRIMARY_INDEX = "uq_exporter_contact_primary_per_customer"
 
 
 class ExporterContactActivityService:
@@ -70,9 +76,10 @@ class ExporterContactActivityService:
     ) -> ExporterContact:
         """Create a contact. When ``is_primary=True``, demotes any existing
         primary contact for ``customer_id`` in the same transaction as the
-        insert — a single service-layer call a caller cannot race into two
-        primaries, backed by ``uq_exporter_contact_primary_per_customer`` as
-        the database-level guarantee if this method is ever bypassed.
+        insert, so one call never leaves two primaries. Two calls racing for the
+        same company can still both promote; ``uq_exporter_contact_primary_per_customer``
+        refuses the second, and it surfaces as ``ExporterContactPrimaryConflictError``
+        (409) rather than a 500.
 
         Raises ``ExporterProfileNotFoundError`` (404) when no company has this
         ``customer_id``, before demoting anything — so a write refused for a
@@ -92,8 +99,9 @@ class ExporterContactActivityService:
             department=department,
             is_primary_contact=is_primary,
         )
-        await self._contacts.create(contact)
-        await self._db.commit()
+        async with self._primary_conflict_as_409(customer_id):
+            await self._contacts.create(contact)
+            await self._db.commit()
         await self._db.refresh(contact)
 
         logger.info(
@@ -125,8 +133,10 @@ class ExporterContactActivityService:
         the only primary is allowed — a company with no primary contact is a state the
         record can be in, and refusing it would trap whoever recorded the wrong one.
 
-        Raises ``ExporterProfileNotFoundError`` when the company does not exist, and
-        ``ExporterContactNotFoundError`` when it does but this contact is not its.
+        Raises ``ExporterProfileNotFoundError`` when the company does not exist,
+        ``ExporterContactNotFoundError`` when it does but this contact is not its, and
+        ``ExporterContactPrimaryConflictError`` when another write promoted a different
+        contact at the same moment.
         """
         await self._require_company(customer_id)
         contact = await self._contacts.get_for_customer(customer_id, contact_id)
@@ -146,7 +156,8 @@ class ExporterContactActivityService:
                 )
             contact.is_primary_contact = bool(promote)
 
-        await self._db.commit()
+        async with self._primary_conflict_as_409(customer_id):
+            await self._db.commit()
         await self._db.refresh(contact)
 
         logger.info(
@@ -236,6 +247,25 @@ class ExporterContactActivityService:
         )
 
     # ── Internals ────────────────────────────────────────────────────────────
+
+    @asynccontextmanager
+    async def _primary_conflict_as_409(self, customer_id: uuid.UUID) -> AsyncIterator[None]:
+        """Turn a lost race for the primary flag into a 409.
+
+        Demoting the other primaries and promoting this one happen in one transaction,
+        but two such transactions for the same company — two people promoting two
+        different contacts at once — cannot see each other's promotion, and the second
+        to commit meets the partial unique index. That refusal is correct; this only
+        changes how it reads, from a 500 to ``EXPORTER_CONTACT_PRIMARY_CONFLICT``. Any
+        other integrity error is not this race and is re-raised untouched.
+        """
+        try:
+            yield
+        except IntegrityError as exc:
+            await self._db.rollback()
+            if _PRIMARY_INDEX in str(exc.orig):
+                raise ExporterContactPrimaryConflictError(customer_id) from None
+            raise
 
     async def _require_company(self, customer_id: uuid.UUID) -> None:
         """Refuse a write for a company that does not exist, with a 404.

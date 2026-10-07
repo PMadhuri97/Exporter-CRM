@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useCurrentUser } from '@/platform/auth';
+
 import { listGstRegistrations, setDealInvoicingBranch } from '../api';
 import type { Deal, GstRegistration } from '../types';
 
@@ -14,6 +16,11 @@ vi.mock('../api', () => ({
 }));
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
+}));
+// The GSTIN goes through `Identifier`, which asks who is looking.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
+  useCurrentUser: vi.fn(),
 }));
 
 const DEAL = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -82,6 +89,7 @@ function renderPicker({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(useCurrentUser).mockReturnValue({ role: 'OPERATIONS' } as ReturnType<typeof useCurrentUser>);
   vi.mocked(listGstRegistrations).mockResolvedValue({
     registrations: BRANCHES,
     flagged_count: 0,
@@ -105,6 +113,22 @@ describe('InvoicingBranchPicker — choosing', () => {
     ]);
     // A deactivated branch is on record, but nothing new is invoiced from it.
     expect(screen.queryByText(/Gujarat/)).not.toBeInTheDocument();
+  });
+
+  it('covers a GSTIN served in full, since an option cannot carry an eye', async () => {
+    vi.mocked(useCurrentUser).mockReturnValue({ role: 'COMPLIANCE' } as ReturnType<typeof useCurrentUser>);
+    vi.mocked(listGstRegistrations).mockResolvedValue({
+      registrations: [registration({ gstin: '27ABCDE1234F1Z5' })],
+      flagged_count: 0,
+    });
+    renderPicker();
+    const select = await screen.findByLabelText('Invoiced from');
+
+    const options = within(select)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+    expect(options).toContain('Maharashtra · •••••••••••F1Z5');
+    expect(screen.queryByText(/27ABCDE1234F1Z5/)).not.toBeInTheDocument();
   });
 
   it('records the chosen branch by its id, through PUT /deals/{id}/invoicing-branch', async () => {

@@ -34,8 +34,10 @@ const MASK_CHAR = '•';
  *
  * `maskIdentifier` below asks the role first and hands a privileged one the value
  * untouched. This does not ask: it is for the screen that holds a full value and has
- * been asked to cover it up — `Identifier`, where the eye starts closed. Passing it a
- * value the server already masked would mask the mask, so only call it on a full one.
+ * been asked to cover it up — `Identifier`, where the eye starts closed, and a picker
+ * option, which cannot hold an eye. It is safe on a value the server already masked:
+ * the bullets stay bullets and the last four characters are the same four, so the
+ * result is the same string.
  */
 export function maskTail(value: string): string {
   if (value.length <= VISIBLE_SUFFIX_LENGTH)

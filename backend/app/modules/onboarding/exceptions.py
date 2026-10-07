@@ -453,6 +453,28 @@ class ExporterContactNotFoundError(AnerBaseException):
         )
 
 
+class ExporterContactPrimaryConflictError(AnerBaseException):
+    """Two writes made two different contacts primary for one company at once.
+
+    Each demotes the other primaries before promoting its own, but neither sees the
+    other's uncommitted promotion, so the second commit meets
+    ``uq_exporter_contact_primary_per_customer``. The index keeps the record right;
+    this turns its refusal into a 409 the person can act on — reload and see who is
+    primary now — instead of the 500 an ``IntegrityError`` would surface as.
+    """
+
+    def __init__(self, customer_id: object) -> None:
+        super().__init__(
+            detail=(
+                "Another contact was made primary at the same moment. "
+                "Reload the contacts and try again."
+            ),
+            error_code="EXPORTER_CONTACT_PRIMARY_CONFLICT",
+            status_code=409,
+            extensions={"customer_id": str(customer_id)},
+        )
+
+
 class ExporterProfileAlreadyExistsError(AnerBaseException):
     """``create_or_get_profile`` was called for a ``customer_id`` that already
     has a profile, without an idempotency key that would make the call a
@@ -961,14 +983,14 @@ class ActivityDueInPastError(AnerBaseException):
     """
 
     def __init__(self, customer_id: object, due_at: object) -> None:
+        # The detail is what the screen shows (`human_readable_message` is built from
+        # it), so it is written for the person who picked the date; the company and
+        # the exact moment are in `extensions` for anyone debugging.
         super().__init__(
-            detail=(
-                f"A follow-up for company {customer_id} cannot be due at {due_at!s}, "
-                "which is in the past"
-            ),
+            detail="A follow-up cannot be due in the past. Pick a later date and time.",
             error_code="ACTIVITY_DUE_IN_PAST",
             status_code=422,
-            extensions={"due_at": str(due_at)},
+            extensions={"customer_id": str(customer_id), "due_at": str(due_at)},
         )
 
 

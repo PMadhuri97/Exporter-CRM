@@ -33,7 +33,7 @@ import {
   Skeleton,
 } from '@/components';
 import { Icon } from '@/design/icons';
-import { formatDate, formatDateTime, todayForDateInput } from '@/lib/format';
+import { formatDate, formatDateTime, nextMinuteForDateTimeInput } from '@/lib/format';
 
 import { JOURNEY_LABEL, JOURNEY_STAGES } from '../../constants';
 import {
@@ -124,13 +124,14 @@ export function CompleteFollowUp({ followUp }: { followUp: FollowUp }) {
           <Segmented label="Outcome" size="sm" value={outcome} onValueChange={setOutcome} options={OUTCOMES} />
           {outcome === 'RESCHEDULED' && (
             <label className="block text-caption font-medium text-ink-2">
-              New due date
-              {/* Same rule as the Follow-ups page: the server refuses a reschedule into
-                  the past, so today is the earliest the calendar offers. */}
+              New due date and time
+              {/* A date and a time, as on the Follow-ups page. A bare date reached the
+                  server as midnight UTC — 05:30 in India — so "today" was always in the
+                  past by working hours and refused, while the calendar still offered it. */}
               <Input
-                type="date"
+                type="datetime-local"
                 className="mt-1"
-                min={todayForDateInput()}
+                min={nextMinuteForDateTimeInput()}
                 value={nextDue}
                 onChange={(e) => setNextDue(e.target.value)}
                 required

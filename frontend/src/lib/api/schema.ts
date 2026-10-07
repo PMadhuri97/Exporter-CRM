@@ -725,7 +725,7 @@ export interface paths {
         head?: never;
         /**
          * Change a contact on an exporter relationship
-         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `name` may be changed but not cleared. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary.
+         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `name` and `is_primary` may be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary.
          */
         patch: operations["update_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts__contact_id__patch"];
         trace?: never;
@@ -5176,7 +5176,10 @@ export interface components {
             subject: string;
             /** Notes */
             notes?: string | null;
-            /** Due At */
+            /**
+             * Due At
+             * @description When the follow-up is due, with a timezone offset (e.g. `Z` or `+05:30`). May not be in the past (ACTIVITY_DUE_IN_PAST).
+             */
             due_at?: string | null;
         };
         /** LoginRequest */
@@ -6513,7 +6516,9 @@ export interface components {
          *     cleared.
          *
          *     ``name`` is the exception: it may be changed but not removed, because a contact with
-         *     no name is a row nobody can act on. ``min_length=1`` refuses both ``null`` and "".
+         *     no name is a row nobody can act on. ``ContactName`` refuses "" and a name of spaces;
+         *     ``_not_null`` refuses an explicit ``null``, which the type alone would
+         *     let through as "leave it alone" and so drop silently.
          */
         UpdateExporterContactRequest: {
             /** Name */
@@ -8958,6 +8963,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Another contact was made primary for this company at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Invalid request body */
             422: {
                 headers: {
@@ -9008,6 +9020,13 @@ export interface operations {
             };
             /** @description No such company, or no such contact on it */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Another contact was made primary for this company at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9109,7 +9128,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid request body */
+            /** @description No such company */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request body (including a due_at with no timezone offset), or a follow-up due in the past (ACTIVITY_DUE_IN_PAST) */
             422: {
                 headers: {
                     [name: string]: unknown;

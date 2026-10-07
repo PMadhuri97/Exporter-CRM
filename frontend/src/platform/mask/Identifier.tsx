@@ -30,8 +30,10 @@
  * The server still sends these roles the value in full; what covers it is this screen,
  * for as long as nobody asks. That is worth having anyway: an identifier is not read on
  * most visits, and one left uncovered is one shown to whoever is behind the person at
- * the desk, or in a screen share. Revealing is now a deliberate act, and `revealed`
- * lives in this component, so it resets on every re-render of the record.
+ * the desk, or in a screen share. Revealing is now a deliberate act. `revealed` is this
+ * component's own state: it survives a re-render (a refetch of the record keeps an
+ * open eye open) and resets when the component mounts again — leaving the record and
+ * coming back starts covered.
  */
 
 import { useState } from 'react';

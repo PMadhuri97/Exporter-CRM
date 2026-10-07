@@ -38,27 +38,28 @@ export function humanize(value: string): string {
 }
 
 /**
- * Now, written the way an `<input type="datetime-local">` reads a `min`.
+ * The earliest moment an `<input type="datetime-local">` should offer, as its `min`:
+ * the next whole minute on the person's own clock.
  *
  * Deliberately built from the local parts rather than `toISOString().slice(0, 16)`:
  * that string is UTC, and the input compares it against what the person sees on their
  * own clock. East of UTC it would bar valid times; west of it, it would let a past time
  * through — which is exactly the mistake this `min` exists to prevent.
  *
+ * The next minute, not this one: the picker works in whole minutes and the server
+ * compares to the second, so the current minute is already behind the clock by the
+ * time it is saved, and would be refused.
+ *
  * It is a floor for pickers whose value the server refuses in the past: a follow-up's
  * due date and a reschedule. The server still refuses it (`ACTIVITY_DUE_IN_PAST`,
  * `FOLLOW_UP_RESCHEDULE_IN_PAST`) — this only stops the screen offering what would be
  * turned down, and a page left open past the chosen minute will still rely on that.
  */
-export function nowForDateTimeInput(now: Date = new Date()): string {
+export function nextMinuteForDateTimeInput(now: Date = new Date()): string {
+  const next = new Date(now.getTime() + 60_000);
   const pad = (value: number) => String(value).padStart(2, '0');
   return (
-    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
-    `T${pad(now.getHours())}:${pad(now.getMinutes())}`
+    `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}` +
+    `T${pad(next.getHours())}:${pad(next.getMinutes())}`
   );
-}
-
-/** Today, for an `<input type="date">` `min`. The date half of the above. */
-export function todayForDateInput(now: Date = new Date()): string {
-  return nowForDateTimeInput(now).slice(0, 10);
 }

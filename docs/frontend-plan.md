@@ -487,7 +487,7 @@ A list of record list items on the left (360 px) and the selected record on the 
 
 ### 6.14 Identifier
 
-Behaviour is unchanged (§3.1). It renders in the UI font with tabular figures, the eye shows only for `identifiers.reveal`, and *Copy* only once revealed.
+It renders in the UI font with tabular figures, one step down the type scale (`text-caption`) and never wrapped — an identifier split over two lines reads as two fragments. The eye shows only for `identifiers.reveal`, and **starts closed**: a role that may reveal is sent the value in full but reads it covered (last four showing) until it opens the eye, and *Copy* appears only once revealed. A masked role gets no eye and no copy (§3.1). Every PAN, CIN, IEC, registration number and GSTIN on screen goes through `Identifier` — a GSTIN carries the PAN, so leaving it bare would undo the PAN's cover. A picker option, which cannot hold an eye, always shows the covered form.
 
 ### 6.15 Other primitives
 
@@ -602,7 +602,7 @@ The title is "Home". A two-column grid of cards from 1280 px, one column below. 
 ### 8.3 Companies list and Pipeline
 
 ```
- Companies                                              [List | Pipeline]   [New company ▾]
+ Companies                                                                  [New company ▾]
  ┌──────────────────────────────────────────────────────────────────────────────────────┐
  │ All · Leads 48 · Prospects 21 · Customers 9      Qualification ▾  Relationship ▾       │
  │ [ Search this list… ]                                                ☐ Outside pipeline│
@@ -617,7 +617,7 @@ The title is "Home". A two-column grid of cards from 1280 px, one column below. 
 - **Badges on each item**: journey, qualification, and marker when paused or ended. Conversation and background check join them once ask A1 lands (background check for staff only).
 - **Prefetch** on hover and focus is kept; it is invisible.
 - **New company ▾**: *New company*, *Import companies*, and *RXIL intake* for Admin, each gated by its capability.
-- **Pipeline** view: §6.12.
+- **Pipeline** view: §6.12. It is reached from the side navigation's *Pipeline* row (`/pipeline` → `/companies?view=board`), which is marked current while it is open. There is no in-page List/Pipeline switch: it offered the same two screens the navigation already does.
 - **Identity completion** (`/companies/identity-completion`) is the same record list, with a "Missing: …" line on each company.
 
 ### 8.4 New company, import, RXIL intake

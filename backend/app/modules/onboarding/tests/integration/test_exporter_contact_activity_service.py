@@ -18,7 +18,9 @@ from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.exceptions import (
     ActivityDueInPastError,
     ExporterContactNotFoundError,
+    ExporterContactPrimaryConflictError,
 )
+from app.modules.onboarding.infrastructure.repositories import ExporterContactRepository
 from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.database import services as db_services
 
@@ -188,6 +190,46 @@ async def test_update_contact_may_leave_the_company_with_no_primary():
         [stored] = await ExporterContactActivityService(db).list_contacts(customer_id)
 
     assert stored.is_primary_contact is False
+
+
+async def test_a_lost_race_for_primary_is_a_conflict_not_a_500(monkeypatch):
+    """Two people promoting two different contacts at once: each demotes the others,
+    neither sees the other's promotion, and the second commit meets the unique index.
+
+    The race is reproduced deterministically by making the demotion see nothing — what
+    the losing transaction sees in the real race, since the winner's promotion is not
+    committed when it looks. The index must still refuse, as a 409 with a code."""
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        svc = ExporterContactActivityService(db)
+        first = await svc.add_contact(customer_id, name="Jane Doe", is_primary=True)
+        second = await svc.add_contact(customer_id, name="John Smith")
+
+    async def sees_nothing(self, customer_id, *, except_id=None):
+        return None
+
+    monkeypatch.setattr(ExporterContactRepository, "demote_existing_primary", sees_nothing)
+
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ExporterContactPrimaryConflictError):
+            await ExporterContactActivityService(db).update_contact(
+                customer_id, second.id, changes={"is_primary": True, "role": "CFO"}
+            )
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ExporterContactPrimaryConflictError):
+            await ExporterContactActivityService(db).add_contact(
+                customer_id, name="Third Person", is_primary=True
+            )
+
+    # Refused whole: the first is still the only primary, and the role change that
+    # came with the losing promotion was rolled back with it.
+    async with db_services.AsyncSessionLocal() as db:
+        contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
+    by_id = {c.id: c for c in contacts}
+    assert len(contacts) == 2
+    assert by_id[first.id].is_primary_contact is True
+    assert by_id[second.id].is_primary_contact is False
+    assert by_id[second.id].role is None
 
 
 async def test_update_contact_refuses_another_companys_contact():

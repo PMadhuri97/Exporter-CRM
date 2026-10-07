@@ -87,6 +87,12 @@ _CONVERSATION_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserR
         201: {"model": ExporterContactResponse},
         401: {"description": "Unauthorized"},
         403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        409: {
+            "description": (
+                "Another contact was made primary for this company at the same moment "
+                "(EXPORTER_CONTACT_PRIMARY_CONFLICT)"
+            )
+        },
         422: {"description": "Invalid request body"},
     },
 )
@@ -114,8 +120,8 @@ async def add_exporter_contact(
     summary="Change a contact on an exporter relationship",
     description=(
         "A partial edit: only the fields present in the body change. A field sent as "
-        "null is cleared; a field left out is untouched. `name` may be changed but not "
-        "cleared. Setting is_primary=true demotes any other primary contact for this "
+        "null is cleared; a field left out is untouched. `name` and `is_primary` may "
+        "be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this "
         "customer in the same transaction — never two primaries at once; setting it "
         "false is allowed and leaves the company with no primary."
     ),
@@ -124,6 +130,12 @@ async def add_exporter_contact(
         401: {"description": "Unauthorized"},
         403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
         404: {"description": "No such company, or no such contact on it"},
+        409: {
+            "description": (
+                "Another contact was made primary for this company at the same moment "
+                "(EXPORTER_CONTACT_PRIMARY_CONFLICT)"
+            )
+        },
         422: {"description": "Invalid request body, or a body that changes nothing"},
     },
 )
@@ -192,7 +204,13 @@ async def list_exporter_contacts(
         201: {"model": ExporterActivityResponse},
         401: {"description": "Unauthorized"},
         403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
-        422: {"description": "Invalid request body"},
+        404: {"description": "No such company"},
+        422: {
+            "description": (
+                "Invalid request body (including a due_at with no timezone offset), or "
+                "a follow-up due in the past (ACTIVITY_DUE_IN_PAST)"
+            )
+        },
     },
 )
 async def log_exporter_activity(

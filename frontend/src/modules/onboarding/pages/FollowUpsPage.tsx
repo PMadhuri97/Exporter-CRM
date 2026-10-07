@@ -45,7 +45,7 @@ import {
   Textarea,
 } from '@/components';
 import { Icon } from '@/design/icons';
-import { formatDate, formatDateTime, humanize, nowForDateTimeInput } from '@/lib/format';
+import { formatDate, formatDateTime, humanize, nextMinuteForDateTimeInput } from '@/lib/format';
 import { useCan } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 
@@ -169,7 +169,7 @@ function CompleteForm({
             <Input
               type="datetime-local"
               className="mt-1"
-              min={nowForDateTimeInput()}
+              min={nextMinuteForDateTimeInput()}
               value={nextDueAt}
               onChange={(event) => setNextDueAt(event.target.value)}
               required
