@@ -22,6 +22,7 @@ export type QualificationState = Schemas['QualificationState'];
 export type ExporterMarker = Schemas['ExporterMarker'];
 export type ExporterContact = Schemas['ExporterContactResponse'];
 export type AddExporterContactRequest = Schemas['AddExporterContactRequest'];
+export type UpdateExporterContactRequest = Schemas['UpdateExporterContactRequest'];
 export type ExporterActivity = Schemas['ExporterActivityResponse'];
 export type ExporterActivityType = Schemas['ExporterActivityType'];
 export type LogExporterActivityRequest = Schemas['LogExporterActivityRequest'];

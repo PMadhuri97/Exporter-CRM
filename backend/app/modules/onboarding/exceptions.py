@@ -435,6 +435,46 @@ class ExporterProfileNotFoundError(AnerBaseException):
         )
 
 
+class ExporterContactNotFoundError(AnerBaseException):
+    """No ``exporter_contact`` row with this id belongs to this company.
+
+    One error for both "no such contact" and "that contact is another company's",
+    because the lookup is scoped to the company: a caller holding an id from a company
+    it may not read learns only that this company does not have it.
+    """
+
+    def __init__(self, customer_id: object, contact_id: object) -> None:
+        self.customer_id = customer_id
+        self.contact_id = contact_id
+        super().__init__(
+            detail=f"Contact {contact_id} not found for customer {customer_id}",
+            error_code="EXPORTER_CONTACT_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class ExporterContactPrimaryConflictError(AnerBaseException):
+    """Two writes made two different contacts primary for one company at once.
+
+    Each demotes the other primaries before promoting its own, but neither sees the
+    other's uncommitted promotion, so the second commit meets
+    ``uq_exporter_contact_primary_per_customer``. The index keeps the record right;
+    this turns its refusal into a 409 the person can act on — reload and see who is
+    primary now — instead of the 500 an ``IntegrityError`` would surface as.
+    """
+
+    def __init__(self, customer_id: object) -> None:
+        super().__init__(
+            detail=(
+                "Another contact was made primary at the same moment. "
+                "Reload the contacts and try again."
+            ),
+            error_code="EXPORTER_CONTACT_PRIMARY_CONFLICT",
+            status_code=409,
+            extensions={"customer_id": str(customer_id)},
+        )
+
+
 class ExporterProfileAlreadyExistsError(AnerBaseException):
     """``create_or_get_profile`` was called for a ``customer_id`` that already
     has a profile, without an idempotency key that would make the call a
@@ -925,6 +965,32 @@ class FollowUpRescheduleInPastError(AnerBaseException):
             error_code="FOLLOW_UP_RESCHEDULE_IN_PAST",
             status_code=422,
             extensions={"next_due_at": str(next_due_at)},
+        )
+
+
+class ActivityDueInPastError(AnerBaseException):
+    """An activity logged with a follow-up already due.
+
+    The third of the same rule, after ``CONVERSATION_CHECK_BACK_IN_PAST`` and
+    ``FOLLOW_UP_RESCHEDULE_IN_PAST``: a follow-up that starts overdue is a mistyped
+    date, not a plan, and it makes the overdue count on the Follow-ups page mean less.
+    Rescheduling one into the past was already refused; creating one that way was not,
+    which left the same mistake possible by a different door.
+
+    Only ``due_at`` is checked. ``occurred_at`` is not a caller's to set — no request
+    schema carries it, and the server stamps it — so an activity cannot be backdated
+    through the API, only by a seed or an import calling the service directly.
+    """
+
+    def __init__(self, customer_id: object, due_at: object) -> None:
+        # The detail is what the screen shows (`human_readable_message` is built from
+        # it), so it is written for the person who picked the date; the company and
+        # the exact moment are in `extensions` for anyone debugging.
+        super().__init__(
+            detail="A follow-up cannot be due in the past. Pick a later date and time.",
+            error_code="ACTIVITY_DUE_IN_PAST",
+            status_code=422,
+            extensions={"customer_id": str(customer_id), "due_at": str(due_at)},
         )
 
 

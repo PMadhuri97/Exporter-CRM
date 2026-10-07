@@ -44,6 +44,24 @@ export function addExporterContact(
   });
 }
 
+/**
+ * A partial edit: send only the fields that change.
+ *
+ * A key left out of `payload` is untouched; a key sent as `null` is cleared. The two
+ * are different requests, so a caller building this must not fill absent fields with
+ * `null` to make the object uniform. The server refuses a body with no keys at all.
+ */
+export function updateExporterContact(
+  customerId: string,
+  contactId: string,
+  payload: import('../types').UpdateExporterContactRequest,
+): Promise<import('../types').ExporterContact> {
+  return apiRequest<import('../types').ExporterContact>(
+    `/onboarding/exporters/${customerId}/contacts/${contactId}`,
+    { method: 'PATCH', body: payload },
+  );
+}
+
 export function listExporterActivities(
   customerId: string,
   params: {

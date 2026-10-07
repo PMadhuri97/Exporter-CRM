@@ -17,7 +17,15 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
 
 from app.modules.onboarding.api.schemas.masking import (
     NotMasked,
@@ -33,16 +41,67 @@ from app.modules.onboarding.domain.entities.engagement_enums import (
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
 from app.platform.authentication.models import User
 
+#: A contact's name, trimmed before it is measured: "   " is not a name, and without the
+#: trim it would pass ``min_length=1`` and save a contact nobody can find or act on.
+ContactName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+]
+
 
 class AddExporterContactRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1, max_length=255)
+    name: ContactName
     role: str | None = Field(default=None, max_length=255)
     email: Annotated[str | None, NotMasked] = Field(default=None, max_length=255)
     phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
     department: str | None = Field(default=None, max_length=255)
     is_primary: bool = False
+
+
+class UpdateExporterContactRequest(BaseModel):
+    """A partial edit: only the fields actually sent are changed.
+
+    Every field defaults to ``None`` **and** is nullable, which on its own would make
+    "leave the phone alone" and "clear the phone" the same request. ``changes()`` below
+    tells them apart with ``model_fields_set``, so the router passes on the keys that
+    were really in the body — a field left out is untouched, a field sent as ``null`` is
+    cleared.
+
+    ``name`` is the exception: it may be changed but not removed, because a contact with
+    no name is a row nobody can act on. ``ContactName`` refuses "" and a name of spaces;
+    ``_not_null`` refuses an explicit ``null``, which the type alone would
+    let through as "leave it alone" and so drop silently.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: ContactName | None = None
+    role: str | None = Field(default=None, max_length=255)
+    email: Annotated[str | None, NotMasked] = Field(default=None, max_length=255)
+    phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
+    department: str | None = Field(default=None, max_length=255)
+    is_primary: bool | None = None
+
+    @field_validator("name", "is_primary", mode="before")
+    @classmethod
+    def _not_null(cls, value: object, info: ValidationInfo) -> object:
+        # Runs only for a key that was sent, so a body without `name` is untouched.
+        # `is_primary` is a yes/no: null is neither, and reading it as "leave it" would
+        # hide a client bug the same way.
+        if value is None:
+            raise ValueError(
+                f"{info.field_name} cannot be null; leave it out to keep it unchanged"
+            )
+        return value
+
+    def changes(self) -> dict[str, object]:
+        """The fields this request actually carried, under their column names.
+
+        An empty body yields ``{}`` — a request that changes nothing, which the route
+        refuses rather than answering 200 for a write that did not happen.
+        """
+        return {name: getattr(self, name) for name in self.model_fields_set}
 
 
 class ExporterContactResponse(BaseModel):
@@ -82,7 +141,16 @@ class LogExporterActivityRequest(BaseModel):
     activity_type: ExporterActivityType
     subject: str = Field(min_length=1, max_length=500)
     notes: str | None = None
-    due_at: datetime | None = None
+    #: `AwareDatetime`, not `datetime`, as for a reschedule's `next_due_at`: the service
+    #: compares it with an aware "now", and a value with no offset would raise there and
+    #: surface as a 500. Refused here instead, as the 422 every other bad body gets.
+    due_at: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "When the follow-up is due, with a timezone offset (e.g. `Z` or `+05:30`). "
+            "May not be in the past (ACTIVITY_DUE_IN_PAST)."
+        ),
+    )
 
 
 class ExporterActivityResponse(BaseModel):
@@ -266,4 +334,5 @@ __all__ = [
     "PendingActivityListResponse",
     "PendingActivityResponse",
     "SetConversationRequest",
+    "UpdateExporterContactRequest",
 ]

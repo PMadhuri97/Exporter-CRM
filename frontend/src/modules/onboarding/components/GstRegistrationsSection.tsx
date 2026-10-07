@@ -23,6 +23,9 @@
  *   contains the GSTIN, so a role that sees the value masked does not get the link.
  *   The component does not build the URL itself for exactly that reason:
  *   the decision about who may see a GSTIN belongs on the server.
+ * * **Each GSTIN through `Identifier`**, covered until its eye is opened, like the PAN.
+ *   A GSTIN carries the PAN in characters 3–12, so printing it in full would undo the
+ *   PAN's cover a few lines further down the same record.
  * * **Flag and unflag only for a role that may.** A flag stops trade through the
  *   branch, so it is COMPLIANCE's decision; `canFlag` comes from the caller's role.
  *   A reason is required both ways, and the form says why.
@@ -35,6 +38,7 @@ import { toast } from 'sonner';
 import { Button, EmptySection, Input, LINK_CLASSES, Panel, Skeleton } from '@/components';
 import { Icon } from '@/design/icons';
 import { formatDate } from '@/lib/format';
+import { Identifier } from '@/platform/mask';
 
 import {
   useAddGstRegistration,
@@ -260,7 +264,9 @@ function Row({
               </span>
             )}
           </p>
-          <p className="mt-0.5 text-caption text-ink-2">{registration.gstin}</p>
+          <p className="mt-0.5">
+            <Identifier kind="GSTIN" value={registration.gstin} className="text-ink-2" />
+          </p>
           <p className="mt-0.5 text-caption text-ink-3">
             {STATUS_LABEL[registration.status]}
             {registration.address ? ` · ${registration.address}` : ''}

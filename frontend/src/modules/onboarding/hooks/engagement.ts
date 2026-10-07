@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   addExporterContact,
+  updateExporterContact,
   getExporterConversation,
   listConversationHistory,
   listExporterActivities,
@@ -27,6 +28,7 @@ import type {
   ExporterActivityType,
   LogExporterActivityRequest,
   SetConversationRequest,
+  UpdateExporterContactRequest,
 } from '../types';
 
 export function useExporterContacts(customerId: string | undefined) {
@@ -43,6 +45,29 @@ export function useAddExporterContact(customerId: string) {
     mutationFn: (payload: AddExporterContactRequest) =>
       addExporterContact(customerId, payload),
     onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['exporterContacts', customerId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['exporterProfile', customerId],
+      });
+    },
+  });
+}
+
+export function useUpdateExporterContact(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      contactId,
+      payload,
+    }: {
+      contactId: string;
+      payload: UpdateExporterContactRequest;
+    }) => updateExporterContact(customerId, contactId, payload),
+    onSuccess: () => {
+      // Both, as adding does: the contact list, and the profile — which embeds the
+      // contacts and carries the primary one, so promoting somebody here changes it.
       void queryClient.invalidateQueries({
         queryKey: ['exporterContacts', customerId],
       });

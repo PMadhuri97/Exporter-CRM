@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/api/errors';
 
 import {
   approveBackgroundCheckProposal,
+  completeFollowUp,
   listFollowUps,
   listOpenProposals,
   listReKycDue,
@@ -28,6 +29,7 @@ import {
 
 vi.mock('../../api', () => ({
   approveBackgroundCheckProposal: vi.fn(),
+  completeFollowUp: vi.fn(),
   listFollowUps: vi.fn(),
   listOpenProposals: vi.fn(),
   listReKycDue: vi.fn(),
@@ -99,6 +101,30 @@ describe('Home cards', () => {
       expect(listFollowUps).toHaveBeenLastCalledWith(
         expect.objectContaining({ state: 'OUTSTANDING', actorId: undefined }),
       ),
+    );
+  });
+
+  it("reschedules to a date and a time on the person's own clock, never a bare date", async () => {
+    // A bare date reached the server as midnight UTC — 05:30 in India — so "today" was
+    // refused all working day while the calendar still offered it.
+    vi.mocked(completeFollowUp).mockResolvedValue({} as Awaited<ReturnType<typeof completeFollowUp>>);
+    renderCard(<MyFollowUpsCard userId="user-1" canComplete />);
+    fireEvent.click(await screen.findByRole('button', { name: /Mark done: Send the rate sheet/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'Rescheduled' }));
+
+    const picker = screen.getByLabelText('New due date and time');
+    expect(picker).toHaveAttribute('type', 'datetime-local');
+    expect(picker.getAttribute('min')).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+
+    fireEvent.change(picker, { target: { value: '2030-01-15T16:30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record' }));
+
+    await waitFor(() =>
+      expect(completeFollowUp).toHaveBeenCalledWith('a1', {
+        outcome: 'RESCHEDULED',
+        note: null,
+        next_due_at: new Date('2030-01-15T16:30').toISOString(),
+      }),
     );
   });
 

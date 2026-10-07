@@ -1,4 +1,3 @@
-export { CompaniesViewSwitch } from './CompaniesViewSwitch';
 export { MarkerBadge, QualificationChip } from './CompanyChips';
 export { MarkerControl } from './MarkerControl';
 export { DuplicatePanMessage } from './DuplicatePanMessage';

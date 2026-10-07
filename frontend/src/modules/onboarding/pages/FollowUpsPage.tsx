@@ -45,7 +45,7 @@ import {
   Textarea,
 } from '@/components';
 import { Icon } from '@/design/icons';
-import { formatDate, formatDateTime, humanize } from '@/lib/format';
+import { formatDate, formatDateTime, humanize, nextMinuteForDateTimeInput } from '@/lib/format';
 import { useCan } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 
@@ -164,9 +164,12 @@ function CompleteForm({
         {needsNextDue && (
           <label className="text-caption font-medium text-ink-2">
             New due date and time
+            {/* A reschedule into the past is refused by the server, so it is not offered
+                here either. */}
             <Input
               type="datetime-local"
               className="mt-1"
+              min={nextMinuteForDateTimeInput()}
               value={nextDueAt}
               onChange={(event) => setNextDueAt(event.target.value)}
               required

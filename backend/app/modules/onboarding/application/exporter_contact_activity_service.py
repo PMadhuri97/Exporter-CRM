@@ -21,16 +21,24 @@ company, rather than the 500 an ``IntegrityError`` would surface as.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import structlog
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.engagement_views import PendingActivityView
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
-from app.modules.onboarding.exceptions import ExporterProfileNotFoundError
+from app.modules.onboarding.exceptions import (
+    ActivityDueInPastError,
+    ExporterContactNotFoundError,
+    ExporterContactPrimaryConflictError,
+    ExporterProfileNotFoundError,
+)
 from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
     ExporterContactRepository,
@@ -38,6 +46,9 @@ from app.modules.onboarding.infrastructure.repositories import (
 )
 
 logger = structlog.get_logger(__name__)
+
+#: The partial unique index behind "at most one primary contact per company".
+_PRIMARY_INDEX = "uq_exporter_contact_primary_per_customer"
 
 
 class ExporterContactActivityService:
@@ -65,9 +76,10 @@ class ExporterContactActivityService:
     ) -> ExporterContact:
         """Create a contact. When ``is_primary=True``, demotes any existing
         primary contact for ``customer_id`` in the same transaction as the
-        insert — a single service-layer call a caller cannot race into two
-        primaries, backed by ``uq_exporter_contact_primary_per_customer`` as
-        the database-level guarantee if this method is ever bypassed.
+        insert, so one call never leaves two primaries. Two calls racing for the
+        same company can still both promote; ``uq_exporter_contact_primary_per_customer``
+        refuses the second, and it surfaces as ``ExporterContactPrimaryConflictError``
+        (409) rather than a 500.
 
         Raises ``ExporterProfileNotFoundError`` (404) when no company has this
         ``customer_id``, before demoting anything — so a write refused for a
@@ -87,8 +99,9 @@ class ExporterContactActivityService:
             department=department,
             is_primary_contact=is_primary,
         )
-        await self._contacts.create(contact)
-        await self._db.commit()
+        async with self._primary_conflict_as_409(customer_id):
+            await self._contacts.create(contact)
+            await self._db.commit()
         await self._db.refresh(contact)
 
         logger.info(
@@ -96,6 +109,64 @@ class ExporterContactActivityService:
             customer_id=str(customer_id),
             contact_id=str(contact.id),
             is_primary=is_primary,
+        )
+        return contact
+
+    async def update_contact(
+        self,
+        customer_id: uuid.UUID,
+        contact_id: uuid.UUID,
+        *,
+        changes: Mapping[str, object],
+    ) -> ExporterContact:
+        """Change the fields named in ``changes`` on one contact, and nothing else.
+
+        ``changes`` holds only the fields the caller actually sent, so a field left out
+        keeps its value and a field sent as ``null`` is cleared. Those two cases are not
+        the same thing, which is why this takes a mapping rather than a parameter per
+        column defaulting to ``None`` — with defaults, "leave the phone alone" and
+        "delete the phone" arrive here identically.
+
+        ``is_primary`` is translated to the column's own name and handled like
+        ``add_contact`` does: promoting this contact demotes whichever other one held
+        it, in the same transaction, so the company never has two primaries. Demoting
+        the only primary is allowed — a company with no primary contact is a state the
+        record can be in, and refusing it would trap whoever recorded the wrong one.
+
+        Raises ``ExporterProfileNotFoundError`` when the company does not exist,
+        ``ExporterContactNotFoundError`` when it does but this contact is not its, and
+        ``ExporterContactPrimaryConflictError`` when another write promoted a different
+        contact at the same moment.
+        """
+        await self._require_company(customer_id)
+        contact = await self._contacts.get_for_customer(customer_id, contact_id)
+        if contact is None:
+            raise ExporterContactNotFoundError(customer_id, contact_id)
+
+        fields = dict(changes)
+        promote = fields.pop("is_primary", None)
+        for name, value in fields.items():
+            setattr(contact, name, value)
+
+        if promote is not None:
+            if promote:
+                # Everyone else, so this row's own flag is not cleared and re-set.
+                await self._contacts.demote_existing_primary(
+                    customer_id, except_id=contact_id
+                )
+            contact.is_primary_contact = bool(promote)
+
+        async with self._primary_conflict_as_409(customer_id):
+            await self._db.commit()
+        await self._db.refresh(contact)
+
+        logger.info(
+            "exporter_contact.update.ok",
+            customer_id=str(customer_id),
+            contact_id=str(contact_id),
+            # The names only: a contact's email and phone are masked for most roles on
+            # the way out, and a log line is read by people a response is not.
+            changed=sorted(changes),
         )
         return contact
 
@@ -120,12 +191,28 @@ class ExporterContactActivityService:
         log) may supply it explicitly. The row is append-only from here on —
         see ``exporter_activity.py``'s module docstring.
 
+        ``due_at`` may not fall before ``occurred_at``: a follow-up that exists already
+        overdue is a mistyped date, and it makes the Follow-ups page's overdue count
+        mean less. ``ActivityDueInPastError`` (422), matching the refusals the
+        conversation gauge and the follow-up reschedule already make.
+
         Raises ``ExporterProfileNotFoundError`` (404) when no company has this
         ``customer_id``. The activity table is append-only, so a row written
         against a ghost company could never be corrected — the check is cheap
         insurance for a table nothing can repair.
         """
         await self._require_company(customer_id)
+        # A follow-up cannot be created already overdue — the same rule the conversation
+        # gauge applies to `check_back_on` and the follow-up service to a reschedule.
+        # Compared against `occurred_at` rather than the clock, so that an import
+        # backfilling last month's call with next month's follow-up is not refused for
+        # being in the past of today; for the API, where `occurred_at` is always now,
+        # the two are the same comparison.
+        if due_at is not None:
+            happened = occurred_at or datetime.now(UTC)
+            if due_at < happened:
+                raise ActivityDueInPastError(customer_id, due_at)
+
         activity = ExporterActivity(
             customer_id=customer_id,
             activity_type=activity_type,
@@ -160,6 +247,25 @@ class ExporterContactActivityService:
         )
 
     # ── Internals ────────────────────────────────────────────────────────────
+
+    @asynccontextmanager
+    async def _primary_conflict_as_409(self, customer_id: uuid.UUID) -> AsyncIterator[None]:
+        """Turn a lost race for the primary flag into a 409.
+
+        Demoting the other primaries and promoting this one happen in one transaction,
+        but two such transactions for the same company — two people promoting two
+        different contacts at once — cannot see each other's promotion, and the second
+        to commit meets the partial unique index. That refusal is correct; this only
+        changes how it reads, from a 500 to ``EXPORTER_CONTACT_PRIMARY_CONFLICT``. Any
+        other integrity error is not this race and is re-raised untouched.
+        """
+        try:
+            yield
+        except IntegrityError as exc:
+            await self._db.rollback()
+            if _PRIMARY_INDEX in str(exc.orig):
+                raise ExporterContactPrimaryConflictError(customer_id) from None
+            raise
 
     async def _require_company(self, customer_id: uuid.UUID) -> None:
         """Refuse a write for a company that does not exist, with a 404.

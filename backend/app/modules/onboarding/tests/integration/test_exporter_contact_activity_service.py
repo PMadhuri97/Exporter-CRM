@@ -15,6 +15,12 @@ from app.modules.onboarding.application.exporter_contact_activity_service import
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
+from app.modules.onboarding.exceptions import (
+    ActivityDueInPastError,
+    ExporterContactNotFoundError,
+    ExporterContactPrimaryConflictError,
+)
+from app.modules.onboarding.infrastructure.repositories import ExporterContactRepository
 from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.platform.database import services as db_services
 
@@ -73,6 +79,181 @@ async def test_add_contact_second_primary_demotes_first():
     assert by_id[first.id].is_primary_contact is False
     assert by_id[second.id].is_primary_contact is True
     assert sum(1 for c in contacts if c.is_primary_contact) == 1
+
+
+async def test_log_activity_refuses_a_follow_up_already_due():
+    """The third door onto the same rule. Rescheduling a follow-up into the past and
+    setting a check-back in the past were both already refused; creating one that way
+    was not, so the same mistyped date got in by a different route."""
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ActivityDueInPastError):
+            await ExporterContactActivityService(db).log_activity(
+                customer_id,
+                activity_type=ExporterActivityType.CALL,
+                subject="Called them",
+                actor_id="user-1",
+                due_at=datetime.now(UTC) - timedelta(days=1),
+            )
+
+    # Nothing written: the activity table is append-only, so a row let through here
+    # could never be corrected.
+    async with db_services.AsyncSessionLocal() as db:
+        assert await ExporterContactActivityService(db).list_activities(customer_id) == []
+
+
+async def test_log_activity_allows_a_backfilled_call_with_a_later_follow_up():
+    """An import carrying last month's call and next month's follow-up. `due_at` is
+    judged against when the activity happened, not against today — otherwise every
+    historical row with a follow-up would be refused for being in the past of now."""
+    customer_id = await make_company()
+    happened = datetime.now(UTC) - timedelta(days=30)
+    async with db_services.AsyncSessionLocal() as db:
+        activity = await ExporterContactActivityService(db).log_activity(
+            customer_id,
+            activity_type=ExporterActivityType.CALL,
+            subject="Imported call",
+            actor_id="user-1",
+            occurred_at=happened,
+            due_at=happened + timedelta(days=7),
+        )
+
+    assert activity.due_at is not None
+    assert activity.due_at > activity.occurred_at
+
+
+async def test_update_contact_changes_only_the_fields_sent():
+    """A partial edit. The field left out of `changes` keeps its value, and the one
+    sent as None is cleared — the distinction the route's `changes()` exists to carry."""
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        contact = await ExporterContactActivityService(db).add_contact(
+            customer_id,
+            name="Jane Doe",
+            role="CFO",
+            email="jane@example.com",
+            phone="+91 99999 11111",
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        await ExporterContactActivityService(db).update_contact(
+            customer_id, contact.id, changes={"role": "CEO", "phone": None}
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        [stored] = await ExporterContactActivityService(db).list_contacts(customer_id)
+
+    assert stored.role == "CEO"
+    assert stored.phone is None
+    # Never sent, so never touched.
+    assert stored.name == "Jane Doe"
+    assert stored.email == "jane@example.com"
+
+
+async def test_update_contact_promoting_demotes_the_other_primary():
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        svc = ExporterContactActivityService(db)
+        first = await svc.add_contact(customer_id, name="Jane Doe", is_primary=True)
+        second = await svc.add_contact(customer_id, name="John Smith")
+
+    async with db_services.AsyncSessionLocal() as db:
+        await ExporterContactActivityService(db).update_contact(
+            customer_id, second.id, changes={"is_primary": True}
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
+
+    by_id = {c.id: c for c in contacts}
+    assert by_id[first.id].is_primary_contact is False
+    assert by_id[second.id].is_primary_contact is True
+    # The unique index would have refused a second one; this proves the demotion ran.
+    assert sum(1 for c in contacts if c.is_primary_contact) == 1
+
+
+async def test_update_contact_may_leave_the_company_with_no_primary():
+    """Demoting the only primary is allowed: refusing it would trap whoever marked the
+    wrong contact, and a company with no primary is a state the record can hold."""
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        contact = await ExporterContactActivityService(db).add_contact(
+            customer_id, name="Jane Doe", is_primary=True
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        await ExporterContactActivityService(db).update_contact(
+            customer_id, contact.id, changes={"is_primary": False}
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        [stored] = await ExporterContactActivityService(db).list_contacts(customer_id)
+
+    assert stored.is_primary_contact is False
+
+
+async def test_a_lost_race_for_primary_is_a_conflict_not_a_500(monkeypatch):
+    """Two people promoting two different contacts at once: each demotes the others,
+    neither sees the other's promotion, and the second commit meets the unique index.
+
+    The race is reproduced deterministically by making the demotion see nothing — what
+    the losing transaction sees in the real race, since the winner's promotion is not
+    committed when it looks. The index must still refuse, as a 409 with a code."""
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        svc = ExporterContactActivityService(db)
+        first = await svc.add_contact(customer_id, name="Jane Doe", is_primary=True)
+        second = await svc.add_contact(customer_id, name="John Smith")
+
+    async def sees_nothing(self, customer_id, *, except_id=None):
+        return None
+
+    monkeypatch.setattr(ExporterContactRepository, "demote_existing_primary", sees_nothing)
+
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ExporterContactPrimaryConflictError):
+            await ExporterContactActivityService(db).update_contact(
+                customer_id, second.id, changes={"is_primary": True, "role": "CFO"}
+            )
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ExporterContactPrimaryConflictError):
+            await ExporterContactActivityService(db).add_contact(
+                customer_id, name="Third Person", is_primary=True
+            )
+
+    # Refused whole: the first is still the only primary, and the role change that
+    # came with the losing promotion was rolled back with it.
+    async with db_services.AsyncSessionLocal() as db:
+        contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
+    by_id = {c.id: c for c in contacts}
+    assert len(contacts) == 2
+    assert by_id[first.id].is_primary_contact is True
+    assert by_id[second.id].is_primary_contact is False
+    assert by_id[second.id].role is None
+
+
+async def test_update_contact_refuses_another_companys_contact():
+    """The id exists, but not on this company. It reads as missing rather than as
+    somebody else's row, so a guessed id confirms nothing."""
+    customer_id = await make_company()
+    other_customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        theirs = await ExporterContactActivityService(db).add_contact(
+            other_customer_id, name="Not Yours"
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(ExporterContactNotFoundError):
+            await ExporterContactActivityService(db).update_contact(
+                customer_id, theirs.id, changes={"name": "Renamed"}
+            )
+
+    # And it is untouched.
+    async with db_services.AsyncSessionLocal() as db:
+        [stored] = await ExporterContactActivityService(db).list_contacts(
+            other_customer_id
+        )
+    assert stored.name == "Not Yours"
 
 
 async def test_list_contacts_returns_all_for_customer():
@@ -159,12 +340,18 @@ async def test_list_pending_activities_marks_past_due_as_overdue():
     actor_id = f"agent-{uuid.uuid4().hex[:8]}"
     past_due = datetime.now(UTC) - timedelta(days=1)
     future_due = datetime.now(UTC) + timedelta(days=5)
+    # How a follow-up really becomes overdue: it was logged a week ago with a due date
+    # that was then still ahead of it, and the date has since passed. `log_activity`
+    # refuses a follow-up that is overdue the moment it is written
+    # (`ActivityDueInPastError`), so this backdates the call rather than the intent.
+    logged_a_week_ago = datetime.now(UTC) - timedelta(days=7)
 
     async with db_services.AsyncSessionLocal() as db:
         svc = ExporterContactActivityService(db)
         await svc.log_activity(
             customer_id, activity_type=ExporterActivityType.FOLLOW_UP,
-            subject="Overdue follow-up", actor_id=actor_id, due_at=past_due,
+            subject="Overdue follow-up", actor_id=actor_id,
+            occurred_at=logged_a_week_ago, due_at=past_due,
         )
         await svc.log_activity(
             customer_id, activity_type=ExporterActivityType.TASK,

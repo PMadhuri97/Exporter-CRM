@@ -34,7 +34,7 @@ import {
 import { Icon } from '@/design/icons';
 import { useCan } from '@/platform/access';
 
-import { CompaniesViewSwitch, CompanyBadges } from '../components';
+import { CompanyBadges } from '../components';
 import { JOURNEY_LABEL, JOURNEY_STAGES, MARKER_LABEL, QUALIFICATION_LABEL } from '../constants';
 import { COUNT_CAP, useExporterProfiles, useJourneyCount, usePrefetchCompany } from '../hooks';
 import { preloadExporterDetailPage } from '../lazyPages';
@@ -143,9 +143,11 @@ export function ExportersListPage() {
 
   return (
     <div>
+      {/* No List/Pipeline switch here. The board is a side-navigation destination of its
+          own, so offering it a second time on this page was the same screen behind two
+          doors — which read as duplicated navigation. */}
       <PageHeader
         title="Companies"
-        meta={<CompaniesViewSwitch view="list" />}
         actions={
           <>
             {/* The identity completion list: work on the records themselves, kept

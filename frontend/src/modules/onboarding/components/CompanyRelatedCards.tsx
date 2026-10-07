@@ -15,10 +15,21 @@ import { toast } from 'sonner';
 import { Badge, Button, Card, EmptyLine, FormPanel, Input, Skeleton } from '@/components';
 import { Icon } from '@/design/icons';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { useCan } from '@/platform/access';
 
-import { useAddExporterContact, useCompanyDeals, useCompanyDocuments, useFollowUps } from '../hooks';
+import {
+  useAddExporterContact,
+  useCompanyDeals,
+  useCompanyDocuments,
+  useFollowUps,
+  useUpdateExporterContact,
+} from '../hooks';
 import { paths } from '../paths';
-import type { AddExporterContactRequest, ExporterContact } from '../types';
+import type {
+  AddExporterContactRequest,
+  ExporterContact,
+  UpdateExporterContactRequest,
+} from '../types';
 
 import { categoryLabel } from './record/categoryLabel';
 import { DealStageChip } from './DealStageChip';
@@ -209,6 +220,133 @@ function AddContactForm({ customerId, onDone }: { customerId: string; onDone: ()
   );
 }
 
+/**
+ * Change one contact. Sends only what changed, because the route takes a partial body
+ * and a field left out is untouched.
+ *
+ * **Email and phone start empty for a role that reads them masked.** The list carries
+ * `j•••@example.com` for Operations, and putting that in the field would write the
+ * bullets into the record on the first save of anything else. Empty plus "type to
+ * replace" is the same answer `CompanyPanel` gives for a masked identifier: the field is
+ * sent only when it has been typed into.
+ */
+function EditContactForm({
+  customerId,
+  contact,
+  onDone,
+}: {
+  customerId: string;
+  contact: ExporterContact;
+  onDone: () => void;
+}) {
+  const mutation = useUpdateExporterContact(customerId);
+  const mayReveal = useCan('identifiers.reveal');
+  const [form, setForm] = useState({
+    name: contact.name,
+    role: contact.role ?? '',
+    department: contact.department ?? '',
+    email: mayReveal ? (contact.email ?? '') : '',
+    phone: mayReveal ? (contact.phone ?? '') : '',
+    is_primary: contact.is_primary_contact,
+  });
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const name = form.name.trim();
+    if (!name) return;
+
+    const payload: UpdateExporterContactRequest = {};
+    if (name !== contact.name) payload.name = name;
+    const text = (value: string) => value.trim() || null;
+    if (text(form.role) !== (contact.role ?? null)) payload.role = text(form.role);
+    if (text(form.department) !== (contact.department ?? null)) {
+      payload.department = text(form.department);
+    }
+    // A masked role's untouched field stays out of the body entirely; there is nothing
+    // to compare it against, so "left alone" is the only safe reading of empty.
+    if (mayReveal ? text(form.email) !== (contact.email ?? null) : form.email.trim()) {
+      payload.email = text(form.email);
+    }
+    if (mayReveal ? text(form.phone) !== (contact.phone ?? null) : form.phone.trim()) {
+      payload.phone = text(form.phone);
+    }
+    if (form.is_primary !== contact.is_primary_contact) payload.is_primary = form.is_primary;
+
+    // The server refuses an empty body rather than reporting a write that did not
+    // happen, so nothing-to-do closes the form instead of asking.
+    if (Object.keys(payload).length === 0) {
+      onDone();
+      return;
+    }
+
+    try {
+      await mutation.mutateAsync({ contactId: contact.id, payload });
+      toast.success('Contact updated');
+      onDone();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update contact');
+    }
+  }
+
+  const field = (
+    key: 'role' | 'email' | 'phone' | 'department',
+    label: string,
+    type = 'text',
+  ) => {
+    const hidden = !mayReveal && (key === 'email' || key === 'phone');
+    return (
+      <label className="block text-caption text-ink-3">
+        {label}
+        <Input
+          type={type}
+          className="mt-1"
+          value={form[key]}
+          placeholder={hidden ? 'Hidden — type to replace' : undefined}
+          onChange={(event) => setForm((prev) => ({ ...prev, [key]: event.target.value }))}
+        />
+      </label>
+    );
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <label className="block text-caption text-ink-3">
+        Name *
+        <Input
+          className="mt-1"
+          value={form.name}
+          onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+          required
+        />
+      </label>
+      {field('role', 'Role / title')}
+      {field('email', 'Email', 'email')}
+      {field('phone', 'Phone')}
+      {field('department', 'Department')}
+      <label className="flex items-center gap-2 text-body text-ink-2">
+        <input
+          type="checkbox"
+          checked={form.is_primary}
+          onChange={(event) => setForm((prev) => ({ ...prev, is_primary: event.target.checked }))}
+          className="h-4 w-4 rounded border-line-strong accent-accent-solid"
+        />
+        Make this the primary contact
+      </label>
+      <div className="flex justify-end gap-2 border-t border-line pt-4">
+        <Button onClick={onDone}>Cancel</Button>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={!form.name.trim()}
+          loading={mutation.isPending}
+        >
+          Save contact
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function ContactsCard({
   customerId,
   contacts,
@@ -221,6 +359,9 @@ function ContactsCard({
   canAdd: boolean;
 }) {
   const [adding, setAdding] = useState(false);
+  // The contact being edited, or none. One at a time: two open forms over the same list
+  // would let somebody promote two different people to primary from the same screen.
+  const [editing, setEditing] = useState<ExporterContact | null>(null);
   return (
     <Card
       as="h3"
@@ -241,6 +382,15 @@ function ContactsCard({
           <AddContactForm customerId={customerId} onDone={() => setAdding(false)} />
         </FormPanel>
       )}
+      {editing && (
+        <FormPanel title={`Edit ${editing.name}`} onClose={() => setEditing(null)}>
+          <EditContactForm
+            customerId={customerId}
+            contact={editing}
+            onDone={() => setEditing(null)}
+          />
+        </FormPanel>
+      )}
       {loading ? (
         <Loading />
       ) : contacts.length === 0 ? (
@@ -252,6 +402,18 @@ function ContactsCard({
               <div className="flex items-center gap-2">
                 <p className="truncate text-body font-semibold text-ink">{contact.name}</p>
                 {contact.is_primary_contact && <Badge variant="outline">Primary</Badge>}
+                {/* The same capability that offers *Add*: editing a contact is the same
+                    write, and the server gates both on the staff roles. */}
+                {canAdd && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(contact)}
+                    aria-label={`Edit ${contact.name}`}
+                    className="ml-auto shrink-0 rounded p-1 text-ink-4 transition-colors duration-quick hover:bg-sunken hover:text-ink"
+                  >
+                    <Icon.edit size={14} aria-hidden />
+                  </button>
+                )}
               </div>
               <p className="truncate text-secondary text-ink-2">
                 {[contact.role, contact.department].filter(Boolean).join(' · ') || 'No role added'}

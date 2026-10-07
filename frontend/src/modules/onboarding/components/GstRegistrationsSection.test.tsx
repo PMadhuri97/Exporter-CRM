@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useCurrentUser } from '@/platform/auth';
+
 import {
   addGstRegistration,
   deactivateGstRegistration,
@@ -23,6 +25,11 @@ vi.mock('../api', () => ({
 }));
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+}));
+// The GSTIN goes through `Identifier`, which asks who is looking.
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
+  useCurrentUser: vi.fn(),
 }));
 
 const COMPANY = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -61,6 +68,7 @@ function renderSection({ canEdit = true, canFlag = true } = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(useCurrentUser).mockReturnValue({ role: 'COMPLIANCE' } as ReturnType<typeof useCurrentUser>);
   vi.mocked(listGstRegistrations).mockResolvedValue({
     registrations: [registration()],
     flagged_count: 0,
@@ -82,6 +90,16 @@ describe('GstRegistrationsSection', () => {
     // "Not verified", never "Active": nobody has checked it against the portal, and
     // saying otherwise would be a claim the CRM has no basis for.
     expect(screen.getByText(/Not verified/)).toBeInTheDocument();
+  });
+
+  it('covers the GSTIN until the eye is opened, because it carries the PAN', async () => {
+    // COMPLIANCE is sent the value in full; the screen covers it, as it does the PAN.
+    renderSection();
+    expect(await screen.findByText('•••••••••••F1Z5')).toBeInTheDocument();
+    expect(screen.queryByText('27ABCDE1234F1Z5')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal value' }));
+    expect(screen.getByText('27ABCDE1234F1Z5')).toBeInTheDocument();
   });
 
   it('says so when a state code is not one we know, rather than showing nothing', async () => {

@@ -39,6 +39,7 @@ import {
   Skeleton,
 } from '@/components';
 import { Icon } from '@/design/icons';
+import { Identifier, maskTail } from '@/platform/mask';
 
 import { useGstRegistrations, useSetDealInvoicingBranch } from '../hooks';
 import type { GstRegistration } from '../types';
@@ -63,8 +64,13 @@ function stateName(registration: GstRegistration): string {
   );
 }
 
+/**
+ * An `<option>` holds text only, so it cannot carry `Identifier`'s eye: the GSTIN is
+ * always covered here. The state names the branch; the last four characters tell two
+ * branches in one state apart (they differ in the entity number, which is among them).
+ */
 function optionLabel(registration: GstRegistration): string {
-  return `${stateName(registration)} · ${registration.gstin}`;
+  return `${stateName(registration)} · ${maskTail(registration.gstin)}`;
 }
 
 function BranchStatus({ registration }: { registration: GstRegistration }) {
@@ -201,7 +207,7 @@ export function InvoicingBranchPicker({
             {shown ? (
               <span className="inline-flex flex-wrap items-center gap-2">
                 <span className="font-medium text-ink">{stateName(shown)}</span>
-                <span className="text-caption text-ink-2">{shown.gstin}</span>
+                <Identifier kind="GSTIN" value={shown.gstin} className="text-ink-2" />
                 <BranchStatus registration={shown} />
               </span>
             ) : shownId !== null ? (
