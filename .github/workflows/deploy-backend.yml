@@ -1,0 +1,101 @@
+name: Deploy Backend to Amazon ECS
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'deployments/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'aner-crm-cluster' }}
+  ECR_BACKEND_REPO: ${{ vars.ECR_BACKEND_REPO || 'aner-crm-backend' }}
+  ECS_BACKEND_SERVICE: ${{ vars.ECS_BACKEND_SERVICE || 'aner-crm-backend-service-ficjkowh' }}
+
+jobs:
+  deploy-backend:
+    name: Build & Deploy Backend
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.ref }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch current Backend Task Definition
+        id: backend-meta
+        run: |
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_BACKEND_SERVICE }} \
+            --query "services[0].taskDefinition" --output text)
+          
+          echo "Active Task Definition: $TASK_DEF_ARN"
+          
+          # Fetch and sanitize task definition for registration
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query taskDefinition | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' > task-def-backend.json
+
+          # Detect container name from task definition (or fallback to variable)
+          CONTAINER_NAME="${{ vars.BACKEND_CONTAINER_NAME }}"
+          if [ -z "$CONTAINER_NAME" ]; then
+            CONTAINER_NAME=$(jq -r '.containerDefinitions[0].name' task-def-backend.json)
+          fi
+          echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Backend image
+        id: build-backend-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_BACKEND_REPO }}
+          IMAGE_TAG: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+        run: |
+          # Ensure root deployments directory is present in backend context for Dockerfile
+          if [ -d "./deployments" ]; then
+            cp -r ./deployments ./backend/
+          fi
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest ./backend
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Render new Backend Task Definition
+        id: render-backend-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def-backend.json
+          container-name: ${{ steps.backend-meta.outputs.container_name }}
+          image: ${{ steps.build-backend-image.outputs.image }}
+
+      - name: Deploy Backend to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-backend-task-def.outputs.task-definition }}
+          service: ${{ env.ECS_BACKEND_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

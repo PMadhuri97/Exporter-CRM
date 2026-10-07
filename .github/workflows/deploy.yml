@@ -1,0 +1,16 @@
+# NOTE: Deployment pipelines are split into two independent workflows:
+# - deploy-backend.yml (triggers on changes in backend/**)
+# - deploy-frontend.yml (triggers on changes in frontend/**)
+#
+# This file is retained for manual full-stack deploys via GitHub Actions UI.
+name: Deploy Full Stack to ECS (Manual Only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  info:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Please use 'Deploy Backend to Amazon ECS' or 'Deploy Frontend to Amazon ECS' to deploy individual services."
