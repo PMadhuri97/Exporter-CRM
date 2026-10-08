@@ -100,7 +100,7 @@ function factsLine(profile: ExporterProfileListItem): string | null {
   const parts = [
     profile.industry,
     profile.country,
-    profile.relationship_manager ? `RM ${profile.relationship_manager}` : null,
+    profile.relationship_manager_name ? `RM ${profile.relationship_manager_name}` : null,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : null;
 }

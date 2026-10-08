@@ -26,6 +26,7 @@ const PROFILE: ExporterProfileListItem = {
   country: 'IN',
   gstins: ['27ABCDE1234F1Z5'],
   cin: null,
+  relationship_manager_inactive: false,
   journey: 'LEAD',
   qualification: 'NOT_YET_REVIEWED',
   marker: 'NONE',
@@ -37,6 +38,7 @@ const PROFILE: ExporterProfileListItem = {
   pipeline_status: 'IN_PIPELINE',
   source: 'MANUAL',
   relationship_manager: 'Jane RM',
+  relationship_manager_name: 'Jane RM',
   relationship_manager_user_id: 'user-owner',
   industry: null,
   year_established: null,
@@ -56,13 +58,13 @@ function mockUser(role: string, id: string) {
   });
 }
 
-function renderPage() {
+function renderPage(at = '/companies') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[at]}>
         <ExportersListPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -205,5 +207,39 @@ describe('ExportersListPage — write screens by role', () => {
     mockUser('DEVELOPER', 'user-1');
     renderPage();
     expect(screen.getByRole('link', { name: 'Identity to complete' })).toBeInTheDocument();
+  });
+});
+
+describe('ExportersListPage — whose companies', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUser('OPERATIONS', 'rm-me');
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 50, offset: 0 });
+  });
+
+  it('is My companies at ?owner=me, asking the server for this RM’s companies only', async () => {
+    renderPage('/companies?owner=me');
+    expect(await screen.findByRole('heading', { name: 'My companies' })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ relationship_manager: 'me' }),
+      ),
+    );
+    // The owner is the page itself, so there is no owner filter to change it.
+    expect(screen.queryByLabelText('Owner')).not.toBeInTheDocument();
+    expect(await screen.findByText(/not the relationship manager of any company yet/)).toBeInTheDocument();
+  });
+
+  it('offers Unassigned and RM deactivated as filters, but not My companies', async () => {
+    renderPage();
+    const owner = await screen.findByLabelText('Owner');
+    const options = within(owner).getAllByRole('option').map((option) => option.textContent);
+    expect(options).toEqual(['Any owner', 'Unassigned', 'RM deactivated']);
+    fireEvent.change(owner, { target: { value: 'none' } });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ relationship_manager: 'none' }),
+      ),
+    );
   });
 });

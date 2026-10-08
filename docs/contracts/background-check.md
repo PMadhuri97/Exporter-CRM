@@ -652,8 +652,11 @@ expired = party_facts(clear_expires_at=at, is_clear_current=False)   # an expire
    `decided_by` = proposer, `approved_by` = approver, the evidence pinned, `CLEAR`'s prerequisites
    evaluated again, the expiry set, a qualified `PROSPECT` promoted — one transaction, announced
    after the commit.
-3. `…/reject` needs a reason and is anyone's but the proposer's; `…/withdraw` is the proposer's
-   alone (403 `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS`). Neither moves the gauge. A stale proposal can
+3. `…/reject` needs a reason and is anyone's but the proposer's; `…/withdraw` is the
+   proposer's, or ADMIN's or a holder of `compliance:assign`'s — only for a proposer who has left
+   (account deactivated or removed, or no longer COMPLIANCE or ADMIN). While the proposer is still
+   here, anyone else rejects it, with a reason (403 `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` otherwise;
+   §12.8). Neither moves the gauge. A stale proposal can
    still be rejected or withdrawn — that is how it is cleared away.
 
 Rules that go with it:
@@ -676,8 +679,10 @@ Rules that go with it:
 - **Tables** (0026, both append-only, BQ-7 provenance): `background_check_proposal` (`created_by` is
   the proposer, `created_at` when proposed) and `background_check_proposal_resolution` (at most one
   per proposal; `outcome` `APPROVED`/`REJECTED`/`WITHDRAWN`; `created_by` the resolver; a copy of
-  `proposed_by` pinned by a composite FK, so `(outcome = 'WITHDRAWN') = (created_by =
-  proposed_by)` holds inside one row; `decision_id` exactly on `APPROVED`).
+  `proposed_by` pinned by a composite FK, so "an approval or rejection is never by the proposer"
+  (`outcome = 'WITHDRAWN' OR created_by <> proposed_by`, relaxed in 0044 from "a withdrawal is by
+  the proposer" so a lead can withdraw for someone who left) holds inside one row; `decision_id`
+  exactly on `APPROVED`).
 - **History**: dimension `background_check_approval` (`history-row.md` §2); DEVELOPER does not
   receive it (D8).
 - **The switch** `CRM_BACKGROUND_CHECK_MAKER_CHECKER` (IQ-17): on by default; off is accepted only
@@ -719,6 +724,58 @@ decision, proposal and cycle since records `rules_version = clear-2026-10-01-7it
   started is not listed (the start reopened it). The read serves `rekyc_due`, shown as the gauge's
   "Re-KYC due" badge and the Home card.
 
+### 12.8 Who holds the review, and who may approve (7 October 2026)
+
+The review is a gauge state, not a row, so the company row carries **who holds it**:
+`background_check_reviewer_id` and `background_check_reviewer_assigned_at` (migration 0044),
+written only by `BackgroundCheckService._set_reviewer`, each change a
+`background_check_assignment` history row (`history-row.md` §2; hidden from DEVELOPER). The
+database refuses a reviewer on a company that is not `IN_REVIEW` or `MORE_INFO`
+(`ck_exporter_profile_reviewer_under_review`) and one without its timestamp.
+
+- **Unassigned at the start.** Move 1 leaves the review in *Awaiting review*. A COMPLIANCE or
+  ADMIN user **claims** it (`POST …/background-check/reviewer/claim`, 409
+  `REVIEW_ALREADY_ASSIGNED` if held); ADMIN or a holder of `compliance:assign` **assigns or
+  reassigns** it (`PUT …/background-check/reviewer`, a reason required to take it from someone,
+  `REVIEW_REASON_REQUIRED`); the reviewer, ADMIN or `compliance:assign` **releases** it
+  (`POST …/reviewer/release`, refused while the reviewer's own proposal is open). The target is an
+  active COMPLIANCE or ADMIN user (`REVIEWER_NOT_ELIGIBLE`) and **never the company's RM**
+  (`REVIEWER_IS_RM`). An open proposal survives a reviewer change.
+- **The reviewer's moves.** Requesting information (move 3) and proposing `CLEAR` or `FLAGGED`
+  are the reviewer's: an unassigned review is claimed by whoever makes one, in the same
+  transaction; one held by someone else refuses them (409 `REVIEW_ASSIGNED_TO_OTHER`). Recording
+  what arrived (move 4) stays anyone's. A reassessment or reopen (moves 7–9, and a Re-KYC on a
+  `CLEAR` company) makes the actor the reviewer. Landing on `CLEAR`, `FLAGGED` or `ON_HOLD` ends
+  the review (`review_ended`). The read serves `reviewer_id`, `reviewer_name`,
+  `reviewer_assigned_at`, `reviewer_inactive` and `review_actions` (`CLAIM`, `RELEASE`, `ASSIGN`),
+  and offers the reviewer's moves only to the reviewer (or to someone who may claim).
+- **Independent checkers.** Besides the proposer (§12.5), the review's current reviewer and the
+  company's RM may not approve or reject (403 `BACKGROUND_CHECK_CONFLICT_OF_INTEREST`). The
+  checker is pooled: a proposal never names one.
+- **High risk.** A `CLEAR` proposed at `HIGH` or `CRITICAL` is approved only by ADMIN or a holder
+  of `compliance:approve_high_risk` (403 `HIGH_RISK_APPROVAL_REQUIRED`). That senior checker is
+  the second person; approval is final, with no third stage. At least two people should hold it.
+- **The RM at the start.** Starting the check on an in-pipeline company with no relationship
+  manager needs `relationship_manager_user_id` in the same request (an RM names themselves; ADMIN
+  or `exporters:assign_rm` names any RM), or 409 `RELATIONSHIP_MANAGER_REQUIRED`; the read serves
+  `relationship_manager_required`. A buyer-only company is never blocked.
+- **Permissions** are checked as "ADMIN, or the permission" (`domain/assignment.py`), granted
+  through custom roles; there is no lead role in the enum.
+- **Worklists, computed on read** (`application/compliance_worklists.py`), with business-time
+  deadlines (`domain/business_time.py`; `CRM_SLA_REVIEW` 1 business day from assignment, paused
+  during `MORE_INFO`; `CRM_SLA_INFO` 1 business day; `CRM_SLA_APPROVAL` 4 business hours;
+  `CRM_BUSINESS_HOURS` `MON-FRI 09:30-18:30` in `CRM_BUSINESS_TIMEZONE` Asia/Kolkata;
+  `CRM_HOLIDAYS`; due soon at `CRM_SLA_DUE_SOON_PERCENT` 75). No scheduler.
+  `GET /background-check/reviews?view=awaiting|mine|in_review|overdue|needs_attention`
+  (COMPLIANCE, ADMIN; the last three need `compliance:assign`),
+  `GET /background-check/info-requests?relationship_manager=me|none` (staff; carries the
+  request's note), `GET /worklist/counts` (staff; the nav badges, numbers only) and
+  `GET /background-check/recent-decisions` (staff; outcomes of the last 14 days on the caller's
+  companies, no reason). *Needs attention* is a proposal no one can approve, two rejections since
+  the check last moved, or a deactivated reviewer. The approval queue's `awaiting=me` keeps only
+  what the caller may approve, and each open proposal carries `due_at`, `is_overdue`,
+  `eligible_checker_count`, `needs_senior_approval` and `approval_blocked_reason`.
+
 ## 13. Errors
 
 Raised by `BackgroundCheckService` and served by the routes (phases 4A-3 to 4A-7, and the PR
@@ -746,7 +803,7 @@ review of 28 Sep 2026). Each `error_context` carries plain values (`IN_REVIEW`, 
 | Approve, reject or withdraw a proposal already resolved (also the loser of two at once) | 409 | `BACKGROUND_CHECK_PROPOSAL_RESOLVED` |
 | Approve a proposal whose gauge, chain head or inputs moved since | 409 | `BACKGROUND_CHECK_PROPOSAL_STALE`, with `why` |
 | The proposer approves or rejects their own proposal | 403 | `BACKGROUND_CHECK_SELF_APPROVAL` |
-| Someone other than the proposer withdraws it | 403 | `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` |
+| Someone other than the proposer withdraws it — unless ADMIN or `compliance:assign` and the proposer has left | 403 | `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` |
 | A role other than COMPLIANCE or ADMIN approves, rejects or withdraws (service rule; the route refuses first) | 403 | `BACKGROUND_CHECK_APPROVER_ROLE_NOT_ALLOWED` |
 | A write that bypasses the service and breaks §5.3 or §6 | — | refused by the database (`CheckViolation`, `ForeignKeyViolation`, `UniqueViolation`, `RaiseException`) |
 

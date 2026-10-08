@@ -32,6 +32,7 @@ from sqlalchemy import select, text
 from app.modules.onboarding.application.background_check_service import BackgroundCheckService
 from app.modules.onboarding.application.compliance_inputs import ComplianceInputsService
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.domain.assignment import APPROVE_HIGH_RISK
 from app.modules.onboarding.domain.background_check_views import CLEAR_POLICY, ClearPolicy
 from app.modules.onboarding.domain.compliance_inputs import (
     CompanyComplianceInputs,
@@ -177,7 +178,11 @@ class TwoPersonService(BackgroundCheckService):
             seen_value=seen_value,
         )
         approved = await self.approve(
-            company_id, proposal.id, actor_id=CHECKER, actor_role=UserRole.COMPLIANCE
+            company_id,
+            proposal.id,
+            actor_id=CHECKER,
+            actor_role=UserRole.COMPLIANCE,
+            actor_permissions=frozenset({APPROVE_HIGH_RISK}),
         )
         return approved.decision
 

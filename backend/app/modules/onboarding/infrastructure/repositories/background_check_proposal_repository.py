@@ -11,6 +11,7 @@ under that lock: *open* means "no resolution row", which no constraint can see.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,14 +114,17 @@ class BackgroundCheckProposalRepository(AppendOnlyRepository[BackgroundCheckProp
         *,
         status: str,
         exclude_proposer: str | None = None,
+        proposal_ids: Collection[uuid.UUID] | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[QueueRow], int]:
         """Proposals of every company in ``status`` (``OPEN`` or an outcome), oldest
         first for the open queue — the longest-waiting at the top — newest first
         otherwise; each with its company's name. ``exclude_proposer`` drops one user's
-        own proposals ("awaiting **me**")."""
+        own proposals; ``proposal_ids`` keeps only those (a page already chosen)."""
         conditions = []
+        if proposal_ids is not None:
+            conditions.append(BackgroundCheckProposal.id.in_(list(proposal_ids)))
         if status == STATUS_OPEN:
             conditions.append(BackgroundCheckProposalResolution.id.is_(None))
         else:

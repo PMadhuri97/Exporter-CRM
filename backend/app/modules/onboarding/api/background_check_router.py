@@ -34,6 +34,14 @@ verification types ``CLEAR`` requires and their state, and whether the Clear
 is due for Re-KYC. Two cross-company reads feed the Home cards:
 ``GET /background-check/proposals?status=open`` (COMPLIANCE, ADMIN) and
 ``GET /background-check/due?before=…`` (staff). DEVELOPER is refused on all.
+
+**Who is working on it.** The standing names the review's reviewer and what this
+caller may do with it (claim, release, assign); three routes do those. The worklists
+(``GET /background-check/reviews?view=…``, ``…/info-requests``,
+``…/recent-decisions`` and ``GET /worklist/counts``) are computed on read from the
+gauge, the reviewer and the proposals, with business-time deadlines — the v1
+notifications are these lists and their counts. ``in_review``, ``overdue`` and
+``needs_attention`` are for ADMIN and holders of ``compliance:assign``.
 """
 
 from __future__ import annotations
@@ -44,11 +52,13 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.background_check import (
     ApproveBackgroundCheckProposalResponse,
+    AssignReviewerRequest,
     BackgroundCheckCycleActionResponse,
     BackgroundCheckDecisionListResponse,
     BackgroundCheckDecisionResponse,
@@ -59,6 +69,8 @@ from app.modules.onboarding.api.schemas.background_check import (
     CheckCycleListResponse,
     CheckCycleResponse,
     CompanyComplianceFactsResponse,
+    ComplianceWorkItemResponse,
+    ComplianceWorklistResponse,
     DecisionEvidenceDocument,
     DecisionEvidenceItemResponse,
     DecisionEvidencePinnedReview,
@@ -66,14 +78,18 @@ from app.modules.onboarding.api.schemas.background_check import (
     DecisionEvidenceScreeningItem,
     DecisionEvidenceVerification,
     EvidenceItemResponse,
+    RecentDecisionListResponse,
+    RecentDecisionResponse,
     RecordBackgroundCheckDecisionRequest,
     RejectBackgroundCheckProposalRequest,
     ReKycDueCompanyResponse,
     ReKycDueListResponse,
+    ReleaseReviewRequest,
     RequiredCheckResponse,
     StartCheckCycleRequest,
     StartCheckCycleResponse,
     WithdrawBackgroundCheckProposalRequest,
+    WorklistCountsResponse,
 )
 from app.modules.onboarding.api.schemas.verification import VerificationEvidenceRefOut
 from app.modules.onboarding.application.background_check_reader import BackgroundCheckReader
@@ -83,12 +99,28 @@ from app.modules.onboarding.application.background_check_service import (
 )
 from app.modules.onboarding.application.compliance_facts import ComplianceFactsService
 from app.modules.onboarding.application.compliance_settings import rekyc_due_window
+from app.modules.onboarding.application.compliance_worklists import (
+    LEAD_VIEWS,
+    ComplianceWorklists,
+    WorkItem,
+)
 from app.modules.onboarding.application.decision_evidence import (
     DecisionEvidenceReader,
     DecisionEvidenceView,
 )
 from app.modules.onboarding.application.rekyc_due import rekyc_due
+from app.modules.onboarding.domain.assignment import (
+    APPROVE_HIGH_RISK,
+    ASSIGN_REVIEWS,
+    Permission,
+    checker_conflict,
+    holds,
+    needs_senior_checker,
+)
 from app.modules.onboarding.domain.background_check_views import (
+    PROPOSAL_APPROVE,
+    PROPOSAL_REJECT,
+    PROPOSAL_WITHDRAW,
     BackgroundCheckDecisionView,
     BackgroundCheckProposalView,
     EvidenceItemView,
@@ -99,6 +131,9 @@ from app.modules.onboarding.domain.entities.background_check_enums import (
     BackgroundCheckState,
 )
 from app.modules.onboarding.domain.entities.check_cycle import CheckCycle, CheckCycleKind
+from app.modules.onboarding.domain.entities.exporter_enums import CompanyPipelineStatus
+from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.exceptions import ExporterProfileNotFoundError
 from app.modules.onboarding.infrastructure.repositories.background_check_decision_repository import (  # noqa: E501
     BackgroundCheckDecisionRepository,
 )
@@ -109,11 +144,12 @@ from app.modules.onboarding.infrastructure.repositories.check_cycle_repository i
     CheckCycleRepository,
     resolved_cycle_id,
 )
+from app.platform.authentication import staff_member
 from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authorization.services import get_current_permissions, require_role
 from app.platform.database.services import get_db
 from app.shared import clock
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import AnerBaseException, ValidationError
 
 router = APIRouter(tags=["Exporter CRM"])
 
@@ -124,6 +160,40 @@ _STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 #: rule.
 _COMPLIANCE_OR_ADMIN = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
 _RESOLVER_ROLES = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
+#: The signed-in user's permissions, for the "ADMIN or permission" rules.
+_PERMISSIONS = Annotated[frozenset[Permission], Depends(get_current_permissions)]
+#: The reviewer's moves: offered only to the reviewer, or to anyone who could claim.
+_REVIEWER_DESTINATIONS = frozenset(
+    {BackgroundCheckState.MORE_INFO, BackgroundCheckState.CLEAR, BackgroundCheckState.FLAGGED}
+)
+
+
+def _approval_eligibility(
+    view: BackgroundCheckProposalView,
+    *,
+    viewer: User,
+    permissions: frozenset[Permission],
+    reviewer_id: str | None,
+    relationship_manager_id: str | None,
+) -> tuple[str | None, bool]:
+    """Why this viewer may not approve ``view`` (``None`` if they may), and whether the
+    reason also bars a rejection (the reviewer and the RM are not independent; a
+    missing senior permission bars only the approval)."""
+    viewer_id = str(viewer.id)
+    if viewer_id == view.proposed_by:
+        return None, False
+    why = checker_conflict(
+        checker_id=viewer_id,
+        reviewer_id=reviewer_id,
+        relationship_manager_id=relationship_manager_id,
+    )
+    if why is not None:
+        return f"You cannot approve this: {why}.", True
+    if needs_senior_checker(view.to_value, view.risk_rating) and not holds(
+        viewer.role, permissions, APPROVE_HIGH_RISK
+    ):
+        return "A senior approver must approve a high-risk Clear.", False
+    return None, False
 
 
 def _proposal_response(
@@ -134,8 +204,13 @@ def _proposal_response(
     company_name: str | None = None,
     stale_reason: str | None = None,
     viewer: User | None = None,
+    permissions: frozenset[Permission] = frozenset(),
+    reviewer_id: str | None = None,
+    relationship_manager_id: str | None = None,
+    facts: WorkItem | None = None,
 ) -> BackgroundCheckProposalResponse:
     actions: tuple[str, ...] = ()
+    blocked: str | None = None
     if viewer is not None:
         actions = proposal_actions(
             view,
@@ -143,6 +218,23 @@ def _proposal_response(
             viewer_may_resolve=viewer.role in _RESOLVER_ROLES,
             is_stale=stale_reason is not None,
         )
+        if view.is_open:
+            blocked, bars_reject = _approval_eligibility(
+                view,
+                viewer=viewer,
+                permissions=permissions,
+                reviewer_id=reviewer_id,
+                relationship_manager_id=relationship_manager_id,
+            )
+            barred = {PROPOSAL_APPROVE, PROPOSAL_REJECT} if bars_reject else {PROPOSAL_APPROVE}
+            if blocked is not None:
+                actions = tuple(a for a in actions if a not in barred)
+            if (
+                str(viewer.id) != view.proposed_by
+                and viewer.role in _RESOLVER_ROLES
+                and holds(viewer.role, permissions, ASSIGN_REVIEWS)
+            ):
+                actions = (*actions, PROPOSAL_WITHDRAW)
     return BackgroundCheckProposalResponse(
         id=view.id,
         company_id=view.company_id,
@@ -167,6 +259,31 @@ def _proposal_response(
         decision_id=view.decision_id,
         stale_reason=stale_reason if view.is_open else None,
         allowed_actions=list(actions),  # type: ignore[arg-type]
+        approval_blocked_reason=blocked,
+        needs_senior_approval=needs_senior_checker(view.to_value, view.risk_rating),
+        due_at=facts.due_at if facts is not None and view.is_open else None,
+        is_due_soon=bool(facts is not None and view.is_open and facts.is_due_soon),
+        is_overdue=bool(facts is not None and view.is_open and facts.is_overdue),
+        eligible_checker_count=(
+            facts.eligible_checker_count if facts is not None and view.is_open else None
+        ),
+    )
+
+
+async def _profile(db: AsyncSession, company_id: uuid.UUID) -> ExporterProfile:
+    profile = await db.scalar(
+        select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
+    )
+    if profile is None:
+        raise ExporterProfileNotFoundError(company_id)
+    return profile
+
+
+def _rm_id(profile: ExporterProfile) -> str | None:
+    return (
+        str(profile.relationship_manager_user_id)
+        if profile.relationship_manager_user_id is not None
+        else None
     )
 
 
@@ -224,8 +341,11 @@ async def get_background_check(
     company_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_STAFF)],
+    permissions: _PERMISSIONS,
 ) -> BackgroundCheckResponse:
     standing = await BackgroundCheckReader(db).standing(company_id)
+    profile = await _profile(db, company_id)
+    reviewer_id = profile.background_check_reviewer_id
     current = BackgroundCheckState(standing.value)
     service = BackgroundCheckService(db)
 
@@ -245,6 +365,7 @@ async def get_background_check(
         [
             current_cycle.created_by if current_cycle is not None else None,
             awaiting[0].proposed_by if awaiting is not None else None,
+            reviewer_id,
         ],
     )
     open_proposal = None
@@ -261,7 +382,27 @@ async def get_background_check(
             ),
             stale_reason=stale_reason,
             viewer=user,
+            permissions=permissions,
+            reviewer_id=reviewer_id,
+            relationship_manager_id=_rm_id(profile),
         )
+
+    # A reviewer's move is offered to the reviewer, or to someone who could claim
+    # the review by making it — never to the company's RM.
+    viewer_id = str(user.id)
+    may_make_reviewer_moves = (
+        reviewer_id == viewer_id
+        if reviewer_id is not None
+        else _rm_id(profile) != viewer_id
+    )
+    moves = [
+        move
+        for move in service.allowed_moves(current, user.role)
+        if may_make_reviewer_moves
+        or current is not BackgroundCheckState.IN_REVIEW
+        or move.to not in _REVIEWER_DESTINATIONS
+    ]
+    reviewer = await staff_member(db, reviewer_id) if reviewer_id is not None else None
 
     return BackgroundCheckResponse(
         company_id=standing.company_id,
@@ -272,12 +413,7 @@ async def get_background_check(
         decided_at=standing.decided_at,
         # While a proposal awaits approval nothing else moves the check.
         allowed_moves=(
-            []
-            if awaiting is not None
-            else [
-                BackgroundCheckMoveResponse.from_view(move)
-                for move in service.allowed_moves(current, user.role)
-            ]
+            [] if awaiting is not None else [BackgroundCheckMoveResponse.from_view(m) for m in moves]
         ),
         clear_blocked_reasons=blocked,
         compliance=CompanyComplianceFactsResponse(
@@ -306,6 +442,22 @@ async def get_background_check(
             facts.is_clear
             and facts.clear_expires_at is not None
             and facts.clear_expires_at <= now + rekyc_due_window()
+        ),
+        reviewer_id=reviewer_id,
+        reviewer_name=names.get(reviewer_id or ""),
+        reviewer_assigned_at=profile.background_check_reviewer_assigned_at,
+        reviewer_inactive=reviewer_id is not None and (reviewer is None or not reviewer.is_active),
+        review_actions=service.review_actions(  # type: ignore[arg-type]
+            profile,
+            viewer_id=viewer_id,
+            viewer_role=user.role,
+            viewer_permissions=permissions,
+            open_proposal=awaiting[0] if awaiting is not None else None,
+        ),
+        relationship_manager_required=(
+            current is BackgroundCheckState.NOT_STARTED
+            and profile.pipeline_status is CompanyPipelineStatus.IN_PIPELINE
+            and profile.relationship_manager_user_id is None
         ),
     )
 
@@ -352,7 +504,10 @@ async def get_background_check(
                 "current value; `BACKGROUND_CHECK_STATE_CHANGED` — the check is no "
                 "longer at `from_value`; `BACKGROUND_CHECK_PREREQUISITES_UNMET` — "
                 "CLEAR with prerequisites outstanding, naming each; or "
-                "`BACKGROUND_CHECK_PROPOSAL_OPEN` — a proposal awaits approval"
+                "`BACKGROUND_CHECK_PROPOSAL_OPEN` — a proposal awaits approval; "
+                "`RELATIONSHIP_MANAGER_REQUIRED` — a start on an in-pipeline company with "
+                "no RM and none given; `REVIEW_ASSIGNED_TO_OTHER` — someone else holds "
+                "the review; `REVIEWER_IS_RM`"
             )
         },
         422: {
@@ -369,6 +524,7 @@ async def record_background_check_decision(
     payload: RecordBackgroundCheckDecisionRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_STAFF)],
+    permissions: _PERMISSIONS,
 ) -> BackgroundCheckDecisionResponse | JSONResponse:
     service = BackgroundCheckService(db)
     if service.needs_approval(payload.to_value):
@@ -388,6 +544,7 @@ async def record_background_check_decision(
             names=dict(names),
             cycle_number=cycles[proposal.cycle_id].number if proposal.cycle_id in cycles else None,
             viewer=user,
+            permissions=permissions,
         )
         return JSONResponse(status_code=202, content=body.model_dump(mode="json"))
 
@@ -400,6 +557,8 @@ async def record_background_check_decision(
         # From the session, never the body (contract §5.1).
         actor_id=str(user.id),
         actor_role=user.role,
+        actor_permissions=permissions,
+        relationship_manager_user_id=payload.relationship_manager_user_id,
     )
     return await _decision_response(db, user, view)
 
@@ -751,6 +910,7 @@ async def list_background_check_proposals(
     company_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_STAFF)],
+    permissions: _PERMISSIONS,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> BackgroundCheckProposalListResponse:
@@ -765,6 +925,7 @@ async def list_background_check_proposals(
     cycles = await CheckCycleRepository(db).by_ids([v.cycle_id for v in views])
     awaiting = await BackgroundCheckService(db).open_proposal(company_id)
     stale_reason = awaiting[1] if awaiting is not None else None
+    profile = await _profile(db, company_id)
     return BackgroundCheckProposalListResponse(
         proposals=[
             _proposal_response(
@@ -773,6 +934,9 @@ async def list_background_check_proposals(
                 cycle_number=cycles[view.cycle_id].number if view.cycle_id in cycles else None,
                 stale_reason=stale_reason if view.is_open else None,
                 viewer=user,
+                permissions=permissions,
+                reviewer_id=profile.background_check_reviewer_id,
+                relationship_manager_id=_rm_id(profile),
             )
             for view in views
         ],
@@ -788,7 +952,10 @@ _RESOLVE_RESPONSES: dict[int | str, dict] = {
         "description": (
             "COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the "
             "proposer cannot approve or reject their own proposal; "
-            "`BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer withdraws"
+            "`BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer (or ADMIN or "
+            "compliance:assign) withdraws; `BACKGROUND_CHECK_CONFLICT_OF_INTEREST` — you "
+            "are the review's reviewer or the company's RM; `HIGH_RISK_APPROVAL_REQUIRED`"
+            " — a HIGH or CRITICAL CLEAR needs a senior approver"
         )
     },
     404: {"description": "Company not found, or `BACKGROUND_CHECK_PROPOSAL_NOT_FOUND`"},
@@ -821,9 +988,14 @@ async def approve_background_check_proposal(
     proposal_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    permissions: _PERMISSIONS,
 ) -> ApproveBackgroundCheckProposalResponse:
     approved = await BackgroundCheckService(db).approve(
-        company_id, proposal_id, actor_id=str(user.id), actor_role=user.role
+        company_id,
+        proposal_id,
+        actor_id=str(user.id),
+        actor_role=user.role,
+        actor_permissions=permissions,
     )
     decision = await _decision_response(db, user, approved.decision)
     names = await actor_names(db, user, [approved.proposal.proposed_by, str(user.id)])
@@ -869,7 +1041,8 @@ async def reject_background_check_proposal(
     summary="Withdraw your own background-check proposal",
     description=(
         "The proposer closes their own proposal (the reason is optional); the check does "
-        "not move."
+        "not move. ADMIN or a holder of compliance:assign may withdraw someone else's — "
+        "for a proposer who has left."
     ),
     responses={**_RESOLVE_RESPONSES, 422: {"description": "An unknown field"}},
 )
@@ -878,6 +1051,7 @@ async def withdraw_background_check_proposal(
     proposal_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    permissions: _PERMISSIONS,
     payload: WithdrawBackgroundCheckProposalRequest | None = None,
 ) -> BackgroundCheckProposalResponse:
     view = await BackgroundCheckService(db).withdraw(
@@ -886,6 +1060,7 @@ async def withdraw_background_check_proposal(
         reason=payload.reason if payload is not None else None,
         actor_id=str(user.id),
         actor_role=user.role,
+        actor_permissions=permissions,
     )
     names = await actor_names(db, user, [view.proposed_by])
     return _proposal_response(view, names=dict(names))
@@ -898,10 +1073,13 @@ async def withdraw_background_check_proposal(
     description=(
         "`status=open` (the default) lists every proposal awaiting approval, the "
         "longest-waiting first — the Home card \"Proposals awaiting me\" adds "
-        "`awaiting=me`, which leaves out the caller's own. `approved`, `rejected` and "
+        "`awaiting=me`, which keeps only what the caller may approve: not their own, "
+        "not one whose review they hold, not a company they are RM of, and a HIGH or "
+        "CRITICAL CLEAR only for a senior approver. `approved`, `rejected` and "
         "`withdrawn` list resolved ones, newest first. Each carries the company's name "
-        "(never an identifier) and what this caller may do with it. COMPLIANCE and "
-        "ADMIN only: they are the ones who approve."
+        "(never an identifier), what this caller may do with it and, while open, when "
+        "it is due and how many people could approve it. COMPLIANCE and ADMIN only: "
+        "they are the ones who approve."
     ),
     responses={
         401: {"description": "Unauthorized"},
@@ -911,6 +1089,7 @@ async def withdraw_background_check_proposal(
 async def list_proposals_across_companies(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    permissions: _PERMISSIONS,
     status: Literal["open", "approved", "rejected", "withdrawn"] = "open",
     awaiting: Annotated[
         Literal["me"] | None,
@@ -919,12 +1098,29 @@ async def list_proposals_across_companies(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> BackgroundCheckProposalListResponse:
-    rows, total = await BackgroundCheckProposalRepository(db).list_across_companies(
-        status=status.upper(),
-        exclude_proposer=str(user.id) if awaiting == "me" else None,
-        limit=limit,
-        offset=offset,
-    )
+    repository = BackgroundCheckProposalRepository(db)
+    facts: dict[uuid.UUID, WorkItem] = {}
+    if awaiting == "me":
+        # Eligibility is the worklist's rule (proposer, reviewer, RM, senior): the
+        # worklist chooses and pages the proposals, and only that page is read in full.
+        mine = await ComplianceWorklists(db).approvable_by(str(user.id))
+        page = mine[offset : offset + limit]
+        facts = {item.company_id: item for item in page}
+        rows = []
+        if page:
+            found, _ = await repository.list_across_companies(
+                status="OPEN",
+                proposal_ids=[item.proposal_id for item in page if item.proposal_id],
+                limit=len(page),
+            )
+            rows = [row for row in found if row[0].company_id in facts]
+        total = len(mine)
+    else:
+        rows, total = await repository.list_across_companies(
+            status=status.upper(), limit=limit, offset=offset
+        )
+        if status == "open":
+            facts = await ComplianceWorklists(db).approval_facts([p.company_id for p, _, _ in rows])
     views = [(proposal_view(p, r), name) for p, r, name in rows]
     names = await actor_names(
         db, user, [*(v.proposed_by for v, _ in views), *(v.resolved_by for v, _ in views)]
@@ -938,6 +1134,14 @@ async def list_proposals_across_companies(
                 cycle_number=cycles[view.cycle_id].number if view.cycle_id in cycles else None,
                 company_name=name,
                 viewer=user,
+                permissions=permissions,
+                reviewer_id=facts[view.company_id].reviewer_id if view.company_id in facts else None,
+                relationship_manager_id=(
+                    facts[view.company_id].relationship_manager_id
+                    if view.company_id in facts
+                    else None
+                ),
+                facts=facts.get(view.company_id) if view.is_open else None,
             )
             for view, name in views
         ],
@@ -1001,4 +1205,285 @@ async def list_rekyc_due(
         limit=limit,
         offset=offset,
         before=cutoff,
+    )
+
+
+# ── Who holds the review ────────────────────────────────────────────────────
+
+_REVIEW_RESPONSES: dict[int | str, dict] = {
+    401: {"description": "Unauthorized"},
+    403: {"description": "`REVIEW_ASSIGN_NOT_ALLOWED`, or the route's role"},
+    404: {"description": "Company not found"},
+    409: {
+        "description": (
+            "`REVIEW_NOT_ASSIGNABLE` — not under review; `REVIEW_ALREADY_ASSIGNED`; "
+            "`REVIEWER_IS_RM`; `BACKGROUND_CHECK_PROPOSAL_OPEN` (release)"
+        )
+    },
+    422: {"description": "`REVIEWER_NOT_ELIGIBLE`, `REVIEW_REASON_REQUIRED`, an unknown field"},
+}
+
+
+@router.post(
+    "/exporters/{company_id}/background-check/reviewer/claim",
+    response_model=BackgroundCheckResponse,
+    summary="Take an unassigned review (Assign to me)",
+    description=(
+        "A COMPLIANCE or ADMIN user takes the review of a check that is IN_REVIEW or "
+        "MORE_INFO and that nobody holds. Never the company's RM. Returns the standing."
+    ),
+    responses=_REVIEW_RESPONSES,
+)
+async def claim_background_check_review(
+    company_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    permissions: _PERMISSIONS,
+) -> BackgroundCheckResponse:
+    await BackgroundCheckService(db).claim_review(
+        company_id, actor_id=str(user.id), actor_role=user.role
+    )
+    return await get_background_check(company_id, db, user, permissions)
+
+
+@router.put(
+    "/exporters/{company_id}/background-check/reviewer",
+    response_model=BackgroundCheckResponse,
+    summary="Assign or reassign a review",
+    description=(
+        "ADMIN or `compliance:assign`. The target is an active COMPLIANCE or ADMIN user "
+        "who is not the company's RM. Taking a review from someone needs a reason. A "
+        "proposal already open survives the change. Returns the standing."
+    ),
+    responses=_REVIEW_RESPONSES,
+)
+async def assign_background_check_review(
+    company_id: uuid.UUID,
+    payload: AssignReviewerRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    permissions: _PERMISSIONS,
+) -> BackgroundCheckResponse:
+    await BackgroundCheckService(db).assign_review(
+        company_id,
+        user_id=payload.user_id,
+        reason=payload.reason,
+        actor_id=str(user.id),
+        actor_role=user.role,
+        actor_permissions=permissions,
+    )
+    return await get_background_check(company_id, db, user, permissions)
+
+
+@router.post(
+    "/exporters/{company_id}/background-check/reviewer/release",
+    response_model=BackgroundCheckResponse,
+    summary="Hand a review back to Awaiting review",
+    description=(
+        "The reviewer, or ADMIN or `compliance:assign`. Refused while the reviewer's own "
+        "proposal is open: withdraw it first. The note is optional. Returns the standing."
+    ),
+    responses=_REVIEW_RESPONSES,
+)
+async def release_background_check_review(
+    company_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    permissions: _PERMISSIONS,
+    payload: ReleaseReviewRequest | None = None,
+) -> BackgroundCheckResponse:
+    await BackgroundCheckService(db).release_review(
+        company_id,
+        note=payload.note if payload is not None else None,
+        actor_id=str(user.id),
+        actor_role=user.role,
+        actor_permissions=permissions,
+    )
+    return await get_background_check(company_id, db, user, permissions)
+
+
+# ── Worklists ───────────────────────────────────────────────────────────────
+
+
+async def _work_item_responses(
+    db: AsyncSession, user: User, items: list[WorkItem], *, with_notes: bool = False
+) -> list[ComplianceWorkItemResponse]:
+    names = await actor_names(
+        db,
+        user,
+        [
+            *(i.reviewer_id for i in items),
+            *(i.relationship_manager_id for i in items),
+            *(i.proposed_by for i in items),
+        ],
+    )
+    return [
+        ComplianceWorkItemResponse(
+            company_id=i.company_id,
+            company_name=i.company_name,
+            journey=i.journey.value,
+            pipeline_status=i.pipeline_status,
+            background_check=i.background_check,
+            stage=i.stage,
+            relationship_manager_id=i.relationship_manager_id,
+            relationship_manager_name=names.get(i.relationship_manager_id or ""),
+            relationship_manager_inactive=i.relationship_manager_inactive,
+            reviewer_id=i.reviewer_id,
+            reviewer_name=names.get(i.reviewer_id or ""),
+            reviewer_inactive=i.reviewer_inactive,
+            waiting_since=i.waiting_since,
+            due_at=i.due_at,
+            is_due_soon=i.is_due_soon,
+            is_overdue=i.is_overdue,
+            rejection_count=i.rejection_count,
+            proposal_id=i.proposal_id,
+            proposed_by_name=names.get(i.proposed_by or ""),
+            proposal_to_value=i.proposal_to_value,
+            risk_rating=i.risk_rating,
+            needs_senior_approval=i.needs_senior_approval,
+            eligible_checker_count=i.eligible_checker_count,
+            needs_attention=i.needs_attention,
+            info_note=i.info_note if with_notes else None,
+        )
+        for i in items
+    ]
+
+
+@router.get(
+    "/background-check/reviews",
+    response_model=ComplianceWorklistResponse,
+    summary="Compliance worklists",
+    description=(
+        "`awaiting` — reviews nobody has picked up; `mine` — reviews you hold (under "
+        "review, waiting on information, or with your proposal awaiting approval); and, "
+        "for ADMIN and holders of compliance:assign only, `in_review` (everyone's), "
+        "`overdue` and `needs_attention` (no eligible checker, returned twice, or a "
+        "deactivated reviewer). Oldest wait first, each with its business-time "
+        "deadline. Computed on read; names only, never an identifier or a reason."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "COMPLIANCE or ADMIN; the lead views need compliance:assign"},
+    },
+)
+async def list_compliance_worklist(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    permissions: _PERMISSIONS,
+    view: Literal["awaiting", "mine", "in_review", "overdue", "needs_attention"] = "awaiting",
+) -> ComplianceWorklistResponse:
+    if view in LEAD_VIEWS and not holds(user.role, permissions, ASSIGN_REVIEWS):
+        raise AnerBaseException(
+            detail="Required permission: compliance:assign",
+            error_code="FORBIDDEN",
+            status_code=403,
+        )
+    worklists = ComplianceWorklists(db)
+    items = worklists.view(await worklists.items(), view, viewer_id=str(user.id))
+    return ComplianceWorklistResponse(
+        view=view, items=await _work_item_responses(db, user, items), total=len(items)
+    )
+
+
+@router.get(
+    "/background-check/info-requests",
+    response_model=ComplianceWorklistResponse,
+    summary="Companies waiting on information",
+    description=(
+        "Checks at MORE_INFO, with what was asked for: `relationship_manager=me` — your "
+        "companies; `none` — companies with no RM (buyer-only companies above all), the "
+        "shared Unowned list; omitted — all. Staff; DEVELOPER is refused."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+    },
+)
+async def list_info_requests(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_STAFF)],
+    relationship_manager: Literal["me", "none"] | None = None,
+) -> ComplianceWorklistResponse:
+    items = ComplianceWorklists.info_requests(
+        await ComplianceWorklists(db).items(include_info_notes=True),
+        relationship_manager=str(user.id) if relationship_manager == "me" else None,
+        unowned=relationship_manager == "none",
+    )
+    return ComplianceWorklistResponse(
+        view=f"info_requests:{relationship_manager or 'all'}",
+        items=await _work_item_responses(db, user, items, with_notes=True),
+        total=len(items),
+    )
+
+
+@router.get(
+    "/worklist/counts",
+    response_model=WorklistCountsResponse,
+    summary="Counts for the navigation badges",
+    description=(
+        "One call for the nav: how many items each list this caller may see holds. A "
+        "list they may not see is null. Numbers only — no names, identifiers or text. "
+        "Staff; DEVELOPER is refused."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+    },
+)
+async def get_worklist_counts(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_STAFF)],
+    permissions: _PERMISSIONS,
+) -> WorklistCountsResponse:
+    worklists = ComplianceWorklists(db)
+    counts = worklists.counts(
+        await worklists.items(),
+        viewer_id=str(user.id),
+        viewer_role=user.role,
+        viewer_permissions=permissions,
+    )
+    return WorklistCountsResponse(**counts.__dict__)
+
+
+@router.get(
+    "/background-check/recent-decisions",
+    response_model=RecentDecisionListResponse,
+    summary="Decisions on my companies",
+    description=(
+        "CLEAR, FLAGGED and ON_HOLD decisions of the last `days` (default 14) on "
+        "companies you are RM of or whose outcome you proposed, newest first. The Home "
+        "card. No reason text. Staff; DEVELOPER is refused."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+    },
+)
+async def list_recent_decisions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_STAFF)],
+    days: Annotated[int, Query(ge=1, le=90)] = 14,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> RecentDecisionListResponse:
+    decisions = await ComplianceWorklists(db).recent_decisions(
+        viewer_id=str(user.id), days=days, limit=limit
+    )
+    names = await actor_names(
+        db, user, [*(d.decided_by for d in decisions), *(d.approved_by for d in decisions)]
+    )
+    return RecentDecisionListResponse(
+        decisions=[
+            RecentDecisionResponse(
+                company_id=d.company_id,
+                company_name=d.company_name,
+                decision_id=d.decision_id,
+                to_value=d.to_value,
+                risk_rating=d.risk_rating,
+                decided_at=d.decided_at,
+                decided_by_name=names.get(d.decided_by or ""),
+                approved_by_name=names.get(d.approved_by or ""),
+            )
+            for d in decisions
+        ],
+        days=days,
     )

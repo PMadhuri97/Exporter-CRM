@@ -30,6 +30,10 @@
  * checks and their state in the current cycle; a "Re-KYC due" badge when the
  * Clear has expired or soon will; the proposals already resolved — approved,
  * rejected with the reason, or withdrawn — so the maker sees how theirs ended.
+ *
+ * Who holds the review is the reviewer line (`ReviewerLine`), with the claim, release
+ * and reassign actions the server serves; the reviewer's moves are offered only to the
+ * reviewer. Starting the check on a company with no RM asks for one.
  */
 
 import { useState } from 'react';
@@ -43,6 +47,7 @@ import {
   BackgroundCheckMoveDialog,
   CheckStatus,
   DecisionHistory,
+  ReviewerLine,
   RiskChip,
   VerificationSection,
 } from '../../components';
@@ -165,6 +170,8 @@ function GaugeSection({ customerId }: { customerId: string }) {
         </div>
       )}
 
+      <ReviewerLine customerId={customerId} standing={standing} />
+
       {standing.open_proposal && <AwaitingApproval proposal={standing.open_proposal} />}
 
       {standing.value === 'IN_REVIEW' && (
@@ -194,6 +201,7 @@ function GaugeSection({ customerId }: { customerId: string }) {
             initialMove={initialMove}
             moves={moves}
             blockedReasons={blocked}
+            relationshipManagerRequired={standing.relationship_manager_required}
             isPending={record.isPending}
             error={
               record.isError

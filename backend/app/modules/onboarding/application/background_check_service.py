@@ -62,6 +62,24 @@ path lets one user take a company to ``CLEAR``. The switch
 ``CRM_BACKGROUND_CHECK_MAKER_CHECKER`` may be off only in local/test
 (``compliance_settings``).
 
+**Who holds the review.** ``exporter_profile.background_check_reviewer_id`` names
+the reviewer, written only here (:meth:`_set_reviewer`), each change with a
+``background_check_assignment`` history row. A start leaves the review unassigned
+(Awaiting review); a COMPLIANCE or ADMIN user claims it, or a holder of
+``compliance:assign`` assigns it. Requesting information and proposing an outcome are
+the reviewer's moves: an unassigned review is claimed by whoever makes one, and one held
+by someone else refuses them. A reassessment or reopen makes the actor the reviewer;
+landing on ``CLEAR``, ``FLAGGED`` or ``ON_HOLD`` ends the review. The reviewer is never
+the company's relationship manager, and neither the reviewer nor the RM approves
+(``domain/assignment.py``). A ``CLEAR`` at ``HIGH`` or ``CRITICAL`` risk is approved
+only by ADMIN or a holder of ``compliance:approve_high_risk`` — the second person, not
+a third.
+
+**The relationship manager at the start.** Starting the check on an in-pipeline company
+with no RM needs one in the same request
+(``ExporterProfileService.ensure_relationship_manager``); a buyer-only company never
+does.
+
 **Expiry.** Every ``CLEAR`` stores ``expires_at`` =
 ``decided_at`` + the validity setting, both from one server timestamp, and writes the
 company's current ``background_check_expires_at``; any move away from ``CLEAR`` clears
@@ -88,6 +106,23 @@ from app.modules.onboarding.application.exporter_profile_service import (
     announce_became_customer,
 )
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.domain.assignment import (
+    APPROVE_HIGH_RISK,
+    ASSIGN_REVIEWS,
+    CHECKER_ROLES,
+    REVIEW_ASSIGNED,
+    REVIEW_CLAIMED,
+    REVIEW_ENDED,
+    REVIEW_REASSIGNED,
+    REVIEW_RELEASED,
+    REVIEWER_ROLES,
+    UNASSIGNED,
+    UNDER_REVIEW,
+    Permission,
+    checker_conflict,
+    holds,
+    needs_senior_checker,
+)
 from app.modules.onboarding.domain.background_check_views import (
     CLEAR_POLICY,
     CURRENT_CLEAR_RULES,
@@ -131,11 +166,13 @@ from app.modules.onboarding.domain.entities.check_cycle import CheckCycle, Check
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.history_dimensions import (
     BACKGROUND_CHECK_APPROVAL,
+    BACKGROUND_CHECK_ASSIGNMENT,
     CHECK_CYCLE,
 )
 from app.modules.onboarding.exceptions import (
     BackgroundCheckApprovalRequiredError,
     BackgroundCheckApproverRoleNotAllowedError,
+    BackgroundCheckConflictOfInterestError,
     BackgroundCheckMoveNotAllowedError,
     BackgroundCheckPrerequisitesUnmetError,
     BackgroundCheckProposalNotFoundError,
@@ -153,6 +190,14 @@ from app.modules.onboarding.exceptions import (
     CheckCycleNotAllowedError,
     CheckCycleRoleNotAllowedError,
     ExporterProfileNotFoundError,
+    HighRiskApprovalRequiredError,
+    ReviewAlreadyAssignedError,
+    ReviewAssignedToOtherError,
+    ReviewAssignNotAllowedError,
+    ReviewerIsRelationshipManagerError,
+    ReviewerNotEligibleError,
+    ReviewNotAssignableError,
+    ReviewReasonRequiredError,
 )
 from app.modules.onboarding.infrastructure.repositories.background_check_decision_repository import (  # noqa: E501
     BackgroundCheckDecisionRepository,
@@ -166,6 +211,7 @@ from app.modules.onboarding.infrastructure.repositories.check_cycle_repository i
 from app.modules.onboarding.infrastructure.repositories.crm_document_repository import (
     CrmDocumentRepository,
 )
+from app.platform.authentication import staff_member, staff_members
 from app.platform.authentication.models import UserRole
 from app.shared import clock
 from app.shared.exceptions import ValidationError
@@ -258,7 +304,32 @@ CYCLE_STARTED_EVENT = "check_cycle_started"
 
 #: Who may propose, approve or reject: compliance and admin. The RM never
 #: approves compliance.
-_APPROVER_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
+_APPROVER_ROLES: frozenset[UserRole] = CHECKER_ROLES
+
+#: The reviewer's moves from ``IN_REVIEW``: whoever makes one must hold the review (or
+#: claims it if nobody does).
+_REVIEWER_MOVES: frozenset[tuple[_State, _State]] = frozenset(
+    {
+        (_State.IN_REVIEW, _State.MORE_INFO),
+        (_State.IN_REVIEW, _State.CLEAR),
+        (_State.IN_REVIEW, _State.FLAGGED),
+    }
+)
+#: Moves that hand the review to whoever makes them: looking at a decided company again.
+_CLAIMING_MOVES: frozenset[tuple[_State, _State]] = frozenset(
+    {
+        (_State.FLAGGED, _State.IN_REVIEW),
+        (_State.ON_HOLD, _State.IN_REVIEW),
+        (_State.CLEAR, _State.IN_REVIEW),
+    }
+)
+#: Where a review ends.
+_DECIDED: frozenset[_State] = frozenset({_State.CLEAR, _State.FLAGGED, _State.ON_HOLD})
+
+#: The review actions ``review_actions`` serves.
+REVIEW_ACTION_CLAIM = "CLAIM"
+REVIEW_ACTION_RELEASE = "RELEASE"
+REVIEW_ACTION_ASSIGN = "ASSIGN"
 
 #: `event_type` of each `background_check_approval` history row. `from_status` /
 #: `to_status` are the proposal's status: `OPEN` on proposing, then its outcome.
@@ -437,17 +508,29 @@ class BackgroundCheckService:
         *,
         actor_id: str,
         actor_role: UserRole,
+        actor_permissions: frozenset[Permission] = frozenset(),
+        relationship_manager_user_id: uuid.UUID | None = None,
+        require_relationship_manager: bool = True,
     ) -> BackgroundCheckDecisionView:
-        """Move 1 — ``NOT_STARTED → IN_REVIEW``. The only move needing no text."""
+        """Move 1 — ``NOT_STARTED → IN_REVIEW``. The only move needing no text.
+
+        An in-pipeline company with no RM needs ``relationship_manager_user_id``
+        (409 ``RELATIONSHIP_MANAGER_REQUIRED`` otherwise). The review starts
+        unassigned. ``require_relationship_manager=False`` is for the platform's own
+        loaders (sample data), which, like an import, may leave a company without an
+        RM; no route passes it."""
         return await self._move(
             company_id,
             to_value=_State.IN_REVIEW,
             expected_from=frozenset({_State.NOT_STARTED}),
             actor_id=actor_id,
             actor_role=actor_role,
+            actor_permissions=actor_permissions,
             reason=None,
             risk=None,
             method="start_review",
+            relationship_manager_user_id=relationship_manager_user_id,
+            require_relationship_manager=require_relationship_manager,
         )
 
     async def request_more_info(
@@ -640,6 +723,8 @@ class BackgroundCheckService:
         actor_id: str,
         actor_role: UserRole,
         seen_value: _State | None = None,
+        actor_permissions: frozenset[Permission] = frozenset(),
+        relationship_manager_user_id: uuid.UUID | None = None,
     ) -> BackgroundCheckDecisionView:
         """Record a move by naming where it goes. One entry point for the route.
 
@@ -678,9 +763,11 @@ class BackgroundCheckService:
             expected_from=origins,
             actor_id=actor_id,
             actor_role=actor_role,
+            actor_permissions=actor_permissions,
             reason=reason,
             risk=risk,
             seen_value=seen_value,
+            relationship_manager_user_id=relationship_manager_user_id,
         )
 
     async def start_cycle(
@@ -877,6 +964,10 @@ class BackgroundCheckService:
             seen_value=seen_value,
         )
         await self._refuse_if_awaiting_approval(company_id)
+        # The reviewer proposes; an unassigned review is claimed by the proposer.
+        claim = (current, to_value) in _REVIEWER_MOVES and self._check_reviewer_move(
+            profile, actor_id
+        )
 
         inputs = await self._reader.company_inputs(company_id)
         evidence = select_evidence(inputs, await self._company_documents(company_id))
@@ -892,6 +983,15 @@ class BackgroundCheckService:
             source_ref="background_check_service.propose",
             at=clock.now(),
         )
+        if claim:
+            await self._set_reviewer(
+                profile,
+                actor_id,
+                event=REVIEW_CLAIMED,
+                actor_id=actor_id,
+                reason=None,
+                source="background_check_service.propose",
+            )
         proposal = await self._proposals.add_proposal(
             BackgroundCheckProposal(
                 id=uuid.uuid4(),
@@ -948,6 +1048,7 @@ class BackgroundCheckService:
         *,
         actor_id: str,
         actor_role: UserRole,
+        actor_permissions: frozenset[Permission] = frozenset(),
     ) -> ApprovedProposal:
         """Approve a proposal as a **different** COMPLIANCE or ADMIN user. One
         transaction: lock the company; refuse the proposer, a resolved proposal and a
@@ -962,12 +1063,21 @@ class BackgroundCheckService:
             BackgroundCheckProposalNotFoundError: (404) not this company's.
             BackgroundCheckProposalResolvedError: (409) already resolved.
             BackgroundCheckSelfApprovalError: (403) the proposer.
+            BackgroundCheckConflictOfInterestError: (403) the review's current reviewer
+                or the company's relationship manager.
+            HighRiskApprovalRequiredError: (403) a HIGH or CRITICAL CLEAR without
+                ADMIN or ``compliance:approve_high_risk``.
             BackgroundCheckProposalStaleError: (409) something moved since.
         """
         profile = await self._lock_profile(company_id)
         proposal = await self._open_proposal_to_resolve(company_id, proposal_id, actor_role)
         if actor_id == proposal.created_by:
             raise BackgroundCheckSelfApprovalError(proposal_id)
+        self._refuse_checker_conflict(profile, proposal, actor_id)
+        if needs_senior_checker(proposal.to_value, proposal.risk_rating) and not holds(
+            actor_role, actor_permissions, APPROVE_HIGH_RISK
+        ):
+            raise HighRiskApprovalRequiredError(proposal_id, proposal.risk_rating)
         why = await self._staleness(profile, proposal)
         if why is not None:
             raise BackgroundCheckProposalStaleError(proposal_id, why)
@@ -1023,10 +1133,11 @@ class BackgroundCheckService:
             BackgroundCheckSelfApprovalError: (403) the proposer (who may withdraw).
             and the not-found / resolved / role refusals of :meth:`approve`.
         """
-        await self._lock_profile(company_id)
+        profile = await self._lock_profile(company_id)
         proposal = await self._open_proposal_to_resolve(company_id, proposal_id, actor_role)
         if actor_id == proposal.created_by:
             raise BackgroundCheckSelfApprovalError(proposal_id)
+        self._refuse_checker_conflict(profile, proposal, actor_id)
         text = reason.strip() if reason else None
         if not text:
             raise ValidationError("a rejection needs a reason")
@@ -1056,17 +1167,26 @@ class BackgroundCheckService:
         reason: str | None,
         actor_id: str,
         actor_role: UserRole,
+        actor_permissions: frozenset[Permission] = frozenset(),
     ) -> BackgroundCheckProposalView:
-        """Withdraw one's own proposal. Proposer only; the reason is optional.
+        """Withdraw a proposal: the proposer, or — once the proposer has left (their
+        account is deactivated, gone, or no longer a reviewer's) — ADMIN or a holder of
+        ``compliance:assign``. While the proposer can still act, anyone else rejects it,
+        with a reason, instead. The reason is optional.
 
         Raises:
-            BackgroundCheckProposalNotYoursError: (403) not the proposer.
+            BackgroundCheckProposalNotYoursError: (403) not the proposer, and either not
+                permitted or the proposer is still here.
             and the not-found / resolved / role refusals of :meth:`approve`.
         """
         await self._lock_profile(company_id)
         proposal = await self._open_proposal_to_resolve(company_id, proposal_id, actor_role)
         if actor_id != proposal.created_by:
-            raise BackgroundCheckProposalNotYoursError(proposal_id)
+            if not holds(actor_role, actor_permissions, ASSIGN_REVIEWS):
+                raise BackgroundCheckProposalNotYoursError(proposal_id)
+            proposer = await staff_member(self._db, proposal.created_by)
+            if proposer is not None and proposer.is_active and proposer.role in REVIEWER_ROLES:
+                raise BackgroundCheckProposalNotYoursError(proposal_id, proposer_still_here=True)
         text = reason.strip() if reason else None
         resolution = await self._resolve(
             proposal,
@@ -1102,6 +1222,22 @@ class BackgroundCheckService:
         if profile is None:
             raise ExporterProfileNotFoundError(company_id)
         return proposal_view(proposal), await self._staleness(profile, proposal)
+
+    @staticmethod
+    def _refuse_checker_conflict(
+        profile: ExporterProfile, proposal: BackgroundCheckProposal, actor_id: str
+    ) -> None:
+        why = checker_conflict(
+            checker_id=actor_id,
+            reviewer_id=profile.background_check_reviewer_id,
+            relationship_manager_id=(
+                str(profile.relationship_manager_user_id)
+                if profile.relationship_manager_user_id is not None
+                else None
+            ),
+        )
+        if why is not None:
+            raise BackgroundCheckConflictOfInterestError(proposal.id, why)
 
     async def _refuse_if_awaiting_approval(self, company_id: uuid.UUID) -> None:
         open_proposal = await self._proposals.open_for_company(company_id)
@@ -1180,6 +1316,227 @@ class BackgroundCheckService:
         )
         return resolution
 
+    # ── Who holds the review ─────────────────────────────────────────────────
+
+    async def claim_review(
+        self,
+        company_id: uuid.UUID,
+        *,
+        actor_id: str,
+        actor_role: UserRole,
+    ) -> ExporterProfile:
+        """"Assign to me": a COMPLIANCE or ADMIN user takes an unassigned review.
+
+        Raises:
+            ReviewerNotEligibleError: (422) not COMPLIANCE or ADMIN.
+            ReviewNotAssignableError: (409) the check is not under review.
+            ReviewAlreadyAssignedError: (409) someone holds it.
+            ReviewerIsRelationshipManagerError: (409) the caller is the company's RM.
+        """
+        profile = await self._lock_profile(company_id)
+        if actor_role not in REVIEWER_ROLES:
+            raise ReviewerNotEligibleError(actor_id, "only compliance or admin users review")
+        self._require_under_review(profile)
+        holder = profile.background_check_reviewer_id
+        if holder == actor_id:
+            return profile
+        if holder is not None:
+            raise ReviewAlreadyAssignedError(company_id, holder)
+        self._refuse_reviewer_is_rm(profile, actor_id)
+        await self._set_reviewer(
+            profile,
+            actor_id,
+            event=REVIEW_CLAIMED,
+            actor_id=actor_id,
+            reason=None,
+            source="background_check_service.claim_review",
+        )
+        await self._db.commit()
+        logger.info("background_check.review_claimed", company_id=str(company_id), actor_id=actor_id)
+        return profile
+
+    async def assign_review(
+        self,
+        company_id: uuid.UUID,
+        *,
+        user_id: str,
+        reason: str | None,
+        actor_id: str,
+        actor_role: UserRole,
+        actor_permissions: frozenset[Permission] = frozenset(),
+    ) -> ExporterProfile:
+        """Assign or reassign the review: ADMIN or ``compliance:assign``. The target is an
+        active COMPLIANCE or ADMIN user who is not the company's RM; taking a review
+        from someone needs a reason. An open proposal survives the change.
+
+        Raises:
+            ReviewAssignNotAllowedError: (403) neither ADMIN nor ``compliance:assign``.
+            ReviewNotAssignableError: (409) the check is not under review.
+            ReviewerNotEligibleError: (422) the target cannot review.
+            ReviewerIsRelationshipManagerError: (409) the target is the company's RM.
+            ReviewReasonRequiredError: (422) replacing a reviewer with no reason.
+        """
+        profile = await self._lock_profile(company_id)
+        if not holds(actor_role, actor_permissions, ASSIGN_REVIEWS):
+            raise ReviewAssignNotAllowedError(company_id)
+        self._require_under_review(profile)
+        holder = profile.background_check_reviewer_id
+        if holder == user_id:
+            return profile
+        member = await staff_member(self._db, user_id)
+        if member is None:
+            raise ReviewerNotEligibleError(user_id, "no such user")
+        if not member.is_active:
+            raise ReviewerNotEligibleError(user_id, "the account is deactivated")
+        if member.role not in REVIEWER_ROLES:
+            raise ReviewerNotEligibleError(user_id, "only compliance or admin users review")
+        self._refuse_reviewer_is_rm(profile, user_id)
+        text = (reason or "").strip() or None
+        if holder is not None and text is None:
+            raise ReviewReasonRequiredError()
+        await self._set_reviewer(
+            profile,
+            member.id,
+            event=REVIEW_ASSIGNED if holder is None else REVIEW_REASSIGNED,
+            actor_id=actor_id,
+            reason=text,
+            source="background_check_service.assign_review",
+        )
+        await self._db.commit()
+        logger.info(
+            "background_check.review_assigned",
+            company_id=str(company_id),
+            to_user_id=member.id,
+            actor_id=actor_id,
+        )
+        return profile
+
+    async def release_review(
+        self,
+        company_id: uuid.UUID,
+        *,
+        note: str | None,
+        actor_id: str,
+        actor_role: UserRole,
+        actor_permissions: frozenset[Permission] = frozenset(),
+    ) -> ExporterProfile:
+        """Hand the review back to Awaiting review. The reviewer, ADMIN or
+        ``compliance:assign``; refused while the reviewer's own proposal is open
+        (withdraw it first). A note is optional.
+
+        Raises:
+            ReviewAssignNotAllowedError: (403) someone else's review, without the
+                permission.
+            BackgroundCheckProposalOpenError: (409) the reviewer's proposal is open.
+        """
+        profile = await self._lock_profile(company_id)
+        holder = profile.background_check_reviewer_id
+        if holder is None:
+            return profile
+        if holder != actor_id and not holds(actor_role, actor_permissions, ASSIGN_REVIEWS):
+            raise ReviewAssignNotAllowedError(company_id)
+        open_proposal = await self._proposals.open_for_company(company_id)
+        if open_proposal is not None and open_proposal.created_by == holder:
+            raise BackgroundCheckProposalOpenError(company_id, open_proposal.id)
+        await self._set_reviewer(
+            profile,
+            None,
+            event=REVIEW_RELEASED,
+            actor_id=actor_id,
+            reason=(note or "").strip() or None,
+            source="background_check_service.release_review",
+        )
+        await self._db.commit()
+        logger.info("background_check.review_released", company_id=str(company_id), actor_id=actor_id)
+        return profile
+
+    def review_actions(
+        self,
+        profile: ExporterProfile,
+        *,
+        viewer_id: str,
+        viewer_role: UserRole,
+        viewer_permissions: frozenset[Permission],
+        open_proposal: BackgroundCheckProposalView | None,
+    ) -> list[str]:
+        """What this viewer may do with who holds the review: ``CLAIM``, ``RELEASE``,
+        ``ASSIGN``. The same rules the three methods enforce, served so the screen
+        decides nothing."""
+        if profile.background_check not in UNDER_REVIEW:
+            return []
+        holder = profile.background_check_reviewer_id
+        is_rm = profile.relationship_manager_user_id is not None and viewer_id == str(
+            profile.relationship_manager_user_id
+        )
+        may_assign = holds(viewer_role, viewer_permissions, ASSIGN_REVIEWS)
+        actions: list[str] = []
+        if holder is None and viewer_role in REVIEWER_ROLES and not is_rm:
+            actions.append(REVIEW_ACTION_CLAIM)
+        holder_proposal_open = open_proposal is not None and open_proposal.proposed_by == holder
+        if holder is not None and (holder == viewer_id or may_assign) and not holder_proposal_open:
+            actions.append(REVIEW_ACTION_RELEASE)
+        if may_assign:
+            actions.append(REVIEW_ACTION_ASSIGN)
+        return actions
+
+    def _require_under_review(self, profile: ExporterProfile) -> None:
+        if profile.background_check not in UNDER_REVIEW:
+            raise ReviewNotAssignableError(profile.customer_id, profile.background_check)
+
+    @staticmethod
+    def _refuse_reviewer_is_rm(profile: ExporterProfile, user_id: str) -> None:
+        rm = profile.relationship_manager_user_id
+        if rm is not None and str(rm) == user_id:
+            raise ReviewerIsRelationshipManagerError(profile.customer_id)
+
+    def _check_reviewer_move(self, profile: ExporterProfile, actor_id: str) -> bool:
+        """A reviewer's move (request information; propose or record an outcome from
+        IN_REVIEW) by ``actor_id``. Refuses another person's review; returns whether
+        the caller must auto-claim an unassigned one. Writes nothing."""
+        holder = profile.background_check_reviewer_id
+        if holder is None:
+            self._refuse_reviewer_is_rm(profile, actor_id)
+            return True
+        if holder != actor_id:
+            raise ReviewAssignedToOtherError(profile.customer_id, holder)
+        return False
+
+    async def _set_reviewer(
+        self,
+        profile: ExporterProfile,
+        reviewer_id: str | None,
+        *,
+        event: str,
+        actor_id: str | None,
+        reason: str | None,
+        source: str,
+    ) -> None:
+        """The one writer of the two reviewer columns, with its
+        ``background_check_assignment`` history row. Flushes; never commits."""
+        previous = profile.background_check_reviewer_id
+        members = await staff_members(self._db, [previous, reviewer_id])
+        profile.background_check_reviewer_id = reviewer_id
+        profile.background_check_reviewer_assigned_at = (
+            clock.now() if reviewer_id is not None else None
+        )
+        await self._history.record(
+            profile.customer_id,
+            dimension=BACKGROUND_CHECK_ASSIGNMENT,
+            from_value=previous or UNASSIGNED,
+            to_value=reviewer_id or UNASSIGNED,
+            actor_id=actor_id,
+            source=source,
+            reason=reason,
+            event_type=event,
+            details={
+                "from_user_id": previous,
+                "to_user_id": reviewer_id,
+                "from_user_name": members[previous].name if previous in members else None,
+                "to_user_name": members[reviewer_id].name if reviewer_id in members else None,
+                "background_check": profile.background_check.value,
+            },
+        )
+
     # ── The one move implementation ──────────────────────────────────────────
 
     async def _move(
@@ -1194,6 +1551,9 @@ class BackgroundCheckService:
         risk: BackgroundCheckRisk | None,
         method: str | None = None,
         seen_value: _State | None = None,
+        actor_permissions: frozenset[Permission] = frozenset(),
+        relationship_manager_user_id: uuid.UUID | None = None,
+        require_relationship_manager: bool = True,
     ) -> BackgroundCheckDecisionView:
         """Contract §9's eight steps. Every public move is this function.
 
@@ -1215,6 +1575,9 @@ class BackgroundCheckService:
             risk=risk,
             method=method,
             seen_value=seen_value,
+            actor_permissions=actor_permissions,
+            relationship_manager_user_id=relationship_manager_user_id,
+            require_relationship_manager=require_relationship_manager,
         )
 
         # 8 — one commit.
@@ -1247,6 +1610,9 @@ class BackgroundCheckService:
         cycle: CheckCycle | None = None,
         decision_id: uuid.UUID | None = None,
         approval: _Approval | None = None,
+        actor_permissions: frozenset[Permission] = frozenset(),
+        relationship_manager_user_id: uuid.UUID | None = None,
+        require_relationship_manager: bool = True,
     ) -> tuple[BackgroundCheckDecision, EvidenceSelection, CustomerAnnouncement | None]:
         """Steps 2–7b on a company row the caller has locked. Flushes; never commits.
 
@@ -1282,6 +1648,29 @@ class BackgroundCheckService:
             if maker_checker_enabled() and (current, to_value) in APPROVAL_MOVES:
                 raise BackgroundCheckApprovalRequiredError(current, to_value)
             await self._refuse_if_awaiting_approval(company_id)
+
+        # 2c — who holds the review, and the RM a start needs. Refusals only; the
+        #      writes are at step 6. An approval's reviewer moved when it was proposed.
+        claim = approval is None and (current, to_value) in _REVIEWER_MOVES and (
+            self._check_reviewer_move(profile, actor_id)
+        )
+        reclaim = (current, to_value) in _CLAIMING_MOVES and not (
+            profile.relationship_manager_user_id is not None
+            and str(profile.relationship_manager_user_id) == actor_id
+        )
+        if require_relationship_manager and (current, to_value) == (
+            _State.NOT_STARTED,
+            _State.IN_REVIEW,
+        ):
+            await ExporterProfileService(self._db).ensure_relationship_manager(
+                profile,
+                user_id=relationship_manager_user_id,
+                action="start the background check",
+                actor_id=actor_id,
+                actor_role=actor_role,
+                actor_permissions=actor_permissions,
+                source=f"background_check_service.{method}",
+            )
 
         # 3 — the inputs, through the seam, in this session and under this lock. The
         #     seam reads the current cycle's only (v2).
@@ -1335,9 +1724,24 @@ class BackgroundCheckService:
         await self._decisions.record(decision, self._evidence_rows(evidence))
 
         # 6 — the gauge itself, and the current Clear's expiry (set on CLEAR, cleared on
-        #     every move away).
+        #     every move away); and who holds the review — ended on a decided value
+        #     before the gauge lands there (the database refuses a reviewer on one),
+        #     claimed by a reviewer's move or a reassessment after.
+        source = f"background_check_service.{method}"
+        if to_value in _DECIDED and profile.background_check_reviewer_id is not None:
+            await self._set_reviewer(
+                profile, None, event=REVIEW_ENDED, actor_id=actor_id, reason=None, source=source
+            )
         profile.background_check = to_value
         profile.background_check_expires_at = expires_at
+        if claim and to_value not in _DECIDED:
+            await self._set_reviewer(
+                profile, actor_id, event=REVIEW_CLAIMED, actor_id=actor_id, reason=None, source=source
+            )
+        elif reclaim:
+            await self._set_reviewer(
+                profile, actor_id, event=REVIEW_CLAIMED, actor_id=actor_id, reason=None, source=source
+            )
 
         # 7 — the history row, in the same transaction (history contract §5).
         await self._history.record(
@@ -1558,6 +1962,9 @@ class BackgroundCheckService:
 __all__ = [
     "PROPOSED_EVENT",
     "RESOLVED_EVENTS",
+    "REVIEW_ACTION_ASSIGN",
+    "REVIEW_ACTION_CLAIM",
+    "REVIEW_ACTION_RELEASE",
     "STARTABLE_CYCLE_KINDS",
     "ApprovedProposal",
     "BackgroundCheckService",

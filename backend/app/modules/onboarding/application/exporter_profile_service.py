@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 
 import structlog
 from sqlalchemy import select
@@ -43,6 +44,17 @@ from app.modules.onboarding.application.background_check_reader import Backgroun
 from app.modules.onboarding.application.compliance_facts import ComplianceFactsService
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions
+from app.modules.onboarding.domain.assignment import (
+    ASSIGN_RM,
+    RM_ASSIGNED,
+    RM_CLEARED,
+    RM_REASSIGNED,
+    RM_ROLES,
+    UNASSIGNED,
+    Permission,
+    holds,
+    may_set_relationship_manager,
+)
 from app.modules.onboarding.domain.company_identity import (
     CreatedVia,
     created_via_for_history_source,
@@ -89,17 +101,25 @@ from app.modules.onboarding.domain.tax_identifiers import (
 from app.modules.onboarding.events.publisher import OnboardingEventPublisher
 from app.modules.onboarding.exceptions import (
     CompanyAlreadyInPipelineError,
+    CompanyFieldChangedError,
     DuplicatePanError,
     DuplicateRegistrationNumberError,
     ExporterProfileNotFoundError,
     ExporterSourceImmutableError,
     InvalidMarkerTransitionError,
+    RelationshipManagerAssignNotAllowedError,
+    RelationshipManagerChangedError,
+    RelationshipManagerNotEligibleError,
+    RelationshipManagerReasonRequiredError,
+    RelationshipManagerRequiredError,
 )
 from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
     ExporterContactRepository,
     ExporterProfileRepository,
 )
+from app.platform.authentication import display_names, staff_member, staff_members
+from app.platform.authentication.models import UserRole
 from app.platform.idempotency.models import IdempotencyKeyType, RegistrationResultType
 from app.platform.idempotency.services import complete_key, register_key
 from app.shared import clock
@@ -133,7 +153,9 @@ _UPDATE_FORBIDDEN_FIELDS = frozenset(
 )
 
 #: The company fields staff may edit through `update_profile`, with
-#: every change recorded in the history log. Each may be cleared except those
+#: every change recorded in the history log. The legacy free-text
+#: `relationship_manager` is not one: the RM is a user, set through
+#: `assign_relationship_manager`. Each may be cleared except those
 #: in `_NOT_CLEARABLE`.
 _EDITABLE_FIELDS = frozenset(
     {
@@ -142,7 +164,6 @@ _EDITABLE_FIELDS = frozenset(
         "cin",
         "pan",
         "iec",
-        "relationship_manager",
         "industry",
         "export_markets",
         "products",
@@ -183,6 +204,19 @@ _MARKER_MOVES: dict[tuple[ExporterMarker, ExporterMarker], bool] = {
     (ExporterMarker.PAUSED, ExporterMarker.NONE): False,
     (ExporterMarker.ENDED, ExporterMarker.NONE): False,
 }
+
+@dataclass(frozen=True)
+class BulkReassignment:
+    """What :meth:`ExporterProfileService.reassign_relationship_managers` did — or, for a
+    dry run, would do. ``matched`` are the companies the filter found; ``moved`` those
+    reassigned; ``skipped`` those named but not the old RM's, or changed meanwhile."""
+
+    run_id: str | None
+    dry_run: bool
+    matched: tuple[uuid.UUID, ...]
+    moved: tuple[uuid.UUID, ...]
+    skipped: tuple[uuid.UUID, ...]
+
 
 class ExporterProfileService:
     """Read/write access to `exporter_profile` and its detail projection."""
@@ -441,6 +475,8 @@ class ExporterProfileService:
         changes: Mapping[str, object],
         *,
         actor_id: str | None,
+        seen: Mapping[str, object] | None = None,
+        viewer_can_reveal: bool = True,
     ) -> ExporterProfile:
         """Edit company fields, recording every change in the history log.
 
@@ -477,6 +513,12 @@ class ExporterProfileService:
         `actor_id` is the signed-in user, from the session. It is a separate
         keyword, never one of `changes`.
 
+        `seen` is what the caller was looking at, field by field. Under the lock, a
+        field whose value has changed since refuses the whole edit with 409
+        `COMPANY_FIELD_CHANGED`, naming who changed it and when. A masked field is
+        compared masked (`viewer_can_reveal` false). Omitted, the edit is applied as
+        before.
+
         Never touches `source` (immutable — see `ExporterSourceImmutableError`),
         the journey or the
         marker (owned by `set_marker`), nor the journey or the qualification
@@ -500,6 +542,8 @@ class ExporterProfileService:
         # Locked, so a concurrent edit waits and then sees this one: every
         # history row's `from` is the value the edit actually replaced.
         profile = await self._lock_profile(customer_id)
+        if seen:
+            await self._refuse_stale_fields(profile, seen, viewer_can_reveal=viewer_can_reveal)
         wanted = {field: _cleared_to_none(value) for field, value in changes.items()}
         for field in _NOT_CLEARABLE.intersection(wanted):
             if wanted[field] is None:
@@ -619,6 +663,312 @@ class ExporterProfileService:
         )
         return profile
 
+    # ── Relationship manager ────────────────────────────────────────────────
+
+    async def assign_relationship_manager(
+        self,
+        customer_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID | None,
+        reason: str | None,
+        seen_user_id: uuid.UUID | None,
+        actor_id: str,
+        actor_role: UserRole,
+        actor_permissions: frozenset[Permission] = frozenset(),
+    ) -> ExporterProfile:
+        """Set, change or clear the company's relationship manager. One transaction.
+
+        Under the row lock: the RM the caller saw (``seen_user_id``, ``None`` for "no
+        RM") must still be the RM, or 409 ``RELATIONSHIP_MANAGER_CHANGED``; then the
+        rules of :meth:`set_relationship_manager`. Setting the RM it already has
+        writes nothing.
+
+        Raises:
+            RelationshipManagerChangedError: (409) someone changed it since.
+            and every refusal of :meth:`set_relationship_manager`.
+        """
+        profile = await self._lock_profile(customer_id)
+        if profile.relationship_manager_user_id != seen_user_id:
+            raise RelationshipManagerChangedError(
+                customer_id, seen_user_id, profile.relationship_manager_user_id
+            )
+        changed = await self.set_relationship_manager(
+            profile,
+            user_id=user_id,
+            reason=reason,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            actor_permissions=actor_permissions,
+            source="exporter_profile_service.assign_relationship_manager",
+        )
+        await self._db.commit()
+        await self._db.refresh(profile)
+        logger.info(
+            "exporter_profile.relationship_manager_assigned",
+            customer_id=str(customer_id),
+            changed=changed,
+            to_user_id=str(user_id) if user_id else None,
+            actor_id=actor_id,
+        )
+        return profile
+
+    async def set_relationship_manager(
+        self,
+        profile: ExporterProfile,
+        *,
+        user_id: uuid.UUID | None,
+        reason: str | None,
+        actor_id: str | None,
+        actor_role: UserRole | None,
+        actor_permissions: frozenset[Permission] = frozenset(),
+        source: str,
+        bulk_run_id: str | None = None,
+        bypass_permission: bool = False,
+    ) -> bool:
+        """The one writer of ``relationship_manager_user_id``. Flushes; never commits.
+
+        The caller holds the company row ``FOR UPDATE``. The rules, in order:
+
+        1. the same RM again is not a change: nothing is written (``False``);
+        2. who may do it (``domain.assignment.may_set_relationship_manager``): an
+           OPERATIONS user may claim a company with no RM for themselves; anything
+           else needs ADMIN or ``exporters:assign_rm`` (403);
+        3. a change or a clear of an RM already set needs a reason (422);
+        4. the new RM is an active OPERATIONS user (422).
+
+        Then the column and one ``relationship_manager`` history row, with both ids,
+        both names as they were and the reason. ``bypass_permission`` is for the
+        legacy-owner backfill, which an operator runs and no route reaches.
+
+        Returns whether the RM changed.
+        """
+        current = profile.relationship_manager_user_id
+        if user_id == current:
+            return False
+        if not bypass_permission and not may_set_relationship_manager(
+            actor_id=actor_id or "",
+            actor_role=actor_role,  # type: ignore[arg-type]
+            actor_permissions=actor_permissions,
+            current=str(current) if current is not None else None,
+            target=str(user_id) if user_id is not None else None,
+        ):
+            raise RelationshipManagerAssignNotAllowedError(profile.customer_id)
+        text = (reason or "").strip() or None
+        if current is not None and text is None:
+            raise RelationshipManagerReasonRequiredError()
+        if user_id is not None:
+            await self.require_eligible_relationship_manager(user_id)
+
+        members = await staff_members(
+            self._db, [str(current) if current else None, str(user_id) if user_id else None]
+        )
+        if current is None:
+            event = RM_ASSIGNED
+        elif user_id is None:
+            event = RM_CLEARED
+        else:
+            event = RM_REASSIGNED
+        profile.relationship_manager_user_id = user_id
+        from_id = str(current) if current is not None else None
+        to_id = str(user_id) if user_id is not None else None
+        await self._history.record(
+            profile.customer_id,
+            dimension=history_dimensions.RELATIONSHIP_MANAGER,
+            from_value=from_id or UNASSIGNED,
+            to_value=to_id or UNASSIGNED,
+            actor_id=actor_id,
+            source=source,
+            reason=text,
+            event_type=event,
+            details={
+                "from_user_id": from_id,
+                "to_user_id": to_id,
+                "from_user_name": members[from_id].name if from_id in members else None,
+                "to_user_name": members[to_id].name if to_id in members else None,
+                "bulk_run_id": bulk_run_id,
+            },
+        )
+        return True
+
+    async def require_eligible_relationship_manager(self, user_id: uuid.UUID) -> None:
+        """Refuse anyone but an active OPERATIONS user as RM (422)."""
+        member = await staff_member(self._db, str(user_id))
+        if member is None:
+            raise RelationshipManagerNotEligibleError(user_id, "no such user")
+        if not member.is_active:
+            raise RelationshipManagerNotEligibleError(user_id, "the account is deactivated")
+        if member.role not in RM_ROLES:
+            raise RelationshipManagerNotEligibleError(
+                user_id, "only relationship managers (OPERATIONS users) can be a company's RM"
+            )
+
+    async def ensure_relationship_manager(
+        self,
+        profile: ExporterProfile,
+        *,
+        user_id: uuid.UUID | None,
+        action: str,
+        actor_id: str,
+        actor_role: UserRole,
+        actor_permissions: frozenset[Permission] = frozenset(),
+        source: str,
+    ) -> None:
+        """An accountability action needs an RM on an in-pipeline company. Flushes.
+
+        Called under the action's own row lock, in its transaction:
+
+        * a buyer-only (``NOT_IN_PIPELINE``) company is exempt — compliance is never
+          blocked by its having no RM;
+        * a company with an RM goes ahead; a ``user_id`` naming someone else means the
+          screen was stale (409 ``RELATIONSHIP_MANAGER_CHANGED``);
+        * a company with no RM needs ``user_id``, set under the usual rules (an
+          OPERATIONS caller may name themselves; ADMIN or ``exporters:assign_rm`` may
+          name any RM), or the action is refused with 409
+          ``RELATIONSHIP_MANAGER_REQUIRED``.
+
+        Never a database rule: imports, the RXIL intake and companies that already
+        existed may sit without an RM until someone acts on them.
+        """
+        if profile.pipeline_status is CompanyPipelineStatus.NOT_IN_PIPELINE:
+            return
+        current = profile.relationship_manager_user_id
+        if current is not None:
+            if user_id is not None and user_id != current:
+                raise RelationshipManagerChangedError(profile.customer_id, user_id, current)
+            return
+        if user_id is None:
+            raise RelationshipManagerRequiredError(profile.customer_id, action)
+        await self.set_relationship_manager(
+            profile,
+            user_id=user_id,
+            reason=None,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            actor_permissions=actor_permissions,
+            source=source,
+        )
+
+    async def reassign_relationship_managers(
+        self,
+        *,
+        from_user_id: uuid.UUID,
+        to_user_id: uuid.UUID,
+        company_ids: list[uuid.UUID] | None,
+        journey: ExporterJourney | None,
+        reason: str | None,
+        dry_run: bool,
+        actor_id: str,
+        actor_role: UserRole,
+        actor_permissions: frozenset[Permission] = frozenset(),
+    ) -> BulkReassignment:
+        """Move one RM's companies — all, a chosen subset, or one journey stage — to
+        another RM. ADMIN or ``exporters:assign_rm``; a reason always; the target an
+        active OPERATIONS user.
+
+        One transaction. The companies are locked in ``customer_id`` order, so two runs
+        cannot deadlock, and each is re-read under its lock: one whose RM changed since
+        the list was drawn is skipped, not overwritten. Every company moved gets its
+        own history row, sharing one ``bulk_run_id``. A dry run locks and writes
+        nothing and reports what a real run would move.
+        """
+        if not holds(actor_role, actor_permissions, ASSIGN_RM):
+            raise RelationshipManagerAssignNotAllowedError("(bulk)")
+        text = (reason or "").strip() or None
+        if text is None:
+            raise RelationshipManagerReasonRequiredError()
+        if from_user_id == to_user_id:
+            raise ValidationError("the companies already belong to that relationship manager")
+        await self.require_eligible_relationship_manager(to_user_id)
+
+        candidates = await self._profiles.owned_by(
+            from_user_id, company_ids=company_ids, journey=journey
+        )
+        not_owned = (
+            sorted(set(company_ids) - set(candidates), key=str) if company_ids is not None else []
+        )
+        run_id = str(uuid.uuid4())
+        if dry_run:
+            return BulkReassignment(
+                run_id=None,
+                dry_run=True,
+                matched=tuple(candidates),
+                moved=(),
+                skipped=tuple(not_owned),
+            )
+
+        moved: list[uuid.UUID] = []
+        skipped: list[uuid.UUID] = list(not_owned)
+        for company_id in candidates:
+            profile = await self._lock_profile(company_id)
+            if profile.relationship_manager_user_id != from_user_id:
+                skipped.append(company_id)
+                continue
+            await self.set_relationship_manager(
+                profile,
+                user_id=to_user_id,
+                reason=text,
+                actor_id=actor_id,
+                actor_role=actor_role,
+                actor_permissions=actor_permissions,
+                source="exporter_profile_service.reassign_relationship_managers",
+                bulk_run_id=run_id,
+            )
+            moved.append(company_id)
+        await self._db.commit()
+        logger.info(
+            "exporter_profile.relationship_managers_reassigned",
+            bulk_run_id=run_id,
+            from_user_id=str(from_user_id),
+            to_user_id=str(to_user_id),
+            moved=len(moved),
+            skipped=len(skipped),
+            actor_id=actor_id,
+        )
+        return BulkReassignment(
+            run_id=run_id,
+            dry_run=False,
+            matched=tuple(candidates),
+            moved=tuple(moved),
+            skipped=tuple(skipped),
+        )
+
+    # ── Stale-edit check ──────────────────────────────────────────────────
+
+    async def _refuse_stale_fields(
+        self,
+        profile: ExporterProfile,
+        seen: Mapping[str, object],
+        *,
+        viewer_can_reveal: bool,
+    ) -> None:
+        """Refuse the whole edit if any field the caller saw has changed since.
+
+        Field-level, not record-level: ``updated_at`` moves on every gauge, marker and
+        conversation write to the same row, so a record-level check would refuse an
+        RM's edit whenever compliance moved the check. A masked field is compared as
+        this caller sees it (``mask(current)`` against the masked value they were
+        shown), so no raw value is needed to make the comparison.
+        """
+        for field in sorted(seen):
+            if field not in _EDITABLE_FIELDS:
+                raise ValidationError(f"seen names {field!r}, which is not an editable field")
+            shown = _as_seen(field, getattr(profile, field), viewer_can_reveal)
+            if _same(seen[field], shown):
+                continue
+            row = await self._history.latest(
+                profile.customer_id, dimension=HISTORY_DIMENSION_PROFILE, field=field
+            )
+            changed_by = row.actor_id if row is not None else None
+            names = await display_names(self._db, [changed_by], email_fallback=True)
+            raise CompanyFieldChangedError(
+                profile.customer_id,
+                field=field,
+                current=shown,
+                changed_by=changed_by,
+                changed_by_name=names.get(changed_by or ""),
+                changed_at=row.created_at if row is not None else None,
+            )
+
     # ── Marker ──────────────────────────────────────────────────────────────
 
     async def set_marker(
@@ -704,6 +1054,9 @@ class ExporterProfileService:
         qualification: QualificationState | None = None,
         marker: ExporterMarker | None = None,
         pipeline_status: CompanyPipelineStatus | None = None,
+        relationship_manager_user_id: uuid.UUID | None = None,
+        relationship_manager_unassigned: bool = False,
+        relationship_manager_inactive: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfileListItem]:
@@ -729,6 +1082,10 @@ class ExporterProfileService:
         types a buyer's name is looking for that buyer — and `pipeline_status=`
         lists them deliberately, which is what the identity completion list needs.
 
+        The relationship-manager filters (one RM's companies, no RM, an RM whose
+        account is deactivated) only narrow the list; they are not search terms.
+        Ownership never narrows what a reader may see.
+
         The two exclusions are deliberately separate: `marker=ENDED` must not
         drag buyer-only companies into its list, and `pipeline_status=` must not
         resurrect `ENDED` ones.
@@ -750,6 +1107,9 @@ class ExporterProfileService:
             qualification=qualification,
             marker=marker,
             pipeline_status=pipeline_status,
+            relationship_manager_user_id=relationship_manager_user_id,
+            relationship_manager_unassigned=relationship_manager_unassigned,
+            relationship_manager_inactive=relationship_manager_inactive,
             exclude_ended=marker is None and not searching,
             exclude_not_in_pipeline=pipeline_status is None and not searching,
             limit=limit,
@@ -1120,6 +1480,20 @@ def _cleared_to_none(value: object) -> object:
     return value
 
 
+def _as_seen(field: str, value: object, viewer_can_reveal: bool) -> object:
+    """A field's current value as this viewer was shown it: an identifier masked for a
+    viewer who may not reveal it, exactly as the company read masks it."""
+    if value is None or viewer_can_reveal or field not in _MASKED_IN_HISTORY:
+        return value
+    return mask_identifier(str(value))
+
+
+def _same(seen: object, current: object) -> bool:
+    """Whether the value the caller saw is the current one. Blank and absent are the
+    same (the screen shows both as empty)."""
+    return _cleared_to_none(seen) == _cleared_to_none(current)
+
+
 def _history_value(field: str, value: object) -> object:
     """A field's value as the history log stores it: identifiers masked."""
     if value is None:
@@ -1158,4 +1532,4 @@ def _activity_view(activity: ExporterActivity) -> ExporterActivityView:
     )
 
 
-__all__ = ["ExporterProfileService", "announce_became_customer"]
+__all__ = ["BulkReassignment", "ExporterProfileService", "announce_became_customer"]

@@ -49,6 +49,7 @@ from app.modules.onboarding.infrastructure.rxil.company_package import (
     parse_rxil_company_package,
 )
 from app.modules.onboarding.tests.fixtures.auth import auth_header, user_with_role
+from app.modules.onboarding.tests.fixtures.companies import ensure_relationship_manager
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -304,6 +305,7 @@ async def test_an_already_qualified_company_is_left_alone():
         await ExporterProfileService(db).create_or_get_profile(
             customer_id, source=ExporterSource.SALES, name="Qualified Here", country="IN", pan=pan
         )
+    await ensure_relationship_manager(customer_id)
     async with db_services.AsyncSessionLocal() as db:
         await QualificationService(db).record_outcome(
             customer_id, QualificationOutcomeValue.QUALIFIED, actor_id="rm-1"

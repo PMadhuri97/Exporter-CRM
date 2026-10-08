@@ -222,6 +222,11 @@ class RecordOutcomeRequest(BaseModel):
     outcome: QualificationOutcomeValue
     reason_codes: list[str] = Field(default_factory=list, max_length=20)
     note: str | None = Field(default=None, max_length=4000)
+    #: The relationship manager to set when recording `QUALIFIED` on a company with
+    #: none (409 `RELATIONSHIP_MANAGER_REQUIRED` otherwise). An RM names themselves;
+    #: ADMIN or `exporters:assign_rm` may name any active RM. Ignored on a company
+    #: that already has one, unless it names someone else (409, a stale screen).
+    relationship_manager_user_id: uuid.UUID | None = None
 
 
 class OutcomeResponse(BaseModel):

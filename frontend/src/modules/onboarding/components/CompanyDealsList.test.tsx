@@ -91,15 +91,11 @@ it('names the seller on the buyer side, not the company whose page it is', async
   expect(await screen.findByText(/Acme Exports/)).toBeInTheDocument();
 });
 
-it('explains why a buyer-side list can be empty when the deals exist', async () => {
-  // A deal whose buyer is still a legacy `deal_buyer` row is invisible here until
-  // the migration links it to a company. "None" and "not linked yet" are different
-  // facts, and a bare "no deals" would be read as the first.
+it('says when there are no deals on the buyer side', async () => {
   vi.mocked(listCompanyDeals).mockResolvedValue(list([]));
   renderList('buyer');
 
   expect(
     await screen.findByText(/No deals where this company is the buyer/),
   ).toBeInTheDocument();
-  expect(screen.getByText(/before the buyer migration are not linked/)).toBeInTheDocument();
 });

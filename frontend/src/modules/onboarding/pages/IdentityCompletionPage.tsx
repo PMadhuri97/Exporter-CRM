@@ -55,16 +55,14 @@ function Row({ item }: { item: IdentityCompletionItem }) {
 
 function Group({
   title,
-  description,
   items,
 }: {
   title: string;
-  description: string;
   items: IdentityCompletionItem[];
 }) {
   if (items.length === 0) return null;
   return (
-    <Card title={title} count={items.length} description={description} flush aria-label={title}>
+    <Card title={title} count={items.length} flush aria-label={title}>
       <ul className="divide-y divide-line border-t border-line">
         {items.map((item) => (
           <Row key={item.company_id} item={item} />
@@ -81,10 +79,7 @@ export function IdentityCompletionPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title="Identity to complete"
-        description="Companies the CRM cannot identify: they hold neither a PAN nor a registration number. Add the missing identifier on the company's page and it leaves this list."
-      />
+      <PageHeader title="Identity to complete" />
 
       {query.isLoading ? (
         <Skeleton className="h-40" />
@@ -101,12 +96,10 @@ export function IdentityCompletionPage() {
         <>
           <Group
             title="Required"
-            description="A company outside India must carry its registration number, and every company needs a country."
             items={items.filter((item) => item.required)}
           />
           <Group
             title="Worth completing"
-            description="Indian companies with no PAN. Not required, but they cannot be matched by identifier until they have one."
             items={items.filter((item) => !item.required)}
           />
           {query.data && query.data.total > items.length && limit < MAX_LIMIT ? (

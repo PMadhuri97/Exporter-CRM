@@ -72,7 +72,6 @@ export function NewDealPanel({ open, onOpenChange }: { open: boolean; onOpenChan
       open={open}
       onOpenChange={close}
       title="New deal"
-      description="The buyer and the paperwork are added on the deal once it is open."
       submitLabel="Open deal"
       onSubmit={submit}
       pending={mutation.isPending}

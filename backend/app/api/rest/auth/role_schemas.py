@@ -106,6 +106,9 @@ class ActionSpecResponse(BaseModel):
     key: str
     label: str
     description: str
+    #: Whether a route consults this one permission. Usually the module's flag; an
+    #: action enforced ahead of the rest of its module says so here.
+    enforced: bool
 
 
 class ModuleSpecResponse(BaseModel):
@@ -135,6 +138,7 @@ class PermissionCatalogResponse(BaseModel):
                             key=action.key,
                             label=action.label,
                             description=action.description,
+                            enforced=action.is_enforced(module),
                         )
                         for action in module.actions
                     ],

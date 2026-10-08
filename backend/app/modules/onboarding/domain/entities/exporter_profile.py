@@ -159,6 +159,29 @@ class ExporterProfile(AnerModel):
             "created_via_deal_id",
             postgresql_where=text("created_via_deal_id IS NOT NULL"),
         ),
+        # ── 0044: who is working on it ───────────────────────────────────────
+        Index(
+            "ix_exporter_profile_rm_user",
+            "relationship_manager_user_id",
+            postgresql_where=text("relationship_manager_user_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_exporter_profile_reviewer",
+            "background_check_reviewer_id",
+            postgresql_where=text("background_check_reviewer_id IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "(background_check_reviewer_id IS NULL)"
+            " = (background_check_reviewer_assigned_at IS NULL)",
+            name="ck_exporter_profile_reviewer_assigned_at",
+        ),
+        # A reviewer only while the check is being reviewed: landing on CLEAR, FLAGGED
+        # or ON_HOLD clears it, and the database refuses a decided company with one.
+        CheckConstraint(
+            "background_check_reviewer_id IS NULL "
+            "OR background_check IN ('IN_REVIEW', 'MORE_INFO')",
+            name="ck_exporter_profile_reviewer_under_review",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -173,17 +196,17 @@ class ExporterProfile(AnerModel):
         Enum(ExporterSource, name="exporter_source_enum", schema=SCHEMA), nullable=False
     )
 
+    #: The legacy free-text owner label. **Read-only**: no route writes it any more;
+    #: the backfill command matches it to a user, and the relationship manager is
+    #: `relationship_manager_user_id`.
     relationship_manager: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    #: Which `auth.users` row this display string refers to, when known —
-    #: added in `onboarding_0009_relationship_manager_user` specifically so
-    #: the frontend's ownership-scoped PII-reveal check (`OPERATIONS` may
-    #: reveal on exporters they own) has something reliable to compare
-    #: against. No FK to `auth.users` — see that migration's docstring for
-    #: why (matches this codebase's `assigned_to`/`actor_id` convention).
-    #: Nothing sets this yet; a future "assign relationship manager" action
-    #: is expected to validate it against a real, active user before
-    #: writing it.
+    #: The company's relationship manager: an active OPERATIONS user when written,
+    #: and written only by `ExporterProfileService.assign_relationship_manager`, with a
+    #: `relationship_manager` history row. Optional: a lead, a buyer-only company and
+    #: an imported prospect may have none. **Ownership grants nothing** — not
+    #: visibility and not unmasked identifiers (`can_reveal_identifiers`). No FK to
+    #: `auth.users` (the codebase's actor-id convention; migration 0009).
     relationship_manager_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
@@ -289,6 +312,17 @@ class ExporterProfile(AnerModel):
     #: until then `ComplianceFactsReader` derives expiry from the legacy rule (the
     #: clearing decision + one year) and nothing reads this column.
     background_check_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    #: Who holds the review, and since when (migration 0044). Set by a claim, an
+    #: assignment, an auto-claim on a reviewer's move, a reassessment or a reopen;
+    #: cleared by a release and when the check lands on CLEAR, FLAGGED or ON_HOLD.
+    #: Only `BackgroundCheckService` writes them, each change with a
+    #: `background_check_assignment` history row. An actor id, like `decided_by`.
+    background_check_reviewer_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    background_check_reviewer_assigned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

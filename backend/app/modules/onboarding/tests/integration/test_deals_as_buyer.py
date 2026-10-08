@@ -30,7 +30,11 @@ from app.modules.onboarding.domain.company_directory import BuyerCompanyDraft
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
-from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
+from app.modules.onboarding.tests.fixtures.companies import (
+    ensure_relationship_manager,
+    make_company,
+    make_prospect,
+)
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -51,6 +55,7 @@ async def _named_seller(name: str) -> uuid.UUID:
         QualificationOutcomeValue,
     )
 
+    await ensure_relationship_manager(customer_id)
     async with db_services.AsyncSessionLocal() as db:
         await QualificationService(db).record_outcome(
             customer_id, QualificationOutcomeValue.QUALIFIED, actor_id="test"

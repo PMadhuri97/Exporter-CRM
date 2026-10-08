@@ -47,7 +47,10 @@ from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
 )
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationOutcomeValue
 from app.modules.onboarding.domain.entities.screening_review import ScreeningReviewItem
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import (
+    ensure_relationship_manager,
+    make_company,
+)
 from app.platform.database import services as db_services
 from app.shared.exceptions import ValidationError
 
@@ -303,6 +306,7 @@ async def test_the_valid_key_set_is_exactly_the_seven_the_ui_declares():
 
 
 async def _qualify(customer_id: uuid.UUID, actor_id: str = "rm-jordan") -> None:
+    await ensure_relationship_manager(customer_id)
     async with db_services.AsyncSessionLocal() as db:
         await QualificationService(db).record_outcome(
             customer_id, QualificationOutcomeValue.QUALIFIED, actor_id=actor_id

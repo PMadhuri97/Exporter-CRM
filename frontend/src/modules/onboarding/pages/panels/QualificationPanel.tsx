@@ -31,9 +31,10 @@ import {
 import { Icon } from '@/design/icons';
 import { formatDate } from '@/lib/format';
 
-import { QualificationChip } from '../../components';
+import { QualificationChip, RelationshipManagerChoice } from '../../components';
 import { QUALIFICATION_LABEL, RESULT_LABEL } from '../../constants';
 import {
+  useExporterProfileDetail,
   useQualification,
   useReasonCodes,
   useRecordQualificationOutcome,
@@ -216,11 +217,20 @@ function OutcomeForm({
   const [outcome, setOutcome] = useState<QualificationOutcomeValue | null>(null);
   const [codes, setCodes] = useState<string[]>([]);
   const [note, setNote] = useState('');
+  const [rmUserId, setRmUserId] = useState<string | null>(null);
+  const company = useExporterProfileDetail(customerId);
+  // Qualifying makes the company somebody's: a company with no RM is given one in the
+  // same request. The server refuses QUALIFIED without it.
+  const needsRm =
+    outcome === 'QUALIFIED' &&
+    company.data !== undefined &&
+    !company.data.relationship_manager_user_id;
 
   const reset = () => {
     setOutcome(null);
     setCodes([]);
     setNote('');
+    setRmUserId(null);
   };
 
   if (!outcome) {
@@ -260,6 +270,7 @@ function OutcomeForm({
             outcome,
             reason_codes: outcome === 'NOT_QUALIFIED' ? codes : [],
             note: note.trim() || null,
+            relationship_manager_user_id: needsRm ? rmUserId : null,
           },
           {
             onSuccess: () => {
@@ -276,6 +287,9 @@ function OutcomeForm({
         <p className="text-caption text-ink-2">
           Qualifying a lead makes it a prospect. The decision is final.
         </p>
+      )}
+      {needsRm && (
+        <RelationshipManagerChoice value={rmUserId} onChange={setRmUserId} action="to qualify it" />
       )}
       {available.length > 0 && (
         <fieldset className="space-y-1.5">
@@ -312,7 +326,13 @@ function OutcomeForm({
         <Button variant="subtle" size="sm" onClick={reset}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary" size="sm" loading={mutation.isPending}>
+        <Button
+          type="submit"
+          variant="primary"
+          size="sm"
+          loading={mutation.isPending}
+          disabled={needsRm && rmUserId === null}
+        >
           Confirm
         </Button>
       </div>
@@ -328,7 +348,6 @@ export function QualificationPanel({ customerId }: { customerId: string }) {
     <Panel
       aria-label="Qualification"
       title="Qualification"
-      description="Criteria are set by an administrator. The suggestion is not the decision — a person decides."
       actions={
         data && (
           <div className="flex items-center gap-2 text-body text-ink-2">

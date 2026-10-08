@@ -34,6 +34,7 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
     QualificationOutcomeValue,
 )
 from app.modules.onboarding.tests.fixtures.auth import auth_header, user_with_role
+from app.modules.onboarding.tests.fixtures.companies import ensure_relationship_manager
 from app.modules.onboarding.tests.fixtures.deals import make_deal
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
@@ -222,6 +223,7 @@ async def test_once_in_the_pipeline_it_can_be_qualified_and_spoken_to(client: As
 
     # Qualification first: the conversation gauge applies from PROSPECT onward,
     # so this is the order an ordinary lead goes through too.
+    await ensure_relationship_manager(company_id)
     async with db_services.AsyncSessionLocal() as db:
         await QualificationService(db).record_outcome(
             company_id,

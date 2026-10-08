@@ -57,7 +57,12 @@ function Workspace() {
       />
       <div className="flex min-h-0 flex-1">
         <SideNav role={role} />
-        <main className="min-w-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-6 md:pt-5">
+        {/* `relative`: the scroll area is the positioning context, so an absolutely
+            positioned element inside a page (a visually hidden label, a menu) stays
+            inside it. Without it such an element is placed against the whole page,
+            stretches it past the window and gives it a second scrollbar into blank
+            space — which a long deal page did. */}
+        <main className="relative min-w-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-6 md:pt-5">
           <div className="mx-auto max-w-[100rem]">
             <PageCrumbs />
             <Suspense fallback={<ScreenLoading />}>

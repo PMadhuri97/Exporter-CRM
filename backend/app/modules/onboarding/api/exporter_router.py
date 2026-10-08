@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.exporter import (
+    AssignRelationshipManagerRequest,
     BringIntoPipelineRequest,
     CreateExporterProfileRequest,
     DuplicateGstinWarningResponse,
@@ -49,6 +50,13 @@ from app.modules.onboarding.api.schemas.exporter import (
 )
 from app.modules.onboarding.api.schemas.masking import can_reveal_identifiers
 from app.modules.onboarding.application import ExporterProfileService
+from app.modules.onboarding.domain.assignment import (
+    ASSIGN_RM,
+    RM_ROLES,
+    Permission,
+    holds,
+    may_set_relationship_manager,
+)
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
     ExporterJourney,
@@ -57,9 +65,13 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
-from app.modules.onboarding.exceptions import IdentifierSearchNotPermittedError
+from app.modules.onboarding.exceptions import (
+    IdentifierSearchNotPermittedError,
+    RelationshipManagerAssignNotAllowedError,
+)
+from app.platform.authentication import staff_members
 from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authorization.services import get_current_permissions, require_role
 from app.platform.database.services import get_db
 from app.shared.exceptions import ValidationError
 
@@ -78,6 +90,8 @@ _MARKER_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.AD
 _READER = require_role(
     UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
 )
+#: The signed-in user's permissions, for the "ADMIN or permission" rules.
+_PERMISSIONS = Annotated[frozenset[Permission], Depends(get_current_permissions)]
 
 
 def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
@@ -134,10 +148,25 @@ def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
 async def create_exporter_profile(
     body: CreateExporterProfileRequest,
     current_user: Annotated[User, Depends(_STAFF)],
+    permissions: _PERMISSIONS,
     response: Response,
     db: AsyncSession = Depends(get_db),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> ExporterProfileResponse:
+    # An RM named on create is checked before anything is written, so a refusal
+    # leaves no company behind; it is set once the company exists.
+    rm_user_id = body.relationship_manager_user_id
+    if rm_user_id is not None:
+        if not may_set_relationship_manager(
+            actor_id=str(current_user.id),
+            actor_role=current_user.role,
+            actor_permissions=permissions,
+            current=None,
+            target=str(rm_user_id),
+        ):
+            raise RelationshipManagerAssignNotAllowedError("(new)")
+        await ExporterProfileService(db).require_eligible_relationship_manager(rm_user_id)
+
     # "Add Exporter": a name and country (the schema guarantees both or
     # neither) create a named company through `create_lead`, with the
     # signed-in user as the actor — never a field the caller supplies.
@@ -158,7 +187,6 @@ async def create_exporter_profile(
             gstins=body.gstins,
             pan=body.pan,
             iec=body.iec,
-            relationship_manager=body.relationship_manager,
             industry=body.industry,
             export_markets=body.export_markets,
             products=body.products,
@@ -166,6 +194,8 @@ async def create_exporter_profile(
             registration_number=body.registration_number,
             actor_id=str(current_user.id),
         )
+        if created and rm_user_id is not None:
+            profile = await _claim_on_create(service, profile, rm_user_id, current_user, permissions)
         # `status_code=201` on the decorator is only the default — found via
         # manual end-to-end testing that neither this branch nor the one
         # below ever actually overrode it, contradicting this endpoint's own
@@ -174,7 +204,7 @@ async def create_exporter_profile(
         # it just always claimed "201 Created" while doing it.
         if not created:
             response.status_code = 200
-        return await _company_response(service, profile, current_user)
+        return await _company_response(db, service, profile, current_user, permissions)
 
     customer_id = body.customer_id or uuid.uuid4()
     service = ExporterProfileService(db)
@@ -185,7 +215,6 @@ async def create_exporter_profile(
         gstins=body.gstins,
         pan=body.pan,
         iec=body.iec,
-        relationship_manager=body.relationship_manager,
         industry=body.industry,
         export_markets=body.export_markets,
         products=body.products,
@@ -194,9 +223,11 @@ async def create_exporter_profile(
         idempotency_key=idempotency_key,
         actor_id=str(current_user.id),
     )
+    if created and rm_user_id is not None:
+        profile = await _claim_on_create(service, profile, rm_user_id, current_user, permissions)
     if not created:
         response.status_code = 200
-    return await _company_response(service, profile, current_user)
+    return await _company_response(db, service, profile, current_user, permissions)
 
 
 @router.get(
@@ -217,11 +248,16 @@ async def create_exporter_profile(
 async def get_exporter_profile_detail(
     customer_id: uuid.UUID,
     current_user: Annotated[User, Depends(_READER)],
+    permissions: _PERMISSIONS,
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileDetailResponse:
     detail = await ExporterProfileService(db).get_profile_detail(customer_id)
     response = ExporterProfileDetailResponse.from_detail(detail).masked_for(current_user)
     response.allowed_marker_moves = _marker_moves(detail.marker, current_user)
+    await _name_relationship_managers(db, current_user, [response])
+    response.relationship_manager_actions = _rm_actions(
+        current_user, permissions, detail.relationship_manager_user_id
+    )
     names = await actor_names(db, current_user, (a.actor_id for a in response.recent_activities))
     response.recent_activities = [a.named(names) for a in response.recent_activities]
     return response
@@ -237,13 +273,19 @@ async def get_exporter_profile_detail(
         "recorded in the company's history with the signed-in user as the actor. "
         "`source`, `journey`, `qualification` and the marker are not accepted "
         "here (422 if present): source is immutable, and each of the others has "
-        "its own write path."
+        "its own write path. The relationship manager is not either: it has its "
+        "own route.\n\n"
+        "Send `seen` — each edited field's value as the screen showed it — and an "
+        "edit to a field someone else has changed since is refused (409 "
+        "`COMPANY_FIELD_CHANGED`, naming who and when) instead of overwriting it. "
+        "A masked identifier is compared masked."
     ),
     responses={
         200: {"model": ExporterProfileResponse},
         401: {"description": "Unauthorized"},
         403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
         404: {"description": "Exporter profile not found"},
+        409: {"description": "`COMPANY_FIELD_CHANGED` — a field changed since it was loaded"},
         422: {"description": "Invalid request body"},
     },
 )
@@ -251,17 +293,22 @@ async def update_exporter_profile(
     customer_id: uuid.UUID,
     body: UpdateExporterProfileRequest,
     current_user: Annotated[User, Depends(_STAFF)],
+    permissions: _PERMISSIONS,
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileResponse:
     # `exclude_unset` is what separates "left out" (no change) from "sent as
     # null" (clear). The actor is the session's, never the body's.
+    changes = body.model_dump(exclude_unset=True)
+    seen = changes.pop("seen", None)
     service = ExporterProfileService(db)
     profile = await service.update_profile(
         customer_id,
-        body.model_dump(exclude_unset=True),
+        changes,
         actor_id=str(current_user.id),
+        seen=seen,
+        viewer_can_reveal=can_reveal_identifiers(current_user),
     )
-    return await _company_response(service, profile, current_user)
+    return await _company_response(db, service, profile, current_user, permissions)
 
 
 @router.get(
@@ -279,7 +326,10 @@ async def update_exporter_profile(
         "same rule: excluded by default, found by any search term, and listed on "
         "their own with pipeline_status=NOT_IN_PIPELINE. The gstin/pan/iec filters are "
         "COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals "
-        "which company holds it even when the response body is masked."
+        "which company holds it even when the response body is masked.\n\n"
+        "`relationship_manager` narrows the list by owner: `me` (My companies), "
+        "`none` (Unassigned), `inactive` (an RM whose account is deactivated) or a "
+        "user id. It is a filter only: ownership never changes what a reader may see."
     ),
     responses={
         200: {"model": ExporterProfileSearchResponse},
@@ -304,10 +354,24 @@ async def search_exporter_profiles(
     qualification: QualificationState | None = Query(default=None),
     marker: ExporterMarker | None = Query(default=None),
     pipeline_status: CompanyPipelineStatus | None = Query(default=None),
+    relationship_manager: str | None = Query(
+        default=None, description="`me`, `none`, `inactive` or a user id"
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ExporterProfileSearchResponse:
     _reject_identifier_search(current_user, gstin=gstin, pan=pan, iec=iec)
+    rm_user_id: uuid.UUID | None = None
+    rm_filter = (relationship_manager or "").strip().lower() or None
+    if rm_filter == "me":
+        rm_user_id = current_user.id
+    elif rm_filter not in (None, "none", "inactive"):
+        try:
+            rm_user_id = uuid.UUID(rm_filter)
+        except ValueError as exc:
+            raise ValidationError(
+                "relationship_manager must be `me`, `none`, `inactive` or a user id"
+            ) from exc
 
     items = await ExporterProfileService(db).search_profiles(
         gstin=gstin,
@@ -319,17 +383,18 @@ async def search_exporter_profiles(
         qualification=qualification,
         marker=marker,
         pipeline_status=pipeline_status,
+        relationship_manager_user_id=rm_user_id,
+        relationship_manager_unassigned=rm_filter == "none",
+        relationship_manager_inactive=rm_filter == "inactive",
         limit=limit,
         offset=offset,
     )
-    return ExporterProfileSearchResponse(
-        profiles=[
-            ExporterProfileListItemResponse.model_validate(item).masked_for(current_user)
-            for item in items
-        ],
-        limit=limit,
-        offset=offset,
-    )
+    profiles = [
+        ExporterProfileListItemResponse.model_validate(item).masked_for(current_user)
+        for item in items
+    ]
+    await _name_relationship_managers(db, current_user, profiles)
+    return ExporterProfileSearchResponse(profiles=profiles, limit=limit, offset=offset)
 
 
 # ── Marker (PAUSED / ENDED) ──────────────────────────────────────────────
@@ -366,6 +431,7 @@ async def set_exporter_marker(
     )
     response = ExporterProfileResponse.model_validate(profile).masked_for(current_user)
     response.allowed_marker_moves = _marker_moves(profile.marker, current_user)
+    await _name_relationship_managers(db, current_user, [response])
     return response
 
 
@@ -399,6 +465,7 @@ async def set_exporter_marker(
 async def bring_exporter_into_pipeline(
     customer_id: uuid.UUID,
     current_user: Annotated[User, Depends(_STAFF)],
+    permissions: _PERMISSIONS,
     db: AsyncSession = Depends(get_db),
     body: BringIntoPipelineRequest | None = None,
 ) -> ExporterProfileResponse:
@@ -408,11 +475,120 @@ async def bring_exporter_into_pipeline(
         reason=body.reason if body is not None else None,
         actor_id=str(current_user.id),
     )
-    return await _company_response(service, profile, current_user)
+    return await _company_response(db, service, profile, current_user, permissions)
+
+
+# ── Relationship manager ─────────────────────────────────────────────────
+
+
+@router.post(
+    "/{customer_id}/relationship-manager",
+    response_model=ExporterProfileDetailResponse,
+    summary="Set, change or clear a company's relationship manager",
+    description=(
+        "The RM is one active RM (OPERATIONS) user. An RM may claim a company with "
+        "no RM for themselves. Naming someone else, or changing or clearing an RM "
+        "already set, needs ADMIN or `exporters:assign_rm`, and a change or clear "
+        "needs a reason. `seen_user_id` is the RM the screen showed (`null` for "
+        "none): a different current RM refuses the request (409) instead of "
+        "overwriting someone else's change. Every change is a `relationship_manager` "
+        "history row. Ownership grants nothing: it never unmasks an identifier and "
+        "never changes what anyone may see."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {
+            "description": (
+                "OPERATIONS, COMPLIANCE or ADMIN role required; "
+                "`RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED`"
+            )
+        },
+        404: {"description": "Exporter profile not found"},
+        409: {"description": "`RELATIONSHIP_MANAGER_CHANGED` — someone changed it since"},
+        422: {
+            "description": (
+                "`RELATIONSHIP_MANAGER_NOT_ELIGIBLE` — not an active RM user; "
+                "`RELATIONSHIP_MANAGER_REASON_REQUIRED`"
+            )
+        },
+    },
+)
+async def assign_exporter_relationship_manager(
+    customer_id: uuid.UUID,
+    body: AssignRelationshipManagerRequest,
+    current_user: Annotated[User, Depends(_STAFF)],
+    permissions: _PERMISSIONS,
+    db: AsyncSession = Depends(get_db),
+) -> ExporterProfileDetailResponse:
+    service = ExporterProfileService(db)
+    await service.assign_relationship_manager(
+        customer_id,
+        user_id=body.user_id,
+        reason=body.reason,
+        seen_user_id=body.seen_user_id,
+        actor_id=str(current_user.id),
+        actor_role=current_user.role,
+        actor_permissions=permissions,
+    )
+    return await get_exporter_profile_detail(customer_id, current_user, permissions, db)
+
+
+async def _claim_on_create(
+    service: ExporterProfileService,
+    profile: ExporterProfile,
+    rm_user_id: uuid.UUID,
+    viewer: User,
+    permissions: frozenset[Permission],
+) -> ExporterProfile:
+    """Set the RM named on create, once the company exists."""
+    return await service.assign_relationship_manager(
+        profile.customer_id,
+        user_id=rm_user_id,
+        reason=None,
+        seen_user_id=None,
+        actor_id=str(viewer.id),
+        actor_role=viewer.role,
+        actor_permissions=permissions,
+    )
+
+
+def _rm_actions(
+    viewer: User, permissions: frozenset[Permission], current: uuid.UUID | None
+) -> list[str]:
+    """What this viewer may do with the company's RM — the service's own rule."""
+    may_assign = holds(viewer.role, permissions, ASSIGN_RM)
+    if current is None:
+        actions = ["CLAIM"] if viewer.role in RM_ROLES else []
+        return [*actions, "ASSIGN"] if may_assign else actions
+    return ["CHANGE", "CLEAR"] if may_assign else []
+
+
+async def _name_relationship_managers(db: AsyncSession, viewer: User, responses) -> None:
+    """Fill each response's RM name and whether that account is deactivated."""
+    ids = [
+        str(r.relationship_manager_user_id)
+        for r in responses
+        if r.relationship_manager_user_id is not None
+    ]
+    if not ids:
+        return
+    names = await actor_names(db, viewer, ids)
+    members = await staff_members(db, ids)
+    for response in responses:
+        if response.relationship_manager_user_id is None:
+            continue
+        key = str(response.relationship_manager_user_id)
+        response.relationship_manager_name = names.get(key)
+        member = members.get(key)
+        response.relationship_manager_inactive = member is None or not member.is_active
 
 
 async def _company_response(
-    service: ExporterProfileService, profile: ExporterProfile, viewer: User
+    db: AsyncSession,
+    service: ExporterProfileService,
+    profile: ExporterProfile,
+    viewer: User,
+    permissions: frozenset[Permission] = frozenset(),
 ) -> ExporterProfileResponse:
     """A company as a create or edit returns it, with a warning for each of
     its GSTINs another company also holds (decision 4: warn, never refuse)."""
@@ -423,6 +599,7 @@ async def _company_response(
     ]
     response = response.masked_for(viewer)
     response.allowed_marker_moves = _marker_moves(profile.marker, viewer)
+    await _name_relationship_managers(db, viewer, [response])
     return response
 
 

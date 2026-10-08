@@ -28,10 +28,7 @@ export function DocumentsPanel({
   const upload = useUploadCompanyDocument(customerId);
 
   return (
-    <Panel
-      title="Company documents"
-      description="Paperwork that belongs to the relationship rather than to one deal."
-    >
+    <Panel title="Company documents">
       <DocumentsByCategory
         documents={documents.data?.documents ?? []}
         isLoading={documents.isLoading}

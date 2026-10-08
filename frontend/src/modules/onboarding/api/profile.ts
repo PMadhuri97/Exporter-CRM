@@ -10,6 +10,11 @@ import { apiRequest } from '@/lib/api/client';
 
 import type {
   AddGstRegistrationRequest,
+  AssignRelationshipManagerRequest,
+  BulkReassignRequest,
+  BulkReassignResult,
+  PickableRole,
+  StaffList,
   FlagGstRegistrationRequest,
   GstRegistration,
   GstRegistrationList,
@@ -43,6 +48,7 @@ function buildQuery(params: ExporterSearchParams): string {
     ['journey', params.journey],
     ['qualification', params.qualification],
     ['marker', params.marker],
+    ['relationship_manager', params.relationship_manager],
   ];
   for (const [key, value] of entries) if (value) query.set(key, value);
   query.set('limit', String(params.limit ?? 100));
@@ -113,6 +119,43 @@ export function updateExporterProfile(
     method: 'PATCH',
     body: changes,
   });
+}
+
+// ── Relationship manager ─────────────────────────────
+
+/**
+ * Set, change or clear the company's relationship manager. `seen_user_id` is the RM
+ * the screen showed (`null` for none): if someone changed it since, the server refuses
+ * (409 `RELATIONSHIP_MANAGER_CHANGED`) rather than overwrite them. Which of claim,
+ * assign, change and clear this user may make is served on the company
+ * (`relationship_manager_actions`); a change or clear needs a reason. Returns the
+ * company's detail.
+ */
+export function assignRelationshipManager(
+  customerId: string,
+  body: AssignRelationshipManagerRequest,
+): Promise<ExporterProfileDetail> {
+  return apiRequest<ExporterProfileDetail>(
+    `/onboarding/exporters/${customerId}/relationship-manager`,
+    { method: 'POST', body },
+  );
+}
+
+/** Move one RM's companies to another — all, a chosen list, or one journey stage.
+ * `dry_run` reports what would move and writes nothing. ADMIN or exporters:assign_rm. */
+export function reassignRelationshipManagers(body: BulkReassignRequest): Promise<BulkReassignResult> {
+  return apiRequest<BulkReassignResult>('/onboarding/relationship-managers/reassign', {
+    method: 'POST',
+    body,
+  });
+}
+
+/** Active staff in the given roles, by name, with what each already holds — the
+ * picker for an RM (`OPERATIONS`) or a reviewer (`COMPLIANCE`, `ADMIN`). */
+export function listStaff(roles: readonly PickableRole[]): Promise<StaffList> {
+  const query = new URLSearchParams();
+  for (const role of roles) query.append('role', role);
+  return apiRequest<StaffList>(`/onboarding/staff?${query.toString()}`);
 }
 
 export function setExporterMarker(

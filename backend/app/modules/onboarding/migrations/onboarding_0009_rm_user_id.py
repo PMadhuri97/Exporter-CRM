@@ -1,6 +1,12 @@
 """Add `relationship_manager_user_id` to `exporter_profile`
 
-The frontend role model needs
+**Later (migration 0044):** the column is now the company's relationship manager,
+written only by `ExporterProfileService.assign_relationship_manager`, which checks the
+user is an active OPERATIONS user (the application-layer check described below). It is
+**not** a reveal key: ownership grants no access to unmasked identifiers. The rest of
+this docstring records why the column was added at the time.
+
+The frontend role model needed
 to answer "is the logged-in user this exporter's relationship_manager" to
 decide whether an `OPERATIONS`-role user may reveal masked PAN/GSTIN/IEC on
 this record — `relationship_manager` alone (a free display string, by

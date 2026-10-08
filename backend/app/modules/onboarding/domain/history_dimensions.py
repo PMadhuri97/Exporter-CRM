@@ -7,7 +7,8 @@ same values the writers use. ``history-row.md`` §2 remains the definition of wh
 one means; a value added here without a row there is the thing that contract exists
 to prevent.
 
-The last five were added together: ``check_cycle`` and ``background_check_approval``
+``relationship_manager`` and ``background_check_assignment`` record who is working on a
+company. The five before them were added together: ``check_cycle`` and ``background_check_approval``
 (the compliance engine), and ``gst_registration``, ``trade`` and ``pipeline`` (the
 company record).
 """
@@ -33,6 +34,10 @@ GST_REGISTRATION = "gst_registration"
 TRADE = "trade"
 #: A company entering or leaving the sales pipeline.
 PIPELINE = "pipeline"
+#: A company's relationship manager assigned, reassigned or cleared.
+RELATIONSHIP_MANAGER = "relationship_manager"
+#: A background-check review claimed, assigned, reassigned, released or ended.
+BACKGROUND_CHECK_ASSIGNMENT = "background_check_assignment"
 
 ALL_DIMENSIONS: tuple[str, ...] = (
     JOURNEY,
@@ -49,19 +54,30 @@ ALL_DIMENSIONS: tuple[str, ...] = (
     GST_REGISTRATION,
     TRADE,
     PIPELINE,
+    RELATIONSHIP_MANAGER,
+    BACKGROUND_CHECK_ASSIGNMENT,
 )
 
 #: Dimensions DEVELOPER does not receive from the history routes: the
 #: background check, its inputs, its cycles and its approvals carry the values,
-#: reasons, review notes and comments DEVELOPER is refused on their own routes.
+#: reasons, review notes and comments DEVELOPER is refused on their own routes. Who
+#: holds a review is compliance work too.
 HIDDEN_FROM_DEVELOPER: frozenset[str] = frozenset(
-    {BACKGROUND_CHECK, VERIFICATION, SCREENING, CHECK_CYCLE, BACKGROUND_CHECK_APPROVAL}
+    {
+        BACKGROUND_CHECK,
+        VERIFICATION,
+        SCREENING,
+        CHECK_CYCLE,
+        BACKGROUND_CHECK_APPROVAL,
+        BACKGROUND_CHECK_ASSIGNMENT,
+    }
 )
 
 __all__ = [
     "ALL_DIMENSIONS",
     "BACKGROUND_CHECK",
     "BACKGROUND_CHECK_APPROVAL",
+    "BACKGROUND_CHECK_ASSIGNMENT",
     "CHECK_CYCLE",
     "CONVERSATION",
     "DEAL",
@@ -72,6 +88,7 @@ __all__ = [
     "PIPELINE",
     "PROFILE",
     "QUALIFICATION",
+    "RELATIONSHIP_MANAGER",
     "SCREENING",
     "TRADE",
     "VERIFICATION",

@@ -69,12 +69,15 @@ architecture.
 | `gst_registration` | A GST registration added, reactivated, deactivated, flagged or unflagged (plan P6-2, P6-5). **Written** by `GstRegistrationService` (tasks 3.13, 3.14). `to_value` is the branch's state name; `details` carries the registration id, the **masked** GSTIN, the state and the row's `active`/`flag_status`. A flag and an unflag both carry their `reason` | Dev 3 |
 | `trade` | An invoice or a payment outcome recorded (plan P5-3, P5-4). **Written** by `TradeHistoryService` (task 3.19), on the **seller's** timeline, carrying `deal_id` when the invoice came from a deal. Read on the **buyer company's** timeline too, by the same read-side union as its deals (R-23); past trade with no deal stays the seller's. `to_value` is the invoice's currency for `trade_invoice_recorded` and the payment status for `trade_outcome_recorded`; an outcome's `reason` is its evidence note. A relationship's own creation writes no row — it is a consequence of recording a deal's buyer, which already has one | Dev 3 |
 | `pipeline` | A company entering or leaving the sales pipeline — created as a buyer-only company, or brought in (plan P4-6, P4-9). **Written** by `CompanyDirectoryService.create_buyer_company` (`NULL` → `NOT_IN_PIPELINE`, with the deal it came from) and by `ExporterProfileService.bring_into_pipeline` (`NOT_IN_PIPELINE` → `IN_PIPELINE`, task 3.11). A buyer-only company's **first** row is on this dimension, not `journey`: it has no journey until it enters the pipeline | Dev 3 |
+| `relationship_manager` | A company's relationship manager assigned, reassigned or cleared. **Written** only by `ExporterProfileService.set_relationship_manager` (the RM route, bulk reassignment, the RM set when a check is started or QUALIFIED is recorded, and the legacy-owner backfill). `from_status` / `to_status` are the user ids, or `UNASSIGNED`; `event_type` is `relationship_manager_assigned` / `_reassigned` / `_cleared`; `reason` is required on a change or clear | — |
+| `background_check_assignment` | A background-check review claimed, assigned, reassigned, released or ended. **Written** only by `BackgroundCheckService._set_reviewer`. `from_status` / `to_status` are the reviewer ids, or `UNASSIGNED`; `event_type` is `review_claimed` / `review_assigned` / `review_reassigned` / `review_released` / `review_ended`; `reason` is required when a review is taken from someone, optional on a release | — |
 
 The last five were added together in F1 (allocation §2.2, 1 October 2026) so that no
 lane edits this list again. In code the list is
 `app/modules/onboarding/domain/history_dimensions.py`; a writer imports its constant
 from there rather than typing the string, and the frontend's `HistoryDimension` type
-and timeline labels carry the same fourteen.
+and timeline labels carry the same sixteen. `relationship_manager` and
+`background_check_assignment` were added on 7 October 2026 (who is working on a company).
 
 Adding a dimension needs no migration — add the string here and start writing
 it. Adding one **without** adding it here is the thing this table exists to
@@ -82,7 +85,8 @@ prevent, because nothing else records what the value means.
 
 **Who reads what.** The history routes serve every dimension to OPERATIONS,
 COMPLIANCE and ADMIN. DEVELOPER does not receive `background_check`,
-`verification`, `screening`, `check_cycle` or `background_check_approval` rows —
+`verification`, `screening`, `check_cycle`, `background_check_approval` or
+`background_check_assignment` rows —
 from the page or the total — because decision D8 refuses DEVELOPER the same values,
 reasons, review notes and screening comments on those gauges' own routes
 (`api/history_router.py`, `history_dimensions.HIDDEN_FROM_DEVELOPER`).
@@ -138,6 +142,8 @@ it reached):
 | `background_check` | `decision_id`, `supersedes_decision_id`, `risk_rating`, `evidence_count`; since 1 October 2026 also `cycle_id` and `rules_version`, and (tranche 2) `proposal_id`, `approved_by` (an approved move) and `expires_at` (a `CLEAR`) | `background-check.md` §8 |
 | `check_cycle` | `cycle_id`, `kind`, `previous_cycle_id`, `reopen_decision_id` (set when the start reopened a `CLEAR` company) | `background-check.md` §12.3 |
 | `background_check_approval` | `proposal_id`, `from_value`, `to_value` (the proposed move); on proposing also `risk_rating`, `based_on_decision_id`, `evidence_count`, `cycle_id`, `rules_version`; on resolving also `proposed_by` and `decision_id` (set on approval) | `background-check.md` §12.5 |
+| `relationship_manager` | `from_user_id`, `to_user_id`, `from_user_name`, `to_user_name` (the names as they were), `bulk_run_id` (a bulk reassignment or backfill run; otherwise `null`) | `company-record.md` §2.5 |
+| `background_check_assignment` | `from_user_id`, `to_user_id`, `from_user_name`, `to_user_name`, `background_check` (the gauge value at the time) | `background-check.md` §12.8 |
 
 ### 3.1 In the read response
 
@@ -167,6 +173,8 @@ enforces it; the column stays nullable because most moves do not need one and a
 | `background_check` | `CLEAR` → `IN_REVIEW` (reopen) | required |
 | `background_check` | `FLAGGED`/`ON_HOLD` → `IN_REVIEW` (reassess) | required |
 | `qualification` | → `NOT_QUALIFIED` | reason **codes** required, note optional |
+| `relationship_manager` | changing or clearing an RM already set (single or bulk) | required |
+| `background_check_assignment` | taking a review from the person who holds it | required |
 
 In short, every background-check move except the start (`NOT_STARTED` →
 `IN_REVIEW`) carries text; the database refuses the decision row otherwise

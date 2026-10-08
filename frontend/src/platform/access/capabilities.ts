@@ -70,6 +70,14 @@ export type Capability =
    * request or a write on it; `crm.write` is the permission.
    */
   | 'queue.qualification'
+  /**
+   * Can be a company's relationship manager, and so may name **themselves** as one:
+   * OPERATIONS only, mirroring the server's `domain/assignment.RM_ROLES`. Like
+   * `queue.qualification`, a wider role does not inherit it — ADMIN assigns RMs but is
+   * not one, and COMPLIANCE never is. Naming someone else is the `exporters:assign_rm`
+   * permission (`useHasPermission`), not this.
+   */
+  | 'rm.self'
   /** The qualification-criteria screen (an editing screen). ADMIN_ONLY. */
   | 'settings.criteria'
   /** The deal-required-documents screen (an editing screen). ADMIN_ONLY. */
@@ -94,7 +102,7 @@ const COMPLIANCE: readonly Capability[] = [
 const ROLE_CAPABILITIES: Readonly<Record<UserRole, readonly Capability[]>> = {
   // `queue.qualification` is deliberately not in `STAFF`, and so not inherited by
   // COMPLIANCE or ADMIN below: it marks whose work the leads are, not who may act.
-  OPERATIONS: [...STAFF, 'queue.qualification'],
+  OPERATIONS: [...STAFF, 'queue.qualification', 'rm.self'],
   COMPLIANCE,
   ADMIN: [...COMPLIANCE, 'company.rxilIntake', 'settings.criteria', 'settings.requiredDocuments'],
   // Reads the CRM, masked, and writes nothing.

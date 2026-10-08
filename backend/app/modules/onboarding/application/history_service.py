@@ -36,6 +36,7 @@ import uuid
 from collections.abc import Collection, Sequence
 
 import structlog
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
@@ -203,6 +204,27 @@ class HistoryService:
             include_deals_as_buyer=True,
         )
         return rows, total
+
+    async def latest(
+        self,
+        company_id: uuid.UUID,
+        *,
+        dimension: str,
+        field: str | None = None,
+    ) -> ExporterLifecycleHistory | None:
+        """The company's newest row of ``dimension`` — of one edited ``field`` when
+        given (a ``profile`` row names its field in ``details.field``). For "who changed
+        this last, and when"."""
+        stmt = select(ExporterLifecycleHistory).where(
+            ExporterLifecycleHistory.customer_id == company_id,
+            ExporterLifecycleHistory.dimension == dimension,
+        )
+        if field is not None:
+            stmt = stmt.where(ExporterLifecycleHistory.event_metadata["field"].astext == field)
+        stmt = stmt.order_by(
+            ExporterLifecycleHistory.created_at.desc(), ExporterLifecycleHistory.id.desc()
+        ).limit(1)
+        return (await self._db.execute(stmt)).scalar_one_or_none()
 
     async def list_for_deal(
         self,

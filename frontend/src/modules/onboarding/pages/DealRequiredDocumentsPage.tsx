@@ -272,7 +272,6 @@ export function DealRequiredDocumentsPage() {
       <PageHeader
         as="h2"
         title="Required documents"
-        description="What a deal must have on file before it can be handed to the lending team. Every change is a new version; a deal already handed over is never re-judged."
         actions={
           <Button variant="primary" onClick={() => setRequiring('')}>
             <Icon.add size={15} aria-hidden />
@@ -356,7 +355,7 @@ export function DealRequiredDocumentsPage() {
             </ul>
           </Card>
 
-          <Panel as="h3" title="Every change" description="Newest first. A change is a new version; none is ever edited.">
+          <Panel as="h3" title="Every change">
             <History rows={history} />
           </Panel>
         </div>

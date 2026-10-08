@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.platform.authentication.dependencies import get_current_active_user
@@ -40,6 +40,36 @@ async def resolve_permissions(db: AsyncSession, user: User) -> frozenset[tuple[s
         .where(criterion)
     )
     return frozenset((module, action) for module, action in result.all())
+
+
+async def users_holding(
+    db: AsyncSession, module: str, action: str, *, among_roles: frozenset[UserRole]
+) -> frozenset[str]:
+    """The ids of every **active** user in one of `among_roles` granted `module:action`,
+    by the same two paths `resolve_permissions` reads (the explicitly assigned role,
+    else the built-in role row matching the enum).
+
+    For a rule that needs to know how many people could act — "how many eligible
+    checkers does this proposal have" — rather than whether one person can.
+    """
+    result = await db.execute(
+        select(User.id)
+        .join(
+            Role,
+            or_(
+                Role.id == User.role_id,
+                and_(User.role_id.is_(None), Role.builtin_role == User.role),
+            ),
+        )
+        .join(RolePermission, RolePermission.role_id == Role.id)
+        .where(
+            User.is_active.is_(True),
+            User.role.in_(list(among_roles)),
+            RolePermission.module == module,
+            RolePermission.action == action,
+        )
+    )
+    return frozenset(str(user_id) for user_id in result.scalars())
 
 
 async def get_current_permissions(

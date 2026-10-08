@@ -231,6 +231,11 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
                           <Icon.add size={12} aria-hidden />
                         )}
                         {action.label}
+                        {/* An action a route consults although the rest of its module
+                            does not yet (`exporters:assign_rm`) says so. */}
+                        {!module.enforced && action.enforced && (
+                          <span className="text-caption opacity-80">(enforced)</span>
+                        )}
                         <span className="sr-only"> — {action.description}</span>
                       </label>
                     );

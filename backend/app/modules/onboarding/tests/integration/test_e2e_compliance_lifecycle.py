@@ -86,8 +86,10 @@ async def test_the_compliance_lifecycle_with_two_officers(client: AsyncClient, p
     assert created.status_code == 201, created.text
     company = created.json()["customer_id"]
     check = f"/exporters/{company}/background-check"
+    # The RM records QUALIFIED and, the company having no RM, names themselves.
     await api.call("rm", "POST", f"/exporters/{company}/qualification/outcome", 201,
-                   json={"outcome": "QUALIFIED", "note": "Meets our requirements."})
+                   json={"outcome": "QUALIFIED", "note": "Meets our requirements.",
+                         "relationship_manager_user_id": api.people["rm"][0]})
     assert await api.journey(company) == "PROSPECT"
 
     # Start (the RM may), then the inputs.

@@ -1,12 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import {
   fetchCurrentUser,
@@ -23,16 +15,7 @@ import {
 } from '@/lib/api/tokenStorage';
 import type { User } from '@/lib/api/types';
 
-type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
-
-interface AuthContextValue {
-  status: AuthStatus;
-  user: User | null;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
+import { AuthContext, type AuthContextValue, type AuthStatus } from './useAuth';
 
 export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
   const [status, setStatus] = useState<AuthStatus>('loading');
@@ -146,22 +129,4 @@ export function StaticAuthProvider({ user, children }: { user: User; children: R
     logout: async () => undefined,
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (context === null) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
-
-export function useCurrentUser(): User {
-  const { user } = useAuth();
-  if (user === null) {
-    throw new Error(
-      'useCurrentUser must only be called where AuthStatus is already "authenticated" (e.g. inside ProtectedRoute)',
-    );
-  }
-  return user;
 }

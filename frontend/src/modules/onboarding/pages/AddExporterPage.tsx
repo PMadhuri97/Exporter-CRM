@@ -156,7 +156,6 @@ export function NewCompanyPanel({ onClose }: { onClose: () => void }) {
         if (!open) onClose();
       }}
       title="New company"
-      description="Every company starts as a lead. Qualification moves it on from there."
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>

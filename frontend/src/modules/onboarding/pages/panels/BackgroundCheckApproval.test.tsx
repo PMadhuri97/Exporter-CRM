@@ -65,6 +65,9 @@ function proposal(overrides: Partial<BackgroundCheckProposal> = {}): BackgroundC
     cycle_number: 1,
     rules_version: 'clear-2026-10-01-7items-kyb-aml-sanctions',
     evidence_count: 10,
+    needs_senior_approval: false,
+    is_due_soon: false,
+    is_overdue: false,
     status: 'OPEN',
     resolved_by: null,
     resolved_by_name: null,
@@ -90,6 +93,8 @@ function standing(overrides: Partial<BackgroundCheck> = {}): BackgroundCheck {
       { to_value: 'MORE_INFO', reason_required: true, risk_required: false, approval_required: false },
     ],
     clear_blocked_reasons: [],
+    reviewer_inactive: false,
+    relationship_manager_required: false,
     compliance: {
       is_clear: false,
       clear_expires_at: null,
@@ -200,6 +205,7 @@ describe('BackgroundCheckPanel — proposing (maker)', () => {
         reason: 'All passed',
         risk_rating: 'LOW',
         from_value: 'IN_REVIEW',
+        relationship_manager_user_id: null,
       }),
     );
     expect(await screen.findByTestId('awaiting-approval')).toBeInTheDocument();
