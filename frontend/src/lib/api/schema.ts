@@ -5024,6 +5024,7 @@ export interface components {
             /** Products */
             products?: string[] | null;
             trade_role?: components["schemas"]["CompanyTradeRole"] | null;
+            background_check?: components["schemas"]["BackgroundCheckState"] | null;
             /** Year Established */
             year_established: number | null;
             /** Registration Number */
@@ -5122,6 +5123,12 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /**
+             * Total
+             * @description How many companies match the filters, behind this page. The screen shows `limit` of them; this is the number the filters actually select.
+             * @default 0
+             */
+            total: number;
         };
         /**
          * ExporterSource

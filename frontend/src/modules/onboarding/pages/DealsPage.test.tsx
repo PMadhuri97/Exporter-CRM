@@ -263,6 +263,7 @@ describe('DealsPage — New deal', () => {
       ],
       limit: 10,
       offset: 0,
+      total: 1,
     });
     vi.mocked(openDeal).mockResolvedValue({ id: 'new-deal' } as Awaited<ReturnType<typeof openDeal>>);
     renderAt('/deals?new=1');

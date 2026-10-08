@@ -27,62 +27,20 @@ import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Button, Input, Select, Sheet } from '@/components';
 
 import { COUNTRY_OPTIONS } from '../countries';
-
-import type {
-  BackgroundCheckState,
-  CompanyPipelineStatus,
-  CompanyTradeRole,
-  ExporterSource,
-} from '../types';
+import {
+  CHECK_LABEL,
+  ROLE_LABEL,
+  SOURCE_LABEL,
+  type CompanyFilters,
+} from '../companyFilters';
 
 /** How long typing must stop before the industry filter is sent. */
 const TYPING_SETTLES_MS = 350;
 
-/** The filters this panel owns. A key is absent when it is not filtering. */
-export interface CompanyFilters {
-  source?: ExporterSource;
-  pipeline_status?: CompanyPipelineStatus;
-  background_check?: BackgroundCheckState;
-  trade_role?: CompanyTradeRole;
-  has_open_deals?: boolean;
-  country?: string;
-  industry?: string;
-}
 
-/**
- * The sources worth filtering by, not every value the enum holds.
- *
- * `ExporterSource` also has `PARTNER`, `API`, `BROKER`, `EVENT` and `DEAL_BUYER`. They
- * stay valid on the server — a company already carrying one keeps it, and the API still
- * accepts it — they are simply not offered here, because a filter nobody picks is a
- * longer list to read past. `DEAL_BUYER` in particular is better asked as *Buyer or
- * seller*, which answers by what the company has done rather than how its record began.
- *
- * A `Partial` record on purpose: adding a sixth source to the enum should not silently
- * appear in this list, and leaving one out should not be a type error.
- */
-const SOURCE_LABEL: Partial<Record<ExporterSource, string>> = {
-  MANUAL: 'Manual entry',
-  SALES: 'Sales',
-  REFERRAL: 'Referral',
-  RXIL: 'RXIL',
-  EXISTING_CUSTOMER: 'Existing customer',
-};
 
-const CHECK_LABEL: Record<BackgroundCheckState, string> = {
-  NOT_STARTED: 'Not started',
-  IN_REVIEW: 'In review',
-  CLEAR: 'Clear',
-  MORE_INFO: 'More information needed',
-  FLAGGED: 'Flagged',
-  ON_HOLD: 'On hold',
-};
 
-const ROLE_LABEL: Record<CompanyTradeRole, string> = {
-  SELLER: 'Seller',
-  BUYER: 'Buyer',
-  BOTH: 'Both',
-};
+
 
 /** `filters` with `key` set, or removed when the value is cleared — so the object only
  * ever holds filters that are filtering, which is what the page counts for its badge. */
@@ -106,7 +64,11 @@ export function CompanyFilterPanel({
 }: {
   /** The filters in force; the controls read from these. */
   applied: CompanyFilters;
-  /** How many companies the current filters return, for the running count. */
+  /**
+   * How many companies the filters match — the server's count, not the length of the
+   * page on screen. The two differ by a page size, which is how "50 shown" appeared
+   * against a filter matching 185.
+   */
   shown: number;
   loading: boolean;
   /**
@@ -194,7 +156,9 @@ export function CompanyFilterPanel({
       <div className="flex flex-col gap-4 p-4">
         {/* What the filters are doing, without closing the panel to find out. */}
         <p aria-live="polite" className="text-secondary text-ink-2">
-          {loading ? 'Counting…' : `${shown} ${shown === 1 ? 'company' : 'companies'} shown`}
+          {loading
+            ? 'Counting…'
+            : `${shown} ${shown === 1 ? 'company' : 'companies'} match`}
         </p>
 
         {choice('source', 'Source', SOURCE_LABEL, 'How the company first reached us.')}

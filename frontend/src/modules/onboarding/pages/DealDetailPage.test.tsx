@@ -850,7 +850,7 @@ describe('the invoicing branch', () => {
 describe('creating the buyer company', () => {
   it('sends the create form to PUT /deals/{id}/buyer and closes the picker', async () => {
     vi.mocked(getDeal).mockResolvedValue(deal({ buyer: null }));
-    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 });
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 , total: 0 });
     vi.mocked(matchCompany).mockResolvedValue({
       kind: 'NEW',
       company_id: null,

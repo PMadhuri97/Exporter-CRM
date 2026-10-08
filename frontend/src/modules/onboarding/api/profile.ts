@@ -35,6 +35,8 @@ export interface SearchExportersResult {
   profiles: ExporterProfileListItem[];
   limit: number;
   offset: number;
+  /** How many companies the filters match, behind this page. */
+  total: number;
 }
 
 function buildQuery(params: ExporterSearchParams): string {

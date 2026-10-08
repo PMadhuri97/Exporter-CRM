@@ -29,6 +29,7 @@ import { z } from 'zod';
 import { Button, Field, FormError, Input, Select, Sheet } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 
+import { SOURCE_LABEL } from '../companyFilters';
 import { detectEntry, DuplicatePanMessage, duplicatePanHolder, IdentifierLookup } from '../components';
 import { useCreateExporterLead } from '../hooks';
 import { paths } from '../paths';
@@ -43,6 +44,9 @@ const addCompanySchema = z.object({
     .trim()
     .regex(/^[A-Za-z]{2}$/, 'Use a 2-letter country code (e.g. IN, US)')
     .transform((v) => v.toUpperCase()),
+  // Kept in step with `SOURCE_LABEL`, which both this panel's dropdown and the
+  // Companies filter read: a source you can file a company under is one you can find
+  // it by. `DEAL_BUYER` is not offered here — that record is created by a deal.
   source: z.enum([
     'MANUAL',
     'SALES',
@@ -60,18 +64,6 @@ const addCompanySchema = z.object({
 // it holds a PAN) is checked in onSubmit: the PAN comes from the identifier lookup, not a field.
 
 type AddCompanyFormValues = z.infer<typeof addCompanySchema>;
-
-const SOURCE_LABEL: Record<AddCompanyFormValues['source'], string> = {
-  MANUAL: 'Manual entry',
-  SALES: 'Sales',
-  REFERRAL: 'Referral',
-  RXIL: 'RXIL',
-  PARTNER: 'Partner',
-  API: 'API',
-  BROKER: 'Broker',
-  EVENT: 'Event',
-  EXISTING_CUSTOMER: 'Existing customer',
-};
 
 function emptyToUndefined(value: string | undefined): string | undefined {
   return value === '' ? undefined : value;

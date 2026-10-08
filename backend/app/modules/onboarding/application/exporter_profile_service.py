@@ -1044,6 +1044,49 @@ class ExporterProfileService:
 
     # ── Search ────────────────────────────────────────────────────────────
 
+    async def count_profiles(self, **filters: object) -> int:
+        """How many companies the same filters match, behind the page.
+
+        Separate from `search_profiles` rather than returned with it: every existing
+        caller wants the rows, and widening that return type would touch all of them for
+        one screen's benefit.
+        """
+        name_contains = (filters.pop("name_contains", None) or "")
+        name_contains = name_contains.strip() or None if isinstance(name_contains, str) else None
+        searching = any(
+            filters.get(term) is not None for term in ("pan", "gstin", "iec")
+        ) or name_contains is not None
+        return await self._profiles.count(
+            name_contains=name_contains,
+            exclude_ended=filters.get("marker") is None and not searching,
+            exclude_not_in_pipeline=(
+                filters.get("pipeline_status") is None
+                and not searching
+                and filters.get("trade_role") is None
+            ),
+            **{
+                key: filters.get(key)
+                for key in (
+                    "gstin",
+                    "pan",
+                    "iec",
+                    "source",
+                    "journey",
+                    "qualification",
+                    "marker",
+                    "pipeline_status",
+                    "country",
+                    "industry",
+                    "background_check",
+                    "trade_role",
+                    "has_open_deals",
+                    "relationship_manager_user_id",
+                )
+            },
+            relationship_manager_unassigned=bool(filters.get("relationship_manager_unassigned")),
+            relationship_manager_inactive=bool(filters.get("relationship_manager_inactive")),
+        )
+
     async def search_profiles(
         self,
         *,
@@ -1158,6 +1201,7 @@ class ExporterProfileService:
                 export_markets=profile.export_markets,
                 products=profile.products,
                 trade_role=roles.get(profile.customer_id),
+                background_check=profile.background_check,
                 year_established=profile.year_established,
                 registration_number=profile.registration_number,
                 identity_type=profile.identity_type,

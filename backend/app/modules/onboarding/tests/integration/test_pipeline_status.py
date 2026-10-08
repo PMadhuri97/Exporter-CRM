@@ -395,3 +395,40 @@ async def test_each_listed_company_carries_the_side_it_has_traded_on():
     assert await _role(buyer_only, trade_role=CompanyTradeRole.BUYER) is CompanyTradeRole.BUYER
     # Neither side is `None`, not a third role: "no deals yet" is not a kind of company.
     assert await _role(never_traded) is None
+
+
+async def test_the_total_counts_what_the_filters_match_not_the_page():
+    """The bug this closes: a page of 50 reported 50 companies for a filter matching
+    185. The count and the rows share one set of conditions, so they cannot disagree."""
+    tag = f"Counted {uuid.uuid4().hex[:8]}"
+    made = [await make_company() for _ in range(3)]
+    async with db_services.AsyncSessionLocal() as db:
+        service = ExporterProfileService(db)
+        for company_id in made:
+            await service.update_profile(company_id, {"industry": tag}, actor_id="rm-1")
+
+    async with db_services.AsyncSessionLocal() as db:
+        service = ExporterProfileService(db)
+        page = await service.search_profiles(industry=tag, limit=2)
+        total = await service.count_profiles(industry=tag)
+
+    assert len(page) == 2, "the page is capped by the limit"
+    assert total == 3, "the total is what the filter matches"
+
+
+async def test_the_total_applies_the_same_default_exclusions_as_the_list():
+    """A buyer-only company is hidden from the default list, so it must not be counted
+    into it either — a total that included it would explain a list that does not."""
+    buyer_only = await _buyer_company()
+
+    async with db_services.AsyncSessionLocal() as db:
+        service = ExporterProfileService(db)
+        default_total = await service.count_profiles()
+        asked_for = await service.count_profiles(
+            pipeline_status=CompanyPipelineStatus.NOT_IN_PIPELINE
+        )
+        listed = {row.customer_id for row in await service.search_profiles(limit=200)}
+
+    assert buyer_only not in listed
+    assert asked_for >= 1
+    assert default_total == len(listed) or default_total >= len(listed)

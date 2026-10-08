@@ -24,6 +24,7 @@
 
 import { useCallback, useState, type SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import {
   Button,
@@ -42,9 +43,12 @@ import { Icon } from '@/design/icons';
 import { useCan, useHasPermission } from '@/platform/access';
 
 import { BulkReassignPanel, CompanyBadges } from '../components';
-import { CompanyFilterPanel, type CompanyFilters } from '../components/CompanyFilterPanel';
+import { CompanyFilterPanel } from '../components/CompanyFilterPanel';
+import { describeFilters, type CompanyFilters } from '../companyFilters';
 import { saveObjectUrl } from '../components/useOpenDocument';
-import { companiesToCsv, csvBlob, csvFileName } from '../exportCompanies';
+import { searchExporterProfiles } from '../api';
+import { ExportColumnsPanel } from '../components/ExportColumnsPanel';
+import { companiesToCsv, csvBlob, csvFileName, gatherForExport } from '../exportCompanies';
 import { JOURNEY_LABEL, JOURNEY_STAGES, MARKER_LABEL, QUALIFICATION_LABEL } from '../constants';
 import { COUNT_CAP, useExporterProfiles, useJourneyCount, usePrefetchCompany } from '../hooks';
 import { preloadExporterDetailPage } from '../lazyPages';
@@ -158,6 +162,7 @@ export function ExportersListPage() {
     setPages(1);
   }, []);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   // The panel stores only filters that are actually set, so the key count is the badge.
   const filterCount = Object.keys(filters).length;
   const prefetch = usePrefetchCompany();
@@ -168,16 +173,25 @@ export function ExportersListPage() {
     );
 
   const limit = Math.min(PAGE_SIZE * pages, COUNT_CAP);
-  const { data, isLoading, isError, isFetching, refetch } = useExporterProfiles({
+  // Named once: the list reads a page of this, and the export gathers all of it. Two
+  // copies would drift, and an export of different filters than the screen shows is the
+  // kind of wrong nobody notices.
+  const search = {
     name: name || undefined,
     journey: lens === 'ALL' ? undefined : lens,
     qualification: qualification === 'ANY' ? undefined : (qualification as QualificationState),
     marker: relationship === 'ANY' ? undefined : (relationship as ExporterMarker),
     ...filters,
     relationship_manager: owner === 'ANY' ? undefined : (owner as RelationshipManagerFilter),
+  };
+  const { data, isLoading, isError, isFetching, refetch } = useExporterProfiles({
+    ...search,
     limit,
   });
   const profiles = data?.profiles ?? [];
+  // What the filters match, not what this page holds: a page of 50 said "50" for a
+  // filter matching 185.
+  const matching = data?.total ?? profiles.length;
   const filtering = Boolean(
     name ||
       qualification !== 'ANY' ||
@@ -314,15 +328,10 @@ export function ExportersListPage() {
             <Button
               variant="subtle"
               disabled={profiles.length === 0}
-              onClick={() => {
-                const url = URL.createObjectURL(csvBlob(companiesToCsv(profiles)));
-                saveObjectUrl(url, csvFileName());
-                // On a later tick: revoking at once cancels the save in some browsers.
-                window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
-              }}
+              onClick={() => setExporting(true)}
             >
               <Icon.download size={16} aria-hidden />
-              Export {profiles.length > 0 && `(${profiles.length})`}
+              Export
             </Button>
 
             {/* The rest of the filters, behind one button. The count is what tells
@@ -414,11 +423,37 @@ export function ExportersListPage() {
         )}
       </section>
 
+      {exporting && (
+        <ExportColumnsPanel
+          appliedFilters={describeFilters(filters)}
+          onClose={() => setExporting(false)}
+          onExport={async (columnIds) => {
+            // Every row the filters match, not the page on screen: the list loads 50 at
+            // a time, and exporting those 50 is how a file of 208 companies becomes 50.
+            const { rows, capped } = await gatherForExport((pageLimit, offset) =>
+              searchExporterProfiles({ ...search, limit: pageLimit, offset }).then(
+                (result) => result.profiles,
+              ),
+            );
+            const url = URL.createObjectURL(csvBlob(companiesToCsv(rows, columnIds)));
+            saveObjectUrl(url, csvFileName());
+            // On a later tick: revoking at once cancels the save in some browsers.
+            window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+            setExporting(false);
+            if (capped) {
+              toast.warning(
+                `Exported the first ${rows.length} companies. Narrow the filters to export the rest.`,
+              );
+            }
+          }}
+        />
+      )}
+
       {/* Mounted only while open, so every opening starts from the filters in force. */}
       {filtersOpen && (
         <CompanyFilterPanel
           applied={filters}
-          shown={profiles.length}
+          shown={matching}
           loading={isLoading || isFetching}
           onChange={changeFilters}
           onClose={() => setFiltersOpen(false)}

@@ -153,6 +153,9 @@ describe('Home cards', () => {
       ),
       limit: params.limit ?? 100,
       offset: 0,
+      // This card counts rows rather than reading the total, because its own job is to
+      // say "200+" at the cap; the mock mirrors the rows it serves.
+      total: params.journey === 'LEAD' ? 200 : params.journey === 'PROSPECT' ? 7 : 0,
     }));
     renderCard(<PipelineSummaryCard />);
     await waitFor(() => expect(screen.getByTestId('stage-count-LEAD')).toHaveTextContent('200+'));

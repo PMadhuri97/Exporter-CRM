@@ -34,10 +34,11 @@ from app.modules.onboarding.api.schemas.masking import (
     mask_identifier,
 )
 from app.modules.onboarding.domain.company_identity import REGISTRATION_NUMBER_MAX
+from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    CompanyTradeRole,
     CompanyIdentityType,
     CompanyPipelineStatus,
+    CompanyTradeRole,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -514,6 +515,7 @@ class ExporterProfileListItemResponse(_IdentifierMasking, _RelationshipManagerFi
     export_markets: list[str] | None = None
     products: list[str] | None = None
     trade_role: CompanyTradeRole | None = None
+    background_check: BackgroundCheckState | None = None
     year_established: int | None
     #: Masked for a role that may not reveal identifiers, like CIN.
     registration_number: str | None
@@ -532,3 +534,10 @@ class ExporterProfileSearchResponse(BaseModel):
     profiles: list[ExporterProfileListItemResponse]
     limit: int
     offset: int
+    total: int = Field(
+        default=0,
+        description=(
+            "How many companies match the filters, behind this page. The screen shows "
+            "`limit` of them; this is the number the filters actually select."
+        ),
+    )

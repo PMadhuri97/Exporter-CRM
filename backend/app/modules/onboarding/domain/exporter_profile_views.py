@@ -24,10 +24,11 @@ from app.modules.onboarding.domain.engagement_views import (
     ExporterActivityView,
     ExporterContactView,
 )
+from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.exporter_enums import (
-    CompanyTradeRole,
     CompanyIdentityType,
     CompanyPipelineStatus,
+    CompanyTradeRole,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -123,6 +124,9 @@ class ExporterProfileListItem:
     #: Which side of a trade this company has been on. Derived per page, not stored:
     #: `None` means it has been on neither, which is not a third role.
     trade_role: CompanyTradeRole | None
+    #: Where the background check stands. On the row so a list or an export can say it
+    #: without a request per company; the check's detail stays on the company record.
+    background_check: BackgroundCheckState
     year_established: int | None
     #: Whatever the company's own registrar issued, for a company not identified by
     #: a PAN. Masked like CIN on the way out.

@@ -420,7 +420,30 @@ async def search_exporter_profiles(
         for item in items
     ]
     await _name_relationship_managers(db, current_user, profiles)
-    return ExporterProfileSearchResponse(profiles=profiles, limit=limit, offset=offset)
+    # The number behind the page, so a screen can say "185" rather than counting the
+    # rows it happens to hold.
+    total = await ExporterProfileService(db).count_profiles(
+        gstin=gstin,
+        pan=pan,
+        iec=iec,
+        name_contains=name,
+        source=source,
+        journey=journey,
+        qualification=qualification,
+        marker=marker,
+        pipeline_status=pipeline_status,
+        country=country,
+        industry=industry,
+        background_check=background_check,
+        trade_role=trade_role,
+        has_open_deals=has_open_deals,
+        relationship_manager_user_id=rm_user_id,
+        relationship_manager_unassigned=rm_filter == "none",
+        relationship_manager_inactive=rm_filter == "inactive",
+    )
+    return ExporterProfileSearchResponse(
+        profiles=profiles, limit=limit, offset=offset, total=total
+    )
 
 
 # ── Marker (PAUSED / ENDED) ──────────────────────────────────────────────

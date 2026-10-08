@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -168,6 +169,124 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
                 roles[customer_id] = CompanyTradeRole.BUYER
         return roles
 
+    def _conditions(
+        self,
+        *,
+        gstin: str | None,
+        pan: str | None,
+        iec: str | None,
+        name_contains: str | None,
+        source: ExporterSource | None,
+        journey: ExporterJourney | None,
+        qualification: QualificationState | None,
+        marker: ExporterMarker | None,
+        pipeline_status: CompanyPipelineStatus | None,
+        country: str | None,
+        industry: str | None,
+        background_check: BackgroundCheckState | None,
+        trade_role: CompanyTradeRole | None,
+        has_open_deals: bool | None,
+        relationship_manager_user_id: uuid.UUID | None,
+        relationship_manager_unassigned: bool,
+        relationship_manager_inactive: bool,
+        exclude_ended: bool,
+        exclude_not_in_pipeline: bool,
+    ) -> list[Any]:
+        """Every filter as a list of conditions.
+
+        Shared by the page and its count, so the number cannot describe a different
+        set of companies from the rows beside it — which is exactly the bug a second
+        copy of this logic produces.
+        """
+        conditions: list[Any] = []
+        if relationship_manager_user_id is not None:
+            conditions.append(
+                ExporterProfile.relationship_manager_user_id == relationship_manager_user_id
+            )
+        if relationship_manager_unassigned:
+            conditions.append(ExporterProfile.relationship_manager_user_id.is_(None))
+        if relationship_manager_inactive:
+            conditions.append(
+                ExporterProfile.relationship_manager_user_id.in_(
+                    select(User.id).where(User.is_active.is_(False))
+                )
+            )
+        if gstin is not None:
+            conditions.append(
+                exists().where(
+                    ExporterGstin.customer_id == ExporterProfile.customer_id,
+                    ExporterGstin.gstin == gstin,
+                )
+            )
+        if pan is not None:
+            conditions.append(ExporterProfile.pan == pan)
+        if iec is not None:
+            conditions.append(ExporterProfile.iec == iec)
+        if name_contains is not None:
+            conditions.append(
+                ExporterProfile.name.ilike(f"%{_escape_like(name_contains)}%", escape="\\")
+            )
+        if source is not None:
+            conditions.append(ExporterProfile.source == source)
+        if journey is not None:
+            conditions.append(ExporterProfile.journey == journey)
+        if qualification is not None:
+            conditions.append(ExporterProfile.qualification == qualification)
+        if marker is not None:
+            conditions.append(ExporterProfile.marker == marker)
+        elif exclude_ended:
+            conditions.append(ExporterProfile.marker != ExporterMarker.ENDED)
+        if pipeline_status is not None:
+            conditions.append(ExporterProfile.pipeline_status == pipeline_status)
+        elif exclude_not_in_pipeline:
+            conditions.append(
+                ExporterProfile.pipeline_status != CompanyPipelineStatus.NOT_IN_PIPELINE
+            )
+        if country is not None:
+            # Case-insensitive and whole: a country is picked from a list, not typed,
+            # so there is nothing to match partially.
+            conditions.append(func.upper(ExporterProfile.country) == country.strip().upper())
+        if industry is not None:
+            # Partial and case-insensitive, like `name_contains`: this is typed into a
+            # box a character at a time, so "ma" has to find "Marine exports" while it
+            # is still being typed. A whole-value match would show nothing until the
+            # last letter and read as "no such industry".
+            conditions.append(
+                ExporterProfile.industry.ilike(f"%{_escape_like(industry)}%", escape="\\")
+            )
+        if background_check is not None:
+            conditions.append(ExporterProfile.background_check == background_check)
+        if trade_role is not None:
+            sells = _is_seller()
+            buys = _is_buyer()
+            if trade_role is CompanyTradeRole.SELLER:
+                conditions.append(sells)
+            elif trade_role is CompanyTradeRole.BUYER:
+                conditions.append(buys)
+            else:  # BOTH — has been on both sides, not "either".
+                conditions.extend((sells, buys))
+        if has_open_deals is not None:
+            open_deal = exists().where(
+                Deal.company_id == ExporterProfile.customer_id,
+                Deal.stage.in_(_OPEN_DEAL_STAGES),
+            )
+            conditions.append(open_deal if has_open_deals else ~open_deal)
+
+        return conditions
+
+    async def count(self, **filters: Any) -> int:
+        """How many companies match — the number behind the page.
+
+        The same conditions the page is built from, so "185 companies" and the rows
+        under it always describe one set. Counted rather than inferred from a page: a
+        page of 50 says nothing about how many there are, which is how a list of 185
+        reported 50.
+        """
+        total = await self.session.scalar(
+            select(func.count()).select_from(ExporterProfile).where(*self._conditions(**filters))
+        )
+        return int(total or 0)
+
     async def search(
         self,
         *,
@@ -202,79 +321,28 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         — the service decides when (the default working list); this query only
         applies them.
         """
-        stmt = select(ExporterProfile)
-        if relationship_manager_user_id is not None:
-            stmt = stmt.where(
-                ExporterProfile.relationship_manager_user_id == relationship_manager_user_id
-            )
-        if relationship_manager_unassigned:
-            stmt = stmt.where(ExporterProfile.relationship_manager_user_id.is_(None))
-        if relationship_manager_inactive:
-            stmt = stmt.where(
-                ExporterProfile.relationship_manager_user_id.in_(
-                    select(User.id).where(User.is_active.is_(False))
-                )
-            )
-        if gstin is not None:
-            stmt = stmt.where(
-                exists().where(
-                    ExporterGstin.customer_id == ExporterProfile.customer_id,
-                    ExporterGstin.gstin == gstin,
-                )
-            )
-        if pan is not None:
-            stmt = stmt.where(ExporterProfile.pan == pan)
-        if iec is not None:
-            stmt = stmt.where(ExporterProfile.iec == iec)
-        if name_contains is not None:
-            stmt = stmt.where(
-                ExporterProfile.name.ilike(f"%{_escape_like(name_contains)}%", escape="\\")
-            )
-        if source is not None:
-            stmt = stmt.where(ExporterProfile.source == source)
-        if journey is not None:
-            stmt = stmt.where(ExporterProfile.journey == journey)
-        if qualification is not None:
-            stmt = stmt.where(ExporterProfile.qualification == qualification)
-        if marker is not None:
-            stmt = stmt.where(ExporterProfile.marker == marker)
-        elif exclude_ended:
-            stmt = stmt.where(ExporterProfile.marker != ExporterMarker.ENDED)
-        if pipeline_status is not None:
-            stmt = stmt.where(ExporterProfile.pipeline_status == pipeline_status)
-        elif exclude_not_in_pipeline:
-            stmt = stmt.where(
-                ExporterProfile.pipeline_status != CompanyPipelineStatus.NOT_IN_PIPELINE
-            )
-        if country is not None:
-            # Case-insensitive and whole: a country is picked from a list, not typed,
-            # so there is nothing to match partially.
-            stmt = stmt.where(func.upper(ExporterProfile.country) == country.strip().upper())
-        if industry is not None:
-            # Partial and case-insensitive, like `name_contains`: this is typed into a
-            # box a character at a time, so "ma" has to find "Marine exports" while it
-            # is still being typed. A whole-value match would show nothing until the
-            # last letter and read as "no such industry".
-            stmt = stmt.where(
-                ExporterProfile.industry.ilike(f"%{_escape_like(industry)}%", escape="\\")
-            )
-        if background_check is not None:
-            stmt = stmt.where(ExporterProfile.background_check == background_check)
-        if trade_role is not None:
-            sells = _is_seller()
-            buys = _is_buyer()
-            if trade_role is CompanyTradeRole.SELLER:
-                stmt = stmt.where(sells)
-            elif trade_role is CompanyTradeRole.BUYER:
-                stmt = stmt.where(buys)
-            else:  # BOTH — has been on both sides, not "either".
-                stmt = stmt.where(sells, buys)
-        if has_open_deals is not None:
-            open_deal = exists().where(
-                Deal.company_id == ExporterProfile.customer_id,
-                Deal.stage.in_(_OPEN_DEAL_STAGES),
-            )
-            stmt = stmt.where(open_deal if has_open_deals else ~open_deal)
+        conditions = self._conditions(
+            gstin=gstin,
+            pan=pan,
+            iec=iec,
+            name_contains=name_contains,
+            source=source,
+            journey=journey,
+            qualification=qualification,
+            marker=marker,
+            pipeline_status=pipeline_status,
+            country=country,
+            industry=industry,
+            background_check=background_check,
+            trade_role=trade_role,
+            has_open_deals=has_open_deals,
+            relationship_manager_user_id=relationship_manager_user_id,
+            relationship_manager_unassigned=relationship_manager_unassigned,
+            relationship_manager_inactive=relationship_manager_inactive,
+            exclude_ended=exclude_ended,
+            exclude_not_in_pipeline=exclude_not_in_pipeline,
+        )
+        stmt = select(ExporterProfile).where(*conditions)
 
         # `customer_id` breaks ties: companies created in one transaction share
         # a `created_at`, and without it a page boundary could repeat or skip one.

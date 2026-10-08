@@ -77,6 +77,7 @@ describe('ExportersListPage — identifiers are not on the list', () => {
       profiles: [PROFILE],
       limit: 100,
       offset: 0,
+      total: 1,
     });
   });
 
@@ -113,6 +114,7 @@ describe('ExportersListPage — the journey, qualification and marker filters', 
       profiles: [{ ...PROFILE, marker: 'PAUSED', marker_reason: 'Seasonal' }],
       limit: 100,
       offset: 0,
+      total: 1,
     });
   });
 
@@ -161,7 +163,7 @@ describe('ExportersListPage — the journey, qualification and marker filters', 
 
 describe('ExportersListPage — RXIL intake link', () => {
   beforeEach(() => {
-    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 , total: 0 });
   });
 
   it('offers RXIL intake to ADMIN', () => {
@@ -182,7 +184,7 @@ describe('ExportersListPage — RXIL intake link', () => {
 
 describe('ExportersListPage — write screens by role', () => {
   beforeEach(() => {
-    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 , total: 0 });
   });
 
   it.each(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s New company and Import companies', (role) => {
@@ -218,6 +220,7 @@ describe('ExportersListPage — the filter panel', () => {
       profiles: [PROFILE],
       limit: 100,
       offset: 0,
+      total: 1,
     });
   });
 
@@ -321,7 +324,7 @@ describe('ExportersListPage — whose companies', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUser('OPERATIONS', 'rm-me');
-    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 50, offset: 0 });
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 50, offset: 0 , total: 0 });
   });
 
   it('is My companies at ?owner=me, asking the server for this RM’s companies only', async () => {
@@ -357,5 +360,87 @@ describe('ExportersListPage — whose companies', () => {
     expect(within(relationship).getAllByRole('option')[0]).toHaveTextContent(
       /^Any relationship$/,
     );
+  });
+});
+
+describe('ExportersListPage — exporting', () => {
+  beforeEach(() => {
+    mockUser('OPERATIONS', 'someone-else');
+    window.localStorage.clear();
+    vi.mocked(searchExporterProfiles).mockReset();
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [PROFILE],
+      limit: 100,
+      offset: 0,
+      total: 1,
+    });
+  });
+
+  it('asks which columns before writing anything', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+
+    // The panel, not a download: a file nobody chose the shape of is the thing this
+    // replaced.
+    expect(await screen.findByRole('checkbox', { name: 'Company' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'PAN' })).not.toBeChecked();
+    // It exports the whole filtered list, not the page on screen — which is the
+    // distinction this panel exists to make honest.
+    expect(
+      screen.getByText(/Every company the filters match, not just the page on screen/),
+    ).toBeInTheDocument();
+  });
+
+  it('remembers the chosen columns for the next export', async () => {
+    const { unmount } = renderPage();
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'PAN' }));
+    unmount();
+
+    renderPage();
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    // The habit, not a one-off: whoever exports the same columns weekly should not
+    // re-tick them weekly.
+    expect(await screen.findByRole('checkbox', { name: 'PAN' })).toBeChecked();
+  });
+
+  it('says which companies the file will hold, so the Source column is not read as the Source filter', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    // Narrow the rows first — the Filters panel's question.
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Source'), { target: { value: 'RXIL' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    const panel = await screen.findByRole('dialog');
+    // Stated in the export panel, which has its own Source *column* checkbox.
+    expect(within(panel).getByText('Source: RXIL')).toBeInTheDocument();
+  });
+
+  it('says so plainly when nothing is filtered', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByText(/the boxes below choose columns, not companies/)).toBeInTheDocument();
+  });
+
+  it('refuses to export nothing', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+
+    const panel = await screen.findByRole('dialog');
+    for (const box of within(panel).getAllByRole('checkbox')) {
+      if ((box as HTMLInputElement).checked) fireEvent.click(box);
+    }
+    expect(within(panel).getByRole('button', { name: 'Export' })).toBeDisabled();
   });
 });
