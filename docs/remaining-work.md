@@ -39,7 +39,7 @@ unhyphenated D1–D17 are in `contracts/background-check.md` §14 and
 | **Audited** | `feature/company-foundation-and-compliance-guard` @ `6cd71db` (4 commits since `dfcb2d2`: R-01–R-05, R-06–R-11, R-12–R-23, R-24–R-33 Phase 0), 4 October 2026. **Merged** to `main` (`05b43eb`, fast-forward plus the audit's documentation commit; local `main` not yet pushed). Code since `6cd71db` changed in comments only, and every gate was re-run on `main` (§9) |
 | **Implementation** | Every allocated task of the three lanes is built and tested except **P4-10** (R-25, blocked on purpose) and the optional **P6-4** (R-30); task 3.2's script is built but its reports are still owed (OPS-0). One plan requirement was never allocated and is only partly built (R-34). The post-merge audit found five more items (R-43–R-46 and the decided R-19, R-47–R-50). Details in §2, §3 and §12 |
 | **Quality gates** | All pass at the baseline (§9, and §13.5 and §15.4 for 5 October) |
-| **Migration head** | One head, `onboarding_0043_identity_type`. Next free number **0044**. Upgrade from an empty database, `downgrade -3` and back, and `alembic check` are clean (re-run on `main`) |
+| **Migration head** | One head, `auth_0006_assignment_perms` (after `onboarding_0044_assignment`, §16). Next free onboarding number **0045**. Upgrade from an empty database, and `downgrade` past 0044 and back, are clean (8 October 2026) |
 | **Merge readiness** | Merged. No blocker was found |
 | **Demo readiness** | **Ready — re-verified 5 October 2026 on the redesigned UI (§13).** Later that day, at the lead's request, `aner_settlement` was rebuilt clean as the **only** CRM database on the development server and every other one dropped, `crm_demo` included (§13.6); the paragraph that follows is the 4 October state. **4 October:** ready. Sign-in accounts on `crm_demo`: one ADMIN, two COMPLIANCE (maker-checker needs the second), one RM (OPERATIONS) and one DEVELOPER, each with a full name; passwords kept outside the repository. Demo database `crm_demo` built fresh at head with the sample companies (demo.md §1); `demo.md` §3 and §5 rehearsed against a copy of it through the API and, for 91 screens across four roles, in a headless browser on the production build: no error, no failed request, role gating as §5 says. `demo.md` corrected where the sample data had moved on |
 | **Frontend** | **R-57 built, not merged** (6 October 2026, §14): the enterprise look of `frontend-plan.md` (second version), all three phases, unstaged on `feature/frontend-redesign` off `b209cc7`. Waiting on the TL's sign-off of the style guide and the company record, then the formal `demo.md` walk. Decision D-22 is open |
@@ -255,7 +255,6 @@ Not current work. Each starts only when its trigger happens.
 | R-32 — name matching scans every company in a country, in Python, per lookup | DEFERRED | Past about 50,000 companies in one country: store `name_key` (maintained by `company_names.name_key`) | `company_directory._by_name` |
 | R-42 — group-level `--confirm-name` for the buyer migration | DEFERRED | Only if a live dry run shows many rows sharing one contested identifier. The rehearsal's 330 rows sharing `NL-8899` were test-suite debris (`NL-8899` is the tests' fixture value), so nothing suggests a real environment needs it | §8 |
 | Frontend-plan ask A8 (`dry_run` on CSV import) | DEFERRED (D-19) | A business need for a server-checked import preview | `frontend-plan.md` §13 |
-| Frontend-plan ask A6 (`relationship_manager_user_id` and a "my companies" lens) | BUILT 7 Oct 2026, unstaged (backend; frontend next) | The RM and review-assignment rules were agreed on 7 October 2026 (`docs/plan.md` §11); built as `company-record.md` §2.5 and `background-check.md` §12.8, migration `onboarding_0044_assignment` + `auth_0006_assignment_perms` | `docs/plan.md` |
 | Cross-company Deals and Documents lists | DEFERRED (product) | A decision to add two paged routes and rail rows | plan §19.3 |
 | Group companies (different PANs) link | DEFERRED | "Later" in the source | plan §19.3 |
 | CSV import above 1,000 rows | DEFERRED | Only if the business needs it: a background job with a pollable report | — |
@@ -370,6 +369,7 @@ demo.
 | OPS-4 | Deploy. Users can now name **or create** a buyer company on a deal (R-24), which R-07's `ALREADY_LINKED` handles in OPS-5 | STILL OPEN |
 | OPS-5 | **Buyer migration P4-6.** First: P2-7's precondition must be 0 — `SELECT count(*) FROM onboarding.deal WHERE stage = 'HANDED_OVER' AND handover_snapshot IS NULL`. **Freeze writes** from the dump until `--validate` passes (D-02: restoring the dump is the only way back, and the freeze is what makes a restore lose nothing). Then `--dry-run`; Compliance reviews the look-alikes (IQ-8) and the rows that need a person; `--apply --run-id <id>` with `--confirm-name` lines; `--validate` (every count 0); re-run `--apply` (creates nothing). Also check `SELECT count(*) FROM onboarding.verification_result WHERE entity_type = 'BUYER' AND subject_company_id IS NOT NULL` | STILL OPEN in every environment |
 | OPS-6 | **Relationship backfill P5-5**: `--dry-run`, `--apply --run-id <id>`, `--validate`. Undo is one `DELETE` (`--report-run`), as long as no invoice points at the run's relationships | STILL OPEN |
+| OPS-7 | **Relationship managers and review assignment (§16).** `pg_dump`; `alembic upgrade head` (to `auth_0006_assignment_perms`: 0044 adds the reviewer columns and relaxes the withdraw check; auth_0006 grants ADMIN the three new permissions); deploy; then `python -m app.modules.onboarding.backfill_relationship_managers --dry-run`, read the report, `--apply --run-id <id>`, `--validate` (every count 0). Then grant `exporters:assign_rm`, `compliance:assign` and `compliance:approve_high_risk` to the named users through a custom role — at least two must hold `compliance:approve_high_risk`. Applies to `aner_settlement` too: it is at 0043 | STILL OPEN |
 | — | Then R-25 (PR-J), then R-26 (PR-K), then R-31's contract migration once OPS-0 shows no nameless company (PR-L) | — |
 
 **What the rehearsal on `p46_scratch` does and does not show.** `p46_scratch` is a copy of a
@@ -959,3 +959,58 @@ at head, dropped afterwards): one migration head, `onboarding_0043_identity_type
 tests; 45 min); ruff 17, none in a changed file; import-linter 19 kept, 0 broken;
 TypeScript 0 errors; ESLint 0 errors, 2 warnings (`AuthContext.tsx`); frontend **66 files,
 927 passed**; production build passes (entry 490 kB, 158 kB gzip).
+
+---
+
+## 16. Relationship managers and review assignment (8 October 2026)
+
+Frontend-plan ask **A6**, deferred under D-19 until a product rule existed, was agreed on
+7 October 2026 and built on `feature/rm-compliance-allocation` (`0c38912`, `f3f4aaa`). The
+plan and its agreed decisions are [`rm-and-review-assignment-plan.md`](rm-and-review-assignment-plan.md)
+§11; the built rules are `contracts/company-record.md` §2.5 and `contracts/background-check.md`
+§12.8, which win where they differ from the plan.
+
+### 16.1 What was built
+
+- **The RM is a user**: `relationship_manager_user_id`, an active OPERATIONS account, set only
+  through `POST /exporters/{id}/relationship-manager` with the RM the screen showed (409
+  `RELATIONSHIP_MANAGER_CHANGED` otherwise). An RM claims a company with no RM; changing or
+  clearing one needs ADMIN or `exporters:assign_rm` and a reason. Starting a check and a
+  person's `QUALIFIED` need an RM in the same request. The legacy free-text field is
+  read-only, and `POST`/`PATCH /exporters` now refuse it (422).
+- **Who holds a review**: `background_check_reviewer_id`, claimed, assigned (ADMIN or
+  `compliance:assign`) or released; claimed by the reviewer's first move and by whoever
+  reassesses, reopens or starts a Re-KYC/Re-KYB on a `CLEAR` company; ended by a decision.
+- **Checkers**: never the proposer, the reviewer or the RM; a `HIGH`/`CRITICAL` `CLEAR` needs
+  ADMIN or `compliance:approve_high_risk`, in one step.
+- **Worklists and badges, computed on read**, with business-hours deadlines (`CRM_SLA_*`,
+  `CRM_BUSINESS_HOURS`); My companies, the Compliance work tabs, `/staff`, bulk reassignment
+  with a dry run, and field-level stale-edit refusals on the company record (409
+  `COMPANY_FIELD_CHANGED`).
+- Migrations `onboarding_0044_assignment` and `auth_0006_assignment_perms`; the backfill
+  command `backfill_relationship_managers`. Live steps: OPS-7 (§8).
+
+### 16.2 PR audit fixes (8 October 2026, unstaged on `f3f4aaa`)
+
+| Finding | Fix | Covered by |
+|---|---|---|
+| The RM plan had replaced `plan.md`, whose task ids and § numbers the other docs cite | `plan.md` restored from `main`; the RM plan moved to `rm-and-review-assignment-plan.md`, its status line corrected | — |
+| This list still called A6 "unstaged (backend; frontend next)", in the deferred table | Row removed; this section and OPS-7 added | — |
+| After a 409 `RELATIONSHIP_MANAGER_CHANGED` the RM field kept the stale RM, so every retry was refused until a page reload | `useAssignRelationshipManager` reloads the company on error too | `assignment.test.tsx` |
+| Bulk reassignment applied the list's journey lens to "all of their companies" without saying so | The panel says what moves ("all of their prospects", or only those listed), and the dry run's count names the lens | `assignment.test.tsx` |
+| A lead could withdraw any open proposal, though the contract allows it only for a proposer who has left | Withdrawing someone else's proposal needs ADMIN or `compliance:assign` **and** a proposer who is deactivated, removed or no longer COMPLIANCE/ADMIN; otherwise 403, which says to reject instead | `test_review_assignment.py` |
+| A reviewer assigned while information was requested had that wait charged to the review clock | `info_pause` starts the pause at the assignment when the check was already in `MORE_INFO` | `test_review_clock_pause.py` |
+| No test that a Re-KYC on a `CLEAR` company makes its starter the reviewer | Test added | `test_review_assignment.py` |
+| "Awaiting me" read up to 10,000 open proposals, then filtered and paged in memory (silently capped); every page's approval facts recomputed every company's work | The queue is chosen and paged from the worklist's own approval items, and only that page's proposals are read; `items()` takes the companies a page needs | `test_review_assignment.py`, `test_maker_checker.py` |
+| `WorklistBadge`'s comment put the information badge on Companies; `company-record.md` §2.2 still called the RM free text and the user id "dormant" | Corrected | — |
+
+**Main's own long-standing failures, fixed in the same pass.** The 11 `test_follow_up_completion.py` failures (on `main` since PR #28): the test helper logged overdue follow-ups "now" with a past due date, which PR #28's rule refuses; it now logs them a day before they fell due, as an import of an old call would (test-only change). The 17 ruff findings: unused imports and old type hints in the two empty alembic merge migrations (revision ids and bodies unchanged) and import order in three onboarding files. The 2 ESLint warnings: the auth context and the `useAuth`/`useCurrentUser` hooks moved from `AuthContext.tsx` to `platform/auth/useAuth.ts`, so the provider file exports only components; callers import through `index.ts`, unchanged.
+
+**Gates after all fixes** (`f3f4aaa` + the fixes above, fresh scratch database at head, dropped afterwards): one migration head, `auth_0006_assignment_perms`; CRM suite (`pytest --crm`) **2,931 passed, 1 skipped (Windows symlink), 0 failed** (29 min); ruff **0**; import-linter 19 kept, 0 broken; TypeScript 0 errors; ESLint **0 errors, 0 warnings**; frontend **69 files, 971 passed**; production build passes (entry 491 kB, 158 kB gzip).
+
+### 16.3 Still open
+
+- The worklists are still computed on every read (by design, v1: no stored notifications).
+  The badge refetches every 60 seconds per open tab. Past a few thousand companies under
+  review at once, store the deadlines or cache the counts per minute.
+- OPS-7 on every environment, `aner_settlement` included.

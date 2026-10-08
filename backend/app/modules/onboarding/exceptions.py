@@ -1726,11 +1726,18 @@ class BackgroundCheckSelfApprovalError(AnerBaseException):
 
 
 class BackgroundCheckProposalNotYoursError(AnerBaseException):
-    """Only the proposer may withdraw a proposal (403)."""
+    """Only the proposer may withdraw a proposal — or a lead, once the proposer has left
+    (403)."""
 
-    def __init__(self, proposal_id: object) -> None:
+    def __init__(self, proposal_id: object, *, proposer_still_here: bool = False) -> None:
+        detail = f"Only the officer who proposed {proposal_id} may withdraw it"
+        if proposer_still_here:
+            detail += (
+                "; a lead withdraws it only once the proposer has left. Reject it instead,"
+                " with a reason"
+            )
         super().__init__(
-            detail=f"Only the officer who proposed {proposal_id} may withdraw it",
+            detail=detail,
             error_code="BACKGROUND_CHECK_PROPOSAL_NOT_YOURS",
             status_code=403,
         )

@@ -4,7 +4,9 @@
  *
  * Choose who from (an active RM, or one whose companies are listed — a deactivated RM
  * is found through the "RM deactivated" owner filter), who to (an active RM), whether to
- * move only the companies shown, and a reason. **Check** asks the server for a dry run
+ * move only the companies shown, and a reason. Without "only the companies shown" the
+ * list's journey lens still applies — on Prospects, all of their prospects move — and
+ * the panel says so. **Check** asks the server for a dry run
  * and shows how many would move; **Reassign** does it. Companies whose RM changed in the
  * meantime are skipped by the server, never overwritten.
  */
@@ -15,6 +17,7 @@ import { toast } from 'sonner';
 import { Button, Field, FormError, Select, Textarea } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 
+import { JOURNEY_LABEL } from '../constants';
 import { useReassignRelationshipManagers, useStaff } from '../hooks';
 import type { BulkReassignResult, ExporterJourney, ExporterProfileListItem } from '../types';
 
@@ -65,6 +68,9 @@ export function BulkReassignPanel({
     reason: reason.trim(),
     dry_run: dryRun,
   });
+
+  // What "all of their companies" means under the list's lens, said in the panel.
+  const lensNoun = journey ? `${JOURNEY_LABEL[journey].toLowerCase()}s` : 'companies';
 
   const ready = from !== '' && to !== '' && from !== to && reason.trim().length > 0;
   const changed = () => setPreview(null);
@@ -125,6 +131,11 @@ export function BulkReassignPanel({
         />
         Only the companies shown below ({from ? shownIds.length : 0})
       </label>
+      <p className="text-caption text-ink-3">
+        {onlyShown
+          ? 'Moves only the companies listed below.'
+          : `Moves all of their ${lensNoun}, including those not on this page.`}
+      </p>
       <Field label="Reason" htmlFor="bulk-reason" required>
         <Textarea
           id="bulk-reason"
@@ -144,7 +155,9 @@ export function BulkReassignPanel({
         <p className="text-body text-ink" role="status">
           {preview.matched === 0
             ? 'No companies would move.'
-            : `${preview.matched} compan${preview.matched === 1 ? 'y' : 'ies'} would move.`}
+            : `${preview.matched} compan${preview.matched === 1 ? 'y' : 'ies'} would move${
+                !onlyShown && journey ? ` (${lensNoun} only)` : ''
+              }.`}
           {preview.skipped > 0 && ` ${preview.skipped} are not theirs and would be skipped.`}
         </p>
       )}

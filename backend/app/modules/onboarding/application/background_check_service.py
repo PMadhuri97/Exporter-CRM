@@ -1169,20 +1169,24 @@ class BackgroundCheckService:
         actor_role: UserRole,
         actor_permissions: frozenset[Permission] = frozenset(),
     ) -> BackgroundCheckProposalView:
-        """Withdraw a proposal: the proposer, or ADMIN or a holder of
-        ``compliance:assign`` (when the proposer has left). The reason is optional.
+        """Withdraw a proposal: the proposer, or — once the proposer has left (their
+        account is deactivated, gone, or no longer a reviewer's) — ADMIN or a holder of
+        ``compliance:assign``. While the proposer can still act, anyone else rejects it,
+        with a reason, instead. The reason is optional.
 
         Raises:
-            BackgroundCheckProposalNotYoursError: (403) neither the proposer nor
-                permitted.
+            BackgroundCheckProposalNotYoursError: (403) not the proposer, and either not
+                permitted or the proposer is still here.
             and the not-found / resolved / role refusals of :meth:`approve`.
         """
         await self._lock_profile(company_id)
         proposal = await self._open_proposal_to_resolve(company_id, proposal_id, actor_role)
-        if actor_id != proposal.created_by and not holds(
-            actor_role, actor_permissions, ASSIGN_REVIEWS
-        ):
-            raise BackgroundCheckProposalNotYoursError(proposal_id)
+        if actor_id != proposal.created_by:
+            if not holds(actor_role, actor_permissions, ASSIGN_REVIEWS):
+                raise BackgroundCheckProposalNotYoursError(proposal_id)
+            proposer = await staff_member(self._db, proposal.created_by)
+            if proposer is not None and proposer.is_active and proposer.role in REVIEWER_ROLES:
+                raise BackgroundCheckProposalNotYoursError(proposal_id, proposer_still_here=True)
         text = reason.strip() if reason else None
         resolution = await self._resolve(
             proposal,

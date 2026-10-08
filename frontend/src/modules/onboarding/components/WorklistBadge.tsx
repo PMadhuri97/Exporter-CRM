@@ -5,7 +5,7 @@
  *
  * - `compliance` (on Compliance work): reviews this user holds plus decisions waiting for
  *   their signature; red when a lead has overdue work.
- * - `infoRequested` (on Companies): checks waiting on information for companies this
+ * - `infoRequested` (on My companies): checks waiting on information for companies this
  *   user is RM of.
  *
  * Nothing for a role that may not read compliance work (DEVELOPER), and nothing at 0.

@@ -37,6 +37,7 @@ from app.modules.onboarding.domain.entities.background_check_enums import (
     BackgroundCheckRisk,
     BackgroundCheckState,
 )
+from app.modules.onboarding.domain.entities.check_cycle import CheckCycleKind
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
 )
@@ -453,6 +454,13 @@ async def test_a_lead_withdraws_an_absent_proposers_proposal(client, people):
     leaver, _ = await user_with_role(client, C, email_prefix="rv-leaver")
     company_id = await ready()
     proposal = await propose(company_id, leaver)
+    # While the proposer is still here, a lead rejects; it does not withdraw for them.
+    async with db_services.AsyncSessionLocal() as db:
+        with pytest.raises(BackgroundCheckProposalNotYoursError, match="Reject it instead"):
+            await svc(db).withdraw(
+                company_id, proposal.id, reason=None, actor_id=lead, actor_role=C,
+                actor_permissions=LEAD,
+            )
     deactivate(leaver)
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(BackgroundCheckProposalNotYoursError):
@@ -479,6 +487,27 @@ async def test_a_reassessment_hands_the_review_to_whoever_makes_it(people):
     async with db_services.AsyncSessionLocal() as db:
         await svc(db).reassess(company_id, reason="new facts", actor_id=c, actor_role=C)
     assert (await reviewer_of(company_id))[0] == c
+
+
+async def test_a_re_kyc_on_a_clear_company_makes_its_starter_the_reviewer(people):
+    a, _ = people["a"]
+    b, _ = people["b"]
+    c, _ = people["c"]
+    company_id = await ready()
+    proposal = await propose(company_id, a)
+    await approve(company_id, proposal.id, b)
+    assert await reviewer_of(company_id) == (None, None)
+    async with db_services.AsyncSessionLocal() as db:
+        started = await svc(db).start_cycle(
+            company_id, kind=CheckCycleKind.RE_KYC, reason="Annual review", actor_id=c,
+            actor_role=C,
+        )
+    assert started.reopen is not None
+    assert await gauge(company_id) is State.IN_REVIEW
+    reviewer, assigned_at = await reviewer_of(company_id)
+    assert reviewer == c and assigned_at is not None
+    rows = await assignment_rows(company_id)
+    assert rows[-1].event_metadata["to_user_id"] == c
 
 
 async def test_flagged_to_on_hold_stays_maker_checker(people):

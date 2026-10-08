@@ -75,11 +75,11 @@ announced to Developer 1 so the generated types are regenerated once.
 
 Kept as they are today, editable by staff, each edit recorded (L2-07,
 dimension `profile`): `industry`, `export_markets`, `products`,
-`year_established`, `website`, `relationship_manager`.
+`year_established`, `website`. (`website` is retired, §10; the legacy free-text
+`relationship_manager` is read-only since 7 October 2026.)
 
-`relationship_manager_user_id` stays dormant: nothing writes it, and nothing may
-use it to widen who sees identifiers (decision 12). Relationship-manager
-ownership is post-prototype.
+The relationship manager is `relationship_manager_user_id`, set only through its own route
+(§2.5). Being the RM never widens who sees identifiers (decision 12).
 
 ### 2.3 Journey and marker (Developer 2)
 
@@ -141,7 +141,10 @@ row with both ids, both names and the reason (`history-row.md` §2).
   background check on an in-pipeline company, and a person's `QUALIFIED`, need one in the same
   request (409 `RELATIONSHIP_MANAGER_REQUIRED`); imports, the RXIL intake, the platform's own
   loaders and buyer-only companies are exempt.
-- **The legacy `relationship_manager` text** is read-only: no route writes it. The command
+- **The legacy `relationship_manager` text** is read-only: no route writes it, and
+  `POST /exporters` and `PATCH /exporters/{id}` refuse the field (422, the schemas forbid unknown
+  fields) — a caller that still sends it must stop, and set the RM through
+  `POST /exporters/{id}/relationship-manager` instead. The command
   `python -m app.modules.onboarding.backfill_relationship_managers` matches it, exactly apart
   from case and spacing, to one active RM account (dry run first) and reports the rest.
 

@@ -1101,19 +1101,20 @@ async def list_proposals_across_companies(
     repository = BackgroundCheckProposalRepository(db)
     facts: dict[uuid.UUID, WorkItem] = {}
     if awaiting == "me":
-        # Eligibility is the worklist's rule (proposer, reviewer, RM, senior), so the
-        # filter is applied to the whole open queue and then paged.
-        everything, _ = await repository.list_across_companies(
-            status="OPEN", exclude_proposer=str(user.id), limit=10_000, offset=0
-        )
-        facts = await ComplianceWorklists(db).approval_facts([p.company_id for p, _, _ in everything])
-        mine = [
-            row
-            for row in everything
-            if row[0].company_id in facts
-            and ComplianceWorklists.may_approve(facts[row[0].company_id], viewer_id=str(user.id))
-        ]
-        rows, total = mine[offset : offset + limit], len(mine)
+        # Eligibility is the worklist's rule (proposer, reviewer, RM, senior): the
+        # worklist chooses and pages the proposals, and only that page is read in full.
+        mine = await ComplianceWorklists(db).approvable_by(str(user.id))
+        page = mine[offset : offset + limit]
+        facts = {item.company_id: item for item in page}
+        rows = []
+        if page:
+            found, _ = await repository.list_across_companies(
+                status="OPEN",
+                proposal_ids=[item.proposal_id for item in page if item.proposal_id],
+                limit=len(page),
+            )
+            rows = [row for row in found if row[0].company_id in facts]
+        total = len(mine)
     else:
         rows, total = await repository.list_across_companies(
             status=status.upper(), limit=limit, offset=offset

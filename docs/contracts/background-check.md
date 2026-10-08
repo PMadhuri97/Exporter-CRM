@@ -653,8 +653,10 @@ expired = party_facts(clear_expires_at=at, is_clear_current=False)   # an expire
    evaluated again, the expiry set, a qualified `PROSPECT` promoted — one transaction, announced
    after the commit.
 3. `…/reject` needs a reason and is anyone's but the proposer's; `…/withdraw` is the
-   proposer's, or ADMIN's or a holder of `compliance:assign`'s — for a proposer who has left
-   (403 `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` otherwise; §12.8). Neither moves the gauge. A stale proposal can
+   proposer's, or ADMIN's or a holder of `compliance:assign`'s — only for a proposer who has left
+   (account deactivated or removed, or no longer COMPLIANCE or ADMIN). While the proposer is still
+   here, anyone else rejects it, with a reason (403 `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` otherwise;
+   §12.8). Neither moves the gauge. A stale proposal can
    still be rejected or withdrawn — that is how it is cleared away.
 
 Rules that go with it:
@@ -801,7 +803,7 @@ review of 28 Sep 2026). Each `error_context` carries plain values (`IN_REVIEW`, 
 | Approve, reject or withdraw a proposal already resolved (also the loser of two at once) | 409 | `BACKGROUND_CHECK_PROPOSAL_RESOLVED` |
 | Approve a proposal whose gauge, chain head or inputs moved since | 409 | `BACKGROUND_CHECK_PROPOSAL_STALE`, with `why` |
 | The proposer approves or rejects their own proposal | 403 | `BACKGROUND_CHECK_SELF_APPROVAL` |
-| Someone other than the proposer withdraws it | 403 | `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` |
+| Someone other than the proposer withdraws it — unless ADMIN or `compliance:assign` and the proposer has left | 403 | `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` |
 | A role other than COMPLIANCE or ADMIN approves, rejects or withdraws (service rule; the route refuses first) | 403 | `BACKGROUND_CHECK_APPROVER_ROLE_NOT_ALLOWED` |
 | A write that bypasses the service and breaks §5.3 or §6 | — | refused by the database (`CheckViolation`, `ForeignKeyViolation`, `UniqueViolation`, `RaiseException`) |
 

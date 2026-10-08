@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Literal
@@ -52,7 +53,12 @@ from app.modules.onboarding.domain.assignment import (
     holds,
     needs_senior_checker,
 )
-from app.modules.onboarding.domain.business_time import Deadline, deadline, elapsed
+from app.modules.onboarding.domain.business_time import (
+    BusinessCalendar,
+    Deadline,
+    deadline,
+    elapsed,
+)
 from app.modules.onboarding.domain.entities.background_check_decision import (
     BackgroundCheckDecision,
 )
@@ -85,6 +91,41 @@ LEAD_VIEWS: frozenset[str] = frozenset({"in_review", "overdue", "needs_attention
 REJECTIONS_NEEDING_ATTENTION = 2
 
 _State = BackgroundCheckState
+
+
+def info_pause(
+    chain: Iterable[BackgroundCheckDecision],
+    *,
+    assigned_at: datetime,
+    now: datetime,
+    calendar: BusinessCalendar,
+) -> timedelta:
+    """Business time the check spent in ``MORE_INFO`` since ``assigned_at``: the part
+    of the review clock that does not count. ``chain`` is the company's decisions,
+    oldest first; those before the assignment only set where it started.
+
+    A reviewer assigned **while** information was requested starts with the clock
+    paused: the request was decided before the assignment, so its span is counted from
+    the assignment, not dropped.
+    """
+    total = timedelta()
+    opened: datetime | None = None
+    first = True
+    for decision in chain:
+        if decision.decided_at < assigned_at:
+            continue
+        if first:
+            first = False
+            if decision.from_value is _State.MORE_INFO:
+                opened = assigned_at
+        if decision.to_value is _State.MORE_INFO:
+            opened = opened or decision.decided_at
+        elif opened is not None and decision.from_value is _State.MORE_INFO:
+            total += elapsed(opened, decision.decided_at, calendar)
+            opened = None
+    if opened is not None:
+        total += elapsed(opened, now, calendar)
+    return total
 
 
 @dataclass(frozen=True)
@@ -165,9 +206,17 @@ class ComplianceWorklists:
 
     # ── The items ────────────────────────────────────────────────────────────
 
-    async def items(self, *, include_info_notes: bool = False) -> list[WorkItem]:
+    async def items(
+        self,
+        *,
+        include_info_notes: bool = False,
+        company_ids: Collection[uuid.UUID] | None = None,
+    ) -> list[WorkItem]:
         """Every company with open compliance work: under review (``IN_REVIEW`` or
-        ``MORE_INFO``), or with a proposal awaiting approval. Oldest wait first."""
+        ``MORE_INFO``), or with a proposal awaiting approval. Oldest wait first.
+        ``company_ids`` limits the read to those companies (a page of a list)."""
+        if company_ids is not None and not company_ids:
+            return []
         open_proposal = (
             select(BackgroundCheckProposal)
             .outerjoin(
@@ -191,7 +240,12 @@ class ComplianceWorklists:
                 .outerjoin(open_proposal, cols.company_id == ExporterProfile.customer_id)
                 .where(
                     ExporterProfile.background_check.in_([_State.IN_REVIEW, _State.MORE_INFO])
-                    | cols.id.isnot(None)
+                    | cols.id.isnot(None),
+                    *(
+                        [ExporterProfile.customer_id.in_(list(company_ids))]
+                        if company_ids is not None
+                        else []
+                    ),
                 )
             )
         ).all()
@@ -405,12 +459,24 @@ class ComplianceWorklists:
 
     async def approval_facts(self, company_ids: list[uuid.UUID]) -> dict[uuid.UUID, WorkItem]:
         """The approval-stage items of these companies, by company."""
-        wanted = set(company_ids)
         return {
             item.company_id: item
-            for item in await self.items()
-            if item.stage == "approval" and item.company_id in wanted
+            for item in await self.items(company_ids=set(company_ids))
+            if item.stage == "approval"
         }
+
+    async def approvable_by(self, viewer_id: str) -> list[WorkItem]:
+        """Every proposal awaiting approval that ``viewer_id`` may approve, longest
+        waiting first — the "awaiting me" queue, from the same rule as
+        :meth:`may_approve`, with no cap."""
+        return sorted(
+            (
+                item
+                for item in await self.items()
+                if self.may_approve(item, viewer_id=viewer_id)
+            ),
+            key=lambda item: (item.waiting_since, str(item.proposal_id)),
+        )
 
     # ── Decisions on my companies ───────────────────────────────────────────
 
@@ -500,23 +566,12 @@ class ComplianceWorklists:
         for decision in rows.scalars():
             chains[decision.company_id].append(decision)
         calendar = business_calendar()
-        paused: dict[uuid.UUID, timedelta] = {}
-        for company_id, chain in chains.items():
-            start_at = assigned[company_id]
-            total = timedelta()
-            opened: datetime | None = None
-            for decision in chain:
-                if decision.decided_at < start_at:
-                    continue
-                if decision.to_value is _State.MORE_INFO:
-                    opened = decision.decided_at
-                elif opened is not None and decision.from_value is _State.MORE_INFO:
-                    total += elapsed(opened, decision.decided_at, calendar)
-                    opened = None
-            if opened is not None:
-                total += elapsed(opened, self._now, calendar)
-            paused[company_id] = total
-        return paused
+        return {
+            company_id: info_pause(
+                chain, assigned_at=assigned[company_id], now=self._now, calendar=calendar
+            )
+            for company_id, chain in chains.items()
+        }
 
     async def _rejections(
         self, heads: dict[uuid.UUID, BackgroundCheckDecision]
@@ -559,4 +614,5 @@ __all__ = [
     "RecentDecision",
     "WorkItem",
     "WorklistCounts",
+    "info_pause",
 ]

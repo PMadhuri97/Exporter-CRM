@@ -147,6 +147,9 @@ export function useUpdateExporterProfile(customerId: string) {
 
 // ── Relationship manager ─────────────────────────────
 
+/** Set, change or clear the company's RM. A refusal reloads the company too: after a
+ * `RELATIONSHIP_MANAGER_CHANGED` the screen must show the new RM, or every retry would
+ * send the same stale `seen_user_id` and be refused again. */
 export function useAssignRelationshipManager(customerId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -158,6 +161,7 @@ export function useAssignRelationshipManager(customerId: string) {
       void queryClient.invalidateQueries({ queryKey: ['staff'] });
       void queryClient.invalidateQueries({ queryKey: ['worklist'] });
     },
+    onError: () => invalidateCompany(queryClient, customerId),
   });
 }
 

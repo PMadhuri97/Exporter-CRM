@@ -189,6 +189,26 @@ describe('the relationship manager field', () => {
       }),
     );
   });
+
+  it('reloads the company when someone changed the RM first, so a retry sends the new one', async () => {
+    vi.mocked(assignRelationshipManager).mockRejectedValue(
+      new ApiError(409, 'Someone changed the RM since', 'RELATIONSHIP_MANAGER_CHANGED', null, null),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <RelationshipManagerField
+            profile={profile({ relationship_manager_actions: ['CLAIM'] })}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Assign to me' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Someone changed the RM since');
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['exporterProfile', COMPANY] });
+  });
 });
 
 describe('two people editing one company', () => {
@@ -426,5 +446,22 @@ describe('bulk reassignment', () => {
     expect(reassignRelationshipManagers).toHaveBeenLastCalledWith(
       expect.objectContaining({ dry_run: false }),
     );
+  });
+
+  it("says the list's lens applies to all of their companies", async () => {
+    vi.mocked(reassignRelationshipManagers).mockResolvedValueOnce({ bulk_run_id: null, dry_run: true, matched: 2, moved: 0, skipped: 0, company_ids: [], skipped_company_ids: [] });
+    wrap(<BulkReassignPanel shown={rows} journey="PROSPECT" onClose={vi.fn()} />);
+    expect(screen.getByText('Moves all of their prospects, including those not on this page.')).toBeInTheDocument();
+    await screen.findByRole('option', { name: 'Left Already (deactivated)' });
+    fireEvent.change(screen.getByLabelText(/From/), { target: { value: 'gone' } });
+    fireEvent.change(screen.getByLabelText(/^To/), { target: { value: 'rm-b' } });
+    fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'split the book' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('2 companies would move (prospects only).');
+    expect(reassignRelationshipManagers).toHaveBeenLastCalledWith(
+      expect.objectContaining({ company_ids: null, journey: 'PROSPECT' }),
+    );
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.getByText('Moves only the companies listed below.')).toBeInTheDocument();
   });
 });
