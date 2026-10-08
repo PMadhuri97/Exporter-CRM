@@ -26,6 +26,7 @@ import {
   EmptyLine,
   Input,
   Panel,
+  RequiredMark,
   Select,
   Skeleton,
   Tabs,
@@ -157,7 +158,8 @@ function ActivityComposer({
         </TabsList>
       </Tabs>
       <label className="block text-caption text-ink-3">
-        Subject *
+        Subject
+        <RequiredMark />
         <Input
           ref={subjectRef}
           className="mt-1"
@@ -311,7 +313,7 @@ function ConversationSection({
     <Panel
       as="h3"
       data-extension="conversation-gauge"
-      title="Conversation"
+      title="Communication"
       actions={
         conversation.data && (
           <span data-testid="conversation-chip">

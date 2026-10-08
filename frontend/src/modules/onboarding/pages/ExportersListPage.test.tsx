@@ -101,7 +101,7 @@ describe('ExportersListPage — identifiers are not on the list', () => {
   it('keeps the country and the relationship manager on the second line', async () => {
     mockUser('OPERATIONS', 'someone-else');
     renderPage();
-    expect(await screen.findByText('IN · RM Jane RM')).toBeInTheDocument();
+    expect(await screen.findByText('India · RM Jane RM')).toBeInTheDocument();
   });
 });
 

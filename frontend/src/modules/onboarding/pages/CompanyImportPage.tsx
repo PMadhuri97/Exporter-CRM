@@ -1,31 +1,32 @@
 /**
- * Import companies (frontend-plan §8.4): a drop zone, a local preview of what will be
- * sent, then the server's report as lines grouped by outcome — refused, possible
- * duplicates, created or matched — each in the server's words. The client re-checks
- * nothing.
+ * Import companies (frontend-plan §8.4): a drop zone, the server's reading of the file
+ * before anything is sent for import, then the server's report as rows grouped by
+ * outcome — failed, possible duplicates, created or matched — each in the server's
+ * words. The client re-checks nothing.
  *
  * Bulk company import.
  *
- * Download the server's template, upload a CSV, read the per-row report. Every
- * check and every match is the server's — the same rules as adding a company
- * by hand — and each row comes back accepted (created or matched), rejected
- * or possible_duplicate with the server's codes and messages. A possible
- * duplicate is never merged: it is left for a person to settle.
+ * Download the server's template (Excel, with instructions and dropdowns, or CSV),
+ * upload either kind of file, read the per-row report. Every check and every match is
+ * the server's — the same rules as adding a company by hand — and each row comes back
+ * accepted (created or matched), rejected or possible_duplicate with the server's
+ * codes and messages. A possible duplicate is never merged: it is left for a person to
+ * settle. A rejected row reads "Failed" on this page.
  */
 
-import { useEffect, useState, type DragEvent } from 'react';
+import { useState, type DragEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { Button, Count, PageHeader, Tag, type TagTone } from '@/components';
 import { Icon } from '@/design/icons';
 import { cn } from '@/lib/cn';
-import { humanize } from '@/lib/format';
 
-import { getCompanyImportTemplate } from '../api';
-import { useImportCompanies } from '../hooks';
+import { getCompanyImportTemplate, type ImportTemplateFormat } from '../api';
+import { saveObjectUrl } from '../components/useOpenDocument';
+import { useCompanyImportPreview, useImportCompanies } from '../hooks';
 import { paths } from '../paths';
-import type { ImportReport } from '../types';
+import type { ImportPreview, ImportReport } from '../types';
 
 const STATUS_TONE: Record<string, TagTone> = {
   accepted: 'positive',
@@ -33,50 +34,125 @@ const STATUS_TONE: Record<string, TagTone> = {
   possible_duplicate: 'attention',
 };
 
-/** How the report groups its lines (frontend-plan §8.4): refusals first, they need a person. */
+/** What each server status reads as here. */
+const STATUS_LABEL: Record<string, string> = {
+  accepted: 'Imported',
+  rejected: 'Failed',
+  possible_duplicate: 'Possible duplicate',
+};
+
+/** How the report groups its rows (frontend-plan §8.4): failures first, they need a person. */
 const GROUPS: { status: string; title: string; glyph: 'error' | 'warning' | 'passed' }[] = [
-  { status: 'rejected', title: 'Refused', glyph: 'error' },
+  { status: 'rejected', title: 'Failed rows', glyph: 'error' },
   { status: 'possible_duplicate', title: 'Possible duplicates — a person should choose', glyph: 'warning' },
   { status: 'accepted', title: 'Created or matched', glyph: 'passed' },
 ];
 
-async function downloadTemplate() {
+const TEMPLATE_NAME: Record<ImportTemplateFormat, string> = {
+  xlsx: 'company-import-template.xlsx',
+  csv: 'company-import-template.csv',
+};
+
+async function downloadTemplate(format: ImportTemplateFormat) {
   try {
-    const csv = await getCompanyImportTemplate();
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'company-import-template.csv';
-    link.click();
+    const blob = await getCompanyImportTemplate(format);
+    const url = URL.createObjectURL(blob);
+    saveObjectUrl(url, TEMPLATE_NAME[format]);
     URL.revokeObjectURL(url);
   } catch (error) {
     toast.error(error instanceof Error ? error.message : "Couldn't download the template.");
   }
 }
 
+function headerProblems(preview: ImportPreview): string[] {
+  const problems: string[] = [];
+  if (preview.missing_columns.length > 0) {
+    problems.push(`Missing columns: ${preview.missing_columns.join(', ')}.`);
+  }
+  if (preview.unknown_columns.length > 0) {
+    problems.push(`Not in the template: ${preview.unknown_columns.join(', ')}.`);
+  }
+  if (preview.duplicate_columns.length > 0) {
+    problems.push(`Given more than once: ${preview.duplicate_columns.join(', ')}.`);
+  }
+  if (preview.total_rows > preview.max_rows) {
+    problems.push(
+      `The file has ${preview.total_rows.toLocaleString()} rows; at most ${preview.max_rows.toLocaleString()} can be imported at once.`,
+    );
+  }
+  return problems;
+}
+
 /**
- * What is about to be sent, so the person can see it is the right file: the header
- * and the first five lines, read locally. Nothing here checks a value — every check
- * is the server's, in the report that comes back (a server-side dry run would make this
- * preview the server's own).
+ * The file as the server read it: its header and first rows in a grid, with every empty
+ * cell kept in its own column so a shifted row shows as shifted. Header problems are
+ * listed above it and stop the import, as the import itself would.
  */
-function usePreview(file: File | null) {
-  const [preview, setPreview] = useState<{ file: File; rows: string[][] } | null>(null);
-  useEffect(() => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const rows = String(reader.result ?? '')
-        .split(/\r?\n/)
-        .filter((line) => line.trim() !== '')
-        .slice(0, 6)
-        .map((line) => line.split(','));
-      setPreview({ file, rows });
-    };
-    reader.readAsText(file.slice(0, 64 * 1024));
-    return () => reader.abort();
-  }, [file]);
-  return file && preview?.file === file ? preview : null;
+function Preview({ preview }: { preview: ImportPreview }) {
+  const problems = headerProblems(preview);
+  const unknown = new Set([...preview.unknown_columns, ...preview.duplicate_columns]);
+  const width = Math.max(preview.columns.length, ...preview.rows.map((row) => row.cells.length));
+  return (
+    <div role="group" aria-label="What will be imported" className="space-y-2">
+      <p className="text-caption text-ink-3">
+        {preview.total_rows === 0
+          ? 'The file has a header but no rows.'
+          : `${preview.total_rows.toLocaleString()} ${preview.total_rows === 1 ? 'row' : 'rows'} in the file${
+              preview.total_rows > preview.rows.length ? `; the first ${preview.rows.length} are shown` : ''
+            }. Every row is checked when you import.`}
+      </p>
+      {problems.length > 0 && (
+        <div role="alert" className="rounded border border-negative bg-negative-tint px-3 py-2 text-secondary text-ink">
+          <p className="font-semibold">File not accepted — fix the header and choose the file again.</p>
+          <ul className="mt-1 list-disc pl-5">
+            {problems.map((problem) => (
+              <li key={problem}>{problem}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="overflow-x-auto rounded border border-line">
+        <table className="w-full border-collapse text-left text-secondary">
+          <thead className="bg-sunken">
+            <tr>
+              <th scope="col" className="sticky left-0 bg-sunken px-3 py-2 font-semibold text-ink-3">
+                Row
+              </th>
+              {Array.from({ length: width }, (_, index) => {
+                const column = preview.columns[index];
+                return (
+                  <th
+                    key={index}
+                    scope="col"
+                    className={cn(
+                      'whitespace-nowrap px-3 py-2 font-semibold',
+                      column === undefined || unknown.has(column) ? 'text-negative' : 'text-ink',
+                    )}
+                  >
+                    {column ?? '(no column)'}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {preview.rows.map((row) => (
+              <tr key={row.line}>
+                <th scope="row" className="sticky left-0 bg-surface px-3 py-1.5 font-normal tabular-nums text-ink-3">
+                  {row.line}
+                </th>
+                {Array.from({ length: width }, (_, index) => (
+                  <td key={index} className="max-w-[16rem] truncate whitespace-nowrap px-3 py-1.5 text-ink-2">
+                    {row.cells[index] ?? ''}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function Report({ report }: { report: ImportReport }) {
@@ -93,7 +169,7 @@ function Report({ report }: { report: ImportReport }) {
         </div>
         <div>
           <Count value={report.rejected} size="lg" className={report.rejected ? 'text-negative' : undefined} />
-          <p className="text-caption text-ink-3">refused</p>
+          <p className="text-caption text-ink-3">failed</p>
         </div>
         <div>
           <Count
@@ -105,7 +181,7 @@ function Report({ report }: { report: ImportReport }) {
         </div>
         <p data-testid="import-summary" className="text-secondary text-ink-3">
           {report.total_rows} rows · {report.created} created · {report.matched} matched ·{' '}
-          {report.rejected} rejected · {report.possible_duplicates} possible duplicates
+          {report.rejected} failed · {report.possible_duplicates} possible duplicates
         </p>
       </div>
 
@@ -123,10 +199,10 @@ function Report({ report }: { report: ImportReport }) {
             <ul className="divide-y divide-line border-t border-line">
               {rows.map((row) => (
                 <li key={row.line} className="grid gap-x-4 gap-y-1 px-4 py-2.5 sm:grid-cols-[4.5rem_1fr_auto]">
-                  <span className="text-secondary tabular-nums text-ink-3">Line {row.line}</span>
+                  <span className="text-secondary tabular-nums text-ink-3">Row {row.line}</span>
                   <div className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
-                      <Tag tone={STATUS_TONE[row.status] ?? 'idle'}>{humanize(row.status)}</Tag>
+                      <Tag tone={STATUS_TONE[row.status] ?? 'idle'}>{STATUS_LABEL[row.status] ?? row.status}</Tag>
                       {row.action && <span className="text-secondary text-ink-2">{row.action}</span>}
                     </span>
                     {[...row.reasons, ...row.warnings].length > 0 && (
@@ -164,24 +240,36 @@ export function CompanyImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const mutation = useImportCompanies();
-  const preview = usePreview(file);
+  const preview = useCompanyImportPreview(file);
+
+  const choose = (next: File | null) => {
+    setFile(next);
+    mutation.reset();
+  };
 
   const onDrop = (event: DragEvent) => {
     event.preventDefault();
     setDragging(false);
     const dropped = event.dataTransfer.files?.[0];
-    if (dropped) setFile(dropped);
+    if (dropped) choose(dropped);
   };
+
+  const ready = file !== null && preview.data?.ready === true;
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Import companies"
         actions={
-          <Button onClick={() => void downloadTemplate()}>
-            <Icon.download size={16} aria-hidden />
-            Download template
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="subtle" onClick={() => void downloadTemplate('csv')}>
+              CSV template
+            </Button>
+            <Button onClick={() => void downloadTemplate('xlsx')}>
+              <Icon.download size={16} aria-hidden />
+              Download template
+            </Button>
+          </div>
         }
       />
 
@@ -189,11 +277,11 @@ export function CompanyImportPage() {
         className="space-y-4 rounded border border-line bg-surface p-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!file) return;
+          if (!file || !ready) return;
           mutation.mutate(file, {
             onSuccess: (report) =>
               toast.success(`Import finished: ${report.created} created, ${report.matched} matched`),
-            onError: (error) => toast.error(error.message),
+            onError: (error) => toast.error(`File not accepted: ${error.message}`),
           });
         }}
       >
@@ -211,45 +299,42 @@ export function CompanyImportPage() {
         >
           <span className="flex items-center gap-2.5 text-body font-semibold text-ink">
             <Icon.upload size={20} className="text-ink-3" aria-hidden />
-            {file ? file.name : 'Drop a CSV here, or choose one'}
+            {file ? file.name : 'Drop an Excel or CSV file here, or choose one'}
           </span>
           <span className="text-secondary text-ink-3">
-            {file ? `${Math.max(1, Math.round(file.size / 1024))} KB — choose another to replace it` : 'Use the template’s columns.'}
+            {file
+              ? `${Math.max(1, Math.round(file.size / 1024))} KB — choose another to replace it`
+              : 'Use the template: its Instructions sheet explains every column.'}
           </span>
           <input
             type="file"
-            accept=".csv,text/csv"
-            aria-label="CSV file"
+            accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            aria-label="Import file"
             className="sr-only"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => choose(e.target.files?.[0] ?? null)}
           />
         </label>
 
-        {preview && preview.rows.length > 0 && (
-          <div role="group" aria-label="What will be sent">
-            <p className="text-caption text-ink-3">
-              What will be sent — the header and the first lines, as read here. The server checks every row.
-            </p>
-            <ul className="mt-1 divide-y divide-line rounded border border-line">
-              {preview.rows.map((cells, index) => (
-                <li key={index} className="flex gap-3 px-3 py-2 text-secondary">
-                  <span className="w-16 shrink-0 text-ink-3">{index === 0 ? 'Header' : `Row ${index + 1}`}</span>
-                  <span className={index === 0 ? 'min-w-0 truncate font-semibold text-ink' : 'min-w-0 truncate text-ink-2'}>
-                    {cells.map((cell) => cell.trim()).filter(Boolean).join(' · ')}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+        {file && preview.isPending && <p className="text-secondary text-ink-3">Reading the file…</p>}
+        {file && preview.isError && (
+          <p role="alert" className="rounded border border-negative bg-negative-tint px-3 py-2 text-secondary text-ink">
+            <span className="font-semibold">File not accepted:</span> {preview.error.message}
+          </p>
         )}
+        {file && preview.data && <Preview preview={preview.data} />}
 
         <div className="flex justify-end">
-          <Button type="submit" variant="primary" disabled={!file} loading={mutation.isPending}>
+          <Button type="submit" variant="primary" disabled={!ready} loading={mutation.isPending}>
             Import
           </Button>
         </div>
       </form>
 
+      {mutation.isError && (
+        <p role="alert" className="rounded border border-negative bg-negative-tint px-4 py-3 text-secondary text-ink">
+          <span className="font-semibold">File not accepted:</span> {mutation.error.message}
+        </p>
+      )}
       {mutation.data && <Report report={mutation.data} />}
     </div>
   );

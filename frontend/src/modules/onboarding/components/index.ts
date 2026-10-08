@@ -41,6 +41,7 @@ export { DecisionHistory } from './DecisionHistory';
 // Also mounted on the deal page (the buyer picker and the trade history). Both began
 // as stubs with final props, which is why filling them changed no mounting.
 export { CompanyPicker } from './CompanyPicker';
+export { CountrySelect } from './CountrySelect';
 export { CreateBuyerCompanyForm } from './CreateBuyerCompanyForm';
 export type { CompanyPickerProps } from './CompanyPicker';
 export { TradeHistoryPanel } from './TradeHistoryPanel';

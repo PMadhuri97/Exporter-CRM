@@ -52,6 +52,7 @@ import type {
   QualificationState,
   RelationshipManagerFilter,
 } from '../types';
+import { countryLabel } from '../countries';
 
 type Lens = 'ALL' | ExporterJourney;
 const LENSES: readonly Lens[] = ['ALL', ...JOURNEY_STAGES];
@@ -86,7 +87,7 @@ function JourneyCount({ journey }: { journey: ExporterJourney }) {
 function identityLine(profile: ExporterProfileListItem): string | null {
   const parts = [
     profile.industry,
-    profile.country,
+    profile.country ? countryLabel(profile.country) : null,
     profile.relationship_manager_name
       ? `RM ${profile.relationship_manager_name}${profile.relationship_manager_inactive ? ' (deactivated)' : ''}`
       : 'No RM',

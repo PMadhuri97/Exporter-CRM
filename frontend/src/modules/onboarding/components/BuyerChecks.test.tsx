@@ -301,7 +301,7 @@ describe('BuyerChecks — recording a check', () => {
     fireEvent.click(within(form).getByRole('button', { name: 'Record check' }));
 
     expect(await within(form).findByRole('alert')).toHaveTextContent(
-      'A passed check needs evidence',
+      'Add at least one: a note, a document or a link.',
     );
     expect(triggerVerification).not.toHaveBeenCalled();
   });

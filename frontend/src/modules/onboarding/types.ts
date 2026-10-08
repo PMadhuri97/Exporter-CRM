@@ -46,6 +46,7 @@ export type CriterionDefinitionRequest = Schemas['CriterionDefinitionRequest'];
 export type IntakeResult = Schemas['IntakeResponse'];
 export type ImportReport = Schemas['ImportReportResponse'];
 export type ImportRow = Schemas['ImportRowResponse'];
+export type ImportPreview = Schemas['ImportPreviewResponse'];
 
 // ── Who is working on it ──
 export type AssignRelationshipManagerRequest = Schemas['AssignRelationshipManagerRequest'];

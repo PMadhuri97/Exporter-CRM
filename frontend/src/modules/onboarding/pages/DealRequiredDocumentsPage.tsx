@@ -39,6 +39,7 @@ import {
   Select,
   Skeleton,
   Tag,
+  RequiredNote,
 } from '@/components';
 import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
@@ -128,6 +129,7 @@ function RequireComposer({ initialCategory, onClose }: { initialCategory: string
       submitDisabled={category === ''}
       onSubmit={() => void submit()}
     >
+      <RequiredNote />
       <Field label="Category" htmlFor="required-category" required>
         <Select
           id="required-category"
@@ -149,7 +151,7 @@ function RequireComposer({ initialCategory, onClose }: { initialCategory: string
       </Field>
 
       <Field
-        label="Document type (optional)"
+        label="Document type"
         htmlFor="required-type"
         hint="“Any type” is met by any document in the category. Choose a type to insist on that one — only the types the document settings configure for the category are offered, because a deal could never upload any other."
       >

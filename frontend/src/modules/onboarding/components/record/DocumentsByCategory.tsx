@@ -5,9 +5,9 @@
  * and the button is absent, not disabled). The "pass-through scanner" prototype label
  * sits once above the list, not on every file.
  *
- * Uploading (staff) is a drop zone: drop a file — or choose one — and a side panel
- * asks only for its category and type. On a deal, the list marks the categories a
- * handover requires as present or missing.
+ * Uploading (staff) is a drop zone: drop files — or choose them — and a side panel
+ * asks for their category and type, once for all of them or file by file. On a deal,
+ * the list marks the categories a handover requires as present or missing.
  */
 
 import { useEffect, useState, type DragEvent } from 'react';
@@ -140,10 +140,9 @@ export function DocumentsByCategory({
   upload?: {
     owner: DocumentOwnerKind;
     onUpload: (input: UploadDocumentInput) => Promise<unknown>;
-    isUploading: boolean;
   };
 }) {
-  const [composing, setComposing] = useState<{ file: File | null } | null>(null);
+  const [composing, setComposing] = useState<{ files: File[] } | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const byCategory = new Map<string, CrmDocument[]>();
@@ -155,8 +154,8 @@ export function DocumentsByCategory({
   function onDrop(event: DragEvent) {
     event.preventDefault();
     setDragging(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) setComposing({ file });
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (files.length > 0) setComposing({ files });
   }
 
   return (
@@ -230,9 +229,9 @@ export function DocumentsByCategory({
           >
             <p className="flex items-center gap-2 text-secondary text-ink-3">
               <Icon.upload size={16} aria-hidden />
-              Drop a file here
+              Drop files here
             </p>
-            <Button size="sm" variant="secondary" onClick={() => setComposing({ file: null })}>
+            <Button size="sm" variant="secondary" onClick={() => setComposing({ files: [] })}>
               Upload a document
             </Button>
           </div>
@@ -241,16 +240,21 @@ export function DocumentsByCategory({
           <Sheet
             open={composing !== null}
             onOpenChange={(open) => !open && setComposing(null)}
-            title="Upload a document"
-            description={composing?.file ? composing.file.name : undefined}
+            title="Upload documents"
+            description={
+              composing && composing.files.length > 0
+                ? composing.files.length === 1
+                  ? composing.files[0]!.name
+                  : `${composing.files.length} files`
+                : undefined
+            }
           >
             {composing && (
               <DocumentUpload
                 owner={upload.owner}
-                isUploading={upload.isUploading}
                 onUpload={upload.onUpload}
                 onDone={() => setComposing(null)}
-                initialFile={composing.file}
+                initialFiles={composing.files}
               />
             )}
           </Sheet>

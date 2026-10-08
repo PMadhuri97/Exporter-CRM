@@ -155,7 +155,7 @@ async def test_a_foreign_buyer_without_a_registration_number_is_refused(client: 
     name = _name()
     resp = await _put(client, await _token(client), deal_id, name=name, country="DE")
     assert resp.status_code == 422, resp.text
-    assert "registration_number" in resp.text
+    assert "Registration number is required" in resp.text
     async with db_services.AsyncSessionLocal() as db:
         assert await db.scalar(select(ExporterProfile).where(ExporterProfile.name == name)) is None
         assert (await db.scalar(select(Deal).where(Deal.id == deal_id))).buyer_company_id is None

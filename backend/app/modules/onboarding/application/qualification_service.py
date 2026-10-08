@@ -551,11 +551,12 @@ class QualificationService:
     async def get_qualification(self, customer_id: uuid.UUID) -> QualificationView:
         profile = await self._require_profile(customer_id)
         standings = await self._standings(customer_id)
-        suggested = _suggest(standings)
+        suggested, reason = suggest_with_reason(standings)
         return QualificationView(
             state=profile.qualification,
             journey=profile.journey,
             suggested_outcome=suggested,
+            suggestion_reason=reason,
             standings=tuple(standings),
             results=tuple(await self._repo.results_for(customer_id)),
             outcomes=tuple(await self._repo.outcomes_for(customer_id)),
@@ -641,17 +642,58 @@ class QualificationService:
 
 
 def _suggest(standings: Sequence[CriterionStanding]) -> QualificationOutcomeValue:
-    """`QUALIFIED` exactly when every active, required criterion has a
-    latest result of `PASS` against its current version."""
-    required = [s for s in standings if s.criterion.active and s.criterion.required]
-    if required and all(
-        s.counts
-        and s.latest_result is not None
-        and s.latest_result.result is CriterionResultValue.PASS
-        for s in required
-    ):
-        return QualificationOutcomeValue.QUALIFIED
-    return QualificationOutcomeValue.NOT_QUALIFIED
+    return suggest_with_reason(standings)[0]
+
+
+_PASS = CriterionResultValue.PASS
+_FAIL = CriterionResultValue.FAIL
+
+
+def suggest_with_reason(
+    standings: Sequence[CriterionStanding],
+) -> tuple[QualificationOutcomeValue, str]:
+    """The suggestion and, in a few words, why.
+
+    * When any active criterion is **required**: ``QUALIFIED`` exactly when every
+      active, required criterion has a latest result of ``PASS`` against its
+      current version. Optional criteria do not move it.
+    * When **none** is required: ``QUALIFIED`` when at least one active criterion
+      has passed and none has failed (results against the current version only).
+      Otherwise every company would read "Not qualified" whatever it passed.
+    """
+    active = [s for s in standings if s.criterion.active]
+    current = {
+        s.criterion.key: s.latest_result.result
+        for s in active
+        if s.counts and s.latest_result is not None
+    }
+
+    def labels(items: Sequence[CriterionStanding]) -> str:
+        return ", ".join(s.criterion.label for s in items)
+
+    required = [s for s in active if s.criterion.required]
+    if required:
+        failed = [s for s in required if current.get(s.criterion.key) is _FAIL]
+        unmet = [s for s in required if current.get(s.criterion.key) is not _PASS]
+        if not unmet:
+            return QualificationOutcomeValue.QUALIFIED, (
+                f"All {len(required)} required criteria passed"
+            )
+        if failed:
+            return QualificationOutcomeValue.NOT_QUALIFIED, f"Required criteria failed: {labels(failed)}"
+        return QualificationOutcomeValue.NOT_QUALIFIED, (
+            f"Required criteria not yet passed: {labels(unmet)}"
+        )
+
+    failed = [s for s in active if current.get(s.criterion.key) is _FAIL]
+    passed = [s for s in active if current.get(s.criterion.key) is _PASS]
+    if failed:
+        return QualificationOutcomeValue.NOT_QUALIFIED, f"Failed: {labels(failed)}"
+    if passed:
+        return QualificationOutcomeValue.QUALIFIED, (
+            f"{len(passed)} of {len(active)} criteria passed, none failed"
+        )
+    return QualificationOutcomeValue.NOT_QUALIFIED, "No criterion has passed yet"
 
 
 def _clean(value: str | None) -> str | None:
@@ -761,4 +803,5 @@ __all__ = [
     "JOURNEY_TRANSITION_EVENT",
     "QUALIFICATION_RESULT_EVENT",
     "QualificationService",
+    "suggest_with_reason",
 ]

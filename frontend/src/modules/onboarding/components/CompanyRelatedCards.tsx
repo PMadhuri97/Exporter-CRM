@@ -12,7 +12,17 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { Badge, Button, Card, EmptyLine, FormPanel, Input, Skeleton } from '@/components';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyLine,
+  FormPanel,
+  Input,
+  RequiredMark,
+  RequiredNote,
+  Skeleton,
+} from '@/components';
 import { Icon } from '@/design/icons';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { useCan } from '@/platform/access';
@@ -188,8 +198,10 @@ function AddContactForm({ customerId, onDone }: { customerId: string; onDone: ()
 
   return (
     <form onSubmit={submit} className="space-y-4">
+      <RequiredNote />
       <label className="block text-caption text-ink-3">
-        Name *
+        Name
+        <RequiredMark />
         <Input
           className="mt-1"
           value={form.name}
@@ -310,8 +322,10 @@ function EditContactForm({
 
   return (
     <form onSubmit={submit} className="space-y-4">
+      <RequiredNote />
       <label className="block text-caption text-ink-3">
-        Name *
+        Name
+        <RequiredMark />
         <Input
           className="mt-1"
           value={form.name}

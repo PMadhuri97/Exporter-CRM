@@ -1,7 +1,16 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import { SidePanel, sidePanelFieldError, Field, Input, Skeleton, Tag, Textarea } from '@/components';
+import {
+  SidePanel,
+  sidePanelFieldError,
+  Field,
+  Input,
+  Skeleton,
+  Tag,
+  Textarea,
+  RequiredNote,
+} from '@/components';
 import { Icon } from '@/design/icons';
 import { cn } from '@/lib/cn';
 
@@ -120,8 +129,9 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
       submitDisabled={name.trim().length === 0}
       onSubmit={() => void handleSubmit()}
     >
+      <RequiredNote />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name" htmlFor="role-name" error={sidePanelFieldError(error, 'name')}>
+        <Field label="Name" htmlFor="role-name" required error={sidePanelFieldError(error, 'name')}>
           <Input
             id="role-name"
             type="text"

@@ -15,6 +15,7 @@ export { COMPANY_TABS, paths, type CompanyTab } from './paths';
 export { JourneyBadge } from './components/StatusBadge';
 export { identifierKind, useCompanyFinder, type IdentifierKind } from './hooks/finder';
 export { JOURNEY_LABEL } from './constants';
+export { countryLabel } from './countries';
 // The style guide's domain sections — reached only from the dev-only `/__design`.
 export { OnboardingStyleGuide } from './styleguide/OnboardingStyleGuide';
 // Home's cards: domain views composed by `src/pages/HomePage.tsx`.

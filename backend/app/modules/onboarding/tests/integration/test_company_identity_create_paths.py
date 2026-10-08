@@ -194,7 +194,7 @@ async def test_creating_a_foreign_company_needs_a_registration_number(client: As
         headers={**auth_header(token), "Idempotency-Key": str(uuid.uuid4())},
     )
     assert resp.status_code == 422, resp.text
-    assert "registration_number" in resp.text
+    assert "Registration number is required" in resp.text
 
 
 async def test_creating_a_foreign_company_with_a_number_records_foreign_reg(

@@ -33,6 +33,7 @@ import {
   Select,
   Skeleton,
   Tag,
+  RequiredNote,
 } from '@/components';
 import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
@@ -190,6 +191,7 @@ function CriterionComposer({
       fields={FIELDS}
       onSubmit={() => void submit()}
     >
+      <RequiredNote />
       <div className="grid gap-4 sm:grid-cols-2">
         {!base && (
           <Field

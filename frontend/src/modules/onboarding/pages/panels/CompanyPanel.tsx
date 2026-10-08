@@ -42,6 +42,7 @@ import {
   duplicatePanHolder,
   RelationshipManagerField,
 } from '../../components';
+import { countryLabel, countrySelectOptions } from '../../countries';
 import { useExporterProfileDetail, useUpdateExporterProfile } from '../../hooks';
 import { paths } from '../../paths';
 import type { ExporterProfileDetail, UpdateExporterProfileRequest } from '../../types';
@@ -221,7 +222,17 @@ export function CompanyPanel({
         <div className="mt-2 grid gap-x-10 lg:grid-cols-2">
           <dl>
             <Fact label="Company name">{editable('name', 'Company name', profile.name)}</Fact>
-            <Fact label="Country">{editable('country', 'Country', profile.country)}</Fact>
+            <Fact label="Country">
+              <Editable
+                label="Country"
+                kind="select"
+                options={countrySelectOptions(profile.country)}
+                value={profile.country}
+                display={profile.country ? countryLabel(profile.country) : undefined}
+                onSave={save('country')}
+                readOnly={!canEdit}
+              />
+            </Fact>
             <Fact label="PAN">
               {editable('pan', 'PAN', profile.pan, <Identifier kind="PAN" value={profile.pan} />)}
               {panHolder && (

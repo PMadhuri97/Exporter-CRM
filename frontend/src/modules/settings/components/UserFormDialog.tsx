@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { SidePanel, sidePanelFieldError, Field, Input, Select } from '@/components';
+import { SidePanel, sidePanelFieldError, Field, Input, Select, RequiredNote } from '@/components';
 import { roleLabel, useCurrentUser } from '@/platform/auth';
 
 import { useCreateUser, useRoles, useUpdateUser } from '../hooks';
@@ -103,9 +103,11 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
       submitDisabled={!canSubmit}
       onSubmit={() => void handleSubmit()}
     >
+      {!isEdit && <RequiredNote />}
       <Field
         label="Email"
         htmlFor="user-email"
+        required={!isEdit}
         error={sidePanelFieldError(error, 'email')}
         hint={
           isEdit

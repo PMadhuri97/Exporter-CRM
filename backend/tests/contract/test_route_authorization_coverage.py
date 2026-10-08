@@ -203,6 +203,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("POST", f"{CRM}/rxil/company-intake"): ADMIN_ONLY,
     ("GET", f"{CRM}/imports/companies/template"): STAFF,
     ("POST", f"{CRM}/imports/companies"): STAFF,
+    ("POST", f"{CRM}/imports/companies/preview"): STAFF,
     ("POST", f"{CRM}/exporters/{{customer_id}}/contacts"): STAFF,
     ("PATCH", f"{CRM}/exporters/{{customer_id}}/contacts/{{contact_id}}"): STAFF,
     ("GET", f"{CRM}/exporters/{{customer_id}}/contacts"): READERS,

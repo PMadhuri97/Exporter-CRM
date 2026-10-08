@@ -155,7 +155,7 @@ export function GstRegistrationsSection({
             />
           </label>
           <label className="flex flex-col gap-1 text-body">
-            <span className="font-medium text-ink">Registered address (optional)</span>
+            <span className="font-medium text-ink">Registered address</span>
             <Input value={address} onChange={(event) => setAddress(event.target.value)} />
           </label>
           <p className="text-caption text-ink-3">

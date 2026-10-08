@@ -74,6 +74,8 @@ import { ConversationPanel } from './panels/ConversationPanel';
 import { CompanyDealsTab } from './panels/CompanyDealsTab';
 import { DocumentsPanel } from './panels/DocumentsPanel';
 import { QualificationPanel } from './panels/QualificationPanel';
+import { COMMUNICATION_HINT } from '../constants';
+import { countryLabel } from '../countries';
 
 // The Background check tab is its own chunk: a role without the tab never loads it.
 const BackgroundCheckPanel = lazy(() =>
@@ -231,7 +233,8 @@ export function ExporterDetailPage() {
     fields.push({ label: 'Qualification', value: <QualificationBadge state={profile.qualification} /> });
     if (gauge) {
       fields.push({
-        label: 'Conversation',
+        label: 'Communication',
+        hint: COMMUNICATION_HINT,
         value: <ConversationBadge value={gauge.conversation} checkBackOn={gauge.check_back_on} />,
       });
     }
@@ -260,7 +263,7 @@ export function ExporterDetailPage() {
 
   const facts = [
     profile.industry,
-    profile.country,
+    profile.country ? countryLabel(profile.country) : null,
     profile.year_established ? `since ${profile.year_established}` : null,
     profile.relationship_manager_name ? `RM ${profile.relationship_manager_name}` : null,
   ].filter(Boolean);

@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/lib/api/errors';
+import { chooseCountry } from '@/test/country';
 
 import { createExporterLead } from '../api';
 
@@ -40,12 +41,12 @@ describe('New company — the company identity', () => {
     expect(screen.getByLabelText(/country/i)).toBeInTheDocument();
   });
 
-  it('sends the name and the upper-cased country, and nothing about the creator', async () => {
+  it('sends the name and the chosen country code, and nothing about the creator', async () => {
     renderPage();
     fireEvent.change(screen.getByLabelText(/company name/i), {
       target: { value: 'Acme Exports Pvt Ltd' },
     });
-    fireEvent.change(screen.getByLabelText(/country/i), { target: { value: 'in' } });
+    await chooseCountry('IN');
     fireEvent.submit(screen.getByLabelText(/company name/i).closest('form')!);
 
     await waitFor(() => expect(createExporterLead).toHaveBeenCalledTimes(1));
@@ -64,7 +65,7 @@ describe('New company — the company identity', () => {
     fireEvent.change(screen.getByLabelText(/an identifier/i), { target: { value: '27aaapl1234c1zv' } });
     expect(screen.getByTestId('entry-kind')).toHaveTextContent('GSTIN');
     fireEvent.change(screen.getByLabelText(/company name/i), { target: { value: 'Lakshmi Polymers' } });
-    fireEvent.change(screen.getByLabelText(/country/i), { target: { value: 'IN' } });
+    await chooseCountry('IN');
     fireEvent.submit(screen.getByLabelText(/company name/i).closest('form')!);
     await waitFor(() => expect(createExporterLead).toHaveBeenCalledTimes(1));
     expect(vi.mocked(createExporterLead).mock.calls[0]?.[0]).toMatchObject({
@@ -77,7 +78,7 @@ describe('New company — the company identity', () => {
   it('asks a company outside India for its registration number, unless it holds a PAN', async () => {
     renderPage();
     fireEvent.change(screen.getByLabelText(/company name/i), { target: { value: 'Hanse Metall GmbH' } });
-    fireEvent.change(screen.getByLabelText(/country/i), { target: { value: 'DE' } });
+    await chooseCountry('DE');
     expect(await screen.findByLabelText(/registration number/i)).toBeInTheDocument();
     fireEvent.submit(screen.getByLabelText(/company name/i).closest('form')!);
     expect(await screen.findByText('Required for a company outside India')).toBeInTheDocument();
@@ -97,7 +98,7 @@ describe('New company — the company identity', () => {
     );
     renderPage();
     fireEvent.change(screen.getByLabelText(/company name/i), { target: { value: 'Acme' } });
-    fireEvent.change(screen.getByLabelText(/country/i), { target: { value: 'IN' } });
+    await chooseCountry('IN');
     fireEvent.submit(screen.getByLabelText(/company name/i).closest('form')!);
 
     const alert = await screen.findByRole('alert');

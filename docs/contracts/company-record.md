@@ -354,9 +354,23 @@ manual creation (`check_identity`):
 | shares nothing | **new** |
 
 IEC is now checked too (10 letters or digits), by the same normaliser for
-manual creation, editing and import. A CSV row is `accepted` (`created` as a
+manual creation, editing and import. An imported row is `accepted` (`created` as a
 `LEAD` or `matched`), `rejected` or `possible_duplicate`; RXIL refuses a
 conflict or possible duplicate with 409. Neither ever makes a `CUSTOMER`.
+
+**Import files.** `POST /onboarding/imports/companies` takes a CSV (UTF-8) or an Excel
+workbook (`.xlsx`, read from its *Companies* sheet, or its only sheet). An old `.xls`
+is refused with a 422 that says to save it as `.xlsx` or `.csv`.
+`GET /onboarding/imports/companies/template?format=xlsx` is the Excel template: an
+*Instructions* sheet (every column: whether a value is needed, what to enter, an
+example, the allowed values), a *Companies* sheet with dropdowns for country and
+source, and identifier columns stored as text; `format=csv` (the default) is the
+header row as before. In a row, `country` may be the ISO code or the country's name,
+and `source` the code or its label ("Existing customer"); both become the code before
+any rule runs. `POST /onboarding/imports/companies/preview` reads a file exactly as
+the import would and returns its columns, first rows, row count and header problems
+(`missing_columns`, `unknown_columns`, `duplicate_columns`, `ready`), saving nothing;
+a file it cannot read at all is the same 422 the import gives.
 
 ---
 

@@ -14,7 +14,7 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import { Button, Field, FormError, Select, Textarea } from '@/components';
+import { Button, Field, FormError, Select, Textarea, RequiredNote } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 
 import { JOURNEY_LABEL } from '../constants';
@@ -82,6 +82,7 @@ export function BulkReassignPanel({
       className="space-y-3 border-b border-line bg-sunken px-4 py-3"
     >
       <h3 className="text-body font-semibold text-ink">Reassign companies</h3>
+      <RequiredNote />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="From" htmlFor="bulk-from" required>
           <Select

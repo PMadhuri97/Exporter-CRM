@@ -157,6 +157,15 @@ current result of `PASS` recorded against its **current** version; otherwise it
 suggests `NOT_QUALIFIED`. A result against an older version counts as not yet
 checked for the suggestion and is shown as such.
 
+When **no** active criterion is required, the server suggests `QUALIFIED` when at
+least one active criterion has a current `PASS` and none has a current `FAIL`;
+otherwise `NOT_QUALIFIED`. (Before this rule, a company with only optional criteria
+was always suggested `NOT_QUALIFIED`, whatever it passed.)
+
+The qualification read carries `suggestion_reason` beside `suggested_outcome`: a few
+words for the screen, such as "3 of 7 criteria passed, none failed", "Required
+criteria not yet passed: Annual revenue" or "Failed: Industry we finance".
+
 The person may record either outcome regardless of the suggestion. Recording
 the opposite of the suggestion is allowed and is visible afterwards, because
 the suggestion is stored with the outcome.

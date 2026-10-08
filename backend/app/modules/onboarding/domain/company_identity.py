@@ -110,12 +110,12 @@ def normalise_registration_number(value: str | None) -> str | None:
         return None
     if len(cleaned) > REGISTRATION_NUMBER_MAX:
         raise ValidationError(
-            f"registration_number must be at most {REGISTRATION_NUMBER_MAX} characters"
+            f"Registration number must be at most {REGISTRATION_NUMBER_MAX} characters"
         )
     if not registration_key(cleaned):
         # Nothing the index compares: every such number would collide on the empty key.
         raise ValidationError(
-            "registration_number must contain letters or digits (A-Z, 0-9): those are "
+            "Registration number must contain letters or digits (A-Z, 0-9): those are "
             "what identify it"
         )
     return cleaned
@@ -203,7 +203,7 @@ def require_foreign_registration_number(
     if is_pan_country(country) or not (country or "").strip():
         return
     raise ValidationError(
-        "registration_number is required for a company outside India: "
+        "Registration number is required for a company outside India: "
         "a foreign company is identified by the number its own registrar issued"
     )
 

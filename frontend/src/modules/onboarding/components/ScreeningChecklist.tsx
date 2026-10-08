@@ -415,7 +415,7 @@ function ChecklistCard({
       <textarea
         aria-label={`${item.label} comment`}
         className="mt-2 min-h-16 w-full resize-y rounded-md border border-line bg-surface px-2 py-1.5 text-caption text-ink outline-none focus:border-accent disabled:opacity-60"
-        placeholder={canRecord ? 'Add review comment (optional)' : undefined}
+        placeholder={canRecord ? 'Add a review comment' : undefined}
         value={comment}
         disabled={disabled}
         onChange={(event) => setComment(event.target.value)}
@@ -428,7 +428,7 @@ function ChecklistCard({
           disabled={disabled}
           onClick={() => setAttaching(true)}
         >
-          Attach evidence (optional)
+          Attach evidence
         </button>
       )}
       {canRecord && attaching && (

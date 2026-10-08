@@ -1104,10 +1104,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The CSV template for bulk company import */
+        /**
+         * The template for bulk company import, as CSV or Excel
+         * @description `format=csv` (the default) is the template's header row. `format=xlsx` is a workbook with an Instructions sheet (every column: whether a value is needed, what to enter, an example and the allowed values) and a Companies sheet with dropdowns for country and source.
+         */
         get: operations["get_company_import_template_api_v1_onboarding_imports_companies_template_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/imports/companies/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read an import file without importing it
+         * @description Reads the file exactly as the import would — CSV or Excel, the same header rules — and returns its columns, its first rows, its row count and what is wrong with its header. Nothing is checked row by row and nothing is saved.
+         */
+        post: operations["preview_company_import_api_v1_onboarding_imports_companies_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1124,7 +1147,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Import companies from a CSV file
+         * Import companies from a CSV or Excel file
          * @description Every row is checked and matched by the same rules as creating a company by hand, and reported as accepted (created as a LEAD, or matched to the company its PAN belongs to), rejected, or possible_duplicate — each with codes and messages. Each created row is saved on its own: a row that fails cannot undo or damage another.
          */
         post: operations["import_companies_api_v1_onboarding_imports_companies_post"];
@@ -3145,7 +3168,15 @@ export interface components {
         Body_import_companies_api_v1_onboarding_imports_companies_post: {
             /**
              * File
-             * @description A CSV file in the template's shape
+             * @description A CSV (UTF-8) or Excel (.xlsx) file in the template's shape
+             */
+            file: string;
+        };
+        /** Body_preview_company_import_api_v1_onboarding_imports_companies_preview_post */
+        Body_preview_company_import_api_v1_onboarding_imports_companies_preview_post: {
+            /**
+             * File
+             * @description A CSV (UTF-8) or Excel (.xlsx) file in the template's shape
              */
             file: string;
         };
@@ -5575,6 +5606,35 @@ export interface components {
          * @enum {string}
          */
         IdentityGap: "REGISTRATION_NUMBER" | "PAN" | "COUNTRY";
+        /**
+         * ImportPreviewResponse
+         * @description A file as the import would read it, before any row is judged or saved.
+         */
+        ImportPreviewResponse: {
+            /** Columns */
+            columns: string[];
+            /** Rows */
+            rows: components["schemas"]["ImportPreviewRowResponse"][];
+            /** Total Rows */
+            total_rows: number;
+            /** Missing Columns */
+            missing_columns: string[];
+            /** Unknown Columns */
+            unknown_columns: string[];
+            /** Duplicate Columns */
+            duplicate_columns: string[];
+            /** Max Rows */
+            max_rows: number;
+            /** Ready */
+            ready: boolean;
+        };
+        /** ImportPreviewRowResponse */
+        ImportPreviewRowResponse: {
+            /** Line */
+            line: number;
+            /** Cells */
+            cells: string[];
+        };
         /** ImportReportResponse */
         ImportReportResponse: {
             /** Total Rows */
@@ -5951,6 +6011,11 @@ export interface components {
             state: components["schemas"]["QualificationState"];
             journey: components["schemas"]["ExporterJourney"];
             suggested_outcome: components["schemas"]["QualificationOutcomeValue"];
+            /**
+             * Suggestion Reason
+             * @default
+             */
+            suggestion_reason: string;
             /** Standings */
             standings: components["schemas"]["CriterionStandingResponse"][];
             /** Results */
@@ -10747,21 +10812,23 @@ export interface operations {
     };
     get_company_import_template_api_v1_onboarding_imports_companies_template_get: {
         parameters: {
-            query?: never;
+            query?: {
+                format?: "csv" | "xlsx";
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description The template's header row */
+            /** @description The template file */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/plain": string;
                     "text/csv": unknown;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
                 };
             };
             /** @description Unauthorized */
@@ -10773,6 +10840,60 @@ export interface operations {
             };
             /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_company_import_api_v1_onboarding_imports_companies_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_preview_company_import_api_v1_onboarding_imports_companies_preview_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreviewResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The file cannot be read at all, or is too large */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10816,7 +10937,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Not a CSV in the template's shape, or too large */
+            /** @description Not a CSV or Excel file in the template's shape, or too large */
             422: {
                 headers: {
                     [name: string]: unknown;

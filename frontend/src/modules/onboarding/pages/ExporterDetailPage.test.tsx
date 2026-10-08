@@ -107,6 +107,7 @@ const QUALIFICATION: Qualification = {
   state: 'NOT_YET_REVIEWED',
   journey: 'LEAD',
   suggested_outcome: 'QUALIFIED',
+  suggestion_reason: 'All 2 required criteria passed',
   standings: [
     {
       criterion: {
@@ -459,7 +460,9 @@ describe('ExporterDetailPage — screening review', () => {
     mockUser('DEVELOPER', 'someone-else');
     renderPage('qualification');
     expect(await screen.findByText('Annual exports')).toBeInTheDocument();
-    expect(screen.getByTestId('qualification-suggestion')).toHaveTextContent('Suggested: Qualified');
+    expect(screen.getByTestId('qualification-suggestion')).toHaveTextContent(
+      'Suggested: Qualified(All 2 required criteria passed)',
+    );
     expect(screen.queryByRole('form', { name: 'Record results' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Record:/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));

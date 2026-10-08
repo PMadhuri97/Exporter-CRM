@@ -36,6 +36,7 @@ import type { DealSide, TradeRelationship } from '../types';
 
 import { RecordPastTradeForm } from './RecordPastTradeForm';
 import { TradeInvoiceList } from './TradeInvoiceList';
+import { countryLabel } from '../countries';
 
 export interface CompanyTradePanelProps {
   /** `exporter_profile.customer_id`. */
@@ -90,7 +91,7 @@ function Row({
             )}
           </p>
           <p className="mt-0.5 text-caption text-ink-2">
-            {`${other.country ?? 'Country not recorded'} · ${
+            {`${other.country ? countryLabel(other.country) : 'Country not recorded'} · ${
               count === 0
                 ? 'No invoices recorded'
                 : `${count} invoice${count === 1 ? '' : 's'}`

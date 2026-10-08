@@ -120,11 +120,12 @@ may not use shows the same **"Page not found"** as an address that does not exis
 As **OPERATIONS** (`rm@aner.com`) unless noted.
 
 1. **Add a lead.** **+ New** → **New company** (a side panel). Type a PAN under
-   *Start with an identifier*, then *Company name* and *Country* (`IN`) → **Create
+   *Start with an identifier*, then *Company name* and *Country* (pick **India**) → **Create
    lead**. It starts as a `LEAD`. On *Details* → *GST registrations*, **Add registration** with a GSTIN
    carrying the same PAN (`27` + PAN + `1Z5` is Maharashtra) → **Add**; the state comes
    from the GSTIN. Adding a second company with the same PAN is refused; the same
-   GSTIN only warns. *(Also available: CSV import, and RXIL intake as ADMIN — an RXIL
+   GSTIN only warns. *(Also available: bulk import from the Excel template or a CSV,
+   and RXIL intake as ADMIN — an RXIL
    company arrives already qualified.)*
 2. **No deal yet.** A lead has no **Open a deal**: the server refuses a deal to a
    company that has not been qualified.
@@ -154,8 +155,8 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    with **Select**.
 
    For a buyer that is **genuinely new**, the answer is "No company on file matches"
-   and the picker offers **Create buyer company**. Set *Country (ISO code)* to the
-   buyer's country (for example `DE`): a foreign buyer needs its **Registration
+   and the picker offers **Create buyer company**. Pick the buyer's *Country* (for
+   example **Germany**): a foreign buyer needs its **Registration
    number**, and the button stays unavailable until it is filled (IQ-7); an Indian
    buyer is asked for a PAN or GSTIN instead. **Create buyer company** creates the
    company and names it as this deal's buyer **in one step**, and records the **trade

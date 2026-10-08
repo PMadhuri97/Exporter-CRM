@@ -356,6 +356,9 @@ export function QualificationPanel({ customerId }: { customerId: string }) {
               <span data-testid="qualification-suggestion" className="inline-flex items-center gap-1">
                 <Icon.hint size={14} className="text-attention" />
                 Suggested: {QUALIFICATION_LABEL[data.suggested_outcome]}
+                {data.suggestion_reason && (
+                  <span className="text-secondary text-ink-3">({data.suggestion_reason})</span>
+                )}
               </span>
             )}
           </div>

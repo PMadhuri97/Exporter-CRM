@@ -19,6 +19,7 @@ import type { ExporterJourney, ExporterMarker, QualificationState } from '../../
 import { CompanyComplianceSummary } from '../CompanyComplianceSummary';
 
 import { CompanyBadges } from './CompanyBadges';
+import { countryLabel } from '../../countries';
 
 export function PartyCard({
   role,
@@ -63,7 +64,7 @@ export function PartyCard({
           >
             {name}
           </Link>
-          {country && <span className="text-secondary text-ink-3">{country}</span>}
+          {country && <span className="text-secondary text-ink-3">{countryLabel(country)}</span>}
         </p>
       </header>
       <CompanyBadges

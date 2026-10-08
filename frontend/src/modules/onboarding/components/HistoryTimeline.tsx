@@ -36,6 +36,7 @@ import { Icon, type IconComponent } from '@/design/icons';
 import { cn } from '@/lib/cn';
 import { humanize } from '@/lib/format';
 
+import { COMMUNICATION_HINT } from '../constants';
 import { useCompanyHistory, useDealHistory, useQualification, useScreeningReview } from '../hooks';
 import type { HistoryDimension, HistoryEntry, HistoryList } from '../types';
 
@@ -45,10 +46,10 @@ import { verificationTypeLabel } from './verification-labels';
 
 const PAGE_SIZE = 25;
 
-const DIMENSION_LOOK: Record<string, { label: string; icon: IconComponent }> = {
+const DIMENSION_LOOK: Record<string, { label: string; icon: IconComponent; hint?: string }> = {
   journey: { label: 'Journey', icon: Icon.journey },
   qualification: { label: 'Qualification', icon: Icon.qualification },
-  conversation: { label: 'Conversation', icon: Icon.conversation },
+  conversation: { label: 'Communication', icon: Icon.conversation, hint: COMMUNICATION_HINT },
   background_check: { label: 'Background check', icon: Icon.backgroundCheck },
   deal: { label: 'Deal', icon: Icon.deal },
   marker: { label: 'Relationship', icon: Icon.marker },
@@ -527,6 +528,7 @@ export function CompanyHistory({ customerId }: { customerId: string }) {
               key={value ?? 'all'}
               type="button"
               aria-pressed={active}
+              title={value ? DIMENSION_LOOK[value]?.hint : undefined}
               onClick={() => choose(value)}
               className={cn(
                 'rounded-md border px-2.5 py-1 text-secondary font-medium transition-colors duration-quick',

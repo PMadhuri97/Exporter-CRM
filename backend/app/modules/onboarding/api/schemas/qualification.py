@@ -278,6 +278,8 @@ class QualificationResponse(BaseModel):
     journey: ExporterJourney
     #: The server's suggestion from the current results. Never the decision.
     suggested_outcome: QualificationOutcomeValue
+    #: Why the server suggests what it does ("3 of 7 criteria passed, none failed").
+    suggestion_reason: str = ""
     standings: list[CriterionStandingResponse]
     results: list[ResultResponse]
     outcomes: list[OutcomeResponse]
@@ -294,6 +296,7 @@ class QualificationResponse(BaseModel):
             state=view.state,
             journey=view.journey,
             suggested_outcome=view.suggested_outcome,
+            suggestion_reason=view.suggestion_reason,
             standings=[
                 CriterionStandingResponse(
                     criterion=CriterionResponse.of(s.criterion),

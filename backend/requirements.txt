@@ -58,6 +58,8 @@ python-dotenv==1.2.2
 protobuf==5.29.6
 PyYAML==6.0.2
 apscheduler==3.10.4
+# The Excel template and .xlsx upload for bulk company import.
+openpyxl==3.1.5
 
 # ── AWS S3 Storage ───────────────────────────────────────────────────────────
 boto3>=1.35.0

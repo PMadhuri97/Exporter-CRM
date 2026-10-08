@@ -155,7 +155,7 @@ async def test_removing_the_pan_of_an_indian_company_leaves_it_unidentified():
 
 async def test_moving_a_company_abroad_needs_a_registration_number():
     company_id = await _company("IN")
-    with pytest.raises(ValidationError, match="registration_number is required"):
+    with pytest.raises(ValidationError, match="Registration number is required"):
         await _edit(company_id, country="NL")
     assert (await _profile(company_id)).country == "IN"
 
@@ -181,7 +181,7 @@ async def test_bringing_a_foreign_company_home_keeps_what_identifies_it():
 async def test_clearing_a_foreign_companys_registration_number_is_refused():
     registration = _registration()
     company_id = await _company("NL", registration_number=registration)
-    with pytest.raises(ValidationError, match="registration_number is required"):
+    with pytest.raises(ValidationError, match="Registration number is required"):
         await _edit(company_id, registration_number=None)
     stored = await _profile(company_id)
     assert stored.registration_number == registration

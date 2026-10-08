@@ -73,7 +73,7 @@ function openEdit() {
   fireEvent.click(screen.getByRole('button', { name: 'Edit Jane Doe' }));
 }
 
-function change(label: string, value: string) {
+function change(label: string | RegExp, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
@@ -179,7 +179,7 @@ describe('Editing a contact', () => {
     renderCards(JANE);
     openEdit();
 
-    change('Name *', '   ');
+    change(/^Name/, '   ');
 
     expect(screen.getByRole('button', { name: 'Save contact' })).toBeDisabled();
   });

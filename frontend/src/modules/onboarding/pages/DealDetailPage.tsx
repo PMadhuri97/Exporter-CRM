@@ -26,12 +26,13 @@ import {
   FormPanel,
   Input,
   Panel,
+  type RecordAction,
+  type RecordField,
   RecordHeader,
+  RequiredNote,
   SidePanel,
   Skeleton,
   Textarea,
-  type RecordAction,
-  type RecordField,
 } from '@/components';
 import { Icon } from '@/design/icons';
 import { formatDateTime, humanize } from '@/lib/format';
@@ -40,6 +41,7 @@ import { useCan } from '@/platform/access';
 import {
   BuyerChecks,
   CompanyPicker,
+  CountrySelect,
   DealHistory,
   DealStageChip,
   InvoicingBranchPicker,
@@ -59,6 +61,7 @@ import {
   useTransitionDealStage,
   useUploadDealDocument,
 } from '../hooks';
+import { countryLabel } from '../countries';
 import { paths } from '../paths';
 import type { DealStage, SetDealBuyerRequest } from '../types';
 
@@ -114,6 +117,10 @@ function BuyerForm({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!form.country.trim()) {
+      toast.error("Choose the buyer's country");
+      return;
+    }
     const request: SetDealBuyerRequest = {
       ...form,
       name: form.name.trim(),
@@ -147,9 +154,16 @@ function BuyerForm({
   return (
     <FormPanel title={initial ? 'Edit buyer' : 'Add buyer'} onClose={onClose}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <RequiredNote />
         <div className="grid gap-3 sm:grid-cols-2">
           {field('name', 'Buyer name', true)}
-          {field('country', 'Country (ISO code)', true)}
+          <Field label="Country" htmlFor="buyer-country" required>
+            <CountrySelect
+              id="buyer-country"
+              value={form.country}
+              onChange={(code) => setForm({ ...form, country: code })}
+            />
+          </Field>
           {field('registration_number', 'Registration number')}
           {field('tax_id', 'Tax identifier')}
           {field('contact_email', 'Contact email')}
@@ -204,7 +218,7 @@ function HandoverSnapshot({ snapshot }: { snapshot: Record<string, unknown> }) {
       {buyer ? (
         <dl className="grid gap-x-8 sm:grid-cols-2">
           <DetailRow label="Buyer">{buyer.name ?? '—'}</DetailRow>
-          <DetailRow label="Country">{buyer.country ?? '—'}</DetailRow>
+          <DetailRow label="Country">{buyer.country ? countryLabel(buyer.country) : '—'}</DetailRow>
           <DetailRow label="Registration number">{buyer.registration_number ?? '—'}</DetailRow>
           <DetailRow label="Tax identifier">{buyer.tax_id ?? '—'}</DetailRow>
           <DetailRow label="Contact email">{buyer.contact_email ?? '—'}</DetailRow>
@@ -471,7 +485,7 @@ export function DealDetailPage() {
                   {deal.buyer ? (
                     <dl>
                       <DetailRow label="Name">{deal.buyer.name}</DetailRow>
-                      <DetailRow label="Country">{deal.buyer.country}</DetailRow>
+                      <DetailRow label="Country">{countryLabel(deal.buyer.country)}</DetailRow>
                       <DetailRow label="Registration number">{deal.buyer.registration_number ?? '—'}</DetailRow>
                       <DetailRow label="Tax identifier">{deal.buyer.tax_id ?? '—'}</DetailRow>
                       <DetailRow label="Contact email">{deal.buyer.contact_email ?? '—'}</DetailRow>
@@ -629,7 +643,6 @@ export function DealDetailPage() {
                 isStaff && !isClosed
                   ? {
                       owner: 'DEAL',
-                      isUploading: upload.isPending,
                       onUpload: (input) => upload.mutateAsync(input),
                     }
                   : undefined

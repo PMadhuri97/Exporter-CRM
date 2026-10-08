@@ -265,6 +265,26 @@ describe('SettingsPage — sections follow permissions, not role names', () => {
     const theirs = await screen.findByRole('navigation', { name: 'Settings sections' });
     expect(within(theirs).queryByRole('link', { name: 'Qualification criteria' })).not.toBeInTheDocument();
     expect(within(theirs).queryByRole('link', { name: 'Required documents' })).not.toBeInTheDocument();
+    expect(within(theirs).queryByRole('group', { name: 'System configuration' })).not.toBeInTheDocument();
+  });
+
+  it('keeps access apart from system configuration', async () => {
+    signedInWith([...ALL_USER_PERMISSIONS, ...ALL_ROLE_PERMISSIONS]);
+    renderPage();
+    const sections = await screen.findByRole('navigation', { name: 'Settings sections' });
+    await within(sections).findByRole('link', { name: 'Roles' });
+    const access = within(sections).getByRole('group', { name: 'Access' });
+    const system = within(sections).getByRole('group', { name: 'System configuration' });
+    expect(within(access).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'My profile',
+      'Users',
+      'Roles',
+    ]);
+    expect(within(system).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Qualification criteria',
+      'Required documents',
+    ]);
+    expect(within(sections).getByRole('separator')).toBeInTheDocument();
   });
 });
 

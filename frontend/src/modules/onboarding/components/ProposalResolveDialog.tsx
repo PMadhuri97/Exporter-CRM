@@ -14,6 +14,7 @@
 
 import { useState } from 'react';
 
+import { RequiredMark } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 import { formatDateTime } from '@/lib/format';
 
@@ -117,10 +118,12 @@ export function ProposalResolveDialog({
       {action !== 'APPROVE' && (
         <label className="mt-3 block text-body">
           <span className="text-caption font-medium text-ink-2">
-            {reasonRequired ? 'Reason (required)' : 'Reason (optional)'}
+            Reason
+            {reasonRequired && <RequiredMark />}
           </span>
           <textarea
             aria-label="Reason"
+            aria-required={reasonRequired || undefined}
             rows={3}
             className="mt-1 w-full rounded border border-line-strong p-2 text-body"
             value={reason}
