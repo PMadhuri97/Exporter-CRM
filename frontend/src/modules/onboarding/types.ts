@@ -47,6 +47,9 @@ export type IntakeResult = Schemas['IntakeResponse'];
 export type ImportReport = Schemas['ImportReportResponse'];
 export type ImportRow = Schemas['ImportRowResponse'];
 
+/** Which side of a trade a company has been on. A filter, not a stored column. */
+export type CompanyTradeRole = Schemas['CompanyTradeRole'];
+export type CompanyPipelineStatus = Schemas['CompanyPipelineStatus'];
 // ── Who is working on it ──
 export type AssignRelationshipManagerRequest = Schemas['AssignRelationshipManagerRequest'];
 export type RelationshipManagerAction = NonNullable<
@@ -72,6 +75,13 @@ export interface ExporterSearchParams {
   journey?: ExporterJourney;
   qualification?: QualificationState;
   marker?: ExporterMarker;
+  pipeline_status?: CompanyPipelineStatus;
+  country?: string;
+  industry?: string;
+  background_check?: BackgroundCheckState;
+  trade_role?: CompanyTradeRole;
+  /** `false` is a filter of its own — companies with no live deal. */
+  has_open_deals?: boolean;
   relationship_manager?: RelationshipManagerFilter;
   limit?: number;
   offset?: number;
@@ -250,6 +260,11 @@ export interface AllDealsParams {
   q?: string;
   /** That company as seller or as buyer company. */
   companyId?: string;
+  /** One side each. Both together are the deals between that pair, which
+   * `companyId` cannot express: it matches either side, so giving it the same
+   * company twice asks nothing new. */
+  sellerCompanyId?: string;
+  buyerCompanyId?: string;
   /** ISO timestamps: from inclusive, before exclusive. */
   openedFrom?: string;
   openedBefore?: string;

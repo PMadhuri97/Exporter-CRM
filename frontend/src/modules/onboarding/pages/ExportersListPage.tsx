@@ -11,18 +11,20 @@
  * counts link straight into one.
  *
  * **Whose companies.** `?owner=me` is *My companies*, reached from its own row in the
- * side navigation (the page is titled so). The owner filter narrows to *Unassigned*
- * (with the journey lens, *Unassigned prospects*) or companies whose RM has been
- * deactivated. Both are filters only: every reader sees every company. ADMIN and
- * holders of `exporters:assign_rm` get **Reassign companies**.
+ * side navigation (the page is titled so). `?owner=none` and `?owner=inactive` narrow
+ * to unassigned companies and to those whose RM has been deactivated; both still work,
+ * but the bar no longer offers them as a dropdown, so they are URL lenses now. Every one
+ * of them is a filter only: every reader sees every company. ADMIN and holders of
+ * `exporters:assign_rm` get **Reassign companies**.
  *
  * The list route has no total: journey counts are capped ("200+"), and the
  * footer says how many are shown rather than guessing how many exist. Hovering or
  * focusing a row loads its record ahead of the click.
  */
 
-import { useState } from 'react';
+import { useCallback, useState, type SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import {
   Button,
@@ -41,6 +43,12 @@ import { Icon } from '@/design/icons';
 import { useCan, useHasPermission } from '@/platform/access';
 
 import { BulkReassignPanel, CompanyBadges } from '../components';
+import { CompanyFilterPanel } from '../components/CompanyFilterPanel';
+import { describeFilters, type CompanyFilters } from '../companyFilters';
+import { saveObjectUrl } from '../components/useOpenDocument';
+import { searchExporterProfiles } from '../api';
+import { ExportColumnsPanel } from '../components/ExportColumnsPanel';
+import { companiesToCsv, csvBlob, csvFileName, gatherForExport } from '../exportCompanies';
 import { JOURNEY_LABEL, JOURNEY_STAGES, MARKER_LABEL, QUALIFICATION_LABEL } from '../constants';
 import { COUNT_CAP, useExporterProfiles, useJourneyCount, usePrefetchCompany } from '../hooks';
 import { preloadExporterDetailPage } from '../lazyPages';
@@ -57,13 +65,15 @@ type Lens = 'ALL' | ExporterJourney;
 const LENSES: readonly Lens[] = ['ALL', ...JOURNEY_STAGES];
 const QUALIFICATIONS: readonly string[] = ['ANY', ...Object.keys(QUALIFICATION_LABEL)];
 const RELATIONSHIPS: readonly string[] = ['ANY', ...Object.keys(MARKER_LABEL)];
-/** The owner filter's choices. *My companies* (`me`) is not one: it has its own row
- * in the side navigation. */
-const OWNER_LABEL = {
-  none: 'Unassigned',
-  inactive: 'RM deactivated',
-} as const;
-type Owner = 'ANY' | 'me' | keyof typeof OWNER_LABEL;
+/**
+ * Who a company belongs to, as a URL lens rather than a control.
+ *
+ * `me` is *My companies*, which has its own row in the side navigation — the page is
+ * titled for it. `none` (unassigned) and `inactive` (the RM's account is deactivated)
+ * still filter when asked for in the URL and are still the server's own filters; the
+ * dropdown that offered them has gone from the bar, so nothing links to them today.
+ */
+type Owner = 'ANY' | 'me' | 'none' | 'inactive';
 const OWNERS: readonly Owner[] = ['ANY', 'me', 'none', 'inactive'];
 /** A page of rows; "Show more" asks for the next, up to what one request returns. */
 const PAGE_SIZE = 50;
@@ -133,13 +143,28 @@ export function ExportersListPage() {
   const canTakeInRxil = useCan('company.rxilIntake');
   const canReassign = useHasPermission('exporters:assign_rm');
   const [reassigning, setReassigning] = useState(false);
-  const [owner, setOwner] = useSearchParamState<Owner>('owner', OWNERS, 'ANY');
+  // Read-only here now: the lens comes from the URL, not from a control on the bar.
+  const [owner] = useSearchParamState<Owner>('owner', OWNERS, 'ANY');
   const [lens, setLens] = useSearchParamState<Lens>('journey', LENSES, 'ALL');
   const [qualification, setQualification] = useSearchParamState('qualification', QUALIFICATIONS, 'ANY');
   const [relationship, setRelationship] = useSearchParamState('relationship', RELATIONSHIPS, 'ANY');
   const [pages, setPages] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [name, setName] = useState('');
+  // The panel's filters, applied only when it says so. Held here rather than in the
+  // URL: two of them are free text, which `useSearchParamState` cannot express — a
+  // shareable filtered link is worth having and is a separate change.
+  const [filters, setFilters] = useState<CompanyFilters>({});
+  // Referentially stable, which the panel's typing timer relies on. It also resets the
+  // paging: the old offset belongs to the old filter.
+  const changeFilters = useCallback((next: SetStateAction<CompanyFilters>) => {
+    setFilters(next);
+    setPages(1);
+  }, []);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  // The panel stores only filters that are actually set, so the key count is the badge.
+  const filterCount = Object.keys(filters).length;
   const prefetch = usePrefetchCompany();
   // The company record, ready to draw: its code and the company's data.
   const prepare = (customerId: string) =>
@@ -148,20 +173,37 @@ export function ExportersListPage() {
     );
 
   const limit = Math.min(PAGE_SIZE * pages, COUNT_CAP);
-  const { data, isLoading, isError, isFetching, refetch } = useExporterProfiles({
+  // Named once: the list reads a page of this, and the export gathers all of it. Two
+  // copies would drift, and an export of different filters than the screen shows is the
+  // kind of wrong nobody notices.
+  const search = {
     name: name || undefined,
     journey: lens === 'ALL' ? undefined : lens,
     qualification: qualification === 'ANY' ? undefined : (qualification as QualificationState),
     marker: relationship === 'ANY' ? undefined : (relationship as ExporterMarker),
+    ...filters,
     relationship_manager: owner === 'ANY' ? undefined : (owner as RelationshipManagerFilter),
+  };
+  const { data, isLoading, isError, isFetching, refetch } = useExporterProfiles({
+    ...search,
     limit,
   });
   const profiles = data?.profiles ?? [];
+  // What the filters match, not what this page holds: a page of 50 said "50" for a
+  // filter matching 185.
+  const matching = data?.total ?? profiles.length;
   const filtering = Boolean(
-    name || qualification !== 'ANY' || relationship !== 'ANY' || lens !== 'ALL' || owner !== 'ANY',
+    name ||
+      qualification !== 'ANY' ||
+      relationship !== 'ANY' ||
+      lens !== 'ALL' ||
+      owner !== 'ANY' ||
+      filterCount,
   );
+  // The panel's filters count here too: they are filters other than the owner, which is
+  // the whole distinction this second flag draws.
   const filteringOtherThanOwner = Boolean(
-    name || qualification !== 'ANY' || relationship !== 'ANY' || lens !== 'ALL',
+    name || qualification !== 'ANY' || relationship !== 'ANY' || lens !== 'ALL' || filterCount,
   );
   const mayHaveMore = profiles.length === limit && limit < COUNT_CAP;
 
@@ -262,25 +304,6 @@ export function ExportersListPage() {
                 </option>
               ))}
             </Select>
-            {/* On My companies the owner is the page itself. */}
-            {owner !== 'me' && (
-              <Select
-                aria-label="Owner"
-                className="sm:w-auto"
-                value={owner === 'ANY' ? '' : owner}
-                onChange={(event) => {
-                  setOwner((event.target.value || 'ANY') as Owner);
-                  setPages(1);
-                }}
-              >
-                <option value="">Any owner</option>
-                {(Object.keys(OWNER_LABEL) as (keyof typeof OWNER_LABEL)[]).map((value) => (
-                  <option key={value} value={value}>
-                    {OWNER_LABEL[value]}
-                  </option>
-                ))}
-              </Select>
-            )}
             <Select
               aria-label="Relationship"
               className="sm:w-auto"
@@ -290,13 +313,50 @@ export function ExportersListPage() {
                 setPages(1);
               }}
             >
-              <option value="">Any relationship (ended hidden)</option>
+              <option value="">Any relationship</option>
               {(Object.keys(MARKER_LABEL) as ExporterMarker[]).map((value) => (
                 <option key={value} value={value}>
                   {MARKER_LABEL[value]}
                 </option>
               ))}
             </Select>
+
+            {/* What is on screen, as a file. Disabled with nothing to write, and it
+                says the row count so "export" is not read as "export everything" — there
+                is no server-side export, so this is the loaded page of the filtered
+                list. */}
+            <Button
+              variant="subtle"
+              disabled={profiles.length === 0}
+              onClick={() => setExporting(true)}
+            >
+              <Icon.download size={16} aria-hidden />
+              Export
+            </Button>
+
+            {/* The rest of the filters, behind one button. The count is what tells
+                somebody the list is narrowed — without it a filtered list looks like an
+                empty one. */}
+            <Button variant="subtle" onClick={() => setFiltersOpen(true)}>
+              <Icon.filter size={16} aria-hidden />
+              Filters
+              {filterCount > 0 && (
+                <span className="ml-1 rounded-full bg-accent-tint px-1.5 text-caption font-semibold text-accent tabular-nums">
+                  {filterCount}
+                </span>
+              )}
+            </Button>
+            {filterCount > 0 && (
+              <Button
+                variant="subtle"
+                onClick={() => {
+                  setFilters({});
+                  setPages(1);
+                }}
+              >
+                Clear
+              </Button>
+            )}
           </div>
         </div>
 
@@ -362,6 +422,43 @@ export function ExportersListPage() {
           </>
         )}
       </section>
+
+      {exporting && (
+        <ExportColumnsPanel
+          appliedFilters={describeFilters(filters)}
+          onClose={() => setExporting(false)}
+          onExport={async (columnIds) => {
+            // Every row the filters match, not the page on screen: the list loads 50 at
+            // a time, and exporting those 50 is how a file of 208 companies becomes 50.
+            const { rows, capped } = await gatherForExport((pageLimit, offset) =>
+              searchExporterProfiles({ ...search, limit: pageLimit, offset }).then(
+                (result) => result.profiles,
+              ),
+            );
+            const url = URL.createObjectURL(csvBlob(companiesToCsv(rows, columnIds)));
+            saveObjectUrl(url, csvFileName());
+            // On a later tick: revoking at once cancels the save in some browsers.
+            window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+            setExporting(false);
+            if (capped) {
+              toast.warning(
+                `Exported the first ${rows.length} companies. Narrow the filters to export the rest.`,
+              );
+            }
+          }}
+        />
+      )}
+
+      {/* Mounted only while open, so every opening starts from the filters in force. */}
+      {filtersOpen && (
+        <CompanyFilterPanel
+          applied={filters}
+          shown={matching}
+          loading={isLoading || isFetching}
+          onChange={changeFilters}
+          onClose={() => setFiltersOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -71,6 +71,7 @@ beforeEach(() => {
     profiles: [company()],
     limit: 10,
     offset: 0,
+    total: 1,
   });
   vi.mocked(matchCompany).mockResolvedValue(matchResult());
 });
@@ -102,6 +103,7 @@ describe('CompanyPicker — searching by name', () => {
             profiles: [company({ customer_id: ANTWERP, name: 'Unrelated Newest Co' })],
             limit: 1,
             offset: 0,
+            total: 1,
           }),
     );
     renderPicker();
@@ -114,7 +116,7 @@ describe('CompanyPicker — searching by name', () => {
     });
     expect(screen.queryByRole('button', { name: /Unrelated Newest Co/ })).not.toBeInTheDocument();
 
-    answerSearch({ profiles: [company()], limit: 10, offset: 0 });
+    answerSearch({ profiles: [company()], limit: 10, offset: 0 , total: 1 });
     expect(await screen.findByRole('button', { name: /Rotterdam Trading BV/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Unrelated Newest Co/ })).not.toBeInTheDocument();
   });
@@ -135,6 +137,7 @@ describe('CompanyPicker — searching by name', () => {
       profiles: [company(), company({ customer_id: SELLER, name: 'Acme Exports' })],
       limit: 10,
       offset: 0,
+      total: 1,
     });
     renderPicker(vi.fn(), SELLER);
 
@@ -155,6 +158,7 @@ describe('CompanyPicker — searching by name', () => {
       profiles: [company({ pipeline_status: 'NOT_IN_PIPELINE' })],
       limit: 10,
       offset: 0,
+      total: 1,
     });
     renderPicker();
 
@@ -285,7 +289,7 @@ describe('CompanyPicker — the four answers', () => {
     // A create button that made an ordinary IN_PIPELINE lead would inflate the sales
     // pipeline — the exact failure to prevent. So without `onCreate`
     // (the deal's buyer route) there is no button at all.
-    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 });
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 , total: 0 });
     vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
     renderPicker();
 
@@ -321,7 +325,7 @@ async function searchByName(name: string) {
 
 describe('CompanyPicker — creating a buyer company', () => {
   beforeEach(() => {
-    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 });
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 10, offset: 0 , total: 0 });
   });
 
   it('looks the name up on Enter, not only when the field loses focus', async () => {

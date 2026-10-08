@@ -73,7 +73,12 @@ describe('PipelinePage — the three-column journey', () => {
     });
     vi.mocked(searchExporterProfiles).mockReset();
     vi.mocked(searchExporterProfiles).mockImplementation((params: ExporterSearchParams) =>
-      Promise.resolve({ profiles: BY_JOURNEY[params.journey!], limit: 100, offset: 0 }),
+      Promise.resolve({
+        profiles: BY_JOURNEY[params.journey!],
+        limit: 100,
+        offset: 0,
+        total: BY_JOURNEY[params.journey!]!.length,
+      }),
     );
   });
 
@@ -155,6 +160,7 @@ describe('PipelinePage — the three-column journey', () => {
             : [],
         limit: 100,
         offset: 0,
+        total: 1,
       }),
     );
     renderPage();
@@ -182,6 +188,7 @@ describe('PipelinePage — the three-column journey', () => {
             : [],
         limit: 100,
         offset: 0,
+        total: 1,
       }),
     );
     renderPage();

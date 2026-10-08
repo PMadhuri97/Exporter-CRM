@@ -8,8 +8,14 @@
  * buyer yet has no corridor; it is still listed, and *Corridor not known* finds it.
  *
  * Every filter runs on the server and lives in the URL (`?corridor=IN-NL&stage=OPEN
- * &q=&company=&from=&to=`), so a filtered list can be shared. Dates are the viewer's
- * own days: *to* includes the whole of its day.
+ * &q=&seller=&buyer=&from=&to=`), so a filtered list can be shared. Dates are the
+ * viewer's own days: *to* includes the whole of its day.
+ *
+ * **The parties are two filters, not one.** `seller=` and `buyer=` narrow each side,
+ * and together they are the deals between that pair. The route still accepts
+ * `company_id` for a company on *either* side, but no screen asks for it: one box that
+ * matched either side could not express a pair, and keeping both was three company
+ * pickers on one bar.
  *
  * *New deal* opens over the list, and `?new=1` opens it from a link — the header's
  * *+ New* menu uses that.
@@ -70,7 +76,8 @@ function useDealFilters() {
     corridor: read('corridor', CORRIDOR),
     stage: stage && (DEAL_STAGES as readonly string[]).includes(stage) ? (stage as DealStage) : null,
     q: read('q'),
-    company: read('company'),
+    seller: read('seller'),
+    buyer: read('buyer'),
     from: read('from', DAY),
     to: read('to', DAY),
   };
@@ -141,7 +148,8 @@ export function DealsPage() {
     corridors: filters.corridor ? [filters.corridor] : undefined,
     stages: filters.stage ? [filters.stage] : undefined,
     q: filters.q ?? undefined,
-    companyId: filters.company ?? undefined,
+    sellerCompanyId: filters.seller ?? undefined,
+    buyerCompanyId: filters.buyer ?? undefined,
     openedFrom: filters.from ? startOfDay(filters.from) : undefined,
     openedBefore: filters.to ? startOfDay(filters.to, 1) : undefined,
     limit: PAGE_SIZE,
@@ -186,19 +194,22 @@ export function DealsPage() {
 
       <section aria-label="Deal list" className="rounded border border-line bg-surface">
         <div className="flex flex-col gap-3 border-b border-line px-4 py-3">
-          <Segmented<StageLens>
-            label="Stage"
-            value={filters.stage ?? 'ALL'}
-            onValueChange={(value) => filter({ stage: value === 'ALL' ? null : value })}
-            options={[
-              { value: 'ALL', label: 'All' },
-              ...DEAL_STAGES.map((stage) => ({ value: stage, label: DEAL_STAGE_LABEL[stage] })),
-            ]}
-          />
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap xl:items-end">
+          {/* The stage lens and the search share a line: the search is how most visits
+              start, and it reads as the counterpart to the tabs rather than the first of
+              six filters below. They stack when there is no room for both. */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Segmented<StageLens>
+              label="Stage"
+              value={filters.stage ?? 'ALL'}
+              onValueChange={(value) => filter({ stage: value === 'ALL' ? null : value })}
+              options={[
+                { value: 'ALL', label: 'All' },
+                ...DEAL_STAGES.map((stage) => ({ value: stage, label: DEAL_STAGE_LABEL[stage] })),
+              ]}
+            />
             <form
               role="search"
-              className="relative xl:w-64"
+              className="relative w-full sm:w-72"
               onSubmit={(event) => {
                 event.preventDefault();
                 filter({ q: searchInput.trim() || null });
@@ -223,6 +234,8 @@ export function DealsPage() {
                 className="w-full pl-9"
               />
             </form>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap xl:items-end">
             <Select
               aria-label="Corridor"
               className="xl:w-auto"
@@ -240,13 +253,25 @@ export function DealsPage() {
                 {`Corridor not known yet${unknownCount ? ` (${unknownCount})` : ''}`}
               </option>
             </Select>
+            {/* Two sides, not one "either side" box. Each narrows on its own — every
+                deal this company sold, or bought — and together they are the deals
+                between those two. The server still accepts `company_id` for an
+                either-side match; no screen asks for it. */}
             <CompanySearchSelect
-              label="Company"
+              label="Seller"
               hideLabel
-              placeholder="Seller or buyer company"
-              value={filters.company}
-              onChange={(id) => filter({ company: id })}
-              className="xl:w-64"
+              placeholder="Seller company"
+              value={filters.seller}
+              onChange={(id) => filter({ seller: id })}
+              className="xl:w-56"
+            />
+            <CompanySearchSelect
+              label="Buyer"
+              hideLabel
+              placeholder="Buyer company"
+              value={filters.buyer}
+              onChange={(id) => filter({ buyer: id })}
+              className="xl:w-56"
             />
             <div className="flex items-center gap-2">
               <Input
@@ -276,7 +301,15 @@ export function DealsPage() {
                 variant="subtle"
                 onClick={() => {
                   setSearchInput('');
-                  filter({ corridor: null, stage: null, q: null, company: null, from: null, to: null });
+                  filter({
+                    corridor: null,
+                    stage: null,
+                    q: null,
+                    seller: null,
+                    buyer: null,
+                    from: null,
+                    to: null,
+                  });
                 }}
               >
                 Clear filters

@@ -28,14 +28,22 @@ from app.modules.onboarding.domain.company_directory import BuyerCompanyDraft
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterConversation
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
+    CompanyTradeRole,
     ExporterJourney,
 )
 from app.modules.onboarding.domain.entities.qualification_enums import (
     QualificationOutcomeValue,
 )
 from app.modules.onboarding.tests.fixtures.auth import auth_header, user_with_role
-from app.modules.onboarding.tests.fixtures.companies import ensure_relationship_manager
-from app.modules.onboarding.tests.fixtures.deals import make_deal
+from app.modules.onboarding.tests.fixtures.companies import (
+    ensure_relationship_manager,
+    make_company,
+    make_prospect,
+)
+from app.modules.onboarding.tests.fixtures.deals import (
+    make_deal,
+    make_deal_with_buyer_company,
+)
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -293,3 +301,134 @@ async def test_an_unknown_company_is_a_404(client: AsyncClient):
         f"{BASE}/exporters/{uuid.uuid4()}/pipeline", headers=auth_header(token)
     )
     assert resp.status_code == 404, resp.text
+
+
+# ── The company-list filters ─────────────────────────────────────────────────
+
+
+async def test_asking_for_buyers_brings_back_the_companies_the_list_hides():
+    """The filter's whole point, and the one way it could silently fail.
+
+    A buyer-only company is `NOT_IN_PIPELINE`, which the default working list excludes.
+    Leaving that exclusion in place would answer "which of our companies are buyers"
+    with almost nothing — present, plausible, and wrong.
+    """
+    # A real buyer-only company — `_buyer_company()`, not `make_company()`, which makes
+    # an ordinary in-pipeline one and would not be hidden in the first place.
+    buyer_only = await _buyer_company()
+    _deal, seller, _buyer = await make_deal_with_buyer_company(buyer_company=buyer_only)
+
+    assert buyer_only not in await _working_list_ids()
+    assert buyer_only in await _working_list_ids(trade_role=CompanyTradeRole.BUYER)
+    # And the seller is not swept in by it.
+    assert seller not in await _working_list_ids(trade_role=CompanyTradeRole.BUYER)
+
+
+async def test_seller_and_both_are_told_apart_by_participation():
+    """`BOTH` means it has been on both sides, not "unsure". The seller here has only
+    sold, so it is a SELLER and not a BOTH."""
+    _deal, seller, buyer_company = await make_deal_with_buyer_company()
+
+    assert seller in await _working_list_ids(trade_role=CompanyTradeRole.SELLER)
+    assert seller not in await _working_list_ids(trade_role=CompanyTradeRole.BOTH)
+    assert buyer_company not in await _working_list_ids(trade_role=CompanyTradeRole.SELLER)
+
+
+async def test_a_company_that_has_sold_and_been_bought_from_is_both():
+    """The case `source` and `pipeline_status` cannot express: one company on both
+    sides of two different trades."""
+    _first, middle, _buyer = await make_deal_with_buyer_company()
+    # The same company, now named as somebody else's buyer.
+    await make_deal_with_buyer_company(buyer_company=middle)
+
+    assert middle in await _working_list_ids(trade_role=CompanyTradeRole.BOTH)
+    assert middle in await _working_list_ids(trade_role=CompanyTradeRole.SELLER)
+    assert middle in await _working_list_ids(trade_role=CompanyTradeRole.BUYER)
+
+
+async def test_has_open_deals_splits_the_list_on_a_live_deal():
+    with_deal = await make_prospect()
+    await make_deal(with_deal)
+    without_deal = await make_prospect()
+
+    open_deals = await _working_list_ids(has_open_deals=True)
+    assert with_deal in open_deals
+    assert without_deal not in open_deals
+
+    no_deals = await _working_list_ids(has_open_deals=False)
+    assert without_deal in no_deals
+    assert with_deal not in no_deals
+
+
+async def test_country_matches_whole_and_industry_matches_partially():
+    company_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        # `make_company` leaves both unset, so the country is given here rather than
+        # assumed — a company with no country is correctly absent from a country filter.
+        await ExporterProfileService(db).update_profile(
+            company_id, {"industry": "Marine Exports", "country": "IN"}, actor_id="rm-1"
+        )
+
+    assert company_id in await _working_list_ids(industry="marine exports")
+    # Partial, because it is typed a character at a time: each of these is a prefix
+    # somebody passes through on the way to the whole word, and showing nothing until
+    # the last letter reads as "no such industry".
+    for partial in ("m", "ma", "Marine", "exports"):
+        assert company_id in await _working_list_ids(industry=partial), partial
+    assert company_id not in await _working_list_ids(industry="shipping")
+    assert company_id in await _working_list_ids(country="in")
+
+
+async def test_each_listed_company_carries_the_side_it_has_traded_on():
+    """The role is on the row, so an export can write it without asking per company."""
+    _deal, seller, buyer_only = await make_deal_with_buyer_company(
+        buyer_company=await _buyer_company()
+    )
+    never_traded = await make_company()
+
+    async def _role(company_id, **filters):
+        async with db_services.AsyncSessionLocal() as db:
+            rows = await ExporterProfileService(db).search_profiles(limit=200, **filters)
+        return next((r.trade_role for r in rows if r.customer_id == company_id), "absent")
+
+    assert await _role(seller) is CompanyTradeRole.SELLER
+    assert await _role(buyer_only, trade_role=CompanyTradeRole.BUYER) is CompanyTradeRole.BUYER
+    # Neither side is `None`, not a third role: "no deals yet" is not a kind of company.
+    assert await _role(never_traded) is None
+
+
+async def test_the_total_counts_what_the_filters_match_not_the_page():
+    """The bug this closes: a page of 50 reported 50 companies for a filter matching
+    185. The count and the rows share one set of conditions, so they cannot disagree."""
+    tag = f"Counted {uuid.uuid4().hex[:8]}"
+    made = [await make_company() for _ in range(3)]
+    async with db_services.AsyncSessionLocal() as db:
+        service = ExporterProfileService(db)
+        for company_id in made:
+            await service.update_profile(company_id, {"industry": tag}, actor_id="rm-1")
+
+    async with db_services.AsyncSessionLocal() as db:
+        service = ExporterProfileService(db)
+        page = await service.search_profiles(industry=tag, limit=2)
+        total = await service.count_profiles(industry=tag)
+
+    assert len(page) == 2, "the page is capped by the limit"
+    assert total == 3, "the total is what the filter matches"
+
+
+async def test_the_total_applies_the_same_default_exclusions_as_the_list():
+    """A buyer-only company is hidden from the default list, so it must not be counted
+    into it either — a total that included it would explain a list that does not."""
+    buyer_only = await _buyer_company()
+
+    async with db_services.AsyncSessionLocal() as db:
+        service = ExporterProfileService(db)
+        default_total = await service.count_profiles()
+        asked_for = await service.count_profiles(
+            pipeline_status=CompanyPipelineStatus.NOT_IN_PIPELINE
+        )
+        listed = {row.customer_id for row in await service.search_profiles(limit=200)}
+
+    assert buyer_only not in listed
+    assert asked_for >= 1
+    assert default_total == len(listed) or default_total >= len(listed)

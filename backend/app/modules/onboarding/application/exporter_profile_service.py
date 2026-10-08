@@ -66,10 +66,12 @@ from app.modules.onboarding.domain.engagement_views import (
     ExporterActivityView,
     ExporterContactView,
 )
+from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
+    CompanyTradeRole,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -1042,6 +1044,49 @@ class ExporterProfileService:
 
     # ── Search ────────────────────────────────────────────────────────────
 
+    async def count_profiles(self, **filters: object) -> int:
+        """How many companies the same filters match, behind the page.
+
+        Separate from `search_profiles` rather than returned with it: every existing
+        caller wants the rows, and widening that return type would touch all of them for
+        one screen's benefit.
+        """
+        name_contains = (filters.pop("name_contains", None) or "")
+        name_contains = name_contains.strip() or None if isinstance(name_contains, str) else None
+        searching = any(
+            filters.get(term) is not None for term in ("pan", "gstin", "iec")
+        ) or name_contains is not None
+        return await self._profiles.count(
+            name_contains=name_contains,
+            exclude_ended=filters.get("marker") is None and not searching,
+            exclude_not_in_pipeline=(
+                filters.get("pipeline_status") is None
+                and not searching
+                and filters.get("trade_role") is None
+            ),
+            **{
+                key: filters.get(key)
+                for key in (
+                    "gstin",
+                    "pan",
+                    "iec",
+                    "source",
+                    "journey",
+                    "qualification",
+                    "marker",
+                    "pipeline_status",
+                    "country",
+                    "industry",
+                    "background_check",
+                    "trade_role",
+                    "has_open_deals",
+                    "relationship_manager_user_id",
+                )
+            },
+            relationship_manager_unassigned=bool(filters.get("relationship_manager_unassigned")),
+            relationship_manager_inactive=bool(filters.get("relationship_manager_inactive")),
+        )
+
     async def search_profiles(
         self,
         *,
@@ -1054,6 +1099,11 @@ class ExporterProfileService:
         qualification: QualificationState | None = None,
         marker: ExporterMarker | None = None,
         pipeline_status: CompanyPipelineStatus | None = None,
+        country: str | None = None,
+        industry: str | None = None,
+        background_check: BackgroundCheckState | None = None,
+        trade_role: CompanyTradeRole | None = None,
+        has_open_deals: bool | None = None,
         relationship_manager_user_id: uuid.UUID | None = None,
         relationship_manager_unassigned: bool = False,
         relationship_manager_inactive: bool = False,
@@ -1107,14 +1157,30 @@ class ExporterProfileService:
             qualification=qualification,
             marker=marker,
             pipeline_status=pipeline_status,
+            country=country,
+            industry=industry,
+            background_check=background_check,
+            trade_role=trade_role,
+            has_open_deals=has_open_deals,
             relationship_manager_user_id=relationship_manager_user_id,
             relationship_manager_unassigned=relationship_manager_unassigned,
             relationship_manager_inactive=relationship_manager_inactive,
             exclude_ended=marker is None and not searching,
-            exclude_not_in_pipeline=pipeline_status is None and not searching,
+            # Asking for buyers has to bring the buyer-only companies back. They are
+            # precisely the `NOT_IN_PIPELINE` rows the default working list hides, so
+            # leaving that exclusion on would answer "which of our companies are
+            # buyers" with almost nothing — the filter would look broken rather than
+            # empty. An explicit `trade_role` is as deliberate as an explicit
+            # `pipeline_status`, and is treated the same way.
+            exclude_not_in_pipeline=(
+                pipeline_status is None and not searching and trade_role is None
+            ),
             limit=limit,
             offset=offset,
         )
+        # One lookup for the whole page, as the GSTINs are loaded: a role per row would
+        # be two queries per company.
+        roles = await self._profiles.trade_roles_for([p.customer_id for p in profiles])
         return [
             ExporterProfileListItem(
                 customer_id=profile.customer_id,
@@ -1132,6 +1198,10 @@ class ExporterProfileService:
                 marker=profile.marker,
                 marker_reason=profile.marker_reason,
                 industry=profile.industry,
+                export_markets=profile.export_markets,
+                products=profile.products,
+                trade_role=roles.get(profile.customer_id),
+                background_check=profile.background_check,
                 year_established=profile.year_established,
                 registration_number=profile.registration_number,
                 identity_type=profile.identity_type,

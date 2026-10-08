@@ -57,8 +57,10 @@ from app.modules.onboarding.domain.assignment import (
     holds,
     may_set_relationship_manager,
 )
+from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
+    CompanyTradeRole,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -354,6 +356,25 @@ async def search_exporter_profiles(
     qualification: QualificationState | None = Query(default=None),
     marker: ExporterMarker | None = Query(default=None),
     pipeline_status: CompanyPipelineStatus | None = Query(default=None),
+    country: str | None = Query(
+        default=None, description="ISO country code; matched whole, case-insensitively."
+    ),
+    industry: str | None = Query(
+        default=None, description="Matched as a partial, case-insensitive substring."
+    ),
+    background_check: BackgroundCheckState | None = Query(default=None),
+    trade_role: CompanyTradeRole | None = Query(
+        default=None,
+        description=(
+            "Which side of a trade the company has been on, by participation rather than "
+            "by how the record was created. BOTH means it has been on both sides. Asking "
+            "for BUYER includes buyer-only companies, which the default list hides."
+        ),
+    ),
+    has_open_deals: bool | None = Query(
+        default=None,
+        description="Whether the company has a deal that is neither handed over nor withdrawn.",
+    ),
     relationship_manager: str | None = Query(
         default=None, description="`me`, `none`, `inactive` or a user id"
     ),
@@ -383,6 +404,11 @@ async def search_exporter_profiles(
         qualification=qualification,
         marker=marker,
         pipeline_status=pipeline_status,
+        country=country,
+        industry=industry,
+        background_check=background_check,
+        trade_role=trade_role,
+        has_open_deals=has_open_deals,
         relationship_manager_user_id=rm_user_id,
         relationship_manager_unassigned=rm_filter == "none",
         relationship_manager_inactive=rm_filter == "inactive",
@@ -394,7 +420,30 @@ async def search_exporter_profiles(
         for item in items
     ]
     await _name_relationship_managers(db, current_user, profiles)
-    return ExporterProfileSearchResponse(profiles=profiles, limit=limit, offset=offset)
+    # The number behind the page, so a screen can say "185" rather than counting the
+    # rows it happens to hold.
+    total = await ExporterProfileService(db).count_profiles(
+        gstin=gstin,
+        pan=pan,
+        iec=iec,
+        name_contains=name,
+        source=source,
+        journey=journey,
+        qualification=qualification,
+        marker=marker,
+        pipeline_status=pipeline_status,
+        country=country,
+        industry=industry,
+        background_check=background_check,
+        trade_role=trade_role,
+        has_open_deals=has_open_deals,
+        relationship_manager_user_id=rm_user_id,
+        relationship_manager_unassigned=rm_filter == "none",
+        relationship_manager_inactive=rm_filter == "inactive",
+    )
+    return ExporterProfileSearchResponse(
+        profiles=profiles, limit=limit, offset=offset, total=total
+    )
 
 
 # ── Marker (PAUSED / ENDED) ──────────────────────────────────────────────

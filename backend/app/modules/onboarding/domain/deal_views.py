@@ -179,5 +179,11 @@ class DealFilters:
     stages: tuple[DealStage, ...] = ()
     search: str | None = None
     company_id: uuid.UUID | None = None
+    #: One side each, and both together answer "the deals between these two". Separate
+    #: from ``company_id``, which matches either side: giving that the same company
+    #: twice would be the same question as giving it once, so a pair needs its own
+    #: fields. Each works alone — every deal this company sold, or bought.
+    seller_company_id: uuid.UUID | None = None
+    buyer_company_id: uuid.UUID | None = None
     opened_from: datetime | None = None
     opened_before: datetime | None = None

@@ -172,18 +172,41 @@ describe('DealsPage — the list', () => {
 
 describe('DealsPage — filters', () => {
   it('sends the filters in the URL to the server', async () => {
-    renderAt('/deals?corridor=IN-NL&stage=OPEN&q=rotterdam&company=c9&from=2026-10-01&to=2026-10-05');
+    renderAt(
+      '/deals?corridor=IN-NL&stage=OPEN&q=rotterdam&seller=s1&buyer=b1&from=2026-10-01&to=2026-10-05',
+    );
     await screen.findAllByTestId('deal-row');
     expect(lastRequest()).toMatchObject({
       corridors: ['IN-NL'],
       stages: ['OPEN'],
       q: 'rotterdam',
-      companyId: 'c9',
+      sellerCompanyId: 's1',
+      buyerCompanyId: 'b1',
       // The viewer's own days: "to" includes the whole of the 5th.
       openedFrom: new Date(2026, 9, 1).toISOString(),
       openedBefore: new Date(2026, 9, 6).toISOString(),
       offset: 0,
     });
+  });
+
+  it('sends the seller and the buyer as their own filters', async () => {
+    // Together these are "the deals between these two", which `company` cannot ask:
+    // it matches either side, so naming one company twice says nothing new.
+    renderAt('/deals?seller=acme&buyer=north');
+    await screen.findAllByTestId('deal-row');
+    expect(lastRequest()).toMatchObject({
+      sellerCompanyId: 'acme',
+      buyerCompanyId: 'north',
+    });
+  });
+
+  it('lets each side of the pair filter on its own', async () => {
+    renderAt('/deals?seller=acme');
+    await screen.findAllByTestId('deal-row');
+    const sent = lastRequest();
+    expect(sent).toMatchObject({ sellerCompanyId: 'acme' });
+    // Absent, not an empty string the server would have to interpret.
+    expect(sent?.buyerCompanyId).toBeUndefined();
   });
 
   it('ignores a malformed filter in the URL instead of failing', async () => {
@@ -240,6 +263,7 @@ describe('DealsPage — New deal', () => {
       ],
       limit: 10,
       offset: 0,
+      total: 1,
     });
     vi.mocked(openDeal).mockResolvedValue({ id: 'new-deal' } as Awaited<ReturnType<typeof openDeal>>);
     renderAt('/deals?new=1');
