@@ -110,8 +110,9 @@ function Row({
             </button>
           ) : null}
           {/* Nothing to open when there are no invoices: the row already says so, and a
-              control that reveals an empty state is a control that wasted a click. */}
-          {count > 0 ? (
+              control that reveals an empty state is a control that wasted a click. The
+              counterparty's name is already its link, so there is no second one. */}
+          {count > 0 && (
             <button
               type="button"
               onClick={() => setOpen((was) => !was)}
@@ -121,14 +122,6 @@ function Row({
               {open ? 'Hide invoices' : 'Invoices'}
               {open ? <Icon.caretDown size={13} /> : <Icon.caretRight size={13} />}
             </button>
-          ) : (
-            <Link
-              to={paths.company(other.company_id)}
-              className="flex items-center gap-1 text-caption font-medium text-ink hover:underline"
-            >
-              Open company
-              <Icon.caretRight size={13} />
-            </Link>
           )}
         </div>
       </div>
@@ -174,17 +167,11 @@ export function CompanyTradePanel({ companyId, as, canRecord = false }: CompanyT
   if (relationships.length === 0) {
     return (
       <EmptySection>
+        {/* A relationship appears when a deal records its buyer company, so past trade
+            can be added once a deal names the other company. */}
         {as === 'seller'
-          ? // Not "has never sold anything": a relationship appears when a deal
-            // records its buyer company, so a company whose deals predate the buyer
-            // migration and the relationship backfill has none yet.
-            'Nobody recorded as a buyer from this company yet. Deals recorded before trade history are linked by the buyer migration and the relationship backfill.'
+          ? 'Nobody recorded as a buyer from this company yet.'
           : 'Nobody recorded as a seller to this company yet.'}
-        {/* There is no route that creates a relationship on its own: a deal's buyer
-            does. So past trade has nowhere to go until one exists. */}
-        {canRecord
-          ? ' Past trade is recorded against a relationship, so it can be added once a deal names the other company.'
-          : ''}
       </EmptySection>
     );
   }

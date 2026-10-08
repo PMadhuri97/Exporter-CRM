@@ -25,6 +25,8 @@ const EXPECTED: Record<Capability, UserRole[]> = {
   // The one entry a wider role does not inherit: it marks whose work the leads are, not
   // who may record a decision on one (all three staff roles may).
   'queue.qualification': ['OPERATIONS'],
+  // Can be an RM, and so name themselves one; ADMIN assigns RMs but is not one.
+  'rm.self': ['OPERATIONS'],
   'settings.criteria': ['ADMIN'],
   'settings.requiredDocuments': ['ADMIN'],
 };

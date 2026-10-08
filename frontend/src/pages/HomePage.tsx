@@ -2,8 +2,9 @@
  * Home (frontend-plan §8.2) — one per role, answering "what is mine to do now?" as a
  * grid of work cards, two columns from 1280px.
  *
- * - **RM**: my follow-ups (with *Mark done*), check-backs due, the pipeline counts,
- *   the Re-KYC list to read, and recent companies.
+ * - **RM**: my follow-ups (with *Mark done*), check-backs due, information a reviewer
+ *   is waiting for on my companies, the pipeline counts, decisions on my companies, the
+ *   Re-KYC list to read, and recent companies.
  * - **Compliance**: items to approve first, then everything an RM sees.
  * - **Admin**: the Compliance home plus a setup card.
  * - **Developer**: "Read-only access. Identifiers are masked." — the pipeline and the
@@ -21,10 +22,12 @@ import { Link } from 'react-router-dom';
 import { Card, EmptyLine } from '@/components';
 import {
   CheckBackCard,
+  InfoRequestedCard,
   MyFollowUpsCard,
   paths,
   PipelineSummaryCard,
   ProposalsAwaitingMeCard,
+  RecentDecisionsCard,
   ReKycDueCard,
   SetupCard,
 } from '@/modules/onboarding';
@@ -64,6 +67,7 @@ export function HomePage() {
   const canSeeQueue = useCan('compliance.queue');
   const canReadCompliance = useCan('compliance.read');
   const canSetUp = useCan('settings.criteria');
+  const isRm = useCan('rm.self');
 
   return (
     <div className="space-y-4">
@@ -82,9 +86,11 @@ export function HomePage() {
         <div className="flex flex-col gap-4">
           <MyFollowUpsCard userId={userId} canComplete={canWrite} />
           <CheckBackCard />
+          {isRm && <InfoRequestedCard />}
         </div>
         <div className="flex flex-col gap-4">
           <PipelineSummaryCard />
+          {canReadCompliance && <RecentDecisionsCard />}
           {canReadCompliance && <ReKycDueCard />}
           {canSetUp && <SetupCard />}
           <RecentCompaniesCard userId={userId} />

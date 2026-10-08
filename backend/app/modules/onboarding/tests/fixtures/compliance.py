@@ -180,11 +180,18 @@ async def approve_as(
     from app.modules.onboarding.application.background_check_service import (
         BackgroundCheckService,
     )
+    from app.modules.onboarding.domain.assignment import APPROVE_HIGH_RISK
 
     proposal = await propose_as(maker, company_id, to_value=to_value, risk=risk, reason=reason)
     async with db_services.AsyncSessionLocal() as db:
+        # The checker is a senior approver, so a test about something else may clear
+        # at any risk; the senior rule has its own tests.
         approved = await BackgroundCheckService(db).approve(
-            company_id, proposal.id, actor_id=checker.user_id, actor_role=checker.role
+            company_id,
+            proposal.id,
+            actor_id=checker.user_id,
+            actor_role=checker.role,
+            actor_permissions=frozenset({APPROVE_HIGH_RISK}),
         )
     return approved.decision
 

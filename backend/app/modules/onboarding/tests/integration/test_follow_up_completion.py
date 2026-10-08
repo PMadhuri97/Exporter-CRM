@@ -80,13 +80,17 @@ async def _follow_up(
     actor_id: str = "user-1",
     activity_type: ExporterActivityType = ExporterActivityType.FOLLOW_UP,
 ) -> uuid.UUID:
-    """An activity with a due date — which is what makes it a follow-up."""
+    """An activity with a due date — which is what makes it a follow-up.
+
+    A follow-up may not be due before it was logged, so an overdue one (``due_in_days``
+    below 0) is logged a day before it fell due — as it would have been, days ago."""
     async with db_services.AsyncSessionLocal() as db:
         activity = await ExporterContactActivityService(db).log_activity(
             company_id,
             activity_type=activity_type,
             subject=subject or f"Follow up {uuid.uuid4().hex[:8]}",
             due_at=_at(due_in_days),
+            occurred_at=_at(due_in_days - 1) if due_in_days < 0 else None,
             actor_id=actor_id,
         )
     return activity.id

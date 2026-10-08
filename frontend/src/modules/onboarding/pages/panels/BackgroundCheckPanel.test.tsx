@@ -45,6 +45,8 @@ function standing(overrides: Partial<BackgroundCheck> = {}): BackgroundCheck {
       { to_value: 'FLAGGED', reason_required: true, risk_required: false, approval_required: true },
     ],
     clear_blocked_reasons: [],
+    reviewer_inactive: false,
+    relationship_manager_required: false,
     compliance: {
       is_clear: false,
       clear_expires_at: null,
@@ -245,6 +247,7 @@ describe('BackgroundCheckPanel — the move dialog', () => {
         risk_rating: null,
         // The value on screen, so a move made from a stale screen is refused (409).
         from_value: 'IN_REVIEW',
+        relationship_manager_user_id: null,
       }),
     );
   });
@@ -268,6 +271,7 @@ describe('BackgroundCheckPanel — the move dialog', () => {
         reason: 'sanctions hit',
         risk_rating: null,
         from_value: 'IN_REVIEW',
+        relationship_manager_user_id: null,
       }),
     );
   });

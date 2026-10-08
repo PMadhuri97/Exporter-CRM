@@ -20,6 +20,8 @@ vi.mock('@/modules/onboarding', () => ({
   PipelineSummaryCard: () => <div data-testid="card-pipeline" />,
   ProposalsAwaitingMeCard: () => <div data-testid="card-proposals" />,
   ReKycDueCard: () => <div data-testid="card-rekyc" />,
+  InfoRequestedCard: () => <div data-testid="card-info-requested" />,
+  RecentDecisionsCard: () => <div data-testid="card-recent-decisions" />,
   paths: { newCompany: '/companies/new', company: (id: string) => `/companies/${id}` },
 }));
 

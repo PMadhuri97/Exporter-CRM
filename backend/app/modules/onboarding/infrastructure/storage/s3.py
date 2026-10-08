@@ -16,9 +16,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import boto3
+import structlog
 from botocore.config import Config
 from botocore.exceptions import ClientError
-import structlog
 
 from app.modules.onboarding.domain.storage import (
     DownloadLink,

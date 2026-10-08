@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -118,6 +118,69 @@ class MarkerMoveResponse(BaseModel):
     reason_required: bool
 
 
+RelationshipManagerAction = Literal["CLAIM", "ASSIGN", "CHANGE", "CLEAR"]
+
+
+class AssignRelationshipManagerRequest(BaseModel):
+    """Set, change or clear a company's relationship manager.
+
+    `seen_user_id` is the RM the caller was looking at (`null` for none): if it is no
+    longer the RM, the request is refused (409) rather than overwriting someone
+    else's change. A reason is required to change or clear an RM already set.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: uuid.UUID | None
+    seen_user_id: uuid.UUID | None
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class BulkReassignRequest(BaseModel):
+    """Move one RM's companies to another RM: all of them, the ones listed in
+    `company_ids`, or those at one journey stage. `dry_run` reports what would move
+    and writes nothing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_user_id: uuid.UUID
+    to_user_id: uuid.UUID
+    company_ids: list[uuid.UUID] | None = Field(default=None, max_length=1000)
+    journey: ExporterJourney | None = None
+    reason: str = Field(max_length=1000)
+    dry_run: bool = False
+
+
+class BulkReassignResponse(BaseModel):
+    """What a bulk reassignment did, or would do. `bulk_run_id` ties the history
+    rows of one run together; `null` on a dry run."""
+
+    bulk_run_id: str | None
+    dry_run: bool
+    matched: int
+    moved: int
+    skipped: int
+    company_ids: list[uuid.UUID]
+    skipped_company_ids: list[uuid.UUID]
+
+
+class StaffMemberResponse(BaseModel):
+    """An active staff account for a picker: id, name and role. Never an email,
+    password or custom-role detail."""
+
+    id: uuid.UUID
+    name: str
+    role: str
+    #: How many companies this person is RM of.
+    companies: int = 0
+    #: How many background-check reviews this person holds.
+    open_reviews: int = 0
+
+
+class StaffListResponse(BaseModel):
+    staff: list[StaffMemberResponse]
+
+
 class CreateExporterProfileRequest(BaseModel):
     """Create a company. `source` becomes immutable the moment this
     succeeds (see `ExporterSourceImmutableError`). Every company starts as a
@@ -163,7 +226,10 @@ class CreateExporterProfileRequest(BaseModel):
     registration_number: Annotated[str | None, NotMasked] = Field(
         default=None, max_length=REGISTRATION_NUMBER_MAX
     )
-    relationship_manager: str | None = Field(default=None, max_length=255)
+    #: The company's relationship manager, set as the company is created. An RM
+    #: names themselves; ADMIN or `exporters:assign_rm` may name any active RM. The
+    #: legacy free-text `relationship_manager` is no longer accepted (422).
+    relationship_manager_user_id: uuid.UUID | None = None
     industry: str | None = Field(default=None, max_length=255)
     export_markets: list[str] | None = None
     products: list[str] | None = None
@@ -244,11 +310,16 @@ class UpdateExporterProfileRequest(BaseModel):
     registration_number: Annotated[str | None, NotMasked] = Field(
         default=None, max_length=REGISTRATION_NUMBER_MAX
     )
-    relationship_manager: str | None = Field(default=None, max_length=255)
     industry: str | None = Field(default=None, max_length=255)
     export_markets: list[str] | None = None
     products: list[str] | None = None
     year_established: int | None = None
+    #: What the caller was looking at, by field, when they made this edit: the
+    #: value as they were shown it (masked where the company read masks it). A
+    #: field changed by someone else since refuses the whole edit with 409
+    #: `COMPANY_FIELD_CHANGED`. Not a field of the company; omitted, nothing is
+    #: compared.
+    seen: dict[str, str | int | list[str] | None] | None = None
 
     @field_validator("country")
     @classmethod
@@ -285,7 +356,16 @@ class BringIntoPipelineRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 
 
-class ExporterProfileResponse(_IdentifierMasking, BaseModel):
+class _RelationshipManagerFields(BaseModel):
+    """Who the company's RM is, by name, filled by the route (the entity holds only
+    the id). `relationship_manager_inactive` flags an RM whose account has been
+    deactivated, so the screen can warn and a manager can reassign."""
+
+    relationship_manager_name: str | None = None
+    relationship_manager_inactive: bool = False
+
+
+class ExporterProfileResponse(_IdentifierMasking, _RelationshipManagerFields, BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     customer_id: uuid.UUID
@@ -296,12 +376,10 @@ class ExporterProfileResponse(_IdentifierMasking, BaseModel):
     pan: str | None
     iec: str | None
     source: ExporterSource
+    #: The legacy free-text owner label, read-only.
     relationship_manager: str | None
-    #: Which `auth.users` row `relationship_manager` refers to, when known —
-    #: `None` today for every existing profile (nothing sets it yet; see
-    #: `onboarding_0009_relationship_manager_user`). The frontend uses this,
-    #: not the display string, to decide whether the current user may reveal
-    #: this exporter's masked PAN/GSTIN/IEC.
+    #: The company's relationship manager (an OPERATIONS user), or `null`. Ownership
+    #: grants nothing: it never unmasks an identifier.
     relationship_manager_user_id: uuid.UUID | None
     journey: ExporterJourney
     qualification: QualificationState
@@ -330,7 +408,7 @@ class ExporterProfileResponse(_IdentifierMasking, BaseModel):
     allowed_marker_moves: list[MarkerMoveResponse] = Field(default_factory=list)
 
 
-class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
+class ExporterProfileDetailResponse(_IdentifierMasking, _RelationshipManagerFields, BaseModel):
     customer_id: uuid.UUID
     name: str | None
     country: str | None
@@ -366,6 +444,10 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
     #: The marker moves the signed-in user may make now; empty for a role
     #: that may not set markers.
     allowed_marker_moves: list[MarkerMoveResponse] = Field(default_factory=list)
+    #: What the signed-in user may do with the RM: `CLAIM` (set themselves on a
+    #: company with none), `ASSIGN` (name any RM on a company with none), `CHANGE`
+    #: and `CLEAR` (reason required). Served, never worked out by the screen.
+    relationship_manager_actions: list[RelationshipManagerAction] = Field(default_factory=list)
 
     @classmethod
     def from_detail(cls, detail) -> ExporterProfileDetailResponse:
@@ -407,7 +489,7 @@ class ExporterProfileDetailResponse(_IdentifierMasking, BaseModel):
         )
 
 
-class ExporterProfileListItemResponse(_IdentifierMasking, BaseModel):
+class ExporterProfileListItemResponse(_IdentifierMasking, _RelationshipManagerFields, BaseModel):
     """One row of `GET /onboarding/exporters` — `ExporterProfileResponse`
     without the per-company collections, so a list screen never needs a
     second, per-row lookup just to show a company."""

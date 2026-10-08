@@ -21,6 +21,7 @@ from app.modules.onboarding.application.screening_review_service import (
 from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.check_cycle import CheckCycleKind
 from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
+from app.modules.onboarding.tests.fixtures.companies import ensure_relationship_manager
 from app.modules.onboarding.tests.fixtures.compliance import (
     ComplianceUser,
     approve_as,
@@ -60,6 +61,9 @@ async def answer_screening(
 
 
 async def start_review(company_id: uuid.UUID) -> None:
+    """Start the check as an RM. A company with no RM (one created through the API)
+    is given the fixture RM first, as scaffolding: starting needs one."""
+    await ensure_relationship_manager(company_id)
     async with db_services.AsyncSessionLocal() as db:
         await BackgroundCheckService(db).start_review(
             company_id, actor_id="ops", actor_role=UserRole.OPERATIONS

@@ -76,6 +76,7 @@ const DETAIL: ExporterProfileDetail = {
   country: 'IN',
   gstins: ['27ABCDE1234F1Z5'],
   cin: null,
+  relationship_manager_inactive: false,
   journey: 'LEAD',
   qualification: 'NOT_YET_REVIEWED',
   marker: 'NONE',
@@ -497,6 +498,8 @@ describe('ExporterDetailPage — screening review', () => {
     await waitFor(() =>
       expect(updateExporterProfile).toHaveBeenCalledWith(DETAIL.customer_id, {
         year_established: 'twenty',
+        // What the screen showed: a field someone else changed since is refused.
+        seen: { year_established: 2019 },
       }),
     );
   });
@@ -525,6 +528,7 @@ describe('ExporterDetailPage — screening review', () => {
         outcome: 'NOT_QUALIFIED',
         reason_codes: ['low_turnover'],
         note: null,
+        relationship_manager_user_id: null,
       }),
     );
   });
@@ -573,6 +577,8 @@ describe('ExporterDetailPage — screening review', () => {
         outcome: 'QUALIFIED',
         reason_codes: [],
         note: 'Meets all four',
+        // The company has an RM already, so none is sent.
+        relationship_manager_user_id: null,
       }),
     );
   });
@@ -580,12 +586,18 @@ describe('ExporterDetailPage — screening review', () => {
   // Task 3.22's company-page half. Both sides are asked for, because a company can
   // sell to one counterparty and buy from another, and one list mixing them would
   // read differently row by row.
-  it('shows trade history on both sides, under the deals', async () => {
+  it('shows deals first, and trade as its own view, so a buyer is not listed twice', async () => {
     mockUser('COMPLIANCE', 'someone-else');
     renderPage('deals');
 
-    expect(await screen.findByText('Trade — sold to')).toBeInTheDocument();
-    expect(screen.getByText('Trade — bought from')).toBeInTheDocument();
+    // The Deals view: no trade list under it.
+    expect(await screen.findByRole('radio', { name: 'Deals' })).toBeChecked();
+    expect(screen.queryByText('Sold to')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Trade' }));
+    expect(await screen.findByText('Sold to')).toBeInTheDocument();
+    // Nobody has invoiced this company, so there is no empty "Bought from" list.
+    await waitFor(() => expect(screen.queryByText('Bought from')).not.toBeInTheDocument());
     await waitFor(() => {
       expect(listTradeRelationships).toHaveBeenCalledWith(DETAIL.customer_id, {
         as: 'seller',

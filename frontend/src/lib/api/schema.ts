@@ -611,6 +611,8 @@ export interface paths {
         /**
          * Search exporter profiles
          * @description Filters by gstin, pan, iec, source, journey, qualification, marker, pipeline_status (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. Companies that are NOT_IN_PIPELINE — a company that exists only because it was somebody's buyer — follow the same rule: excluded by default, found by any search term, and listed on their own with pipeline_status=NOT_IN_PIPELINE. The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
+         *
+         *     `relationship_manager` narrows the list by owner: `me` (My companies), `none` (Unassigned), `inactive` (an RM whose account is deactivated) or a user id. It is a filter only: ownership never changes what a reader may see.
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -644,7 +646,9 @@ export interface paths {
         head?: never;
         /**
          * Update an exporter profile's mutable CRM fields
-         * @description Updates CRM fields. A field left out of the body is unchanged; a field sent as null (or an empty string or list) is cleared. Each change is recorded in the company's history with the signed-in user as the actor. `source`, `journey`, `qualification` and the marker are not accepted here (422 if present): source is immutable, and each of the others has its own write path.
+         * @description Updates CRM fields. A field left out of the body is unchanged; a field sent as null (or an empty string or list) is cleared. Each change is recorded in the company's history with the signed-in user as the actor. `source`, `journey`, `qualification` and the marker are not accepted here (422 if present): source is immutable, and each of the others has its own write path. The relationship manager is not either: it has its own route.
+         *
+         *     Send `seen` — each edited field's value as the screen showed it — and an edit to a field someone else has changed since is refused (409 `COMPANY_FIELD_CHANGED`, naming who and when) instead of overwriting it. A masked identifier is compared masked.
          */
         patch: operations["update_exporter_profile_api_v1_onboarding_exporters__customer_id__patch"];
         trace?: never;
@@ -683,6 +687,66 @@ export interface paths {
          * @description A company that exists only because it was somebody's buyer is NOT_IN_PIPELINE: nobody is selling to it, so it is kept out of the working list and out of pipeline counts, and qualification and the conversation gauge refuse it. This is the one way in. It sets pipeline_status to IN_PIPELINE and starts the company's journey history at LEAD — from then on it is an ordinary lead. A reason is optional and recorded on the history row. Deciding to sell to a company is a commercial decision, so this is OPERATIONS, COMPLIANCE or ADMIN; a company already in the pipeline is a 409, because there is nothing to do.
          */
         post: operations["bring_exporter_into_pipeline_api_v1_onboarding_exporters__customer_id__pipeline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/relationship-manager": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set, change or clear a company's relationship manager
+         * @description The RM is one active RM (OPERATIONS) user. An RM may claim a company with no RM for themselves. Naming someone else, or changing or clearing an RM already set, needs ADMIN or `exporters:assign_rm`, and a change or clear needs a reason. `seen_user_id` is the RM the screen showed (`null` for none): a different current RM refuses the request (409) instead of overwriting someone else's change. Every change is a `relationship_manager` history row. Ownership grants nothing: it never unmasks an identifier and never changes what anyone may see.
+         */
+        post: operations["assign_exporter_relationship_manager_api_v1_onboarding_exporters__customer_id__relationship_manager_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Active staff in a role, for an assignment picker
+         * @description Every **active** account in the given role(s), by name: `role=OPERATIONS` for the relationship-manager picker, `role=COMPLIANCE&role=ADMIN` for the reviewer picker. Each carries how many companies it is RM of and how many reviews it holds, so work can be spread. Never an email, password or custom role. Staff; DEVELOPER is refused (it assigns nothing).
+         */
+        get: operations["list_assignable_staff_api_v1_onboarding_staff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/relationship-managers/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move one relationship manager's companies to another
+         * @description All of `from_user_id`'s companies, or those listed in `company_ids`, or those at one `journey` stage, to `to_user_id` — an active RM user. ADMIN or `exporters:assign_rm`; a reason always. Companies are locked in id order and re-read under the lock: one whose RM changed meanwhile is skipped, not overwritten. One `relationship_manager` history row per company, all sharing `bulk_run_id`. `dry_run` reports what would move and writes nothing. Use it when someone leaves: the companies of a deactivated RM are listed by `GET /exporters?relationship_manager=inactive`.
+         */
+        post: operations["reassign_relationship_managers_api_v1_onboarding_relationship_managers_reassign_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1003,6 +1067,8 @@ export interface paths {
         /**
          * Record a qualification outcome (the reviewer's decision)
          * @description The signed-in reviewer's decision, stored beside the server's suggestion. Allowed from NOT_YET_REVIEWED and, as a re-review, from NOT_QUALIFIED; QUALIFIED is final. NOT_QUALIFIED needs at least one reason code. A QUALIFIED lead becomes a PROSPECT in the same transaction; qualification never makes a company a CUSTOMER.
+         *
+         *     Recording QUALIFIED on a company with no relationship manager needs `relationship_manager_user_id` (an RM names themselves; ADMIN or `exporters:assign_rm` names any RM), or 409 `RELATIONSHIP_MANAGER_REQUIRED`.
          */
         post: operations["record_exporter_qualification_outcome_api_v1_onboarding_exporters__customer_id__qualification_outcome_post"];
         delete?: never;
@@ -1925,7 +1991,7 @@ export interface paths {
         put?: never;
         /**
          * Withdraw your own background-check proposal
-         * @description The proposer closes their own proposal (the reason is optional); the check does not move.
+         * @description The proposer closes their own proposal (the reason is optional); the check does not move. ADMIN or a holder of compliance:assign may withdraw someone else's — for a proposer who has left.
          */
         post: operations["withdraw_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__withdraw_post"];
         delete?: never;
@@ -1943,7 +2009,7 @@ export interface paths {
         };
         /**
          * Background-check proposals across companies (the approval queue)
-         * @description `status=open` (the default) lists every proposal awaiting approval, the longest-waiting first — the Home card "Proposals awaiting me" adds `awaiting=me`, which leaves out the caller's own. `approved`, `rejected` and `withdrawn` list resolved ones, newest first. Each carries the company's name (never an identifier) and what this caller may do with it. COMPLIANCE and ADMIN only: they are the ones who approve.
+         * @description `status=open` (the default) lists every proposal awaiting approval, the longest-waiting first — the Home card "Proposals awaiting me" adds `awaiting=me`, which keeps only what the caller may approve: not their own, not one whose review they hold, not a company they are RM of, and a HIGH or CRITICAL CLEAR only for a senior approver. `approved`, `rejected` and `withdrawn` list resolved ones, newest first. Each carries the company's name (never an identifier), what this caller may do with it and, while open, when it is due and how many people could approve it. COMPLIANCE and ADMIN only: they are the ones who approve.
          */
         get: operations["list_proposals_across_companies_api_v1_onboarding_background_check_proposals_get"];
         put?: never;
@@ -1966,6 +2032,146 @@ export interface paths {
          * @description CLEAR companies whose Clear has expired or expires before `before` (default: now + the Re-KYC window, 30 days unless configured) — the expired first, then the soonest. An expired Clear still reads CLEAR (nothing moves the gauge automatically) but no longer promotes the company or lets its deals be handed over. A company whose Re-KYC has started is not listed: starting it reopens the check. Names only, never an identifier. Staff; DEVELOPER is refused.
          */
         get: operations["list_rekyc_due_api_v1_onboarding_background_check_due_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/reviewer/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take an unassigned review (Assign to me)
+         * @description A COMPLIANCE or ADMIN user takes the review of a check that is IN_REVIEW or MORE_INFO and that nobody holds. Never the company's RM. Returns the standing.
+         */
+        post: operations["claim_background_check_review_api_v1_onboarding_exporters__company_id__background_check_reviewer_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/reviewer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Assign or reassign a review
+         * @description ADMIN or `compliance:assign`. The target is an active COMPLIANCE or ADMIN user who is not the company's RM. Taking a review from someone needs a reason. A proposal already open survives the change. Returns the standing.
+         */
+        put: operations["assign_background_check_review_api_v1_onboarding_exporters__company_id__background_check_reviewer_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/background-check/reviewer/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand a review back to Awaiting review
+         * @description The reviewer, or ADMIN or `compliance:assign`. Refused while the reviewer's own proposal is open: withdraw it first. The note is optional. Returns the standing.
+         */
+        post: operations["release_background_check_review_api_v1_onboarding_exporters__company_id__background_check_reviewer_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/background-check/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compliance worklists
+         * @description `awaiting` — reviews nobody has picked up; `mine` — reviews you hold (under review, waiting on information, or with your proposal awaiting approval); and, for ADMIN and holders of compliance:assign only, `in_review` (everyone's), `overdue` and `needs_attention` (no eligible checker, returned twice, or a deactivated reviewer). Oldest wait first, each with its business-time deadline. Computed on read; names only, never an identifier or a reason.
+         */
+        get: operations["list_compliance_worklist_api_v1_onboarding_background_check_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/background-check/info-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Companies waiting on information
+         * @description Checks at MORE_INFO, with what was asked for: `relationship_manager=me` — your companies; `none` — companies with no RM (buyer-only companies above all), the shared Unowned list; omitted — all. Staff; DEVELOPER is refused.
+         */
+        get: operations["list_info_requests_api_v1_onboarding_background_check_info_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/worklist/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Counts for the navigation badges
+         * @description One call for the nav: how many items each list this caller may see holds. A list they may not see is null. Numbers only — no names, identifiers or text. Staff; DEVELOPER is refused.
+         */
+        get: operations["get_worklist_counts_api_v1_onboarding_worklist_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/background-check/recent-decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Decisions on my companies
+         * @description CLEAR, FLAGGED and ON_HOLD decisions of the last `days` (default 14) on companies you are RM of or whose outcome you proposed, newest first. The Home card. No reason text. Staff; DEVELOPER is refused.
+         */
+        get: operations["list_recent_decisions_api_v1_onboarding_background_check_recent_decisions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2212,6 +2418,8 @@ export interface components {
             label: string;
             /** Description */
             description: string;
+            /** Enforced */
+            enforced: boolean;
         };
         /**
          * ActorType
@@ -2430,6 +2638,32 @@ export interface components {
          * @enum {string}
          */
         ApproverRole: "MAKER" | "CHECKER";
+        /**
+         * AssignRelationshipManagerRequest
+         * @description Set, change or clear a company's relationship manager.
+         *
+         *     `seen_user_id` is the RM the caller was looking at (`null` for none): if it is no
+         *     longer the RM, the request is refused (409) rather than overwriting someone
+         *     else's change. A reason is required to change or clear an RM already set.
+         */
+        AssignRelationshipManagerRequest: {
+            /** User Id */
+            user_id: string | null;
+            /** Seen User Id */
+            seen_user_id: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * AssignReviewerRequest
+         * @description Assign or reassign a review. A reason is required to take it from someone.
+         */
+        AssignReviewerRequest: {
+            /** User Id */
+            user_id: string;
+            /** Reason */
+            reason?: string | null;
+        };
         /**
          * AuditEventListResponse
          * @description A page of audit records plus enough metadata to paginate the caller.
@@ -2686,9 +2920,40 @@ export interface components {
             stale_reason?: string | null;
             /**
              * Allowed Actions
-             * @description What **this caller** may do with it: the proposer may WITHDRAW; another COMPLIANCE or ADMIN user may APPROVE (unless stale) and REJECT.
+             * @description What **this caller** may do with it: the proposer may WITHDRAW; another COMPLIANCE or ADMIN user may APPROVE (unless stale) and REJECT — unless they are the review's reviewer or the company's RM, and APPROVE a HIGH or CRITICAL CLEAR only as a senior checker. ADMIN and holders of compliance:assign may also WITHDRAW.
              */
             allowed_actions?: ("APPROVE" | "REJECT" | "WITHDRAW")[];
+            /**
+             * Approval Blocked Reason
+             * @description Why this caller may not approve it, in words a screen can show beside a disabled Approve: the reviewer, the RM, or a senior approval needed.
+             */
+            approval_blocked_reason?: string | null;
+            /**
+             * Needs Senior Approval
+             * @description A CLEAR at HIGH or CRITICAL risk: only a senior checker approves it.
+             * @default false
+             */
+            needs_senior_approval: boolean;
+            /**
+             * Due At
+             * @description When the approval is due (business time), while open.
+             */
+            due_at?: string | null;
+            /**
+             * Is Due Soon
+             * @default false
+             */
+            is_due_soon: boolean;
+            /**
+             * Is Overdue
+             * @default false
+             */
+            is_overdue: boolean;
+            /**
+             * Eligible Checker Count
+             * @description How many active users could approve it now. 0 means nobody can, and a lead must step in.
+             */
+            eligible_checker_count?: number | null;
         };
         /**
          * BackgroundCheckResponse
@@ -2748,6 +3013,32 @@ export interface components {
              * @default false
              */
             rekyc_due: boolean;
+            /**
+             * Reviewer Id
+             * @description Who holds the review; null when unassigned or not under review.
+             */
+            reviewer_id?: string | null;
+            /** Reviewer Name */
+            reviewer_name?: string | null;
+            /** Reviewer Assigned At */
+            reviewer_assigned_at?: string | null;
+            /**
+             * Reviewer Inactive
+             * @description The reviewer's account is deactivated: reassign it.
+             * @default false
+             */
+            reviewer_inactive: boolean;
+            /**
+             * Review Actions
+             * @description What this caller may do with who holds the review: CLAIM (assign to me), RELEASE (back to Awaiting review), ASSIGN (to anyone; ADMIN or compliance:assign).
+             */
+            review_actions?: ("CLAIM" | "RELEASE" | "ASSIGN")[];
+            /**
+             * Relationship Manager Required
+             * @description Starting the check needs a relationship manager in the same request: the company is in the pipeline, NOT_STARTED and has no RM.
+             * @default false
+             */
+            relationship_manager_required: boolean;
         };
         /**
          * BackgroundCheckRisk
@@ -2897,6 +3188,55 @@ export interface components {
         BringIntoPipelineRequest: {
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * BulkReassignRequest
+         * @description Move one RM's companies to another RM: all of them, the ones listed in
+         *     `company_ids`, or those at one journey stage. `dry_run` reports what would move
+         *     and writes nothing.
+         */
+        BulkReassignRequest: {
+            /**
+             * From User Id
+             * Format: uuid
+             */
+            from_user_id: string;
+            /**
+             * To User Id
+             * Format: uuid
+             */
+            to_user_id: string;
+            /** Company Ids */
+            company_ids?: string[] | null;
+            journey?: components["schemas"]["ExporterJourney"] | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /**
+         * BulkReassignResponse
+         * @description What a bulk reassignment did, or would do. `bulk_run_id` ties the history
+         *     rows of one run together; `null` on a dry run.
+         */
+        BulkReassignResponse: {
+            /** Bulk Run Id */
+            bulk_run_id: string | null;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Matched */
+            matched: number;
+            /** Moved */
+            moved: number;
+            /** Skipped */
+            skipped: number;
+            /** Company Ids */
+            company_ids: string[];
+            /** Skipped Company Ids */
+            skipped_company_ids: string[];
         };
         /**
          * BuyerCompanyResponse
@@ -3366,6 +3706,99 @@ export interface components {
             next_due_at?: string | null;
         };
         /**
+         * ComplianceWorkItemResponse
+         * @description One company's open compliance work. Names and times only — never an
+         *     identifier, and never a decision's reason.
+         */
+        ComplianceWorkItemResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string | null;
+            /** Journey */
+            journey: string;
+            pipeline_status: components["schemas"]["CompanyPipelineStatus"];
+            background_check: components["schemas"]["BackgroundCheckState"];
+            /**
+             * Stage
+             * @description review (with or awaiting a reviewer), info (waiting on information) or approval (a proposal awaits its checker).
+             * @enum {string}
+             */
+            stage: "review" | "info" | "approval";
+            /** Relationship Manager Id */
+            relationship_manager_id: string | null;
+            /** Relationship Manager Name */
+            relationship_manager_name?: string | null;
+            /**
+             * Relationship Manager Inactive
+             * @default false
+             */
+            relationship_manager_inactive: boolean;
+            /** Reviewer Id */
+            reviewer_id: string | null;
+            /** Reviewer Name */
+            reviewer_name?: string | null;
+            /**
+             * Reviewer Inactive
+             * @default false
+             */
+            reviewer_inactive: boolean;
+            /**
+             * Waiting Since
+             * Format: date-time
+             */
+            waiting_since: string;
+            /**
+             * Due At
+             * @description Null for a review nobody has picked up yet.
+             */
+            due_at?: string | null;
+            /** Is Due Soon */
+            is_due_soon: boolean;
+            /** Is Overdue */
+            is_overdue: boolean;
+            /**
+             * Rejection Count
+             * @description Proposals returned since the check last moved.
+             */
+            rejection_count: number;
+            /** Proposal Id */
+            proposal_id?: string | null;
+            /** Proposed By Name */
+            proposed_by_name?: string | null;
+            proposal_to_value?: components["schemas"]["BackgroundCheckState"] | null;
+            risk_rating?: components["schemas"]["BackgroundCheckRisk"] | null;
+            /**
+             * Needs Senior Approval
+             * @default false
+             */
+            needs_senior_approval: boolean;
+            /** Eligible Checker Count */
+            eligible_checker_count?: number | null;
+            /**
+             * Needs Attention
+             * @default false
+             */
+            needs_attention: boolean;
+            /**
+             * Info Note
+             * @description What the information request asked for: on the information list only.
+             */
+            info_note?: string | null;
+        };
+        /** ComplianceWorklistResponse */
+        ComplianceWorklistResponse: {
+            /** View */
+            view: string;
+            /** Items */
+            items: components["schemas"]["ComplianceWorkItemResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * ConversationMoveListResponse
          * @description Just the allowed moves, for a caller that wants nothing else.
          */
@@ -3546,8 +3979,8 @@ export interface components {
             cin?: string | null;
             /** Registration Number */
             registration_number?: string | null;
-            /** Relationship Manager */
-            relationship_manager?: string | null;
+            /** Relationship Manager User Id */
+            relationship_manager_user_id?: string | null;
             /** Industry */
             industry?: string | null;
             /** Export Markets */
@@ -4471,6 +4904,13 @@ export interface components {
         ExporterMarker: "NONE" | "PAUSED" | "ENDED";
         /** ExporterProfileDetailResponse */
         ExporterProfileDetailResponse: {
+            /** Relationship Manager Name */
+            relationship_manager_name?: string | null;
+            /**
+             * Relationship Manager Inactive
+             * @default false
+             */
+            relationship_manager_inactive: boolean;
             /**
              * Customer Id
              * Format: uuid
@@ -4533,6 +4973,8 @@ export interface components {
             gstin_warnings: components["schemas"]["DuplicateGstinWarningResponse"][];
             /** Allowed Marker Moves */
             allowed_marker_moves?: components["schemas"]["MarkerMoveResponse"][];
+            /** Relationship Manager Actions */
+            relationship_manager_actions?: ("CLAIM" | "ASSIGN" | "CHANGE" | "CLEAR")[];
         };
         /**
          * ExporterProfileListItemResponse
@@ -4541,6 +4983,13 @@ export interface components {
          *     second, per-row lookup just to show a company.
          */
         ExporterProfileListItemResponse: {
+            /** Relationship Manager Name */
+            relationship_manager_name?: string | null;
+            /**
+             * Relationship Manager Inactive
+             * @default false
+             */
+            relationship_manager_inactive: boolean;
             /**
              * Customer Id
              * Format: uuid
@@ -4599,6 +5048,13 @@ export interface components {
         };
         /** ExporterProfileResponse */
         ExporterProfileResponse: {
+            /** Relationship Manager Name */
+            relationship_manager_name?: string | null;
+            /**
+             * Relationship Manager Inactive
+             * @default false
+             */
+            relationship_manager_inactive: boolean;
             /**
              * Customer Id
              * Format: uuid
@@ -5645,6 +6101,42 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** RecentDecisionListResponse */
+        RecentDecisionListResponse: {
+            /** Decisions */
+            decisions: components["schemas"]["RecentDecisionResponse"][];
+            /** Days */
+            days: number;
+        };
+        /**
+         * RecentDecisionResponse
+         * @description An outcome on a company the caller owns or reviewed. No reason text.
+         */
+        RecentDecisionResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string | null;
+            /**
+             * Decision Id
+             * Format: uuid
+             */
+            decision_id: string;
+            to_value: components["schemas"]["BackgroundCheckState"];
+            risk_rating: components["schemas"]["BackgroundCheckRisk"] | null;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /** Decided By Name */
+            decided_by_name?: string | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
+        };
         /**
          * RecordBackgroundCheckDecisionRequest
          * @description A move, as a client may ask for it.
@@ -5666,6 +6158,11 @@ export interface components {
             risk_rating?: components["schemas"]["BackgroundCheckRisk"] | null;
             /** @description The value the client was looking at when it chose this move. If the check has moved since, the request is refused (409 `BACKGROUND_CHECK_STATE_CHANGED`) instead of becoming a different act — four moves share the destination IN_REVIEW. Optional, but a screen should always send it. */
             from_value?: components["schemas"]["BackgroundCheckState"] | null;
+            /**
+             * Relationship Manager User Id
+             * @description On a start (NOT_STARTED → IN_REVIEW) of an in-pipeline company with no RM: the RM to set in the same transaction. An RM names themselves; ADMIN or exporters:assign_rm may name any RM. Without it such a start is refused (409 `RELATIONSHIP_MANAGER_REQUIRED`).
+             */
+            relationship_manager_user_id?: string | null;
         };
         /**
          * RecordDealPaymentOutcomeRequest
@@ -5712,6 +6209,8 @@ export interface components {
             reason_codes?: string[];
             /** Note */
             note?: string | null;
+            /** Relationship Manager User Id */
+            relationship_manager_user_id?: string | null;
         };
         /** RecordResultsRequest */
         RecordResultsRequest: {
@@ -5812,6 +6311,14 @@ export interface components {
         RejectBackgroundCheckProposalRequest: {
             /** Reason */
             reason: string;
+        };
+        /**
+         * ReleaseReviewRequest
+         * @description Hand a review back to Awaiting review, with an optional note.
+         */
+        ReleaseReviewRequest: {
+            /** Note */
+            note?: string | null;
         };
         /**
          * RequiredCheckResponse
@@ -6211,6 +6718,37 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** StaffListResponse */
+        StaffListResponse: {
+            /** Staff */
+            staff: components["schemas"]["StaffMemberResponse"][];
+        };
+        /**
+         * StaffMemberResponse
+         * @description An active staff account for a picker: id, name and role. Never an email,
+         *     password or custom-role detail.
+         */
+        StaffMemberResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Role */
+            role: string;
+            /**
+             * Companies
+             * @default 0
+             */
+            companies: number;
+            /**
+             * Open Reviews
+             * @default 0
+             */
+            open_reviews: number;
+        };
         /**
          * StartCheckCycleRequest
          * @description Start a Re-KYC or Re-KYB. Who starts it comes from the session.
@@ -6598,8 +7136,6 @@ export interface components {
             cin?: string | null;
             /** Registration Number */
             registration_number?: string | null;
-            /** Relationship Manager */
-            relationship_manager?: string | null;
             /** Industry */
             industry?: string | null;
             /** Export Markets */
@@ -6608,6 +7144,10 @@ export interface components {
             products?: string[] | null;
             /** Year Established */
             year_established?: number | null;
+            /** Seen */
+            seen?: {
+                [key: string]: string | number | string[] | null;
+            } | null;
         };
         /**
          * UpdateMeRequest
@@ -6946,6 +7486,24 @@ export interface components {
             history_length?: number | null;
             /** Current State */
             current_state?: Record<string, never> | null;
+        };
+        /**
+         * WorklistCountsResponse
+         * @description The nav badges. A list this caller may not see is null, not 0.
+         */
+        WorklistCountsResponse: {
+            /** Awaiting Review */
+            awaiting_review: number | null;
+            /** My Reviews */
+            my_reviews: number | null;
+            /** Awaiting Approval */
+            awaiting_approval: number | null;
+            /** Info Requested */
+            info_requested: number;
+            /** Overdue */
+            overdue: number | null;
+            /** Needs Attention */
+            needs_attention: number | null;
         };
         /**
          * RegisterRequest
@@ -8582,6 +9140,8 @@ export interface operations {
                 trade_role?: components["schemas"]["CompanyTradeRole"] | null;
                 /** @description Whether the company has a deal that is neither handed over nor withdrawn. */
                 has_open_deals?: boolean | null;
+                /** @description `me`, `none`, `inactive` or a user id */
+                relationship_manager?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -8785,6 +9345,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description `COMPANY_FIELD_CHANGED` — a field changed since it was loaded */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Invalid request body */
             422: {
                 headers: {
@@ -8915,6 +9482,157 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    assign_exporter_relationship_manager_api_v1_onboarding_exporters__customer_id__relationship_manager_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignRelationshipManagerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExporterProfileDetailResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required; `RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `RELATIONSHIP_MANAGER_CHANGED` — someone changed it since */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `RELATIONSHIP_MANAGER_NOT_ELIGIBLE` — not an active RM user; `RELATIONSHIP_MANAGER_REASON_REQUIRED` */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_assignable_staff_api_v1_onboarding_staff_get: {
+        parameters: {
+            query?: {
+                role?: components["schemas"]["UserRole"][];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reassign_relationship_managers_api_v1_onboarding_relationship_managers_reassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkReassignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkReassignResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED` */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `RELATIONSHIP_MANAGER_NOT_ELIGIBLE` — the target is not an active RM user; `RELATIONSHIP_MANAGER_REASON_REQUIRED`; or the same RM twice */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -9983,7 +10701,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required; `RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED` — naming someone else as RM needs ADMIN or exporters:assign_rm */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9997,14 +10715,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The company is already QUALIFIED */
+            /** @description The company is already QUALIFIED; `RELATIONSHIP_MANAGER_REQUIRED` — QUALIFIED on a company with no RM and none given */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Missing or unknown reason codes, or other invalid input */
+            /** @description Missing or unknown reason codes, an RM who is not an active RM user, or other invalid input */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -12121,7 +12839,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the current value; `BACKGROUND_CHECK_STATE_CHANGED` — the check is no longer at `from_value`; `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR with prerequisites outstanding, naming each; or `BACKGROUND_CHECK_PROPOSAL_OPEN` — a proposal awaits approval */
+            /** @description `BACKGROUND_CHECK_MOVE_NOT_ALLOWED` — not a legal move from the current value; `BACKGROUND_CHECK_STATE_CHANGED` — the check is no longer at `from_value`; `BACKGROUND_CHECK_PREREQUISITES_UNMET` — CLEAR with prerequisites outstanding, naming each; or `BACKGROUND_CHECK_PROPOSAL_OPEN` — a proposal awaits approval; `RELATIONSHIP_MANAGER_REQUIRED` — a start on an in-pipeline company with no RM and none given; `REVIEW_ASSIGNED_TO_OTHER` — someone else holds the review; `REVIEWER_IS_RM` */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12386,7 +13104,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer withdraws */
+            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer (or ADMIN or compliance:assign) withdraws; `BACKGROUND_CHECK_CONFLICT_OF_INTEREST` — you are the review's reviewer or the company's RM; `HIGH_RISK_APPROVAL_REQUIRED` — a HIGH or CRITICAL CLEAR needs a senior approver */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12450,7 +13168,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer withdraws */
+            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer (or ADMIN or compliance:assign) withdraws; `BACKGROUND_CHECK_CONFLICT_OF_INTEREST` — you are the review's reviewer or the company's RM; `HIGH_RISK_APPROVAL_REQUIRED` — a HIGH or CRITICAL CLEAR needs a senior approver */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12512,7 +13230,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer withdraws */
+            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer (or ADMIN or compliance:assign) withdraws; `BACKGROUND_CHECK_CONFLICT_OF_INTEREST` — you are the review's reviewer or the company's RM; `HIGH_RISK_APPROVAL_REQUIRED` — a HIGH or CRITICAL CLEAR needs a senior approver */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12634,6 +13352,355 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    claim_background_check_review_api_v1_onboarding_exporters__company_id__background_check_reviewer_claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `REVIEW_ASSIGN_NOT_ALLOWED`, or the route's role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `REVIEW_NOT_ASSIGNABLE` — not under review; `REVIEW_ALREADY_ASSIGNED`; `REVIEWER_IS_RM`; `BACKGROUND_CHECK_PROPOSAL_OPEN` (release) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `REVIEWER_NOT_ELIGIBLE`, `REVIEW_REASON_REQUIRED`, an unknown field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    assign_background_check_review_api_v1_onboarding_exporters__company_id__background_check_reviewer_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignReviewerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `REVIEW_ASSIGN_NOT_ALLOWED`, or the route's role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `REVIEW_NOT_ASSIGNABLE` — not under review; `REVIEW_ALREADY_ASSIGNED`; `REVIEWER_IS_RM`; `BACKGROUND_CHECK_PROPOSAL_OPEN` (release) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `REVIEWER_NOT_ELIGIBLE`, `REVIEW_REASON_REQUIRED`, an unknown field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    release_background_check_review_api_v1_onboarding_exporters__company_id__background_check_reviewer_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReleaseReviewRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `REVIEW_ASSIGN_NOT_ALLOWED`, or the route's role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `REVIEW_NOT_ASSIGNABLE` — not under review; `REVIEW_ALREADY_ASSIGNED`; `REVIEWER_IS_RM`; `BACKGROUND_CHECK_PROPOSAL_OPEN` (release) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `REVIEWER_NOT_ELIGIBLE`, `REVIEW_REASON_REQUIRED`, an unknown field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_compliance_worklist_api_v1_onboarding_background_check_reviews_get: {
+        parameters: {
+            query?: {
+                view?: "awaiting" | "mine" | "in_review" | "overdue" | "needs_attention";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComplianceWorklistResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description COMPLIANCE or ADMIN; the lead views need compliance:assign */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_info_requests_api_v1_onboarding_background_check_info_requests_get: {
+        parameters: {
+            query?: {
+                relationship_manager?: ("me" | "none") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComplianceWorklistResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_worklist_counts_api_v1_onboarding_worklist_counts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorklistCountsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_recent_decisions_api_v1_onboarding_background_check_recent_decisions_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentDecisionListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

@@ -24,6 +24,7 @@ function company(journey: ExporterJourney, name: string): ExporterProfileListIte
     country: 'IN',
     gstins: [],
     cin: null,
+    relationship_manager_inactive: false,
     journey,
     qualification: journey === 'LEAD' ? 'NOT_YET_REVIEWED' : 'QUALIFIED',
     marker: 'NONE',
@@ -175,6 +176,7 @@ describe('PipelinePage — the three-column journey', () => {
                   ...company('CUSTOMER', 'Kaveri Spice Traders'),
                   industry: 'Spices',
                   relationship_manager: 'Srikar',
+                  relationship_manager_name: 'Srikar',
                 },
               ]
             : [],

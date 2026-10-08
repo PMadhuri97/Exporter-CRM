@@ -9,6 +9,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  assignRelationshipManager,
+  listStaff,
+  reassignRelationshipManagers,
   addGstRegistration,
   deactivateGstRegistration,
   flagGstRegistration,
@@ -23,6 +26,9 @@ import {
   updateExporterProfile,
 } from '../api';
 import type {
+  AssignRelationshipManagerRequest,
+  BulkReassignRequest,
+  PickableRole,
   AddGstRegistrationRequest,
   BringIntoPipelineRequest,
   ExporterSearchParams,
@@ -136,6 +142,51 @@ export function useUpdateExporterProfile(customerId: string) {
     mutationFn: (changes: UpdateExporterProfileRequest) =>
       updateExporterProfile(customerId, changes),
     onSuccess: () => invalidateCompany(queryClient, customerId),
+  });
+}
+
+// ── Relationship manager ─────────────────────────────
+
+/** Set, change or clear the company's RM. A refusal reloads the company too: after a
+ * `RELATIONSHIP_MANAGER_CHANGED` the screen must show the new RM, or every retry would
+ * send the same stale `seen_user_id` and be refused again. */
+export function useAssignRelationshipManager(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AssignRelationshipManagerRequest) =>
+      assignRelationshipManager(customerId, body),
+    onSuccess: () => {
+      invalidateCompany(queryClient, customerId);
+      // The picker's per-person counts and the badges move with ownership.
+      void queryClient.invalidateQueries({ queryKey: ['staff'] });
+      void queryClient.invalidateQueries({ queryKey: ['worklist'] });
+    },
+    onError: () => invalidateCompany(queryClient, customerId),
+  });
+}
+
+export function useReassignRelationshipManagers() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BulkReassignRequest) => reassignRelationshipManagers(body),
+    onSuccess: (result) => {
+      if (result.dry_run) return;
+      void queryClient.invalidateQueries({ queryKey: ['exporterProfiles'] });
+      void queryClient.invalidateQueries({ queryKey: ['exporterProfile'] });
+      void queryClient.invalidateQueries({ queryKey: ['staff'] });
+      void queryClient.invalidateQueries({ queryKey: ['worklist'] });
+    },
+  });
+}
+
+/** Active staff in `roles` for a picker. Fetched only when `enabled` (a picker that
+ * is open), so a page that may never assign anyone never asks. */
+export function useStaff(roles: readonly PickableRole[], enabled = true) {
+  return useQuery({
+    queryKey: ['staff', [...roles].sort()],
+    queryFn: () => listStaff(roles),
+    enabled,
+    staleTime: 60_000,
   });
 }
 

@@ -312,7 +312,6 @@ function ConversationSection({
       as="h3"
       data-extension="conversation-gauge"
       title="Conversation"
-      description="How the sales conversation is going — on its own, beside the journey."
       actions={
         conversation.data && (
           <span data-testid="conversation-chip">
@@ -431,7 +430,6 @@ export function ConversationPanel({
         as="h3"
         data-extension="activities"
         title="Activity"
-        description="Calls, meetings, emails, notes and follow-ups. Nothing here is edited later."
       >
         <div className="space-y-5">
           {isStaff && (

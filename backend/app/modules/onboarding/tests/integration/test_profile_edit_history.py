@@ -125,13 +125,13 @@ async def test_setting_a_field_that_was_empty_is_recorded():
 
 
 async def test_one_row_per_changed_field_sharing_one_edit_id():
-    customer_id = await _company(industry="Textiles", relationship_manager="Asha")
+    customer_id = await _company(industry="Textiles", products=["Cotton yarn"])
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).update_profile(
             customer_id,
             {
                 "industry": "Leather",  # changes
-                "relationship_manager": "Asha",  # same value: no row
+                "products": ["Cotton yarn"],  # same value: no row
                 "year_established": 1998,  # was empty: changes
             },
             actor_id="rm-7",

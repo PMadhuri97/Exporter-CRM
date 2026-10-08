@@ -64,12 +64,12 @@ def can_reveal_identifiers(viewer: User) -> bool:
     see masked values, and relationship-manager ownership waits until after the
     prototype — so that branch is gone.
 
-    The exception was inert in practice (nothing writes
-    `exporter_profile.relationship_manager_user_id`), which is exactly why it
-    was worth removing rather than leaving: the first code that populated that
-    column would have silently switched PII visibility on for a whole role,
-    with no change to this function to review. The column and the response
-    field stay for the post-prototype work that will use them.
+    The exception was inert while nothing wrote
+    `exporter_profile.relationship_manager_user_id`, which is exactly why it
+    was removed rather than left: the column is now written (a company's
+    relationship manager, `ExporterProfileService.assign_relationship_manager`),
+    and ownership deliberately grants nothing — an RM sees the companies they
+    own masked, like every other OPERATIONS user (`test_masking_sweep.py`).
     """
     return viewer.role in _ALWAYS_REVEAL_ROLES
 

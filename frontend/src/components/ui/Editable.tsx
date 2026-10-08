@@ -9,6 +9,21 @@ export interface EditableOption {
 }
 
 /**
+ * A refusal that offers one way forward beside its message — "Reload" after someone
+ * else changed the value. Thrown from `onSave`; the draft stays, so what was typed can
+ * be saved again once the value it replaces is the current one.
+ */
+export class EditableRefusal extends Error {
+  readonly action: { label: string; onClick: () => void } | null;
+
+  constructor(message: string, action: { label: string; onClick: () => void } | null = null) {
+    super(message);
+    this.name = 'EditableRefusal';
+    this.action = action;
+  }
+}
+
+/**
  * A fact you click to change, in place (§6.10) — the replacement for an edit
  * form. Reading, it is text; a role that may edit gets a quiet pencil and the
  * whole value as one button ("Edit Industry"). Editing, Enter or leaving the
@@ -54,6 +69,7 @@ export function Editable({
   const [draft, setDraft] = useState(value ?? '');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorAction, setErrorAction] = useState<EditableRefusal['action']>(null);
   const fieldRef = useRef<HTMLInputElement & HTMLSelectElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const errorId = useId();
@@ -82,11 +98,13 @@ export function Editable({
     }
     setPending(true);
     setError(null);
+    setErrorAction(null);
     try {
       await onSave(next);
       close();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save this change.');
+      setErrorAction(cause instanceof EditableRefusal ? cause.action : null);
     } finally {
       setPending(false);
     }
@@ -205,6 +223,25 @@ export function Editable({
       {error && (
         <span id={errorId} role="alert" className="mt-1 text-caption text-negative">
           {error}
+          {errorAction && (
+            <>
+              {' '}
+              <button
+                type="button"
+                // Keeps the field open: a blur would otherwise try to save again.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  errorAction.onClick();
+                  setError(null);
+                  setErrorAction(null);
+                  fieldRef.current?.focus();
+                }}
+                className="font-medium text-ink underline underline-offset-2"
+              >
+                {errorAction.label}
+              </button>
+            </>
+          )}
         </span>
       )}
     </span>

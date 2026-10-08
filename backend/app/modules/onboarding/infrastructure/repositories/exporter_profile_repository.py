@@ -23,6 +23,7 @@ from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.modules.onboarding.domain.entities.trade_relationship import TradeRelationship
+from app.platform.authentication.models import User
 from app.platform.database.adapters.repository import BaseRepository
 
 
@@ -186,6 +187,9 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         has_open_deals: bool | None = None,
         exclude_ended: bool = False,
         exclude_not_in_pipeline: bool = False,
+        relationship_manager_user_id: uuid.UUID | None = None,
+        relationship_manager_unassigned: bool = False,
+        relationship_manager_inactive: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfile]:
@@ -199,6 +203,18 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         applies them.
         """
         stmt = select(ExporterProfile)
+        if relationship_manager_user_id is not None:
+            stmt = stmt.where(
+                ExporterProfile.relationship_manager_user_id == relationship_manager_user_id
+            )
+        if relationship_manager_unassigned:
+            stmt = stmt.where(ExporterProfile.relationship_manager_user_id.is_(None))
+        if relationship_manager_inactive:
+            stmt = stmt.where(
+                ExporterProfile.relationship_manager_user_id.in_(
+                    select(User.id).where(User.is_active.is_(False))
+                )
+            )
         if gstin is not None:
             stmt = stmt.where(
                 exists().where(
@@ -268,6 +284,26 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
             .offset(offset)
         )
         result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def owned_by(
+        self,
+        user_id: uuid.UUID,
+        *,
+        company_ids: Sequence[uuid.UUID] | None = None,
+        journey: ExporterJourney | None = None,
+    ) -> list[uuid.UUID]:
+        """The companies whose RM is ``user_id``, optionally narrowed to ``company_ids``
+        and a journey stage, in ``customer_id`` order — the order a bulk reassignment
+        locks them in, so two bulk runs never deadlock on each other."""
+        stmt = select(ExporterProfile.customer_id).where(
+            ExporterProfile.relationship_manager_user_id == user_id
+        )
+        if company_ids is not None:
+            stmt = stmt.where(ExporterProfile.customer_id.in_(list(company_ids)))
+        if journey is not None:
+            stmt = stmt.where(ExporterProfile.journey == journey)
+        result = await self.session.execute(stmt.order_by(ExporterProfile.customer_id))
         return list(result.scalars().all())
 
 

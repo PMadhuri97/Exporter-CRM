@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearTokens } from '@/lib/api/tokenStorage';
 import { queryClient } from '@/lib/queryClient';
 
-import { AuthProvider, useAuth } from './AuthContext';
+import { AuthProvider } from './AuthContext';
+import { useAuth } from './useAuth';
 
 const REFRESH_KEY = 'aner.refreshToken';
 

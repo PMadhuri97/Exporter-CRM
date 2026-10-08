@@ -50,6 +50,21 @@ export type ImportRow = Schemas['ImportRowResponse'];
 /** Which side of a trade a company has been on. A filter, not a stored column. */
 export type CompanyTradeRole = Schemas['CompanyTradeRole'];
 export type CompanyPipelineStatus = Schemas['CompanyPipelineStatus'];
+// ── Who is working on it ──
+export type AssignRelationshipManagerRequest = Schemas['AssignRelationshipManagerRequest'];
+export type RelationshipManagerAction = NonNullable<
+  ExporterProfileDetail['relationship_manager_actions']
+>[number];
+export type BulkReassignRequest = Schemas['BulkReassignRequest'];
+export type BulkReassignResult = Schemas['BulkReassignResponse'];
+export type StaffMember = Schemas['StaffMemberResponse'];
+export type StaffList = Schemas['StaffListResponse'];
+/** The roles a staff picker can ask for: RMs, or reviewers (COMPLIANCE and ADMIN). */
+export type PickableRole = 'OPERATIONS' | 'COMPLIANCE' | 'ADMIN';
+/** The list's owner filter: My companies, Unassigned, an RM whose account is
+ * deactivated, or one RM by id. A filter only — ownership never narrows what a
+ * reader may see. */
+export type RelationshipManagerFilter = 'me' | 'none' | 'inactive' | (string & {});
 
 export interface ExporterSearchParams {
   name?: string;
@@ -67,6 +82,7 @@ export interface ExporterSearchParams {
   trade_role?: CompanyTradeRole;
   /** `false` is a filter of its own — companies with no live deal. */
   has_open_deals?: boolean;
+  relationship_manager?: RelationshipManagerFilter;
   limit?: number;
   offset?: number;
 }
@@ -152,7 +168,10 @@ export type HistoryDimension =
   | 'background_check_approval'
   | 'gst_registration'
   | 'trade'
-  | 'pipeline';
+  | 'pipeline'
+  // Who is working on the company (7 October 2026).
+  | 'relationship_manager'
+  | 'background_check_assignment';
 export interface HistoryListParams {
   dimension?: HistoryDimension;
   limit?: number;
@@ -415,3 +434,12 @@ export type RecordTradeInvoiceRequest = Schemas['RecordTradeInvoiceRequest'];
 export type RecordTradeOutcomeRequest = Schemas['RecordTradeOutcomeRequest'];
 export type RecordDealPaymentOutcomeRequest = Schemas['RecordDealPaymentOutcomeRequest'];
 export type DealPaymentOutcome = Schemas['DealPaymentOutcomeResponse'];
+
+// ── Who holds the review, and the worklists ──
+export type ReviewAction = NonNullable<BackgroundCheck['review_actions']>[number];
+export type ComplianceWorkItem = components['schemas']['ComplianceWorkItemResponse'];
+export type ComplianceWorklist = components['schemas']['ComplianceWorklistResponse'];
+export type ComplianceWorkView = 'awaiting' | 'mine' | 'in_review' | 'overdue' | 'needs_attention';
+export type WorklistCounts = components['schemas']['WorklistCountsResponse'];
+export type RecentDecision = components['schemas']['RecentDecisionResponse'];
+export type RecentDecisionList = components['schemas']['RecentDecisionListResponse'];

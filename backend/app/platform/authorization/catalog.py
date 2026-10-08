@@ -8,7 +8,8 @@ in an API request is a 422 rather than a row nobody will ever check.
 Two things to be honest about:
 
 * **`enforced` marks whether a route actually consults the permission today.**
-  Only `users` and `roles` do. The rest are declared and seeded to match
+  `users`, `roles` and `compliance` do, and so does the one action of
+  `exporters` that carries its own flag (`assign_rm`). The rest are declared and seeded to match
   section 3.7 of the architecture plan so that when a module's routes migrate
   off `require_role`, the behaviour they land on is already the behaviour they
   had. Anything reading this catalogue for display must surface that flag —
@@ -33,6 +34,13 @@ class ActionSpec:
     key: str
     label: str
     description: str
+    #: Overrides the module's `enforced` for this one action: `True` for an action a
+    #: route already consults although the rest of its module does not. `None`
+    #: inherits the module's flag.
+    enforced: bool | None = None
+
+    def is_enforced(self, module: ModuleSpec) -> bool:
+        return module.enforced if self.enforced is None else self.enforced
 
 
 @dataclass(frozen=True)
@@ -94,6 +102,15 @@ CATALOG: tuple[ModuleSpec, ...] = (
                 "Search by full PAN",
                 "Look a company up by its complete tax identifier",
             ),
+            # Enforced although the rest of the module is not: the relationship
+            # manager routes consult it (as "ADMIN or this permission").
+            ActionSpec(
+                "assign_rm",
+                "Assign relationship managers",
+                "Assign someone else as a company's RM, change or clear an RM, and "
+                "reassign companies in bulk",
+                enforced=True,
+            ),
         ),
     ),
     ModuleSpec(
@@ -115,6 +132,26 @@ CATALOG: tuple[ModuleSpec, ...] = (
         actions=(
             ActionSpec("view", "View", "See the checklist"),
             ActionSpec("decide", "Decide", "Record a checklist decision"),
+        ),
+    ),
+    ModuleSpec(
+        key="compliance",
+        label="Compliance work",
+        description="Who reviews and approves background checks",
+        enforced=True,
+        actions=(
+            ActionSpec(
+                "assign",
+                "Assign reviews",
+                "Assign and reassign background-check reviewers, withdraw an absent "
+                "proposer's proposal, and see everyone's reviews, overdue work and "
+                "items needing attention",
+            ),
+            ActionSpec(
+                "approve_high_risk",
+                "Approve high-risk Clears",
+                "Approve a CLEAR proposed with HIGH or CRITICAL risk",
+            ),
         ),
     ),
     ModuleSpec(

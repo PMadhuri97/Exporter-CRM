@@ -130,11 +130,19 @@ async def test_admin_holds_every_permission_in_the_catalogue(
 async def test_catalogue_admits_which_modules_are_not_enforced_yet(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
-    """The honesty requirement: only users and roles actually gate anything, and
-    the catalogue has to say so rather than implying every checkbox works."""
+    """The honesty requirement: only users, roles and the compliance assignment
+    permissions actually gate anything — plus one action of `exporters`
+    (`assign_rm`), flagged on the action itself — and the catalogue has to say so
+    rather than implying every checkbox works."""
     catalog = await client.get(f"{ROLES}/catalog", headers=auth_header(tokens[UserRole.ADMIN]))
-    enforced = {m["key"] for m in catalog.json()["modules"] if m["enforced"]}
-    assert enforced == {"users", "roles"}
+    modules = catalog.json()["modules"]
+    enforced = {m["key"] for m in modules if m["enforced"]}
+    assert enforced == {"users", "roles", "compliance"}
+    exporters = next(m for m in modules if m["key"] == "exporters")
+    assert {a["key"] for a in exporters["actions"] if a["enforced"]} == {"assign_rm"}
+    for module in modules:
+        if module["enforced"]:
+            assert all(a["enforced"] for a in module["actions"])
 
 
 async def test_operations_does_not_get_blanket_tax_id_reveal(

@@ -371,6 +371,41 @@ GATED_ROUTES = [
     ),
     ("GET", f"{BASE}/background-check/proposals?status=open", None, COMPLIANCE_OR_ADMIN),
     ("GET", f"{BASE}/background-check/due", None, STAFF),
+    # Who is working on it. The RM route and bulk reassignment admit staff; the service
+    # then applies "an RM claims for themselves; anything else needs ADMIN or
+    # exporters:assign_rm". Reviews are claimed, assigned and released by compliance and
+    # admin; the worklists of reviews are theirs, the information requests, badge
+    # counts and recent decisions every staff user's.
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/relationship-manager",
+        {"user_id": None, "seen_user_id": None},
+        STAFF,
+    ),
+    ("GET", f"{BASE}/staff?role=OPERATIONS", None, STAFF),
+    (
+        "POST",
+        f"{BASE}/relationship-managers/reassign",
+        {"from_user_id": _ID, "to_user_id": _ID, "reason": "left", "dry_run": True},
+        STAFF,
+    ),
+    ("POST", f"{BASE}/exporters/{_ID}/background-check/reviewer/claim", None, COMPLIANCE_OR_ADMIN),
+    (
+        "PUT",
+        f"{BASE}/exporters/{_ID}/background-check/reviewer",
+        {"user_id": _ID, "reason": "balance"},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/background-check/reviewer/release",
+        {},
+        COMPLIANCE_OR_ADMIN,
+    ),
+    ("GET", f"{BASE}/background-check/reviews?view=awaiting", None, COMPLIANCE_OR_ADMIN),
+    ("GET", f"{BASE}/background-check/info-requests", None, STAFF),
+    ("GET", f"{BASE}/worklist/counts", None, STAFF),
+    ("GET", f"{BASE}/background-check/recent-decisions", None, STAFF),
 ]
 
 REFUSALS = [
@@ -969,9 +1004,10 @@ async def test_served_moves_follow_the_state(client: AsyncClient, tokens: dict[U
         f"{BASE}/exporters/{customer_id}/qualification", headers=auth_header(token)
     )
     assert set(before.json()["allowed_outcomes"]) == {"QUALIFIED", "NOT_QUALIFIED"}
+    me = (await client.get("/api/v1/auth/me", headers=auth_header(token))).json()
     after = await client.post(
         f"{BASE}/exporters/{customer_id}/qualification/outcome",
-        json={"outcome": "QUALIFIED"},
+        json={"outcome": "QUALIFIED", "relationship_manager_user_id": me["id"]},
         headers=auth_header(token),
     )
     assert after.json()["allowed_outcomes"] == []  # QUALIFIED is final

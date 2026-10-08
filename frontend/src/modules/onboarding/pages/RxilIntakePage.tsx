@@ -52,7 +52,6 @@ export function RxilIntakePage() {
       <PageHeader
         title="RXIL intake"
         meta={<Tag tone="attention">Prototype: provisional format</Tag>}
-        description="Take in a company RXIL has qualified. It arrives as a prospect, qualified by RXIL."
       />
 
       <form

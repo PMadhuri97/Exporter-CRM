@@ -1,6 +1,6 @@
 // modules/onboarding — public facade.
 // Other modules import ONLY from here.
-export { CompanyRoutes, LegacyExporterRoutes, PipelineRedirect } from './routes';
+export { CompanyRoutes, LegacyExporterRoutes, MyCompaniesRedirect, PipelineRedirect } from './routes';
 // Loaded on first use: the app router gates each one before it renders.
 export {
   DealDetailPage,
@@ -22,7 +22,12 @@ export {
   CheckBackCard,
   MyFollowUpsCard,
   PipelineSummaryCard,
+  InfoRequestedCard,
   ProposalsAwaitingMeCard,
+  RecentDecisionsCard,
   ReKycDueCard,
   SetupCard,
 } from './components/home';
+// The navigation's computed badges (`layout/SideNav.tsx`), loaded lazily.
+export { WorklistBadge } from './lazyPages';
+export type { WorklistBadgeKind } from './components/WorklistBadge';

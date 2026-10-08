@@ -177,12 +177,12 @@ async def test_update_profile_updates_mutable_fields():
             customer_id,
             # `gstins` is not an editable field: a GST registration is a
             # branch, added and deactivated through `GstRegistrationService`.
-            {"industry": "Textiles", "relationship_manager": "Priya"},
+            {"industry": "Textiles", "products": ["Cotton yarn"]},
             actor_id="agent_1",
         )
 
     assert updated.industry == "Textiles"
-    assert updated.relationship_manager == "Priya"
+    assert updated.products == ["Cotton yarn"]
     assert updated.source == ExporterSource.SALES  # untouched
 
 

@@ -4,3 +4,4 @@ export { can, capabilitiesFor, type Capability } from './capabilities';
 export { Gate, type GateProps } from './Gate';
 export { NoWorkspace, NoWorkspaceFrame } from './NoWorkspace';
 export { useCan } from './useCan';
+export { useHasPermission, type AssignmentPermission } from './usePermissions';

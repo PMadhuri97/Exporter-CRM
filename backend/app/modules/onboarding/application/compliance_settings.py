@@ -14,6 +14,12 @@ Three settings in ``platform.configuration.Settings``:
   ones.
 * ``CRM_REKYC_DUE_WINDOW_DAYS`` — how far ahead "Re-KYC due" looks (default 30).
 
+And the service levels of compliance work (configurable; the defaults are the brief's
+targets): ``CRM_SLA_REVIEW`` (1 business day), ``CRM_SLA_APPROVAL`` (4 business hours),
+``CRM_SLA_INFO`` (1 business day), ``CRM_SLA_DUE_SOON_PERCENT`` (75), measured in the
+calendar ``CRM_BUSINESS_HOURS`` / ``CRM_BUSINESS_TIMEZONE`` / ``CRM_HOLIDAYS``
+(``domain/business_time.py``). Computed on read; there is no scheduler.
+
 Read on every call, not at import, so a test can ``monkeypatch.setattr(settings, …)``
 and the next call sees it.
 """
@@ -22,6 +28,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from app.modules.onboarding.domain.business_time import (
+    BusinessCalendar,
+    parse_duration,
+    parse_hours,
+)
 from app.platform.configuration.config import Settings, settings
 
 #: Where maker-checker may be switched off ("local/test", taken literally).
@@ -64,6 +75,42 @@ def rekyc_due_window(override: Settings | None = None) -> timedelta:
     return timedelta(days=days)
 
 
+def business_calendar(override: Settings | None = None) -> BusinessCalendar:
+    """The working calendar every service level is measured in.
+
+    Raises:
+        ValueError: unreadable hours, time zone or holidays.
+    """
+    current = _settings(override)
+    return parse_hours(
+        current.CRM_BUSINESS_HOURS, current.CRM_BUSINESS_TIMEZONE, current.CRM_HOLIDAYS
+    )
+
+
+def sla_review(override: Settings | None = None) -> timedelta:
+    """Business time a reviewer has, from assignment (paused during an information
+    request)."""
+    return parse_duration(_settings(override).CRM_SLA_REVIEW, business_calendar(override))
+
+
+def sla_approval(override: Settings | None = None) -> timedelta:
+    """Business time a proposal may wait for its checker."""
+    return parse_duration(_settings(override).CRM_SLA_APPROVAL, business_calendar(override))
+
+
+def sla_info(override: Settings | None = None) -> timedelta:
+    """Business time an information request may wait for its answer."""
+    return parse_duration(_settings(override).CRM_SLA_INFO, business_calendar(override))
+
+
+def due_soon_fraction(override: Settings | None = None) -> float:
+    """The share of an allowance after which an item is "due soon"."""
+    percent = int(_settings(override).CRM_SLA_DUE_SOON_PERCENT)
+    if not 1 <= percent <= 99:
+        raise ValueError(f"CRM_SLA_DUE_SOON_PERCENT must be 1–99, not {percent}")
+    return percent / 100
+
+
 def enforce_compliance_settings(override: Settings | None = None) -> None:
     """Refuse to start with settings the compliance rules forbid.
 
@@ -90,14 +137,23 @@ def enforce_compliance_settings(override: Settings | None = None) -> None:
     try:
         clear_validity(current)
         rekyc_due_window(current)
+        sla_review(current)
+        sla_approval(current)
+        sla_info(current)
+        due_soon_fraction(current)
     except ValueError as exc:
         raise RuntimeError(str(exc)) from exc
 
 
 __all__ = [
     "MAKER_CHECKER_OFF_ALLOWED_ENVIRONMENTS",
+    "business_calendar",
     "clear_validity",
+    "due_soon_fraction",
     "enforce_compliance_settings",
     "maker_checker_enabled",
     "rekyc_due_window",
+    "sla_approval",
+    "sla_info",
+    "sla_review",
 ]

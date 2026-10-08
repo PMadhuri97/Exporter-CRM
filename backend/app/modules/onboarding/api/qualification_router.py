@@ -33,7 +33,7 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
     QualificationState,
 )
 from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authorization.services import get_current_permissions, require_role
 from app.platform.database.services import get_db
 
 router = APIRouter(tags=["Qualification"])
@@ -218,20 +218,40 @@ async def record_exporter_qualification_results(
         "Allowed from NOT_YET_REVIEWED and, as a re-review, from NOT_QUALIFIED; "
         "QUALIFIED is final. NOT_QUALIFIED needs at least one reason code. A "
         "QUALIFIED lead becomes a PROSPECT in the same transaction; qualification "
-        "never makes a company a CUSTOMER."
+        "never makes a company a CUSTOMER.\n\n"
+        "Recording QUALIFIED on a company with no relationship manager needs "
+        "`relationship_manager_user_id` (an RM names themselves; ADMIN or "
+        "`exporters:assign_rm` names any RM), or 409 `RELATIONSHIP_MANAGER_REQUIRED`."
     ),
     responses={
         401: _401,
-        403: _403_STAFF,
         404: {"description": "Exporter profile not found"},
-        409: {"description": "The company is already QUALIFIED"},
-        422: {"description": "Missing or unknown reason codes, or other invalid input"},
+        403: {
+            "description": (
+                "OPERATIONS, COMPLIANCE or ADMIN role required; "
+                "`RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED` — naming someone else as RM "
+                "needs ADMIN or exporters:assign_rm"
+            )
+        },
+        409: {
+            "description": (
+                "The company is already QUALIFIED; `RELATIONSHIP_MANAGER_REQUIRED` — "
+                "QUALIFIED on a company with no RM and none given"
+            )
+        },
+        422: {
+            "description": (
+                "Missing or unknown reason codes, an RM who is not an active RM user, "
+                "or other invalid input"
+            )
+        },
     },
 )
 async def record_exporter_qualification_outcome(
     customer_id: uuid.UUID,
     body: RecordOutcomeRequest,
     current_user: Annotated[User, Depends(_STAFF)],
+    permissions: Annotated[frozenset[tuple[str, str]], Depends(get_current_permissions)],
     db: AsyncSession = Depends(get_db),
 ) -> QualificationResponse:
     service = QualificationService(db)
@@ -241,6 +261,9 @@ async def record_exporter_qualification_outcome(
         reason_codes=body.reason_codes,
         note=body.note,
         actor_id=str(current_user.id),
+        actor_role=current_user.role,
+        actor_permissions=permissions,
+        relationship_manager_user_id=body.relationship_manager_user_id,
     )
     return _for_viewer(
         QualificationResponse.of(customer_id, await service.get_qualification(customer_id)),

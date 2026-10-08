@@ -83,7 +83,7 @@ export function MyProfileTab() {
 
   return (
     <div className="space-y-4">
-      <Panel title="Your details" description="The name shown beside your sign-in.">
+      <Panel title="Your details">
         <dl>
           <DetailRow label="Email">
             <span className="text-secondary text-ink-2">{user.email}</span>
@@ -113,7 +113,6 @@ export function MyProfileTab() {
 
       <Panel
         title="Password"
-        description="Changing it signs you out everywhere, including here."
         actions={
           <Button size="sm" onClick={() => setChangingPassword(true)}>
             Change password
@@ -127,10 +126,7 @@ export function MyProfileTab() {
       </Panel>
       {changingPassword && <ChangePassword onClose={() => setChangingPassword(false)} />}
 
-      <Panel
-        title="Active sessions"
-        description="Each row is a signed-in session. Only times are recorded — no device or location is stored, so none is shown."
-      >
+      <Panel title="Active sessions">
         {sessionsQuery.isLoading ? (
           <Skeleton className="h-16" />
         ) : sessionsQuery.isError ? (

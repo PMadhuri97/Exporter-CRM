@@ -47,7 +47,10 @@ from app.modules.onboarding.sample_data import (
     load_sample_data,
 )
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
-from app.modules.onboarding.tests.fixtures.companies import insert_company
+from app.modules.onboarding.tests.fixtures.companies import (
+    ensure_relationship_manager,
+    insert_company,
+)
 from app.platform.authentication.models import UserRole
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
@@ -596,6 +599,7 @@ async def test_a_journey_move_leaves_the_marker_alone():
         await ExporterProfileService(db).set_marker(
             customer_id, ExporterMarker.PAUSED, reason="On hold", actor_id="rm-1"
         )
+    await ensure_relationship_manager(customer_id)
     async with db_services.AsyncSessionLocal() as db:
         await QualificationService(db).record_outcome(
             customer_id, QualificationOutcomeValue.QUALIFIED, actor_id="rm-1"

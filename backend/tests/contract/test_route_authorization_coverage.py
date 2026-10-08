@@ -344,6 +344,24 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/background-check/proposals"): COMPLIANCE_OR_ADMIN,
     # The Re-KYC due list: compliance and admin act on it, the RM reads it.
     ("GET", f"{CRM}/background-check/due"): STAFF,
+    # Who is working on it. Staff reach the RM route, the picker and bulk
+    # reassignment; the service applies the RM rules and exporters:assign_rm.
+    ("POST", f"{CRM}/exporters/{{customer_id}}/relationship-manager"): STAFF,
+    ("GET", f"{CRM}/staff"): STAFF,
+    ("POST", f"{CRM}/relationship-managers/reassign"): STAFF,
+    # Reviews are claimed, assigned and released by compliance and admin (assigning
+    # needs ADMIN or compliance:assign, checked in the service).
+    ("POST", f"{CRM}/exporters/{{company_id}}/background-check/reviewer/claim"): COMPLIANCE_OR_ADMIN,
+    ("PUT", f"{CRM}/exporters/{{company_id}}/background-check/reviewer"): COMPLIANCE_OR_ADMIN,
+    (
+        "POST",
+        f"{CRM}/exporters/{{company_id}}/background-check/reviewer/release",
+    ): COMPLIANCE_OR_ADMIN,
+    ("GET", f"{CRM}/background-check/reviews"): COMPLIANCE_OR_ADMIN,
+    # Computed worklists and badges for every staff user; DEVELOPER is refused.
+    ("GET", f"{CRM}/background-check/info-requests"): STAFF,
+    ("GET", f"{CRM}/worklist/counts"): STAFF,
+    ("GET", f"{CRM}/background-check/recent-decisions"): STAFF,
 }
 
 

@@ -32,17 +32,13 @@ Revises: 2807a84d72ba, onboarding_0006_verif_result
 Create Date: 2026-09-21
 
 """
-from typing import Sequence, Union
-
-from alembic import op
-import sqlalchemy as sa
-
+from collections.abc import Sequence
 
 # revision identifiers, used by Alembic.
 revision: str = 'f1c7a3e6b9d2'
-down_revision: Union[str, None] = ('2807a84d72ba', 'onboarding_0006_verif_result')
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = ('2807a84d72ba', 'onboarding_0006_verif_result')
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

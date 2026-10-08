@@ -17,12 +17,6 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
     ExporterSource,
 )
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
-from app.modules.onboarding.domain.entities.qualification import (
-    QualificationCriterion,
-    QualificationOutcome,
-    QualificationReasonCode,
-    QualificationResult,
-)
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
     ExporterLifecycleHistory,
 )
@@ -56,12 +50,18 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationType,
 )
 from app.modules.onboarding.domain.entities.person_profile import PersonProfile
-from app.modules.onboarding.domain.entities.ubo_record import UboRecord
-from app.modules.onboarding.domain.entities.verification import Verification
+from app.modules.onboarding.domain.entities.qualification import (
+    QualificationCriterion,
+    QualificationOutcome,
+    QualificationReasonCode,
+    QualificationResult,
+)
 from app.modules.onboarding.domain.entities.screening_review import (
     BankActivityFinding,
     ScreeningReviewItem,
 )
+from app.modules.onboarding.domain.entities.ubo_record import UboRecord
+from app.modules.onboarding.domain.entities.verification import Verification
 from app.modules.onboarding.domain.entities.verification_result import VerificationResult
 from app.modules.onboarding.domain.entities.webhook_event import WebhookEvent
 

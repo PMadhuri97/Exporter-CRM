@@ -199,7 +199,6 @@ function HandoverSnapshot({ snapshot }: { snapshot: Record<string, unknown> }) {
   return (
     <Panel
       title="What was handed over"
-      description="The buyer and the paperwork as they stood when this deal went to the lending team. This record does not change."
       className="rounded border border-line bg-surface p-5"
     >
       {buyer ? (
@@ -570,7 +569,6 @@ export function DealDetailPage() {
           {deal.buyer_company && (
             <Panel
               title="Trade between these two"
-              description="What these two companies have invoiced each other before, and how it was settled. Never totalled; each amount stays in its own currency."
               actions={
                 // After the handover, staff only: the server refuses an outcome before it
                 // (409 DEAL_NOT_HANDED_OVER). DEVELOPER reads and writes nothing.
@@ -598,10 +596,7 @@ export function DealDetailPage() {
           {/* What the lending team was given, once it exists: a sealed receipt. */}
           {deal.handover_snapshot && <HandoverSnapshot snapshot={deal.handover_snapshot} />}
 
-          <Panel
-            title="Paperwork"
-            description="Documents for this deal — the ones a handover tells the lending team about. The categories a handover needs are marked."
-          >
+          <Panel title="Paperwork">
             {isClosed && (
               <p className="mb-3 text-secondary text-ink-3">
                 {deal.stage === 'HANDED_OVER'
@@ -644,7 +639,7 @@ export function DealDetailPage() {
         </div>
 
         <aside aria-label="History" className="min-w-0">
-          <Panel title="History" description="Every change to this deal, newest first.">
+          <Panel title="History">
             <DealHistory dealId={deal.id} compact />
           </Panel>
         </aside>

@@ -28,7 +28,6 @@
 import { Link } from 'react-router-dom';
 
 import { EmptySection, ErrorState, Skeleton } from '@/components';
-import { Icon } from '@/design/icons';
 
 import { useTradeRelationshipForPair } from '../hooks';
 import { paths } from '../paths';
@@ -85,10 +84,7 @@ export function TradeHistoryPanel({ sellerId, buyerId, dealId }: TradeHistoryPan
   if (!pair.data) {
     return (
       <div data-testid="trade-history-panel">
-        <EmptySection>
-          No trade relationship between these two companies yet. Deals recorded before
-          trade history are linked by the buyer migration and the relationship backfill.
-        </EmptySection>
+        <EmptySection>No trade recorded between these two companies yet.</EmptySection>
       </div>
     );
   }
@@ -97,21 +93,13 @@ export function TradeHistoryPanel({ sellerId, buyerId, dealId }: TradeHistoryPan
 
   return (
     <div className="flex flex-col gap-3" data-testid="trade-history-panel">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <Pair seller={relationship.seller} buyer={relationship.buyer} />
-        <Link
-          to={paths.company(relationship.buyer.company_id)}
-          className="flex items-center gap-1 text-caption font-medium text-ink hover:underline"
-        >
-          {relationship.buyer.name ?? 'The buyer'}
-          <Icon.caretRight size={13} />
-        </Link>
-      </div>
+      {/* Both names are links already; the buyer is not linked a second time. */}
+      <Pair seller={relationship.seller} buyer={relationship.buyer} />
 
       <TradeInvoiceList
         relationshipId={relationship.id}
         dealId={dealId}
-        emptyMessage="These two are on a deal together, but no invoice has been recorded against them yet."
+        emptyMessage="No invoices recorded yet."
       />
     </div>
   );

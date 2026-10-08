@@ -61,6 +61,8 @@ const DIMENSION_LOOK: Record<string, { label: string; icon: IconComponent }> = {
   gst_registration: { label: 'GST registration', icon: Icon.branch },
   trade: { label: 'Trade', icon: Icon.trade },
   pipeline: { label: 'Pipeline', icon: Icon.journey },
+  relationship_manager: { label: 'Relationship manager', icon: Icon.person },
+  background_check_assignment: { label: 'Reviewer', icon: Icon.users },
 };
 
 const FALLBACK_LOOK = { label: 'Change', icon: Icon.history };
@@ -82,6 +84,8 @@ const LANES: HistoryDimension[] = [
   'profile',
   'gst_registration',
   'pipeline',
+  'relationship_manager',
+  'background_check_assignment',
 ];
 
 function text(value: unknown): string | null {
@@ -186,6 +190,29 @@ function eventLine(entry: HistoryEntry): { label: string; value?: string | null 
       return { label: 'Branch flagged', value: state };
     case 'gst_registration_unflagged':
       return { label: 'Branch flag lifted', value: state };
+    // Who holds the company or its review: the names are the ones recorded at the time.
+    case 'relationship_manager_assigned':
+      return { label: 'Relationship manager assigned', value: text(details.to_user_name) };
+    case 'relationship_manager_reassigned':
+      return {
+        label: 'Relationship manager changed',
+        value: `${text(details.from_user_name) ?? 'someone'} → ${text(details.to_user_name) ?? 'someone'}`,
+      };
+    case 'relationship_manager_cleared':
+      return { label: 'Relationship manager cleared', value: text(details.from_user_name) };
+    case 'review_claimed':
+      return { label: 'Review taken', value: text(details.to_user_name) };
+    case 'review_assigned':
+      return { label: 'Review assigned', value: text(details.to_user_name) };
+    case 'review_reassigned':
+      return {
+        label: 'Review reassigned',
+        value: `${text(details.from_user_name) ?? 'someone'} → ${text(details.to_user_name) ?? 'someone'}`,
+      };
+    case 'review_released':
+      return { label: 'Review released', value: text(details.from_user_name) };
+    case 'review_ended':
+      return { label: 'Review ended with the decision', value: text(details.from_user_name) };
     case 'pipeline_initial':
       return entry.to_value === 'NOT_IN_PIPELINE'
         ? { label: "Created as a deal's buyer", value: 'not in the pipeline' }

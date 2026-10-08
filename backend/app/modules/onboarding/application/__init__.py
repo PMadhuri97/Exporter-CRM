@@ -8,8 +8,8 @@ from app.modules.onboarding.application.onboarding_request_service import (
     OnboardingRequestService,
 )
 from app.modules.onboarding.application.onboarding_service import OnboardingService
-from app.modules.onboarding.application.verification_service import VerificationService
 from app.modules.onboarding.application.screening_review_service import ScreeningReviewService
+from app.modules.onboarding.application.verification_service import VerificationService
 from app.modules.onboarding.application.webhook_service import WebhookService
 
 # `OnboardingRequestService` (S7T1) and `OnboardingQueryService` (S7T2) are the

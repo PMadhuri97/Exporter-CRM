@@ -46,6 +46,8 @@ export const paths = {
   deal: (dealId: string) => `/deals/${dealId}`,
   /** Companies as a board of three journey columns (frontend-plan §8.3). */
   board: '/companies?view=board',
+  /** The companies this user is relationship manager of: the list, filtered by owner. */
+  myCompanies: '/companies?owner=me',
   followUps: '/follow-ups',
   /** The board's older address: it redirects to `board`, so links keep working. */
   pipeline: '/pipeline',

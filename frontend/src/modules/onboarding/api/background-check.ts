@@ -13,6 +13,10 @@
 import { apiRequest } from '@/lib/api/client';
 
 import type {
+  ComplianceWorklist,
+  ComplianceWorkView,
+  RecentDecisionList,
+  WorklistCounts,
   ApproveBackgroundCheckProposalResponse,
   BackgroundCheck,
   BackgroundCheckDecision,
@@ -184,4 +188,65 @@ export async function listReKycDue(
   if (params.limit !== undefined) query.set('limit', String(params.limit));
   const suffix = query.toString() ? `?${query}` : '';
   return apiRequest<ReKycDueList>(`/onboarding/background-check/due${suffix}`);
+}
+
+// ── Who holds the review ─────────────────────────────
+
+/** "Assign to me": take an unassigned review. Returns the standing. */
+export async function claimBackgroundCheckReview(customerId: string): Promise<BackgroundCheck> {
+  return apiRequest<BackgroundCheck>(
+    `/onboarding/exporters/${customerId}/background-check/reviewer/claim`,
+    { method: 'POST' },
+  );
+}
+
+/** Assign or reassign the review (ADMIN or compliance:assign). Taking it from someone
+ * needs a reason. Returns the standing. */
+export async function assignBackgroundCheckReview(
+  customerId: string,
+  body: { user_id: string; reason?: string | null },
+): Promise<BackgroundCheck> {
+  return apiRequest<BackgroundCheck>(
+    `/onboarding/exporters/${customerId}/background-check/reviewer`,
+    { method: 'PUT', body },
+  );
+}
+
+/** Hand the review back to Awaiting review. Returns the standing. */
+export async function releaseBackgroundCheckReview(
+  customerId: string,
+  note: string | null,
+): Promise<BackgroundCheck> {
+  return apiRequest<BackgroundCheck>(
+    `/onboarding/exporters/${customerId}/background-check/reviewer/release`,
+    { method: 'POST', body: note ? { note } : {} },
+  );
+}
+
+// ── Worklists, computed on read ──────────────────────
+
+/** One compliance worklist (COMPLIANCE, ADMIN; the lead views need compliance:assign). */
+export async function listComplianceWork(view: ComplianceWorkView): Promise<ComplianceWorklist> {
+  return apiRequest<ComplianceWorklist>(`/onboarding/background-check/reviews?view=${view}`);
+}
+
+/** Checks waiting on information: the caller's companies (`me`), those with no RM
+ * (`none`), or all. Carries what was asked for. */
+export async function listInfoRequests(
+  relationshipManager?: 'me' | 'none',
+): Promise<ComplianceWorklist> {
+  const suffix = relationshipManager ? `?relationship_manager=${relationshipManager}` : '';
+  return apiRequest<ComplianceWorklist>(`/onboarding/background-check/info-requests${suffix}`);
+}
+
+/** The nav badges: a number per list this user may see; null for one they may not. */
+export async function getWorklistCounts(): Promise<WorklistCounts> {
+  return apiRequest<WorklistCounts>('/onboarding/worklist/counts');
+}
+
+/** Outcomes of the last `days` on the caller's companies. No reason text. */
+export async function listRecentDecisions(days = 14): Promise<RecentDecisionList> {
+  return apiRequest<RecentDecisionList>(
+    `/onboarding/background-check/recent-decisions?days=${days}`,
+  );
 }

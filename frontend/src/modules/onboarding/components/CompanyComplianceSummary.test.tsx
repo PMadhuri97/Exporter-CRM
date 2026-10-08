@@ -34,6 +34,8 @@ function standing(overrides: Partial<BackgroundCheck> = {}): BackgroundCheck {
     decided_at: '2026-09-28T10:00:00Z',
     allowed_moves: [],
     clear_blocked_reasons: [],
+    reviewer_inactive: false,
+    relationship_manager_required: false,
     compliance: {
       is_clear: true,
       clear_expires_at: '2027-09-28T10:00:00Z',

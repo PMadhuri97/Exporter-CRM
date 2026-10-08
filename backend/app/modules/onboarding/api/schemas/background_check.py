@@ -294,6 +294,7 @@ class StartCheckCycleResponse(BaseModel):
 # ── Maker-checker, required checks, expiry ──────────────────────────────────
 
 ProposalStatusValue = Literal["OPEN", "APPROVED", "REJECTED", "WITHDRAWN"]
+ReviewActionValue = Literal["CLAIM", "RELEASE", "ASSIGN"]
 ProposalActionValue = Literal["APPROVE", "REJECT", "WITHDRAW"]
 
 
@@ -339,7 +340,33 @@ class BackgroundCheckProposalResponse(BaseModel):
         default_factory=list,
         description=(
             "What **this caller** may do with it: the proposer may WITHDRAW; another "
-            "COMPLIANCE or ADMIN user may APPROVE (unless stale) and REJECT."
+            "COMPLIANCE or ADMIN user may APPROVE (unless stale) and REJECT — unless they "
+            "are the review's reviewer or the company's RM, and APPROVE a HIGH or "
+            "CRITICAL CLEAR only as a senior checker. ADMIN and holders of "
+            "compliance:assign may also WITHDRAW."
+        ),
+    )
+    approval_blocked_reason: str | None = Field(
+        default=None,
+        description=(
+            "Why this caller may not approve it, in words a screen can show beside a "
+            "disabled Approve: the reviewer, the RM, or a senior approval needed."
+        ),
+    )
+    needs_senior_approval: bool = Field(
+        default=False,
+        description="A CLEAR at HIGH or CRITICAL risk: only a senior checker approves it.",
+    )
+    due_at: datetime | None = Field(
+        default=None, description="When the approval is due (business time), while open."
+    )
+    is_due_soon: bool = False
+    is_overdue: bool = False
+    eligible_checker_count: int | None = Field(
+        default=None,
+        description=(
+            "How many active users could approve it now. 0 means nobody can, and a "
+            "lead must step in."
         ),
     )
 
@@ -483,6 +510,29 @@ class BackgroundCheckResponse(BaseModel):
             "promotes the company or lets its deals be handed over."
         ),
     )
+    reviewer_id: str | None = Field(
+        default=None, description="Who holds the review; null when unassigned or not under review."
+    )
+    reviewer_name: str | None = None
+    reviewer_assigned_at: datetime | None = None
+    reviewer_inactive: bool = Field(
+        default=False, description="The reviewer's account is deactivated: reassign it."
+    )
+    review_actions: list[ReviewActionValue] = Field(
+        default_factory=list,
+        description=(
+            "What this caller may do with who holds the review: CLAIM (assign to me), "
+            "RELEASE (back to Awaiting review), ASSIGN (to anyone; ADMIN or "
+            "compliance:assign)."
+        ),
+    )
+    relationship_manager_required: bool = Field(
+        default=False,
+        description=(
+            "Starting the check needs a relationship manager in the same request: the "
+            "company is in the pipeline, NOT_STARTED and has no RM."
+        ),
+    )
 
 
 class RecordBackgroundCheckDecisionRequest(BaseModel):
@@ -521,6 +571,15 @@ class RecordBackgroundCheckDecisionRequest(BaseModel):
             "`BACKGROUND_CHECK_STATE_CHANGED`) instead of becoming a different act — "
             "four moves share the destination IN_REVIEW. Optional, but a screen "
             "should always send it."
+        ),
+    )
+    relationship_manager_user_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "On a start (NOT_STARTED → IN_REVIEW) of an in-pipeline company with no RM: "
+            "the RM to set in the same transaction. An RM names themselves; ADMIN or "
+            "exporters:assign_rm may name any RM. Without it such a start is refused "
+            "(409 `RELATIONSHIP_MANAGER_REQUIRED`)."
         ),
     )
 
@@ -656,3 +715,100 @@ __all__ = [
     "EvidenceItemResponse",
     "RecordBackgroundCheckDecisionRequest",
 ]
+
+
+# ── Who holds the review, and the worklists ─────────────────────────────────
+
+
+class AssignReviewerRequest(BaseModel):
+    """Assign or reassign a review. A reason is required to take it from someone."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str = Field(min_length=1, max_length=255)
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class ReleaseReviewRequest(BaseModel):
+    """Hand a review back to Awaiting review, with an optional note."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str | None = Field(default=None, max_length=1000)
+
+
+WorkStageValue = Literal["review", "info", "approval"]
+
+
+class ComplianceWorkItemResponse(BaseModel):
+    """One company's open compliance work. Names and times only — never an
+    identifier, and never a decision's reason."""
+
+    company_id: uuid.UUID
+    company_name: str | None
+    journey: str
+    pipeline_status: CompanyPipelineStatus
+    background_check: BackgroundCheckState
+    stage: WorkStageValue = Field(
+        description="review (with or awaiting a reviewer), info (waiting on information) "
+        "or approval (a proposal awaits its checker)."
+    )
+    relationship_manager_id: str | None
+    relationship_manager_name: str | None = None
+    relationship_manager_inactive: bool = False
+    reviewer_id: str | None
+    reviewer_name: str | None = None
+    reviewer_inactive: bool = False
+    waiting_since: datetime
+    due_at: datetime | None = Field(
+        default=None, description="Null for a review nobody has picked up yet."
+    )
+    is_due_soon: bool
+    is_overdue: bool
+    rejection_count: int = Field(description="Proposals returned since the check last moved.")
+    proposal_id: uuid.UUID | None = None
+    proposed_by_name: str | None = None
+    proposal_to_value: BackgroundCheckState | None = None
+    risk_rating: BackgroundCheckRisk | None = None
+    needs_senior_approval: bool = False
+    eligible_checker_count: int | None = None
+    needs_attention: bool = False
+    info_note: str | None = Field(
+        default=None,
+        description="What the information request asked for: on the information list only.",
+    )
+
+
+class ComplianceWorklistResponse(BaseModel):
+    view: str
+    items: list[ComplianceWorkItemResponse]
+    total: int
+
+
+class WorklistCountsResponse(BaseModel):
+    """The nav badges. A list this caller may not see is null, not 0."""
+
+    awaiting_review: int | None
+    my_reviews: int | None
+    awaiting_approval: int | None
+    info_requested: int
+    overdue: int | None
+    needs_attention: int | None
+
+
+class RecentDecisionResponse(BaseModel):
+    """An outcome on a company the caller owns or reviewed. No reason text."""
+
+    company_id: uuid.UUID
+    company_name: str | None
+    decision_id: uuid.UUID
+    to_value: BackgroundCheckState
+    risk_rating: BackgroundCheckRisk | None
+    decided_at: datetime
+    decided_by_name: str | None = None
+    approved_by_name: str | None = None
+
+
+class RecentDecisionListResponse(BaseModel):
+    decisions: list[RecentDecisionResponse]
+    days: int
