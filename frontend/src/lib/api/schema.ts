@@ -96,7 +96,7 @@ export interface paths {
         put?: never;
         /**
          * Create a custom role
-         * @description A custom role can be assigned immediately, but only the routes listed as enforced in the catalogue consult it. Everything else still reads the account's built-in role, so a custom role does not yet widen or narrow access to the CRM screens.
+         * @description A custom role can be assigned immediately. Every CRM route checks the permissions of the role an account holds, so a custom role's grants are exactly what its holders may do (the catalogue marks the one action not consulted yet).
          */
         post: operations["create_role_api_v1_auth_roles_post"];
         delete?: never;
@@ -132,6 +132,26 @@ export interface paths {
          *     One edit is refused: removing `roles:edit` from the role you yourself hold, because no one could grant it back afterwards.
          */
         patch: operations["update_role_api_v1_auth_roles__role_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/auth/roles/{role_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who changed this role, and what
+         * @description Every change to the role — created, renamed, its permissions added or removed, deleted — newest first, with who made it. Read from the audit trail, so a deleted role's history stays readable.
+         */
+        get: operations["role_history_api_v1_auth_roles__role_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/auth/me/permissions": {
@@ -378,6 +398,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/users/{user_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who changed this account, and what
+         * @description Every change to the account — created, renamed, role or permission role changed, activated or deactivated, password reset — newest first, with who made it. Read from the audit trail; changes before the trail existed are not there.
+         */
+        get: operations["admin_user_history_api_v1_auth_users__user_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/compliance/screen/{transaction_id}": {
         parameters: {
             query?: never;
@@ -610,7 +650,7 @@ export interface paths {
         };
         /**
          * Search exporter profiles
-         * @description Filters by gstin, pan, iec, source, journey, qualification, marker, pipeline_status (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. Companies that are NOT_IN_PIPELINE — a company that exists only because it was somebody's buyer — follow the same rule: excluded by default, found by any search term, and listed on their own with pipeline_status=NOT_IN_PIPELINE. The gstin/pan/iec filters are COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
+         * @description Filters by gstin, pan, iec, source, journey, qualification, marker, pipeline_status (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. Companies that are NOT_IN_PIPELINE — a company that exists only because it was somebody's buyer — follow the same rule: excluded by default, found by any search term, and listed on their own with pipeline_status=NOT_IN_PIPELINE. The gstin/pan/iec filters are for holders of exporters:view_full_tax_id only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
          *
          *     `relationship_manager` narrows the list by owner: `me` (My companies), `none` (Unassigned), `inactive` (an RM whose account is deactivated) or a user id. It is a filter only: ownership never changes what a reader may see.
          */
@@ -684,7 +724,7 @@ export interface paths {
         put?: never;
         /**
          * Bring a buyer-only company into the sales pipeline
-         * @description A company that exists only because it was somebody's buyer is NOT_IN_PIPELINE: nobody is selling to it, so it is kept out of the working list and out of pipeline counts, and qualification and the conversation gauge refuse it. This is the one way in. It sets pipeline_status to IN_PIPELINE and starts the company's journey history at LEAD — from then on it is an ordinary lead. A reason is optional and recorded on the history row. Deciding to sell to a company is a commercial decision, so this is OPERATIONS, COMPLIANCE or ADMIN; a company already in the pipeline is a 409, because there is nothing to do.
+         * @description A company that exists only because it was somebody's buyer is NOT_IN_PIPELINE: nobody is selling to it, so it is kept out of the working list and out of pipeline counts, and qualification and the conversation gauge refuse it. This is the one way in. It sets pipeline_status to IN_PIPELINE and starts the company's journey history at LEAD — from then on it is an ordinary lead. A reason is optional and recorded on the history row. Deciding to sell to a company is a commercial decision, so this is exporters:transition; a company already in the pipeline is a 409, because there is nothing to do.
          */
         post: operations["bring_exporter_into_pipeline_api_v1_onboarding_exporters__customer_id__pipeline_post"];
         delete?: never;
@@ -704,7 +744,7 @@ export interface paths {
         put?: never;
         /**
          * Set, change or clear a company's relationship manager
-         * @description The RM is one active RM (OPERATIONS) user. An RM may claim a company with no RM for themselves. Naming someone else, or changing or clearing an RM already set, needs ADMIN or `exporters:assign_rm`, and a change or clear needs a reason. `seen_user_id` is the RM the screen showed (`null` for none): a different current RM refuses the request (409) instead of overwriting someone else's change. Every change is a `relationship_manager` history row. Ownership grants nothing: it never unmasks an identifier and never changes what anyone may see.
+         * @description The RM is one active RM (OPERATIONS) user. An RM may claim a company with no RM for themselves. Naming someone else, or changing or clearing an RM already set, needs `exporters:assign_rm`, and a change or clear needs a reason. `seen_user_id` is the RM the screen showed (`null` for none): a different current RM refuses the request (409) instead of overwriting someone else's change. Every change is a `relationship_manager` history row. Ownership grants nothing: it never unmasks an identifier and never changes what anyone may see.
          */
         post: operations["assign_exporter_relationship_manager_api_v1_onboarding_exporters__customer_id__relationship_manager_post"];
         delete?: never;
@@ -722,7 +762,7 @@ export interface paths {
         };
         /**
          * Active staff in a role, for an assignment picker
-         * @description Every **active** account in the given role(s), by name: `role=OPERATIONS` for the relationship-manager picker, `role=COMPLIANCE&role=ADMIN` for the reviewer picker. Each carries how many companies it is RM of and how many reviews it holds, so work can be spread. Never an email, password or custom role. Staff; DEVELOPER is refused (it assigns nothing).
+         * @description Every **active** account in the given role(s), by name: `role=OPERATIONS` for the relationship-manager picker, `role=COMPLIANCE` for the reviewer picker. Each carries how many companies it is RM of and how many reviews it holds, so work can be spread. Never an email, password or custom role. Needs `exporters:edit`; DEVELOPER and the administrator are refused (they assign nothing).
          */
         get: operations["list_assignable_staff_api_v1_onboarding_staff_get"];
         put?: never;
@@ -1088,7 +1128,7 @@ export interface paths {
         put?: never;
         /**
          * Take in an exporter RXIL has qualified (provisional format)
-         * @description Creates or matches the company by the CRM's own identity rules and records RXIL's qualification exactly as supplied (source RXIL, never recomputed), which makes the company a PROSPECT. A company RXIL delivers that resembles existing companies without a PAN to settle it is refused (409) for a person to decide, never merged. A repeated delivery with the same package_id changes nothing. The package format is provisional until RXIL's specification is published. ADMIN only: the outcome is recorded as RXIL's decision, which the manual qualification routes never allow a person to do.
+         * @description Creates or matches the company by the CRM's own identity rules and records RXIL's qualification exactly as supplied (source RXIL, never recomputed), which makes the company a PROSPECT. A company RXIL delivers that resembles existing companies without a PAN to settle it is refused (409) for a person to decide, never merged. A repeated delivery with the same package_id changes nothing. The package format is provisional until RXIL's specification is published. Needs exporters:partner_intake: the outcome is recorded as RXIL's decision, which the manual qualification routes never allow a person to do.
          */
         post: operations["take_in_rxil_company_api_v1_onboarding_rxil_company_intake_post"];
         delete?: never;
@@ -1263,7 +1303,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Flag a branch (COMPLIANCE, ADMIN)
+         * Flag a branch (compliance)
          * @description A reason is required: it is what a blocked handover will say, so without it whoever hits the block has nothing to act on.
          *
          *     Flagging a branch blocks a handover for deals invoiced **through that branch** and leaves the company's other branches alone — a company trading through five states may have a problem in one of them.
@@ -1287,7 +1327,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Lift a branch's flag (COMPLIANCE, ADMIN)
+         * Lift a branch's flag (compliance)
          * @description A reason is required here too: "why we decided the problem is resolved" is the half of the story a later reader needs most, and the flag's own reason is about to stop being readable on the row. Both reasons survive in the company's history.
          */
         post: operations["unflag_gst_registration_api_v1_onboarding_gst_registrations__registration_id__unflag_post"];
@@ -1738,9 +1778,29 @@ export interface paths {
          * Fetch a document's content with a signed link
          * @description The link `POST /documents/{id}/download-link` returns. The signature covers the key **and** the expiry, so neither can be changed without invalidating it, and an expired link is refused.
          *
-         *     Still role-gated: a signed link is not a way around authentication. The scan status is re-checked here too, so a link minted while a document was `AVAILABLE` stops working if a later verdict quarantines it.
+         *     Saving a copy needs `documents:download` here as well as to mint the link: a signed link is not a way around authentication. The scan status is re-checked too, so a link minted while a document was `AVAILABLE` stops working if a later verdict quarantines it. Every download is written to the audit trail.
          */
         get: operations["get_document_content_api_v1_onboarding_documents_content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/documents/{document_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a document on screen
+         * @description What a reader with `documents:view` sees: a PDF, an image or a text file as it is, and a Word, Excel, PowerPoint or CSV file as a PDF (converted on its first view and kept). Served **inline** with a sandboxing Content-Security-Policy, `nosniff` and `no-store`, for the screen to draw without its own save controls; saving a copy is the separate `documents:download` permission. Every view is written to the audit trail.
+         */
+        get: operations["get_document_preview_api_v1_onboarding_documents__document_id__preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1828,7 +1888,7 @@ export interface paths {
          * Mint a short-lived link to a document's content
          * @description `POST`, not `GET`: this mints a credential rather than reading a resource, and it should not be something a browser prefetches or a proxy caches.
          *
-         *     Refused for a document that is not `AVAILABLE` — to **every** role. An unscanned, quarantined or failed-scan file is a state, not a permission (architecture §3.4).
+         *     Needs `documents:download` (COMPLIANCE by default); everyone else reads documents on screen (`GET /documents/{id}/preview`). Refused for a document that is not `AVAILABLE` — to **every** role. An unscanned, quarantined or failed-scan file is a state, not a permission (architecture §3.4).
          */
         post: operations["create_download_link_api_v1_onboarding_documents__document_id__download_link_post"];
         delete?: never;
@@ -1884,7 +1944,7 @@ export interface paths {
          *
          *     Roles are enforced per move, not merely per route: OPERATIONS may start a check and record what arrived, and nothing else.
          *
-         *     **Maker-checker.** A move to CLEAR, FLAGGED or ON_HOLD is not recorded here: it becomes a **proposal** (202, the proposal in the body) — its rules and, for CLEAR, its prerequisites checked now — and the check does not move until a different COMPLIANCE or ADMIN user approves it. While a proposal is open no other move is accepted (409 `BACKGROUND_CHECK_PROPOSAL_OPEN`).
+         *     **Maker-checker.** A move to CLEAR, FLAGGED or ON_HOLD is not recorded here: it becomes a **proposal** (202, the proposal in the body) — its rules and, for CLEAR, its prerequisites checked now — and the check does not move until a different COMPLIANCE user approves it. While a proposal is open no other move is accepted (409 `BACKGROUND_CHECK_PROPOSAL_OPEN`).
          */
         post: operations["record_background_check_decision_api_v1_onboarding_exporters__company_id__background_check_decisions_post"];
         delete?: never;
@@ -1934,7 +1994,7 @@ export interface paths {
          *
          *     On a CLEAR company the same request also records the reopen (CLEAR → IN_REVIEW, reason "Re-KYC: …"), so handovers pause until the new cycle is cleared. On NOT_STARTED, IN_REVIEW or MORE_INFO the gauge does not move. A FLAGGED or ON_HOLD company is reassessed first (409). A cycle with nothing recorded in it yet cannot be followed by another (409), which is also why two simultaneous starts make one cycle.
          *
-         *     COMPLIANCE and ADMIN only; the actor comes from the session.
+         *     COMPLIANCE only; the actor comes from the session.
          */
         post: operations["start_check_cycle_api_v1_onboarding_exporters__company_id__background_check_cycles_post"];
         delete?: never;
@@ -1974,7 +2034,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a proposed background-check decision
-         * @description The second person in maker-checker. Under the company's lock: refuses the proposer and a proposal that is resolved or stale (the check, its latest decision or its inputs changed since), re-evaluates the Clear rules, then writes the decision — `decided_by` the proposer, `approved_by` you — pins its evidence, sets a CLEAR's expiry and makes a qualified PROSPECT a CUSTOMER, in one transaction. COMPLIANCE or ADMIN; the RM never approves.
+         * @description The second person in maker-checker. Under the company's lock: refuses the proposer and a proposal that is resolved or stale (the check, its latest decision or its inputs changed since), re-evaluates the Clear rules, then writes the decision — `decided_by` the proposer, `approved_by` you — pins its evidence, sets a CLEAR's expiry and makes a qualified PROSPECT a CUSTOMER, in one transaction. COMPLIANCE; the RM never approves.
          */
         post: operations["approve_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__approve_post"];
         delete?: never;
@@ -1994,7 +2054,7 @@ export interface paths {
         put?: never;
         /**
          * Reject a proposed background-check decision
-         * @description Closes the proposal with a reason; the check does not move. Anyone but the proposer, COMPLIANCE or ADMIN. A stale proposal can be rejected.
+         * @description Closes the proposal with a reason; the check does not move. Anyone but the proposer, COMPLIANCE. A stale proposal can be rejected.
          */
         post: operations["reject_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__reject_post"];
         delete?: never;
@@ -2014,7 +2074,7 @@ export interface paths {
         put?: never;
         /**
          * Withdraw your own background-check proposal
-         * @description The proposer closes their own proposal (the reason is optional); the check does not move. ADMIN or a holder of compliance:assign may withdraw someone else's — for a proposer who has left.
+         * @description The proposer closes their own proposal (the reason is optional); the check does not move. a holder of compliance:assign may withdraw someone else's — for a proposer who has left.
          */
         post: operations["withdraw_background_check_proposal_api_v1_onboarding_exporters__company_id__background_check_proposals__proposal_id__withdraw_post"];
         delete?: never;
@@ -2032,7 +2092,7 @@ export interface paths {
         };
         /**
          * Background-check proposals across companies (the approval queue)
-         * @description `status=open` (the default) lists every proposal awaiting approval, the longest-waiting first — the Home card "Proposals awaiting me" adds `awaiting=me`, which keeps only what the caller may approve: not their own, not one whose review they hold, not a company they are RM of, and a HIGH or CRITICAL CLEAR only for a senior approver. `approved`, `rejected` and `withdrawn` list resolved ones, newest first. Each carries the company's name (never an identifier), what this caller may do with it and, while open, when it is due and how many people could approve it. COMPLIANCE and ADMIN only: they are the ones who approve.
+         * @description `status=open` (the default) lists every proposal awaiting approval, the longest-waiting first — the Home card "Proposals awaiting me" adds `awaiting=me`, which keeps only what the caller may approve: not their own, not one whose review they hold, not a company they are RM of, and a HIGH or CRITICAL CLEAR only for a senior approver. `approved`, `rejected` and `withdrawn` list resolved ones, newest first. Each carries the company's name (never an identifier), what this caller may do with it and, while open, when it is due and how many people could approve it. COMPLIANCE only: they are the ones who approve.
          */
         get: operations["list_proposals_across_companies_api_v1_onboarding_background_check_proposals_get"];
         put?: never;
@@ -2074,7 +2134,7 @@ export interface paths {
         put?: never;
         /**
          * Take an unassigned review (Assign to me)
-         * @description A COMPLIANCE or ADMIN user takes the review of a check that is IN_REVIEW or MORE_INFO and that nobody holds. Never the company's RM. Returns the standing.
+         * @description A COMPLIANCE user takes the review of a check that is IN_REVIEW or MORE_INFO and that nobody holds. Never the company's RM. Returns the standing.
          */
         post: operations["claim_background_check_review_api_v1_onboarding_exporters__company_id__background_check_reviewer_claim_post"];
         delete?: never;
@@ -2093,7 +2153,7 @@ export interface paths {
         get?: never;
         /**
          * Assign or reassign a review
-         * @description ADMIN or `compliance:assign`. The target is an active COMPLIANCE or ADMIN user who is not the company's RM. Taking a review from someone needs a reason. A proposal already open survives the change. Returns the standing.
+         * @description `compliance:assign`. The target is an active COMPLIANCE user who is not the company's RM. Taking a review from someone needs a reason. A proposal already open survives the change. Returns the standing.
          */
         put: operations["assign_background_check_review_api_v1_onboarding_exporters__company_id__background_check_reviewer_put"];
         post?: never;
@@ -2114,7 +2174,7 @@ export interface paths {
         put?: never;
         /**
          * Hand a review back to Awaiting review
-         * @description The reviewer, or ADMIN or `compliance:assign`. Refused while the reviewer's own proposal is open: withdraw it first. The note is optional. Returns the standing.
+         * @description The reviewer, or `compliance:assign`. Refused while the reviewer's own proposal is open: withdraw it first. The note is optional. Returns the standing.
          */
         post: operations["release_background_check_review_api_v1_onboarding_exporters__company_id__background_check_reviewer_release_post"];
         delete?: never;
@@ -2132,7 +2192,7 @@ export interface paths {
         };
         /**
          * Compliance worklists
-         * @description `awaiting` — reviews nobody has picked up; `mine` — reviews you hold (under review, waiting on information, or with your proposal awaiting approval); and, for ADMIN and holders of compliance:assign only, `in_review` (everyone's), `overdue` and `needs_attention` (no eligible checker, returned twice, or a deactivated reviewer). Oldest wait first, each with its business-time deadline. Computed on read; names only, never an identifier or a reason.
+         * @description `awaiting` — reviews nobody has picked up; `mine` — reviews you hold (under review, waiting on information, or with your proposal awaiting approval); and, for holders of compliance:assign only, `in_review` (everyone's), `overdue` and `needs_attention` (no eligible checker, returned twice, or a deactivated reviewer). Oldest wait first, each with its business-time deadline. Computed on read; names only, never an identifier or a reason.
          */
         get: operations["list_compliance_worklist_api_v1_onboarding_background_check_reviews_get"];
         put?: never;
@@ -2433,6 +2493,53 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessChangeResponse */
+        AccessChangeResponse: {
+            /** Field */
+            field: string;
+            /** From Value */
+            from_value?: unknown;
+            /** To Value */
+            to_value?: unknown;
+            /**
+             * Added
+             * @default []
+             */
+            added: string[];
+            /**
+             * Removed
+             * @default []
+             */
+            removed: string[];
+        };
+        /** AccessHistoryEntryResponse */
+        AccessHistoryEntryResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Event Type */
+            event_type: string;
+            /** Actor Id */
+            actor_id: string | null;
+            /** Actor Name */
+            actor_name: string | null;
+            /** Changes */
+            changes: components["schemas"]["AccessChangeResponse"][];
+        };
+        /** AccessHistoryResponse */
+        AccessHistoryResponse: {
+            /** Entries */
+            entries: components["schemas"]["AccessHistoryEntryResponse"][];
+            /** Total */
+            total: number;
+        };
         /** ActionSpecResponse */
         ActionSpecResponse: {
             /** Key */
@@ -4672,6 +4779,11 @@ export interface components {
             scanner_name: string | null;
             /** Is Downloadable */
             is_downloadable: boolean;
+            /**
+             * Has Preview
+             * @default false
+             */
+            has_preview: boolean;
         };
         /**
          * DocumentScanStatus
@@ -7897,6 +8009,47 @@ export interface operations {
             };
         };
     };
+    role_history_api_v1_auth_roles__role_id__history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessHistoryResponse"];
+                };
+            };
+            /** @description roles:view permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     my_permissions_api_v1_auth_me_permissions_get: {
         parameters: {
             query?: never;
@@ -8504,6 +8657,54 @@ export interface operations {
             };
             /** @description User not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_user_history_api_v1_auth_users__user_id__history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessHistoryResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The matching users:* permission is required */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9194,7 +9395,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required; or the caller used a gstin/pan/iec filter and may not see raw identifiers */
+            /** @description `exporters:view` permission required; or the caller used a gstin/pan/iec filter and may not see raw identifiers */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9252,7 +9453,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:create` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9302,7 +9503,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description `exporters:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9358,7 +9559,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9419,7 +9620,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:transition` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9480,7 +9681,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:transition` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9543,7 +9744,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required; `RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED` */
+            /** @description `exporters:edit` permission required; `RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED` */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9600,7 +9801,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description exporters:edit permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9690,7 +9891,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description `exporters:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9739,7 +9940,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9794,7 +9995,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9855,7 +10056,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description `exporters:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9904,7 +10105,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9959,7 +10160,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description `exporters:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10004,7 +10205,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description `exporters:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10060,7 +10261,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10117,7 +10318,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description `exporters:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10172,7 +10373,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `screening:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10228,7 +10429,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `screening:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10283,7 +10484,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required */
+            /** @description `screening:decide` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10333,7 +10534,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `screening:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10376,7 +10577,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description exporters:view permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10414,7 +10615,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description ADMIN role required */
+            /** @description settings:manage permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10464,7 +10665,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description exporters:view permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10520,7 +10721,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description ADMIN role required */
+            /** @description settings:manage permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10575,7 +10776,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description exporters:view permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10611,7 +10812,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description exporters:view permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10667,7 +10868,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description qualification:record permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10728,7 +10929,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required; `RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED` — naming someone else as RM needs ADMIN or exporters:assign_rm */
+            /** @description `qualification:record` permission required; `RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED` — naming someone else as RM needs ADMIN or exporters:assign_rm */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10787,7 +10988,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description ADMIN role required */
+            /** @description exporters:partner_intake permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10838,7 +11039,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description exporters:create permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10885,7 +11086,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description exporters:create permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10930,7 +11131,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description exporters:create permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10974,7 +11175,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description `exporters:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11021,7 +11222,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:create` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11113,7 +11314,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11174,7 +11375,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11230,7 +11431,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required */
+            /** @description `compliance:decide` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11284,7 +11485,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required */
+            /** @description `compliance:decide` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11489,7 +11690,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11543,7 +11744,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11604,7 +11805,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `deals:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11666,7 +11867,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description `exporters:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11714,7 +11915,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description `deals:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11773,7 +11974,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required */
+            /** @description `exporters:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11822,7 +12023,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -11933,7 +12134,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `deals:create` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12098,7 +12299,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `deals:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12159,7 +12360,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `deals:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12220,7 +12421,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `deals:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12313,7 +12514,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description ADMIN role required */
+            /** @description `settings:manage` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12364,7 +12565,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description CRM read role required */
+            /** @description documents:view permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12412,7 +12613,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description CRM read role required, or the link is invalid or expired */
+            /** @description documents:download required, or the link is invalid or expired */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12427,6 +12628,63 @@ export interface operations {
                 content?: never;
             };
             /** @description The document has not passed the scan step */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_preview_api_v1_onboarding_documents__document_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description documents:view permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not passed the scan step, or no on-screen preview exists */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12475,7 +12733,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description CRM read role required */
+            /** @description documents:view permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12524,7 +12782,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description documents:upload permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12578,7 +12836,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description CRM read role required */
+            /** @description documents:view permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12627,7 +12885,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description documents:upload permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12677,7 +12935,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description CRM read role required */
+            /** @description documents:view permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12729,7 +12987,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description CRM read role required */
+            /** @description documents:download permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12788,7 +13046,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `compliance:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12843,7 +13101,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `compliance:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12908,7 +13166,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required for the route; `BACKGROUND_CHECK_ROLE_NOT_ALLOWED` when the role may not make this particular move */
+            /** @description `exporters:transition` or `compliance:decide` permission required; `BACKGROUND_CHECK_ROLE_NOT_ALLOWED` when the role may not make this particular move */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -12966,7 +13224,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `compliance:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13018,7 +13276,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `compliance:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13074,7 +13332,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required */
+            /** @description `compliance:decide` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13134,7 +13392,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `compliance:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13187,7 +13445,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer (or ADMIN or compliance:assign) withdraws; `BACKGROUND_CHECK_CONFLICT_OF_INTEREST` — you are the review's reviewer or the company's RM; `HIGH_RISK_APPROVAL_REQUIRED` — a HIGH or CRITICAL CLEAR needs a senior approver */
+            /** @description `compliance:approve` permission required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer (or a holder of compliance:assign) withdraws; `BACKGROUND_CHECK_CONFLICT_OF_INTEREST` — you are the review's reviewer or the company's RM; `HIGH_RISK_APPROVAL_REQUIRED` — a HIGH or CRITICAL CLEAR needs a senior approver */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13251,7 +13509,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer (or ADMIN or compliance:assign) withdraws; `BACKGROUND_CHECK_CONFLICT_OF_INTEREST` — you are the review's reviewer or the company's RM; `HIGH_RISK_APPROVAL_REQUIRED` — a HIGH or CRITICAL CLEAR needs a senior approver */
+            /** @description `compliance:approve` permission required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer (or a holder of compliance:assign) withdraws; `BACKGROUND_CHECK_CONFLICT_OF_INTEREST` — you are the review's reviewer or the company's RM; `HIGH_RISK_APPROVAL_REQUIRED` — a HIGH or CRITICAL CLEAR needs a senior approver */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13313,7 +13571,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer (or ADMIN or compliance:assign) withdraws; `BACKGROUND_CHECK_CONFLICT_OF_INTEREST` — you are the review's reviewer or the company's RM; `HIGH_RISK_APPROVAL_REQUIRED` — a HIGH or CRITICAL CLEAR needs a senior approver */
+            /** @description `compliance:approve` permission required; `BACKGROUND_CHECK_SELF_APPROVAL` — the proposer cannot approve or reject their own proposal; `BACKGROUND_CHECK_PROPOSAL_NOT_YOURS` — only the proposer (or a holder of compliance:assign) withdraws; `BACKGROUND_CHECK_CONFLICT_OF_INTEREST` — you are the review's reviewer or the company's RM; `HIGH_RISK_APPROVAL_REQUIRED` — a HIGH or CRITICAL CLEAR needs a senior approver */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13374,7 +13632,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required */
+            /** @description `compliance:approve` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13422,7 +13680,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `compliance:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13644,7 +13902,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN; the lead views need compliance:assign */
+            /** @description `compliance:decide` permission required; the lead views need compliance:assign */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13689,7 +13947,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `compliance:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13732,7 +13990,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `compliance:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13769,7 +14027,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `compliance:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13834,7 +14092,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13877,7 +14135,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13933,7 +14191,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13983,7 +14241,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -14039,7 +14297,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required */
+            /** @description `compliance:decide` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -14098,7 +14356,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -14157,7 +14415,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -14216,7 +14474,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `exporters:edit` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -14315,7 +14573,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `verifications:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -14362,7 +14620,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required */
+            /** @description `verifications:create` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -14419,7 +14677,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE or ADMIN role required */
+            /** @description `verifications:view` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -14475,7 +14733,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description COMPLIANCE or ADMIN role required */
+            /** @description `verifications:review` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;

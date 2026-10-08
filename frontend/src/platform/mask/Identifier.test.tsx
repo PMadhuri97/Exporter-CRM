@@ -30,7 +30,7 @@ describe('Identifier', () => {
     expect(screen.getByText(/234F$/)).toBeInTheDocument();
   });
 
-  it.each<UserRole>(['COMPLIANCE', 'ADMIN'])(
+  it.each<UserRole>(['COMPLIANCE'])(
     'covers the value for %s until the eye is opened, and covers it again',
     (role) => {
       as(role);

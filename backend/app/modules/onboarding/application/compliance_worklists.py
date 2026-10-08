@@ -435,7 +435,7 @@ class ComplianceWorklists:
     ) -> WorklistCounts:
         reviewer = viewer_role in REVIEWER_ROLES
         checker = viewer_role in CHECKER_ROLES
-        lead = holds(viewer_role, viewer_permissions, ASSIGN_REVIEWS)
+        lead = holds(viewer_permissions, ASSIGN_REVIEWS)
         return WorklistCounts(
             awaiting_review=(
                 len(self.view(items, "awaiting", viewer_id=viewer_id)) if reviewer else None
@@ -596,15 +596,14 @@ class ComplianceWorklists:
         return {company_id: count for company_id, count in rows}
 
     async def _checker_pools(self) -> tuple[frozenset[str], frozenset[str]]:
-        """Every active checker, and the senior ones (ADMIN, and COMPLIANCE users
-        holding ``compliance:approve_high_risk``)."""
+        """Every active checker, and the senior ones (COMPLIANCE users holding
+        ``compliance:approve_high_risk``)."""
         checkers = await active_staff(self._db, CHECKER_ROLES)
         pool = frozenset(m.id for m in checkers)
-        admins = frozenset(m.id for m in checkers if m.role is UserRole.ADMIN)
         holders = await users_holding(
             self._db, *APPROVE_HIGH_RISK, among_roles=frozenset({UserRole.COMPLIANCE})
         )
-        return pool, admins | (holders & pool)
+        return pool, holders & pool
 
 
 __all__ = [

@@ -74,7 +74,7 @@ vi.mock('@/platform/auth', async (importOriginal) => ({
 
 const ROLES: UserRole[] = ['OPERATIONS', 'COMPLIANCE', 'ADMIN', 'DEVELOPER', 'API_USER'];
 const READERS: UserRole[] = ['OPERATIONS', 'COMPLIANCE', 'ADMIN', 'DEVELOPER'];
-const STAFF: UserRole[] = ['OPERATIONS', 'COMPLIANCE', 'ADMIN'];
+const STAFF: UserRole[] = ['OPERATIONS', 'COMPLIANCE'];
 const ADMIN: UserRole[] = ['ADMIN'];
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -87,14 +87,14 @@ const SCREENS: [string, string, UserRole[]][] = [
   ['/companies?view=board', 'pipeline', READERS],
   ['/companies/new', 'add-company', STAFF],
   ['/companies/import', 'import-companies', STAFF],
-  ['/companies/rxil-intake', 'rxil-intake', ADMIN],
+  ['/companies/rxil-intake', 'rxil-intake', ['COMPLIANCE']],
   ['/companies/identity-completion', 'identity-completion', READERS],
   [`/companies/${ID}`, 'company', READERS],
   ['/follow-ups', 'follow-ups', READERS],
-  // The compliance queue: COMPLIANCE_OR_ADMIN, like the proposals route it reads.
+  // The compliance queue: COMPLIANCE, like the proposals route it reads.
   // `/review` is its older address, and redirects only for a role that has it.
-  ['/approvals', 'review', ['COMPLIANCE', 'ADMIN']],
-  ['/review', 'review', ['COMPLIANCE', 'ADMIN']],
+  ['/approvals', 'review', ['COMPLIANCE']],
+  ['/review', 'review', ['COMPLIANCE']],
   ['/pipeline', 'pipeline', READERS],
   ['/deals', 'deals', READERS],
   [`/deals/${ID}`, 'deal', READERS],
@@ -116,7 +116,7 @@ const NAV: [string, UserRole[], string, boolean][] = [
   ['Pipeline', READERS, 'pipeline', true],
   ['Deals', READERS, 'deals', true],
   ['Follow-ups', READERS, 'follow-ups', true],
-  ['Compliance work', ['COMPLIANCE', 'ADMIN'], 'review', true],
+  ['Compliance work', ['COMPLIANCE'], 'review', true],
   ['Settings', READERS, 'settings', true],
   ['Qualification criteria', ADMIN, 'criteria', false],
   ['Required documents', ADMIN, 'required-documents', false],

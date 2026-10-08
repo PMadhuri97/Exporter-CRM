@@ -70,27 +70,27 @@ from app.modules.onboarding.exceptions import (
     RelationshipManagerAssignNotAllowedError,
 )
 from app.platform.authentication import staff_members
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import get_current_permissions, require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import (
+    get_current_permissions,
+    has_permission,
+    require_permission,
+)
 from app.platform.database.services import get_db
 from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/exporters", tags=["Exporter CRM"])
 
-# Routine CRM reads and writes by internal staff (Relationship Managers are
-# OPERATIONS, and may read every exporter). PAN/GSTIN/IEC and contact
-# email/phone are masked per viewer in the response schemas.
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
-#: Who may set or clear a marker — the roles `_STAFF` admits.
-_MARKER_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
-# Masked CRM reads. DEVELOPER may read the CRM but never sees a raw
-# identifier (`can_reveal_identifiers` is always False for it), per the role
-# matrix in docs/architecture.md, "Roles and masking" (architecture §3.7).
-_READER = require_role(
-    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
-)
-#: The signed-in user's permissions, for the "ADMIN or permission" rules.
+_COMPANY_CREATE = require_permission("exporters", "create")
+_COMPANY_EDIT = require_permission("exporters", "edit")
+_COMPANY_MOVE = require_permission("exporters", "transition")
+_COMPANY_VIEW = require_permission("exporters", "view")
+
+# Routine CRM reads (`exporters:view`, DEVELOPER and the administrator included) and
+# writes by internal staff. PAN/GSTIN/IEC and contact email/phone are masked per viewer
+# in the response schemas (`can_reveal_identifiers`).
+#: The signed-in user's permissions, for the senior-work rules.
 _PERMISSIONS = Annotated[frozenset[Permission], Depends(get_current_permissions)]
 
 
@@ -140,14 +140,14 @@ def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
             "description": "Idempotent replay or existing profile for this customer_id",
         },
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:create` permission required"},
         409: {"description": "The PAN is already held by another company"},
         422: {"description": "Invalid request body"},
     },
 )
 async def create_exporter_profile(
     body: CreateExporterProfileRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_CREATE)],
     permissions: _PERMISSIONS,
     response: Response,
     db: AsyncSession = Depends(get_db),
@@ -241,13 +241,13 @@ async def create_exporter_profile(
     responses={
         200: {"model": ExporterProfileDetailResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {"description": "`exporters:view` permission required"},
         404: {"description": "Exporter profile not found"},
     },
 )
 async def get_exporter_profile_detail(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     permissions: _PERMISSIONS,
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileDetailResponse:
@@ -283,7 +283,7 @@ async def get_exporter_profile_detail(
     responses={
         200: {"model": ExporterProfileResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "Exporter profile not found"},
         409: {"description": "`COMPANY_FIELD_CHANGED` — a field changed since it was loaded"},
         422: {"description": "Invalid request body"},
@@ -292,7 +292,7 @@ async def get_exporter_profile_detail(
 async def update_exporter_profile(
     customer_id: uuid.UUID,
     body: UpdateExporterProfileRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     permissions: _PERMISSIONS,
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileResponse:
@@ -325,7 +325,8 @@ async def update_exporter_profile(
         "company that exists only because it was somebody's buyer — follow the "
         "same rule: excluded by default, found by any search term, and listed on "
         "their own with pipeline_status=NOT_IN_PIPELINE. The gstin/pan/iec filters are "
-        "COMPLIANCE/ADMIN only: an exact match on a tax identifier reveals "
+        "for holders of exporters:view_full_tax_id only: an exact match on a tax "
+        "identifier reveals "
         "which company holds it even when the response body is masked.\n\n"
         "`relationship_manager` narrows the list by owner: `me` (My companies), "
         "`none` (Unassigned), `inactive` (an RM whose account is deactivated) or a "
@@ -336,14 +337,14 @@ async def update_exporter_profile(
         401: {"description": "Unauthorized"},
         403: {
             "description": (
-                "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required; or the "
+                "`exporters:view` permission required; or the "
                 "caller used a gstin/pan/iec filter and may not see raw identifiers"
             )
         },
     },
 )
 async def search_exporter_profiles(
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
     gstin: str | None = Query(default=None),
     pan: str | None = Query(default=None),
@@ -414,7 +415,7 @@ async def search_exporter_profiles(
     responses={
         200: {"model": ExporterProfileResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:transition` permission required"},
         404: {"description": "Exporter profile not found"},
         409: {"description": "Marker move not allowed"},
         422: {"description": "Invalid request body, or a PAUSED/ENDED marker without a reason"},
@@ -423,7 +424,7 @@ async def search_exporter_profiles(
 async def set_exporter_marker(
     customer_id: uuid.UUID,
     body: SetMarkerRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_MOVE)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileResponse:
     profile = await ExporterProfileService(db).set_marker(
@@ -451,20 +452,20 @@ async def set_exporter_marker(
         "history at LEAD — from then on it is an ordinary lead. "
         "A reason is optional and recorded on the history row. "
         "Deciding to sell to a company is a commercial decision, so this is "
-        "OPERATIONS, COMPLIANCE or ADMIN; a company already in the pipeline is "
+        "exporters:transition; a company already in the pipeline is "
         "a 409, because there is nothing to do."
     ),
     responses={
         200: {"model": ExporterProfileResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:transition` permission required"},
         404: {"description": "Exporter profile not found"},
         409: {"description": "The company is already in the sales pipeline"},
     },
 )
 async def bring_exporter_into_pipeline(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_MOVE)],
     permissions: _PERMISSIONS,
     db: AsyncSession = Depends(get_db),
     body: BringIntoPipelineRequest | None = None,
@@ -488,7 +489,7 @@ async def bring_exporter_into_pipeline(
     description=(
         "The RM is one active RM (OPERATIONS) user. An RM may claim a company with "
         "no RM for themselves. Naming someone else, or changing or clearing an RM "
-        "already set, needs ADMIN or `exporters:assign_rm`, and a change or clear "
+        "already set, needs `exporters:assign_rm`, and a change or clear "
         "needs a reason. `seen_user_id` is the RM the screen showed (`null` for "
         "none): a different current RM refuses the request (409) instead of "
         "overwriting someone else's change. Every change is a `relationship_manager` "
@@ -499,7 +500,7 @@ async def bring_exporter_into_pipeline(
         401: {"description": "Unauthorized"},
         403: {
             "description": (
-                "OPERATIONS, COMPLIANCE or ADMIN role required; "
+                "`exporters:edit` permission required; "
                 "`RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED`"
             )
         },
@@ -516,7 +517,7 @@ async def bring_exporter_into_pipeline(
 async def assign_exporter_relationship_manager(
     customer_id: uuid.UUID,
     body: AssignRelationshipManagerRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     permissions: _PERMISSIONS,
     db: AsyncSession = Depends(get_db),
 ) -> ExporterProfileDetailResponse:
@@ -556,7 +557,7 @@ def _rm_actions(
     viewer: User, permissions: frozenset[Permission], current: uuid.UUID | None
 ) -> list[str]:
     """What this viewer may do with the company's RM — the service's own rule."""
-    may_assign = holds(viewer.role, permissions, ASSIGN_RM)
+    may_assign = holds(permissions, ASSIGN_RM)
     if current is None:
         actions = ["CLAIM"] if viewer.role in RM_ROLES else []
         return [*actions, "ASSIGN"] if may_assign else actions
@@ -606,7 +607,7 @@ async def _company_response(
 def _marker_moves(current: ExporterMarker, viewer: User) -> list[MarkerMoveResponse]:
     """The marker moves this viewer may make now: the service's own table,
     and none at all for a role the marker route refuses."""
-    if viewer.role not in _MARKER_ROLES:
+    if not has_permission(viewer, "exporters", "transition"):
         return []
     return [
         MarkerMoveResponse(to=to_marker, reason_required=needs_reason)

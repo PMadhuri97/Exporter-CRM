@@ -59,6 +59,27 @@ class AuditEventRepository(AppendOnlyRepository[AuditEvent]):
         )
         return result.scalars().all()
 
+    async def list_for_subject(
+        self, subject_type: str, subject_id: str, *, skip: int = 0, limit: int = 100
+    ) -> tuple[Sequence[AuditEvent], int]:
+        """Newest first — every event whose payload names this subject
+        (``payload.subject_type`` / ``payload.subject_id``), with the total."""
+        criteria = (
+            AuditEvent.payload["subject_type"].astext == subject_type,
+            AuditEvent.payload["subject_id"].astext == subject_id,
+        )
+        result = await self.session.execute(
+            select(AuditEvent)
+            .where(*criteria)
+            .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        total = await self.session.execute(
+            select(func.count()).select_from(AuditEvent).where(*criteria)
+        )
+        return result.scalars().all(), int(total.scalar_one())
+
     async def query(
         self,
         *,

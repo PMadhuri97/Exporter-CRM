@@ -74,7 +74,8 @@ async def test_evidence_is_optional(client: AsyncClient, tokens):
     """An answer without evidence is recorded as before."""
     company_id = await make_company()
     put = await client.put(
-        _url(company_id), json={"status": "PASSED"}, headers=auth_header(tokens[UserRole.ADMIN])
+        _url(company_id), json={"status": "PASSED"},
+        headers=auth_header(tokens[UserRole.COMPLIANCE]),
     )
     assert put.status_code == 200, put.text
     assert put.json()["evidence_refs"] == []

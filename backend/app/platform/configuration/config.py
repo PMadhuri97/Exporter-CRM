@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     CRM_BUSINESS_TIMEZONE: str = "Asia/Kolkata"
     # Holidays, as comma-separated ISO dates (`2026-10-20,2026-11-08`). None by default.
     CRM_HOLIDAYS: str = ""
+    # The program that turns a Word, Excel or PowerPoint document into the PDF people
+    # read on screen (LibreOffice, run headless), and how long one conversion may take.
+    # Without it such a document shows "Preview unavailable"; nothing else changes.
+    CRM_DOCUMENT_CONVERTER: str = "soffice"
+    CRM_DOCUMENT_CONVERTER_TIMEOUT_SECONDS: int = 60
 
     # ── Database ─────────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql+asyncpg://aner:aner@localhost:5432/aner_settlement"

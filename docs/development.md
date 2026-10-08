@@ -54,9 +54,15 @@ Optional: `STORAGE_LOCAL_ROOT` (where uploaded documents go; default
 `POST /api/v1/auth/register` off; it only ever grants `API_USER`, which reaches nothing
 in the CRM).
 
+Document previews: `CRM_DOCUMENT_CONVERTER` (default `soffice` — LibreOffice, run
+headless, which turns a Word, Excel, PowerPoint or CSV document into the PDF people read
+on screen; the backend image installs it) and `CRM_DOCUMENT_CONVERTER_TIMEOUT_SECONDS`
+(default `60`). Without LibreOffice on your machine those files show "Preview
+unavailable"; PDFs, images and text files are unaffected, and downloads work as before.
+
 Compliance engine (plans P3-1b, P3-3; `onboarding/application/compliance_settings.py`):
 `CRM_BACKGROUND_CHECK_MAKER_CHECKER` (default `true`: CLEAR, FLAGGED and ON_HOLD need a
-second COMPLIANCE/ADMIN user; `false` is accepted only where `ENVIRONMENT` is `local` or
+second COMPLIANCE user; `false` is accepted only where `ENVIRONMENT` is `local` or
 `test`, and the server refuses to start with it off anywhere else — including
 `development`, the default, so set `ENVIRONMENT=local` on your machine to turn it off),
 `CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS` (default 365: how long a new Clear stays

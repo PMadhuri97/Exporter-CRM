@@ -12,20 +12,20 @@ import { can, capabilitiesFor, type Capability } from './capabilities';
 
 const EXPECTED: Record<Capability, UserRole[]> = {
   'crm.read': ['OPERATIONS', 'COMPLIANCE', 'ADMIN', 'DEVELOPER'],
-  'crm.write': ['OPERATIONS', 'COMPLIANCE', 'ADMIN'],
-  'company.create': ['OPERATIONS', 'COMPLIANCE', 'ADMIN'],
-  'company.import': ['OPERATIONS', 'COMPLIANCE', 'ADMIN'],
-  'company.rxilIntake': ['ADMIN'],
+  'crm.write': ['OPERATIONS', 'COMPLIANCE'],
+  'company.create': ['OPERATIONS', 'COMPLIANCE'],
+  'company.import': ['OPERATIONS', 'COMPLIANCE'],
+  'company.rxilIntake': ['COMPLIANCE'],
   // A company's background check is never the DEVELOPER's.
   'compliance.read': ['OPERATIONS', 'COMPLIANCE', 'ADMIN'],
-  'compliance.decide': ['COMPLIANCE', 'ADMIN'],
-  'compliance.queue': ['COMPLIANCE', 'ADMIN'],
-  'gst.flag': ['COMPLIANCE', 'ADMIN'],
-  'identifiers.reveal': ['COMPLIANCE', 'ADMIN'],
+  'compliance.decide': ['COMPLIANCE'],
+  'compliance.queue': ['COMPLIANCE'],
+  'gst.flag': ['COMPLIANCE'],
+  'identifiers.reveal': ['COMPLIANCE'],
   // The one entry a wider role does not inherit: it marks whose work the leads are, not
   // who may record a decision on one (all three staff roles may).
   'queue.qualification': ['OPERATIONS'],
-  // Can be an RM, and so name themselves one; ADMIN assigns RMs but is not one.
+  // Can be an RM, and so name themselves one; COMPLIANCE and ADMIN never are.
   'rm.self': ['OPERATIONS'],
   'settings.criteria': ['ADMIN'],
   'settings.requiredDocuments': ['ADMIN'],

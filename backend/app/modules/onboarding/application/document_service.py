@@ -29,6 +29,16 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.audit import ActorType, AuditService
+from app.modules.onboarding.application.document_preview import (
+    READY,
+    UNAVAILABLE,
+    base_type,
+    convert_to_pdf,
+    is_convertible,
+    is_shown_as_is,
+    preview_key,
+)
 from app.modules.onboarding.application.storage_service import (
     DocumentNotServableError,
     StorageService,
@@ -60,6 +70,7 @@ from app.modules.onboarding.exceptions import (
     DocumentContentTypeNotSupportedError,
     DocumentNotAvailableError,
     DocumentNotFoundError,
+    DocumentPreviewUnavailableError,
     DocumentTypeNotAllowedError,
     ExporterProfileNotFoundError,
     StorageKeyRefusedError,
@@ -77,8 +88,13 @@ from app.modules.onboarding.infrastructure.storage import (
     S3Storage,
 )
 from app.modules.onboarding.infrastructure.storage.config import storage_backend
+from app.platform.authentication.models import User
 
 logger = structlog.get_logger(__name__)
+
+#: Audit-trail event types for reading a document on screen and saving a copy.
+DOCUMENT_VIEWED = "document.viewed"
+DOCUMENT_DOWNLOADED = "document.downloaded"
 
 
 def build_storage_service() -> StorageService:
@@ -304,6 +320,75 @@ class DocumentService:
             document_id=document.id, url=link.url, expires_at=link.expires_at
         )
 
+    async def read_preview(self, document_id: uuid.UUID) -> tuple[CrmDocument, str, bytes]:
+        """What a reader sees on screen: ``(document, content type, bytes)``.
+
+        A PDF, an image or a text file is its own preview. A Word, Excel, PowerPoint
+        or CSV file is converted to PDF on its first view, under the row lock so two
+        first readers convert it once, and the PDF is kept beside the original. Refused
+        like content for a document that has not passed the scan step, and with
+        ``DocumentPreviewUnavailableError`` for a type with no preview or a conversion
+        that failed."""
+        document = await self._require_document(document_id)
+        if not document.scan_status.is_servable:
+            raise DocumentNotAvailableError(document_id, document.scan_status.value)
+        if is_shown_as_is(document.content_type):
+            content = await self._storage.read(
+                document.storage_key, scan_status=document.scan_status
+            )
+            return document, base_type(document.content_type), content
+        if not is_convertible(document.content_type):
+            raise DocumentPreviewUnavailableError(document_id)
+
+        document = (
+            await self._db.execute(
+                select(CrmDocument)
+                .where(CrmDocument.id == document_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
+        if document.preview_status == UNAVAILABLE:
+            raise DocumentPreviewUnavailableError(document_id)
+        if document.preview_status != READY:
+            original = await self._storage.read(
+                document.storage_key, scan_status=document.scan_status
+            )
+            pdf = await convert_to_pdf(original, document.content_type)
+            if pdf is None:
+                document.preview_status = UNAVAILABLE
+                await self._db.commit()
+                raise DocumentPreviewUnavailableError(document_id)
+            document.preview_storage_key = await self._storage.put_preview(
+                preview_key(document.storage_key), pdf
+            )
+            document.preview_status = READY
+            await self._db.commit()
+            return document, "application/pdf", pdf
+        assert document.preview_storage_key is not None
+        content = await self._storage.read(
+            document.preview_storage_key, scan_status=document.scan_status
+        )
+        return document, "application/pdf", content
+
+    async def record_access(self, document: CrmDocument, *, actor: User, viewed: bool) -> None:
+        """Write who read or saved this document, and when, to the audit trail. Committed
+        with the request: a read the trail does not show did not happen."""
+        await AuditService(self._db).record(
+            DOCUMENT_VIEWED if viewed else DOCUMENT_DOWNLOADED,
+            actor_id=actor.id,
+            actor_type=ActorType.COMPLIANCE_OFFICER,
+            payload={
+                "subject_type": "document",
+                "subject_id": str(document.id),
+                "file_name": document.file_name,
+                "company_id": str(document.company_id) if document.company_id else None,
+                "deal_id": str(document.deal_id) if document.deal_id else None,
+                "actor_name": actor.full_name or actor.email,
+            },
+        )
+        await self._db.commit()
+
     async def read_content(self, storage_key: str) -> tuple[CrmDocument, bytes]:
         """The bytes behind a signed key, with the row they belong to.
 
@@ -408,7 +493,18 @@ def _to_view(document: CrmDocument) -> DocumentView:
         uploaded_at=document.uploaded_at,
         scan_status=document.scan_status,
         scanner_name=document.scanner_name,
+        has_preview=document.scan_status.is_servable
+        and (
+            is_shown_as_is(document.content_type)
+            or (is_convertible(document.content_type) and document.preview_status != UNAVAILABLE)
+        ),
     )
 
 
-__all__ = ["DocumentScanStatus", "DocumentService", "build_storage_service"]
+__all__ = [
+    "DOCUMENT_DOWNLOADED",
+    "DOCUMENT_VIEWED",
+    "DocumentScanStatus",
+    "DocumentService",
+    "build_storage_service",
+]

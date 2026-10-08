@@ -488,7 +488,7 @@ async def test_a_developer_cannot_import(client: AsyncClient):
 
 
 async def test_a_file_that_is_not_utf8_is_a_422(client: AsyncClient):
-    _, token = await user_with_role(client, UserRole.ADMIN)
+    _, token = await user_with_role(client, UserRole.COMPLIANCE)
     resp = await client.post(
         f"{BASE}/imports/companies",
         files={"file": ("companies.csv", b"\xff\xfe\x00bad", "text/csv")},
@@ -521,7 +521,7 @@ async def test_a_bad_byte_late_in_the_file_saves_nothing():
 
 
 async def test_a_bad_byte_late_in_an_upload_is_a_422_that_saves_nothing(client: AsyncClient):
-    _, token = await user_with_role(client, UserRole.ADMIN)
+    _, token = await user_with_role(client, UserRole.COMPLIANCE)
     pan = _pan()
     resp = await client.post(
         f"{BASE}/imports/companies",

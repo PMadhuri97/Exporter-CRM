@@ -185,6 +185,12 @@ class StorageService:
             raise DocumentNotServableError(storage_key, scan_status)
         return await self._storage.read(storage_key)
 
+    async def put_preview(self, storage_key: str, content: bytes) -> str:
+        """Keep a document's PDF preview. Not scanned: it is made by the server from
+        content that has already passed the scan step."""
+        stored = await self._storage.put(storage_key, content, content_type="application/pdf")
+        return stored.key
+
     async def delete(self, storage_key: str) -> None:
         await self._storage.delete(storage_key)
 

@@ -5,12 +5,15 @@ PAN/GSTIN/IEC and contact email/phone.
 Every gated route gets a negative test per refused role asserting 403 — the
 gate runs as a dependency, so a 403 also proves the handler never ran.
 
-Reveal rule: COMPLIANCE and ADMIN see raw PAN/GSTIN/IEC and raw
-contact email/phone; every other role sees them masked, including the assigned
-relationship manager (architecture decision 12 defers ownership-scoped reveal
-until after the prototype). The same two roles are the only ones that may use
-an exact identifier search filter, because an exact match is an existence
-oracle whatever the response body says.
+Reveal rule: holders of `exporters:view_full_tax_id` (COMPLIANCE by default) see raw
+PAN/GSTIN/IEC and raw contact email/phone; every other role sees them masked — the
+administrator, and the assigned relationship manager too (architecture decision 12
+defers ownership-scoped reveal until after the prototype). Only they may use an exact
+identifier search filter, because an exact match is an existence oracle whatever the
+response body says.
+
+Gates are permissions (`require_permission`); the sets below are the built-in roles
+seeded with each. The administrator reads the business and changes none of it.
 """
 
 from __future__ import annotations
@@ -33,11 +36,21 @@ pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
 
-STAFF = {UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN}
-COMPLIANCE_OR_ADMIN = {UserRole.COMPLIANCE, UserRole.ADMIN}
+# Who works the business: relationship managers and compliance.
+STAFF = {UserRole.OPERATIONS, UserRole.COMPLIANCE}
+# Compliance's own decisions.
+COMPLIANCE_ONLY = {UserRole.COMPLIANCE}
+# System configuration: the administrator only.
 ADMIN_ONLY = {UserRole.ADMIN}
+# Reads of the compliance surface: staff, and the administrator read-only. Never
+# DEVELOPER.
+STAFF_READERS = STAFF | {UserRole.ADMIN}
 # Masked exporter-CRM reads: DEVELOPER may read, never unmasked.
-READERS = STAFF | {UserRole.DEVELOPER}
+READERS = STAFF_READERS | {UserRole.DEVELOPER}
+# Senior work no built-in role holds: the seeded lead roles do.
+LEADS_ONLY: set[UserRole] = set()
+# Saving a copy of a document: compliance only.
+DOWNLOADERS = {UserRole.COMPLIANCE}
 
 
 def _case_body() -> dict:
@@ -78,17 +91,17 @@ GATED_ROUTES = [
         "POST",
         f"{BASE}/cases/{_ID}/transitions",
         {"next_state": "SUBMITTED", "source": "USER_ACTION"},
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
     # onboarding foundation
     ("POST", f"{BASE}/register", {"email": "x@example.com", "full_name": "X"}, STAFF),
     # verifications
-    ("POST", f"{BASE}/verifications", _trigger_body(), COMPLIANCE_OR_ADMIN),
+    ("POST", f"{BASE}/verifications", _trigger_body(), COMPLIANCE_ONLY),
     (
         "POST",
         f"{BASE}/verifications/{_ID}/review",
         {"review_status": "ACCEPTED"},
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
     # exporter CRM
     ("POST", f"{BASE}/exporters", {"source": "SALES"}, STAFF),
@@ -140,13 +153,13 @@ GATED_ROUTES = [
         "POST",
         f"{BASE}/gst-registrations/{_ID}/flag",
         {"reason": "Returns unfiled"},
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
     (
         "POST",
         f"{BASE}/gst-registrations/{_ID}/unflag",
         {"reason": "Now filed"},
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
     # A deal's invoicing branch — a routine CRM write, like its buyer.
     ("PUT", f"{BASE}/deals/{_ID}/invoicing-branch", {"gst_registration_id": None}, STAFF),
@@ -191,7 +204,7 @@ GATED_ROUTES = [
         STAFF,
     ),
     # company intake and bulk import
-    ("POST", f"{BASE}/rxil/company-intake", {"exporter": {}}, ADMIN_ONLY),
+    ("POST", f"{BASE}/rxil/company-intake", {"exporter": {}}, COMPLIANCE_ONLY),
     ("POST", f"{BASE}/imports/companies", None, STAFF),
     ("POST", f"{BASE}/imports/companies/preview", None, STAFF),
     (
@@ -205,23 +218,23 @@ GATED_ROUTES = [
         "PUT",
         f"{BASE}/exporters/{_ID}/screening-review/suspicious-bank-indicators",
         {"status": "PASSED"},
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
     # ── reads ──
     ("GET", f"{BASE}/cases/{_ID}", None, STAFF),
     ("GET", f"{BASE}/cases/{_ID}/transitions", None, STAFF),
     ("GET", f"{BASE}/{_ID}/sdk-token", None, STAFF),
     ("GET", f"{BASE}/{_ID}/status", None, STAFF),
-    ("GET", f"{BASE}/verifications/{_ID}", None, STAFF),
-    ("GET", f"{BASE}/verifications?entity_type=EXPORTER&entity_reference={_ID}", None, STAFF),
+    ("GET", f"{BASE}/verifications/{_ID}", None, STAFF_READERS),
+    ("GET", f"{BASE}/verifications?entity_type=EXPORTER&entity_reference={_ID}", None, STAFF_READERS),
     ("GET", f"{BASE}/exporters", None, READERS),
     ("GET", f"{BASE}/companies/identity-completion", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/contacts", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/activities", None, READERS),
     ("GET", f"{BASE}/exporters/activities/pending", None, READERS),
-    ("GET", f"{BASE}/exporters/{_ID}/screening-review", None, STAFF),
-    ("GET", f"{BASE}/exporters/{_ID}/bank-activity", None, STAFF),
+    ("GET", f"{BASE}/exporters/{_ID}/screening-review", None, STAFF_READERS),
+    ("GET", f"{BASE}/exporters/{_ID}/bank-activity", None, STAFF_READERS),
     ("GET", f"{BASE}/qualification/criteria", None, READERS),
     ("GET", f"{BASE}/qualification/criteria/revenue/versions", None, READERS),
     ("GET", f"{BASE}/qualification/reason-codes", None, READERS),
@@ -298,9 +311,10 @@ GATED_ROUTES = [
     # 422 before the gate is reached, which would prove nothing about the gate.
     ("GET", f"{BASE}/documents/categories", None, READERS),
     ("GET", f"{BASE}/documents/{_ID}", None, READERS),
+    ("GET", f"{BASE}/documents/{_ID}/preview", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/documents", None, READERS),
     ("GET", f"{BASE}/deals/{_ID}/documents", None, READERS),
-    ("POST", f"{BASE}/documents/{_ID}/download-link", None, READERS),
+    ("POST", f"{BASE}/documents/{_ID}/download-link", None, DOWNLOADERS),
     (
         "GET",
         f"{BASE}/documents/content?key=test%2Fcompany%2Fx%2Finternal%2Fx.pdf"
@@ -315,68 +329,70 @@ GATED_ROUTES = [
     #
     # ── Background check ──
     #
-    # `STAFF` throughout: DEVELOPER is refused even on the reads. These
-    # rows are what proves it, rather than the intention living only in a comment.
-    ("GET", f"{BASE}/exporters/{_ID}/background-check", None, STAFF),
+    # DEVELOPER is refused even on the reads, and the administrator reads but never
+    # moves. These rows are what proves it, rather than the intention living only in a
+    # comment.
+    ("GET", f"{BASE}/exporters/{_ID}/background-check", None, STAFF_READERS),
     (
         "POST",
         f"{BASE}/exporters/{_ID}/background-check/decisions",
         {"to_value": "IN_REVIEW"},
         STAFF,
     ),
-    ("GET", f"{BASE}/exporters/{_ID}/background-check/decisions", None, STAFF),
+    ("GET", f"{BASE}/exporters/{_ID}/background-check/decisions", None, STAFF_READERS),
     #
     # ── Verification and screening ──
     (
         "GET",
         f"{BASE}/exporters/{_ID}/screening-review/website-reviewed/history",
         None,
-        STAFF,
+        STAFF_READERS,
     ),
     #
     # ── Compliance engine ──
-    # DEVELOPER refused throughout. The start is COMPLIANCE and ADMIN.
+    # DEVELOPER refused throughout. The start is COMPLIANCE's.
     (
         "GET",
         f"{BASE}/exporters/{_ID}/background-check/decisions/{_ID}/evidence",
         None,
-        STAFF,
+        STAFF_READERS,
     ),
-    ("GET", f"{BASE}/exporters/{_ID}/background-check/cycles", None, STAFF),
+    ("GET", f"{BASE}/exporters/{_ID}/background-check/cycles", None, STAFF_READERS),
     (
         "POST",
         f"{BASE}/exporters/{_ID}/background-check/cycles",
         {"kind": "RE_KYC", "reason": "Annual re-check"},
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
     # Maker-checker: compliance and admin resolve proposals and read the
     # queue; the RM never approves. The due list is read by all staff.
-    ("GET", f"{BASE}/exporters/{_ID}/background-check/proposals", None, STAFF),
+    ("GET", f"{BASE}/exporters/{_ID}/background-check/proposals", None, STAFF_READERS),
     (
         "POST",
         f"{BASE}/exporters/{_ID}/background-check/proposals/{_ID}/approve",
         None,
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
     (
         "POST",
         f"{BASE}/exporters/{_ID}/background-check/proposals/{_ID}/reject",
         {"reason": "not convinced"},
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
     (
         "POST",
         f"{BASE}/exporters/{_ID}/background-check/proposals/{_ID}/withdraw",
         {},
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
-    ("GET", f"{BASE}/background-check/proposals?status=open", None, COMPLIANCE_OR_ADMIN),
-    ("GET", f"{BASE}/background-check/due", None, STAFF),
-    # Who is working on it. The RM route and bulk reassignment admit staff; the service
-    # then applies "an RM claims for themselves; anything else needs ADMIN or
-    # exporters:assign_rm". Reviews are claimed, assigned and released by compliance and
-    # admin; the worklists of reviews are theirs, the information requests, badge
-    # counts and recent decisions every staff user's.
+    ("GET", f"{BASE}/background-check/proposals?status=open", None, COMPLIANCE_ONLY),
+    ("GET", f"{BASE}/background-check/due", None, STAFF_READERS),
+    # Who is working on it. The RM route admits staff; the service then applies "an RM
+    # claims for themselves; anything else needs exporters:assign_rm". Bulk
+    # reassignment needs exporters:assign_rm itself, which only the Sales lead role
+    # holds. Reviews are claimed, assigned and released by compliance; the worklists
+    # of reviews are theirs, the information requests, badge counts and recent
+    # decisions every staff user's (and the administrator's, read-only).
     (
         "POST",
         f"{BASE}/exporters/{_ID}/relationship-manager",
@@ -388,25 +404,25 @@ GATED_ROUTES = [
         "POST",
         f"{BASE}/relationship-managers/reassign",
         {"from_user_id": _ID, "to_user_id": _ID, "reason": "left", "dry_run": True},
-        STAFF,
+        LEADS_ONLY,
     ),
-    ("POST", f"{BASE}/exporters/{_ID}/background-check/reviewer/claim", None, COMPLIANCE_OR_ADMIN),
+    ("POST", f"{BASE}/exporters/{_ID}/background-check/reviewer/claim", None, COMPLIANCE_ONLY),
     (
         "PUT",
         f"{BASE}/exporters/{_ID}/background-check/reviewer",
         {"user_id": _ID, "reason": "balance"},
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
     (
         "POST",
         f"{BASE}/exporters/{_ID}/background-check/reviewer/release",
         {},
-        COMPLIANCE_OR_ADMIN,
+        COMPLIANCE_ONLY,
     ),
-    ("GET", f"{BASE}/background-check/reviews?view=awaiting", None, COMPLIANCE_OR_ADMIN),
-    ("GET", f"{BASE}/background-check/info-requests", None, STAFF),
-    ("GET", f"{BASE}/worklist/counts", None, STAFF),
-    ("GET", f"{BASE}/background-check/recent-decisions", None, STAFF),
+    ("GET", f"{BASE}/background-check/reviews?view=awaiting", None, COMPLIANCE_ONLY),
+    ("GET", f"{BASE}/background-check/info-requests", None, STAFF_READERS),
+    ("GET", f"{BASE}/worklist/counts", None, STAFF_READERS),
+    ("GET", f"{BASE}/background-check/recent-decisions", None, STAFF_READERS),
 ]
 
 REFUSALS = [
@@ -618,7 +634,7 @@ async def _identifiers_as(client: AsyncClient, token: str, customer_id: str) -> 
     """The identifiers as seen on the detail route and in a search listing.
 
     The search leg deliberately does **not** filter by PAN. An exact identifier
-    filter is COMPLIANCE/ADMIN-only, so using one here would make this
+    filter is for holders of the reveal permission only, so using one here would make this
     helper 403 for exactly the roles whose masking it exists to check. It pages
     through an unfiltered listing instead, which every reader may call.
     """
@@ -655,16 +671,16 @@ async def exporter_with_identifiers(
     )
 
 
-@pytest.mark.parametrize("role", [UserRole.COMPLIANCE, UserRole.ADMIN])
-async def test_identifiers_unmasked_for_compliance_and_admin(
+@pytest.mark.parametrize("role", [UserRole.COMPLIANCE])
+async def test_identifiers_unmasked_for_compliance(
     client: AsyncClient, tokens: dict[UserRole, str], exporter_with_identifiers: str, role: UserRole
 ):
     for seen in await _identifiers_as(client, tokens[role], exporter_with_identifiers):
         assert seen == {"pan": PAN, "gstins": [GSTIN], "iec": IEC}
 
 
-@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.DEVELOPER])
-async def test_identifiers_masked_for_non_owning_operations_and_developer(
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.DEVELOPER, UserRole.ADMIN])
+async def test_identifiers_masked_for_operations_developer_and_admin(
     client: AsyncClient,
     tokens: dict[UserRole, str],
     exporter_with_identifiers: str,
@@ -685,7 +701,7 @@ async def test_identifiers_masked_even_for_the_owning_relationship_manager(
 ):
     """Previously `test_identifiers_unmasked_for_owning_relationship_manager`.
 
-    Architecture decision 12 settles the prototype as COMPLIANCE/ADMIN only,
+    Architecture decision 12 settles the prototype as COMPLIANCE only,
     with relationship-manager ownership deferred until afterwards. The test is
     inverted rather than deleted because the setup is the thing worth keeping:
     it is the only place that actually populates
@@ -712,7 +728,7 @@ async def test_identifiers_masked_even_for_the_owning_relationship_manager(
 
 
 @pytest.mark.parametrize("param", ["pan", "gstin", "iec"])
-@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.DEVELOPER])
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.DEVELOPER, UserRole.ADMIN])
 async def test_identifier_search_refused_for_roles_that_cannot_reveal(
     client: AsyncClient, tokens: dict[UserRole, str], role: UserRole, param: str
 ):
@@ -732,8 +748,8 @@ async def test_identifier_search_refused_for_roles_that_cannot_reveal(
     assert param in resp.json()["detail"]
 
 
-@pytest.mark.parametrize("role", [UserRole.COMPLIANCE, UserRole.ADMIN])
-async def test_identifier_search_allowed_for_compliance_and_admin(
+@pytest.mark.parametrize("role", [UserRole.COMPLIANCE])
+async def test_identifier_search_allowed_for_compliance(
     client: AsyncClient,
     tokens: dict[UserRole, str],
     exporter_with_identifiers: str,
@@ -846,18 +862,19 @@ async def exporter_with_contact(client: AsyncClient, tokens: dict[UserRole, str]
     return customer_id
 
 
-@pytest.mark.parametrize("role", [UserRole.COMPLIANCE, UserRole.ADMIN])
-async def test_contacts_unmasked_for_compliance_and_admin(
+@pytest.mark.parametrize("role", [UserRole.COMPLIANCE])
+async def test_contacts_unmasked_for_compliance(
     client: AsyncClient, tokens: dict[UserRole, str], exporter_with_contact: str, role: UserRole
 ):
     for seen in await _contacts_as(client, tokens[role], exporter_with_contact):
         assert seen == {"email": EMAIL, "phone": PHONE}
 
 
-async def test_contacts_masked_for_non_owning_operations(
-    client: AsyncClient, tokens: dict[UserRole, str], exporter_with_contact: str
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.ADMIN])
+async def test_contacts_masked_for_non_owning_operations_and_admin(
+    client: AsyncClient, tokens: dict[UserRole, str], exporter_with_contact: str, role: UserRole
 ):
-    for seen in await _contacts_as(client, tokens[UserRole.OPERATIONS], exporter_with_contact):
+    for seen in await _contacts_as(client, tokens[role], exporter_with_contact):
         assert seen == {"email": MASKED_EMAIL, "phone": _masked(PHONE)}
 
 
@@ -919,11 +936,11 @@ def test_mask_email_shapes(value: str | None, expected: str | None):
 async def test_there_is_no_route_to_move_the_journey(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
-    customer_id = await _create_exporter(client, tokens[UserRole.ADMIN])
+    customer_id = await _create_exporter(client, tokens[UserRole.COMPLIANCE])
     resp = await client.post(
         f"{BASE}/exporters/{customer_id}/transition",
         json={"to_status": "CUSTOMER"},
-        headers=auth_header(tokens[UserRole.ADMIN]),
+        headers=auth_header(tokens[UserRole.COMPLIANCE]),
     )
     assert resp.status_code in (404, 405), resp.text
 
@@ -937,7 +954,7 @@ async def test_no_role_can_create_a_company_past_lead(
     resp = await client.post(
         f"{BASE}/exporters",
         json={"source": "SALES", field: value},
-        headers=auth_header(tokens[UserRole.ADMIN]),
+        headers=auth_header(tokens[UserRole.COMPLIANCE]),
     )
     assert resp.status_code == 422, resp.text
 
@@ -959,11 +976,11 @@ async def test_a_new_company_is_a_lead_not_yet_reviewed(
 # ── Allowed moves are served per viewer, not kept by the frontend ────────────
 
 
-@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN])
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.COMPLIANCE])
 async def test_staff_are_served_the_marker_moves_they_may_make(
     client: AsyncClient, tokens: dict[UserRole, str], role: UserRole
 ):
-    customer_id = await _create_exporter(client, tokens[UserRole.ADMIN])
+    customer_id = await _create_exporter(client, tokens[UserRole.COMPLIANCE])
     detail = await client.get(
         f"{BASE}/exporters/{customer_id}", headers=auth_header(tokens[role])
     )
@@ -973,11 +990,13 @@ async def test_staff_are_served_the_marker_moves_they_may_make(
     ]
 
 
-async def test_a_developer_is_served_no_moves(
-    client: AsyncClient, tokens: dict[UserRole, str]
+@pytest.mark.parametrize("role", [UserRole.DEVELOPER, UserRole.ADMIN])
+async def test_a_reader_is_served_no_moves(
+    client: AsyncClient, tokens: dict[UserRole, str], role: UserRole
 ):
-    customer_id = await _create_exporter(client, tokens[UserRole.ADMIN])
-    token = tokens[UserRole.DEVELOPER]
+    """DEVELOPER and the administrator read the company and may move none of it."""
+    customer_id = await _create_exporter(client, tokens[UserRole.COMPLIANCE])
+    token = tokens[role]
     detail = await client.get(f"{BASE}/exporters/{customer_id}", headers=auth_header(token))
     assert detail.json()["allowed_marker_moves"] == []
     qualification = await client.get(
@@ -989,7 +1008,7 @@ async def test_a_developer_is_served_no_moves(
 
 async def test_served_moves_follow_the_state(client: AsyncClient, tokens: dict[UserRole, str]):
     token = tokens[UserRole.OPERATIONS]
-    customer_id = await _create_exporter(client, tokens[UserRole.ADMIN])
+    customer_id = await _create_exporter(client, tokens[UserRole.COMPLIANCE])
 
     paused = await client.post(
         f"{BASE}/exporters/{customer_id}/marker",

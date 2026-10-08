@@ -1,15 +1,15 @@
 """RXIL company intake and bulk company import routes (CSV or Excel).
 
-Bulk import creates companies, so it admits OPERATIONS, COMPLIANCE and ADMIN,
-as company creation does.
+Bulk import creates companies, so it needs ``exporters:create``, as company
+creation does (OPERATIONS and COMPLIANCE; the administrator creates nothing).
 
-**RXIL intake is ADMIN only.** It records a qualification outcome *as RXIL's*:
+**RXIL intake needs ``exporters:partner_intake``** (COMPLIANCE by default). It records a qualification outcome *as RXIL's*:
 ``source = RXIL``, RXIL's own ``decided_by_kind`` and confidence, no deciding
 user. The manual qualification routes refuse every one of those fields on
 purpose (``schemas/qualification.py``), because a person must not be able to
 record a decision as someone else's. Until RXIL delivers through its own
 authenticated integration, a package is pasted in by hand, so the route is
-limited to the role trusted to vouch that a package really came from RXIL.
+limited to the people trusted to vouch that a package really came from RXIL.
 ``API_USER`` is deliberately not admitted: public sign-up grants it, and it
 reaches nothing in the CRM.
 
@@ -46,19 +46,19 @@ from app.modules.onboarding.application.company_intake_service import PartnerInt
 from app.modules.onboarding.infrastructure.rxil.company_package import (
     parse_rxil_company_package,
 )
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import require_permission
 from app.platform.database.services import get_db
 from app.shared.exceptions import ValidationError
 
 router = APIRouter(tags=["Company intake"])
 
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
-#: Recording a decision as RXIL's — see the module docstring.
-_PARTNER_INTAKE = require_role(UserRole.ADMIN)
+_COMPANY_CREATE = require_permission("exporters", "create")
+_PARTNER_INTAKE = require_permission("exporters", "partner_intake")
+
 _401 = {"description": "Unauthorized"}
-_403 = {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"}
-_403_ADMIN = {"description": "ADMIN role required"}
+_403 = {"description": "exporters:create permission required"}
+_403_ADMIN = {"description": "exporters:partner_intake permission required"}
 
 #: The largest file accepted, in bytes (a 1,000-row file is well under 1 MB).
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
@@ -90,7 +90,8 @@ async def _read_upload(file: UploadFile) -> bytes:
         "existing companies without a PAN to settle it is refused (409) for a person "
         "to decide, never merged. A repeated delivery with the same package_id "
         "changes nothing. The package format is provisional until RXIL's "
-        "specification is published. ADMIN only: the outcome is recorded as RXIL's "
+        "specification is published. Needs exporters:partner_intake: the outcome is "
+        "recorded as RXIL's "
         "decision, which the manual qualification routes never allow a person to do."
     ),
     responses={
@@ -130,7 +131,7 @@ async def take_in_rxil_company(
     },
 )
 async def get_company_import_template(
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_CREATE)],
     format: Annotated[Literal["csv", "xlsx"], Query()] = "csv",
 ) -> Response:
     if format == "xlsx":
@@ -162,7 +163,7 @@ async def get_company_import_template(
     },
 )
 async def preview_company_import(
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_CREATE)],
     file: Annotated[UploadFile, File(description=_FILE_DESCRIPTION)],
 ) -> ImportPreviewResponse:
     content = await _read_upload(file)
@@ -187,7 +188,7 @@ async def preview_company_import(
     },
 )
 async def import_companies(
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_CREATE)],
     file: Annotated[UploadFile, File(description=_FILE_DESCRIPTION)],
     db: AsyncSession = Depends(get_db),
 ) -> ImportReportResponse:

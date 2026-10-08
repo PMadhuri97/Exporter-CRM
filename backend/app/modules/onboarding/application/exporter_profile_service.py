@@ -732,7 +732,7 @@ class ExporterProfileService:
         1. the same RM again is not a change: nothing is written (``False``);
         2. who may do it (``domain.assignment.may_set_relationship_manager``): an
            OPERATIONS user may claim a company with no RM for themselves; anything
-           else needs ADMIN or ``exporters:assign_rm`` (403);
+           else needs ``exporters:assign_rm`` (403);
         3. a change or a clear of an RM already set needs a reason (422);
         4. the new RM is an active OPERATIONS user (422).
 
@@ -822,7 +822,7 @@ class ExporterProfileService:
         * a company with an RM goes ahead; a ``user_id`` naming someone else means the
           screen was stale (409 ``RELATIONSHIP_MANAGER_CHANGED``);
         * a company with no RM needs ``user_id``, set under the usual rules (an
-          OPERATIONS caller may name themselves; ADMIN or ``exporters:assign_rm`` may
+          OPERATIONS caller may name themselves; a holder of ``exporters:assign_rm`` may
           name any RM), or the action is refused with 409
           ``RELATIONSHIP_MANAGER_REQUIRED``.
 
@@ -862,7 +862,7 @@ class ExporterProfileService:
         actor_permissions: frozenset[Permission] = frozenset(),
     ) -> BulkReassignment:
         """Move one RM's companies — all, a chosen subset, or one journey stage — to
-        another RM. ADMIN or ``exporters:assign_rm``; a reason always; the target an
+        another RM. ``exporters:assign_rm``; a reason always; the target an
         active OPERATIONS user.
 
         One transaction. The companies are locked in ``customer_id`` order, so two runs
@@ -871,7 +871,7 @@ class ExporterProfileService:
         own history row, sharing one ``bulk_run_id``. A dry run locks and writes
         nothing and reports what a real run would move.
         """
-        if not holds(actor_role, actor_permissions, ASSIGN_RM):
+        if not holds(actor_permissions, ASSIGN_RM):
             raise RelationshipManagerAssignNotAllowedError("(bulk)")
         text = (reason or "").strip() or None
         if text is None:

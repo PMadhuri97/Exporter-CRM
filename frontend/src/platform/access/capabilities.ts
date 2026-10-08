@@ -11,22 +11,26 @@
  * nobody listed — a new backend role, a typo, `undefined` — has no capability at all
  * and gets the No-workspace screen, not a guess.
  *
- * It mirrors these route-table groups (`tests/contract/test_route_authorization_coverage.py`
- * and `app/modules/onboarding/tests/integration/test_route_authorization.py`). Until the
- * server exports that table, a change there is a change here,
- * checked by hand in review:
+ * The server checks permissions; this mirrors what each built-in role is seeded with
+ * (`platform/authorization/catalog.py`, `BUILTIN_ROLE_PERMISSIONS`) and the route tables
+ * that test them (`tests/contract/test_route_authorization_coverage.py`,
+ * `app/modules/onboarding/tests/integration/test_route_authorization.py`). Until the
+ * server exports that table, a change there is a change here, checked by hand in review:
  *
- *   READERS              OPERATIONS COMPLIANCE ADMIN DEVELOPER   GET /exporters, /follow-ups,
- *                                                                /deals, /deals/{id},
- *                                                                /companies/identity-completion
- *   STAFF                OPERATIONS COMPLIANCE ADMIN             POST /exporters, /imports/companies,
- *                                                                every CRM write, GET /background-check/due
- *                                                                and a company's background check
- *   COMPLIANCE_OR_ADMIN  COMPLIANCE ADMIN                        GET /background-check/proposals (queue),
- *                                                                decisions, GST branch flags, reveal
- *   ADMIN_ONLY           ADMIN                                   POST /rxil/company-intake,
- *                                                                POST /qualification/criteria,
- *                                                                POST /settings/deal-required-documents
+ *   READERS          OPERATIONS COMPLIANCE ADMIN DEVELOPER   exporters:view — GET /exporters,
+ *                                                            /follow-ups, /deals, /deals/{id}
+ *   STAFF            OPERATIONS COMPLIANCE                   exporters:create/edit, deals:*,
+ *                                                            every CRM write
+ *   STAFF + ADMIN    OPERATIONS COMPLIANCE ADMIN             compliance:view — a company's
+ *                                                            background check, the due list
+ *   COMPLIANCE       COMPLIANCE                              compliance:decide/approve, GST
+ *                                                            branch flags, the reveal, RXIL intake
+ *   ADMIN            ADMIN                                   settings:manage — criteria and
+ *                                                            required documents
+ *
+ * The administrator reads the business and changes none of it. A lead role (Compliance
+ * lead, Sales lead) keeps its base role's capabilities here; its senior permissions are
+ * read from the server (`useHasPermission`).
  *
  * Users and roles screens are not here: they follow `/auth/me/permissions`
  * (`modules/settings/usePermissions`), so granting a permission needs no code change.
@@ -47,22 +51,22 @@ export type Capability =
   | 'company.create'
   /** Import companies from a CSV. STAFF. */
   | 'company.import'
-  /** Take in an RXIL package — records a decision as RXIL's. ADMIN_ONLY. */
+  /** Take in an RXIL package — records a decision as RXIL's. COMPLIANCE. */
   | 'company.rxilIntake'
-  /** A company's background check and the Re-KYC due list. STAFF — never DEVELOPER. */
+  /** A company's background check and the Re-KYC due list. STAFF and ADMIN — never DEVELOPER. */
   | 'compliance.read'
-  /** Decide, propose and approve background-check outcomes. COMPLIANCE_OR_ADMIN. */
+  /** Decide, propose and approve background-check outcomes. COMPLIANCE. */
   | 'compliance.decide'
-  /** The cross-company queue of proposals awaiting approval. COMPLIANCE_OR_ADMIN. */
+  /** The cross-company queue of proposals awaiting approval. COMPLIANCE. */
   | 'compliance.queue'
-  /** Flag or unflag a GST branch — it stops trade through it. COMPLIANCE_OR_ADMIN. */
+  /** Flag or unflag a GST branch — it stops trade through it. COMPLIANCE. */
   | 'gst.flag'
-  /** See full tax identifiers; everyone else is served them masked. COMPLIANCE_OR_ADMIN. */
+  /** See full tax identifiers; everyone else is served them masked. COMPLIANCE. */
   | 'identifiers.reveal'
   /**
    * Whose queue the unjudged leads are. **Not a permission**, and the one entry here
-   * that mirrors no route group: COMPLIANCE and ADMIN may record a qualification
-   * decision too — all three hold `crm.write` and the server refuses none of them.
+   * that mirrors no route group: COMPLIANCE may record a qualification decision too —
+   * both hold `crm.write` and the server refuses neither.
    * It says whose *work* it is, so the pipeline can count "waiting on you" for the
    * relationship managers and show nobody else a tally of someone else's queue.
    *
@@ -73,14 +77,14 @@ export type Capability =
   /**
    * Can be a company's relationship manager, and so may name **themselves** as one:
    * OPERATIONS only, mirroring the server's `domain/assignment.RM_ROLES`. Like
-   * `queue.qualification`, a wider role does not inherit it — ADMIN assigns RMs but is
-   * not one, and COMPLIANCE never is. Naming someone else is the `exporters:assign_rm`
-   * permission (`useHasPermission`), not this.
+   * `queue.qualification`, a wider role does not inherit it — COMPLIANCE never is an RM.
+   * Naming someone else is the `exporters:assign_rm` permission (`useHasPermission`,
+   * the Sales lead role), not this.
    */
   | 'rm.self'
-  /** The qualification-criteria screen (an editing screen). ADMIN_ONLY. */
+  /** The qualification-criteria screen (an editing screen). ADMIN. */
   | 'settings.criteria'
-  /** The deal-required-documents screen (an editing screen). ADMIN_ONLY. */
+  /** The deal-required-documents screen (an editing screen). ADMIN. */
   | 'settings.requiredDocuments';
 
 const STAFF: readonly Capability[] = [
@@ -93,6 +97,7 @@ const STAFF: readonly Capability[] = [
 
 const COMPLIANCE: readonly Capability[] = [
   ...STAFF,
+  'company.rxilIntake',
   'compliance.decide',
   'compliance.queue',
   'gst.flag',
@@ -101,10 +106,12 @@ const COMPLIANCE: readonly Capability[] = [
 
 const ROLE_CAPABILITIES: Readonly<Record<UserRole, readonly Capability[]>> = {
   // `queue.qualification` is deliberately not in `STAFF`, and so not inherited by
-  // COMPLIANCE or ADMIN below: it marks whose work the leads are, not who may act.
+  // COMPLIANCE below: it marks whose work the leads are, not who may act.
   OPERATIONS: [...STAFF, 'queue.qualification', 'rm.self'],
   COMPLIANCE,
-  ADMIN: [...COMPLIANCE, 'company.rxilIntake', 'settings.criteria', 'settings.requiredDocuments'],
+  // Runs the system: settings, and reading the business (companies, deals, a company's
+  // background check) to help people with it. Writes, decides and reveals nothing.
+  ADMIN: ['crm.read', 'compliance.read', 'settings.criteria', 'settings.requiredDocuments'],
   // Reads the CRM, masked, and writes nothing.
   DEVELOPER: ['crm.read'],
   // Nothing in the CRM: the API user is a machine account.

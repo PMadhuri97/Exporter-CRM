@@ -1,5 +1,18 @@
 # Contract — the company record
 
+> **Amendment, 9 October 2026 — permissions, and a read-only administrator.** Every CRM
+> route now checks a permission (`require_permission`), not a role list; the grants each
+> built-in role starts with are in `platform/authorization/catalog.py`
+> (`BUILTIN_ROLE_PERMISSIONS`), seeded by `auth_0007_business_permissions`. The
+> administrator (ADMIN) manages users, roles and settings and **reads** companies, deals,
+> documents and compliance work, but creates, edits, decides, approves and assigns nothing,
+> and sees tax identifiers masked. Wherever this document says "COMPLIANCE or ADMIN" (or
+> lists ADMIN among those who write, decide, approve, assign, reveal or take in an RXIL
+> package), read **COMPLIANCE** — or the holder of the named permission. The senior
+> permissions (`exporters:assign_rm`, `compliance:assign`, `compliance:approve_high_risk`)
+> are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
+> and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
+
 **Owner:** Developer 2 · **Implemented by:** L2-03 (identity), L2-04 (journey), L2-05 (migration 0014), L2-06 (tax IDs), L2-08 (marker), L2-11 (the move to `CUSTOMER`) · **Status:** implemented — §10 lists what is still open
 
 Every gauge, deal, document and check in the CRM hangs off one company record.

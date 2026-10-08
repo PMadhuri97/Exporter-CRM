@@ -5,8 +5,8 @@ What is proved here, against a real database and through the API:
 * **Eligibility.** Only an active OPERATIONS user can be an RM; ADMIN, COMPLIANCE,
   DEVELOPER, a deactivated account and an unknown id are refused (422).
 * **Who may change it.** An RM claims a company with no RM for themselves; naming
-  someone else, changing or clearing an RM needs ADMIN or ``exporters:assign_rm`` (a
-  custom lead role), and a change or clear needs a reason. A stale screen is refused.
+  someone else, changing or clearing an RM needs ``exporters:assign_rm`` (the Sales
+  lead role) — the administrator holds it no more than anyone else, and a change or clear needs a reason. A stale screen is refused.
 * **The record.** Every change is a ``relationship_manager`` history row with both ids,
   both names and the reason; the legacy free text can no longer be written.
 * **Ownership grants nothing.** The RM still sees masked identifiers, and the list
@@ -158,7 +158,7 @@ async def test_a_plain_rm_cannot_name_someone_else_or_change_or_clear(client, pe
 
 async def test_compliance_cannot_claim_and_is_never_an_rm(client, people):
     compliance_id, compliance = people["compliance"]
-    _, admin = people["admin"]
+    _, admin = people["sales_lead"]
     company = await _create(client, admin)
     cid = company["customer_id"]
     assert (await _assign(client, compliance, cid, compliance_id)).status_code == 403
@@ -169,7 +169,7 @@ async def test_compliance_cannot_claim_and_is_never_an_rm(client, people):
 
 @pytest.mark.parametrize("who", ["admin", "developer", "compliance"])
 async def test_only_an_operations_user_can_be_the_rm(client, people, who):
-    _, admin = people["admin"]
+    _, admin = people["sales_lead"]
     target_id, _ = people[who]
     company = await _create(client, admin)
     response = await _assign(client, admin, company["customer_id"], target_id)
@@ -177,7 +177,7 @@ async def test_only_an_operations_user_can_be_the_rm(client, people, who):
 
 
 async def test_a_deactivated_or_unknown_user_cannot_be_the_rm(client, people):
-    _, admin = people["admin"]
+    _, admin = people["sales_lead"]
     gone_id, _ = await user_with_role(client, UserRole.OPERATIONS, email_prefix="rm-gone")
     deactivate(gone_id)
     company = await _create(client, admin)
@@ -186,13 +186,15 @@ async def test_a_deactivated_or_unknown_user_cannot_be_the_rm(client, people):
     assert unknown.status_code == 422
 
 
-async def test_admin_and_a_sales_lead_change_and_clear_with_a_reason(client, people):
+async def test_a_sales_lead_changes_and_clears_with_a_reason_and_admin_cannot(client, people):
     rm_id, rm = people["rm"]
     rm2_id, _ = people["rm2"]
     _, lead = people["sales_lead"]
-    _, admin = people["admin"]
+    _, admin = people["sales_lead"]
     company = await _create(client, rm)
     cid = company["customer_id"]
+    _, real_admin = people["admin"]
+    assert (await _assign(client, real_admin, cid, rm_id)).status_code == 403
     assert (await _assign(client, admin, cid, rm_id)).status_code == 200
 
     lead_view = (await client.get(f"{BASE}/exporters/{cid}", headers=auth_header(lead))).json()
@@ -297,7 +299,7 @@ async def test_ownership_never_narrows_what_a_reader_sees(client, people):
 
 async def test_my_companies_unassigned_and_inactive_rm_views(client, people):
     rm_id, rm = people["rm"]
-    _, admin = people["admin"]
+    _, admin = people["sales_lead"]
     mine = await _create(client, rm, relationship_manager_user_id=rm_id)
     unowned = await _create(client, admin)
     leaver_id, _ = await user_with_role(client, UserRole.OPERATIONS, email_prefix="rm-leaver")
@@ -330,7 +332,7 @@ async def test_my_companies_unassigned_and_inactive_rm_views(client, people):
 
 
 async def test_bulk_reassign_moves_a_leavers_companies(client, people):
-    _, admin = people["admin"]
+    _, admin = people["sales_lead"]
     rm2_id, _ = people["rm2"]
     leaver_id, _ = await user_with_role(client, UserRole.OPERATIONS, email_prefix="rm-bulk")
     companies = [
@@ -371,7 +373,8 @@ async def test_bulk_reassign_moves_a_leavers_companies(client, people):
         ).scalar_one()
         await ExporterProfileService(db).set_relationship_manager(
             profile, user_id=uuid.UUID(people["rm"][0]), reason="moved by hand",
-            actor_id="x", actor_role=UserRole.ADMIN, source="test",
+            actor_id="x", actor_role=UserRole.OPERATIONS,
+            actor_permissions=frozenset({ASSIGN_RM}), source="test",
         )
         await db.commit()
 
@@ -422,7 +425,8 @@ async def test_the_staff_picker_lists_active_people_by_role(client, people):
     reviewers = (
         await client.get(f"{BASE}/staff?role=COMPLIANCE&role=ADMIN", headers=auth_header(rm))
     ).json()["staff"]
-    assert {s["role"] for s in reviewers} <= {"COMPLIANCE", "ADMIN"}
+    # The administrator is neither an RM nor a reviewer, so a picker never lists one.
+    assert {s["role"] for s in reviewers} <= {"COMPLIANCE"}
     assert (await client.get(f"{BASE}/staff", headers=auth_header(developer))).status_code == 403
 
 
@@ -448,7 +452,7 @@ async def test_starting_a_check_needs_an_rm(client, people):
     rm_id, rm = people["rm"]
     rm2_id, _ = people["rm2"]
     _, compliance = people["compliance"]
-    _, admin = people["admin"]
+    _, admin = people["sales_lead"]
     company = await _create(client, admin)
     cid = company["customer_id"]
 
@@ -470,9 +474,9 @@ async def test_starting_a_check_needs_an_rm(client, people):
     assert row.event_metadata["to_user_id"] == rm_id
 
 
-async def test_admin_names_an_rm_when_starting(client, people):
+async def test_a_sales_lead_names_an_rm_when_starting(client, people):
     rm_id, _ = people["rm"]
-    _, admin = people["admin"]
+    _, admin = people["sales_lead"]
     company = await _create(client, admin)
     started = await _start(client, admin, company["customer_id"], relationship_manager_user_id=rm_id)
     assert started.status_code == 201, started.text
@@ -480,7 +484,7 @@ async def test_admin_names_an_rm_when_starting(client, people):
 
 async def test_qualified_needs_an_rm_and_an_rm_defaults_to_themselves(client, people):
     rm_id, rm = people["rm"]
-    _, admin = people["admin"]
+    _, admin = people["sales_lead"]
     company = await _create(client, admin)
     cid = company["customer_id"]
     url = f"{BASE}/exporters/{cid}/qualification/outcome"
@@ -517,7 +521,7 @@ async def test_not_qualified_needs_no_rm(client, people):
 
 
 async def test_an_imported_prospect_without_an_rm_is_allowed_and_listed_unassigned(client, people):
-    _, admin = people["admin"]
+    _, admin = people["sales_lead"]
     company_id = await make_company(relationship_manager=False)
     async with db_services.AsyncSessionLocal() as db:
         await db.execute(

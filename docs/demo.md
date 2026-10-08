@@ -53,13 +53,20 @@ accounts again.
 |---|---|---|
 | `rm@aner.com` (Relationship Manager) | OPERATIONS | the main path |
 | `compliance@aner.com` (Compliance Officer) | COMPLIANCE | screening, checks, proposing |
-| `compliance2@aner.com` (Compliance Approver) | COMPLIANCE | the second signature |
-| `admin@aner.com` (Admin) | ADMIN | settings |
+| `compliance2@aner.com` (Compliance Approver) | COMPLIANCE, permission role **Compliance lead** | the second signature, high-risk approvals, assigning reviews |
+| `admin@aner.com` (Admin) | ADMIN | users, roles and settings; reads the business but changes none of it |
 | `dev@aner.com` (Developer) | DEVELOPER | read-only and masking |
 | `apiuser@aner.com` (API User) | API_USER | "no workspace" — reaches nothing in the CRM |
 
 A new account must use a real-looking address (`ops@example.com`), never `.local` or
 `.test`: the sign-in form refuses those, and so do `bootstrap` and `promote`.
+
+**The administrator does not work the business.** `admin@aner.com` can open every
+company and deal but has no button that creates, edits, decides or approves anything,
+sees tax IDs masked, and cannot download documents. Senior work comes from the two
+seeded lead roles: give `compliance2@aner.com` the **Compliance lead** permission role
+(Settings → Users → edit → *Permission role*), and an RM who assigns RMs the **Sales
+lead** role. Someone who does both jobs uses two accounts.
 
 **Have a harmless file ready** to upload (a sample PDF). Never upload a real
 exporter's documents — see §6.
@@ -69,12 +76,12 @@ exporter's documents — see §6.
 | Screen | Where |
 |---|---|
 | **Home** — *My follow-ups* (mine / team, with *Mark done*), *Check back on*, pipeline counts, *Re-KYC due*, recent companies; for a compliance officer *Items to approve* first | `/` |
-| **Companies** — the list, or **Pipeline** (the board by journey stage; `/pipeline` opens it); *New company* (a side panel), *Import companies*, RXIL intake (ADMIN) | `/companies`, `/companies?view=board`, `/companies/new`, `/companies/import`, `/companies/rxil-intake` |
+| **Companies** — the list, or **Pipeline** (the board by journey stage; `/pipeline` opens it); *New company* (a side panel), *Import companies*, RXIL intake (COMPLIANCE) | `/companies`, `/companies?view=board`, `/companies/new`, `/companies/import`, `/companies/rxil-intake` |
 | **A company** — the record header (key fields, the actions the server allows, the journey path), the tabs *Details*, *Qualification*, *Activity*, *Deals*, *Documents*, *Background check*, *History*, and related records on the right | `/companies/:id` (`?tab=` selects a tab) |
 | **A deal** — the record header (stage, *Hand over to lending*, *Withdraw*), *Handover readiness*, the seller and buyer cards, *Trade between these two*, *Paperwork*, *What was handed over*, *History* | `/deals/:id` |
 | **Follow-ups** — follow-ups by due date, and check-backs due | `/follow-ups` |
-| **Compliance work** — the compliance working day: awaiting review, my reviews, awaiting my signature, Re-KYC due, and for a lead everyone's reviews, overdue and needs attention (COMPLIANCE, ADMIN) | `/approvals` (`/review` still works) |
-| **Settings** — your profile for everyone; users, roles, *Qualification criteria* and *Required documents* for ADMIN | `/settings/profile`, `/settings/users`, `/settings/roles`, `/settings/qualification-criteria`, `/settings/deal-required-documents` |
+| **Compliance work** — the compliance working day: awaiting review, my reviews, awaiting my signature, Re-KYC due, and for a lead everyone's reviews, overdue and needs attention (COMPLIANCE) | `/approvals` (`/review` still works) |
+| **Settings** — your profile for everyone; users and roles (each with its change **History**), *Qualification criteria* and *Required documents* for ADMIN | `/settings/profile`, `/settings/users`, `/settings/roles`, `/settings/qualification-criteria`, `/settings/deal-required-documents` |
 
 **Search** in the header (`/` or `Ctrl K`) finds any company or page. An address a role
 may not use shows the same **"Page not found"** as an address that does not exist.
@@ -125,7 +132,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    carrying the same PAN (`27` + PAN + `1Z5` is Maharashtra) → **Add**; the state comes
    from the GSTIN. Adding a second company with the same PAN is refused; the same
    GSTIN only warns. *(Also available: bulk import from the Excel template or a CSV,
-   and RXIL intake as ADMIN — an RXIL
+   and RXIL intake as COMPLIANCE — an RXIL
    company arrives already qualified.)*
 2. **No deal yet.** A lead has no **Open a deal**: the server refuses a deal to a
    company that has not been qualified.
@@ -136,8 +143,8 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    *you will become its RM*: qualifying makes it yours. The journey moves to
    **`PROSPECT`** (the path updates), *Details* → *Relationship manager* names you, and
    the company is now under **My companies** in the side navigation.
-   (On a company with no RM, *Details* also offers **Assign to me** at any time; an
-   administrator sees **Assign**, **Change** and **Clear**, the last two with a reason.) The
+   (On a company with no RM, *Details* also offers **Assign to me** at any time; a
+   **Sales lead** sees **Assign**, **Change** and **Clear**, the last two with a reason.) The
    person decides: recording the opposite of the suggestion is allowed and is kept
    with the suggestion it overrode.
 4. **Talk to them.** *Activity*: click **Interested** on the path → **Mark as
@@ -177,7 +184,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    **Proforma invoice**, the sample file → **Upload**. It is scanned before it can be
    opened; the scanner is labelled **pass-through** because it is a placeholder. Before
    the upload the deal says `missing required documents: PRE_SHIPMENT`: a handover
-   needs a scanned-clean pre-shipment document (IQ-10, IQ-11), and ADMIN changes which
+   needs a scanned-clean pre-shipment document (IQ-10, IQ-11), and the administrator changes which
    categories are required under **Settings → Required documents**.
 7. **Record the invoicing branch** in the deal's *Parties* panel, under **Invoiced
    from**. Until a branch is chosen the panel says **Not recorded** — the seller has an
@@ -205,8 +212,8 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
     **Items to approve 1** → **Approve** → **Approve** (two clicks; also on
     *Compliance work*, under *Awaiting your signature*). Neither the proposer, the
     reviewer nor the company's RM can approve; a Clear proposed at `HIGH` or `CRITICAL`
-    risk needs a senior approver (`compliance:approve_high_risk`, granted through a custom
-    role in *Settings → Roles*; ADMIN always may). On approval the company becomes a **`CUSTOMER`** in the same step — show
+    risk needs a senior approver (`compliance:approve_high_risk`: the **Compliance lead**
+    role; the administrator never approves). On approval the company becomes a **`CUSTOMER`** in the same step — show
     the journey path — the decision names both people, the Clear shows when it expires (one
     year), and "became customer" is announced (nobody receives it yet; §6). The
     proposer cannot approve their own proposal.
@@ -276,9 +283,16 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
   company** or **Import companies**, there is no **+ New** in the header, and typing
   `/companies/new` gives the same "Page not found"
   as an address that does not exist. Only ADMIN sees **Qualification criteria** and
-  **Required documents** in Settings, and only COMPLIANCE and ADMIN see **Compliance work**. An
+  **Required documents** in Settings, and only COMPLIANCE sees **Compliance work**. ADMIN
+  reads every company and deal with identifiers masked and no write button anywhere. An
   API user signing in gets no workspace at all: no navigation, a short "ask an administrator"
   page, and only My profile.
+- **Documents are read on screen:** as an RM, *Documents* → **View document** opens
+  the file in the CRM's own viewer — a Word or Excel file arrives as a PDF — with the
+  reader's name and the time across every page, and no Download anywhere. As COMPLIANCE
+  the same document also has **Download**. Every view and download is in the audit
+  trail. (Say it: nothing in a browser stops a screenshot; the watermark makes one
+  traceable.)
 
 ## 6. Say this plainly during the demo
 

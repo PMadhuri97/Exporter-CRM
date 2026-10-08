@@ -1,5 +1,18 @@
 # Contract — qualification criteria, criterion results and outcomes
 
+> **Amendment, 9 October 2026 — permissions, and a read-only administrator.** Every CRM
+> route now checks a permission (`require_permission`), not a role list; the grants each
+> built-in role starts with are in `platform/authorization/catalog.py`
+> (`BUILTIN_ROLE_PERMISSIONS`), seeded by `auth_0007_business_permissions`. The
+> administrator (ADMIN) manages users, roles and settings and **reads** companies, deals,
+> documents and compliance work, but creates, edits, decides, approves and assigns nothing,
+> and sees tax identifiers masked. Wherever this document says "COMPLIANCE or ADMIN" (or
+> lists ADMIN among those who write, decide, approve, assign, reveal or take in an RXIL
+> package), read **COMPLIANCE** — or the holder of the named permission. The senior
+> permissions (`exporters:assign_rm`, `compliance:assign`, `compliance:approve_high_risk`)
+> are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
+> and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
+
 **Owner:** Developer 2 · **Implemented by:** L2-09 (criteria), L2-10 (results and outcomes), migration 0017 · **Status:** implemented — §9a records the as-built detail and §10 what is still open
 
 Qualification answers one question: *did this company meet our requirements?*

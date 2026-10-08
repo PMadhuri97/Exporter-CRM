@@ -2,16 +2,16 @@
 
 What is proved here, against a real database:
 
-* **Claim, assign, release.** A started check waits unassigned; a COMPLIANCE or ADMIN
-  user claims it once; a holder of ``compliance:assign`` (a custom lead role) or ADMIN
-  assigns and reassigns, with a reason when taking it from someone; plain COMPLIANCE
+* **Claim, assign, release.** A started check waits unassigned; a COMPLIANCE user
+  claims it once; a holder of ``compliance:assign`` (the Compliance lead role) assigns
+  and reassigns — the administrator does neither — with a reason when taking it from someone; plain COMPLIANCE
   cannot; the RM never reviews; a reviewer with an open proposal cannot release.
 * **The reviewer's moves.** Requesting information and proposing are the reviewer's: an
   unassigned review is claimed by whoever makes one, another person's is refused. A
   proposal never names a checker, and ON_HOLD is not a review outcome.
 * **Independence.** The proposer, the review's reviewer and the company's RM never
-  approve; a HIGH or CRITICAL CLEAR is approved only by ADMIN or a holder of
-  ``compliance:approve_high_risk``, in one step.
+  approve; a HIGH or CRITICAL CLEAR is approved only by a holder of
+  ``compliance:approve_high_risk``, in one step. The administrator approves nothing.
 * **After a decision.** The review ends (and the database refuses a reviewer on a
   decided company); a rejection keeps the reviewer and counts; a lead withdraws for an
   absent proposer; a reassessment hands the review to whoever makes it.
@@ -43,6 +43,7 @@ from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.exceptions import (
+    BackgroundCheckApproverRoleNotAllowedError,
     BackgroundCheckConflictOfInterestError,
     BackgroundCheckMoveNotAllowedError,
     BackgroundCheckProposalNotYoursError,
@@ -231,21 +232,36 @@ async def test_a_lead_assigns_and_reassigns_with_a_reason(people):
     assert rows[1].event_metadata["from_user_id"] == a
 
 
-async def test_admin_assigns_without_a_grant_but_not_to_the_rm_or_a_non_reviewer(people):
+async def test_a_lead_assigns_but_not_to_the_rm_or_a_non_reviewer_and_admin_cannot(people):
+    lead, _ = people["lead"]
     admin, _ = people["admin"]
     a, _ = people["a"]
     rm, _ = people["rm"]
     company_id = await ready()
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ReviewerNotEligibleError):
-            await svc(db).assign_review(company_id, user_id=rm, reason=None, actor_id=admin, actor_role=A)
+            await svc(db).assign_review(
+                company_id, user_id=rm, reason=None, actor_id=lead, actor_role=C,
+                actor_permissions=LEAD,
+            )
     await set_rm(company_id, a)
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ReviewerIsRelationshipManagerError):
-            await svc(db).assign_review(company_id, user_id=a, reason=None, actor_id=admin, actor_role=A)
+            await svc(db).assign_review(
+                company_id, user_id=a, reason=None, actor_id=lead, actor_role=C,
+                actor_permissions=LEAD,
+            )
     other, _ = people["c"]
     async with db_services.AsyncSessionLocal() as db:
-        await svc(db).assign_review(company_id, user_id=other, reason=None, actor_id=admin, actor_role=A)
+        with pytest.raises(ReviewAssignNotAllowedError):
+            await svc(db).assign_review(
+                company_id, user_id=other, reason=None, actor_id=admin, actor_role=A
+            )
+    async with db_services.AsyncSessionLocal() as db:
+        await svc(db).assign_review(
+            company_id, user_id=other, reason=None, actor_id=lead, actor_role=C,
+            actor_permissions=LEAD,
+        )
     assert (await reviewer_of(company_id))[0] == other
 
 
@@ -374,14 +390,15 @@ async def test_a_high_risk_clear_needs_a_senior_checker_in_one_step(people, risk
     assert await gauge(company_id) is State.CLEAR
 
 
-async def test_admin_approves_a_high_risk_clear_and_low_needs_no_senior(people):
+async def test_the_administrator_cannot_approve_and_low_risk_needs_no_senior(people):
     a, _ = people["a"]
     b, _ = people["b"]
     admin, _ = people["admin"]
     high = await ready()
     proposal = await propose(high, a, risk=BackgroundCheckRisk.HIGH)
-    await approve(high, proposal.id, admin, role=A)
-    assert await gauge(high) is State.CLEAR
+    with pytest.raises(BackgroundCheckApproverRoleNotAllowedError):
+        await approve(high, proposal.id, admin, role=A)
+    assert await gauge(high) is State.IN_REVIEW
     medium = await ready()
     proposal = await propose(medium, a, risk=BackgroundCheckRisk.MEDIUM)
     await approve(medium, proposal.id, b)
@@ -589,7 +606,7 @@ async def test_the_lead_views_need_compliance_assign(client, people):
         url = f"{BASE}/background-check/reviews?view={view}"
         assert (await client.get(url, headers=auth_header(a_token))).status_code == 403
         assert (await client.get(url, headers=auth_header(lead_token))).status_code == 200
-        assert (await client.get(url, headers=auth_header(admin_token))).status_code == 200
+        assert (await client.get(url, headers=auth_header(admin_token))).status_code == 403
     rm_view = await client.get(f"{BASE}/background-check/reviews?view=awaiting", headers=auth_header(rm_token))
     assert rm_view.status_code == 403
 

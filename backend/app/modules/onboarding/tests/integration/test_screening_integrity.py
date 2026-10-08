@@ -65,7 +65,7 @@ async def test_the_list_serves_the_catalogue_in_order(client, tokens):
 
 @pytest.mark.parametrize(
     ("role", "may_decide"),
-    [(UserRole.OPERATIONS, False), (UserRole.COMPLIANCE, True), (UserRole.ADMIN, True)],
+    [(UserRole.OPERATIONS, False), (UserRole.COMPLIANCE, True), (UserRole.ADMIN, False)],
 )
 async def test_capabilities_say_whether_the_caller_may_record_a_decision(
     client, tokens, role, may_decide

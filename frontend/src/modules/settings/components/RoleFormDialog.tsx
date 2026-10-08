@@ -17,6 +17,8 @@ import { cn } from '@/lib/cn';
 import { useCreateRole, usePermissionCatalog, useUpdateRole } from '../hooks';
 import { permissionKey, type PermissionKey, type Role } from '../types';
 
+import { AccessHistory } from './AccessHistory';
+
 interface RoleFormDialogProps {
   /** Absent = create a custom role; present = edit this one. */
   role?: Role;
@@ -256,6 +258,8 @@ export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {
           })}
         </div>
       </fieldset>
+
+      {isEdit && <AccessHistory kind="roles" id={role.id} />}
     </SidePanel>
   );
 }

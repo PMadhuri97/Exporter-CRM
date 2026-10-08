@@ -109,6 +109,7 @@ function document(overrides: Partial<CrmDocument> = {}): CrmDocument {
     scan_status: 'AVAILABLE',
     scanner_name: 'pass-through',
     is_downloadable: true,
+    has_preview: true,
     ...overrides,
   };
 }

@@ -606,7 +606,7 @@ async def test_the_api_moves_a_stage_and_records_a_buyer(client: AsyncClient):
 
 
 async def test_the_api_refuses_an_illegal_move_with_its_code(client: AsyncClient):
-    token = await token_with_role(client, UserRole.ADMIN)
+    token = await token_with_role(client, UserRole.COMPLIANCE)
     company_id = await _company()
     opened = await client.post(
         f"{BASE}/exporters/{company_id}/deals",
@@ -734,7 +734,7 @@ async def test_the_deal_list_says_whether_this_caller_may_open_a_deal(client: As
 # ── The buyer's identifiers and contact details are masked ───────────────────
 #
 # The same rule as an exporter's PAN/GSTIN and contacts (``masking.py``):
-# COMPLIANCE and ADMIN see them in full, OPERATIONS and DEVELOPER never receive
+# COMPLIANCE sees them in full; OPERATIONS, ADMIN and DEVELOPER never receive
 # them. Browser masking protects nothing from a caller reading the JSON, so the
 # check is on the response itself.
 
@@ -765,8 +765,8 @@ async def test_a_masked_role_never_receives_the_buyers_identifiers(
     assert buyer["country"] == BUYER["country"]
 
 
-@pytest.mark.parametrize("role", [UserRole.COMPLIANCE, UserRole.ADMIN])
-async def test_compliance_and_admin_see_the_buyer_in_full(client: AsyncClient, role: UserRole):
+@pytest.mark.parametrize("role", [UserRole.COMPLIANCE])
+async def test_compliance_sees_the_buyer_in_full(client: AsyncClient, role: UserRole):
     token = await token_with_role(client, role)
     deal = await _open(await _company())
     await _set_buyer(deal.id)

@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 
 import { apiRequest } from '@/lib/api/client';
 import type { components } from '@/lib/api/schema';
-import { useCurrentUser } from '@/platform/auth';
 
 type MyPermissions = components['schemas']['MyPermissionsResponse'];
 
@@ -50,21 +49,22 @@ function usePermissions() {
   };
 }
 
-/** The permissions the CRM's assignment rules consult — checked by the server as
- * "ADMIN, or the permission", and so here. */
+/** The permissions a screen reads from the server rather than from the role: the
+ * senior-work ones (held through the Sales lead and Compliance lead roles, or any role an
+ * administrator grants them to) and saving a copy of a document. */
 export type AssignmentPermission =
   | 'exporters:assign_rm'
   | 'compliance:assign'
-  | 'compliance:approve_high_risk';
+  | 'compliance:approve_high_risk'
+  | 'documents:download';
 
 /**
- * Whether the signed-in user holds one of the assignment permissions: ADMIN always
- * (the server's rule, so editing ADMIN's grants never locks administrators out), anyone
- * else through a role that grants it. For showing a lead's views and actions; the
- * server decides again on every request.
+ * Whether the signed-in user holds one of the senior-work permissions, through whatever
+ * role grants it. The administrator holds none of them by default: it runs the system
+ * and does not assign or approve business work. For showing a lead's views and actions;
+ * the server decides again on every request.
  */
 export function useHasPermission(permission: AssignmentPermission): boolean {
-  const { role } = useCurrentUser();
   const { granted } = usePermissions();
-  return role === 'ADMIN' || granted.has(permission);
+  return granted.has(permission);
 }

@@ -96,6 +96,17 @@ class AuditService:
         total = await self._repo.count(correlation_id=correlation_id)
         return self._page(events, total=total, limit=limit, offset=offset)
 
+    async def list_for_subject(
+        self, subject_type: str, subject_id: uuid.UUID, *, limit: int = 100, offset: int = 0
+    ) -> AuditEventListResponse:
+        """Every event about one subject — a user account, a role — newest first.
+        The writer names the subject in the payload (``subject_type``,
+        ``subject_id``); nothing else about the payload is assumed."""
+        events, total = await self._repo.list_for_subject(
+            subject_type, str(subject_id), skip=offset, limit=limit
+        )
+        return self._page(events, total=total, limit=limit, offset=offset)
+
     async def query(
         self,
         *,

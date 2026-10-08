@@ -164,13 +164,13 @@ describe('ExportersListPage — RXIL intake link', () => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
   });
 
-  it('offers RXIL intake to ADMIN', () => {
-    mockUser('ADMIN', 'user-admin');
+  it('offers RXIL intake to COMPLIANCE', () => {
+    mockUser('COMPLIANCE', 'user-compliance');
     renderPage();
     expect(screen.getByRole('link', { name: 'RXIL intake' })).toBeInTheDocument();
   });
 
-  it.each(['OPERATIONS', 'COMPLIANCE', 'DEVELOPER'])(
+  it.each(['OPERATIONS', 'ADMIN', 'DEVELOPER'])(
     'does not offer RXIL intake to %s, whom the server refuses',
     (role) => {
       mockUser(role, 'user-1');
@@ -185,14 +185,14 @@ describe('ExportersListPage — write screens by role', () => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
   });
 
-  it.each(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s New company and Import companies', (role) => {
+  it.each(['OPERATIONS', 'COMPLIANCE'])('offers %s New company and Import companies', (role) => {
     mockUser(role, 'user-1');
     renderPage();
     expect(screen.getByRole('link', { name: /New company/ })).toHaveAttribute('href', '/companies/new');
     expect(screen.getByRole('link', { name: /Import companies/ })).toHaveAttribute('href', '/companies/import');
   });
 
-  it.each(['DEVELOPER', 'API_USER'])(
+  it.each(['DEVELOPER', 'ADMIN', 'API_USER'])(
     'offers %s neither, since the server refuses both — absent, not disabled',
     (role) => {
       mockUser(role, 'user-1');

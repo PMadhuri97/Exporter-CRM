@@ -1,5 +1,18 @@
 # Contract — the deal and its buyer
 
+> **Amendment, 9 October 2026 — permissions, and a read-only administrator.** Every CRM
+> route now checks a permission (`require_permission`), not a role list; the grants each
+> built-in role starts with are in `platform/authorization/catalog.py`
+> (`BUILTIN_ROLE_PERMISSIONS`), seeded by `auth_0007_business_permissions`. The
+> administrator (ADMIN) manages users, roles and settings and **reads** companies, deals,
+> documents and compliance work, but creates, edits, decides, approves and assigns nothing,
+> and sees tax identifiers masked. Wherever this document says "COMPLIANCE or ADMIN" (or
+> lists ADMIN among those who write, decide, approve, assign, reveal or take in an RXIL
+> package), read **COMPLIANCE** — or the holder of the named permission. The senior
+> permissions (`exporters:assign_rm`, `compliance:assign`, `compliance:approve_high_risk`)
+> are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
+> and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
+
 **Owner:** Developer 2 (post-demo allocation; Developer 3B before it) · **Tables:**
 `onboarding.deal`, `onboarding.deal_buyer`, `onboarding.deal_required_document` ·
 **Migrations:** `onboarding_0018_deal_buyer`, `onboarding_0028_deal_foundation`,

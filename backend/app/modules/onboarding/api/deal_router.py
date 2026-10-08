@@ -7,8 +7,9 @@ absolute (`/deals/...`) the way `history_router.py`'s deal route already is. The
 one company-scoped path is the list, which reads as what it is — the deals *of* a
 company.
 
-Roles come from architecture §3.7: OPERATIONS, COMPLIANCE and ADMIN open deals,
-move stages and record buyers; DEVELOPER reads; API_USER reaches nothing. The
+Permissions: ``deals:create`` opens a deal and ``deals:edit`` moves stages and
+records buyers (OPERATIONS and COMPLIANCE); ``deals:view`` reads (the administrator
+and DEVELOPER too); API_USER reaches nothing. The
 stage rules themselves are `DealService`'s, and every gated route below has a row
 in `GATED_ROUTES` and a refusal test.
 """
@@ -44,27 +45,22 @@ from app.modules.onboarding.application.deal_required_documents_service import (
 from app.modules.onboarding.application.deal_service import DealService
 from app.modules.onboarding.domain.deal_views import UNKNOWN_CORRIDOR, DealFilters
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import has_permission, require_permission
 from app.platform.database.services import get_db
 
 router = APIRouter(tags=["Exporter CRM"])
 
-# Opening a deal, moving a stage and recording a buyer are routine CRM writes by
-# internal staff (architecture §3.7), the same set `_STAFF` admits in
-# `engagement_router.py`.
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
-#: The same three, as data: who `can_open_deal` may say yes to.
-_OPENING_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
-# Reads additionally admit DEVELOPER, which may read the CRM and never writes.
-_READER = require_role(
-    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
-)
-# Changing which paperwork a handover needs is a settings change, so ADMIN only —
-# the same gate `/qualification/criteria` writes use.
-_SETTINGS_ADMIN = require_role(UserRole.ADMIN)
-#: The same, as data: who `can_edit` may say yes to.
-_SETTINGS_WRITE_ROLES = frozenset({UserRole.ADMIN})
+_DEAL_CREATE = require_permission("deals", "create")
+_DEAL_EDIT = require_permission("deals", "edit")
+_DEAL_VIEW = require_permission("deals", "view")
+_SETTINGS = require_permission("settings", "manage")
+
+# Opening a deal (`deals:create`), moving a stage and recording a buyer
+# (`deals:edit`) are routine CRM writes by internal staff; reads (`deals:view`) also
+# admit DEVELOPER and the administrator, which never write. Changing which paperwork a
+# handover needs is a settings change (`settings:manage`), the same gate
+# `/qualification/criteria` writes use.
 
 
 @router.post(
@@ -84,7 +80,7 @@ _SETTINGS_WRITE_ROLES = frozenset({UserRole.ADMIN})
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`deals:create` permission required"},
         404: {"description": "Company not found"},
         409: {"description": "The company is still a LEAD (`DEAL_COMPANY_NOT_READY`)"},
         422: {"description": "Missing or empty reference"},
@@ -93,7 +89,7 @@ _SETTINGS_WRITE_ROLES = frozenset({UserRole.ADMIN})
 async def open_deal(
     company_id: uuid.UUID,
     body: OpenDealRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_DEAL_CREATE)],
     db: AsyncSession = Depends(get_db),
 ) -> DealResponse:
     view = await DealService(db).open_deal(
@@ -131,7 +127,7 @@ async def open_deal(
 )
 async def list_company_deals(
     company_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DEAL_VIEW)],
     stage: Annotated[list[DealStage] | None, Query()] = None,
     as_: Annotated[DealSide, Query(alias="as")] = DealSide.SELLER,
     limit: int = Query(default=50, ge=1, le=200),
@@ -151,9 +147,9 @@ async def list_company_deals(
         total=total,
         limit=limit,
         offset=offset,
-        # The role half is this route's (the same three `_STAFF` admits on open);
+        # The permission half is this route's (`deals:create`, what opening checks);
         # the company half is the service's rule.
-        can_open_deal=current_user.role in _OPENING_ROLES
+        can_open_deal=has_permission(current_user, "deals", "create")
         and await service.can_open_deal(company_id),
     )
 
@@ -189,7 +185,7 @@ def _aware(moment: datetime | None) -> datetime | None:
     },
 )
 async def list_all_deals(
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DEAL_VIEW)],
     corridor: Annotated[
         list[Annotated[str, Query(pattern=rf"^([A-Z]{{2}}-[A-Z]{{2}}|{UNKNOWN_CORRIDOR})$")]]
         | None,
@@ -220,7 +216,7 @@ async def list_all_deals(
         limit=limit,
         offset=offset,
         corridors=[DealCorridorResponse.from_view(view) for view in await service.corridors()],
-        can_open_deal=current_user.role in _OPENING_ROLES,
+        can_open_deal=has_permission(current_user, "deals", "create"),
     )
 
 
@@ -242,7 +238,7 @@ async def list_all_deals(
 )
 async def get_deal(
     deal_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DEAL_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> DealResponse:
     return DealResponse.from_view(await DealService(db).get_deal(deal_id), current_user)
@@ -267,7 +263,7 @@ async def get_deal(
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`deals:edit` permission required"},
         404: {"description": "Deal not found"},
         409: {
             "description": (
@@ -286,7 +282,7 @@ async def get_deal(
 async def transition_deal_stage(
     deal_id: uuid.UUID,
     body: TransitionDealStageRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_DEAL_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> DealResponse:
     view = await DealService(db).transition_stage(
@@ -336,7 +332,7 @@ async def transition_deal_stage(
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`deals:edit` permission required"},
         404: {"description": "Deal not found, or no such buyer company"},
         409: {
             "description": (
@@ -358,7 +354,7 @@ async def transition_deal_stage(
 async def set_deal_buyer(
     deal_id: uuid.UUID,
     body: SetDealBuyerRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_DEAL_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> DealResponse:
     service = DealService(db)
@@ -418,7 +414,7 @@ async def set_deal_buyer(
     responses={
         200: {"model": DealResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`deals:edit` permission required"},
         404: {"description": "Deal or GST registration not found"},
         409: {"description": "The deal is handed over or withdrawn"},
         422: {
@@ -431,7 +427,7 @@ async def set_deal_buyer(
 async def set_deal_invoicing_branch(
     deal_id: uuid.UUID,
     body: SetDealInvoicingBranchRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_DEAL_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> DealResponse:
     view = await DealService(db).set_invoicing_branch(
@@ -447,7 +443,7 @@ async def set_deal_invoicing_branch(
 # Under `/settings/...` rather than `/deals/...` because it is a rule about every
 # deal, not a property of one — the same shape `/qualification/criteria` already
 # has. Read by any staff role, because the deal page explains a refusal in these
-# terms; written by ADMIN only.
+# terms; written with ``settings:manage`` (the administrator) only.
 
 
 @router.get(
@@ -469,11 +465,11 @@ async def set_deal_invoicing_branch(
     },
 )
 async def list_deal_required_documents(
-    # `_READER`, not `_STAFF`: the plan says "read Staff", but every other
+    # `deals:view`, not a write permission: the plan says "read Staff", but every other
     # settings read in the CRM admits DEVELOPER (`GET /qualification/criteria`),
     # which is read-only across the module, and this rule carries no identifiers
     # and nothing the DEVELOPER rule protects. One convention beats two.
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DEAL_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> DealRequiredDocumentsResponse:
     service = DealRequiredDocumentsService(db)
@@ -484,7 +480,7 @@ async def list_deal_required_documents(
         history=[
             DealRequiredDocumentResponse.from_entity(row) for row in await service.history()
         ],
-        can_edit=current_user.role in _SETTINGS_WRITE_ROLES,
+        can_edit=has_permission(current_user, "settings", "manage"),
     )
 
 
@@ -509,7 +505,7 @@ async def list_deal_required_documents(
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "ADMIN role required"},
+        403: {"description": "`settings:manage` permission required"},
         409: {
             "description": (
                 "`DEAL_REQUIRED_DOCUMENT_CHANGED`: another administrator changed the "
@@ -528,7 +524,7 @@ async def list_deal_required_documents(
 )
 async def set_deal_required_document(
     body: SetDealRequiredDocumentRequest,
-    current_user: Annotated[User, Depends(_SETTINGS_ADMIN)],
+    current_user: Annotated[User, Depends(_SETTINGS)],
     db: AsyncSession = Depends(get_db),
 ) -> DealRequiredDocumentResponse:
     row = await DealRequiredDocumentsService(db).set_requirement(

@@ -327,7 +327,7 @@ async def _lookup_events(actor_id: str) -> list:
     return [e for e in page.events if str(e.actor_id) == str(actor_id)]
 
 
-@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN])
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.COMPLIANCE])
 async def test_each_staff_role_is_audited_as_staff_with_its_role(client: AsyncClient, role):
     user_id, token = await user_with_role(client, role)
     pan = _pan()

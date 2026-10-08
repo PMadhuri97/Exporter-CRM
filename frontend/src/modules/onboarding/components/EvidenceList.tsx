@@ -4,25 +4,27 @@
  * Shows `evidence_note` and `evidence_refs` exactly as the server stored them. The
  * retired `evidence_reference` column is never shown: nothing writes it.
  *
- * A `document` reference is opened through the documents' download flow, the same
- * three steps `DocumentList` takes: mint a short-lived link (`createDownloadLink`,
- * via `useDownloadDocument`), fetch it **with the access token**
- * (`fetchDocumentBlob`), save the bytes. The document row is read first for its file
- * name and whether it may be served; a refusal is shown, never worked around.
+ * A `document` reference is read on screen, in the CRM's own viewer, by everyone who
+ * may see it (the preview route) — and saved only by a holder of `documents:download`
+ * (`useOpenDocument().open`). The document row is read first for its file name and
+ * whether it may be served; a refusal is shown, never worked around.
  *
  * Each cited document is also named by its file name on display, from the same
  * row through a cached query; the shortened id stands in until then.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
+import { useHasPermission } from '@/platform/access';
 
-import { fetchDocumentBlob, getDocument } from '../api';
-import { useDocument, useDownloadDocument } from '../hooks';
-import type { VerificationEvidenceRefStored } from '../types';
+import { getDocument } from '../api';
+import { useDocument } from '../hooks';
+import type { CrmDocument, VerificationEvidenceRefStored } from '../types';
 
+import { DocumentViewer } from './DocumentViewer';
+import { type DocumentPreview, useOpenDocument } from './useOpenDocument';
 import { isWebLink } from './verification-labels';
 
 /**
@@ -46,38 +48,57 @@ export function EvidenceList({
   note: string | null;
   refs: VerificationEvidenceRefStored[];
 }) {
-  const download = useDownloadDocument();
+  const { open: save, view, isSaving } = useOpenDocument();
+  const mayDownload = useHasPermission('documents:download');
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [viewing, setViewing] = useState<{ document_: CrmDocument; preview: DocumentPreview } | null>(
+    null,
+  );
+
+  // The preview's URL lives exactly as long as the viewer shows it.
+  useEffect(() => {
+    if (!viewing) return undefined;
+    return () => URL.revokeObjectURL(viewing.preview.url);
+  }, [viewing]);
 
   if (!note && refs.length === 0) return null;
 
-  async function open(documentId: string) {
+  async function servable(documentId: string): Promise<CrmDocument | null> {
+    const document_ = await getDocument(documentId);
+    if (!document_.is_downloadable) {
+      setError(`${document_.file_name} cannot be opened (${document_.scan_status}).`);
+      return null;
+    }
+    return document_;
+  }
+
+  async function read(documentId: string) {
     setError(null);
-    let objectUrl: string | null = null;
+    setBusy(true);
     try {
-      const document_ = await getDocument(documentId);
-      if (!document_.is_downloadable) {
-        setError(`${document_.file_name} cannot be opened (${document_.scan_status}).`);
+      const document_ = await servable(documentId);
+      if (!document_) return;
+      if (!document_.has_preview) {
+        setError(`${document_.file_name} has no on-screen preview.`);
         return;
       }
-      const link = await download.mutateAsync(documentId);
-      const blob = await fetchDocumentBlob(link.url);
-      objectUrl = URL.createObjectURL(blob);
-      const anchor = window.document.createElement('a');
-      anchor.href = objectUrl;
-      anchor.download = document_.file_name;
-      anchor.rel = 'noopener';
-      window.document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
+      const preview = await view(document_);
+      if (preview) setViewing({ document_, preview });
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not open that document.');
     } finally {
-      // Revoked later, as `DocumentList` does: revoking at once can cancel the save.
-      if (objectUrl !== null) {
-        const url = objectUrl;
-        window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      }
+      setBusy(false);
+    }
+  }
+
+  async function download(documentId: string) {
+    setError(null);
+    try {
+      const document_ = await servable(documentId);
+      if (document_) await save(document_);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Could not save that document.');
     }
   }
 
@@ -95,12 +116,23 @@ export function EvidenceList({
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 font-medium text-ink hover:underline disabled:opacity-50"
-                    disabled={download.isPending}
-                    onClick={() => void open(ref.ref)}
-                    aria-label={`Download evidence document ${ref.ref}`}
+                    disabled={busy}
+                    onClick={() => void read(ref.ref)}
+                    aria-label={`View evidence document ${ref.ref}`}
                   >
-                    <Icon.download size={12} /> Download
+                    <Icon.reveal size={12} /> View
                   </button>
+                  {mayDownload && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium text-ink hover:underline disabled:opacity-50"
+                      disabled={isSaving}
+                      onClick={() => void download(ref.ref)}
+                      aria-label={`Download evidence document ${ref.ref}`}
+                    >
+                      <Icon.download size={12} /> Download
+                    </button>
+                  )}
                 </span>
               ) : ref.type === 'url' && isWebLink(ref.ref) ? (
                 <a href={ref.ref} target="_blank" rel="noreferrer" className="underline">
@@ -123,6 +155,14 @@ export function EvidenceList({
         <p role="alert" className="mt-1 text-negative">
           {error}
         </p>
+      )}
+      {viewing && (
+        <DocumentViewer
+          document_={viewing.document_}
+          preview={viewing.preview}
+          onClose={() => setViewing(null)}
+          onDownload={mayDownload ? () => void save(viewing.document_) : undefined}
+        />
       )}
     </div>
   );

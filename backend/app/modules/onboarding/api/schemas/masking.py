@@ -1,5 +1,5 @@
 """Server-side masking of tax identifiers and contact details — the viewer's
-role decides what a response may carry (architecture decision 12).
+permissions decide what a response may carry (architecture decision 12).
 
 Shared by the company shapes (`exporter.py`) and the contact shapes
 (`engagement.py`), which is why it is its own file: it used to live inside
@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from pydantic import AfterValidator
 
-from app.platform.authentication.models import User, UserRole
+from app.platform.authentication.models import User
+from app.platform.authorization import has_permission
 
 # ── Identifier masking ───────────────────────────────────────────────────────
 # Server-side twin of the frontend's `maskIdentifier`/`canReveal`
@@ -25,7 +26,8 @@ from app.platform.authentication.models import User, UserRole
 
 _MASK_CHAR = "•"
 _VISIBLE_SUFFIX_LENGTH = 4
-_ALWAYS_REVEAL_ROLES = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
+#: The grant that unmasks tax identifiers and contact details.
+REVEAL_IDENTIFIERS = ("exporters", "view_full_tax_id")
 
 
 def mask_identifier(value: str | None) -> str | None:
@@ -56,7 +58,12 @@ def mask_phone(value: str | None) -> str | None:
 
 
 def can_reveal_identifiers(viewer: User) -> bool:
-    """COMPLIANCE and ADMIN see full tax IDs; every other role sees them masked.
+    """A holder of ``exporters:view_full_tax_id`` sees full tax IDs; everyone else sees
+    them masked. COMPLIANCE holds it by default; the administrator does not.
+
+    Read from the permissions the route's own check resolved for this request
+    (``require_permission``); a viewer whose permissions were never resolved is masked,
+    so a route that forgot its check fails closed.
 
     This used to carry an ownership exception: OPERATIONS could see the raw
     identifiers on exporters it was the assigned relationship manager for.
@@ -71,7 +78,7 @@ def can_reveal_identifiers(viewer: User) -> bool:
     and ownership deliberately grants nothing — an RM sees the companies they
     own masked, like every other OPERATIONS user (`test_masking_sweep.py`).
     """
-    return viewer.role in _ALWAYS_REVEAL_ROLES
+    return has_permission(viewer, *REVEAL_IDENTIFIERS)
 
 
 def _reject_masked(value: str | None) -> str | None:

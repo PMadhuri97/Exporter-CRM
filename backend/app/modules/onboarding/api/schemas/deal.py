@@ -49,13 +49,13 @@ from app.modules.onboarding.domain.entities.deal_required_document import (
     DealRequiredDocument,
 )
 from app.modules.onboarding.domain.entities.document_enums import DocumentCategory
-from app.platform.authentication.models import User, UserRole
+from app.platform.authentication.models import User
+from app.platform.authorization import has_permission
 
-#: Who may move a deal — the roles `_STAFF` admits on the move routes
-#: (`deal_router.py`). Anyone else is served no moves and no blocked reason: they
-#: could not act on either, and the reason names the company's background check,
-#: which is kept from DEVELOPER.
-_MOVING_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
+#: Who may move a deal — the permission the move routes check (`deal_router.py`).
+#: Anyone else is served no moves and no blocked reason: they could not act on either,
+#: and the reason names the company's background check, which is kept from DEVELOPER.
+_MOVE_DEAL = ("deals", "edit")
 
 #: The buyer fields a masked role never sees in full, and which a buyer request
 #: may therefore leave out to mean "keep what is stored".
@@ -398,7 +398,7 @@ class DealResponse(BaseModel):
         are shown in full, and whether the stage moves and the blocked reason are
         served at all (only to a role that may move the deal) — required, so no
         route can forget to pass it."""
-        may_move = viewer.role in _MOVING_ROLES
+        may_move = has_permission(viewer, *_MOVE_DEAL)
         return cls(
             id=view.id,
             company_id=view.company_id,

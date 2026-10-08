@@ -43,6 +43,19 @@ COMPLIANCE_OR_ADMIN = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
 ADMIN_ONLY = frozenset({UserRole.ADMIN})
 #: Staff plus DEVELOPER, which may read the CRM but never unmasked.
 READERS = STAFF | {UserRole.DEVELOPER}
+# The CRM's routes check permissions; these are the built-in roles seeded with each.
+# Who works the business — relationship managers and compliance (the administrator
+# reads it and changes none of it).
+CRM_WRITERS = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE})
+# The compliance surface read by staff and, read-only, the administrator; never
+# DEVELOPER.
+CRM_STAFF_READERS = CRM_WRITERS | {UserRole.ADMIN}
+# Compliance's own decisions.
+COMPLIANCE_ONLY = frozenset({UserRole.COMPLIANCE})
+# Saving a copy of a document.
+DOWNLOADERS = frozenset({UserRole.COMPLIANCE})
+# Senior work no built-in role holds: the seeded lead roles do.
+LEADS_ONLY: frozenset[UserRole] = frozenset()
 
 _ID = "00000000-0000-4000-8000-000000000000"
 
@@ -109,10 +122,12 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{V1}/auth/users/{{user_id}}"): ADMIN_ONLY,
     ("PATCH", f"{V1}/auth/users/{{user_id}}"): ADMIN_ONLY,
     ("POST", f"{V1}/auth/users/{{user_id}}/password"): ADMIN_ONLY,
+    ("GET", f"{V1}/auth/users/{{user_id}}/history"): ADMIN_ONLY,
     ("GET", f"{V1}/auth/roles"): ADMIN_ONLY,
     ("POST", f"{V1}/auth/roles"): ADMIN_ONLY,
     ("GET", f"{V1}/auth/roles/catalog"): ADMIN_ONLY,
     ("GET", f"{V1}/auth/roles/{{role_id}}"): ADMIN_ONLY,
+    ("GET", f"{V1}/auth/roles/{{role_id}}/history"): ADMIN_ONLY,
     ("PATCH", f"{V1}/auth/roles/{{role_id}}"): ADMIN_ONLY,
     ("DELETE", f"{V1}/auth/roles/{{role_id}}"): ADMIN_ONLY,
     # ── notifications ────────────────────────────────────────────────────────
@@ -137,21 +152,21 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{V1}/compliance/approvals/{{transaction_id}}"): COMPLIANCE_OR_ADMIN,
     ("GET", f"{V1}/compliance/screenings/{{transaction_id}}"): COMPLIANCE_OR_ADMIN,
     # ── onboarding: legacy case state machine ────────────────────────────────
-    ("POST", f"{CRM}/cases"): STAFF,
-    ("GET", f"{CRM}/cases/{{case_id}}"): STAFF,
-    ("PATCH", f"{CRM}/cases/{{case_id}}"): STAFF,
-    ("POST", f"{CRM}/cases/{{case_id}}/transitions"): COMPLIANCE_OR_ADMIN,
-    ("GET", f"{CRM}/cases/{{case_id}}/transitions"): STAFF,
+    ("POST", f"{CRM}/cases"): CRM_WRITERS,
+    ("GET", f"{CRM}/cases/{{case_id}}"): CRM_WRITERS,
+    ("PATCH", f"{CRM}/cases/{{case_id}}"): CRM_WRITERS,
+    ("POST", f"{CRM}/cases/{{case_id}}/transitions"): COMPLIANCE_ONLY,
+    ("GET", f"{CRM}/cases/{{case_id}}/transitions"): CRM_WRITERS,
     # ── onboarding: legacy foundation ────────────────────────────────────────
-    ("POST", f"{CRM}/register"): STAFF,
-    ("GET", f"{CRM}/{{customer_id}}/sdk-token"): STAFF,
-    ("GET", f"{CRM}/{{customer_id}}/status"): STAFF,
+    ("POST", f"{CRM}/register"): CRM_WRITERS,
+    ("GET", f"{CRM}/{{customer_id}}/sdk-token"): CRM_WRITERS,
+    ("GET", f"{CRM}/{{customer_id}}/status"): CRM_WRITERS,
     # ── Exporter CRM: writes are staff, reads admit DEVELOPER (masked) ───────
-    ("POST", f"{CRM}/exporters"): STAFF,
+    ("POST", f"{CRM}/exporters"): CRM_WRITERS,
     ("GET", f"{CRM}/exporters"): READERS,
     ("GET", f"{CRM}/exporters/{{customer_id}}"): READERS,
-    ("PATCH", f"{CRM}/exporters/{{customer_id}}"): STAFF,
-    ("POST", f"{CRM}/exporters/{{customer_id}}/marker"): STAFF,
+    ("PATCH", f"{CRM}/exporters/{{customer_id}}"): CRM_WRITERS,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/marker"): CRM_WRITERS,
     # qualification: ADMIN manages criteria, staff record results
     # and outcomes, every CRM reader reads.
     ("GET", f"{CRM}/qualification/criteria"): READERS,
@@ -160,33 +175,33 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("POST", f"{CRM}/qualification/criteria/{{key}}/versions"): ADMIN_ONLY,
     ("GET", f"{CRM}/qualification/reason-codes"): READERS,
     ("GET", f"{CRM}/exporters/{{customer_id}}/qualification"): READERS,
-    ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/results"): STAFF,
-    ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/outcome"): STAFF,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/results"): CRM_WRITERS,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/qualification/outcome"): CRM_WRITERS,
     # Into the sales pipeline: a commercial decision, so the roles that
     # make them. A company already in the pipeline is a 409, not a 403.
-    ("POST", f"{CRM}/exporters/{{customer_id}}/pipeline"): STAFF,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/pipeline"): CRM_WRITERS,
     # "Which company is this?" STAFF rather than READERS:
     # OPERATIONS needs it to record a deal's buyer — that is the case the disclosure rule was decided
     # for — while DEVELOPER may never reveal an identifier and has no buyer to resolve.
     # The response carries no identifiers for any role, and every identifier lookup is
     # audited.
-    ("POST", f"{CRM}/companies/match"): STAFF,
+    ("POST", f"{CRM}/companies/match"): CRM_WRITERS,
     ("GET", f"{CRM}/companies/identity-completion"): READERS,
     # GST registrations — a company's branches.
     # Reading is every CRM reader's, with the GSTIN masked per role and the portal link
     # withheld from a role that sees it masked (the link carries the GSTIN).
     ("GET", f"{CRM}/exporters/{{customer_id}}/gst-registrations"): READERS,
     # Recording and deactivating a branch is a record a relationship manager keeps.
-    ("POST", f"{CRM}/exporters/{{customer_id}}/gst-registrations"): STAFF,
-    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/deactivate"): STAFF,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/gst-registrations"): CRM_WRITERS,
+    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/deactivate"): CRM_WRITERS,
     # Flagging one stops handovers for every deal invoiced through it, so it is a
     # compliance decision and not a sales one — the one place in these routes where
     # OPERATIONS is refused.
-    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/flag"): COMPLIANCE_OR_ADMIN,
-    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/unflag"): COMPLIANCE_OR_ADMIN,
+    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/flag"): COMPLIANCE_ONLY,
+    ("POST", f"{CRM}/gst-registrations/{{registration_id}}/unflag"): COMPLIANCE_ONLY,
     # A deal's invoicing branch: which of the seller's branches it invoices
     # from. A routine CRM write, like recording its buyer.
-    ("PUT", f"{CRM}/deals/{{deal_id}}/invoicing-branch"): STAFF,
+    ("PUT", f"{CRM}/deals/{{deal_id}}/invoicing-branch"): CRM_WRITERS,
     # Trade history. DEVELOPER **reads**:
     # these responses carry no identifiers for anyone, which is what makes "reads
     # masked" true without a masking pass, and the history log already serves `trade`
@@ -194,20 +209,20 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/exporters/{{customer_id}}/trade-relationships"): READERS,
     ("GET", f"{CRM}/trade-relationships/{{relationship_id}}"): READERS,
     ("GET", f"{CRM}/trade-invoices/{{invoice_id}}"): READERS,
-    ("POST", f"{CRM}/trade-relationships/{{relationship_id}}/invoices"): STAFF,
-    ("POST", f"{CRM}/trade-invoices/{{invoice_id}}/outcomes"): STAFF,
+    ("POST", f"{CRM}/trade-relationships/{{relationship_id}}/invoices"): CRM_WRITERS,
+    ("POST", f"{CRM}/trade-invoices/{{invoice_id}}/outcomes"): CRM_WRITERS,
     # How a handed-over deal was paid — the same write role, recorded at
     # the deal because that is what the person answering has in front of them.
-    ("POST", f"{CRM}/deals/{{deal_id}}/payment-outcome"): STAFF,
+    ("POST", f"{CRM}/deals/{{deal_id}}/payment-outcome"): CRM_WRITERS,
     # RXIL company intake and bulk import: both create companies.
-    ("POST", f"{CRM}/rxil/company-intake"): ADMIN_ONLY,
-    ("GET", f"{CRM}/imports/companies/template"): STAFF,
-    ("POST", f"{CRM}/imports/companies"): STAFF,
-    ("POST", f"{CRM}/imports/companies/preview"): STAFF,
-    ("POST", f"{CRM}/exporters/{{customer_id}}/contacts"): STAFF,
-    ("PATCH", f"{CRM}/exporters/{{customer_id}}/contacts/{{contact_id}}"): STAFF,
+    ("POST", f"{CRM}/rxil/company-intake"): COMPLIANCE_ONLY,
+    ("GET", f"{CRM}/imports/companies/template"): CRM_WRITERS,
+    ("POST", f"{CRM}/imports/companies"): CRM_WRITERS,
+    ("POST", f"{CRM}/imports/companies/preview"): CRM_WRITERS,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/contacts"): CRM_WRITERS,
+    ("PATCH", f"{CRM}/exporters/{{customer_id}}/contacts/{{contact_id}}"): CRM_WRITERS,
     ("GET", f"{CRM}/exporters/{{customer_id}}/contacts"): READERS,
-    ("POST", f"{CRM}/exporters/{{customer_id}}/activities"): STAFF,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/activities"): CRM_WRITERS,
     ("GET", f"{CRM}/exporters/{{customer_id}}/activities"): READERS,
     ("GET", f"{CRM}/exporters/activities/pending"): READERS,
     # ── Shared CRM history log ───────────────────────────────────────────────
@@ -217,17 +232,17 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/exporters/{{customer_id}}/history"): READERS,
     ("GET", f"{CRM}/deals/{{deal_id}}/history"): READERS,
     # ── Exporter CRM: compliance workspace ───────────────────────────────────
-    ("GET", f"{CRM}/exporters/{{customer_id}}/screening-review"): STAFF,
+    ("GET", f"{CRM}/exporters/{{customer_id}}/screening-review"): CRM_STAFF_READERS,
     (
         "PUT",
         f"{CRM}/exporters/{{customer_id}}/screening-review/{{item_key}}",
-    ): COMPLIANCE_OR_ADMIN,
-    ("GET", f"{CRM}/exporters/{{customer_id}}/bank-activity"): STAFF,
+    ): COMPLIANCE_ONLY,
+    ("GET", f"{CRM}/exporters/{{customer_id}}/bank-activity"): CRM_STAFF_READERS,
     # ── Exporter CRM: verification results ───────────────────────────────────
-    ("POST", f"{CRM}/verifications"): COMPLIANCE_OR_ADMIN,
-    ("GET", f"{CRM}/verifications"): STAFF,
-    ("GET", f"{CRM}/verifications/{{verification_result_id}}"): STAFF,
-    ("POST", f"{CRM}/verifications/{{verification_result_id}}/review"): COMPLIANCE_OR_ADMIN,
+    ("POST", f"{CRM}/verifications"): COMPLIANCE_ONLY,
+    ("GET", f"{CRM}/verifications"): CRM_STAFF_READERS,
+    ("GET", f"{CRM}/verifications/{{verification_result_id}}"): CRM_STAFF_READERS,
+    ("POST", f"{CRM}/verifications/{{verification_result_id}}/review"): COMPLIANCE_ONLY,
     # ══ Area blocks ═══════════════════════════════════════════════════════════
     #
     # An unclassified route fails this file by construction, so every route adds a
@@ -246,7 +261,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # that would come back 403.
     ("GET", f"{CRM}/exporters/{{customer_id}}/conversation"): READERS,
     ("GET", f"{CRM}/exporters/{{customer_id}}/conversation/moves"): READERS,
-    ("POST", f"{CRM}/exporters/{{customer_id}}/conversation"): STAFF,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/conversation"): CRM_WRITERS,
     #
     # ── Follow-ups ──
     # Follow-ups are the whole team's, so the list is a reader
@@ -256,7 +271,7 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # There is no route that edits or deletes a completion, and there must never
     # be one: both tables are append-only.
     ("GET", f"{CRM}/follow-ups"): READERS,
-    ("POST", f"{CRM}/follow-ups/{{activity_id}}/completion"): STAFF,
+    ("POST", f"{CRM}/follow-ups/{{activity_id}}/completion"): CRM_WRITERS,
     #
     # ── Deals, buyers, storage and documents ──
     #
@@ -265,12 +280,12 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # set the conversation gauge. Reads additionally admit DEVELOPER, which reads
     # the CRM and writes nothing. There is no delete route for a deal and there
     # must never be one: `WITHDRAWN` is how a deal ends (deal contract §2).
-    ("POST", f"{CRM}/exporters/{{company_id}}/deals"): STAFF,
+    ("POST", f"{CRM}/exporters/{{company_id}}/deals"): CRM_WRITERS,
     ("GET", f"{CRM}/exporters/{{company_id}}/deals"): READERS,
     ("GET", f"{CRM}/deals"): READERS,
     ("GET", f"{CRM}/deals/{{deal_id}}"): READERS,
-    ("POST", f"{CRM}/deals/{{deal_id}}/transitions"): STAFF,
-    ("PUT", f"{CRM}/deals/{{deal_id}}/buyer"): STAFF,
+    ("POST", f"{CRM}/deals/{{deal_id}}/transitions"): CRM_WRITERS,
+    ("PUT", f"{CRM}/deals/{{deal_id}}/buyer"): CRM_WRITERS,
     #
     # Which paperwork a handover needs. A settings rule about every
     # deal rather than a property of one, so it sits under `/settings/` and is
@@ -287,12 +302,13 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # state rather than by permission (architecture §3.4).
     ("GET", f"{CRM}/documents/categories"): READERS,
     ("GET", f"{CRM}/documents/content"): READERS,
-    ("POST", f"{CRM}/exporters/{{company_id}}/documents"): STAFF,
+    ("POST", f"{CRM}/exporters/{{company_id}}/documents"): CRM_WRITERS,
     ("GET", f"{CRM}/exporters/{{company_id}}/documents"): READERS,
-    ("POST", f"{CRM}/deals/{{deal_id}}/documents"): STAFF,
+    ("POST", f"{CRM}/deals/{{deal_id}}/documents"): CRM_WRITERS,
     ("GET", f"{CRM}/deals/{{deal_id}}/documents"): READERS,
     ("GET", f"{CRM}/documents/{{document_id}}"): READERS,
-    ("POST", f"{CRM}/documents/{{document_id}}/download-link"): READERS,
+    ("GET", f"{CRM}/documents/{{document_id}}/preview"): READERS,
+    ("POST", f"{CRM}/documents/{{document_id}}/download-link"): DOWNLOADERS,
     # ══ Compliance blocks ══
     #
     # The same cut as the area blocks above: each area adds rows only inside its
@@ -306,15 +322,15 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # on 28 September 2026: no widening. A decision's reason is free
     # text a compliance officer wrote about a company, so admitting DEVELOPER "for
     # now" would be deciding it by omission.
-    ("GET", f"{CRM}/exporters/{{company_id}}/background-check"): STAFF,
-    ("POST", f"{CRM}/exporters/{{company_id}}/background-check/decisions"): STAFF,
-    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/decisions"): STAFF,
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check"): CRM_STAFF_READERS,
+    ("POST", f"{CRM}/exporters/{{company_id}}/background-check/decisions"): CRM_WRITERS,
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/decisions"): CRM_STAFF_READERS,
     #
     # ── Verification and screening ──
     (
         "GET",
         f"{CRM}/exporters/{{customer_id}}/screening-review/{{item_key}}/history",
-    ): STAFF,
+    ): CRM_STAFF_READERS,
     #
     # ── Compliance engine ──
     # DEVELOPER is refused on all three: the evidence carries reasons, comments and
@@ -322,47 +338,47 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     (
         "GET",
         f"{CRM}/exporters/{{company_id}}/background-check/decisions/{{decision_id}}/evidence",
-    ): STAFF,
-    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): STAFF,
+    ): CRM_STAFF_READERS,
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): CRM_STAFF_READERS,
     # Compliance and admin start a cycle; the RM does not.
-    ("POST", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): COMPLIANCE_OR_ADMIN,
+    ("POST", f"{CRM}/exporters/{{company_id}}/background-check/cycles"): COMPLIANCE_ONLY,
     # Maker-checker. Staff read a company's proposals; only
     # compliance and admin approve, reject or withdraw, and read the approval queue —
     # the RM never approves compliance.
-    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/proposals"): STAFF,
+    ("GET", f"{CRM}/exporters/{{company_id}}/background-check/proposals"): CRM_STAFF_READERS,
     (
         "POST",
         f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/approve",
-    ): COMPLIANCE_OR_ADMIN,
+    ): COMPLIANCE_ONLY,
     (
         "POST",
         f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/reject",
-    ): COMPLIANCE_OR_ADMIN,
+    ): COMPLIANCE_ONLY,
     (
         "POST",
         f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/withdraw",
-    ): COMPLIANCE_OR_ADMIN,
-    ("GET", f"{CRM}/background-check/proposals"): COMPLIANCE_OR_ADMIN,
+    ): COMPLIANCE_ONLY,
+    ("GET", f"{CRM}/background-check/proposals"): COMPLIANCE_ONLY,
     # The Re-KYC due list: compliance and admin act on it, the RM reads it.
-    ("GET", f"{CRM}/background-check/due"): STAFF,
+    ("GET", f"{CRM}/background-check/due"): CRM_STAFF_READERS,
     # Who is working on it. Staff reach the RM route, the picker and bulk
     # reassignment; the service applies the RM rules and exporters:assign_rm.
-    ("POST", f"{CRM}/exporters/{{customer_id}}/relationship-manager"): STAFF,
-    ("GET", f"{CRM}/staff"): STAFF,
-    ("POST", f"{CRM}/relationship-managers/reassign"): STAFF,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/relationship-manager"): CRM_WRITERS,
+    ("GET", f"{CRM}/staff"): CRM_WRITERS,
+    ("POST", f"{CRM}/relationship-managers/reassign"): LEADS_ONLY,
     # Reviews are claimed, assigned and released by compliance and admin (assigning
     # needs ADMIN or compliance:assign, checked in the service).
-    ("POST", f"{CRM}/exporters/{{company_id}}/background-check/reviewer/claim"): COMPLIANCE_OR_ADMIN,
-    ("PUT", f"{CRM}/exporters/{{company_id}}/background-check/reviewer"): COMPLIANCE_OR_ADMIN,
+    ("POST", f"{CRM}/exporters/{{company_id}}/background-check/reviewer/claim"): COMPLIANCE_ONLY,
+    ("PUT", f"{CRM}/exporters/{{company_id}}/background-check/reviewer"): COMPLIANCE_ONLY,
     (
         "POST",
         f"{CRM}/exporters/{{company_id}}/background-check/reviewer/release",
-    ): COMPLIANCE_OR_ADMIN,
-    ("GET", f"{CRM}/background-check/reviews"): COMPLIANCE_OR_ADMIN,
+    ): COMPLIANCE_ONLY,
+    ("GET", f"{CRM}/background-check/reviews"): COMPLIANCE_ONLY,
     # Computed worklists and badges for every staff user; DEVELOPER is refused.
-    ("GET", f"{CRM}/background-check/info-requests"): STAFF,
-    ("GET", f"{CRM}/worklist/counts"): STAFF,
-    ("GET", f"{CRM}/background-check/recent-decisions"): STAFF,
+    ("GET", f"{CRM}/background-check/info-requests"): CRM_STAFF_READERS,
+    ("GET", f"{CRM}/worklist/counts"): CRM_STAFF_READERS,
+    ("GET", f"{CRM}/background-check/recent-decisions"): CRM_STAFF_READERS,
 }
 
 

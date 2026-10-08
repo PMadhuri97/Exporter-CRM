@@ -22,7 +22,9 @@ import { SOURCE_LABEL } from '../document-labels';
 import { DocumentUpload } from '../DocumentUpload';
 import { DocumentViewer } from '../DocumentViewer';
 import { ScanStatusBadge } from '../ScanStatusBadge';
-import { isViewable, saveObjectUrl, useOpenDocument } from '../useOpenDocument';
+import { useHasPermission } from '@/platform/access';
+
+import { type DocumentPreview, useOpenDocument } from '../useOpenDocument';
 
 import { categoryLabel } from './categoryLabel';
 const SCAN_TITLE: Record<DocumentScanStatus, string> = {
@@ -40,22 +42,23 @@ function formatSize(bytes: number): string {
 
 function Item({ document_ }: { document_: CrmDocument }) {
   const { open, view } = useOpenDocument();
-  // The blob URL while this document is being read, and nothing when it is not. The row
+  const mayDownload = useHasPermission('documents:download');
+  // The preview while this document is being read, and nothing when it is not. The row
   // owns it because the row opened it, so a session of opening one document after
   // another does not hold every one of them in memory.
-  const [viewing, setViewing] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<DocumentPreview | null>(null);
 
   // Revoked when the viewer closes, and also when the row goes while it is open — the
   // user leaves the page, or a refetch drops the file — which a close handler alone
   // would miss, leaving the blob held for the life of the tab.
   useEffect(() => {
     if (!viewing) return undefined;
-    return () => URL.revokeObjectURL(viewing);
+    return () => URL.revokeObjectURL(viewing.url);
   }, [viewing]);
 
   async function showInApp() {
-    const url = await view(document_);
-    if (url) setViewing(url);
+    const preview = await view(document_);
+    if (preview) setViewing(preview);
   }
 
   return (
@@ -75,11 +78,11 @@ function Item({ document_ }: { document_: CrmDocument }) {
       <span className="shrink-0" data-scan={document_.scan_status} title={SCAN_TITLE[document_.scan_status]}>
         <ScanStatusBadge status={document_.scan_status} />
       </span>
-      {/* Both gated on `is_downloadable`: viewing serves the same bytes as downloading,
-          so a file the server refuses to serve has neither. View is offered only for the
-          types a browser renders — on anything else it would just download, which the
-          button beside it already does. */}
-      {document_.is_downloadable && isViewable(document_) && (
+      {/* View for everyone who may see the document, wherever the server has an
+          on-screen form (`has_preview`: servable, and a PDF, image or text file, or an
+          Office file converted to PDF). Download only for `documents:download`. A file
+          the server refuses to serve has neither. */}
+      {document_.has_preview && (
         <Button
           size="sm"
           variant="subtle"
@@ -92,7 +95,7 @@ function Item({ document_ }: { document_: CrmDocument }) {
           View document
         </Button>
       )}
-      {document_.is_downloadable && (
+      {document_.is_downloadable && mayDownload && (
         <Button
           size="sm"
           variant="subtle"
@@ -107,10 +110,11 @@ function Item({ document_ }: { document_: CrmDocument }) {
       {viewing && (
         <DocumentViewer
           document_={document_}
-          url={viewing}
+          preview={viewing}
           onClose={() => setViewing(null)}
-          // The bytes on screen are the file: saved as they are, not fetched again.
-          onDownload={() => saveObjectUrl(viewing, document_.file_name)}
+          // The original is saved, not the on-screen form: a converted Word file is a
+          // PDF on screen but a .docx in the download.
+          onDownload={mayDownload && document_.is_downloadable ? () => void open(document_) : undefined}
         />
       )}
     </li>

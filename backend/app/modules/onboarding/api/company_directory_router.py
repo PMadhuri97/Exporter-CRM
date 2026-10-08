@@ -59,25 +59,24 @@ from app.modules.onboarding.application.company_directory import CompanyDirector
 from app.modules.onboarding.domain.company_identity import gap_is_required, identity_gap
 from app.modules.onboarding.domain.entities.exporter_enums import CompanyPipelineStatus
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import require_permission
 from app.platform.database.services import get_db
 
 router = APIRouter(prefix="/companies", tags=["Exporter CRM"])
 
-#: Who may ask. Recording a deal's buyer is a relationship manager's job, so
-#: OPERATIONS is included — that is the case the disclosure rule was decided for. DEVELOPER is
+_COMPANY_CREATE = require_permission("exporters", "create")
+_COMPANY_VIEW = require_permission("exporters", "view")
+
+#: Who may ask (``exporters:create``). Recording a deal's buyer is a relationship
+#: manager's job, so OPERATIONS is included — that is the case the disclosure rule was decided for. DEVELOPER is
 #: excluded: it is read-only internal technical staff, it may never reveal an
 #: identifier (``can_reveal_identifiers``), and it has no reason to be resolving a
 #: buyer. API_USER is excluded for the same reason as everywhere else in the CRM.
-_MATCHER = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
 
 #: The completion list is a view of companies and carries no identifier, so it is read
-#: by everyone who reads the company list — DEVELOPER included, masked or not, since
-#: there is nothing to mask.
-_READER = require_role(
-    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
-)
+#: by everyone who reads the company list (``exporters:view``) — DEVELOPER included,
+#: masked or not, since there is nothing to mask.
 
 
 @router.get(
@@ -97,11 +96,11 @@ _READER = require_role(
     responses={
         200: {"model": IdentityCompletionListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {"description": "`exporters:view` permission required"},
     },
 )
 async def list_identity_completion(
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -145,13 +144,13 @@ async def list_identity_completion(
     responses={
         200: {"model": CompanyMatchResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:create` permission required"},
         422: {"description": "Invalid request body"},
     },
 )
 async def match_company(
     body: CompanyMatchRequest,
-    current_user: Annotated[User, Depends(_MATCHER)],
+    current_user: Annotated[User, Depends(_COMPANY_CREATE)],
     db: AsyncSession = Depends(get_db),
 ) -> CompanyMatchResponse:
     result = await CompanyDirectoryService(db).match(

@@ -12,7 +12,7 @@ Who may do what, and why
   else.
 * **Add** and **deactivate** — ``STAFF``. Which branches a company trades through is
   a record a relationship manager keeps.
-* **Flag** and **unflag** — **COMPLIANCE and ADMIN only**. A flag blocks
+* **Flag** and **unflag** — **``compliance:decide`` only** (COMPLIANCE). A flag blocks
   handovers for every deal invoiced through that branch, so it is a
   compliance decision, not a sales one. This is the one place in these routes where
   OPERATIONS is refused.
@@ -41,18 +41,17 @@ from app.modules.onboarding.application.gst_registration_service import (
     GstRegistrationService,
 )
 from app.modules.onboarding.domain.entities.exporter_enums import GstRegistrationFlag
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import require_permission
 from app.platform.database.services import get_db
 
 router = APIRouter(tags=["Exporter CRM"])
 
-_READER = require_role(
-    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
-)
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
-#: A flag stops trade. Compliance's decision, never sales'.
-_COMPLIANCE = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
+_COMPANY_EDIT = require_permission("exporters", "edit")
+_COMPANY_VIEW = require_permission("exporters", "view")
+_COMPLIANCE_DECIDE = require_permission("compliance", "decide")
+
+#: A flag stops trade: compliance's decision (`compliance:decide`), never sales'.
 
 
 def _response(registration, viewer: User, *, also_held_by=()) -> GstRegistrationResponse:
@@ -85,7 +84,7 @@ def _response(registration, viewer: User, *, also_held_by=()) -> GstRegistration
 )
 async def list_gst_registrations(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> GstRegistrationListResponse:
     registrations = await GstRegistrationService(db).list_for_company(customer_id)
@@ -123,7 +122,7 @@ async def list_gst_registrations(
     responses={
         201: {"model": GstRegistrationResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "Company not found"},
         409: {"description": "The company already holds this GSTIN, active"},
         422: {
@@ -136,7 +135,7 @@ async def list_gst_registrations(
 async def add_gst_registration(
     customer_id: uuid.UUID,
     body: AddGstRegistrationRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> GstRegistrationResponse:
     registration, others = await GstRegistrationService(db).add(
@@ -165,13 +164,13 @@ async def add_gst_registration(
     responses={
         200: {"model": GstRegistrationResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "GST registration not found"},
     },
 )
 async def deactivate_gst_registration(
     registration_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
     body: DeactivateGstRegistrationRequest | None = None,
 ) -> GstRegistrationResponse:
@@ -186,7 +185,7 @@ async def deactivate_gst_registration(
 @router.post(
     "/gst-registrations/{registration_id}/flag",
     response_model=GstRegistrationResponse,
-    summary="Flag a branch (COMPLIANCE, ADMIN)",
+    summary="Flag a branch (compliance)",
     description=(
         "A reason is required: it is what a blocked handover will say, so without it "
         "whoever hits the block has nothing to act on.\n\n"
@@ -201,7 +200,7 @@ async def deactivate_gst_registration(
     responses={
         200: {"model": GstRegistrationResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "COMPLIANCE or ADMIN role required"},
+        403: {"description": "`compliance:decide` permission required"},
         404: {"description": "GST registration not found"},
         422: {"description": "A flag without a reason"},
     },
@@ -209,7 +208,7 @@ async def deactivate_gst_registration(
 async def flag_gst_registration(
     registration_id: uuid.UUID,
     body: FlagGstRegistrationRequest,
-    current_user: Annotated[User, Depends(_COMPLIANCE)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_DECIDE)],
     db: AsyncSession = Depends(get_db),
 ) -> GstRegistrationResponse:
     registration, others = await GstRegistrationService(db).flag(
@@ -221,7 +220,7 @@ async def flag_gst_registration(
 @router.post(
     "/gst-registrations/{registration_id}/unflag",
     response_model=GstRegistrationResponse,
-    summary="Lift a branch's flag (COMPLIANCE, ADMIN)",
+    summary="Lift a branch's flag (compliance)",
     description=(
         "A reason is required here too: \"why we decided the problem is resolved\" is "
         "the half of the story a later reader needs most, and the flag's own reason "
@@ -231,7 +230,7 @@ async def flag_gst_registration(
     responses={
         200: {"model": GstRegistrationResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "COMPLIANCE or ADMIN role required"},
+        403: {"description": "`compliance:decide` permission required"},
         404: {"description": "GST registration not found"},
         422: {"description": "Lifting a flag without a reason"},
     },
@@ -239,7 +238,7 @@ async def flag_gst_registration(
 async def unflag_gst_registration(
     registration_id: uuid.UUID,
     body: FlagGstRegistrationRequest,
-    current_user: Annotated[User, Depends(_COMPLIANCE)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_DECIDE)],
     db: AsyncSession = Depends(get_db),
 ) -> GstRegistrationResponse:
     registration = await GstRegistrationService(db).unflag(

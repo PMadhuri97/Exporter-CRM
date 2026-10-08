@@ -9,6 +9,7 @@ import { assessPassword } from '../passwordStrength';
 import { ROLE_DESCRIPTION, ROLE_OPTIONS } from '../roles';
 import type { AdminUser } from '../types';
 
+import { AccessHistory } from './AccessHistory';
 import { PasswordField } from './PasswordField';
 
 interface UserFormDialogProps {
@@ -193,6 +194,8 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
           required
         />
       )}
+
+      {isEdit && <AccessHistory kind="users" id={user.id} />}
     </SidePanel>
   );
 }

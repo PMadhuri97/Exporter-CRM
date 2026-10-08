@@ -39,6 +39,11 @@ export type PermissionCatalog =
 export type PermissionModule = components['schemas']['ModuleSpecResponse'];
 export type MyPermissions = components['schemas']['MyPermissionsResponse'];
 
+// ── Who changed whose access ─────────────────────────────────────
+export type AccessHistory = components['schemas']['AccessHistoryResponse'];
+export type AccessHistoryEntry = components['schemas']['AccessHistoryEntryResponse'];
+export type AccessChange = components['schemas']['AccessChangeResponse'];
+
 /** `module:action`, the shape permission checks compare on. */
 export type PermissionKey = `${string}:${string}`;
 

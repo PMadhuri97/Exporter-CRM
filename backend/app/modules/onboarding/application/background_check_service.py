@@ -226,28 +226,24 @@ _State = BackgroundCheckState
 _MOVES: dict[tuple[_State, _State], frozenset[UserRole]] = {
     # 1 — the start. The only move with no text, and the only one OPERATIONS may
     #     make besides answering a MORE_INFO.
-    (_State.NOT_STARTED, _State.IN_REVIEW): frozenset(
-        {UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN}
-    ),
-    # 2 — CLEAR. Compliance or admin only, and the only move with prerequisites.
-    (_State.IN_REVIEW, _State.CLEAR): frozenset({UserRole.COMPLIANCE, UserRole.ADMIN}),
+    (_State.NOT_STARTED, _State.IN_REVIEW): frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE}),
+    # 2 — CLEAR. Compliance only, and the only move with prerequisites.
+    (_State.IN_REVIEW, _State.CLEAR): frozenset({UserRole.COMPLIANCE}),
     # 3 — asking for more.
-    (_State.IN_REVIEW, _State.MORE_INFO): frozenset({UserRole.COMPLIANCE, UserRole.ADMIN}),
+    (_State.IN_REVIEW, _State.MORE_INFO): frozenset({UserRole.COMPLIANCE}),
     # 4 — recording what arrived.
-    (_State.MORE_INFO, _State.IN_REVIEW): frozenset(
-        {UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN}
-    ),
+    (_State.MORE_INFO, _State.IN_REVIEW): frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE}),
     # 5 — flagging.
-    (_State.IN_REVIEW, _State.FLAGGED): frozenset({UserRole.COMPLIANCE, UserRole.ADMIN}),
+    (_State.IN_REVIEW, _State.FLAGGED): frozenset({UserRole.COMPLIANCE}),
     # 6 — holding a flagged company.
-    (_State.FLAGGED, _State.ON_HOLD): frozenset({UserRole.COMPLIANCE, UserRole.ADMIN}),
+    (_State.FLAGGED, _State.ON_HOLD): frozenset({UserRole.COMPLIANCE}),
     # 7 — reassessing a flagged company.
-    (_State.FLAGGED, _State.IN_REVIEW): frozenset({UserRole.COMPLIANCE, UserRole.ADMIN}),
+    (_State.FLAGGED, _State.IN_REVIEW): frozenset({UserRole.COMPLIANCE}),
     # 8 — reassessing a company on hold.
-    (_State.ON_HOLD, _State.IN_REVIEW): frozenset({UserRole.COMPLIANCE, UserRole.ADMIN}),
+    (_State.ON_HOLD, _State.IN_REVIEW): frozenset({UserRole.COMPLIANCE}),
     # 9 — reopening a cleared company (decision 5). The only way new information about
     #     a cleared company is acted on: there is no `CLEAR → FLAGGED`.
-    (_State.CLEAR, _State.IN_REVIEW): frozenset({UserRole.COMPLIANCE, UserRole.ADMIN}),
+    (_State.CLEAR, _State.IN_REVIEW): frozenset({UserRole.COMPLIANCE}),
 }
 
 #: Every move but the start needs a reason or a note (contract §4). Expressed as the
@@ -280,8 +276,8 @@ _METHOD_FOR_MOVE: dict[tuple[_State, _State], str] = {
 }
 
 
-#: Who may start a new check cycle: compliance and admin, not the RM.
-_CYCLE_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
+#: Who may start a new check cycle: compliance, not the RM.
+_CYCLE_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE})
 
 #: The gauge values a new cycle may start from. `CLEAR` also reopens;
 #: `FLAGGED` and `ON_HOLD` are reassessed first, so they are absent.
@@ -302,8 +298,8 @@ _CYCLE_LABELS: dict[CheckCycleKind, str] = {
 #: `event_type` of the `check_cycle` history row.
 CYCLE_STARTED_EVENT = "check_cycle_started"
 
-#: Who may propose, approve or reject: compliance and admin. The RM never
-#: approves compliance.
+#: Who may propose, approve or reject: compliance. The RM never approves
+#: compliance, and the administrator never does.
 _APPROVER_ROLES: frozenset[UserRole] = CHECKER_ROLES
 
 #: The reviewer's moves from ``IN_REVIEW``: whoever makes one must hold the review (or
@@ -1066,7 +1062,7 @@ class BackgroundCheckService:
             BackgroundCheckConflictOfInterestError: (403) the review's current reviewer
                 or the company's relationship manager.
             HighRiskApprovalRequiredError: (403) a HIGH or CRITICAL CLEAR without
-                ADMIN or ``compliance:approve_high_risk``.
+                a holder of ``compliance:approve_high_risk``.
             BackgroundCheckProposalStaleError: (409) something moved since.
         """
         profile = await self._lock_profile(company_id)
@@ -1075,7 +1071,7 @@ class BackgroundCheckService:
             raise BackgroundCheckSelfApprovalError(proposal_id)
         self._refuse_checker_conflict(profile, proposal, actor_id)
         if needs_senior_checker(proposal.to_value, proposal.risk_rating) and not holds(
-            actor_role, actor_permissions, APPROVE_HIGH_RISK
+            actor_permissions, APPROVE_HIGH_RISK
         ):
             raise HighRiskApprovalRequiredError(proposal_id, proposal.risk_rating)
         why = await self._staleness(profile, proposal)
@@ -1182,7 +1178,7 @@ class BackgroundCheckService:
         await self._lock_profile(company_id)
         proposal = await self._open_proposal_to_resolve(company_id, proposal_id, actor_role)
         if actor_id != proposal.created_by:
-            if not holds(actor_role, actor_permissions, ASSIGN_REVIEWS):
+            if not holds(actor_permissions, ASSIGN_REVIEWS):
                 raise BackgroundCheckProposalNotYoursError(proposal_id)
             proposer = await staff_member(self._db, proposal.created_by)
             if proposer is not None and proposer.is_active and proposer.role in REVIEWER_ROLES:
@@ -1365,7 +1361,7 @@ class BackgroundCheckService:
         actor_role: UserRole,
         actor_permissions: frozenset[Permission] = frozenset(),
     ) -> ExporterProfile:
-        """Assign or reassign the review: ADMIN or ``compliance:assign``. The target is an
+        """Assign or reassign the review: ``compliance:assign``. The target is an
         active COMPLIANCE or ADMIN user who is not the company's RM; taking a review
         from someone needs a reason. An open proposal survives the change.
 
@@ -1377,7 +1373,7 @@ class BackgroundCheckService:
             ReviewReasonRequiredError: (422) replacing a reviewer with no reason.
         """
         profile = await self._lock_profile(company_id)
-        if not holds(actor_role, actor_permissions, ASSIGN_REVIEWS):
+        if not holds(actor_permissions, ASSIGN_REVIEWS):
             raise ReviewAssignNotAllowedError(company_id)
         self._require_under_review(profile)
         holder = profile.background_check_reviewer_id
@@ -1433,7 +1429,7 @@ class BackgroundCheckService:
         holder = profile.background_check_reviewer_id
         if holder is None:
             return profile
-        if holder != actor_id and not holds(actor_role, actor_permissions, ASSIGN_REVIEWS):
+        if holder != actor_id and not holds(actor_permissions, ASSIGN_REVIEWS):
             raise ReviewAssignNotAllowedError(company_id)
         open_proposal = await self._proposals.open_for_company(company_id)
         if open_proposal is not None and open_proposal.created_by == holder:
@@ -1468,7 +1464,7 @@ class BackgroundCheckService:
         is_rm = profile.relationship_manager_user_id is not None and viewer_id == str(
             profile.relationship_manager_user_id
         )
-        may_assign = holds(viewer_role, viewer_permissions, ASSIGN_REVIEWS)
+        may_assign = holds(viewer_permissions, ASSIGN_REVIEWS)
         actions: list[str] = []
         if holder is None and viewer_role in REVIEWER_ROLES and not is_rm:
             actions.append(REVIEW_ACTION_CLAIM)

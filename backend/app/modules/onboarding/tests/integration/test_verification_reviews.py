@@ -294,7 +294,7 @@ async def _api_result(client: AsyncClient, token: str) -> str:
 
 async def test_the_api_supersedes_and_returns_the_chain(client: AsyncClient):
     reviewer_1, token_1 = await user_with_role(client, UserRole.COMPLIANCE)
-    reviewer_2, token_2 = await user_with_role(client, UserRole.ADMIN)
+    reviewer_2, token_2 = await user_with_role(client, UserRole.COMPLIANCE)
     result_id = await _api_result(client, token_1)
     url = f"{BASE}/verifications/{result_id}/review"
 

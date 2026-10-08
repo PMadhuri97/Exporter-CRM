@@ -26,16 +26,19 @@ from app.modules.onboarding.domain.assignment import Permission
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.platform.authentication import active_staff
 from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import get_current_permissions, require_role
+from app.platform.authorization.services import get_current_permissions, require_permission
 from app.platform.database.services import get_db
 
 router = APIRouter(tags=["Exporter CRM"])
 
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+_ASSIGN_RM = require_permission("exporters", "assign_rm")
+_COMPANY_EDIT = require_permission("exporters", "edit")
+
 _PERMISSIONS = Annotated[frozenset[Permission], Depends(get_current_permissions)]
 
-#: The roles a picker may ask for: relationship managers, and reviewers.
-_PICKABLE = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
+#: The roles a picker may ask for: relationship managers, and reviewers. Never the
+#: administrator, who is neither.
+_PICKABLE = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE})
 
 
 @router.get(
@@ -44,19 +47,20 @@ _PICKABLE = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN}
     summary="Active staff in a role, for an assignment picker",
     description=(
         "Every **active** account in the given role(s), by name: `role=OPERATIONS` for "
-        "the relationship-manager picker, `role=COMPLIANCE&role=ADMIN` for the "
-        "reviewer picker. Each carries how many companies it is RM of and how many "
-        "reviews it holds, so work can be spread. Never an email, password or custom "
-        "role. Staff; DEVELOPER is refused (it assigns nothing)."
+        "the relationship-manager picker, `role=COMPLIANCE` for the reviewer picker. "
+        "Each carries how many companies it is RM of and how many reviews it holds, so "
+        "work can be spread. Never an email, password or custom role. Needs "
+        "`exporters:edit`; DEVELOPER and the administrator are refused (they assign "
+        "nothing)."
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "exporters:edit permission required"},
     },
 )
 async def list_assignable_staff(
     db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(_STAFF)],
+    user: Annotated[User, Depends(_COMPANY_EDIT)],
     role: Annotated[list[UserRole], Query()] = [UserRole.OPERATIONS],  # noqa: B006
 ) -> StaffListResponse:
     wanted = [r for r in role if r in _PICKABLE]
@@ -121,7 +125,7 @@ async def list_assignable_staff(
 async def reassign_relationship_managers(
     body: BulkReassignRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(_STAFF)],
+    user: Annotated[User, Depends(_ASSIGN_RM)],
     permissions: _PERMISSIONS,
 ) -> BulkReassignResponse:
     result = await ExporterProfileService(db).reassign_relationship_managers(

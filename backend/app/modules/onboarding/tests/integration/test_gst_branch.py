@@ -148,7 +148,7 @@ async def test_raw_sql_cannot_delete_a_gst_registration():
 async def test_a_company_edit_no_longer_touches_its_registrations(client: AsyncClient):
     """The behaviour change behind the registration routes: ``gstins`` is not a field a PATCH may
     send any more, so the whole-list replace — and the deletes it caused — is gone."""
-    _user_id, token = await user_with_role(client, UserRole.ADMIN)
+    _user_id, token = await user_with_role(client, UserRole.COMPLIANCE)
     customer_id, pan = await _company_with_pan()
     async with db_services.AsyncSessionLocal() as db:
         await GstRegistrationService(db).add(customer_id, gstin=_gstin(pan), actor_id="rm-1")
@@ -514,7 +514,7 @@ async def test_a_deactivated_copy_is_not_reported_as_another_holder():
 
 
 async def test_the_routes_add_list_and_flag(client: AsyncClient):
-    _admin, admin_token = await user_with_role(client, UserRole.ADMIN)
+    _admin, admin_token = await user_with_role(client, UserRole.COMPLIANCE)
     customer_id, pan = await _company_with_pan()
 
     added = await client.post(
@@ -545,7 +545,7 @@ async def test_the_routes_add_list_and_flag(client: AsyncClient):
 
 
 async def test_a_flag_without_a_reason_is_refused_by_the_route(client: AsyncClient):
-    _admin, token = await user_with_role(client, UserRole.ADMIN)
+    _admin, token = await user_with_role(client, UserRole.COMPLIANCE)
     customer_id, pan = await _company_with_pan()
     added = await client.post(
         f"{BASE}/exporters/{customer_id}/gst-registrations",
@@ -561,10 +561,10 @@ async def test_a_flag_without_a_reason_is_refused_by_the_route(client: AsyncClie
     assert resp.status_code == 422, resp.text
 
 
-async def test_only_compliance_and_admin_may_flag(client: AsyncClient):
+async def test_only_compliance_may_flag(client: AsyncClient):
     """A flag stops trade through a branch, so it is a compliance decision. This is
     the one place in these routes where OPERATIONS is refused."""
-    _admin, admin_token = await user_with_role(client, UserRole.ADMIN)
+    _admin, admin_token = await user_with_role(client, UserRole.COMPLIANCE)
     customer_id, pan = await _company_with_pan()
     added = await client.post(
         f"{BASE}/exporters/{customer_id}/gst-registrations",
@@ -595,7 +595,7 @@ async def test_the_portal_link_is_served_only_to_a_role_that_sees_the_gstin(
 ):
     """Task 3.17. The URL contains the GSTIN, so serving it to a masked role would
     hand over exactly the value the masking withholds."""
-    _admin, admin_token = await user_with_role(client, UserRole.ADMIN)
+    _admin, admin_token = await user_with_role(client, UserRole.COMPLIANCE)
     customer_id, pan = await _company_with_pan()
     gstin = _gstin(pan)
     await client.post(
@@ -604,7 +604,7 @@ async def test_the_portal_link_is_served_only_to_a_role_that_sees_the_gstin(
         headers=auth_header(admin_token),
     )
 
-    for role in (UserRole.ADMIN, UserRole.COMPLIANCE):
+    for role in (UserRole.COMPLIANCE,):
         _user, token = await user_with_role(client, role)
         resp = await client.get(
             f"{BASE}/exporters/{customer_id}/gst-registrations", headers=auth_header(token)
@@ -614,7 +614,7 @@ async def test_the_portal_link_is_served_only_to_a_role_that_sees_the_gstin(
         assert row["verify_url"].endswith(gstin), role
         assert row["verify_url"].startswith("https://services.gst.gov.in/"), role
 
-    for role in (UserRole.OPERATIONS, UserRole.DEVELOPER):
+    for role in (UserRole.OPERATIONS, UserRole.ADMIN, UserRole.DEVELOPER):
         _user, token = await user_with_role(client, role)
         resp = await client.get(
             f"{BASE}/exporters/{customer_id}/gst-registrations", headers=auth_header(token)

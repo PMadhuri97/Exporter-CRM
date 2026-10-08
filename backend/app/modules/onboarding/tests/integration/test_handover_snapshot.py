@@ -432,7 +432,7 @@ async def test_the_deal_response_carries_the_snapshot_masked_by_role(
     await _add_document(deal_id, tmp_path, "bol.pdf")
     await _hand_over(deal_id)
 
-    for role in (UserRole.COMPLIANCE, UserRole.ADMIN):
+    for role in (UserRole.COMPLIANCE,):
         token = await token_with_role(client, role)
         body = (await client.get(f"{BASE}/deals/{deal_id}", headers=auth_header(token))).json()
         assert body["handover_snapshot"]["buyer"]["tax_id"] == "NL123456789B01"
@@ -440,7 +440,7 @@ async def test_the_deal_response_carries_the_snapshot_masked_by_role(
             "ops@rotterdamtrading.example"
         )
 
-    for role in (UserRole.OPERATIONS, UserRole.DEVELOPER):
+    for role in (UserRole.OPERATIONS, UserRole.ADMIN, UserRole.DEVELOPER):
         token = await token_with_role(client, role)
         body = (await client.get(f"{BASE}/deals/{deal_id}", headers=auth_header(token))).json()
         buyer = body["handover_snapshot"]["buyer"]

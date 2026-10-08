@@ -1229,6 +1229,19 @@ class DocumentNotAvailableError(AnerBaseException):
         )
 
 
+class DocumentPreviewUnavailableError(AnerBaseException):
+    """A document that cannot be shown on screen: a type no browser renders and no
+    converter turns into a PDF (a zip), or a conversion that failed. The original is
+    untouched; a holder of ``documents:download`` can still save it."""
+
+    def __init__(self, document_id: object) -> None:
+        super().__init__(
+            detail=f"Document {document_id} has no on-screen preview",
+            error_code="DOCUMENT_PREVIEW_UNAVAILABLE",
+            status_code=409,
+        )
+
+
 class DocumentLinkInvalidError(AnerBaseException):
     """A download link whose signature does not verify, or which has expired.
 
@@ -1633,7 +1646,7 @@ class BackgroundCheckApprovalRequiredError(AnerBaseException):
     """A move that needs a second approver was asked to take effect directly.
 
     With maker-checker on, ``CLEAR``, ``FLAGGED`` and ``ON_HOLD`` are recorded as a
-    proposal and take effect only when a different COMPLIANCE or ADMIN user approves
+    proposal and take effect only when a different COMPLIANCE user approves
     them. This is what stops any path letting one user take a company there. 409.
     """
 
@@ -1744,8 +1757,8 @@ class BackgroundCheckProposalNotYoursError(AnerBaseException):
 
 
 class BackgroundCheckApproverRoleNotAllowedError(AnerBaseException):
-    """Only COMPLIANCE and ADMIN propose, approve or reject — never OPERATIONS (the RM
-    never approves compliance). 403."""
+    """Only COMPLIANCE proposes, approves or rejects — never OPERATIONS (the RM never
+    approves compliance) and never the administrator. 403."""
 
     def __init__(self, role: object) -> None:
         super().__init__(
@@ -2212,8 +2225,8 @@ class RelationshipManagerAssignNotAllowedError(AnerBaseException):
             detail=(
                 f"You may not change company {company_id}'s relationship manager. An RM "
                 "may claim a company with no RM for themselves; assigning someone else, "
-                "or changing or clearing an RM, needs an administrator or the "
-                "exporters:assign_rm permission"
+                "or changing or clearing an RM, needs the exporters:assign_rm "
+                "permission (the Sales lead role)"
             ),
             error_code="RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED",
             status_code=403,
@@ -2373,7 +2386,7 @@ class ReviewerIsRelationshipManagerError(AnerBaseException):
 
 
 class ReviewerNotEligibleError(AnerBaseException):
-    """The named user cannot review: not an active COMPLIANCE or ADMIN user (422)."""
+    """The named user cannot review: not an active COMPLIANCE user (422)."""
 
     def __init__(self, user_id: object, why: str) -> None:
         super().__init__(
@@ -2385,14 +2398,14 @@ class ReviewerNotEligibleError(AnerBaseException):
 
 
 class ReviewAssignNotAllowedError(AnerBaseException):
-    """Assigning, reassigning or releasing another person's review needs ADMIN or
-    ``compliance:assign`` (403)."""
+    """Assigning, reassigning or releasing another person's review needs
+    ``compliance:assign`` — the Compliance lead role (403)."""
 
     def __init__(self, company_id: object) -> None:
         super().__init__(
             detail=(
-                f"Assigning the review of company {company_id} to someone needs an "
-                "administrator or the compliance:assign permission"
+                f"Assigning the review of company {company_id} to someone needs the "
+                "compliance:assign permission (the Compliance lead role)"
             ),
             error_code="REVIEW_ASSIGN_NOT_ALLOWED",
             status_code=403,
