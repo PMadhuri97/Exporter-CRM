@@ -54,10 +54,12 @@ from app.modules.onboarding.domain.engagement_views import (
     ExporterActivityView,
     ExporterContactView,
 )
+from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
+    CompanyTradeRole,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -704,6 +706,11 @@ class ExporterProfileService:
         qualification: QualificationState | None = None,
         marker: ExporterMarker | None = None,
         pipeline_status: CompanyPipelineStatus | None = None,
+        country: str | None = None,
+        industry: str | None = None,
+        background_check: BackgroundCheckState | None = None,
+        trade_role: CompanyTradeRole | None = None,
+        has_open_deals: bool | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfileListItem]:
@@ -750,11 +757,27 @@ class ExporterProfileService:
             qualification=qualification,
             marker=marker,
             pipeline_status=pipeline_status,
+            country=country,
+            industry=industry,
+            background_check=background_check,
+            trade_role=trade_role,
+            has_open_deals=has_open_deals,
             exclude_ended=marker is None and not searching,
-            exclude_not_in_pipeline=pipeline_status is None and not searching,
+            # Asking for buyers has to bring the buyer-only companies back. They are
+            # precisely the `NOT_IN_PIPELINE` rows the default working list hides, so
+            # leaving that exclusion on would answer "which of our companies are
+            # buyers" with almost nothing — the filter would look broken rather than
+            # empty. An explicit `trade_role` is as deliberate as an explicit
+            # `pipeline_status`, and is treated the same way.
+            exclude_not_in_pipeline=(
+                pipeline_status is None and not searching and trade_role is None
+            ),
             limit=limit,
             offset=offset,
         )
+        # One lookup for the whole page, as the GSTINs are loaded: a role per row would
+        # be two queries per company.
+        roles = await self._profiles.trade_roles_for([p.customer_id for p in profiles])
         return [
             ExporterProfileListItem(
                 customer_id=profile.customer_id,
@@ -772,6 +795,9 @@ class ExporterProfileService:
                 marker=profile.marker,
                 marker_reason=profile.marker_reason,
                 industry=profile.industry,
+                export_markets=profile.export_markets,
+                products=profile.products,
+                trade_role=roles.get(profile.customer_id),
                 year_established=profile.year_established,
                 registration_number=profile.registration_number,
                 identity_type=profile.identity_type,

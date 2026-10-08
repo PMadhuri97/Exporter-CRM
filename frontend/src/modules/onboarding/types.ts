@@ -47,6 +47,10 @@ export type IntakeResult = Schemas['IntakeResponse'];
 export type ImportReport = Schemas['ImportReportResponse'];
 export type ImportRow = Schemas['ImportRowResponse'];
 
+/** Which side of a trade a company has been on. A filter, not a stored column. */
+export type CompanyTradeRole = Schemas['CompanyTradeRole'];
+export type CompanyPipelineStatus = Schemas['CompanyPipelineStatus'];
+
 export interface ExporterSearchParams {
   name?: string;
   gstin?: string;
@@ -56,6 +60,13 @@ export interface ExporterSearchParams {
   journey?: ExporterJourney;
   qualification?: QualificationState;
   marker?: ExporterMarker;
+  pipeline_status?: CompanyPipelineStatus;
+  country?: string;
+  industry?: string;
+  background_check?: BackgroundCheckState;
+  trade_role?: CompanyTradeRole;
+  /** `false` is a filter of its own — companies with no live deal. */
+  has_open_deals?: boolean;
   limit?: number;
   offset?: number;
 }

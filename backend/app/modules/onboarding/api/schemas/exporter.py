@@ -35,6 +35,7 @@ from app.modules.onboarding.api.schemas.masking import (
 )
 from app.modules.onboarding.domain.company_identity import REGISTRATION_NUMBER_MAX
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    CompanyTradeRole,
     CompanyIdentityType,
     CompanyPipelineStatus,
     ExporterJourney,
@@ -428,6 +429,9 @@ class ExporterProfileListItemResponse(_IdentifierMasking, BaseModel):
     marker: ExporterMarker
     marker_reason: str | None
     industry: str | None
+    export_markets: list[str] | None = None
+    products: list[str] | None = None
+    trade_role: CompanyTradeRole | None = None
     year_established: int | None
     #: Masked for a role that may not reveal identifiers, like CIN.
     registration_number: str | None

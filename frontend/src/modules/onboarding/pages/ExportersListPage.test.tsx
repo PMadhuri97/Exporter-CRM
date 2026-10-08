@@ -207,3 +207,110 @@ describe('ExportersListPage — write screens by role', () => {
     expect(screen.getByRole('link', { name: 'Identity to complete' })).toBeInTheDocument();
   });
 });
+
+describe('ExportersListPage — the filter panel', () => {
+  beforeEach(() => {
+    mockUser('OPERATIONS', 'someone-else');
+    vi.mocked(searchExporterProfiles).mockReset();
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [PROFILE],
+      limit: 100,
+      offset: 0,
+    });
+  });
+
+  it('filters as each choice is made, without an apply step', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Buyer or seller'), {
+      target: { value: 'BUYER' },
+    });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ trade_role: 'BUYER' }),
+      ),
+    );
+
+    // The second choice joins the first rather than replacing it.
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'RXIL' } });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ trade_role: 'BUYER', source: 'RXIL' }),
+      ),
+    );
+
+    // And the panel is still open, so the next choice needs no second trip.
+    expect(screen.getByLabelText('Country')).toBeInTheDocument();
+  });
+
+  it('counts what is in force, and clears it', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Background check'), {
+      target: { value: 'CLEAR' },
+    });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ background_check: 'CLEAR' }),
+      ),
+    );
+
+    // Closed first: the panel is a modal, so while it is open the page behind it is
+    // hidden from assistive tech — and from a query that asks the way one would.
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    // The badge is how a narrowed list is told apart from an empty one.
+    expect(await screen.findByRole('button', { name: /Filters 1/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    await waitFor(() => {
+      const [params] = vi.mocked(searchExporterProfiles).mock.calls.at(-1)!;
+      expect(params).not.toHaveProperty('background_check');
+    });
+  });
+
+  it('sends has_open_deals=false, which is a filter and not an absent one', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Deals'), { target: { value: 'false' } });
+
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ has_open_deals: false }),
+      ),
+    );
+  });
+
+  it('waits for typing to stop before filtering by industry', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderPage();
+      await screen.findByText('Acme Exports');
+      fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+
+      const field = await screen.findByLabelText('Industry');
+      for (const value of ['T', 'Te', 'Tex']) {
+        fireEvent.change(field, { target: { value } });
+      }
+      // Nothing sent yet: a request per keystroke is what the delay exists to avoid.
+      expect(vi.mocked(searchExporterProfiles).mock.calls.at(-1)?.[0]).not.toHaveProperty(
+        'industry',
+      );
+
+      await vi.advanceTimersByTimeAsync(400);
+      await waitFor(() =>
+        expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+          expect.objectContaining({ industry: 'Tex' }),
+        ),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

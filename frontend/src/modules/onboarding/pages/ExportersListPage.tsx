@@ -15,7 +15,7 @@
  * focusing a row loads its record ahead of the click.
  */
 
-import { useState } from 'react';
+import { useCallback, useState, type SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
 
 import {
@@ -35,6 +35,9 @@ import { Icon } from '@/design/icons';
 import { useCan } from '@/platform/access';
 
 import { CompanyBadges } from '../components';
+import { CompanyFilterPanel, type CompanyFilters } from '../components/CompanyFilterPanel';
+import { saveObjectUrl } from '../components/useOpenDocument';
+import { companiesToCsv, csvBlob, csvFileName } from '../exportCompanies';
 import { JOURNEY_LABEL, JOURNEY_STAGES, MARKER_LABEL, QUALIFICATION_LABEL } from '../constants';
 import { COUNT_CAP, useExporterProfiles, useJourneyCount, usePrefetchCompany } from '../hooks';
 import { preloadExporterDetailPage } from '../lazyPages';
@@ -120,6 +123,19 @@ export function ExportersListPage() {
   const [pages, setPages] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [name, setName] = useState('');
+  // The panel's filters, applied only when it says so. Held here rather than in the
+  // URL: two of them are free text, which `useSearchParamState` cannot express — a
+  // shareable filtered link is worth having and is a separate change.
+  const [filters, setFilters] = useState<CompanyFilters>({});
+  // Referentially stable, which the panel's typing timer relies on. It also resets the
+  // paging: the old offset belongs to the old filter.
+  const changeFilters = useCallback((next: SetStateAction<CompanyFilters>) => {
+    setFilters(next);
+    setPages(1);
+  }, []);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  // The panel stores only filters that are actually set, so the key count is the badge.
+  const filterCount = Object.keys(filters).length;
   const prefetch = usePrefetchCompany();
   // The company record, ready to draw: its code and the company's data.
   const prepare = (customerId: string) =>
@@ -133,11 +149,12 @@ export function ExportersListPage() {
     journey: lens === 'ALL' ? undefined : lens,
     qualification: qualification === 'ANY' ? undefined : (qualification as QualificationState),
     marker: relationship === 'ANY' ? undefined : (relationship as ExporterMarker),
+    ...filters,
     limit,
   });
   const profiles = data?.profiles ?? [];
   const filtering = Boolean(
-    name || qualification !== 'ANY' || relationship !== 'ANY' || lens !== 'ALL',
+    name || qualification !== 'ANY' || relationship !== 'ANY' || lens !== 'ALL' || filterCount,
   );
   const mayHaveMore = profiles.length === limit && limit < COUNT_CAP;
 
@@ -249,6 +266,48 @@ export function ExportersListPage() {
                 </option>
               ))}
             </Select>
+
+            {/* What is on screen, as a file. Disabled with nothing to write, and it
+                says the row count so "export" is not read as "export everything" — there
+                is no server-side export, so this is the loaded page of the filtered
+                list. */}
+            <Button
+              variant="subtle"
+              disabled={profiles.length === 0}
+              onClick={() => {
+                const url = URL.createObjectURL(csvBlob(companiesToCsv(profiles)));
+                saveObjectUrl(url, csvFileName());
+                // On a later tick: revoking at once cancels the save in some browsers.
+                window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+              }}
+            >
+              <Icon.download size={16} aria-hidden />
+              Export {profiles.length > 0 && `(${profiles.length})`}
+            </Button>
+
+            {/* The rest of the filters, behind one button. The count is what tells
+                somebody the list is narrowed — without it a filtered list looks like an
+                empty one. */}
+            <Button variant="subtle" onClick={() => setFiltersOpen(true)}>
+              <Icon.filter size={16} aria-hidden />
+              Filters
+              {filterCount > 0 && (
+                <span className="ml-1 rounded-full bg-accent-tint px-1.5 text-caption font-semibold text-accent tabular-nums">
+                  {filterCount}
+                </span>
+              )}
+            </Button>
+            {filterCount > 0 && (
+              <Button
+                variant="subtle"
+                onClick={() => {
+                  setFilters({});
+                  setPages(1);
+                }}
+              >
+                Clear
+              </Button>
+            )}
           </div>
         </div>
 
@@ -301,6 +360,17 @@ export function ExportersListPage() {
           </>
         )}
       </section>
+
+      {/* Mounted only while open, so every opening starts from the filters in force. */}
+      {filtersOpen && (
+        <CompanyFilterPanel
+          applied={filters}
+          shown={profiles.length}
+          loading={isLoading || isFetching}
+          onChange={changeFilters}
+          onClose={() => setFiltersOpen(false)}
+        />
+      )}
     </div>
   );
 }

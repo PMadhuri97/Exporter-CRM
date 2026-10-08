@@ -25,6 +25,7 @@ from app.modules.onboarding.domain.engagement_views import (
     ExporterContactView,
 )
 from app.modules.onboarding.domain.entities.exporter_enums import (
+    CompanyTradeRole,
     CompanyIdentityType,
     CompanyPipelineStatus,
     ExporterJourney,
@@ -115,6 +116,13 @@ class ExporterProfileListItem:
     marker: ExporterMarker
     marker_reason: str | None
     industry: str | None
+    #: Both were missing while the docstring above said otherwise. They are small lists,
+    #: not sub-collections, and the export reads them.
+    export_markets: list | None
+    products: list | None
+    #: Which side of a trade this company has been on. Derived per page, not stored:
+    #: `None` means it has been on neither, which is not a third role.
+    trade_role: CompanyTradeRole | None
     year_established: int | None
     #: Whatever the company's own registrar issued, for a company not identified by
     #: a PAN. Masked like CIN on the way out.

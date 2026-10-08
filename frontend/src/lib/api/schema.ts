@@ -3321,6 +3321,30 @@ export interface components {
          */
         CompanyPipelineStatus: "IN_PIPELINE" | "NOT_IN_PIPELINE";
         /**
+         * CompanyTradeRole
+         * @description Which side of a trade a company has actually been on. **A filter, never a
+         *     column**: no table stores this, and none should.
+         *
+         *     The role lives in the relationship, not on the company — a deal names its seller
+         *     (``deal.company_id``) and its buyer (``deal.buyer_company_id``), and a trade
+         *     relationship names both sides. So one company can be **both**, and often is: an
+         *     exporter we sell to that another exporter also buys from.
+         *
+         *     This is deliberately not ``source`` or ``pipeline_status``, which are the two
+         *     things it gets mistaken for:
+         *
+         *     * ``source=DEAL_BUYER`` is how the record was *created*. A company first met as
+         *       somebody's buyer and later sold to keeps that source for ever, so it answers a
+         *       question about the past, not about what the company is now.
+         *     * ``pipeline_status`` says whether anyone brought the company into the pipeline.
+         *       A buyer-only company is ``NOT_IN_PIPELINE``, but a company that *was* brought in
+         *       and also appears as a buyer elsewhere is ``IN_PIPELINE`` and still a buyer.
+         *
+         *     ``BOTH`` therefore means "has been on both sides", not "we are unsure".
+         * @enum {string}
+         */
+        CompanyTradeRole: "SELLER" | "BUYER" | "BOTH";
+        /**
          * CompleteFollowUpRequest
          * @description Record that a follow-up was dealt with.
          *
@@ -4546,6 +4570,11 @@ export interface components {
             marker_reason: string | null;
             /** Industry */
             industry: string | null;
+            /** Export Markets */
+            export_markets?: string[] | null;
+            /** Products */
+            products?: string[] | null;
+            trade_role?: components["schemas"]["CompanyTradeRole"] | null;
             /** Year Established */
             year_established: number | null;
             /** Registration Number */
@@ -8544,6 +8573,15 @@ export interface operations {
                 qualification?: components["schemas"]["QualificationState"] | null;
                 marker?: components["schemas"]["ExporterMarker"] | null;
                 pipeline_status?: components["schemas"]["CompanyPipelineStatus"] | null;
+                /** @description ISO country code; matched whole, case-insensitively. */
+                country?: string | null;
+                /** @description Matched as a partial, case-insensitive substring. */
+                industry?: string | null;
+                background_check?: components["schemas"]["BackgroundCheckState"] | null;
+                /** @description Which side of a trade the company has been on, by participation rather than by how the record was created. BOTH means it has been on both sides. Asking for BUYER includes buyer-only companies, which the default list hides. */
+                trade_role?: components["schemas"]["CompanyTradeRole"] | null;
+                /** @description Whether the company has a deal that is neither handed over nor withdrawn. */
+                has_open_deals?: boolean | null;
                 limit?: number;
                 offset?: number;
             };

@@ -136,3 +136,30 @@ class GstRegistrationFlag(str, enum.Enum):
 
     NONE = "NONE"
     FLAGGED = "FLAGGED"
+
+
+class CompanyTradeRole(str, enum.Enum):
+    """Which side of a trade a company has actually been on. **A filter, never a
+    column**: no table stores this, and none should.
+
+    The role lives in the relationship, not on the company — a deal names its seller
+    (``deal.company_id``) and its buyer (``deal.buyer_company_id``), and a trade
+    relationship names both sides. So one company can be **both**, and often is: an
+    exporter we sell to that another exporter also buys from.
+
+    This is deliberately not ``source`` or ``pipeline_status``, which are the two
+    things it gets mistaken for:
+
+    * ``source=DEAL_BUYER`` is how the record was *created*. A company first met as
+      somebody's buyer and later sold to keeps that source for ever, so it answers a
+      question about the past, not about what the company is now.
+    * ``pipeline_status`` says whether anyone brought the company into the pipeline.
+      A buyer-only company is ``NOT_IN_PIPELINE``, but a company that *was* brought in
+      and also appears as a buyer elsewhere is ``IN_PIPELINE`` and still a buyer.
+
+    ``BOTH`` therefore means "has been on both sides", not "we are unsure".
+    """
+
+    SELLER = "SELLER"
+    BUYER = "BUYER"
+    BOTH = "BOTH"

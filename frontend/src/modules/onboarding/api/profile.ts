@@ -43,8 +43,18 @@ function buildQuery(params: ExporterSearchParams): string {
     ['journey', params.journey],
     ['qualification', params.qualification],
     ['marker', params.marker],
+    ['pipeline_status', params.pipeline_status],
+    ['country', params.country],
+    ['industry', params.industry],
+    ['background_check', params.background_check],
+    ['trade_role', params.trade_role],
   ];
   for (const [key, value] of entries) if (value) query.set(key, value);
+  // Separately, because `false` is a filter ("companies with no open deal") and the
+  // loop above drops every falsy value.
+  if (params.has_open_deals !== undefined) {
+    query.set('has_open_deals', String(params.has_open_deals));
+  }
   query.set('limit', String(params.limit ?? 100));
   query.set('offset', String(params.offset ?? 0));
   return query.toString();
