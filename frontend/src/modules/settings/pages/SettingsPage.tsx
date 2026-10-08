@@ -27,7 +27,13 @@ import { RolesTab } from '../components/RolesTab';
 import { UsersTab } from '../components/UsersTab';
 import { usePermissions } from '../usePermissions';
 
-export type SettingsSection = 'profile' | 'users' | 'roles' | 'criteria' | 'requiredDocuments';
+export type SettingsSection =
+  | 'profile'
+  | 'users'
+  | 'roles'
+  | 'criteria'
+  | 'requiredDocuments'
+  | 'paymentTerms';
 type Section = SettingsSection;
 
 const SECTION_LABEL: Record<Section, string> = {
@@ -36,6 +42,7 @@ const SECTION_LABEL: Record<Section, string> = {
   roles: 'Roles',
   criteria: 'Qualification criteria',
   requiredDocuments: 'Required documents',
+  paymentTerms: 'Payment terms',
 };
 
 function SectionLink({ to, children }: { to: string; children: ReactNode }) {
@@ -83,6 +90,7 @@ export function SettingsFrame({ section, children }: { section: Section; childre
   const canViewRoles = can('roles', 'view');
   const canSetCriteria = useCan('settings.criteria');
   const canSetRequiredDocuments = useCan('settings.requiredDocuments');
+  const canSetPaymentTerms = useCan('settings.paymentTerms');
   useCrumbs([{ label: 'Settings', to: '/settings' }, { label: SECTION_LABEL[section] }]);
 
   return (
@@ -103,7 +111,7 @@ export function SettingsFrame({ section, children }: { section: Section; childre
             {canViewUsers && <SectionLink to="/settings/users">Users</SectionLink>}
             {canViewRoles && <SectionLink to="/settings/roles">Roles</SectionLink>}
           </SectionGroup>
-          {(canSetCriteria || canSetRequiredDocuments) && (
+          {(canSetCriteria || canSetRequiredDocuments || canSetPaymentTerms) && (
             <>
               <span
                 role="separator"
@@ -115,6 +123,9 @@ export function SettingsFrame({ section, children }: { section: Section; childre
                 )}
                 {canSetRequiredDocuments && (
                   <SectionLink to="/settings/deal-required-documents">Required documents</SectionLink>
+                )}
+                {canSetPaymentTerms && (
+                  <SectionLink to="/settings/payment-terms">Payment terms</SectionLink>
                 )}
               </SectionGroup>
             </>

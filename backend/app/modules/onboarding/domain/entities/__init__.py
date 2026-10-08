@@ -1,6 +1,8 @@
 from app.modules.onboarding.domain.entities.applicant_mapping import ApplicantMapping
 from app.modules.onboarding.domain.entities.case import Case
 from app.modules.onboarding.domain.entities.case_state_transition import CaseStateTransition
+from app.modules.onboarding.domain.entities.company_address import CompanyAddress
+from app.modules.onboarding.domain.entities.company_bank_account import CompanyBankAccount
 from app.modules.onboarding.domain.entities.customer import Customer
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.entities.enums import (
@@ -49,6 +51,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationRiskLevel,
     VerificationType,
 )
+from app.modules.onboarding.domain.entities.payment_term import PaymentTerm
 from app.modules.onboarding.domain.entities.person_profile import PersonProfile
 from app.modules.onboarding.domain.entities.qualification import (
     QualificationCriterion,
@@ -99,6 +102,9 @@ __all__ = [
     "OnboardingValidationStatus",
     "KybNormalisedResult",
     "ExporterProfile",
+    "PaymentTerm",
+    "CompanyAddress",
+    "CompanyBankAccount",
     "ExporterGstin",
     "ExporterMarker",
     "QualificationCriterion",

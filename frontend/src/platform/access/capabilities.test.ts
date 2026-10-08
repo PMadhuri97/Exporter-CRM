@@ -29,6 +29,7 @@ const EXPECTED: Record<Capability, UserRole[]> = {
   'rm.self': ['OPERATIONS'],
   'settings.criteria': ['ADMIN'],
   'settings.requiredDocuments': ['ADMIN'],
+  'settings.paymentTerms': ['ADMIN'],
 };
 
 const ROLES: UserRole[] = ['OPERATIONS', 'COMPLIANCE', 'ADMIN', 'DEVELOPER', 'API_USER'];

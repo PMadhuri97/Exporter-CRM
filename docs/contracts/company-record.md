@@ -13,6 +13,50 @@
 > are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
 > and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
 
+> **Amendment, 9 October 2026 — contacts and customer master data.** Routes are under
+> `/api/v1/onboarding`; history rows are in `history-row.md` §2.
+>
+> * **Contact status.** A contact is ACTIVE, INACTIVE or LEFT_COMPANY
+>   (`POST /exporters/{id}/contacts/{contact_id}/status`, `exporters:edit`); leaving
+>   ACTIVE needs a reason, and a contact that is not active is never primary
+>   (`ck_exporter_contact_primary_is_active`). `POST .../verification` stamps
+>   `last_verified_at` / `_by`; `verification_due` is computed on read from
+>   `CRM_CONTACT_REVERIFY_MONTHS` (default 12). The company list carries
+>   `has_active_primary_contact` and filters on `missing_primary_contact=true`.
+> * **Addresses.** `GET|POST /exporters/{id}/addresses`, `PATCH /addresses/{id}`,
+>   `POST /addresses/{id}/default`, `POST /addresses/{id}/deactivate`
+>   (`exporters:view` / `exporters:edit`). Types REGISTERED, BILLING, SHIPPING,
+>   FACTORY_WAREHOUSE, CORRESPONDENCE; one active default per type; never deleted. A GST
+>   registration may name its address (`exporter_gstin.address_id`, same company only).
+>   The list says whether the default registered address changed after the last Clear.
+> * **Bank accounts.** `GET|POST /exporters/{id}/bank-accounts`; `POST
+>   /bank-accounts/{id}/approve|reject|verify|primary|deactivate|reveal`; `GET
+>   /bank-accounts/pending`. Proposed (`exporters:manage_bank_accounts`), approved under
+>   `CRM_BANK_CHANGE_APPROVAL_MODE` (OFF, SECOND_PERSON — the default, PERMISSION_HOLDER,
+>   BOTH), verified by cheque, bank letter or a passed BANK_ACCOUNT verification
+>   (`exporters:approve_bank_accounts`). A change is a new row (`replaces_id`); the old
+>   account stays in force until the change is verified. Numbers are encrypted at rest
+>   (`FIELD_ENCRYPTION_KEYS`) and served as `••••1234`; the full number only through
+>   `reveal` (`exporters:view_bank_details`), which is audited. Only a VERIFIED account
+>   is primary, one per currency.
+> * **Payment terms.** `GET|POST /settings/payment-terms`, `PATCH
+>   /settings/payment-terms/{code}` (versioned; `settings:manage` to change), and `PUT
+>   /exporters/{id}/default-payment-term` (`exporters:edit`). The company responses carry
+>   `default_payment_term_id`.
+> * **Collections owner.** `POST /exporters/{id}/collections-owner` and `POST
+>   /collections-owners/reassign` (`exporters:assign_collector`: COMPLIANCE and the lead
+>   roles). Any active staff user; a reason to change or clear; `seen_user_id` refuses a
+>   stale screen. Company responses carry `collections_owner_user_id` / `_name`; the list
+>   filters on `collections_owner=me|none|<id>`.
+> * **Groups.** `PUT /exporters/{id}/parent` (`exporters:edit`) sets
+>   `parent_company_id` and `group_relationship` (SUBSIDIARY, BRANCH_OFFICE,
+>   GROUP_COMPANY, JOINT_VENTURE); a loop is refused here and by
+>   `trg_exporter_profile_no_group_cycle`. `GET /exporters/{id}/group` is the tree from
+>   the ultimate parent (worked out on read), with each member's stage, check and risk
+>   (for `compliance:view`), open deals and their value. `GET .../group/suggestions`
+>   (`compliance:view`) lists companies sharing a beneficial owner; nothing is linked
+>   automatically.
+
 **Owner:** Developer 2 · **Implemented by:** L2-03 (identity), L2-04 (journey), L2-05 (migration 0014), L2-06 (tax IDs), L2-08 (marker), L2-11 (the move to `CUSTOMER`) · **Status:** implemented — §10 lists what is still open
 
 Every gauge, deal, document and check in the CRM hangs off one company record.

@@ -16,6 +16,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   addExporterContact,
   updateExporterContact,
+  setExporterContactStatus,
+  verifyExporterContact,
   getExporterConversation,
   listConversationHistory,
   listExporterActivities,
@@ -29,6 +31,7 @@ import type {
   LogExporterActivityRequest,
   SetConversationRequest,
   UpdateExporterContactRequest,
+  SetContactStatusRequest,
 } from '../types';
 
 export function useExporterContacts(customerId: string | undefined) {
@@ -75,6 +78,34 @@ export function useUpdateExporterContact(customerId: string) {
         queryKey: ['exporterProfile', customerId],
       });
     },
+  });
+}
+
+/** A contact's status or verification changed: the list, the profile (which carries the
+ * primary contact) and the history all move. */
+function useContactInvalidation(customerId: string) {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: ['exporterContacts', customerId] });
+    void queryClient.invalidateQueries({ queryKey: ['exporterProfile', customerId] });
+    void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
+  };
+}
+
+export function useSetExporterContactStatus(customerId: string) {
+  const invalidate = useContactInvalidation(customerId);
+  return useMutation({
+    mutationFn: ({ contactId, payload }: { contactId: string; payload: SetContactStatusRequest }) =>
+      setExporterContactStatus(customerId, contactId, payload),
+    onSuccess: invalidate,
+  });
+}
+
+export function useVerifyExporterContact(customerId: string) {
+  const invalidate = useContactInvalidation(customerId);
+  return useMutation({
+    mutationFn: (contactId: string) => verifyExporterContact(customerId, contactId),
+    onSuccess: invalidate,
   });
 }
 

@@ -389,6 +389,48 @@ describe('ExporterDetailPage — screening review', () => {
     expect(screen.getByText(/Qualification is not needed/)).toBeInTheDocument();
   });
 
+  it('warns a prospect with no active primary contact, and stops once one is added', async () => {
+    mockUser('OPERATIONS', 'someone-else');
+    vi.mocked(getExporterProfileDetail).mockResolvedValue({ ...DETAIL, journey: 'PROSPECT' } as never);
+    const { unmount } = renderPage();
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    expect((await screen.findAllByText('No primary contact')).length).toBeGreaterThan(0);
+    unmount();
+
+    vi.mocked(listExporterContacts).mockResolvedValue({
+      customer_id: DETAIL.customer_id,
+      contacts: [
+        {
+          id: 'c1',
+          customer_id: DETAIL.customer_id,
+          name: 'Priya Shah',
+          role: null,
+          email: null,
+          phone: null,
+          department: null,
+          is_primary_contact: true,
+          status: 'ACTIVE',
+          status_changed_at: null,
+          status_reason: null,
+          last_verified_at: null,
+          last_verified_by: null,
+          created_at: null,
+          verification_due: false,
+        },
+      ],
+    });
+    renderPage();
+    await screen.findByText('Priya Shah');
+    expect(screen.queryByText('No primary contact')).not.toBeInTheDocument();
+  });
+
+  it('does not ask a lead for a primary contact', async () => {
+    mockUser('OPERATIONS', 'someone-else');
+    renderPage();
+    await screen.findByRole('heading', { name: 'Acme Exports Pvt Ltd' });
+    expect(screen.queryByText('No primary contact')).not.toBeInTheDocument();
+  });
+
   it('shows the journey, qualification and marker separately, with no journey control', async () => {
     mockUser('COMPLIANCE', 'someone-else');
     vi.mocked(getExporterProfileDetail).mockResolvedValue({

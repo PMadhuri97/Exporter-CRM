@@ -24,6 +24,15 @@ class ExporterActivityType(str, enum.Enum):
     FOLLOW_UP = "FOLLOW_UP"
 
 
+class ContactStatus(str, enum.Enum):
+    """Whether a contact is still someone to reach. Only an ACTIVE contact may be the
+    primary contact; leaving ACTIVE needs a reason."""
+
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    LEFT_COMPANY = "LEFT_COMPANY"
+
+
 class ExporterConversation(str, enum.Enum):
     """How the sales conversation is going — architecture §3.3, and
     `docs/contracts/engagement.md` §1.

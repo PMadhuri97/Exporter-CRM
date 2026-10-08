@@ -7,6 +7,7 @@ export {
   DealsPage,
   FollowUpsPage,
   DealRequiredDocumentsPage,
+  PaymentTermsPage,
   ApprovalsPage,
   QualificationCriteriaPage,
 } from './lazyPages';

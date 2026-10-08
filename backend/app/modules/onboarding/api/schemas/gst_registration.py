@@ -107,6 +107,8 @@ class GstRegistrationResponse(BaseModel):
     state_name: str | None
     status: GstRegistrationStatus
     address: str | None
+    #: The company address this branch trades from, once one is linked.
+    address_id: uuid.UUID | None = None
     #: `null` for DEVELOPER: a flag is a compliance judgement, withheld from that role
     #: like the background check itself (decided 4 October 2026).
     flag_status: GstRegistrationFlag | None

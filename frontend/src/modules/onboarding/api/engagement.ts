@@ -62,6 +62,29 @@ export function updateExporterContact(
   );
 }
 
+/** Mark a contact active, inactive or as having left; leaving Active needs a reason. */
+export function setExporterContactStatus(
+  customerId: string,
+  contactId: string,
+  payload: import('../types').SetContactStatusRequest,
+): Promise<import('../types').ExporterContact> {
+  return apiRequest<import('../types').ExporterContact>(
+    `/onboarding/exporters/${customerId}/contacts/${contactId}/status`,
+    { method: 'POST', body: payload },
+  );
+}
+
+/** Record that somebody checked a contact's details today. */
+export function verifyExporterContact(
+  customerId: string,
+  contactId: string,
+): Promise<import('../types').ExporterContact> {
+  return apiRequest<import('../types').ExporterContact>(
+    `/onboarding/exporters/${customerId}/contacts/${contactId}/verification`,
+    { method: 'POST' },
+  );
+}
+
 export function listExporterActivities(
   customerId: string,
   params: {

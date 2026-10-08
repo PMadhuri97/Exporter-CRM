@@ -61,6 +61,8 @@ import {
   useTransitionDealStage,
   useUploadDealDocument,
 } from '../hooks';
+import { DealTermsPanel } from '../components/DealTermsPanel';
+import { moneyLabel, termLabel } from '../components/payment-term-labels';
 import { countryLabel } from '../countries';
 import { paths } from '../paths';
 import type { DealStage, SetDealBuyerRequest } from '../types';
@@ -389,6 +391,9 @@ export function DealDetailPage() {
     { label: 'Stage', value: <DealStageChip stage={deal.stage} /> },
     { label: 'Opened', value: formatDateTime(deal.created_at) },
   ];
+  const value = moneyLabel(deal.value_amount, deal.currency);
+  if (value) fields.push({ label: 'Value', value });
+  if (deal.payment_term) fields.push({ label: 'Payment term', value: termLabel(deal.payment_term) });
   if (deal.handed_over_at) fields.push({ label: 'Handed over', value: formatDateTime(deal.handed_over_at) });
   if (deal.withdrawal_reason) fields.push({ label: 'Withdrawn because', value: deal.withdrawal_reason });
 
@@ -606,6 +611,8 @@ export function DealDetailPage() {
               )}
             </Panel>
           )}
+
+          <DealTermsPanel deal={deal} canEdit={isStaff && !isClosed} />
 
           {/* What the lending team was given, once it exists: a sealed receipt. */}
           {deal.handover_snapshot && <HandoverSnapshot snapshot={deal.handover_snapshot} />}

@@ -30,6 +30,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 
 import {
   useCheckCycles,
+  useCompanyAddresses,
   useCompanyDocuments,
   useScreeningReview,
   useUpdateScreeningReviewItem,
@@ -41,6 +42,7 @@ import type {
   VerificationEvidenceRefStored,
 } from '../types';
 
+import { addressLine } from './address-labels';
 import { cycleKindLabel } from './background-check-labels';
 import { EvidenceList } from './EvidenceList';
 import { ScreeningItemHistory } from './ScreeningItemHistory';
@@ -339,6 +341,26 @@ function EvidencePicker({
   );
 }
 
+/** The checklist question about the registered address, which shows that address. */
+const REGISTERED_ADDRESS_ITEM = 'address-physical';
+
+/** The company's default registered address, beside the question asked about it. */
+function RegisteredAddress({ customerId }: { customerId: string }) {
+  const query = useCompanyAddresses(customerId);
+  if (!query.data) return null;
+  const registered = query.data.addresses.find(
+    (address) => address.is_active && address.is_default && address.address_type === 'REGISTERED',
+  );
+  return (
+    <p className="mt-1 text-caption text-ink" data-testid="registered-address">
+      {registered ? addressLine(registered) : 'No registered address recorded.'}
+      {query.data.registered_changed_since_clear && (
+        <span className="ml-1 font-medium text-attention">Changed since last Clear</span>
+      )}
+    </p>
+  );
+}
+
 function ChecklistCard({
   customerId,
   item,
@@ -400,6 +422,7 @@ function ChecklistCard({
       className="rounded-lg border border-line bg-paper px-3 py-2.5"
     >
       <p className="text-caption leading-5 text-ink-2">{item.label}</p>
+      {item.key === REGISTERED_ADDRESS_ITEM && <RegisteredAddress customerId={customerId} />}
       <select
         aria-label={`${item.label} status`}
         className="mt-2 w-full rounded-md border border-line bg-surface px-2 py-1.5 text-caption text-ink outline-none focus:border-accent disabled:opacity-60"

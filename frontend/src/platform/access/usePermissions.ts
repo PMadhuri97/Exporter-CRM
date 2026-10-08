@@ -56,7 +56,9 @@ export type AssignmentPermission =
   | 'exporters:assign_rm'
   | 'compliance:assign'
   | 'compliance:approve_high_risk'
-  | 'documents:download';
+  | 'documents:download'
+  | 'exporters:approve_bank_accounts'
+  | 'exporters:assign_collector';
 
 /**
  * Whether the signed-in user holds one of the senior-work permissions, through whatever

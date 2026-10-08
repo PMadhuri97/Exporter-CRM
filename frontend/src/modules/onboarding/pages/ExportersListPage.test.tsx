@@ -36,6 +36,7 @@ const PROFILE: ExporterProfileListItem = {
   registration_number: null,
   identity_type: 'IN_PAN',
   pipeline_status: 'IN_PIPELINE',
+  has_active_primary_contact: true,
   source: 'MANUAL',
   relationship_manager: 'Jane RM',
   relationship_manager_name: 'Jane RM',
@@ -147,6 +148,34 @@ describe('ExportersListPage — the journey, qualification and marker filters', 
         expect.objectContaining({ qualification: 'QUALIFIED', marker: 'ENDED' }),
       ),
     );
+  });
+
+  it('marks a prospect with no primary contact, and asks the server for only those', async () => {
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [{ ...PROFILE, journey: 'PROSPECT', has_active_primary_contact: false }],
+      limit: 100,
+      offset: 0,
+    });
+    renderPage();
+    expect(await screen.findByText('No primary contact', { selector: 'span' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Contacts'), { target: { value: 'missing' } });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ missing_primary_contact: true }),
+      ),
+    );
+  });
+
+  it('does not mark a lead for a missing primary contact', async () => {
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [{ ...PROFILE, has_active_primary_contact: false }],
+      limit: 100,
+      offset: 0,
+    });
+    renderPage();
+    await screen.findByText('Acme Exports');
+    expect(screen.queryByText('No primary contact', { selector: 'span' })).not.toBeInTheDocument();
   });
 
   it('offers no lifecycle status filter and sends no status parameter', async () => {

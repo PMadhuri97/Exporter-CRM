@@ -117,6 +117,7 @@ from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
     ExporterContactRepository,
     ExporterProfileRepository,
+    companies_with_active_primary_contact,
 )
 from app.platform.authentication import display_names, staff_member, staff_members
 from app.platform.authentication.models import UserRole
@@ -1057,6 +1058,9 @@ class ExporterProfileService:
         relationship_manager_user_id: uuid.UUID | None = None,
         relationship_manager_unassigned: bool = False,
         relationship_manager_inactive: bool = False,
+        missing_primary_contact: bool = False,
+        collections_owner_user_id: uuid.UUID | None = None,
+        collections_owner_unassigned: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfileListItem]:
@@ -1084,7 +1088,8 @@ class ExporterProfileService:
 
         The relationship-manager filters (one RM's companies, no RM, an RM whose
         account is deactivated) only narrow the list; they are not search terms.
-        Ownership never narrows what a reader may see.
+        Ownership never narrows what a reader may see. `missing_primary_contact`
+        narrows it to companies with no active primary contact, and is a filter too.
 
         The two exclusions are deliberately separate: `marker=ENDED` must not
         drag buyer-only companies into its list, and `pipeline_status=` must not
@@ -1110,10 +1115,16 @@ class ExporterProfileService:
             relationship_manager_user_id=relationship_manager_user_id,
             relationship_manager_unassigned=relationship_manager_unassigned,
             relationship_manager_inactive=relationship_manager_inactive,
+            missing_primary_contact=missing_primary_contact,
+            collections_owner_user_id=collections_owner_user_id,
+            collections_owner_unassigned=collections_owner_unassigned,
             exclude_ended=marker is None and not searching,
             exclude_not_in_pipeline=pipeline_status is None and not searching,
             limit=limit,
             offset=offset,
+        )
+        with_contact = await companies_with_active_primary_contact(
+            self._db, [profile.customer_id for profile in profiles]
         )
         return [
             ExporterProfileListItem(
@@ -1139,6 +1150,8 @@ class ExporterProfileService:
                 date_added=profile.date_added,
                 created_at=profile.created_at,
                 updated_at=profile.updated_at,
+                has_active_primary_contact=profile.customer_id in with_contact,
+                collections_owner_user_id=profile.collections_owner_user_id,
             )
             for profile in profiles
         ]
@@ -1357,6 +1370,8 @@ class ExporterProfileService:
         warnings = await self.duplicate_gstin_warnings(customer_id, profile.gstins)
 
         return ExporterProfileDetail(
+            collections_owner_user_id=profile.collections_owner_user_id,
+            default_payment_term_id=profile.default_payment_term_id,
             customer_id=profile.customer_id,
             name=profile.name,
             country=profile.country,

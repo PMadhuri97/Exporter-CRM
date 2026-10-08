@@ -48,6 +48,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     String,
     Text,
@@ -90,6 +91,13 @@ class ExporterGstin(AnerModel):
             " OR (NOT active AND deactivated_at IS NOT NULL)",
             name="ck_exporter_gstin_deactivation",
         ),
+        # The address this branch trades from, which must be its own company's.
+        ForeignKeyConstraint(
+            ["address_id", "customer_id"],
+            [f"{SCHEMA}.company_address.id", f"{SCHEMA}.company_address.customer_id"],
+            name="fk_exporter_gstin_address",
+            ondelete="RESTRICT",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -127,6 +135,8 @@ class ExporterGstin(AnerModel):
     #: is shown and printed, never parsed, and an address model that could not hold
     #: what the portal returned would be worse than the text.
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The company address this branch trades from, when one has been linked.
+    address_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     #: Compliance's flag on this branch. ``FLAGGED`` needs a reason.
     flag_status: Mapped[GstRegistrationFlag] = mapped_column(

@@ -25,6 +25,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import {
+  Badge,
   Button,
   buttonClasses,
   EmptyLine,
@@ -66,6 +67,10 @@ const OWNER_LABEL = {
 } as const;
 type Owner = 'ANY' | 'me' | keyof typeof OWNER_LABEL;
 const OWNERS: readonly Owner[] = ['ANY', 'me', 'none', 'inactive'];
+type ContactFilter = 'ANY' | 'missing';
+type CollectionsFilter = 'ANY' | 'me' | 'none';
+const COLLECTIONS_FILTERS: readonly CollectionsFilter[] = ['ANY', 'me', 'none'];
+const CONTACT_FILTERS: readonly ContactFilter[] = ['ANY', 'missing'];
 /** A page of rows; "Show more" asks for the next, up to what one request returns. */
 const PAGE_SIZE = 50;
 
@@ -105,6 +110,11 @@ function Row({
 }) {
   const outside = profile.pipeline_status === 'NOT_IN_PIPELINE';
   const line = identityLine(profile);
+  // Prospects and customers need someone to reach before a deal can be handed over.
+  const missingContact =
+    !profile.has_active_primary_contact &&
+    !outside &&
+    (profile.journey === 'PROSPECT' || profile.journey === 'CUSTOMER');
   return (
     <RecordListItem
       to={paths.company(profile.customer_id)}
@@ -115,12 +125,15 @@ function Row({
       data-testid="company-row"
       facts={line}
       badges={
-        <CompanyBadges
-          journey={profile.journey}
-          qualification={profile.qualification}
-          marker={profile.marker}
-          outsidePipeline={outside}
-        />
+        <>
+          <CompanyBadges
+            journey={profile.journey}
+            qualification={profile.qualification}
+            marker={profile.marker}
+            outsidePipeline={outside}
+          />
+          {missingContact && <Badge tone="attention">No primary contact</Badge>}
+        </>
       }
     />
   );
@@ -133,11 +146,22 @@ export function ExportersListPage() {
   const canImport = useCan('company.import');
   const canTakeInRxil = useCan('company.rxilIntake');
   const canReassign = useHasPermission('exporters:assign_rm');
-  const [reassigning, setReassigning] = useState(false);
+  const canReassignCollections = useHasPermission('exporters:assign_collector');
+  const [reassigning, setReassigning] = useState<'rm' | 'collections' | null>(null);
   const [owner, setOwner] = useSearchParamState<Owner>('owner', OWNERS, 'ANY');
   const [lens, setLens] = useSearchParamState<Lens>('journey', LENSES, 'ALL');
   const [qualification, setQualification] = useSearchParamState('qualification', QUALIFICATIONS, 'ANY');
   const [relationship, setRelationship] = useSearchParamState('relationship', RELATIONSHIPS, 'ANY');
+  const [contactFilter, setContactFilter] = useSearchParamState<ContactFilter>(
+    'contact',
+    CONTACT_FILTERS,
+    'ANY',
+  );
+  const [collectionsFilter, setCollectionsFilter] = useSearchParamState<CollectionsFilter>(
+    'collections',
+    COLLECTIONS_FILTERS,
+    'ANY',
+  );
   const [pages, setPages] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [name, setName] = useState('');
@@ -155,14 +179,27 @@ export function ExportersListPage() {
     qualification: qualification === 'ANY' ? undefined : (qualification as QualificationState),
     marker: relationship === 'ANY' ? undefined : (relationship as ExporterMarker),
     relationship_manager: owner === 'ANY' ? undefined : (owner as RelationshipManagerFilter),
+    missing_primary_contact: contactFilter === 'missing' || undefined,
+    collections_owner: collectionsFilter === 'ANY' ? undefined : collectionsFilter,
     limit,
   });
   const profiles = data?.profiles ?? [];
   const filtering = Boolean(
-    name || qualification !== 'ANY' || relationship !== 'ANY' || lens !== 'ALL' || owner !== 'ANY',
+    name ||
+      qualification !== 'ANY' ||
+      relationship !== 'ANY' ||
+      lens !== 'ALL' ||
+      owner !== 'ANY' ||
+      contactFilter !== 'ANY' ||
+      collectionsFilter !== 'ANY',
   );
   const filteringOtherThanOwner = Boolean(
-    name || qualification !== 'ANY' || relationship !== 'ANY' || lens !== 'ALL',
+    name ||
+      qualification !== 'ANY' ||
+      relationship !== 'ANY' ||
+      lens !== 'ALL' ||
+      contactFilter !== 'ANY' ||
+      collectionsFilter !== 'ANY',
   );
   const mayHaveMore = profiles.length === limit && limit < COUNT_CAP;
 
@@ -187,8 +224,16 @@ export function ExportersListPage() {
               </Link>
             )}
             {canReassign && (
-              <Button variant="subtle" onClick={() => setReassigning((open) => !open)}>
+              <Button variant="subtle" onClick={() => setReassigning((open) => (open === 'rm' ? null : 'rm'))}>
                 Reassign companies
+              </Button>
+            )}
+            {canReassignCollections && (
+              <Button
+                variant="subtle"
+                onClick={() => setReassigning((open) => (open === 'collections' ? null : 'collections'))}
+              >
+                Reassign collections
               </Button>
             )}
             {canImport && (
@@ -298,14 +343,41 @@ export function ExportersListPage() {
                 </option>
               ))}
             </Select>
+            <Select
+              aria-label="Contacts"
+              className="sm:w-auto"
+              value={contactFilter === 'ANY' ? '' : contactFilter}
+              onChange={(event) => {
+                setContactFilter((event.target.value || 'ANY') as ContactFilter);
+                setPages(1);
+              }}
+            >
+              <option value="">Any contacts</option>
+              <option value="missing">No primary contact</option>
+            </Select>
+            <Select
+              aria-label="Collections"
+              className="sm:w-auto"
+              value={collectionsFilter === 'ANY' ? '' : collectionsFilter}
+              onChange={(event) => {
+                setCollectionsFilter((event.target.value || 'ANY') as CollectionsFilter);
+                setPages(1);
+              }}
+            >
+              <option value="">Any collections owner</option>
+              <option value="me">My collections</option>
+              <option value="none">No collections owner</option>
+            </Select>
           </div>
         </div>
 
         {reassigning && (
           <BulkReassignPanel
+            key={reassigning}
+            kind={reassigning}
             shown={profiles}
             journey={lens === 'ALL' ? undefined : lens}
-            onClose={() => setReassigning(false)}
+            onClose={() => setReassigning(null)}
           />
         )}
 

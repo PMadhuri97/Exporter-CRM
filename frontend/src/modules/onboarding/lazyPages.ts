@@ -22,6 +22,9 @@ export const DealDetailPage = lazy(() =>
 export const DealsPage = lazy(() =>
   import('./pages/DealsPage').then((m) => ({ default: m.DealsPage })),
 );
+export const PaymentTermsPage = lazy(() =>
+  import('./pages/PaymentTermsPage').then((m) => ({ default: m.PaymentTermsPage })),
+);
 export const DealRequiredDocumentsPage = lazy(() =>
   import('./pages/DealRequiredDocumentsPage').then((m) => ({
     default: m.DealRequiredDocumentsPage,

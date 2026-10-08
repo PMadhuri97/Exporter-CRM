@@ -65,9 +65,10 @@ import uuid
 from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.background_check_reader import current_background_check
@@ -78,6 +79,10 @@ from app.modules.onboarding.application.deal_required_documents_service import (
     DealRequiredDocumentsPolicy,
 )
 from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.application.payment_term_service import (
+    PaymentTermService,
+    term_summary,
+)
 from app.modules.onboarding.application.trade_history_service import (
     SOURCE_DEAL_BUYER_RECORDED,
     TradeHistoryService,
@@ -96,12 +101,16 @@ from app.modules.onboarding.domain.deal_views import (
     DealStageMove,
     DealSummaryView,
     DealView,
+    PaymentTermView,
 )
 from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.modules.onboarding.domain.entities.engagement_enums import ContactStatus
+from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+from app.modules.onboarding.domain.entities.payment_term import PaymentTerm
 from app.modules.onboarding.domain.handover_conditions import (
     HANDOVER_JOURNEY,
     HandoverProviders,
@@ -220,6 +229,8 @@ class _Handover:
     document_ids: list[str]
     buyer_company_id: uuid.UUID | None
     at: datetime
+    #: The deal's value, currency and payment term as handed over.
+    terms: dict | None = None
 
     def as_snapshot(self) -> dict:
         """The JSONB value stored on the deal. The same keys migration 0029's
@@ -230,9 +241,37 @@ class _Handover:
                 str(self.buyer_company_id) if self.buyer_company_id is not None else None
             ),
             "document_ids": list(self.document_ids),
+            "terms": self.terms,
             "snapshot_source": SNAPSHOT_TAKEN_AT_HANDOVER,
             "snapshot_at": self.at.isoformat(),
         }
+
+
+@dataclass(frozen=True)
+class DealTerms:
+    """A change to a deal's value, currency or term. ``sent`` names the fields the
+    caller gave, so "leave it" and "clear it" stay apart."""
+
+    sent: frozenset[str]
+    value_amount: Decimal | None = None
+    currency: str | None = None
+    payment_term_id: uuid.UUID | None = None
+    payment_term_override_reason: str | None = None
+
+
+def term_view(term: PaymentTerm | None) -> PaymentTermView | None:
+    if term is None:
+        return None
+    return PaymentTermView(
+        id=term.id,
+        code=term.code,
+        version=term.version,
+        label=term.label,
+        kind=term.kind,
+        days=term.days,
+        active=term.active,
+        is_current=term.is_current,
+    )
 
 
 class DealService:
@@ -342,6 +381,8 @@ class DealService:
                 buyer_name=other_party(deal),
                 created_at=deal.created_at,
                 updated_at=deal.updated_at,
+                value_amount=deal.value_amount,
+                currency=deal.currency,
             )
             for deal in deals
         ], total
@@ -370,6 +411,8 @@ class DealService:
                 corridor=row.corridor,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
+                value_amount=row.value_amount,
+                currency=row.currency,
             )
             for row in rows
         ], total
@@ -408,8 +451,13 @@ class DealService:
         *,
         reference: str,
         actor_id: str | None,
+        terms: DealTerms | None = None,
     ) -> DealView:
         """Open a deal on a company, and set its conversation to ``READY_NOW``.
+
+        The deal's payment term is the company's default (its current version) unless
+        ``terms`` names another, which needs a reason; ``terms`` may also carry the
+        value and currency.
 
         In one transaction: the deal row, its ``deal_initial`` history row, and
         the conversation gauge's move (seam S1). If any of the three fails, none of
@@ -437,6 +485,10 @@ class DealService:
             reference=cleaned_reference,
             stage=DealStage.OPEN,
         )
+        default = await self._company_default_term(company_id)
+        deal.payment_term_id = default.id if default is not None else None
+        if terms is not None:
+            await self._apply_terms(deal, terms, default)
         self._db.add(deal)
         # Flushed so the deal has its id before the history row and the gauge call, both
         # of which carry `deal_id`.
@@ -450,7 +502,7 @@ class DealService:
             source="deal_service.open_deal",
             deal_id=deal.id,
             event_type="deal_initial",
-            details={"reference": cleaned_reference},
+            details={"reference": cleaned_reference, **self._terms_details(deal)},
         )
         # Seam S1 — engagement contract §6. Idempotent, checks no journey stage and
         # no role, and flushes without committing.
@@ -1042,7 +1094,108 @@ class DealService:
             # company was handed over as well as what it looked like at the time.
             buyer_company_id=deal.buyer_company_id,
             at=deal.handed_over_at or clock.now(),
+            terms={
+                "value_amount": str(deal.value_amount) if deal.value_amount is not None else None,
+                "currency": deal.currency,
+                "payment_term": term_summary(
+                    await self._db.get(PaymentTerm, deal.payment_term_id)
+                    if deal.payment_term_id
+                    else None
+                ),
+                "payment_term_override_reason": deal.payment_term_override_reason,
+            },
         )
+
+    # ── Value, currency and payment term ─────────────────────────────────────
+
+    async def set_terms(
+        self, deal_id: uuid.UUID, terms: DealTerms, *, actor_id: str | None
+    ) -> DealView:
+        """Change a deal's value, currency or payment term while it is open. A term
+        other than the company's default needs a reason, kept on the deal and on the
+        ``deal_terms_changed`` history row. A closed deal's terms do not change
+        (``prevent_terminal_deal_change``)."""
+        deal = await self._lock_deal(deal_id)
+        if deal.stage in (DealStage.HANDED_OVER, DealStage.WITHDRAWN):
+            raise ValidationError("A closed deal's value and terms do not change")
+        before = self._terms_details(deal)
+        await self._apply_terms(deal, terms, await self._company_default_term(deal.company_id))
+        after = self._terms_details(deal)
+        if after == before:
+            raise ValidationError("That leaves the deal's value and terms as they are")
+        changed = sorted(key for key in after if after[key] != before[key])
+        await self._history.record(
+            deal.company_id,
+            dimension="deal",
+            to_value=deal.stage.value,
+            from_value=deal.stage.value,
+            actor_id=actor_id,
+            source="deal_service.set_terms",
+            deal_id=deal.id,
+            event_type="deal_terms_changed",
+            reason=deal.payment_term_override_reason if "payment_term" in changed else None,
+            details={"changed": changed, "from": before, "to": after},
+        )
+        await self._db.commit()
+        await self._db.refresh(deal)
+        return await self._to_view(deal)
+
+    async def _company_default_term(self, company_id: uuid.UUID) -> PaymentTerm | None:
+        """The current, offered version of the company's default term, if it has one."""
+        default_id = await self._db.scalar(
+            select(ExporterProfile.default_payment_term_id).where(
+                ExporterProfile.customer_id == company_id
+            )
+        )
+        if default_id is None:
+            return None
+        chosen = await self._db.get(PaymentTerm, default_id)
+        if chosen is None:  # pragma: no cover - the foreign key forbids it
+            return None
+        current = await PaymentTermService(self._db).current_of(chosen.code)
+        return current if current is not None and current.active else None
+
+    async def _apply_terms(
+        self, deal: Deal, terms: DealTerms, default: PaymentTerm | None
+    ) -> None:
+        if "value_amount" in terms.sent:
+            deal.value_amount = terms.value_amount
+        if "currency" in terms.sent:
+            deal.currency = terms.currency
+        if deal.value_amount is not None and deal.currency is None:
+            raise ValidationError("Give the currency of the deal's value")
+        if "payment_term_id" in terms.sent:
+            if terms.payment_term_id is None:
+                deal.payment_term_id = None
+            elif terms.payment_term_id != deal.payment_term_id:
+                deal.payment_term_id = (
+                    await PaymentTermService(self._db).offerable(terms.payment_term_id)
+                ).id
+        chosen = await self._db.get(PaymentTerm, deal.payment_term_id) if deal.payment_term_id else None
+        differs = default is not None and (chosen is None or chosen.code != default.code)
+        reason = (terms.payment_term_override_reason or "").strip() or None
+        if differs:
+            if reason is None and "payment_term_id" in terms.sent:
+                raise ValidationError(
+                    f"Say why this deal's payment term differs from the company's default "
+                    f"({default.label})"
+                )
+            if reason is not None:
+                deal.payment_term_override_reason = reason
+        else:
+            deal.payment_term_override_reason = None
+
+    @staticmethod
+    def _terms_details(deal: Deal) -> dict:
+        return {
+            "value_amount": str(deal.value_amount) if deal.value_amount is not None else None,
+            "currency": deal.currency,
+            "payment_term": str(deal.payment_term_id) if deal.payment_term_id else None,
+        }
+
+    async def _term_view(self, term_id: uuid.UUID | None) -> PaymentTermView | None:
+        term = await self._db.get(PaymentTerm, term_id) if term_id else None
+        return term_view(term)
 
     # ── The handover guard ───────────────────────────────────────────────────
 
@@ -1132,8 +1285,23 @@ class DealService:
             # so a test can move past a Clear's expiry instead of
             # rewriting a decision the database refuses to change anyway.
             now=clock.now(),
+            seller_has_active_primary_contact=await self._has_active_primary_contact(
+                deal.company_id
+            ),
         )
         return await blocked_reason(subject, self._providers)
+
+    async def _has_active_primary_contact(self, company_id: uuid.UUID) -> bool:
+        """Whether the seller has a primary contact who is still active (the database
+        already refuses a primary who is not, so the status test is belt and braces)."""
+        statement = select(
+            exists().where(
+                ExporterContact.customer_id == company_id,
+                ExporterContact.is_primary_contact.is_(True),
+                ExporterContact.status == ContactStatus.ACTIVE.value,
+            )
+        )
+        return bool(await self._db.scalar(statement))
 
     # ── Internals ────────────────────────────────────────────────────────────
 
@@ -1177,6 +1345,13 @@ class DealService:
             seller_gst_registration_id=deal.seller_gst_registration_id,
             allowed_stage_moves=tuple(moves),
             handover_blocked_reason=blocked,
+            value_amount=deal.value_amount,
+            currency=deal.currency,
+            payment_term=await self._term_view(deal.payment_term_id),
+            payment_term_override_reason=deal.payment_term_override_reason,
+            company_default_payment_term=term_view(
+                await self._company_default_term(deal.company_id)
+            ),
         )
 
     async def _buyer_company(self, deal: Deal) -> BuyerCompanyView | None:

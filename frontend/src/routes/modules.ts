@@ -27,6 +27,7 @@ import {
   DealDetailPage,
   DealsPage,
   DealRequiredDocumentsPage,
+  PaymentTermsPage,
   FollowUpsPage,
   LegacyExporterRoutes,
   MyCompaniesRedirect,
@@ -82,6 +83,13 @@ function RequiredDocumentsSection() {
   return createElement(SettingsSectionFrame, {
     section: 'requiredDocuments',
     children: createElement(DealRequiredDocumentsPage),
+  });
+}
+
+function PaymentTermsSection() {
+  return createElement(SettingsSectionFrame, {
+    section: 'paymentTerms',
+    children: createElement(PaymentTermsPage),
   });
 }
 
@@ -201,6 +209,20 @@ export const APP_MODULES: readonly AppModule[] = [
       label: 'Required documents',
       to: '/settings/deal-required-documents',
       icon: 'requiredDocuments',
+      group: 'settings',
+      sideNav: false,
+    },
+  },
+  {
+    // The payment terms deals and company defaults choose from.
+    id: 'payment-terms',
+    path: '/settings/payment-terms',
+    requires: ['settings.paymentTerms'],
+    Screen: PaymentTermsSection,
+    nav: {
+      label: 'Payment terms',
+      to: '/settings/payment-terms',
+      icon: 'receipt',
       group: 'settings',
       sideNav: false,
     },

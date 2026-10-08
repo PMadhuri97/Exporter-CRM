@@ -653,6 +653,8 @@ export interface paths {
          * @description Filters by gstin, pan, iec, source, journey, qualification, marker, pipeline_status (exact match) and name (case-insensitive partial match on the company's name). ENDED companies are left out of the default working list: with no marker filter and no search term (name, gstin, pan, iec) they are excluded; any search term includes them; marker=ENDED lists only them. Companies that are NOT_IN_PIPELINE — a company that exists only because it was somebody's buyer — follow the same rule: excluded by default, found by any search term, and listed on their own with pipeline_status=NOT_IN_PIPELINE. The gstin/pan/iec filters are for holders of exporters:view_full_tax_id only: an exact match on a tax identifier reveals which company holds it even when the response body is masked.
          *
          *     `relationship_manager` narrows the list by owner: `me` (My companies), `none` (Unassigned), `inactive` (an RM whose account is deactivated) or a user id. It is a filter only: ownership never changes what a reader may see.
+         *
+         *     `missing_primary_contact=true` lists only companies with no active primary contact (each row carries `has_active_primary_contact`).
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -753,6 +755,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/exporters/{customer_id}/collections-owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set, change or clear who chases a company's payments
+         * @description Any active staff user may be named. Needs `exporters:assign_collector`; a change or clear of an owner already named needs a reason. `seen_user_id` is the owner the screen showed: a different current owner refuses the request (409 `COLLECTIONS_OWNER_CHANGED`). Every change is a `collections_owner` history row.
+         */
+        post: operations["assign_exporter_collections_owner_api_v1_onboarding_exporters__customer_id__collections_owner_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/staff": {
         parameters: {
             query?: never;
@@ -787,6 +809,26 @@ export interface paths {
          * @description All of `from_user_id`'s companies, or those listed in `company_ids`, or those at one `journey` stage, to `to_user_id` — an active RM user. ADMIN or `exporters:assign_rm`; a reason always. Companies are locked in id order and re-read under the lock: one whose RM changed meanwhile is skipped, not overwritten. One `relationship_manager` history row per company, all sharing `bulk_run_id`. `dry_run` reports what would move and writes nothing. Use it when someone leaves: the companies of a deactivated RM are listed by `GET /exporters?relationship_manager=inactive`.
          */
         post: operations["reassign_relationship_managers_api_v1_onboarding_relationship_managers_reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/collections-owners/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move one collections owner's companies to another
+         * @description All of `from_user_id`'s companies, or those in `company_ids`, to `to_user_id`. Needs `exporters:assign_collector` and a reason. A company whose owner changed meanwhile is skipped. One history row per company, sharing `bulk_run_id`; `dry_run` writes nothing.
+         */
+        post: operations["reassign_collections_owners_api_v1_onboarding_collections_owners_reassign_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -832,6 +874,46 @@ export interface paths {
          * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `name` and `is_primary` may be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary.
          */
         patch: operations["update_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts__contact_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/contacts/{contact_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a contact active, inactive or as having left the company
+         * @description Leaving ACTIVE needs a `reason`, which is kept with the contact and on its `contact` history row. A contact that is no longer active stops being the primary contact (only an active contact can be the person to reach).
+         */
+        post: operations["set_exporter_contact_status_api_v1_onboarding_exporters__customer_id__contacts__contact_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/contacts/{contact_id}/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that a contact's details were checked and are right
+         * @description Stamps `last_verified_at` and `last_verified_by` (the signed-in user) and writes a `contact` history row. A contact is `verification_due` again once `CRM_CONTACT_REVERIFY_MONTHS` (default 12) have passed.
+         */
+        post: operations["verify_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts__contact_id__verification_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/onboarding/exporters/{customer_id}/activities": {
@@ -1337,6 +1419,302 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/exporters/{customer_id}/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A company's addresses
+         * @description Active addresses first, by type with each type's default first; deactivated ones are included (`is_active`). `registered_changed_since_clear` says the default registered address was added or changed after the company's last Clear (`last_clear_at`).
+         */
+        get: operations["list_company_addresses_api_v1_onboarding_exporters__customer_id__addresses_get"];
+        put?: never;
+        /**
+         * Add an address to a company
+         * @description The first active address of a type becomes that type's default; `is_default=true` makes this one the default and demotes the old one. `gst_registration_id` links the new address to that GST registration (which must be this company's).
+         */
+        post: operations["add_company_address_api_v1_onboarding_exporters__customer_id__addresses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/addresses/{address_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change an address
+         * @description A partial edit: only the fields sent change. A deactivated address cannot be changed. A default address moved to another type becomes that type's default.
+         */
+        patch: operations["update_company_address_api_v1_onboarding_addresses__address_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/onboarding/addresses/{address_id}/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make an address its type's default */
+        post: operations["set_default_company_address_api_v1_onboarding_addresses__address_id__default_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/addresses/{address_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop using an address
+         * @description Keeps the row; a default address leaves its type with no default until another is chosen. Deactivating twice is a no-op.
+         */
+        post: operations["deactivate_company_address_api_v1_onboarding_addresses__address_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{customer_id}/bank-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A company's bank accounts
+         * @description Every version, newest first, numbers masked to their last four (`account_number_masked`, `iban_masked`). `capabilities` says what this reader may do.
+         */
+        get: operations["list_bank_accounts_api_v1_onboarding_exporters__customer_id__bank_accounts_get"];
+        put?: never;
+        /**
+         * Propose a bank account, or a change to one
+         * @description Starts PENDING_APPROVAL (PENDING_VERIFICATION when approvals are off). Give the account number (with its IFSC or SWIFT/BIC) or the IBAN. `replaces_id` names a verified account this one changes; that account stays in force until this one is verified.
+         */
+        post: operations["propose_bank_account_api_v1_onboarding_exporters__customer_id__bank_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/bank-accounts/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bank accounts waiting for approval or verification
+         * @description Oldest first, with each company's name and whether this reader may approve it under the approval mode. The approval card on Compliance work.
+         */
+        get: operations["list_pending_bank_accounts_api_v1_onboarding_bank_accounts_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/bank-accounts/{account_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a proposed bank account
+         * @description PENDING_APPROVAL -> PENDING_VERIFICATION. Who may approve follows `CRM_BANK_CHANGE_APPROVAL_MODE`; a refusal says why (BANK_ACCOUNT_APPROVAL_REFUSED).
+         */
+        post: operations["approve_bank_account_api_v1_onboarding_bank_accounts__account_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/bank-accounts/{account_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a proposed bank account */
+        post: operations["reject_bank_account_api_v1_onboarding_bank_accounts__account_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/bank-accounts/{account_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify an approved bank account
+         * @description PENDING_VERIFICATION -> VERIFIED, on a cancelled cheque or bank letter on the company's record (`evidence_document_id`) or a passed bank-account verification of the company (`verification_result_id`, method PENNY_DROP). A verified change retires the account it replaces and takes over its primary flag; the first verified account in a currency becomes primary.
+         */
+        post: operations["verify_bank_account_api_v1_onboarding_bank_accounts__account_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/bank-accounts/{account_id}/primary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make a verified account the primary one for its currency */
+        post: operations["set_primary_bank_account_api_v1_onboarding_bank_accounts__account_id__primary_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/bank-accounts/{account_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop paying into a verified account */
+        post: operations["deactivate_bank_account_api_v1_onboarding_bank_accounts__account_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/bank-accounts/{account_id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal a bank account's full number
+         * @description Every reveal is written to the audit trail before the number is returned.
+         */
+        post: operations["reveal_bank_account_api_v1_onboarding_bank_accounts__account_id__reveal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The group a company belongs to
+         * @description The whole tree from the ultimate parent (worked out, never stored) down, each member with its stage, background check and risk (for readers of compliance work), open deals and their value by currency. A company in no group is a group of one.
+         */
+        get: operations["get_company_group_api_v1_onboarding_exporters__company_id__group_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/parent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put a company under a parent, or take it out of its group
+         * @description `relationship` is required with a parent. A link that would make a company its own ancestor is refused (422). Every change is a `group` history row on the company and on each parent involved.
+         */
+        put: operations["set_parent_company_api_v1_onboarding_exporters__company_id__parent_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/group/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Companies that may belong to the same group
+         * @description Companies outside this one's group that record a beneficial owner with the same name (and date of birth, where both hold one). Suggestions only: nothing is linked until someone links it.
+         */
+        get: operations["list_group_suggestions_api_v1_onboarding_exporters__company_id__group_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/exporters/{customer_id}/trade-relationships": {
         parameters: {
             query?: never;
@@ -1739,6 +2117,87 @@ export interface paths {
          *     **This changes which deals can be handed over.** A deal with no `AVAILABLE` document in a required category is refused with 409 `DEAL_HANDOVER_BLOCKED`, naming the category. Deals already handed over are unaffected: the guard runs on the move, never retrospectively.
          */
         post: operations["set_deal_required_document_api_v1_onboarding_settings_deal_required_documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/deals/{deal_id}/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a deal's value, currency or payment term
+         * @description A partial edit while the deal is open; a closed deal's terms are frozen. A payment term other than the company's default needs `payment_term_override_reason`, which is kept and written to the deal's history. Only a current, offered term may be chosen.
+         */
+        patch: operations["set_deal_terms_api_v1_onboarding_deals__deal_id__terms_patch"];
+        trace?: never;
+    };
+    "/api/v1/onboarding/settings/payment-terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The payment terms deals and companies choose from
+         * @description `terms` is the current version of every term, retired ones (`active` false) included; `history` every version. `can_edit` says whether this reader may change them.
+         */
+        get: operations["list_payment_terms_api_v1_onboarding_settings_payment_terms_get"];
+        put?: never;
+        /** Add a payment term */
+        post: operations["add_payment_term_api_v1_onboarding_settings_payment_terms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/settings/payment-terms/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change or retire a payment term
+         * @description Writes the next version of the term; the old version stays, so deals agreed on it keep it. `active: false` retires the term: still shown on old deals, no longer offered.
+         */
+        patch: operations["revise_payment_term_api_v1_onboarding_settings_payment_terms__code__patch"];
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/default-payment-term": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a company's default payment term
+         * @description New deals with the company start from this term. `null` clears it. Only a current, offered term may be chosen; the change is in the company's history.
+         */
+        put: operations["set_default_payment_term_api_v1_onboarding_exporters__company_id__default_payment_term_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2562,6 +3021,32 @@ export interface components {
          * @enum {string}
          */
         ActorType: "SYSTEM" | "COMPLIANCE_OFFICER" | "API_CLIENT";
+        /** AddCompanyAddressRequest */
+        AddCompanyAddressRequest: {
+            address_type: components["schemas"]["CompanyAddressType"];
+            /** Line1 */
+            line1: string;
+            /** Line2 */
+            line2?: string | null;
+            /** City */
+            city: string;
+            /** State */
+            state?: string | null;
+            /** Postal Code */
+            postal_code?: string | null;
+            /**
+             * Country
+             * @description ISO 3166-1 alpha-2, e.g. IN
+             */
+            country: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Gst Registration Id */
+            gst_registration_id?: string | null;
+        };
         /** AddExporterContactRequest */
         AddExporterContactRequest: {
             /** Name */
@@ -2599,6 +3084,20 @@ export interface components {
             address?: string | null;
             /** @default UNVERIFIED */
             status: components["schemas"]["GstRegistrationStatus"];
+        };
+        /** AddPaymentTermRequest */
+        AddPaymentTermRequest: {
+            /** Code */
+            code: string;
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @description ADVANCE, LC_SIGHT, LC_USANCE, DP, DA or OPEN_ACCOUNT
+             */
+            kind: string;
+            /** Days */
+            days?: number | null;
         };
         /**
          * AdminCreateUserRequest
@@ -2768,6 +3267,15 @@ export interface components {
          * @enum {string}
          */
         ApproverRole: "MAKER" | "CHECKER";
+        /** AssignCollectionsOwnerRequest */
+        AssignCollectionsOwnerRequest: {
+            /** User Id */
+            user_id: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Seen User Id */
+            seen_user_id?: string | null;
+        };
         /**
          * AssignRelationshipManagerRequest
          * @description Set, change or clear a company's relationship manager.
@@ -3193,6 +3701,114 @@ export interface components {
          * @enum {string}
          */
         BackgroundCheckState: "NOT_STARTED" | "IN_REVIEW" | "CLEAR" | "MORE_INFO" | "FLAGGED" | "ON_HOLD";
+        /**
+         * BankAccountCapabilities
+         * @description What this reader may do here, so the screen offers only that.
+         */
+        BankAccountCapabilities: {
+            /** Can Propose */
+            can_propose: boolean;
+            /** Can Approve */
+            can_approve: boolean;
+            /** Can Reveal */
+            can_reveal: boolean;
+        };
+        /** BankAccountListResponse */
+        BankAccountListResponse: {
+            /** Accounts */
+            accounts: components["schemas"]["BankAccountResponse"][];
+            capabilities: components["schemas"]["BankAccountCapabilities"];
+        };
+        /** BankAccountResponse */
+        BankAccountResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            /** Account Holder Name */
+            account_holder_name: string;
+            /** Bank Name */
+            bank_name: string;
+            /** Branch */
+            branch: string | null;
+            /** Ifsc */
+            ifsc: string | null;
+            /** Swift Bic */
+            swift_bic: string | null;
+            /** Currency */
+            currency: string;
+            account_type: components["schemas"]["BankAccountType"];
+            /** Ad Code */
+            ad_code: string | null;
+            /** Is Primary */
+            is_primary: boolean;
+            status: components["schemas"]["BankAccountStatus"];
+            /** Replaces Id */
+            replaces_id: string | null;
+            /** Proposed By */
+            proposed_by: string | null;
+            /** Proposed By Name */
+            proposed_by_name?: string | null;
+            /** Proposal Reason */
+            proposal_reason: string | null;
+            /** Approved By */
+            approved_by: string | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
+            /** Approved At */
+            approved_at: string | null;
+            /** Rejected By */
+            rejected_by: string | null;
+            /** Rejected At */
+            rejected_at: string | null;
+            /** Rejection Reason */
+            rejection_reason: string | null;
+            verification_method: components["schemas"]["BankVerificationMethod"] | null;
+            /** Evidence Document Id */
+            evidence_document_id: string | null;
+            /** Verification Result Id */
+            verification_result_id: string | null;
+            /** Verified By */
+            verified_by: string | null;
+            /** Verified By Name */
+            verified_by_name?: string | null;
+            /** Verified At */
+            verified_at: string | null;
+            /** Deactivated At */
+            deactivated_at: string | null;
+            /** Deactivation Reason */
+            deactivation_reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Can Approve
+             * @default false
+             */
+            can_approve: boolean;
+            /** Account Number Masked */
+            readonly account_number_masked: string | null;
+            /** Iban Masked */
+            readonly iban_masked: string | null;
+        };
+        /**
+         * BankAccountStatus
+         * @enum {string}
+         */
+        BankAccountStatus: "PENDING_APPROVAL" | "PENDING_VERIFICATION" | "VERIFIED" | "REJECTED" | "INACTIVE";
+        /**
+         * BankAccountType
+         * @enum {string}
+         */
+        BankAccountType: "CURRENT" | "EEFC" | "SAVINGS" | "OTHER";
         /** BankActivityFindingResponse */
         BankActivityFindingResponse: {
             /**
@@ -3271,6 +3887,11 @@ export interface components {
             /** Findings */
             findings: components["schemas"]["BankActivityFindingResponse"][];
         };
+        /**
+         * BankVerificationMethod
+         * @enum {string}
+         */
+        BankVerificationMethod: "CANCELLED_CHEQUE" | "BANK_LETTER" | "PENNY_DROP";
         /** Body_import_companies_api_v1_onboarding_imports_companies_post */
         Body_import_companies_api_v1_onboarding_imports_companies_post: {
             /**
@@ -3326,6 +3947,45 @@ export interface components {
         BringIntoPipelineRequest: {
             /** Reason */
             reason?: string | null;
+        };
+        /** BulkCollectorReassignRequest */
+        BulkCollectorReassignRequest: {
+            /**
+             * From User Id
+             * Format: uuid
+             */
+            from_user_id: string;
+            /**
+             * To User Id
+             * Format: uuid
+             */
+            to_user_id: string;
+            /** Company Ids */
+            company_ids?: string[] | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** BulkCollectorReassignResponse */
+        BulkCollectorReassignResponse: {
+            /** Bulk Run Id */
+            bulk_run_id: string | null;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Matched */
+            matched: number;
+            /** Moved */
+            moved: number;
+            /** Skipped */
+            skipped: number;
+            /** Company Ids */
+            company_ids: string[];
+            /** Skipped Company Ids */
+            skipped_company_ids: string[];
         };
         /**
          * BulkReassignRequest
@@ -3670,6 +4330,62 @@ export interface components {
          * @enum {string}
          */
         CheckType: "IDENTITY" | "DOCUMENT" | "LIVENESS" | "SANCTIONS" | "PEP" | "ADVERSE_MEDIA" | "WATCHLIST";
+        /** CompanyAddressListResponse */
+        CompanyAddressListResponse: {
+            /** Addresses */
+            addresses: components["schemas"]["CompanyAddressResponse"][];
+            /** Last Clear At */
+            last_clear_at: string | null;
+            /** Registered Changed Since Clear */
+            registered_changed_since_clear: boolean;
+        };
+        /** CompanyAddressResponse */
+        CompanyAddressResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            address_type: components["schemas"]["CompanyAddressType"];
+            /** Line1 */
+            line1: string;
+            /** Line2 */
+            line2: string | null;
+            /** City */
+            city: string;
+            /** State */
+            state: string | null;
+            /** Postal Code */
+            postal_code: string | null;
+            /** Country */
+            country: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * CompanyAddressType
+         * @description What a company address is for. A company has at most one active default of
+         *     each.
+         * @enum {string}
+         */
+        CompanyAddressType: "REGISTERED" | "BILLING" | "SHIPPING" | "FACTORY_WAREHOUSE" | "CORRESPONDENCE";
         /**
          * CompanyComplianceFactsResponse
          * @description The company's compliance facts now — ``ComplianceFactsReader.for_company``.
@@ -3699,6 +4415,21 @@ export interface components {
              * @enum {string}
              */
             aml: "PASSED" | "FAILED" | "MISSING" | "PENDING";
+        };
+        /** CompanyGroupResponse */
+        CompanyGroupResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Ultimate Parent Id
+             * Format: uuid
+             */
+            ultimate_parent_id: string;
+            /** Members */
+            members: components["schemas"]["GroupMemberResponse"][];
         };
         /**
          * CompanyIdentityType
@@ -3912,6 +4643,13 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * ContactStatus
+         * @description Whether a contact is still someone to reach. Only an ACTIVE contact may be the
+         *     primary contact; leaving ACTIVE needs a reason.
+         * @enum {string}
+         */
+        ContactStatus: "ACTIVE" | "INACTIVE" | "LEFT_COMPANY";
         /**
          * ConversationMoveListResponse
          * @description Just the allowed moves, for a caller that wants nothing else.
@@ -4198,6 +4936,11 @@ export interface components {
             /** Counts */
             counts: boolean;
         };
+        /** DeactivateCompanyAddressRequest */
+        DeactivateCompanyAddressRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
         /**
          * DeactivateGstRegistrationRequest
          * @description Stop using a branch. Not a delete — the row is kept, because a deal handed
@@ -4276,6 +5019,10 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Value Amount */
+            value_amount?: string | null;
+            /** Currency */
+            currency?: string | null;
         };
         /**
          * DealListResponse
@@ -4397,6 +5144,14 @@ export interface components {
             allowed_stage_moves: components["schemas"]["DealStageMoveResponse"][];
             /** Handover Blocked Reason */
             handover_blocked_reason: string | null;
+            /** Value Amount */
+            value_amount?: string | null;
+            /** Currency */
+            currency?: string | null;
+            payment_term?: components["schemas"]["PaymentTermResponse"] | null;
+            /** Payment Term Override Reason */
+            payment_term_override_reason?: string | null;
+            company_default_payment_term?: components["schemas"]["PaymentTermResponse"] | null;
         };
         /**
          * DealSide
@@ -4484,6 +5239,10 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Value Amount */
+            value_amount?: string | null;
+            /** Currency */
+            currency?: string | null;
         };
         /**
          * DecidedByKind
@@ -4969,6 +5728,24 @@ export interface components {
             department: string | null;
             /** Is Primary Contact */
             is_primary_contact: boolean;
+            /** @default ACTIVE */
+            status: components["schemas"]["ContactStatus"];
+            /** Status Changed At */
+            status_changed_at?: string | null;
+            /** Status Reason */
+            status_reason?: string | null;
+            /** Last Verified At */
+            last_verified_at?: string | null;
+            /** Last Verified By */
+            last_verified_by?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Verification Due
+             * @description An active contact whose details were last verified — or, never verified, were
+             *     added — more than ``CRM_CONTACT_REVERIFY_MONTHS`` ago. Computed on read.
+             */
+            readonly verification_due: boolean;
         };
         /**
          * ExporterConversation
@@ -5030,11 +5807,17 @@ export interface components {
              * @default false
              */
             relationship_manager_inactive: boolean;
+            /** Collections Owner User Id */
+            collections_owner_user_id?: string | null;
+            /** Collections Owner Name */
+            collections_owner_name?: string | null;
             /**
              * Customer Id
              * Format: uuid
              */
             customer_id: string;
+            /** Default Payment Term Id */
+            default_payment_term_id?: string | null;
             /** Name */
             name: string | null;
             /** Country */
@@ -5109,6 +5892,10 @@ export interface components {
              * @default false
              */
             relationship_manager_inactive: boolean;
+            /** Collections Owner User Id */
+            collections_owner_user_id?: string | null;
+            /** Collections Owner Name */
+            collections_owner_name?: string | null;
             /**
              * Customer Id
              * Format: uuid
@@ -5159,6 +5946,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Has Active Primary Contact
+             * @default true
+             */
+            has_active_primary_contact: boolean;
         };
         /** ExporterProfileResponse */
         ExporterProfileResponse: {
@@ -5169,11 +5961,17 @@ export interface components {
              * @default false
              */
             relationship_manager_inactive: boolean;
+            /** Collections Owner User Id */
+            collections_owner_user_id?: string | null;
+            /** Collections Owner Name */
+            collections_owner_name?: string | null;
             /**
              * Customer Id
              * Format: uuid
              */
             customer_id: string;
+            /** Default Payment Term Id */
+            default_payment_term_id?: string | null;
             /** Name */
             name: string | null;
             /** Country */
@@ -5458,6 +6256,51 @@ export interface components {
                 [key: string]: components["schemas"]["DependencyHealth"];
             };
         };
+        /** GroupMemberResponse */
+        GroupMemberResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string | null;
+            /** Parent Company Id */
+            parent_company_id: string | null;
+            /** Group Relationship */
+            group_relationship: ("SUBSIDIARY" | "BRANCH_OFFICE" | "GROUP_COMPANY" | "JOINT_VENTURE") | null;
+            /** Depth */
+            depth: number;
+            /** Journey */
+            journey: string;
+            /** Background Check */
+            background_check: string | null;
+            /** Risk Rating */
+            risk_rating: string | null;
+            /** Open Deals */
+            open_deals: number;
+            /** Open Deal Value */
+            open_deal_value: {
+                [key: string]: string;
+            };
+        };
+        /** GroupSuggestionListResponse */
+        GroupSuggestionListResponse: {
+            /** Suggestions */
+            suggestions: components["schemas"]["GroupSuggestionResponse"][];
+        };
+        /** GroupSuggestionResponse */
+        GroupSuggestionResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Name */
+            name: string | null;
+            /** Shared People */
+            shared_people: string[];
+        };
         /**
          * GstRegistrationFlag
          * @description Whether compliance has flagged this branch.
@@ -5519,6 +6362,8 @@ export interface components {
             status: components["schemas"]["GstRegistrationStatus"];
             /** Address */
             address: string | null;
+            /** Address Id */
+            address_id?: string | null;
             flag_status: components["schemas"]["GstRegistrationFlag"] | null;
             /** Flag Reason */
             flag_reason: string | null;
@@ -5963,6 +6808,14 @@ export interface components {
         OpenDealRequest: {
             /** Reference */
             reference: string;
+            /** Value Amount */
+            value_amount?: number | string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Payment Term Id */
+            payment_term_id?: string | null;
+            /** Payment Term Override Reason */
+            payment_term_override_reason?: string | null;
         };
         /** OutcomeResponse */
         OutcomeResponse: {
@@ -5990,6 +6843,40 @@ export interface components {
              * Format: date-time
              */
             decided_at: string;
+        };
+        /** PaymentTermListResponse */
+        PaymentTermListResponse: {
+            /** Terms */
+            terms: components["schemas"]["PaymentTermResponse"][];
+            /** History */
+            history: components["schemas"]["PaymentTermResponse"][];
+            /** Can Edit */
+            can_edit: boolean;
+        };
+        /**
+         * PaymentTermResponse
+         * @description One version of a payment term.
+         */
+        PaymentTermResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Version */
+            version: number;
+            /** Label */
+            label: string;
+            /** Kind */
+            kind: string;
+            /** Days */
+            days: number | null;
+            /** Active */
+            active: boolean;
+            /** Is Current */
+            is_current: boolean;
         };
         /** PendingActivityListResponse */
         PendingActivityListResponse: {
@@ -6044,6 +6931,93 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** PendingBankAccountListResponse */
+        PendingBankAccountListResponse: {
+            /** Accounts */
+            accounts: components["schemas"]["PendingBankAccountResponse"][];
+        };
+        /** PendingBankAccountResponse */
+        PendingBankAccountResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Customer Id
+             * Format: uuid
+             */
+            customer_id: string;
+            /** Account Holder Name */
+            account_holder_name: string;
+            /** Bank Name */
+            bank_name: string;
+            /** Branch */
+            branch: string | null;
+            /** Ifsc */
+            ifsc: string | null;
+            /** Swift Bic */
+            swift_bic: string | null;
+            /** Currency */
+            currency: string;
+            account_type: components["schemas"]["BankAccountType"];
+            /** Ad Code */
+            ad_code: string | null;
+            /** Is Primary */
+            is_primary: boolean;
+            status: components["schemas"]["BankAccountStatus"];
+            /** Replaces Id */
+            replaces_id: string | null;
+            /** Proposed By */
+            proposed_by: string | null;
+            /** Proposed By Name */
+            proposed_by_name?: string | null;
+            /** Proposal Reason */
+            proposal_reason: string | null;
+            /** Approved By */
+            approved_by: string | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
+            /** Approved At */
+            approved_at: string | null;
+            /** Rejected By */
+            rejected_by: string | null;
+            /** Rejected At */
+            rejected_at: string | null;
+            /** Rejection Reason */
+            rejection_reason: string | null;
+            verification_method: components["schemas"]["BankVerificationMethod"] | null;
+            /** Evidence Document Id */
+            evidence_document_id: string | null;
+            /** Verification Result Id */
+            verification_result_id: string | null;
+            /** Verified By */
+            verified_by: string | null;
+            /** Verified By Name */
+            verified_by_name?: string | null;
+            /** Verified At */
+            verified_at: string | null;
+            /** Deactivated At */
+            deactivated_at: string | null;
+            /** Deactivation Reason */
+            deactivation_reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Can Approve
+             * @default false
+             */
+            can_approve: boolean;
+            /** Company Name */
+            company_name?: string | null;
+            /** Account Number Masked */
+            readonly account_number_masked: string | null;
+            /** Iban Masked */
+            readonly iban_masked: string | null;
         };
         /** PermissionCatalogResponse */
         PermissionCatalogResponse: {
@@ -6105,6 +7079,35 @@ export interface components {
             email: string | null;
             /** Phone */
             phone: string | null;
+        };
+        /** ProposeBankAccountRequest */
+        ProposeBankAccountRequest: {
+            /** Account Holder Name */
+            account_holder_name: string;
+            /** Bank Name */
+            bank_name: string;
+            /** Branch */
+            branch?: string | null;
+            /** Account Number */
+            account_number?: string | null;
+            /** Iban */
+            iban?: string | null;
+            /** Ifsc */
+            ifsc?: string | null;
+            /** Swift Bic */
+            swift_bic?: string | null;
+            /**
+             * Currency
+             * @description ISO 4217, e.g. INR
+             */
+            currency: string;
+            account_type: components["schemas"]["BankAccountType"];
+            /** Ad Code */
+            ad_code?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Replaces Id */
+            replaces_id?: string | null;
         };
         /**
          * QualificationOutcomeValue
@@ -6238,6 +7241,11 @@ export interface components {
             requires_note: boolean;
             /** Active */
             active: boolean;
+        };
+        /** ReasonRequest */
+        ReasonRequest: {
+            /** Reason */
+            reason: string;
         };
         /**
          * ReasonResponse
@@ -6532,6 +7540,32 @@ export interface components {
              */
             recorded_at: string;
         };
+        /** RevealedBankAccountResponse */
+        RevealedBankAccountResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Account Number */
+            account_number: string | null;
+            /** Iban */
+            iban: string | null;
+        };
+        /**
+         * RevisePaymentTermRequest
+         * @description Writes the next version of the term. `active: false` retires it.
+         */
+        RevisePaymentTermRequest: {
+            /** Label */
+            label?: string | null;
+            /** Kind */
+            kind?: string | null;
+            /** Days */
+            days?: number | null;
+            /** Active */
+            active?: boolean | null;
+        };
         /** RoleListResponse */
         RoleListResponse: {
             /** Roles */
@@ -6757,6 +7791,15 @@ export interface components {
             expires_at: string;
         };
         /**
+         * SetContactStatusRequest
+         * @description Move a contact to a status. Leaving ACTIVE needs a reason, which is kept.
+         */
+        SetContactStatusRequest: {
+            status: components["schemas"]["ContactStatus"];
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * SetConversationRequest
          * @description A conversation move.
          *
@@ -6856,6 +7899,27 @@ export interface components {
             active: boolean;
         };
         /**
+         * SetDealTermsRequest
+         * @description A partial edit of a deal's value, currency and payment term: only the fields
+         *     sent change. A term other than the company's default needs
+         *     `payment_term_override_reason`.
+         */
+        SetDealTermsRequest: {
+            /** Value Amount */
+            value_amount?: number | string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Payment Term Id */
+            payment_term_id?: string | null;
+            /** Payment Term Override Reason */
+            payment_term_override_reason?: string | null;
+        };
+        /** SetDefaultPaymentTermRequest */
+        SetDefaultPaymentTermRequest: {
+            /** Payment Term Id */
+            payment_term_id: string | null;
+        };
+        /**
          * SetMarkerRequest
          * @description Set or clear the company's commercial marker (company-record contract
          *     §3.3). `reason` is required for `PAUSED` and `ENDED`, optional when
@@ -6865,6 +7929,13 @@ export interface components {
             marker: components["schemas"]["ExporterMarker"];
             /** Reason */
             reason?: string | null;
+        };
+        /** SetParentCompanyRequest */
+        SetParentCompanyRequest: {
+            /** Parent Company Id */
+            parent_company_id: string | null;
+            /** Relationship */
+            relationship?: ("SUBSIDIARY" | "BRANCH_OFFICE" | "GROUP_COMPANY" | "JOINT_VENTURE") | null;
         };
         /** StaffListResponse */
         StaffListResponse: {
@@ -7219,6 +8290,26 @@ export interface components {
             product_context?: string | null;
             /** Policy Id */
             policy_id?: string | null;
+        };
+        /**
+         * UpdateCompanyAddressRequest
+         * @description A partial edit: only the fields sent change. ``line1``, ``city``, ``country`` and
+         *     ``address_type`` may change but not be cleared.
+         */
+        UpdateCompanyAddressRequest: {
+            address_type?: components["schemas"]["CompanyAddressType"] | null;
+            /** Line1 */
+            line1?: string | null;
+            /** Line2 */
+            line2?: string | null;
+            /** City */
+            city?: string | null;
+            /** State */
+            state?: string | null;
+            /** Postal Code */
+            postal_code?: string | null;
+            /** Country */
+            country?: string | null;
         };
         /**
          * UpdateExporterContactRequest
@@ -7606,6 +8697,14 @@ export interface components {
          * @enum {string}
          */
         VerificationType: "KYC" | "KYB" | "AML" | "CFT" | "SANCTIONS" | "PEP" | "ADVERSE_MEDIA" | "COMPANY_REGISTRY" | "UBO" | "GST" | "IEC" | "BANK_ACCOUNT" | "BUYER" | "INVOICE" | "INVOICE_DUPLICATION" | "SHIPMENT" | "VESSEL" | "INSURANCE";
+        /** VerifyBankAccountRequest */
+        VerifyBankAccountRequest: {
+            method: components["schemas"]["BankVerificationMethod"];
+            /** Evidence Document Id */
+            evidence_document_id?: string | null;
+            /** Verification Result Id */
+            verification_result_id?: string | null;
+        };
         /** WebhookAck */
         WebhookAck: {
             /** Status */
@@ -9370,6 +10469,10 @@ export interface operations {
                 pipeline_status?: components["schemas"]["CompanyPipelineStatus"] | null;
                 /** @description `me`, `none`, `inactive` or a user id */
                 relationship_manager?: string | null;
+                /** @description Only companies with no active primary contact */
+                missing_primary_contact?: boolean;
+                /** @description `me` (My collections), `none` or a user id */
+                collections_owner?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -9774,6 +10877,67 @@ export interface operations {
             };
         };
     };
+    assign_exporter_collections_owner_api_v1_onboarding_exporters__customer_id__collections_owner_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignCollectionsOwnerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExporterProfileDetailResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:assign_collector` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exporter profile not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `COLLECTIONS_OWNER_CHANGED` — someone changed it since */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an active staff user, or no reason for a change */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_assignable_staff_api_v1_onboarding_staff_get: {
         parameters: {
             query?: {
@@ -9856,6 +11020,51 @@ export interface operations {
                 content?: never;
             };
             /** @description `RELATIONSHIP_MANAGER_NOT_ELIGIBLE` — the target is not an active RM user; `RELATIONSHIP_MANAGER_REASON_REQUIRED`; or the same RM twice */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reassign_collections_owners_api_v1_onboarding_collections_owners_reassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkCollectorReassignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkCollectorReassignResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:assign_collector` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an active staff user, no reason, or the same owner twice */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -10022,6 +11231,114 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    set_exporter_contact_status_api_v1_onboarding_exporters__customer_id__contacts__contact_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetContactStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExporterContactResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:edit` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such company, or no such contact on it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No reason given for leaving ACTIVE */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    verify_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts__contact_id__verification_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+                contact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExporterContactResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:edit` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such company, or no such contact on it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -11508,6 +12825,948 @@ export interface operations {
             };
         };
     };
+    list_company_addresses_api_v1_onboarding_exporters__customer_id__addresses_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyAddressListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:view` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_company_address_api_v1_onboarding_exporters__customer_id__addresses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddCompanyAddressRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyAddressResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:edit` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company, or GST registration, not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid address */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_company_address_api_v1_onboarding_addresses__address_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCompanyAddressRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyAddressResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:edit` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such address */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid change, or the address is deactivated */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_default_company_address_api_v1_onboarding_addresses__address_id__default_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyAddressResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:edit` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such address */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The address is deactivated */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deactivate_company_address_api_v1_onboarding_addresses__address_id__deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeactivateCompanyAddressRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyAddressResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:edit` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such address */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_bank_accounts_api_v1_onboarding_exporters__customer_id__bank_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankAccountListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:view` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    propose_bank_account_api_v1_onboarding_exporters__customer_id__bank_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeBankAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankAccountResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:manage_bank_accounts` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company, or the account replaced, not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The account replaced is not verified */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid details */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No field encryption key is configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_pending_bank_accounts_api_v1_onboarding_bank_accounts_pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingBankAccountListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A bank-account permission is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    approve_bank_account_api_v1_onboarding_bank_accounts__account_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankAccountResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not allowed to approve this one */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such bank account (BANK_ACCOUNT_NOT_FOUND) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not in a state that allows this (BANK_ACCOUNT_WRONG_STATUS) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_bank_account_api_v1_onboarding_bank_accounts__account_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankAccountResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:approve_bank_accounts` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such bank account (BANK_ACCOUNT_NOT_FOUND) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not in a state that allows this (BANK_ACCOUNT_WRONG_STATUS) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_bank_account_api_v1_onboarding_bank_accounts__account_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyBankAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankAccountResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:approve_bank_accounts` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such bank account (BANK_ACCOUNT_NOT_FOUND) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not in a state that allows this (BANK_ACCOUNT_WRONG_STATUS) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or unsuitable evidence */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_primary_bank_account_api_v1_onboarding_bank_accounts__account_id__primary_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankAccountResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:approve_bank_accounts` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such bank account (BANK_ACCOUNT_NOT_FOUND) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not in a state that allows this (BANK_ACCOUNT_WRONG_STATUS) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deactivate_bank_account_api_v1_onboarding_bank_accounts__account_id__deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankAccountResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:approve_bank_accounts` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such bank account (BANK_ACCOUNT_NOT_FOUND) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not in a state that allows this (BANK_ACCOUNT_WRONG_STATUS) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_bank_account_api_v1_onboarding_bank_accounts__account_id__reveal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealedBankAccountResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:view_bank_details` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such bank account */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description No field encryption key is configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_company_group_api_v1_onboarding_exporters__company_id__group_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyGroupResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:view` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_parent_company_api_v1_onboarding_exporters__company_id__parent_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetParentCompanyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyGroupResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:edit` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company or parent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A loop, the company itself, or no relationship */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_group_suggestions_api_v1_onboarding_exporters__company_id__group_suggestions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupSuggestionListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `compliance:view` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_trade_relationships_api_v1_onboarding_exporters__customer_id__trade_relationships_get: {
         parameters: {
             query?: {
@@ -12534,6 +14793,249 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    set_deal_terms_api_v1_onboarding_deals__deal_id__terms_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDealTermsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DealResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `deals:edit` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such deal, or no such payment term */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No reason for a different term, or nothing changes */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_payment_terms_api_v1_onboarding_settings_payment_terms_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentTermListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `deals:view` required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    add_payment_term_api_v1_onboarding_settings_payment_terms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPaymentTermRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentTermResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `settings:manage` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A code already used, or days that do not fit the kind */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    revise_payment_term_api_v1_onboarding_settings_payment_terms__code__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisePaymentTermRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentTermResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `settings:manage` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such payment term */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing changes, or days that do not fit the kind */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_default_payment_term_api_v1_onboarding_exporters__company_id__default_payment_term_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDefaultPaymentTermRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentTermResponse"] | null;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `exporters:edit` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such company or payment term */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

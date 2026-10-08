@@ -18,10 +18,13 @@ import {
   Card,
   EmptyLine,
   FormPanel,
+  Field,
   Input,
   RequiredMark,
   RequiredNote,
+  Select,
   Skeleton,
+  Textarea,
 } from '@/components';
 import { Icon } from '@/design/icons';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -32,11 +35,14 @@ import {
   useCompanyDeals,
   useCompanyDocuments,
   useFollowUps,
+  useSetExporterContactStatus,
   useUpdateExporterContact,
+  useVerifyExporterContact,
 } from '../hooks';
 import { paths } from '../paths';
 import type {
   AddExporterContactRequest,
+  ContactStatus,
   ExporterContact,
   UpdateExporterContactRequest,
 } from '../types';
@@ -46,6 +52,12 @@ import { DealStageChip } from './DealStageChip';
 import { ScanStatusBadge } from './ScanStatusBadge';
 
 const SHOWN = 3;
+
+const CONTACT_STATUS_LABEL: Record<ContactStatus, string> = {
+  ACTIVE: 'Active',
+  INACTIVE: 'Inactive',
+  LEFT_COMPANY: 'Left company',
+};
 
 function Item({
   title,
@@ -252,6 +264,8 @@ function EditContactForm({
   onDone: () => void;
 }) {
   const mutation = useUpdateExporterContact(customerId);
+  const statusMutation = useSetExporterContactStatus(customerId);
+  const verify = useVerifyExporterContact(customerId);
   const mayReveal = useCan('identifiers.reveal');
   const [form, setForm] = useState({
     name: contact.name,
@@ -260,7 +274,13 @@ function EditContactForm({
     email: mayReveal ? (contact.email ?? '') : '',
     phone: mayReveal ? (contact.phone ?? '') : '',
     is_primary: contact.is_primary_contact,
+    status: contact.status as ContactStatus,
+    reason: '',
   });
+  const statusChanged = form.status !== contact.status;
+  const active = form.status === 'ACTIVE';
+  // Leaving Active needs a reason; the server refuses one without.
+  const needsReason = statusChanged && !active;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -282,21 +302,46 @@ function EditContactForm({
     if (mayReveal ? text(form.phone) !== (contact.phone ?? null) : form.phone.trim()) {
       payload.phone = text(form.phone);
     }
-    if (form.is_primary !== contact.is_primary_contact) payload.is_primary = form.is_primary;
+    // Only an active contact can be primary: a contact leaving Active loses the flag on
+    // the server, so the box is not sent for one.
+    if (active && form.is_primary !== contact.is_primary_contact) {
+      payload.is_primary = form.is_primary;
+    }
+    if (needsReason && !form.reason.trim()) return;
 
     // The server refuses an empty body rather than reporting a write that did not
     // happen, so nothing-to-do closes the form instead of asking.
-    if (Object.keys(payload).length === 0) {
+    if (Object.keys(payload).length === 0 && !statusChanged) {
       onDone();
       return;
     }
 
+    const changeStatus = () =>
+      statusMutation.mutateAsync({
+        contactId: contact.id,
+        payload: { status: form.status, reason: active ? null : form.reason.trim() },
+      });
     try {
-      await mutation.mutateAsync({ contactId: contact.id, payload });
+      // Back to Active first, so the same save can make the contact primary again;
+      // away from Active last, so the edit lands while the contact is still active.
+      if (statusChanged && active) await changeStatus();
+      if (Object.keys(payload).length > 0) {
+        await mutation.mutateAsync({ contactId: contact.id, payload });
+      }
+      if (statusChanged && !active) await changeStatus();
       toast.success('Contact updated');
       onDone();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not update contact');
+    }
+  }
+
+  async function markVerified() {
+    try {
+      await verify.mutateAsync(contact.id);
+      toast.success('Contact marked as verified');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not record the check');
     }
   }
 
@@ -337,22 +382,60 @@ function EditContactForm({
       {field('email', 'Email', 'email')}
       {field('phone', 'Phone')}
       {field('department', 'Department')}
+      <Field label="Status" htmlFor="contact-status">
+        <Select
+          id="contact-status"
+          value={form.status}
+          onChange={(event) =>
+            setForm((prev) => ({ ...prev, status: event.target.value as ContactStatus }))
+          }
+        >
+          {(Object.keys(CONTACT_STATUS_LABEL) as ContactStatus[]).map((status) => (
+            <option key={status} value={status}>
+              {CONTACT_STATUS_LABEL[status]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {needsReason && (
+        <Field label="Reason" htmlFor="contact-status-reason" required>
+          <Textarea
+            id="contact-status-reason"
+            rows={2}
+            value={form.reason}
+            placeholder={form.status === 'LEFT_COMPANY' ? 'e.g. Moved to another firm' : undefined}
+            onChange={(event) => setForm((prev) => ({ ...prev, reason: event.target.value }))}
+          />
+        </Field>
+      )}
       <label className="flex items-center gap-2 text-body text-ink-2">
         <input
           type="checkbox"
-          checked={form.is_primary}
+          checked={active && form.is_primary}
+          disabled={!active}
           onChange={(event) => setForm((prev) => ({ ...prev, is_primary: event.target.checked }))}
           className="h-4 w-4 rounded border-line-strong accent-accent-solid"
         />
         Make this the primary contact
+        {!active && <span className="text-caption text-ink-3">(active contacts only)</span>}
       </label>
+      <div className="flex items-center justify-between gap-2 rounded-md bg-sunken px-3 py-2">
+        <p className="text-secondary text-ink-2">
+          {contact.last_verified_at
+            ? `Details last verified ${formatDate(contact.last_verified_at)}`
+            : 'Details never verified'}
+        </p>
+        <Button size="sm" onClick={markVerified} loading={verify.isPending}>
+          Mark verified
+        </Button>
+      </div>
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <Button onClick={onDone}>Cancel</Button>
         <Button
           type="submit"
           variant="primary"
-          disabled={!form.name.trim()}
-          loading={mutation.isPending}
+          disabled={!form.name.trim() || (needsReason && !form.reason.trim())}
+          loading={mutation.isPending || statusMutation.isPending}
         >
           Save contact
         </Button>
@@ -376,11 +459,15 @@ function ContactsCard({
   // The contact being edited, or none. One at a time: two open forms over the same list
   // would let somebody promote two different people to primary from the same screen.
   const [editing, setEditing] = useState<ExporterContact | null>(null);
+  // People who left or went quiet stay on the record but out of the way.
+  const [showInactive, setShowInactive] = useState(false);
+  const inactive = contacts.filter((contact) => contact.status !== 'ACTIVE');
+  const shown = showInactive ? contacts : contacts.filter((contact) => contact.status === 'ACTIVE');
   return (
     <Card
       as="h3"
       title="Contacts"
-      count={loading ? undefined : contacts.length}
+      count={loading ? undefined : contacts.length - inactive.length}
       data-extension="contacts"
       actions={
         canAdd ? (
@@ -410,12 +497,28 @@ function ContactsCard({
       ) : contacts.length === 0 ? (
         <EmptyLine className="py-0">No one recorded yet.</EmptyLine>
       ) : (
+        <>
+        {shown.length === 0 && <EmptyLine className="py-0">No active contacts.</EmptyLine>}
         <List>
-          {contacts.map((contact) => (
+          {shown.map((contact) => (
             <li key={contact.id} className="py-2" data-testid="person-tile">
               <div className="flex items-center gap-2">
-                <p className="truncate text-body font-semibold text-ink">{contact.name}</p>
+                <p
+                  className={
+                    contact.status === 'ACTIVE'
+                      ? 'truncate text-body font-semibold text-ink'
+                      : 'truncate text-body font-semibold text-ink-3'
+                  }
+                >
+                  {contact.name}
+                </p>
                 {contact.is_primary_contact && <Badge variant="outline">Primary</Badge>}
+                {contact.status !== 'ACTIVE' && (
+                  <Badge tone={contact.status === 'LEFT_COMPANY' ? 'negative' : 'neutral'}>
+                    {CONTACT_STATUS_LABEL[contact.status]}
+                  </Badge>
+                )}
+                {contact.verification_due && <Badge tone="attention">Verification due</Badge>}
                 {/* The same capability that offers *Add*: editing a contact is the same
                     write, and the server gates both on the staff roles. */}
                 {canAdd && (
@@ -446,9 +549,22 @@ function ContactsCard({
                   )}
                 </p>
               )}
+              {contact.status !== 'ACTIVE' && contact.status_reason && (
+                <p className="mt-0.5 truncate text-caption text-ink-3">{contact.status_reason}</p>
+              )}
             </li>
           ))}
         </List>
+        {inactive.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowInactive((value) => !value)}
+            className="mt-1 text-secondary text-accent hover:underline"
+          >
+            {showInactive ? 'Hide inactive' : `Show inactive (${inactive.length})`}
+          </button>
+        )}
+        </>
       )}
     </Card>
   );

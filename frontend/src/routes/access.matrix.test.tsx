@@ -48,6 +48,7 @@ vi.mock('@/modules/onboarding/lazyPages', () => ({
   DealDetailPage: stub('deal'),
   DealsPage: stub('deals'),
   DealRequiredDocumentsPage: stub('required-documents'),
+  PaymentTermsPage: stub('payment-terms'),
   ExporterDetailPage: stub('company'),
   ExportersListPage: stub('companies'),
   FollowUpsPage: stub('follow-ups'),
@@ -103,6 +104,7 @@ const SCREENS: [string, string, UserRole[]][] = [
   ['/settings', 'settings', ROLES],
   ['/settings/qualification-criteria', 'criteria', ADMIN],
   ['/settings/deal-required-documents', 'required-documents', ADMIN],
+  ['/settings/payment-terms', 'payment-terms', ADMIN],
 ];
 
 /** [page, who may open it, where it goes, in the side navigation?] — §7.3, §7.5. The
@@ -120,6 +122,7 @@ const NAV: [string, UserRole[], string, boolean][] = [
   ['Settings', READERS, 'settings', true],
   ['Qualification criteria', ADMIN, 'criteria', false],
   ['Required documents', ADMIN, 'required-documents', false],
+  ['Payment terms', ADMIN, 'payment-terms', false],
 ];
 /** The invented names of the October redesign, which must never come back (§18.1). */
 const RETIRED_ROWS = ['Desk', 'Agenda', 'Review', 'Board', 'Ledger'];

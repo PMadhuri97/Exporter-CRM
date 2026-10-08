@@ -410,6 +410,10 @@ EXPECTED_REFUSALS: dict[str, frozenset[UserRole]] = {
     # A document's content is a saved copy: `documents:download` (COMPLIANCE). Everyone
     # else reads the document on screen through `/documents/{id}/preview`.
     f"{BASE}/documents/content": BOTH,
+    # The bank-account queue is for those who propose or approve accounts, and the
+    # possible group members name beneficial owners: neither is DEVELOPER's.
+    f"{BASE}/bank-accounts/pending": frozenset({DEV}),
+    f"{BASE}/exporters/{{company_id}}/group/suggestions": frozenset({DEV}),
     # Who is working on what. The review worklists are compliance's; the information
     # requests, badge counts, recent decisions and the staff picker are every staff
     # user's — and none of them DEVELOPER's.

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 
 from pydantic import (
@@ -24,6 +24,7 @@ from pydantic import (
     Field,
     StringConstraints,
     ValidationInfo,
+    computed_field,
     field_validator,
 )
 
@@ -35,11 +36,13 @@ from app.modules.onboarding.api.schemas.masking import (
 )
 from app.modules.onboarding.domain.engagement_views import ConversationView
 from app.modules.onboarding.domain.entities.engagement_enums import (
+    ContactStatus,
     ExporterActivityType,
     ExporterConversation,
 )
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
 from app.platform.authentication.models import User
+from app.platform.configuration.config import settings
 
 #: A contact's name, trimmed before it is measured: "   " is not a name, and without the
 #: trim it would pass ``min_length=1`` and save a contact nobody can find or act on.
@@ -104,6 +107,15 @@ class UpdateExporterContactRequest(BaseModel):
         return {name: getattr(self, name) for name in self.model_fields_set}
 
 
+class SetContactStatusRequest(BaseModel):
+    """Move a contact to a status. Leaving ACTIVE needs a reason, which is kept."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: ContactStatus
+    reason: str | None = Field(default=None, max_length=2000)
+
+
 class ExporterContactResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -115,6 +127,27 @@ class ExporterContactResponse(BaseModel):
     phone: str | None
     department: str | None
     is_primary_contact: bool
+    #: ACTIVE, INACTIVE or LEFT_COMPANY, with when and why it last changed.
+    status: ContactStatus = ContactStatus.ACTIVE
+    status_changed_at: datetime | None = None
+    status_reason: str | None = None
+    #: When someone last confirmed these details, and who (a user id).
+    last_verified_at: datetime | None = None
+    last_verified_by: str | None = None
+    created_at: datetime | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def verification_due(self) -> bool:
+        """An active contact whose details were last verified — or, never verified, were
+        added — more than ``CRM_CONTACT_REVERIFY_MONTHS`` ago. Computed on read."""
+        if self.status is not ContactStatus.ACTIVE:
+            return False
+        since = self.last_verified_at or self.created_at
+        if since is None:
+            return False
+        months = settings.CRM_CONTACT_REVERIFY_MONTHS
+        return datetime.now(UTC) - since > timedelta(days=round(months * 30.44))
 
     def masked(self) -> ExporterContactResponse:
         return self.model_copy(

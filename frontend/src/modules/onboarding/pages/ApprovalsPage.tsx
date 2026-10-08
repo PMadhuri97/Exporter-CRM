@@ -11,6 +11,8 @@
  *   review, not a company they are RM of, and a high-risk Clear only for a senior
  *   approver (`/background-check/proposals?status=open&awaiting=me`);
  * - **Re-KYC due**;
+ * - **Bank details** — bank accounts waiting for approval or verification, for holders
+ *   of `exporters:approve_bank_accounts`; the right side is the company's bank accounts;
  * - **Team**, for ADMIN and holders of `compliance:assign` only: everyone's reviews,
  *   the overdue and what needs attention, as a filter within the tab.
  *
@@ -37,8 +39,11 @@ import { proposedMoveLabel } from '../components/background-check-labels';
 import { RiskChip } from '../components/RiskChip';
 import { STAGE_LABEL, waitedFor } from '../components/work-item-labels';
 import { DueChip, WorkItemChips } from '../components/WorkItemChips';
+import { BANK_STATUS_LABEL } from '../components/bank-account-labels';
+import { BankAccountsSection } from '../components/BankAccountsSection';
 import {
   useComplianceWork,
+  usePendingBankAccounts,
   useProposalsAwaitingMe,
   useReKycDue,
 } from '../hooks';
@@ -51,7 +56,7 @@ const BackgroundCheckPanel = lazy(() =>
 
 const QUEUE_LIMIT = 50;
 
-type Tab = 'awaiting' | 'mine' | 'approve' | 'rekyc' | 'team';
+type Tab = 'awaiting' | 'mine' | 'approve' | 'rekyc' | 'bank' | 'team';
 type TeamView = 'in_review' | 'overdue' | 'needs_attention';
 
 const TAB_LABEL: Record<Tab, string> = {
@@ -59,6 +64,7 @@ const TAB_LABEL: Record<Tab, string> = {
   mine: 'My reviews',
   approve: 'To approve',
   rekyc: 'Re-KYC due',
+  bank: 'Bank details',
   team: 'Team',
 };
 
@@ -73,6 +79,7 @@ const EMPTY: Record<Tab, string> = {
   mine: 'You hold no reviews. Take one from Awaiting review.',
   approve: 'Nothing is waiting for your signature.',
   rekyc: 'No Clear is due for Re-KYC.',
+  bank: 'No bank account is waiting for approval or verification.',
   team: 'Nothing here.',
 };
 
@@ -125,8 +132,16 @@ function ListRow({ row, selected, onSelect }: { row: Row; selected: boolean; onS
 
 export function ApprovalsPage() {
   const lead = useHasPermission('compliance:assign');
+  const approvesBank = useHasPermission('exporters:approve_bank_accounts');
   const [params, setParams] = useSearchParams();
-  const tabs: Tab[] = ['awaiting', 'mine', 'approve', 'rekyc', ...(lead ? (['team'] as Tab[]) : [])];
+  const tabs: Tab[] = [
+    'awaiting',
+    'mine',
+    'approve',
+    'rekyc',
+    ...(approvesBank ? (['bank'] as Tab[]) : []),
+    ...(lead ? (['team'] as Tab[]) : []),
+  ];
   const requested = params.get('tab') as Tab | null;
   const tab: Tab = requested && tabs.includes(requested) ? requested : 'awaiting';
   const teamRequested = params.get('team') as TeamView | null;
@@ -139,6 +154,7 @@ export function ApprovalsPage() {
   const team = useComplianceWork(teamView, lead);
   const proposals = useProposalsAwaitingMe({ limit: QUEUE_LIMIT, enabled: true });
   const due = useReKycDue({ limit: QUEUE_LIMIT, enabled: true });
+  const bank = usePendingBankAccounts(approvesBank);
 
   const update = (changes: Record<string, string | null>) =>
     setParams(
@@ -179,6 +195,19 @@ export function ApprovalsPage() {
           companyName: row.company_name ?? 'Unnamed company',
           detail: `${row.is_expired ? 'Clear expired' : 'Clear expires'} ${formatDate(row.expires_at)}`,
         }));
+      case 'bank': {
+        // One row per company, however many of its accounts are waiting.
+        const byCompany = new Map<string, Row>();
+        for (const account of bank.data?.accounts ?? []) {
+          if (byCompany.has(account.customer_id)) continue;
+          byCompany.set(account.customer_id, {
+            companyId: account.customer_id,
+            companyName: account.company_name ?? 'Unnamed company',
+            detail: `${BANK_STATUS_LABEL[account.status]} · ${account.bank_name} ${account.currency}${account.proposed_by_name ? ` · by ${account.proposed_by_name}` : ''}`,
+          });
+        }
+        return [...byCompany.values()];
+      }
     }
   };
 
@@ -188,12 +217,14 @@ export function ApprovalsPage() {
     team,
     approve: proposals,
     rekyc: due,
+    bank,
   };
   const countFor: Record<Tab, number | undefined> = {
     awaiting: awaiting.data?.total,
     mine: mine.data?.total,
     approve: proposals.data?.total,
     rekyc: due.data?.total,
+    bank: bank.data?.accounts.length,
     team: undefined,
   };
 
@@ -289,9 +320,13 @@ export function ApprovalsPage() {
                   Open company
                 </Link>
               </div>
-              <Suspense fallback={<Skeleton className="h-60 rounded" />}>
-                <BackgroundCheckPanel key={chosenId} customerId={chosenId} isStaff />
-              </Suspense>
+              {tab === 'bank' ? (
+                <BankAccountsSection key={chosenId} customerId={chosenId} />
+              ) : (
+                <Suspense fallback={<Skeleton className="h-60 rounded" />}>
+                  <BackgroundCheckPanel key={chosenId} customerId={chosenId} isStaff />
+                </Suspense>
+              )}
             </>
           ) : (
             !query.isLoading && (

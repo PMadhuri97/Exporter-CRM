@@ -10,7 +10,9 @@ import { apiRequest } from '@/lib/api/client';
 
 import type {
   AddGstRegistrationRequest,
+  AssignCollectionsOwnerRequest,
   AssignRelationshipManagerRequest,
+  BulkCollectorReassignRequest,
   BulkReassignRequest,
   BulkReassignResult,
   PickableRole,
@@ -49,8 +51,10 @@ function buildQuery(params: ExporterSearchParams): string {
     ['qualification', params.qualification],
     ['marker', params.marker],
     ['relationship_manager', params.relationship_manager],
+    ['collections_owner', params.collections_owner],
   ];
   for (const [key, value] of entries) if (value) query.set(key, value);
+  if (params.missing_primary_contact) query.set('missing_primary_contact', 'true');
   query.set('limit', String(params.limit ?? 100));
   query.set('offset', String(params.offset ?? 0));
   return query.toString();
@@ -143,6 +147,27 @@ export function assignRelationshipManager(
 
 /** Move one RM's companies to another — all, a chosen list, or one journey stage.
  * `dry_run` reports what would move and writes nothing. ADMIN or exporters:assign_rm. */
+/** Set, change or clear who chases a company's payments. */
+export function assignCollectionsOwner(
+  customerId: string,
+  body: AssignCollectionsOwnerRequest,
+): Promise<ExporterProfileDetail> {
+  return apiRequest<ExporterProfileDetail>(`/onboarding/exporters/${customerId}/collections-owner`, {
+    method: 'POST',
+    body,
+  });
+}
+
+/** Move one collections owner's companies to another; `dry_run` reports only. */
+export function reassignCollectionsOwners(
+  body: BulkCollectorReassignRequest,
+): Promise<BulkReassignResult> {
+  return apiRequest<BulkReassignResult>('/onboarding/collections-owners/reassign', {
+    method: 'POST',
+    body,
+  });
+}
+
 export function reassignRelationshipManagers(body: BulkReassignRequest): Promise<BulkReassignResult> {
   return apiRequest<BulkReassignResult>('/onboarding/relationship-managers/reassign', {
     method: 'POST',

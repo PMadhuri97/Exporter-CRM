@@ -106,6 +106,32 @@ async def make_prospect(customer_id: uuid.UUID | None = None) -> uuid.UUID:
     return customer_id
 
 
+async def ensure_primary_contact(customer_id: uuid.UUID) -> None:
+    """Give a company an active primary contact if it has none (scaffolding, no history
+    row). A deal is handed over only when its seller has one, and a test about something
+    else should not have to add it."""
+    from sqlalchemy import exists, select
+
+    from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
+
+    async with db_services.AsyncSessionLocal() as db:
+        has_one = await db.scalar(
+            select(
+                exists().where(
+                    ExporterContact.customer_id == customer_id,
+                    ExporterContact.is_primary_contact.is_(True),
+                )
+            )
+        )
+        if not has_one:
+            db.add(
+                ExporterContact(
+                    customer_id=customer_id, name="Fixture Contact", is_primary_contact=True
+                )
+            )
+            await db.commit()
+
+
 def insert_company(cursor, customer_id: uuid.UUID | None = None) -> uuid.UUID:
     """Insert a bare company with raw SQL, for tests that bypass the ORM."""
     customer_id = customer_id or uuid.uuid4()

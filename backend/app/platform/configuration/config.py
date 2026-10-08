@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     # Without it such a document shows "Preview unavailable"; nothing else changes.
     CRM_DOCUMENT_CONVERTER: str = "soffice"
     CRM_DOCUMENT_CONVERTER_TIMEOUT_SECONDS: int = 60
+    # How long a contact's details stay "verified" before the screen asks for a re-check.
+    CRM_CONTACT_REVERIFY_MONTHS: int = 12
+    # Who may approve a bank-account proposal: OFF (none needed), SECOND_PERSON
+    # (anyone who manages bank accounts but the proposer), PERMISSION_HOLDER (a holder
+    # of exporters:approve_bank_accounts) or BOTH (a holder who is not the proposer).
+    # OFF is accepted only where ENVIRONMENT is local or test.
+    CRM_BANK_CHANGE_APPROVAL_MODE: str = "SECOND_PERSON"
+
+    # ── Field encryption ─────────────────────────────────────────────────────
+    # `<key id>:<base64 of 32 bytes>`, comma-separated; the first encrypts, all
+    # decrypt (`platform/security/field_cipher.py`). Required outside local and test,
+    # where bank account numbers cannot be stored without it.
+    FIELD_ENCRYPTION_KEYS: str = ""
 
     # ── Database ─────────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql+asyncpg://aner:aner@localhost:5432/aner_settlement"

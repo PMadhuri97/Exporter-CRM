@@ -194,6 +194,20 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # Recording and deactivating a branch is a record a relationship manager keeps.
     ("POST", f"{CRM}/exporters/{{customer_id}}/gst-registrations"): CRM_WRITERS,
     ("POST", f"{CRM}/gst-registrations/{{registration_id}}/deactivate"): CRM_WRITERS,
+    ("GET", f"{CRM}/exporters/{{customer_id}}/addresses"): READERS,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/addresses"): CRM_WRITERS,
+    ("PATCH", f"{CRM}/addresses/{{address_id}}"): CRM_WRITERS,
+    ("POST", f"{CRM}/addresses/{{address_id}}/default"): CRM_WRITERS,
+    ("POST", f"{CRM}/addresses/{{address_id}}/deactivate"): CRM_WRITERS,
+    ("GET", f"{CRM}/exporters/{{customer_id}}/bank-accounts"): READERS,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/bank-accounts"): CRM_WRITERS,
+    ("GET", f"{CRM}/bank-accounts/pending"): CRM_WRITERS,
+    ("POST", f"{CRM}/bank-accounts/{{account_id}}/approve"): CRM_WRITERS,
+    ("POST", f"{CRM}/bank-accounts/{{account_id}}/reject"): COMPLIANCE_ONLY,
+    ("POST", f"{CRM}/bank-accounts/{{account_id}}/verify"): COMPLIANCE_ONLY,
+    ("POST", f"{CRM}/bank-accounts/{{account_id}}/primary"): COMPLIANCE_ONLY,
+    ("POST", f"{CRM}/bank-accounts/{{account_id}}/deactivate"): COMPLIANCE_ONLY,
+    ("POST", f"{CRM}/bank-accounts/{{account_id}}/reveal"): COMPLIANCE_ONLY,
     # Flagging one stops handovers for every deal invoiced through it, so it is a
     # compliance decision and not a sales one — the one place in these routes where
     # OPERATIONS is refused.
@@ -221,6 +235,8 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("POST", f"{CRM}/imports/companies/preview"): CRM_WRITERS,
     ("POST", f"{CRM}/exporters/{{customer_id}}/contacts"): CRM_WRITERS,
     ("PATCH", f"{CRM}/exporters/{{customer_id}}/contacts/{{contact_id}}"): CRM_WRITERS,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/contacts/{{contact_id}}/status"): CRM_WRITERS,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/contacts/{{contact_id}}/verification"): CRM_WRITERS,
     ("GET", f"{CRM}/exporters/{{customer_id}}/contacts"): READERS,
     ("POST", f"{CRM}/exporters/{{customer_id}}/activities"): CRM_WRITERS,
     ("GET", f"{CRM}/exporters/{{customer_id}}/activities"): READERS,
@@ -294,6 +310,11 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     # change it, because changing it changes which deals can be handed over.
     ("GET", f"{CRM}/settings/deal-required-documents"): READERS,
     ("POST", f"{CRM}/settings/deal-required-documents"): ADMIN_ONLY,
+    ("GET", f"{CRM}/settings/payment-terms"): READERS,
+    ("POST", f"{CRM}/settings/payment-terms"): ADMIN_ONLY,
+    ("PATCH", f"{CRM}/settings/payment-terms/{{code}}"): ADMIN_ONLY,
+    ("PATCH", f"{CRM}/deals/{{deal_id}}/terms"): CRM_WRITERS,
+    ("PUT", f"{CRM}/exporters/{{company_id}}/default-payment-term"): CRM_WRITERS,
     #
     # Documents. Uploading is a staff write; reading, the catalogue and
     # minting a download link are reader routes. `GET /documents/content` is a
@@ -366,6 +387,11 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("POST", f"{CRM}/exporters/{{customer_id}}/relationship-manager"): CRM_WRITERS,
     ("GET", f"{CRM}/staff"): CRM_WRITERS,
     ("POST", f"{CRM}/relationship-managers/reassign"): LEADS_ONLY,
+    ("POST", f"{CRM}/exporters/{{customer_id}}/collections-owner"): COMPLIANCE_ONLY,
+    ("POST", f"{CRM}/collections-owners/reassign"): COMPLIANCE_ONLY,
+    ("GET", f"{CRM}/exporters/{{company_id}}/group"): READERS,
+    ("PUT", f"{CRM}/exporters/{{company_id}}/parent"): CRM_WRITERS,
+    ("GET", f"{CRM}/exporters/{{company_id}}/group/suggestions"): CRM_STAFF_READERS,
     # Reviews are claimed, assigned and released by compliance and admin (assigning
     # needs ADMIN or compliance:assign, checked in the service).
     ("POST", f"{CRM}/exporters/{{company_id}}/background-check/reviewer/claim"): COMPLIANCE_ONLY,

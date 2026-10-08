@@ -283,6 +283,7 @@ describe('SettingsPage — sections follow permissions, not role names', () => {
     expect(within(system).getAllByRole('link').map((link) => link.textContent)).toEqual([
       'Qualification criteria',
       'Required documents',
+      'Payment terms',
     ]);
     expect(within(sections).getByRole('separator')).toBeInTheDocument();
   });

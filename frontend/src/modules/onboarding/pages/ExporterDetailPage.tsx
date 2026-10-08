@@ -24,6 +24,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import {
+  Badge,
   ErrorState,
   Path,
   RecordHeader,
@@ -43,6 +44,11 @@ import { useCurrentUser } from '@/platform/auth';
 import { rememberCompany } from '@/platform/shell';
 
 import {
+  AddressesSection,
+  BankAccountsSection,
+  CollectionsOwnerSection,
+  CompanyGroupPanel,
+  DefaultPaymentTermSection,
   CompanyRelatedCards,
   CompanyHistory,
   GstRegistrationsSection,
@@ -93,6 +99,7 @@ const TAB_LABEL: Record<CompanyTab, string> = {
   deals: 'Deals',
   documents: 'Documents',
   'background-check': 'Background check',
+  group: 'Group',
   history: 'History',
 };
 
@@ -183,6 +190,11 @@ export function ExporterDetailPage() {
   // The detail response embeds contacts, so the page shows those until the
   // dedicated contacts query resolves — no empty flash on first paint.
   const contacts = contactQuery.data?.contacts ?? profile.contacts;
+  // A prospect or customer needs someone to reach: a deal is not handed over without
+  // an active primary contact, so the header says so before the handover does.
+  const missingPrimaryContact =
+    (profile.journey === 'PROSPECT' || profile.journey === 'CUSTOMER') &&
+    !contacts.some((contact) => contact.is_primary_contact && contact.status === 'ACTIVE');
   const activities = activityQuery.data?.activities ?? [];
   const hasNextActivityPage = activities.length === ACTIVITY_PAGE_SIZE;
   const dealCount = dealsQuery.data?.total;
@@ -276,7 +288,16 @@ export function ExporterDetailPage() {
         breadcrumbs={[{ label: 'Companies', to: paths.companies }, { label: displayName(profile) }]}
         objectType="Company"
         title={displayName(profile)}
-        titleBadges={<MarkerBadge marker={profile.marker} reason={profile.marker_reason} />}
+        titleBadges={
+          <>
+            <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />
+            {missingPrimaryContact && (
+              <Badge tone="attention" title="Add an active primary contact before handing over a deal">
+                No primary contact
+              </Badge>
+            )}
+          </>
+        }
         meta={
           <>
             {facts.join(' · ') || `Added ${formatDate(profile.date_added)}`}
@@ -336,6 +357,19 @@ export function ExporterDetailPage() {
               {/* The company's branches. Flagging one is COMPLIANCE's
                   decision, so it is gated separately from editing. */}
               <GstRegistrationsSection customerId={customerId} canEdit={isStaff} canFlag={canFlagBranches} />
+              <AddressesSection customerId={customerId} canEdit={isStaff} />
+              <DefaultPaymentTermSection
+                customerId={customerId}
+                defaultPaymentTermId={profile.default_payment_term_id}
+                canEdit={isStaff}
+              />
+              <CollectionsOwnerSection
+                key={profile.collections_owner_user_id ?? 'none'}
+                customerId={customerId}
+                ownerId={profile.collections_owner_user_id}
+                ownerName={profile.collections_owner_name}
+              />
+              <BankAccountsSection customerId={customerId} />
             </div>
           </TabsContent>
           <TabsContent value="qualification">
@@ -385,6 +419,15 @@ export function ExporterDetailPage() {
             <Suspense fallback={<Skeleton className="h-40 rounded" />}>
               <BackgroundCheckPanel customerId={customerId} isStaff={isStaff} />
             </Suspense>
+          </TabsContent>
+          <TabsContent value="group">
+            {tab === 'group' && (
+              <CompanyGroupPanel
+                customerId={customerId}
+                canEdit={isStaff}
+                canSeeSuggestions={canReadCompliance && isStaff}
+              />
+            )}
           </TabsContent>
           <TabsContent value="history">
             <CompanyHistory customerId={customerId} />

@@ -16,12 +16,17 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.schemas.exporter import (
+    BulkCollectorReassignRequest,
+    BulkCollectorReassignResponse,
     BulkReassignRequest,
     BulkReassignResponse,
     StaffListResponse,
     StaffMemberResponse,
 )
 from app.modules.onboarding.application import ExporterProfileService
+from app.modules.onboarding.application.collections_owner_service import (
+    CollectionsOwnerService,
+)
 from app.modules.onboarding.domain.assignment import Permission
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.platform.authentication import active_staff
@@ -32,6 +37,7 @@ from app.platform.database.services import get_db
 router = APIRouter(tags=["Exporter CRM"])
 
 _ASSIGN_RM = require_permission("exporters", "assign_rm")
+_ASSIGN_COLLECTOR = require_permission("exporters", "assign_collector")
 _COMPANY_EDIT = require_permission("exporters", "edit")
 
 _PERMISSIONS = Annotated[frozenset[Permission], Depends(get_current_permissions)]
@@ -140,6 +146,48 @@ async def reassign_relationship_managers(
         actor_permissions=permissions,
     )
     return BulkReassignResponse(
+        bulk_run_id=result.run_id,
+        dry_run=result.dry_run,
+        matched=len(result.matched),
+        moved=len(result.moved),
+        skipped=len(result.skipped),
+        company_ids=list(result.matched if result.dry_run else result.moved),
+        skipped_company_ids=list(result.skipped),
+    )
+
+
+@router.post(
+    "/collections-owners/reassign",
+    response_model=BulkCollectorReassignResponse,
+    summary="Move one collections owner's companies to another",
+    description=(
+        "All of `from_user_id`'s companies, or those in `company_ids`, to `to_user_id`. "
+        "Needs `exporters:assign_collector` and a reason. A company whose owner "
+        "changed meanwhile is skipped. One history row per company, sharing "
+        "`bulk_run_id`; `dry_run` writes nothing."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`exporters:assign_collector` permission required"},
+        422: {"description": "Not an active staff user, no reason, or the same owner twice"},
+    },
+)
+async def reassign_collections_owners(
+    body: BulkCollectorReassignRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(_ASSIGN_COLLECTOR)],
+    permissions: _PERMISSIONS,
+) -> BulkCollectorReassignResponse:
+    result = await CollectionsOwnerService(db).reassign(
+        from_user_id=body.from_user_id,
+        to_user_id=body.to_user_id,
+        company_ids=body.company_ids,
+        reason=body.reason,
+        dry_run=body.dry_run,
+        actor_id=str(current_user.id),
+        actor_permissions=permissions,
+    )
+    return BulkCollectorReassignResponse(
         bulk_run_id=result.run_id,
         dry_run=result.dry_run,
         matched=len(result.matched),

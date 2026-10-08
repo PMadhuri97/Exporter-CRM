@@ -294,6 +294,41 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
   trail. (Say it: nothing in a browser stops a screenshot; the watermark makes one
   traceable.)
 
+### 5.1 Contacts and customer details
+
+- **The handover needs someone to reach.** A prospect or customer with no active
+  primary contact shows **No primary contact** in its header and on the Companies list
+  (filter *Contacts* → *No primary contact*), and its deals list "the company has no
+  active primary contact" under *Handover readiness* until one is added. In the main
+  path, add a primary contact (*Contacts* → **Add**, *Make this the primary contact*)
+  any time before step 12, or the handover is refused.
+- **A contact who left** (company → *Contacts* → edit → *Status: Left company* with a
+  reason): the contact drops out of the card behind *Show inactive*, stops being
+  primary, and the change is in *History*. **Mark verified** stamps today's date;
+  after a year the contact shows **Verification due**.
+- **Addresses** (*Details* → *Addresses*): add a registered and a shipping address; the
+  first of each type is its default. A foreign buyer with no GSTIN can hold one. A GST
+  branch with a portal address offers **Create address**. The registered address shows
+  beside "Is the registered address a physical business address?" on the background
+  check, with **Changed since last Clear** if it was edited after the Clear.
+- **Bank accounts** (*Details* → *Bank accounts*): as OPERATIONS, **Propose account**
+  (an EEFC account in USD) → *Pending approval*, number shown as `••••5678`. A second
+  RM or COMPLIANCE **Approve**s it (the proposer is never offered it) → *Pending
+  verification*. COMPLIANCE uploads the cancelled cheque on *Documents*, then
+  **Verify** → *Verified* and *Primary*. Only COMPLIANCE sees **Reveal**, and every
+  reveal is in the audit trail. COMPLIANCE also sees a **Bank details** tab on
+  *Compliance work*.
+- **Payment terms** (ADMIN: *Settings* → *Payment terms*): eleven common terms are
+  seeded. On a customer's *Details*, set the default to *DA 90 days*; a new deal shows
+  it under *Value and terms*. Choosing *LC at sight* there asks why, and the reason is
+  on the deal and in its history. The *Deals* list shows each deal's value.
+- **Collections owner** (COMPLIANCE or a lead: *Details* → *Collections*): name anyone
+  on the staff; *Companies* → *Collections: My collections* lists that person's
+  companies, and **Reassign collections** moves a whole book at once.
+- **Groups** (company → *Group* tab): **Set parent** → choose the parent and the
+  relationship. The tree shows every member's stage, check, risk and open deals.
+  Linking the parent under its own subsidiary is refused with a message.
+
 ## 6. Say this plainly during the demo
 
 Everything below is labelled on screen or in the data; say it anyway.

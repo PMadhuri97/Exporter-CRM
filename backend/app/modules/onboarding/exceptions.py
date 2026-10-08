@@ -453,6 +453,21 @@ class ExporterContactNotFoundError(AnerBaseException):
         )
 
 
+class ContactNotActiveError(AnerBaseException):
+    """Only an ACTIVE contact may be the primary contact (409)."""
+
+    def __init__(self, contact_id: object, status: object) -> None:
+        super().__init__(
+            detail=(
+                f"Contact {contact_id} is {status}; only an active contact can be the "
+                "primary contact"
+            ),
+            error_code="CONTACT_NOT_ACTIVE",
+            status_code=409,
+            extensions={"status": str(status)},
+        )
+
+
 class ExporterContactPrimaryConflictError(AnerBaseException):
     """Two writes made two different contacts primary for one company at once.
 
@@ -1918,6 +1933,63 @@ class DealBuyerIsTheSellerError(AnerBaseException):
         )
 
 
+class PaymentTermNotFoundError(AnerBaseException):
+    """No payment term with this id or code (404)."""
+
+    def __init__(self, term: object) -> None:
+        super().__init__(
+            detail=f"Payment term {term} was not found",
+            error_code="PAYMENT_TERM_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class BankAccountNotFoundError(AnerBaseException):
+    """No bank account with this id (404)."""
+
+    def __init__(self, account_id: object) -> None:
+        super().__init__(
+            detail=f"Bank account {account_id} was not found",
+            error_code="BANK_ACCOUNT_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class BankAccountWrongStatusError(AnerBaseException):
+    """The bank account is not in a state that allows this (409)."""
+
+    def __init__(self, account_id: object, status: str, action: str) -> None:
+        words = status.replace("_", " ").lower()
+        super().__init__(
+            detail=f"A bank account that is {words} cannot be {action}",
+            error_code="BANK_ACCOUNT_WRONG_STATUS",
+            status_code=409,
+            extensions={"status": status},
+        )
+
+
+class BankAccountApprovalRefusedError(AnerBaseException):
+    """This person may not approve this proposal under the approval mode (403)."""
+
+    def __init__(self, why: str) -> None:
+        super().__init__(
+            detail=f"You cannot approve this bank account: {why}",
+            error_code="BANK_ACCOUNT_APPROVAL_REFUSED",
+            status_code=403,
+        )
+
+
+class CompanyAddressNotFoundError(AnerBaseException):
+    """No company address with this id (404)."""
+
+    def __init__(self, address_id: object) -> None:
+        super().__init__(
+            detail=f"Address {address_id} was not found",
+            error_code="COMPANY_ADDRESS_NOT_FOUND",
+            status_code=404,
+        )
+
+
 class GstRegistrationNotFoundError(AnerBaseException):
     """No GST registration with this id.
 
@@ -2254,6 +2326,35 @@ class RelationshipManagerReasonRequiredError(AnerBaseException):
             detail="Changing or clearing a relationship manager needs a reason",
             error_code="RELATIONSHIP_MANAGER_REASON_REQUIRED",
             status_code=422,
+        )
+
+
+class CollectionsOwnerChangedError(AnerBaseException):
+    """The collections owner the caller saw is no longer the owner (409)."""
+
+    def __init__(self, company_id: object, seen: object, current: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {company_id}'s collections owner changed since you loaded it. "
+                "Reload it and try again"
+            ),
+            error_code="COLLECTIONS_OWNER_CHANGED",
+            status_code=409,
+            extensions={
+                "seen_user_id": str(seen) if seen else None,
+                "current_user_id": str(current) if current else None,
+            },
+        )
+
+
+class CollectionsOwnerAssignNotAllowedError(AnerBaseException):
+    """Naming a collections owner needs exporters:assign_collector (403)."""
+
+    def __init__(self, company_id: object) -> None:
+        super().__init__(
+            detail=f"You cannot change the collections owner of company {company_id}",
+            error_code="COLLECTIONS_OWNER_ASSIGN_NOT_ALLOWED",
+            status_code=403,
         )
 
 

@@ -23,6 +23,10 @@
  */
 
 export * from './profile';
+export * from './addresses';
+export * from './bank-accounts';
+export * from './payment-terms';
+export * from './groups';
 export * from './finder';
 export * from './qualification';
 export * from './intake';

@@ -13,6 +13,17 @@
 > are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
 > and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
 
+> **Amendment, 9 October 2026 — value, terms and a primary contact.** A deal has
+> `value_amount`, `currency` (ISO 4217), `payment_term` (the version agreed) and
+> `payment_term_override_reason`; the response also carries
+> `company_default_payment_term`. A new deal takes the current version of its company's
+> default term; `PATCH /deals/{id}/terms` (`deals:edit`) changes value, currency or term
+> while the deal is open, and a term other than the default needs a reason (history:
+> `deal_terms_changed`). A closed deal's terms are frozen by
+> `prevent_terminal_deal_change()`, and the handover snapshot gains `terms` (absent on a
+> snapshot backfilled before terms existed). The handover guard gains a condition after
+> the background check: *the company has no active primary contact*.
+
 **Owner:** Developer 2 (post-demo allocation; Developer 3B before it) · **Tables:**
 `onboarding.deal`, `onboarding.deal_buyer`, `onboarding.deal_required_document` ·
 **Migrations:** `onboarding_0018_deal_buyer`, `onboarding_0028_deal_foundation`,

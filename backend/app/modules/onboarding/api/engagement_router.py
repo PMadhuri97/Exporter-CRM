@@ -38,6 +38,7 @@ from app.modules.onboarding.api.schemas.engagement import (
     LogExporterActivityRequest,
     PendingActivityListResponse,
     PendingActivityResponse,
+    SetContactStatusRequest,
     SetConversationRequest,
     UpdateExporterContactRequest,
 )
@@ -152,6 +153,66 @@ async def update_exporter_contact(
         )
     contact = await ExporterContactActivityService(db).update_contact(
         customer_id, contact_id, changes=changes
+    )
+    return ExporterContactResponse.model_validate(contact).masked_for(current_user)
+
+
+@router.post(
+    "/{customer_id}/contacts/{contact_id}/status",
+    response_model=ExporterContactResponse,
+    summary="Mark a contact active, inactive or as having left the company",
+    description=(
+        "Leaving ACTIVE needs a `reason`, which is kept with the contact and on its "
+        "`contact` history row. A contact that is no longer active stops being the "
+        "primary contact (only an active contact can be the person to reach)."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`exporters:edit` permission required"},
+        404: {"description": "No such company, or no such contact on it"},
+        422: {"description": "No reason given for leaving ACTIVE"},
+    },
+)
+async def set_exporter_contact_status(
+    customer_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    body: SetContactStatusRequest,
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
+    db: AsyncSession = Depends(get_db),
+) -> ExporterContactResponse:
+    contact = await ExporterContactActivityService(db).set_contact_status(
+        customer_id,
+        contact_id,
+        status=body.status,
+        reason=body.reason,
+        actor_id=str(current_user.id),
+    )
+    return ExporterContactResponse.model_validate(contact).masked_for(current_user)
+
+
+@router.post(
+    "/{customer_id}/contacts/{contact_id}/verification",
+    response_model=ExporterContactResponse,
+    summary="Record that a contact's details were checked and are right",
+    description=(
+        "Stamps `last_verified_at` and `last_verified_by` (the signed-in user) and "
+        "writes a `contact` history row. A contact is `verification_due` again once "
+        "`CRM_CONTACT_REVERIFY_MONTHS` (default 12) have passed."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`exporters:edit` permission required"},
+        404: {"description": "No such company, or no such contact on it"},
+    },
+)
+async def verify_exporter_contact(
+    customer_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
+    db: AsyncSession = Depends(get_db),
+) -> ExporterContactResponse:
+    contact = await ExporterContactActivityService(db).mark_contact_verified(
+        customer_id, contact_id, actor_id=str(current_user.id)
     )
     return ExporterContactResponse.model_validate(contact).masked_for(current_user)
 

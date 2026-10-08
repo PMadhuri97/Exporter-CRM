@@ -9,8 +9,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  assignCollectionsOwner,
   assignRelationshipManager,
   listStaff,
+  reassignCollectionsOwners,
   reassignRelationshipManagers,
   addGstRegistration,
   deactivateGstRegistration,
@@ -26,7 +28,9 @@ import {
   updateExporterProfile,
 } from '../api';
 import type {
+  AssignCollectionsOwnerRequest,
   AssignRelationshipManagerRequest,
+  BulkCollectorReassignRequest,
   BulkReassignRequest,
   PickableRole,
   AddGstRegistrationRequest,
@@ -162,6 +166,30 @@ export function useAssignRelationshipManager(customerId: string) {
       void queryClient.invalidateQueries({ queryKey: ['worklist'] });
     },
     onError: () => invalidateCompany(queryClient, customerId),
+  });
+}
+
+export function useAssignCollectionsOwner(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AssignCollectionsOwnerRequest) => assignCollectionsOwner(customerId, body),
+    onSuccess: (detail) => {
+      queryClient.setQueryData(['exporterProfile', customerId], detail);
+      void queryClient.invalidateQueries({ queryKey: ['exporterProfiles'] });
+      void queryClient.invalidateQueries({ queryKey: ['companyHistory', customerId] });
+    },
+  });
+}
+
+export function useReassignCollectionsOwners() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BulkCollectorReassignRequest) => reassignCollectionsOwners(body),
+    onSuccess: (result) => {
+      if (result.dry_run) return;
+      void queryClient.invalidateQueries({ queryKey: ['exporterProfiles'] });
+      void queryClient.invalidateQueries({ queryKey: ['exporterProfile'] });
+    },
   });
 }
 

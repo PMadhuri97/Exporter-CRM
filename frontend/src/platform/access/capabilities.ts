@@ -85,7 +85,9 @@ export type Capability =
   /** The qualification-criteria screen (an editing screen). ADMIN. */
   | 'settings.criteria'
   /** The deal-required-documents screen (an editing screen). ADMIN. */
-  | 'settings.requiredDocuments';
+  | 'settings.requiredDocuments'
+  /** The payment-terms screen (an editing screen). ADMIN. */
+  | 'settings.paymentTerms';
 
 const STAFF: readonly Capability[] = [
   'crm.read',
@@ -111,7 +113,13 @@ const ROLE_CAPABILITIES: Readonly<Record<UserRole, readonly Capability[]>> = {
   COMPLIANCE,
   // Runs the system: settings, and reading the business (companies, deals, a company's
   // background check) to help people with it. Writes, decides and reveals nothing.
-  ADMIN: ['crm.read', 'compliance.read', 'settings.criteria', 'settings.requiredDocuments'],
+  ADMIN: [
+    'crm.read',
+    'compliance.read',
+    'settings.criteria',
+    'settings.requiredDocuments',
+    'settings.paymentTerms',
+  ],
   // Reads the CRM, masked, and writes nothing.
   DEVELOPER: ['crm.read'],
   // Nothing in the CRM: the API user is a machine account.

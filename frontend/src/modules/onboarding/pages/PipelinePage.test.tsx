@@ -34,6 +34,7 @@ function company(journey: ExporterJourney, name: string): ExporterProfileListIte
     registration_number: null,
     identity_type: null,
     pipeline_status: 'IN_PIPELINE',
+  has_active_primary_contact: true,
     source: 'MANUAL',
     relationship_manager: null,
     relationship_manager_user_id: null,

@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.exporter import (
+    AssignCollectionsOwnerRequest,
     AssignRelationshipManagerRequest,
     BringIntoPipelineRequest,
     CreateExporterProfileRequest,
@@ -50,6 +51,9 @@ from app.modules.onboarding.api.schemas.exporter import (
 )
 from app.modules.onboarding.api.schemas.masking import can_reveal_identifiers
 from app.modules.onboarding.application import ExporterProfileService
+from app.modules.onboarding.application.collections_owner_service import (
+    CollectionsOwnerService,
+)
 from app.modules.onboarding.domain.assignment import (
     ASSIGN_RM,
     RM_ROLES,
@@ -84,6 +88,7 @@ router = APIRouter(prefix="/exporters", tags=["Exporter CRM"])
 
 _COMPANY_CREATE = require_permission("exporters", "create")
 _COMPANY_EDIT = require_permission("exporters", "edit")
+_ASSIGN_COLLECTOR = require_permission("exporters", "assign_collector")
 _COMPANY_MOVE = require_permission("exporters", "transition")
 _COMPANY_VIEW = require_permission("exporters", "view")
 
@@ -330,7 +335,9 @@ async def update_exporter_profile(
         "which company holds it even when the response body is masked.\n\n"
         "`relationship_manager` narrows the list by owner: `me` (My companies), "
         "`none` (Unassigned), `inactive` (an RM whose account is deactivated) or a "
-        "user id. It is a filter only: ownership never changes what a reader may see."
+        "user id. It is a filter only: ownership never changes what a reader may see.\n\n"
+        "`missing_primary_contact=true` lists only companies with no active primary "
+        "contact (each row carries `has_active_primary_contact`)."
     ),
     responses={
         200: {"model": ExporterProfileSearchResponse},
@@ -357,6 +364,12 @@ async def search_exporter_profiles(
     pipeline_status: CompanyPipelineStatus | None = Query(default=None),
     relationship_manager: str | None = Query(
         default=None, description="`me`, `none`, `inactive` or a user id"
+    ),
+    missing_primary_contact: bool = Query(
+        default=False, description="Only companies with no active primary contact"
+    ),
+    collections_owner: str | None = Query(
+        default=None, description="`me` (My collections), `none` or a user id"
     ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -387,6 +400,9 @@ async def search_exporter_profiles(
         relationship_manager_user_id=rm_user_id,
         relationship_manager_unassigned=rm_filter == "none",
         relationship_manager_inactive=rm_filter == "inactive",
+        missing_primary_contact=missing_primary_contact,
+        collections_owner_user_id=_collector_filter(collections_owner, current_user),
+        collections_owner_unassigned=(collections_owner or "").strip().lower() == "none",
         limit=limit,
         offset=offset,
     )
@@ -534,6 +550,46 @@ async def assign_exporter_relationship_manager(
     return await get_exporter_profile_detail(customer_id, current_user, permissions, db)
 
 
+# ── Collections owner ────────────────────────────────────────────────────
+
+
+@router.post(
+    "/{customer_id}/collections-owner",
+    response_model=ExporterProfileDetailResponse,
+    summary="Set, change or clear who chases a company's payments",
+    description=(
+        "Any active staff user may be named. Needs `exporters:assign_collector`; a "
+        "change or clear of an owner already named needs a reason. `seen_user_id` is "
+        "the owner the screen showed: a different current owner refuses the request "
+        "(409 `COLLECTIONS_OWNER_CHANGED`). Every change is a `collections_owner` "
+        "history row."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`exporters:assign_collector` permission required"},
+        404: {"description": "Exporter profile not found"},
+        409: {"description": "`COLLECTIONS_OWNER_CHANGED` — someone changed it since"},
+        422: {"description": "Not an active staff user, or no reason for a change"},
+    },
+)
+async def assign_exporter_collections_owner(
+    customer_id: uuid.UUID,
+    body: AssignCollectionsOwnerRequest,
+    current_user: Annotated[User, Depends(_ASSIGN_COLLECTOR)],
+    permissions: _PERMISSIONS,
+    db: AsyncSession = Depends(get_db),
+) -> ExporterProfileDetailResponse:
+    await CollectionsOwnerService(db).assign(
+        customer_id,
+        user_id=body.user_id,
+        reason=body.reason,
+        seen_user_id=body.seen_user_id,
+        actor_id=str(current_user.id),
+        actor_permissions=permissions,
+    )
+    return await get_exporter_profile_detail(customer_id, current_user, permissions, db)
+
+
 async def _claim_on_create(
     service: ExporterProfileService,
     profile: ExporterProfile,
@@ -564,8 +620,33 @@ def _rm_actions(
     return ["CHANGE", "CLEAR"] if may_assign else []
 
 
+def _collector_filter(value: str | None, viewer: User) -> uuid.UUID | None:
+    wanted = (value or "").strip().lower()
+    if wanted in ("", "none"):
+        return None
+    if wanted == "me":
+        return viewer.id
+    try:
+        return uuid.UUID(wanted)
+    except ValueError as exc:
+        raise ValidationError("collections_owner must be `me`, `none` or a user id") from exc
+
+
 async def _name_relationship_managers(db: AsyncSession, viewer: User, responses) -> None:
-    """Fill each response's RM name and whether that account is deactivated."""
+    """Fill each response's RM name and whether that account is deactivated, and the
+    collections owner's name."""
+    collectors = [
+        str(r.collections_owner_user_id)
+        for r in responses
+        if getattr(r, "collections_owner_user_id", None) is not None
+    ]
+    if collectors:
+        collector_names = await actor_names(db, viewer, collectors)
+        for response in responses:
+            if response.collections_owner_user_id is not None:
+                response.collections_owner_name = collector_names.get(
+                    str(response.collections_owner_user_id)
+                )
     ids = [
         str(r.relationship_manager_user_id)
         for r in responses

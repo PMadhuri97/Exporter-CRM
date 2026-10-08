@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.schemas.deal import (
+    AddPaymentTermRequest,
     AllDealsResponse,
     DealCorridorResponse,
     DealListItemResponse,
@@ -34,15 +35,21 @@ from app.modules.onboarding.api.schemas.deal import (
     DealSide,
     DealSummaryResponse,
     OpenDealRequest,
+    PaymentTermListResponse,
+    PaymentTermResponse,
+    RevisePaymentTermRequest,
     SetDealBuyerRequest,
     SetDealInvoicingBranchRequest,
     SetDealRequiredDocumentRequest,
+    SetDealTermsRequest,
+    SetDefaultPaymentTermRequest,
     TransitionDealStageRequest,
 )
 from app.modules.onboarding.application.deal_required_documents_service import (
     DealRequiredDocumentsService,
 )
 from app.modules.onboarding.application.deal_service import DealService
+from app.modules.onboarding.application.payment_term_service import PaymentTermService
 from app.modules.onboarding.domain.deal_views import UNKNOWN_CORRIDOR, DealFilters
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.platform.authentication.models import User
@@ -55,6 +62,7 @@ _DEAL_CREATE = require_permission("deals", "create")
 _DEAL_EDIT = require_permission("deals", "edit")
 _DEAL_VIEW = require_permission("deals", "view")
 _SETTINGS = require_permission("settings", "manage")
+_COMPANY_EDIT = require_permission("exporters", "edit")
 
 # Opening a deal (`deals:create`), moving a stage and recording a buyer
 # (`deals:edit`) are routine CRM writes by internal staff; reads (`deals:view`) also
@@ -93,7 +101,10 @@ async def open_deal(
     db: AsyncSession = Depends(get_db),
 ) -> DealResponse:
     view = await DealService(db).open_deal(
-        company_id, reference=body.reference, actor_id=str(current_user.id)
+        company_id,
+        reference=body.reference,
+        actor_id=str(current_user.id),
+        terms=body.terms(),
     )
     return DealResponse.from_view(view, current_user)
 
@@ -535,5 +546,146 @@ async def set_deal_required_document(
     )
     return DealRequiredDocumentResponse.from_entity(row)
 
+
+
+# ── Value, currency and payment term ─────────────────────────────────────────
+
+
+@router.patch(
+    "/deals/{deal_id}/terms",
+    response_model=DealResponse,
+    summary="Change a deal's value, currency or payment term",
+    description=(
+        "A partial edit while the deal is open; a closed deal's terms are frozen. A "
+        "payment term other than the company's default needs "
+        "`payment_term_override_reason`, which is kept and written to the deal's "
+        "history. Only a current, offered term may be chosen."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`deals:edit` permission required"},
+        404: {"description": "No such deal, or no such payment term"},
+        422: {"description": "No reason for a different term, or nothing changes"},
+    },
+)
+async def set_deal_terms(
+    deal_id: uuid.UUID,
+    body: SetDealTermsRequest,
+    current_user: Annotated[User, Depends(_DEAL_EDIT)],
+    db: AsyncSession = Depends(get_db),
+) -> DealResponse:
+    view = await DealService(db).set_terms(
+        deal_id, body.terms(), actor_id=str(current_user.id)
+    )
+    return DealResponse.from_view(view, current_user)
+
+
+# ── Settings: payment terms ──────────────────────────────────────────────────
+
+
+@router.get(
+    "/settings/payment-terms",
+    response_model=PaymentTermListResponse,
+    summary="The payment terms deals and companies choose from",
+    description=(
+        "`terms` is the current version of every term, retired ones (`active` false) "
+        "included; `history` every version. `can_edit` says whether this reader may "
+        "change them."
+    ),
+    responses={401: {"description": "Unauthorized"}, 403: {"description": "`deals:view` required"}},
+)
+async def list_payment_terms(
+    current_user: Annotated[User, Depends(_DEAL_VIEW)],
+    db: AsyncSession = Depends(get_db),
+) -> PaymentTermListResponse:
+    service = PaymentTermService(db)
+    return PaymentTermListResponse(
+        terms=[PaymentTermResponse.model_validate(t) for t in await service.current()],
+        history=[PaymentTermResponse.model_validate(t) for t in await service.history()],
+        can_edit=has_permission(current_user, "settings", "manage"),
+    )
+
+
+@router.post(
+    "/settings/payment-terms",
+    response_model=PaymentTermResponse,
+    status_code=201,
+    summary="Add a payment term",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`settings:manage` permission required"},
+        422: {"description": "A code already used, or days that do not fit the kind"},
+    },
+)
+async def add_payment_term(
+    body: AddPaymentTermRequest,
+    current_user: Annotated[User, Depends(_SETTINGS)],
+    db: AsyncSession = Depends(get_db),
+) -> PaymentTermResponse:
+    term = await PaymentTermService(db).add(
+        code=body.code, label=body.label, kind=body.kind, days=body.days,
+        actor_id=str(current_user.id),
+    )
+    return PaymentTermResponse.model_validate(term)
+
+
+@router.patch(
+    "/settings/payment-terms/{code}",
+    response_model=PaymentTermResponse,
+    summary="Change or retire a payment term",
+    description=(
+        "Writes the next version of the term; the old version stays, so deals agreed "
+        "on it keep it. `active: false` retires the term: still shown on old deals, no "
+        "longer offered."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`settings:manage` permission required"},
+        404: {"description": "No such payment term"},
+        422: {"description": "Nothing changes, or days that do not fit the kind"},
+    },
+)
+async def revise_payment_term(
+    code: str,
+    body: RevisePaymentTermRequest,
+    current_user: Annotated[User, Depends(_SETTINGS)],
+    db: AsyncSession = Depends(get_db),
+) -> PaymentTermResponse:
+    term = await PaymentTermService(db).revise(
+        code.upper(),
+        label=body.label,
+        kind=body.kind,
+        days=body.days,
+        days_sent="days" in body.model_fields_set,
+        active=body.active,
+        actor_id=str(current_user.id),
+    )
+    return PaymentTermResponse.model_validate(term)
+
+
+@router.put(
+    "/exporters/{company_id}/default-payment-term",
+    response_model=PaymentTermResponse | None,
+    summary="Set a company's default payment term",
+    description=(
+        "New deals with the company start from this term. `null` clears it. Only a "
+        "current, offered term may be chosen; the change is in the company's history."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`exporters:edit` permission required"},
+        404: {"description": "No such company or payment term"},
+    },
+)
+async def set_default_payment_term(
+    company_id: uuid.UUID,
+    body: SetDefaultPaymentTermRequest,
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
+    db: AsyncSession = Depends(get_db),
+) -> PaymentTermResponse | None:
+    term = await PaymentTermService(db).set_company_default(
+        company_id, body.payment_term_id, actor_id=str(current_user.id)
+    )
+    return PaymentTermResponse.model_validate(term) if term else None
 
 __all__ = ["router"]

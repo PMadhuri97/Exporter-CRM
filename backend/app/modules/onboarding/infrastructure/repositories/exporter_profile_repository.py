@@ -9,6 +9,8 @@ from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.company_identity import registration_key
+from app.modules.onboarding.domain.entities.engagement_enums import ContactStatus
+from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
     ExporterJourney,
@@ -138,6 +140,9 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         relationship_manager_user_id: uuid.UUID | None = None,
         relationship_manager_unassigned: bool = False,
         relationship_manager_inactive: bool = False,
+        missing_primary_contact: bool = False,
+        collections_owner_user_id: uuid.UUID | None = None,
+        collections_owner_unassigned: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfile]:
@@ -163,6 +168,12 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
                     select(User.id).where(User.is_active.is_(False))
                 )
             )
+        if missing_primary_contact:
+            stmt = stmt.where(~_has_active_primary_contact())
+        if collections_owner_user_id is not None:
+            stmt = stmt.where(ExporterProfile.collections_owner_user_id == collections_owner_user_id)
+        if collections_owner_unassigned:
+            stmt = stmt.where(ExporterProfile.collections_owner_user_id.is_(None))
         if gstin is not None:
             stmt = stmt.where(
                 exists().where(
@@ -233,3 +244,28 @@ def _escape_like(value: str) -> str:
 
 
 __all__ = ["ExporterProfileRepository"]
+
+
+def _has_active_primary_contact():
+    """The company has a primary contact who is still active."""
+    return exists().where(
+        ExporterContact.customer_id == ExporterProfile.customer_id,
+        ExporterContact.is_primary_contact.is_(True),
+        ExporterContact.status == ContactStatus.ACTIVE.value,
+    )
+
+
+async def companies_with_active_primary_contact(
+    db: AsyncSession, customer_ids: Sequence[uuid.UUID]
+) -> set[uuid.UUID]:
+    """Which of ``customer_ids`` have an active primary contact — one query for a page."""
+    if not customer_ids:
+        return set()
+    rows = await db.scalars(
+        select(ExporterContact.customer_id).where(
+            ExporterContact.customer_id.in_(customer_ids),
+            ExporterContact.is_primary_contact.is_(True),
+            ExporterContact.status == ContactStatus.ACTIVE.value,
+        )
+    )
+    return set(rows)

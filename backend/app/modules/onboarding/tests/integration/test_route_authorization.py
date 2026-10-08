@@ -113,6 +113,8 @@ GATED_ROUTES = [
         STAFF,
     ),
     ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
+    ("POST", f"{BASE}/exporters/{_ID}/contacts/{_ID}/status", {"status": "INACTIVE", "reason": "Left"}, STAFF),
+    ("POST", f"{BASE}/exporters/{_ID}/contacts/{_ID}/verification", None, STAFF),
     # Trade history. Writes are STAFF; the reads are in
     # the contract table — DEVELOPER may make them, which `GATED_ROUTES` here cannot
     # express because every row of it is a write.
@@ -149,6 +151,29 @@ GATED_ROUTES = [
         STAFF,
     ),
     ("POST", f"{BASE}/gst-registrations/{_ID}/deactivate", {}, STAFF),
+    ("GET", f"{BASE}/exporters/{_ID}/addresses", None, READERS),
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/addresses",
+        {"address_type": "BILLING", "line1": "x", "city": "y", "country": "IN"},
+        STAFF,
+    ),
+    ("PATCH", f"{BASE}/addresses/{_ID}", {"city": "Pune"}, STAFF),
+    ("POST", f"{BASE}/addresses/{_ID}/default", None, STAFF),
+    ("POST", f"{BASE}/addresses/{_ID}/deactivate", {}, STAFF),
+    ("GET", f"{BASE}/exporters/{_ID}/bank-accounts", None, READERS),
+    ("GET", f"{BASE}/bank-accounts/pending", None, STAFF),
+    ("POST", f"{BASE}/bank-accounts/{_ID}/approve", None, STAFF),
+    ("POST", f"{BASE}/bank-accounts/{_ID}/reject", {"reason": "x"}, COMPLIANCE_ONLY),
+    (
+        "POST",
+        f"{BASE}/bank-accounts/{_ID}/verify",
+        {"method": "BANK_LETTER", "evidence_document_id": _ID},
+        COMPLIANCE_ONLY,
+    ),
+    ("POST", f"{BASE}/bank-accounts/{_ID}/primary", None, COMPLIANCE_ONLY),
+    ("POST", f"{BASE}/bank-accounts/{_ID}/deactivate", {"reason": "x"}, COMPLIANCE_ONLY),
+    ("POST", f"{BASE}/bank-accounts/{_ID}/reveal", None, COMPLIANCE_ONLY),
     (
         "POST",
         f"{BASE}/gst-registrations/{_ID}/flag",
@@ -299,6 +324,16 @@ GATED_ROUTES = [
     # rule about every deal, so the read is `READERS` like `/qualification/criteria`
     # and the write is ADMIN only.
     ("GET", f"{BASE}/settings/deal-required-documents", None, READERS),
+    ("GET", f"{BASE}/settings/payment-terms", None, READERS),
+    (
+        "POST",
+        f"{BASE}/settings/payment-terms",
+        {"code": "X", "label": "x", "kind": "ADVANCE"},
+        ADMIN_ONLY,
+    ),
+    ("PATCH", f"{BASE}/settings/payment-terms/X", {"label": "y"}, ADMIN_ONLY),
+    ("PATCH", f"{BASE}/deals/{_ID}/terms", {"currency": "INR"}, STAFF),
+    ("PUT", f"{BASE}/exporters/{_ID}/default-payment-term", {"payment_term_id": None}, STAFF),
     (
         "POST",
         f"{BASE}/settings/deal-required-documents",
@@ -406,6 +441,23 @@ GATED_ROUTES = [
         {"from_user_id": _ID, "to_user_id": _ID, "reason": "left", "dry_run": True},
         LEADS_ONLY,
     ),
+    # Who chases the payments: compliance, and any role that may assign RMs.
+    (
+        "POST",
+        f"{BASE}/exporters/{_ID}/collections-owner",
+        {"user_id": None, "seen_user_id": None},
+        COMPLIANCE_ONLY,
+    ),
+    (
+        "POST",
+        f"{BASE}/collections-owners/reassign",
+        {"from_user_id": _ID, "to_user_id": _ID, "reason": "left", "dry_run": True},
+        COMPLIANCE_ONLY,
+    ),
+    # Groups: read by every reader, linked by staff; the suggestions name people.
+    ("GET", f"{BASE}/exporters/{_ID}/group", None, READERS),
+    ("PUT", f"{BASE}/exporters/{_ID}/parent", {"parent_company_id": None}, STAFF),
+    ("GET", f"{BASE}/exporters/{_ID}/group/suggestions", None, STAFF_READERS),
     ("POST", f"{BASE}/exporters/{_ID}/background-check/reviewer/claim", None, COMPLIANCE_ONLY),
     (
         "PUT",

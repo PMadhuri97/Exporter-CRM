@@ -6,8 +6,17 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.actor_names import actor_names
+from app.modules.onboarding.api.company_address_router import (
+    router as company_address_router,
+)
+from app.modules.onboarding.api.company_bank_account_router import (
+    router as company_bank_account_router,
+)
 from app.modules.onboarding.api.company_directory_router import (
     router as company_directory_router,
+)
+from app.modules.onboarding.api.company_group_router import (
+    router as company_group_router,
 )
 from app.modules.onboarding.api.company_intake_router import router as company_intake_router
 from app.modules.onboarding.api.deal_router import router as deal_router
@@ -106,6 +115,12 @@ router.include_router(company_directory_router)
 # adding one hangs off a company
 # while flagging one takes only the registration's own id.
 router.include_router(gst_registration_router)
+# A company's addresses: listed and added under the company, changed by their own id.
+router.include_router(company_address_router)
+# A company's bank accounts: proposed, approved, verified; changed by their own id.
+router.include_router(company_bank_account_router)
+# Parent and child companies, under `/exporters/{id}`.
+router.include_router(company_group_router)
 # Trade history — what two companies have traded. Absolute paths: a relationship
 # is the pair, not a sub-resource of
 # either company, though one company's relationships are read under `/exporters`.

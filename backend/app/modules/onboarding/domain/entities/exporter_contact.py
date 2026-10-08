@@ -25,8 +25,9 @@ reached in normal operation.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Index, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
@@ -51,6 +52,14 @@ class ExporterContact(AnerModel):
             unique=True,
             postgresql_where=text("is_primary_contact = true"),
         ),
+        CheckConstraint(
+            "status IN ('ACTIVE', 'INACTIVE', 'LEFT_COMPANY')", name="ck_exporter_contact_status"
+        ),
+        # Only someone still reachable can be the person to reach.
+        CheckConstraint(
+            "status = 'ACTIVE' OR is_primary_contact = false",
+            name="ck_exporter_contact_primary_is_active",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -74,6 +83,17 @@ class ExporterContact(AnerModel):
     is_primary_contact: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    #: ``ContactStatus``: ACTIVE, INACTIVE or LEFT_COMPANY, with when and why it changed.
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="ACTIVE")
+    status_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: When someone last confirmed these details are right, and who.
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_verified_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 __all__ = ["ExporterContact"]

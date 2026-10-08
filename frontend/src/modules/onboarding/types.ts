@@ -21,6 +21,34 @@ export type QualificationState = Schemas['QualificationState'];
 /** A commercial pause or ending, beside the journey — not a journey stage. */
 export type ExporterMarker = Schemas['ExporterMarker'];
 export type ExporterContact = Schemas['ExporterContactResponse'];
+export type ContactStatus = Schemas['ContactStatus'];
+export type CompanyAddress = Schemas['CompanyAddressResponse'];
+export type CompanyAddressList = Schemas['CompanyAddressListResponse'];
+export type CompanyAddressType = Schemas['CompanyAddressType'];
+export type AddCompanyAddressRequest = Schemas['AddCompanyAddressRequest'];
+export type UpdateCompanyAddressRequest = Schemas['UpdateCompanyAddressRequest'];
+export type BankAccount = Schemas['BankAccountResponse'];
+export type BankAccountList = Schemas['BankAccountListResponse'];
+export type BankAccountStatus = Schemas['BankAccountStatus'];
+export type BankAccountType = Schemas['BankAccountType'];
+export type BankVerificationMethod = Schemas['BankVerificationMethod'];
+export type PendingBankAccount = Schemas['PendingBankAccountResponse'];
+export type PendingBankAccountList = Schemas['PendingBankAccountListResponse'];
+export type ProposeBankAccountRequest = Schemas['ProposeBankAccountRequest'];
+export type VerifyBankAccountRequest = Schemas['VerifyBankAccountRequest'];
+export type RevealedBankAccount = Schemas['RevealedBankAccountResponse'];
+export type PaymentTerm = Schemas['PaymentTermResponse'];
+export type PaymentTermList = Schemas['PaymentTermListResponse'];
+export type AddPaymentTermRequest = Schemas['AddPaymentTermRequest'];
+export type RevisePaymentTermRequest = Schemas['RevisePaymentTermRequest'];
+export type SetDealTermsRequest = Schemas['SetDealTermsRequest'];
+export type AssignCollectionsOwnerRequest = Schemas['AssignCollectionsOwnerRequest'];
+export type BulkCollectorReassignRequest = Schemas['BulkCollectorReassignRequest'];
+export type CompanyGroup = Schemas['CompanyGroupResponse'];
+export type GroupMember = Schemas['GroupMemberResponse'];
+export type SetParentCompanyRequest = Schemas['SetParentCompanyRequest'];
+export type GroupSuggestionList = Schemas['GroupSuggestionListResponse'];
+export type SetContactStatusRequest = Schemas['SetContactStatusRequest'];
 export type AddExporterContactRequest = Schemas['AddExporterContactRequest'];
 export type UpdateExporterContactRequest = Schemas['UpdateExporterContactRequest'];
 export type ExporterActivity = Schemas['ExporterActivityResponse'];
@@ -74,6 +102,10 @@ export interface ExporterSearchParams {
   qualification?: QualificationState;
   marker?: ExporterMarker;
   relationship_manager?: RelationshipManagerFilter;
+  /** Only companies with no active primary contact. */
+  missing_primary_contact?: boolean;
+  /** `me` (My collections), `none`, or a user id. */
+  collections_owner?: string;
   limit?: number;
   offset?: number;
 }
@@ -162,7 +194,17 @@ export type HistoryDimension =
   | 'pipeline'
   // Who is working on the company (7 October 2026).
   | 'relationship_manager'
-  | 'background_check_assignment';
+  | 'background_check_assignment'
+  // A contact's status or verification.
+  | 'contact'
+  // A company address added, changed, made a default or deactivated.
+  | 'address'
+  // A bank account proposed, approved, rejected, verified, made primary or deactivated.
+  | 'bank_account'
+  // Who chases the company's payments.
+  | 'collections_owner'
+  // A company linked under a parent, or taken out of its group.
+  | 'group';
 export interface HistoryListParams {
   dimension?: HistoryDimension;
   limit?: number;

@@ -683,10 +683,10 @@ async def test_a_developer_is_served_no_moves_and_no_blocked_reason(client: Asyn
 
 
 async def test_the_blocked_reason_names_every_unmet_condition():
-    """A PROSPECT whose check is not CLEAR and whose deal has no paperwork fails both
-    halves of the guard and the required-documents condition (migration 0030's
-    seeded PRE_SHIPMENT), and the reason says all three in the guard's order — not only
-    the first one found."""
+    """A PROSPECT whose check is not CLEAR, with no primary contact and a deal with no
+    paperwork, fails both halves of the guard, the contact rule and the
+    required-documents condition (migration 0030's seeded PRE_SHIPMENT), and the reason
+    says all four in the guard's order — not only the first one found."""
     view = await _open(await _company(ExporterJourney.PROSPECT))
     async with db_services.AsyncSessionLocal() as db:
         moved = await DealService(db).transition_stage(
@@ -694,7 +694,7 @@ async def test_the_blocked_reason_names_every_unmet_condition():
         )
     assert moved.handover_blocked_reason == (
         "the company is PROSPECT, not CUSTOMER; the background check is NOT_STARTED, not CLEAR; "
-        "missing required documents: PRE_SHIPMENT"
+        "the company has no active primary contact; missing required documents: PRE_SHIPMENT"
     )
 
 

@@ -19,6 +19,18 @@ export { CompanySearchSelect } from './CompanySearchSelect';
 export { NewDealPanel } from './NewDealPanel';
 // A company's deals in one role, mounted on the company page.
 export { CompanyDealsList } from './CompanyDealsList';
+export { AddressesSection, type AddressesSectionProps } from './AddressesSection';
+export { BankAccountsSection, type BankAccountsSectionProps } from './BankAccountsSection';
+export { CompanyGroupPanel } from './CompanyGroupPanel';
+export {
+  CollectionsOwnerSection,
+  type CollectionsOwnerSectionProps,
+} from './CollectionsOwnerSection';
+export {
+  DefaultPaymentTermSection,
+  type DefaultPaymentTermSectionProps,
+} from './DefaultPaymentTermSection';
+export { ADDRESS_TYPE_LABEL, addressLine } from './address-labels';
 export { GstRegistrationsSection } from './GstRegistrationsSection';
 export type { GstRegistrationsSectionProps } from './GstRegistrationsSection';
 export { NotInPipelineNotice } from './NotInPipelineNotice';

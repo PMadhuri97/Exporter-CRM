@@ -38,6 +38,16 @@ PIPELINE = "pipeline"
 RELATIONSHIP_MANAGER = "relationship_manager"
 #: A background-check review claimed, assigned, reassigned, released or ended.
 BACKGROUND_CHECK_ASSIGNMENT = "background_check_assignment"
+#: A contact's status changed, or its details were verified.
+CONTACT = "contact"
+#: A company address added, changed, made a default or deactivated.
+ADDRESS = "address"
+#: A bank account proposed, approved, rejected, verified, made primary or deactivated.
+BANK_ACCOUNT = "bank_account"
+#: A company's collections owner named, changed or cleared.
+COLLECTIONS_OWNER = "collections_owner"
+#: A company linked under a parent, or taken out of its group.
+GROUP = "group"
 
 ALL_DIMENSIONS: tuple[str, ...] = (
     JOURNEY,
@@ -56,6 +66,11 @@ ALL_DIMENSIONS: tuple[str, ...] = (
     PIPELINE,
     RELATIONSHIP_MANAGER,
     BACKGROUND_CHECK_ASSIGNMENT,
+    CONTACT,
+    ADDRESS,
+    BANK_ACCOUNT,
+    COLLECTIONS_OWNER,
+    GROUP,
 )
 
 #: Dimensions DEVELOPER does not receive from the history routes: the

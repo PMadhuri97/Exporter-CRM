@@ -144,6 +144,27 @@ CATALOG: tuple[ModuleSpec, ...] = (
                 "Partner intake",
                 "Take in a company a partner (RXIL) has already qualified",
             ),
+            ActionSpec(
+                "assign_collector",
+                "Assign collections owners",
+                "Name who chases a company's payments, change or clear them, and "
+                "reassign companies in bulk",
+            ),
+            ActionSpec(
+                "manage_bank_accounts",
+                "Propose bank accounts",
+                "Propose a company's new bank account, or a change to one",
+            ),
+            ActionSpec(
+                "approve_bank_accounts",
+                "Approve bank accounts",
+                "Approve or reject a proposed bank account, and verify one",
+            ),
+            ActionSpec(
+                "view_bank_details",
+                "See full bank account numbers",
+                "Reveal a full account number or IBAN; every reveal is audited",
+            ),
         ),
     ),
     ModuleSpec(
@@ -272,6 +293,7 @@ _COMPANY_WORK: frozenset[tuple[str, str]] = _permissions_for(
     ("exporters", "edit"),
     ("exporters", "transition"),
     ("exporters", "search_by_tax_id"),
+    ("exporters", "manage_bank_accounts"),
     ("deals", "view"),
     ("deals", "create"),
     ("deals", "edit"),
@@ -310,6 +332,9 @@ BUILTIN_ROLE_PERMISSIONS: dict[UserRole, frozenset[tuple[str, str]]] = {
     | _permissions_for(
         ("exporters", "view_full_tax_id"),
         ("exporters", "partner_intake"),
+        ("exporters", "approve_bank_accounts"),
+        ("exporters", "view_bank_details"),
+        ("exporters", "assign_collector"),
         ("documents", "download"),
         ("verifications", "create"),
         ("verifications", "review"),
@@ -350,7 +375,7 @@ LEAD_ROLES: tuple[tuple[str, str, str, UserRole, frozenset[tuple[str, str]]], ..
         "Sales lead",
         "Relationship manager, plus assigning and reassigning relationship managers.",
         UserRole.OPERATIONS,
-        _permissions_for(("exporters", "assign_rm")),
+        _permissions_for(("exporters", "assign_rm"), ("exporters", "assign_collector")),
     ),
 )
 

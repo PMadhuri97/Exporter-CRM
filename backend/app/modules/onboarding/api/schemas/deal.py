@@ -25,6 +25,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema, model_validator
@@ -36,6 +37,7 @@ from app.modules.onboarding.api.schemas.masking import (
     mask_identifier,
     mask_phone,
 )
+from app.modules.onboarding.application.deal_service import DealTerms
 from app.modules.onboarding.domain.deal_views import (
     BuyerCompanyView,
     CorridorCountView,
@@ -78,6 +80,58 @@ class OpenDealRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reference: str = Field(min_length=1, max_length=200)
+    #: Optional at opening; the payment term defaults to the company's.
+    value_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    payment_term_id: uuid.UUID | None = None
+    payment_term_override_reason: str | None = Field(default=None, max_length=2000)
+
+    def terms(self) -> DealTerms | None:
+        sent = self.model_fields_set - {"reference"}
+        if not sent:
+            return None
+        return _terms(self, frozenset(sent))
+
+
+class SetDealTermsRequest(BaseModel):
+    """A partial edit of a deal's value, currency and payment term: only the fields
+    sent change. A term other than the company's default needs
+    `payment_term_override_reason`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    payment_term_id: uuid.UUID | None = None
+    payment_term_override_reason: str | None = Field(default=None, max_length=2000)
+
+    def terms(self) -> DealTerms:
+        return _terms(self, frozenset(self.model_fields_set))
+
+
+def _terms(body, sent: frozenset[str]) -> DealTerms:
+    return DealTerms(
+        sent=sent - {"payment_term_override_reason"},
+        value_amount=body.value_amount,
+        currency=body.currency.strip().upper() if body.currency else None,
+        payment_term_id=body.payment_term_id,
+        payment_term_override_reason=body.payment_term_override_reason,
+    )
+
+
+class PaymentTermResponse(BaseModel):
+    """One version of a payment term."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    code: str
+    version: int
+    label: str
+    kind: str
+    days: int | None
+    active: bool
+    is_current: bool
 
 
 class TransitionDealStageRequest(BaseModel):
@@ -391,6 +445,14 @@ class DealResponse(BaseModel):
     #: Present when the handover is legal by the stage graph but blocked by
     #: the handover guard; it names every unmet condition, journey first.
     handover_blocked_reason: str | None
+    #: What the deal is worth, in `currency` (ISO 4217).
+    value_amount: Decimal | None = None
+    currency: str | None = None
+    #: The payment term version agreed; `payment_term_override_reason` says why it
+    #: differs from the company's default (`company_default_payment_term`).
+    payment_term: PaymentTermResponse | None = None
+    payment_term_override_reason: str | None = None
+    company_default_payment_term: PaymentTermResponse | None = None
 
     @classmethod
     def from_view(cls, view: DealView, viewer: User) -> DealResponse:
@@ -435,6 +497,19 @@ class DealResponse(BaseModel):
             if may_move
             else [],
             handover_blocked_reason=view.handover_blocked_reason if may_move else None,
+            value_amount=view.value_amount,
+            currency=view.currency,
+            payment_term=(
+                PaymentTermResponse.model_validate(view.payment_term)
+                if view.payment_term
+                else None
+            ),
+            payment_term_override_reason=view.payment_term_override_reason,
+            company_default_payment_term=(
+                PaymentTermResponse.model_validate(view.company_default_payment_term)
+                if view.company_default_payment_term
+                else None
+            ),
         )
 
 
@@ -446,6 +521,8 @@ class DealListItemResponse(BaseModel):
     buyer_name: str | None
     created_at: datetime
     updated_at: datetime
+    value_amount: Decimal | None = None
+    currency: str | None = None
 
     @classmethod
     def from_view(cls, view: DealListItemView) -> DealListItemResponse:
@@ -457,6 +534,8 @@ class DealListItemResponse(BaseModel):
             buyer_name=view.buyer_name,
             created_at=view.created_at,
             updated_at=view.updated_at,
+            value_amount=view.value_amount,
+            currency=view.currency,
         )
 
 
@@ -577,6 +656,8 @@ class DealSummaryResponse(BaseModel):
     )
     created_at: datetime
     updated_at: datetime
+    value_amount: Decimal | None = None
+    currency: str | None = None
 
     @classmethod
     def from_view(cls, view: DealSummaryView) -> DealSummaryResponse:
@@ -593,6 +674,8 @@ class DealSummaryResponse(BaseModel):
             corridor=view.corridor,
             created_at=view.created_at,
             updated_at=view.updated_at,
+            value_amount=view.value_amount,
+            currency=view.currency,
         )
 
 
@@ -646,3 +729,39 @@ __all__ = [
     "SetDealRequiredDocumentRequest",
     "TransitionDealStageRequest",
 ]
+
+
+class PaymentTermListResponse(BaseModel):
+    #: The current version of every term, retired ones (`active` false) included.
+    terms: list[PaymentTermResponse]
+    #: Every version ever written, newest first per term.
+    history: list[PaymentTermResponse]
+    #: Whether this reader may add, change or retire a term.
+    can_edit: bool
+
+
+class AddPaymentTermRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_]+$")
+    label: str = Field(min_length=1, max_length=120)
+    kind: str = Field(description="ADVANCE, LC_SIGHT, LC_USANCE, DP, DA or OPEN_ACCOUNT")
+    days: int | None = Field(default=None, gt=0)
+
+
+class RevisePaymentTermRequest(BaseModel):
+    """Writes the next version of the term. `active: false` retires it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str | None = Field(default=None, min_length=1, max_length=120)
+    kind: str | None = None
+    days: int | None = Field(default=None, gt=0)
+    active: bool | None = None
+
+
+class SetDefaultPaymentTermRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: `null` clears the company's default.
+    payment_term_id: uuid.UUID | None
