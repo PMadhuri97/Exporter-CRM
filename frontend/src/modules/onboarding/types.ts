@@ -260,6 +260,11 @@ export interface AllDealsParams {
   q?: string;
   /** That company as seller or as buyer company. */
   companyId?: string;
+  /** One side each. Both together are the deals between that pair, which
+   * `companyId` cannot express: it matches either side, so giving it the same
+   * company twice asks nothing new. */
+  sellerCompanyId?: string;
+  buyerCompanyId?: string;
   /** ISO timestamps: from inclusive, before exclusive. */
   openedFrom?: string;
   openedBefore?: string;

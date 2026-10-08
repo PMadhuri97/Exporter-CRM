@@ -221,6 +221,13 @@ class DealRepository(BaseRepository[Deal]):
                     Deal.buyer_company_id == filters.company_id,
                 )
             )
+        if filters.seller_company_id is not None:
+            conditions.append(Deal.company_id == filters.seller_company_id)
+        if filters.buyer_company_id is not None:
+            # `buyer_company_id` only, never the legacy `deal_buyer` row — the same rule
+            # `company_id` and `_for_buyer_company` follow. A buyer nobody has matched to
+            # a company yet is not one, so it cannot be half of a named pair.
+            conditions.append(Deal.buyer_company_id == filters.buyer_company_id)
         if filters.opened_from is not None:
             conditions.append(Deal.created_at >= filters.opened_from)
         if filters.opened_before is not None:

@@ -11,10 +11,11 @@
  * counts link straight into one.
  *
  * **Whose companies.** `?owner=me` is *My companies*, reached from its own row in the
- * side navigation (the page is titled so). The owner filter narrows to *Unassigned*
- * (with the journey lens, *Unassigned prospects*) or companies whose RM has been
- * deactivated. Both are filters only: every reader sees every company. ADMIN and
- * holders of `exporters:assign_rm` get **Reassign companies**.
+ * side navigation (the page is titled so). `?owner=none` and `?owner=inactive` narrow
+ * to unassigned companies and to those whose RM has been deactivated; both still work,
+ * but the bar no longer offers them as a dropdown, so they are URL lenses now. Every one
+ * of them is a filter only: every reader sees every company. ADMIN and holders of
+ * `exporters:assign_rm` get **Reassign companies**.
  *
  * The list route has no total: journey counts are capped ("200+"), and the
  * footer says how many are shown rather than guessing how many exist. Hovering or
@@ -60,13 +61,15 @@ type Lens = 'ALL' | ExporterJourney;
 const LENSES: readonly Lens[] = ['ALL', ...JOURNEY_STAGES];
 const QUALIFICATIONS: readonly string[] = ['ANY', ...Object.keys(QUALIFICATION_LABEL)];
 const RELATIONSHIPS: readonly string[] = ['ANY', ...Object.keys(MARKER_LABEL)];
-/** The owner filter's choices. *My companies* (`me`) is not one: it has its own row
- * in the side navigation. */
-const OWNER_LABEL = {
-  none: 'Unassigned',
-  inactive: 'RM deactivated',
-} as const;
-type Owner = 'ANY' | 'me' | keyof typeof OWNER_LABEL;
+/**
+ * Who a company belongs to, as a URL lens rather than a control.
+ *
+ * `me` is *My companies*, which has its own row in the side navigation — the page is
+ * titled for it. `none` (unassigned) and `inactive` (the RM's account is deactivated)
+ * still filter when asked for in the URL and are still the server's own filters; the
+ * dropdown that offered them has gone from the bar, so nothing links to them today.
+ */
+type Owner = 'ANY' | 'me' | 'none' | 'inactive';
 const OWNERS: readonly Owner[] = ['ANY', 'me', 'none', 'inactive'];
 /** A page of rows; "Show more" asks for the next, up to what one request returns. */
 const PAGE_SIZE = 50;
@@ -136,7 +139,8 @@ export function ExportersListPage() {
   const canTakeInRxil = useCan('company.rxilIntake');
   const canReassign = useHasPermission('exporters:assign_rm');
   const [reassigning, setReassigning] = useState(false);
-  const [owner, setOwner] = useSearchParamState<Owner>('owner', OWNERS, 'ANY');
+  // Read-only here now: the lens comes from the URL, not from a control on the bar.
+  const [owner] = useSearchParamState<Owner>('owner', OWNERS, 'ANY');
   const [lens, setLens] = useSearchParamState<Lens>('journey', LENSES, 'ALL');
   const [qualification, setQualification] = useSearchParamState('qualification', QUALIFICATIONS, 'ANY');
   const [relationship, setRelationship] = useSearchParamState('relationship', RELATIONSHIPS, 'ANY');
@@ -286,25 +290,6 @@ export function ExportersListPage() {
                 </option>
               ))}
             </Select>
-            {/* On My companies the owner is the page itself. */}
-            {owner !== 'me' && (
-              <Select
-                aria-label="Owner"
-                className="sm:w-auto"
-                value={owner === 'ANY' ? '' : owner}
-                onChange={(event) => {
-                  setOwner((event.target.value || 'ANY') as Owner);
-                  setPages(1);
-                }}
-              >
-                <option value="">Any owner</option>
-                {(Object.keys(OWNER_LABEL) as (keyof typeof OWNER_LABEL)[]).map((value) => (
-                  <option key={value} value={value}>
-                    {OWNER_LABEL[value]}
-                  </option>
-                ))}
-              </Select>
-            )}
             <Select
               aria-label="Relationship"
               className="sm:w-auto"
@@ -314,7 +299,7 @@ export function ExportersListPage() {
                 setPages(1);
               }}
             >
-              <option value="">Any relationship (ended hidden)</option>
+              <option value="">Any relationship</option>
               {(Object.keys(MARKER_LABEL) as ExporterMarker[]).map((value) => (
                 <option key={value} value={value}>
                   {MARKER_LABEL[value]}

@@ -11887,6 +11887,10 @@ export interface operations {
                 stage?: components["schemas"]["DealStage"][] | null;
                 q?: string | null;
                 company_id?: string | null;
+                /** @description Deals this company opened as the seller. */
+                seller_company_id?: string | null;
+                /** @description Deals naming this company as the buyer. Given with `seller_company_id`, the two together are the deals between that pair. Matches `buyer_company_id` only: a buyer not yet matched to a company cannot be named here. */
+                buyer_company_id?: string | null;
                 opened_from?: string | null;
                 opened_before?: string | null;
                 limit?: number;

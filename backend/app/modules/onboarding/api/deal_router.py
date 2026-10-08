@@ -198,6 +198,21 @@ async def list_all_deals(
     stage: Annotated[list[DealStage] | None, Query()] = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
     company_id: uuid.UUID | None = None,
+    seller_company_id: Annotated[
+        uuid.UUID | None,
+        Query(description="Deals this company opened as the seller."),
+    ] = None,
+    buyer_company_id: Annotated[
+        uuid.UUID | None,
+        Query(
+            description=(
+                "Deals naming this company as the buyer. Given with `seller_company_id`, "
+                "the two together are the deals between that pair. Matches "
+                "`buyer_company_id` only: a buyer not yet matched to a company cannot "
+                "be named here."
+            )
+        ),
+    ] = None,
     opened_from: datetime | None = None,
     opened_before: datetime | None = None,
     limit: int = Query(default=50, ge=1, le=200),
@@ -210,6 +225,8 @@ async def list_all_deals(
         stages=tuple(stage or ()),
         search=(q or "").strip() or None,
         company_id=company_id,
+        seller_company_id=seller_company_id,
+        buyer_company_id=buyer_company_id,
         opened_from=_aware(opened_from),
         opened_before=_aware(opened_before),
     )

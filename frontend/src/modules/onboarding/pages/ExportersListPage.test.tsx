@@ -337,16 +337,25 @@ describe('ExportersListPage — whose companies', () => {
     expect(await screen.findByText(/not the relationship manager of any company yet/)).toBeInTheDocument();
   });
 
-  it('offers Unassigned and RM deactivated as filters, but not My companies', async () => {
-    renderPage();
-    const owner = await screen.findByLabelText('Owner');
-    const options = within(owner).getAllByRole('option').map((option) => option.textContent);
-    expect(options).toEqual(['Any owner', 'Unassigned', 'RM deactivated']);
-    fireEvent.change(owner, { target: { value: 'none' } });
+  it('still filters by owner from the URL, with no control on the bar', async () => {
+    // The dropdown that offered Unassigned and RM deactivated has gone from the filter
+    // bar. The lens itself did not: `?owner=` is still read and still sent, so a link
+    // or a bookmark to one of them keeps working.
+    renderPage('/companies?owner=none');
+
     await waitFor(() =>
       expect(searchExporterProfiles).toHaveBeenLastCalledWith(
         expect.objectContaining({ relationship_manager: 'none' }),
       ),
+    );
+    expect(screen.queryByLabelText('Owner')).not.toBeInTheDocument();
+  });
+
+  it('says "Any relationship" without explaining the ended rule in the option', async () => {
+    renderPage();
+    const relationship = await screen.findByLabelText('Relationship');
+    expect(within(relationship).getAllByRole('option')[0]).toHaveTextContent(
+      /^Any relationship$/,
     );
   });
 });

@@ -377,3 +377,61 @@ async def test_a_malformed_corridor_is_refused(client: AsyncClient, corridor: st
         f"{BASE}/deals", params={"corridor": corridor}, headers=auth_header(token)
     )
     assert resp.status_code == 422
+
+
+# ── The deals between two companies ──────────────────────────────────────────
+
+
+async def test_the_pair_filter_lists_only_the_deals_between_those_two():
+    """The point of the pair: naming both sides answers "what have these two done
+    together", which neither side alone and neither `company_id` can ask."""
+    acme, globex = await _seller(f"Acme {_tag()}"), await _seller(f"Globex {_tag()}")
+    north, south = await _buyer_company(f"North {_tag()}"), await _buyer_company(f"South {_tag()}")
+
+    between = await _deal(acme, f"acme-north {_tag()}", buyer_company=north)
+    await _deal(acme, f"acme-south {_tag()}", buyer_company=south)
+    await _deal(globex, f"globex-north {_tag()}", buyer_company=north)
+
+    rows, total = await _list(seller_company_id=acme, buyer_company_id=north)
+    assert [row.id for row in rows] == [between]
+    assert total == 1
+
+
+async def test_each_side_of_the_pair_also_filters_on_its_own():
+    acme = await _seller(f"Acme {_tag()}")
+    north, south = await _buyer_company(f"North {_tag()}"), await _buyer_company(f"South {_tag()}")
+    sold_to_north = await _deal(acme, f"north {_tag()}", buyer_company=north)
+    sold_to_south = await _deal(acme, f"south {_tag()}", buyer_company=south)
+
+    as_seller, _ = await _list(seller_company_id=acme)
+    assert {row.id for row in as_seller} == {sold_to_north, sold_to_south}
+
+    as_buyer, _ = await _list(buyer_company_id=north)
+    assert sold_to_north in {row.id for row in as_buyer}
+    assert sold_to_south not in {row.id for row in as_buyer}
+
+
+async def test_the_pair_is_directional():
+    """Seller and buyer are not interchangeable. Swapping them asks a different
+    question, and for one-way trade the answer is nothing."""
+    acme = await _seller(f"Acme {_tag()}")
+    north = await _buyer_company(f"North {_tag()}")
+    await _deal(acme, f"acme-north {_tag()}", buyer_company=north)
+
+    _rows, total = await _list(seller_company_id=north, buyer_company_id=acme)
+    assert total == 0
+
+
+async def test_a_buyer_that_is_not_yet_a_company_cannot_be_half_of_a_pair():
+    """A `deal_buyer` row is a name on a deal, not a company. It is still listed and
+    still findable by search — it simply has no id to pair with."""
+    acme = await _seller(f"Acme {_tag()}")
+    reference = f"legacy {_tag()}"
+    await _deal(acme, reference, legacy_buyer=("Unmatched Buyer", "NL"))
+
+    by_seller, _ = await _list(seller_company_id=acme)
+    assert [row.reference for row in by_seller] == [reference]
+
+    # Nothing is lost: the deal is still reachable by name.
+    found, _ = await _list(search="Unmatched Buyer")
+    assert reference in {row.reference for row in found}
