@@ -99,7 +99,7 @@ describe('ConversationPanel — the conversation gauge', () => {
     renderPanel();
     // Asserted through the section rather than a spinner role: the skeleton is a
     // pulsing block, which has no accessible name to find it by.
-    expect(screen.getByText('Conversation')).toBeInTheDocument();
+    expect(screen.getByText('Communication')).toBeInTheDocument();
     expect(screen.queryByTestId('conversation-chip')).not.toBeInTheDocument();
   });
 
@@ -118,14 +118,14 @@ describe('ConversationPanel — the conversation gauge', () => {
     renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: /not now/i }));
     expect(screen.getByLabelText(/Check back on/)).toBeRequired();
-    expect(screen.getByLabelText(/^Reason$/)).toBeRequired();
+    expect(screen.getByLabelText(/^Reason\*?$/)).toBeRequired();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     // A step on the path is chosen first, then marked as current (Salesforce Path).
     fireEvent.click(screen.getByRole('button', { name: /interested/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Mark as current' }));
     expect(screen.queryByLabelText(/Check back on/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/Reason \(optional\)/)).not.toBeRequired();
+    expect(screen.getByLabelText(/^Reason$/)).not.toBeRequired(); // no mark: optional
   });
 
   it('sends the check-back date with a NOT_NOW move', async () => {
@@ -134,7 +134,7 @@ describe('ConversationPanel — the conversation gauge', () => {
     fireEvent.change(screen.getByLabelText(/Check back on/), {
       target: { value: '2027-01-15' },
     });
-    fireEvent.change(screen.getByLabelText(/^Reason$/), {
+    fireEvent.change(screen.getByLabelText(/^Reason\*?$/), {
       target: { value: 'Revisit after Q1' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));

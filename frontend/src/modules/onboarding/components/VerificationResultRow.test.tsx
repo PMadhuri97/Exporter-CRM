@@ -16,8 +16,17 @@ import {
 vi.mock('../api', () => ({
   createDownloadLink: vi.fn(),
   fetchDocumentBlob: vi.fn(),
+  fetchDocumentPreview: vi.fn(),
   getDocument: vi.fn(),
   reviewVerification: vi.fn(),
+}));
+
+// Saving a copy is `documents:download`, read from the server; these tests hold it unless
+// they say otherwise.
+const mayDownload = vi.hoisted(() => ({ value: true }));
+vi.mock('@/platform/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/access')>()),
+  useHasPermission: () => mayDownload.value,
 }));
 
 function renderRow(result: VerificationResult, canReview = false) {

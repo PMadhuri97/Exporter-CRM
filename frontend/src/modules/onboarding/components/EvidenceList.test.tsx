@@ -1,9 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '@/lib/api/errors';
 
-import { getDocument } from '../api';
+import { createDownloadLink, fetchDocumentPreview, getDocument } from '../api';
 import { crmDocument, DOCUMENT_ID, renderWithClient } from '../testing/verification-fixtures';
 
 import { EvidenceList } from './EvidenceList';
@@ -11,13 +11,28 @@ import { EvidenceList } from './EvidenceList';
 vi.mock('../api', () => ({
   createDownloadLink: vi.fn(),
   fetchDocumentBlob: vi.fn(),
+  fetchDocumentPreview: vi.fn(),
   getDocument: vi.fn(),
+}));
+
+// Saving a copy is `documents:download`, read from the server; these tests hold it unless
+// they say otherwise.
+const mayDownload = vi.hoisted(() => ({ value: true }));
+vi.mock('@/platform/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/access')>()),
+  useHasPermission: () => mayDownload.value,
+}));
+
+vi.mock('@/platform/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/auth')>()),
+  useCurrentUser: () => ({ id: 'u1', email: 'ravi@aner.example', full_name: 'Ravi RM', role: 'OPERATIONS', is_active: true }),
 }));
 
 const CITED = [{ type: 'document', ref: DOCUMENT_ID }];
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mayDownload.value = true;
 });
 
 describe('EvidenceList — a cited document by name', () => {
@@ -58,7 +73,10 @@ describe('EvidenceList — a cited document by name', () => {
     expect(within(evidence).queryByTestId('evidence-document-name')).not.toBeInTheDocument();
     // A refused name is not an error the reader acted on: nothing is announced.
     expect(within(evidence).queryByRole('alert')).not.toBeInTheDocument();
-    // The download control is still there; it shows the server's refusal when used.
+    // The controls are still there; each shows the server's refusal when used.
+    expect(
+      within(evidence).getByRole('button', { name: `View evidence document ${DOCUMENT_ID}` }),
+    ).toBeInTheDocument();
     expect(
       within(evidence).getByRole('button', { name: `Download evidence document ${DOCUMENT_ID}` }),
     ).toBeInTheDocument();
@@ -69,5 +87,44 @@ describe('EvidenceList — a cited document by name', () => {
       <EvidenceList note="Seen on the registry." refs={[{ type: 'url', ref: 'https://x.example' }]} />,
     );
     expect(getDocument).not.toHaveBeenCalled();
+  });
+});
+
+describe('EvidenceList — read on screen, saved only with the permission', () => {
+  it('offers View to every reader and Download only to a holder of documents:download', async () => {
+    vi.mocked(getDocument).mockResolvedValue(crmDocument());
+    mayDownload.value = false;
+    renderWithClient(<EvidenceList note={null} refs={CITED} />);
+    const evidence = screen.getByTestId('evidence');
+    expect(
+      within(evidence).getByRole('button', { name: `View evidence document ${DOCUMENT_ID}` }),
+    ).toBeInTheDocument();
+    expect(
+      within(evidence).queryByRole('button', { name: /Download evidence document/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens the server\'s on-screen form in the viewer, never the download link', async () => {
+    vi.mocked(getDocument).mockResolvedValue(crmDocument({ file_name: 'IEC-certificate.pdf' }));
+    vi.mocked(fetchDocumentPreview).mockResolvedValue(new Blob(['x'], { type: 'image/png' }));
+    URL.createObjectURL = vi.fn(() => 'blob:preview');
+    URL.revokeObjectURL = vi.fn();
+    mayDownload.value = false;
+    renderWithClient(<EvidenceList note={null} refs={CITED} />);
+    fireEvent.click(screen.getByRole('button', { name: `View evidence document ${DOCUMENT_ID}` }));
+
+    const viewer = await screen.findByTestId('document-viewer');
+    expect(fetchDocumentPreview).toHaveBeenCalledWith(DOCUMENT_ID);
+    expect(createDownloadLink).not.toHaveBeenCalled();
+    expect(within(viewer).getByRole('img', { name: 'IEC-certificate.pdf' })).toHaveAttribute(
+      'src',
+      'blob:preview',
+    );
+    // The reader's mark is over the document, and there is no Download in the panel.
+    expect(within(viewer).getByTestId('document-watermark')).toHaveAttribute(
+      'data-text',
+      expect.stringMatching(/^Ravi RM · /),
+    );
+    expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument();
   });
 });

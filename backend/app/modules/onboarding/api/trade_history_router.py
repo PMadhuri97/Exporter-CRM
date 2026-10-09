@@ -55,19 +55,19 @@ from app.modules.onboarding.exceptions import (
     TradeInvoiceNotFoundError,
     TradeRelationshipNotFoundError,
 )
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import require_permission
 from app.platform.database.services import get_db
 
 router = APIRouter(tags=["Exporter CRM"])
 
-#: Every CRM reader, DEVELOPER included — these responses carry no identifiers
-#: (module docstring).
-_READER = require_role(
-    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
-)
-#: RM, Compliance, Admin record invoices and outcomes.
-_WRITER = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+_COMPANY_EDIT = require_permission("exporters", "edit")
+_COMPANY_VIEW = require_permission("exporters", "view")
+_DEAL_EDIT = require_permission("deals", "edit")
+
+#: Reads need `exporters:view`, DEVELOPER included — these responses carry no
+#: identifiers (module docstring). Recording invoices and outcomes needs
+#: `exporters:edit` (`deals:edit` for a deal's payment outcome).
 
 
 async def _counterparties(
@@ -172,7 +172,7 @@ async def _invoice_responses(
 )
 async def list_trade_relationships(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     as_: Annotated[DealSide, Query(alias="as")] = DealSide.SELLER,
     db: AsyncSession = Depends(get_db),
 ) -> TradeRelationshipListResponse:
@@ -210,7 +210,7 @@ async def list_trade_relationships(
 )
 async def get_trade_relationship(
     relationship_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> TradeRelationshipDetailResponse:
     relationship = await db.scalar(
@@ -249,7 +249,7 @@ async def get_trade_relationship(
 )
 async def get_trade_invoice(
     invoice_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> TradeInvoiceDetailResponse:
     invoice = await db.scalar(select(TradeInvoice).where(TradeInvoice.id == invoice_id))
@@ -304,7 +304,7 @@ def _evidence_refs(body: RecordTradeOutcomeRequest) -> list[dict] | None:
     responses={
         201: {"model": TradeInvoiceResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "Trade relationship, or the deal named by deal_id, not found"},
         422: {
             "description": (
@@ -319,7 +319,7 @@ def _evidence_refs(body: RecordTradeOutcomeRequest) -> list[dict] | None:
 async def record_trade_invoice(
     relationship_id: uuid.UUID,
     body: RecordTradeInvoiceRequest,
-    current_user: Annotated[User, Depends(_WRITER)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> TradeInvoiceResponse:
     service = TradeHistoryService(db)
@@ -357,7 +357,7 @@ async def record_trade_invoice(
     responses={
         201: {"model": TradeOutcomeResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "Trade invoice not found"},
         409: {"description": "supersedes_outcome_id is not the invoice's current outcome"},
         422: {
@@ -371,7 +371,7 @@ async def record_trade_invoice(
 async def record_trade_outcome(
     invoice_id: uuid.UUID,
     body: RecordTradeOutcomeRequest,
-    current_user: Annotated[User, Depends(_WRITER)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> TradeOutcomeResponse:
     outcome = await TradeHistoryService(db).record_outcome(
@@ -412,7 +412,7 @@ async def record_trade_outcome(
     responses={
         201: {"model": DealPaymentOutcomeResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`deals:edit` permission required"},
         404: {"description": "Deal not found"},
         409: {
             "description": (
@@ -431,7 +431,7 @@ async def record_trade_outcome(
 async def record_deal_payment_outcome(
     deal_id: uuid.UUID,
     body: RecordDealPaymentOutcomeRequest,
-    current_user: Annotated[User, Depends(_WRITER)],
+    current_user: Annotated[User, Depends(_DEAL_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> DealPaymentOutcomeResponse:
     service = TradeHistoryService(db)

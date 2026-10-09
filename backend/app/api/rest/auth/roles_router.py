@@ -18,6 +18,7 @@ import structlog
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.rest.auth import access_audit
 from app.api.rest.auth.role_schemas import (
     CreateRoleRequest,
     MyPermissionsResponse,
@@ -150,10 +151,10 @@ async def list_roles(
     status_code=status.HTTP_201_CREATED,
     summary="Create a custom role",
     description=(
-        "A custom role can be assigned immediately, but only the routes listed "
-        "as enforced in the catalogue consult it. Everything else still reads "
-        "the account's built-in role, so a custom role does not yet widen or "
-        "narrow access to the CRM screens."
+        "A custom role can be assigned immediately. Every CRM route checks the "
+        "permissions of the role an account holds, so a custom role's grants are "
+        "exactly what its holders may do (the catalogue marks the one action not "
+        "consulted yet)."
     ),
     responses={
         403: {"description": "roles:create permission required"},
@@ -181,8 +182,20 @@ async def create_role(
         is_assignable=True,
     )
     role = await repo.create(role)
-    await repo.replace_permissions(
-        role, {(p.module, p.action) for p in body.permissions}
+    granted = {(p.module, p.action) for p in body.permissions}
+    await repo.replace_permissions(role, granted)
+    await access_audit.record(
+        db,
+        event_type=access_audit.ROLE_CREATED,
+        actor=current_user,
+        subject_type=access_audit.ROLE,
+        subject_id=role.id,
+        subject_name=role.name,
+        changes=[
+            access_audit.change("name", None, role.name),
+            access_audit.change("description", None, role.description),
+            access_audit.permission_change(set(), granted),
+        ],
     )
     logger.info(
         "role_created",
@@ -247,6 +260,12 @@ async def update_role(
         new_pairs = {(p.module, p.action) for p in body.permissions}
         await _refuse_self_lockout(db, current_user, role, new_pairs)
 
+    before = {
+        "name": role.name,
+        "description": role.description,
+        "is_assignable": role.is_assignable,
+        "permissions": {(p.module, p.action) for p in role.permissions},
+    }
     if "name" in fields:
         role.name = fields["name"]
     if "description" in fields:
@@ -260,6 +279,25 @@ async def update_role(
             role, {(p.module, p.action) for p in body.permissions}
         )
 
+    await access_audit.record(
+        db,
+        event_type=access_audit.ROLE_UPDATED,
+        actor=current_user,
+        subject_type=access_audit.ROLE,
+        subject_id=role.id,
+        subject_name=role.name,
+        changes=[
+            access_audit.change("name", before["name"], role.name),
+            access_audit.change("description", before["description"], role.description),
+            access_audit.change("is_assignable", before["is_assignable"], role.is_assignable),
+            access_audit.permission_change(
+                before["permissions"],
+                {(p.module, p.action) for p in body.permissions}
+                if body.permissions is not None
+                else before["permissions"],
+            ),
+        ],
+    )
     counts = await repo.user_counts()
     logger.info(
         "role_updated",
@@ -320,6 +358,15 @@ async def delete_role(
             status_code=409,
         )
 
+    await access_audit.record(
+        db,
+        event_type=access_audit.ROLE_DELETED,
+        actor=current_user,
+        subject_type=access_audit.ROLE,
+        subject_id=role.id,
+        subject_name=role.name,
+        changes=[access_audit.change("name", role.name, None)],
+    )
     await db.delete(role)
     await db.flush()
     logger.info(
@@ -329,6 +376,29 @@ async def delete_role(
         actor_id=str(current_user.id),
     )
     await db.commit()  # before the response is sent — see auth/router.py
+
+
+@router.get(
+    "/{role_id}/history",
+    response_model=access_audit.AccessHistoryResponse,
+    summary="Who changed this role, and what",
+    description=(
+        "Every change to the role — created, renamed, its permissions added or removed, "
+        "deleted — newest first, with who made it. Read from the audit trail, so a "
+        "deleted role's history stays readable."
+    ),
+    responses={403: {"description": "roles:view permission required"}},
+)
+async def role_history(
+    role_id: uuid.UUID,
+    current_user: Annotated[User, Depends(_CAN_VIEW)],
+    db: AsyncSession = Depends(get_db),
+    limit: int = 50,
+    offset: int = 0,
+) -> access_audit.AccessHistoryResponse:
+    return await access_audit.history(
+        db, access_audit.ROLE, role_id, limit=min(max(limit, 1), 200), offset=max(offset, 0)
+    )
 
 
 # ── What the signed-in user may do ──────────────────────────────────────────

@@ -36,6 +36,8 @@ class CriterionDefinition:
     threshold: Decimal | None = None
     unit: str | None = None
     allowed_values: tuple[str, ...] | None = None
+    #: Where an automatic result comes from (`AutoSource`), or `None`.
+    auto_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,8 @@ class QualificationView:
     standings: tuple[CriterionStanding, ...]
     results: tuple[QualificationResult, ...] = field(default_factory=tuple)
     outcomes: tuple[QualificationOutcome, ...] = field(default_factory=tuple)
+    #: Why the server suggests what it does, in a few words for the screen.
+    suggestion_reason: str = ""
 
 
 __all__ = [

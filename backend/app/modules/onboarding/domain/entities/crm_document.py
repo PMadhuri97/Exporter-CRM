@@ -69,6 +69,14 @@ class CrmDocument(AnerModel):
         Index("ix_crm_document_deal_recent", "deal_id", "uploaded_at"),
         # The one query that crosses owners: "what is still waiting on a scan".
         Index("ix_crm_document_scan_status", "scan_status"),
+        CheckConstraint(
+            "preview_status IS NULL OR preview_status IN ('READY', 'UNAVAILABLE')",
+            name="ck_crm_document_preview_status",
+        ),
+        CheckConstraint(
+            "(preview_status = 'READY') = (preview_storage_key IS NOT NULL)",
+            name="ck_crm_document_preview_key_when_ready",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -139,3 +147,8 @@ class CrmDocument(AnerModel):
     scanner_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     #: **Relative** only.
     storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    #: The on-screen preview of a Word, Excel or PowerPoint file: NULL until a
+    #: conversion is attempted, then READY (the PDF is at ``preview_storage_key``) or
+    #: UNAVAILABLE. A PDF, image or text file is its own preview and keeps NULL.
+    preview_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    preview_storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)

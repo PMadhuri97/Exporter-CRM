@@ -232,7 +232,7 @@ async def test_no_identifier_appears_in_the_response_for_any_role(client: AsyncC
         iec="1234567890",
     )
 
-    for role in (UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN):
+    for role in (UserRole.OPERATIONS, UserRole.COMPLIANCE):
         _user_id, token = await user_with_role(client, role)
         resp = await _match(
             client, token, name="Fully Identified BV", country="NL", pan=pan

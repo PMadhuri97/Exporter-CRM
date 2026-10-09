@@ -1,5 +1,5 @@
 """Server-side masking of tax identifiers and contact details — the viewer's
-role decides what a response may carry (architecture decision 12).
+permissions decide what a response may carry (architecture decision 12).
 
 Shared by the company shapes (`exporter.py`) and the contact shapes
 (`engagement.py`), which is why it is its own file: it used to live inside
@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from pydantic import AfterValidator
 
-from app.platform.authentication.models import User, UserRole
+from app.platform.authentication.models import User
+from app.platform.authorization import has_permission
 
 # ── Identifier masking ───────────────────────────────────────────────────────
 # Server-side twin of the frontend's `maskIdentifier`/`canReveal`
@@ -25,7 +26,8 @@ from app.platform.authentication.models import User, UserRole
 
 _MASK_CHAR = "•"
 _VISIBLE_SUFFIX_LENGTH = 4
-_ALWAYS_REVEAL_ROLES = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
+#: The grant that unmasks tax identifiers and contact details.
+REVEAL_IDENTIFIERS = ("exporters", "view_full_tax_id")
 
 
 def mask_identifier(value: str | None) -> str | None:
@@ -56,7 +58,12 @@ def mask_phone(value: str | None) -> str | None:
 
 
 def can_reveal_identifiers(viewer: User) -> bool:
-    """COMPLIANCE and ADMIN see full tax IDs; every other role sees them masked.
+    """A holder of ``exporters:view_full_tax_id`` sees full tax IDs; everyone else sees
+    them masked. COMPLIANCE holds it by default; the administrator does not.
+
+    Read from the permissions the route's own check resolved for this request
+    (``require_permission``); a viewer whose permissions were never resolved is masked,
+    so a route that forgot its check fails closed.
 
     This used to carry an ownership exception: OPERATIONS could see the raw
     identifiers on exporters it was the assigned relationship manager for.
@@ -71,27 +78,30 @@ def can_reveal_identifiers(viewer: User) -> bool:
     and ownership deliberately grants nothing — an RM sees the companies they
     own masked, like every other OPERATIONS user (`test_masking_sweep.py`).
     """
-    return viewer.role in _ALWAYS_REVEAL_ROLES
+    return has_permission(viewer, *REVEAL_IDENTIFIERS)
 
 
-#: Who may read a company's background-check state (decision D8). The same three
-#: roles the background-check routes admit; DEVELOPER is absent there and must be
-#: absent here, or the company list would report what those routes withhold.
-_COMPLIANCE_READING_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
+#: What the background-check routes themselves require. Asked as a permission, like
+#: the reveal rule above: a role list here would answer differently from those routes
+#: the moment an administrator grants or withdraws it.
+READ_BACKGROUND_CHECK = ("compliance", "view")
 
 
 def can_read_background_check(viewer: User) -> bool:
     """Whether a response may carry the background-check state.
 
-    The company list row carries it so a screen can show the check beside the
-    company. That makes the list a second way to read compliance work, and it has
-    to answer the same way the first one does: the background-check routes admit
-    OPERATIONS, COMPLIANCE and ADMIN and refuse DEVELOPER, so the column is blanked
-    for every other role and the matching filter is refused outright
+    The company list row carries it so a screen can show the check beside the company.
+    That makes the list a second way to read compliance work, and it has to answer the
+    same way the first one does: the background-check routes require `compliance:view`
+    and DEVELOPER does not hold it (decision D8), so the state is blanked for anyone
+    without it and the matching filter is refused outright
     (`BackgroundCheckFilterNotPermittedError`) — a filtered list names the flagged
     companies whether or not the column is rendered.
+
+    Read from the permissions the route's own check resolved for this request, so a
+    route that forgot its check blanks the column rather than leaking it.
     """
-    return viewer.role in _COMPLIANCE_READING_ROLES
+    return has_permission(viewer, *READ_BACKGROUND_CHECK)
 
 
 def _reject_masked(value: str | None) -> str | None:

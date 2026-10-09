@@ -39,6 +39,7 @@ import { ManualResultForm } from './ManualResultForm';
 import { ReviewChain, ReviewDialog } from './ReviewDialog';
 import { BUYER_CHECK_TYPES, provenanceLabel, verificationTypeLabel } from './verification-labels';
 import { VerificationStatusChip } from './VerificationStatusChip';
+import { countryLabel } from '../countries';
 
 const SECONDARY_BUTTON =
   'rounded-lg border border-line px-2.5 py-1.5 text-caption font-medium text-ink-2 hover:bg-paper disabled:opacity-50';
@@ -158,7 +159,7 @@ function SubjectSnapshot({ snapshot }: { snapshot: BuyerSnapshot }) {
         </div>
         <div>
           <dt className="inline text-ink-3">Country </dt>
-          <dd className="inline text-ink">{snapshot.country}</dd>
+          <dd className="inline text-ink">{snapshot.country ? countryLabel(snapshot.country) : null}</dd>
         </div>
         <div>
           <dt className="inline text-ink-3">Registration no. </dt>

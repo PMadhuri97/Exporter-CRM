@@ -7,8 +7,8 @@ every path stays `/onboarding/exporters/...`.
 
 The list serves the one screening catalogue and the caller's
 capabilities, so the frontend keeps neither a key list nor a role list; unknown
-companies are 404; each item's history is readable. Roles are unchanged — read
-OPERATIONS/COMPLIANCE/ADMIN, write COMPLIANCE/ADMIN; DEVELOPER stays refused
+companies are 404; each item's history is readable. Read with ``screening:view``
+(OPERATIONS, COMPLIANCE, ADMIN), write with ``screening:decide`` (COMPLIANCE); DEVELOPER stays refused
 (decided 28 Sep 2026: no widening). Each decision is also recorded in the
 company history under the `screening` dimension.
 
@@ -52,19 +52,19 @@ from app.modules.onboarding.infrastructure.repositories.check_cycle_repository i
     CheckCycleRepository,
     resolved_cycle_id,
 )
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import has_permission, require_permission
 from app.platform.database.services import get_db
 
 router = APIRouter(prefix="/exporters", tags=["Exporter CRM"])
 
-#: Who may record a screening decision. Compliance decisions are compliance-owned;
-#: a plain API_USER must never be able to mark a sanctions check PASSED. The same
-#: tuple gates the route and answers `can_record_decision`, so the two cannot drift.
-_DECISION_ROLES = (UserRole.COMPLIANCE, UserRole.ADMIN)
-_COMPLIANCE_OR_ADMIN = require_role(*_DECISION_ROLES)
-# Routine CRM reads by internal staff.
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+_SCREENING_DECIDE = require_permission("screening", "decide")
+_SCREENING_VIEW = require_permission("screening", "view")
+
+#: Recording a screening decision is compliance's (`screening:decide`); a plain API_USER
+#: must never be able to mark a sanctions check PASSED. The same permission gates the
+#: route and answers `can_record_decision`, so the two cannot drift. Reads need
+#: `screening:view`.
 
 _CATALOGUE = [ScreeningCatalogueItemResponse.model_validate(i) for i in SCREENING_CATALOGUE_ITEMS]
 
@@ -113,13 +113,13 @@ def _cycle(scope: ScreeningCycleScope, names: dict[str, str]) -> CheckCycleRespo
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`screening:view` permission required"},
         404: {"description": "Company not found, or a `cycle_id` that is not this company's"},
     },
 )
 async def list_screening_review(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_SCREENING_VIEW)],
     db: AsyncSession = Depends(get_db),
     cycle_id: uuid.UUID | None = Query(
         default=None, description="A check cycle of this company. Default: the current one."
@@ -138,7 +138,8 @@ async def list_screening_review(
         items=[_item(item, names, scope.initial) for item in items],
         catalogue=_CATALOGUE,
         capabilities=ScreeningCapabilities(
-            can_record_decision=current_user.role in _DECISION_ROLES and scope.is_current
+            can_record_decision=has_permission(current_user, "screening", "decide")
+            and scope.is_current
         ),
         cycle=_cycle(scope, names),
     )
@@ -154,7 +155,7 @@ async def list_screening_review(
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`screening:view` permission required"},
         404: {"description": "Company not found"},
         422: {"description": "Unknown checklist item"},
     },
@@ -162,7 +163,7 @@ async def list_screening_review(
 async def list_screening_review_item_history(
     customer_id: uuid.UUID,
     item_key: str,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_SCREENING_VIEW)],
     db: AsyncSession = Depends(get_db),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -195,7 +196,7 @@ async def list_screening_review_item_history(
     ),
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "COMPLIANCE or ADMIN role required"},
+        403: {"description": "`screening:decide` permission required"},
         404: {"description": "Company not found"},
         422: {
             "description": (
@@ -209,7 +210,7 @@ async def update_screening_review(
     customer_id: uuid.UUID,
     item_key: str,
     body: UpdateScreeningReviewItemRequest,
-    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    current_user: Annotated[User, Depends(_SCREENING_DECIDE)],
     db: AsyncSession = Depends(get_db),
 ) -> ScreeningReviewItemResponse:
     item = await ScreeningReviewService(db).upsert_review_item(
@@ -231,7 +232,7 @@ async def update_screening_review(
     summary="List bank-linked suspicious-activity findings",
     responses={
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`screening:view` permission required"},
     },
     description=(
         "No bank-monitoring provider feed is connected: the response says so "
@@ -241,7 +242,7 @@ async def update_screening_review(
 )
 async def get_bank_activity(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_SCREENING_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> BankActivityResponse:
     findings = await ScreeningReviewService(db).list_bank_findings(customer_id)

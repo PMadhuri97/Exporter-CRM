@@ -64,6 +64,7 @@ import {
   useBackgroundCheckDecisions,
   useRecordBackgroundCheckDecision,
 } from '../../hooks';
+import { SanctionsPanel } from '../../components/SanctionsPanel';
 import type { BackgroundCheckState } from '../../types';
 
 function GaugeSection({ customerId }: { customerId: string }) {
@@ -251,6 +252,7 @@ export function BackgroundCheckPanel({
       {/* The verification section, rendered below the gauge: the checks are the
           inputs to the decision, so they read in that order. */}
       <VerificationSection customerId={customerId} />
+      <SanctionsPanel customerId={customerId} />
     </div>
   );
 }

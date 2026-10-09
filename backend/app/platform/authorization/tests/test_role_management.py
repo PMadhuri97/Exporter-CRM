@@ -33,39 +33,68 @@ pytestmark = pytest.mark.asyncio
 BASE = "/api/v1/auth"
 ROLES = f"{BASE}/roles"
 
-# Transcribed from section 3.7, independently of catalog.py: a test that imports
-# the value it verifies would pass no matter what that value became.
+# Transcribed from the seed migrations (auth_0004, then auth_0007–auth_0010),
+# independently of catalog.py: a test that imports the value it verifies would pass
+# no matter what that value became.
+_COMPANY_WORK = {
+    ("exporters", "view"),
+    ("exporters", "create"),
+    ("exporters", "edit"),
+    ("exporters", "transition"),
+    ("exporters", "search_by_tax_id"),
+    ("exporters", "manage_bank_accounts"),
+    ("deals", "view"),
+    ("deals", "create"),
+    ("deals", "edit"),
+    ("documents", "view"),
+    ("documents", "upload"),
+    ("qualification", "record"),
+    ("verifications", "view"),
+    ("screening", "view"),
+    ("compliance", "view"),
+}
 EXPECTED_BUILTIN_PERMISSIONS = {
-    "COMPLIANCE": {
-        ("exporters", "view"),
-        ("exporters", "create"),
-        ("exporters", "edit"),
-        ("exporters", "transition"),
+    "COMPLIANCE": _COMPANY_WORK
+    | {
         ("exporters", "view_full_tax_id"),
-        ("exporters", "search_by_tax_id"),
-        ("verifications", "view"),
+        ("exporters", "partner_intake"),
+        ("exporters", "approve_bank_accounts"),
+        ("exporters", "view_bank_details"),
+        ("exporters", "assign_collector"),
+        ("documents", "download"),
         ("verifications", "create"),
         ("verifications", "review"),
-        ("screening", "view"),
         ("screening", "decide"),
+        ("compliance", "decide"),
+        ("compliance", "approve"),
         ("audit", "view"),
     },
-    "OPERATIONS": {
-        ("exporters", "view"),
-        ("exporters", "create"),
-        ("exporters", "edit"),
-        ("exporters", "transition"),
-        ("exporters", "search_by_tax_id"),
-        ("verifications", "view"),
-        ("verifications", "create"),
-        ("screening", "view"),
-    },
+    "OPERATIONS": _COMPANY_WORK,
     "DEVELOPER": {
         ("exporters", "view"),
-        ("verifications", "view"),
-        ("screening", "view"),
+        ("deals", "view"),
+        ("documents", "view"),
     },
     "API_USER": set(),
+}
+#: The administrator runs access and settings and reads the business; it changes,
+#: decides, approves and assigns nothing.
+EXPECTED_ADMIN_PERMISSIONS = {
+    ("users", "view"),
+    ("users", "create"),
+    ("users", "edit"),
+    ("roles", "view"),
+    ("roles", "create"),
+    ("roles", "edit"),
+    ("roles", "delete"),
+    ("settings", "manage"),
+    ("audit", "view"),
+    ("exporters", "view"),
+    ("deals", "view"),
+    ("documents", "view"),
+    ("verifications", "view"),
+    ("screening", "view"),
+    ("compliance", "view"),
 }
 
 
@@ -112,37 +141,25 @@ async def test_builtin_role_permissions_match_the_plan(
     assert _pairs(role) == expected
 
 
-async def test_admin_holds_every_permission_in_the_catalogue(
+async def test_admin_reads_the_business_and_runs_access_and_nothing_more(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
-    catalog = await client.get(f"{ROLES}/catalog", headers=auth_header(tokens[UserRole.ADMIN]))
-    assert catalog.status_code == 200, catalog.text
-    every_pair = {
-        (module["key"], action["key"])
-        for module in catalog.json()["modules"]
-        for action in module["actions"]
-    }
-
     roles = await _roles_by_slug(client, tokens[UserRole.ADMIN])
-    assert _pairs(roles["admin"]) == every_pair
+    assert _pairs(roles["admin"]) == EXPECTED_ADMIN_PERMISSIONS
 
 
-async def test_catalogue_admits_which_modules_are_not_enforced_yet(
+async def test_every_permission_is_enforced_but_the_tax_id_search(
     client: AsyncClient, tokens: dict[UserRole, str]
 ):
-    """The honesty requirement: only users, roles and the compliance assignment
-    permissions actually gate anything — plus one action of `exporters`
-    (`assign_rm`), flagged on the action itself — and the catalogue has to say so
-    rather than implying every checkbox works."""
+    """The honesty requirement: a checkbox on the Roles screen does what it says. Every
+    module and action is enforced by its routes, except searching by a full PAN, which
+    still follows the reveal rule — and the catalogue says so on that action."""
     catalog = await client.get(f"{ROLES}/catalog", headers=auth_header(tokens[UserRole.ADMIN]))
     modules = catalog.json()["modules"]
-    enforced = {m["key"] for m in modules if m["enforced"]}
-    assert enforced == {"users", "roles", "compliance"}
-    exporters = next(m for m in modules if m["key"] == "exporters")
-    assert {a["key"] for a in exporters["actions"] if a["enforced"]} == {"assign_rm"}
-    for module in modules:
-        if module["enforced"]:
-            assert all(a["enforced"] for a in module["actions"])
+    unenforced = {
+        (m["key"], a["key"]) for m in modules for a in m["actions"] if not a["enforced"]
+    }
+    assert unenforced == {("exporters", "search_by_tax_id")}
 
 
 async def test_operations_does_not_get_blanket_tax_id_reveal(

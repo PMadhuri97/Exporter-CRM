@@ -54,9 +54,27 @@ Optional: `STORAGE_LOCAL_ROOT` (where uploaded documents go; default
 `POST /api/v1/auth/register` off; it only ever grants `API_USER`, which reaches nothing
 in the CRM).
 
+Document previews: `CRM_DOCUMENT_CONVERTER` (default `soffice` — LibreOffice, run
+headless, which turns a Word, Excel, PowerPoint or CSV document into the PDF people read
+on screen; the backend image installs it) and `CRM_DOCUMENT_CONVERTER_TIMEOUT_SECONDS`
+(default `60`). Without LibreOffice on your machine those files show "Preview
+unavailable"; PDFs, images and text files are unaffected, and downloads work as before.
+A document that links outside itself (a linked image, an INCLUDETEXT field, an external
+workbook) is never converted, and the converter runs with an empty environment; outside
+local development, run it where the server's secrets are not (`remaining-work.md` R-65).
+
+Bank accounts: `FIELD_ENCRYPTION_KEYS` (see `.env.example`) encrypts account numbers
+and IBANs; without it, saving bank details answers 503 unless `ENVIRONMENT` is `local` or
+`test`. `CRM_BANK_CHANGE_APPROVAL_MODE` (default `SECOND_PERSON`; also `PERMISSION_HOLDER`,
+`BOTH`, and `OFF` in local/test only) decides who approves a proposed account.
+Sanctions: `CRM_SANCTIONS_TRUE_MATCH_APPROVAL` (default `SECOND_OFFICER`; `HEAD` needs
+`compliance:approve_true_match`, held by the Compliance lead; `SINGLE` in local/test only)
+decides who confirms a true match.
+Contacts: `CRM_CONTACT_REVERIFY_MONTHS` (default `12`) marks a contact "Verification due".
+
 Compliance engine (plans P3-1b, P3-3; `onboarding/application/compliance_settings.py`):
 `CRM_BACKGROUND_CHECK_MAKER_CHECKER` (default `true`: CLEAR, FLAGGED and ON_HOLD need a
-second COMPLIANCE/ADMIN user; `false` is accepted only where `ENVIRONMENT` is `local` or
+second COMPLIANCE user; `false` is accepted only where `ENVIRONMENT` is `local` or
 `test`, and the server refuses to start with it off anywhere else — including
 `development`, the default, so set `ENVIRONMENT=local` on your machine to turn it off),
 `CRM_BACKGROUND_CHECK_CLEAR_VALIDITY_DAYS` (default 365: how long a new Clear stays

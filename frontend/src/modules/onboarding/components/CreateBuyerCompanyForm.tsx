@@ -17,10 +17,12 @@
 
 import { useState } from 'react';
 
-import { Button, Field, Input } from '@/components';
+import { Button, Field, Input, RequiredNote } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 
 import type { CreateBuyerCompanyRequest } from '../types';
+
+import { CountrySelect } from './CountrySelect';
 
 export interface CreateBuyerCompanyFormProps {
   /** What the search already holds: the name typed, the country, any identifier. */
@@ -91,6 +93,7 @@ export function CreateBuyerCompanyForm({
       aria-label="Create buyer company"
       className="flex flex-col gap-3 rounded-lg border border-line p-4"
     >
+      <RequiredNote />
       <p className="text-body text-ink-2">
         A buyer company is created <span className="font-medium text-ink">outside the
         pipeline</span>: it is not a lead and changes no pipeline count. It is named as
@@ -105,14 +108,8 @@ export function CreateBuyerCompanyForm({
             onChange={(event) => setName(event.target.value)}
           />
         </Field>
-        <Field label="Country (ISO code)" htmlFor="create-buyer-country" required>
-          <Input
-            id="create-buyer-country"
-            value={country}
-            maxLength={2}
-            required
-            onChange={(event) => setCountry(event.target.value)}
-          />
+        <Field label="Country" htmlFor="create-buyer-country" required>
+          <CountrySelect id="create-buyer-country" value={country} onChange={setCountry} />
         </Field>
         {indian ? (
           <>

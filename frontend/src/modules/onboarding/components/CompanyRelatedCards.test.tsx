@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UserRole } from '@/lib/api/types';
 import { useCurrentUser } from '@/platform/auth';
 
-import { updateExporterContact } from '../api';
+import { setExporterContactStatus, updateExporterContact } from '../api';
 import type { ExporterContact } from '../types';
 
 import { CompanyRelatedCards } from './CompanyRelatedCards';
@@ -26,6 +26,7 @@ vi.mock('@/platform/auth', async (importOriginal) => ({
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api')>()),
   updateExporterContact: vi.fn(),
+  setExporterContactStatus: vi.fn(),
 }));
 // The other three cards fetch their own lists; they are not under test here.
 vi.mock('../hooks', async (importOriginal) => {
@@ -49,6 +50,21 @@ const JANE: ExporterContact = {
   phone: '+91 99999 11111',
   department: null,
   is_primary_contact: false,
+  status: 'ACTIVE',
+  status_changed_at: null,
+  status_reason: null,
+  last_verified_at: null,
+  last_verified_by: null,
+  created_at: '2026-09-01T10:00:00Z',
+  verification_due: false,
+};
+
+const RAVI: ExporterContact = {
+  ...JANE,
+  id: '33333333-3333-4333-8333-333333333333',
+  name: 'Ravi Kumar',
+  status: 'LEFT_COMPANY',
+  status_reason: 'Moved to another firm',
 };
 
 /** What OPERATIONS is sent for the same contact: the server masks before it leaves. */
@@ -58,12 +74,13 @@ function as(role: UserRole) {
   vi.mocked(useCurrentUser).mockReturnValue({ role } as ReturnType<typeof useCurrentUser>);
 }
 
-function renderCards(contact: ExporterContact) {
+function renderCards(contact: ExporterContact | ExporterContact[]) {
+  const contacts = Array.isArray(contact) ? contact : [contact];
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <CompanyRelatedCards customerId={CUSTOMER_ID} contacts={[contact]} contactsLoading={false} canAdd />
+        <CompanyRelatedCards customerId={CUSTOMER_ID} contacts={contacts} contactsLoading={false} canAdd />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -73,7 +90,7 @@ function openEdit() {
   fireEvent.click(screen.getByRole('button', { name: 'Edit Jane Doe' }));
 }
 
-function change(label: string, value: string) {
+function change(label: string | RegExp, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
@@ -179,8 +196,54 @@ describe('Editing a contact', () => {
     renderCards(JANE);
     openEdit();
 
-    change('Name *', '   ');
+    change(/^Name/, '   ');
 
     expect(screen.getByRole('button', { name: 'Save contact' })).toBeDisabled();
+  });
+});
+
+describe("A contact's status", () => {
+  it('keeps contacts who left behind "Show inactive"', () => {
+    as('COMPLIANCE');
+    renderCards([JANE, RAVI]);
+
+    expect(screen.getByText('Jane Doe')).toBeInTheDocument();
+    expect(screen.queryByText('Ravi Kumar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show inactive (1)' }));
+
+    expect(screen.getByText('Ravi Kumar')).toBeInTheDocument();
+    expect(screen.getByText('Left company')).toBeInTheDocument();
+    expect(screen.getByText('Moved to another firm')).toBeInTheDocument();
+  });
+
+  it('flags a contact whose details are due a re-check', () => {
+    as('COMPLIANCE');
+    renderCards({ ...JANE, verification_due: true });
+
+    expect(screen.getByText('Verification due')).toBeInTheDocument();
+  });
+
+  it('asks for a reason before a contact can be marked as having left', async () => {
+    as('COMPLIANCE');
+    vi.mocked(setExporterContactStatus).mockResolvedValue({ ...JANE, status: 'LEFT_COMPANY' });
+    renderCards({ ...JANE, is_primary_contact: true });
+    openEdit();
+
+    change('Status', 'LEFT_COMPANY');
+    expect(screen.getByRole('button', { name: 'Save contact' })).toBeDisabled();
+    expect(screen.getByRole('checkbox')).toBeDisabled();
+
+    change(/^Reason/, 'Moved to another firm');
+    save();
+
+    await waitFor(() =>
+      expect(setExporterContactStatus).toHaveBeenCalledWith(CUSTOMER_ID, JANE.id, {
+        status: 'LEFT_COMPANY',
+        reason: 'Moved to another firm',
+      }),
+    );
+    // The primary flag goes with the status on the server; it is not sent separately.
+    expect(updateExporterContact).not.toHaveBeenCalled();
   });
 });

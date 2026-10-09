@@ -22,6 +22,7 @@ from app.modules.onboarding.infrastructure.repositories.exporter_lifecycle_histo
 )
 from app.modules.onboarding.infrastructure.repositories.exporter_profile_repository import (
     ExporterProfileRepository,
+    companies_with_active_primary_contact,
 )
 from app.modules.onboarding.infrastructure.repositories.kyb_vendor_result_repository import (
     KybVendorResultRepository,
@@ -58,6 +59,7 @@ __all__ = [
     "ExporterContactRepository",
     "ExporterLifecycleHistoryRepository",
     "ExporterProfileRepository",
+    "companies_with_active_primary_contact",
     "KybVendorResultRepository",
     "KycCaseRepository",
     "OnboardingCustomerRepository",

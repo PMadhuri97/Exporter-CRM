@@ -27,7 +27,8 @@ import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Button, Input, Select, Sheet } from '@/components';
 import { useCan } from '@/platform/access';
 
-import { COUNTRY_OPTIONS } from '../countries';
+// One country list, shared with the company form's own picker.
+import { countryOptions } from '../countries';
 import {
   CHECK_LABEL,
   ROLE_LABEL,
@@ -199,7 +200,7 @@ export function CompanyFilterPanel({
             onChange={(event) => set('country', event.target.value || undefined)}
           >
             <option value="">Any</option>
-            {COUNTRY_OPTIONS.map(({ code, name }) => (
+            {countryOptions().map(({ code, name }) => (
               <option key={code} value={code}>
                 {name}
               </option>

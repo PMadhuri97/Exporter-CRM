@@ -8,6 +8,31 @@ import {
 
 import { cn } from '@/lib/cn';
 
+/**
+ * The mark after a required field's label. The one convention for "required" across the
+ * CRM: a field without it is optional, so nothing says "(optional)" or "(required)" in
+ * words. Hidden from screen readers, which hear the control's own `required`.
+ */
+export function RequiredMark() {
+  return (
+    <span className="ml-0.5 text-ink-3" aria-hidden>
+      *
+    </span>
+  );
+}
+
+/**
+ * The one line that explains the mark, at the top of a form that has required fields.
+ * Hidden from screen readers like the mark itself: they hear each control's `required`.
+ */
+export function RequiredNote({ className }: { className?: string }) {
+  return (
+    <p className={cn('text-caption text-ink-3', className)} aria-hidden>
+      * required
+    </p>
+  );
+}
+
 /** A form field's label, control, hint and error, laid out once. */
 export function Field({
   label,
@@ -30,11 +55,7 @@ export function Field({
     <div className={className}>
       <label htmlFor={htmlFor} className="mb-1 block text-caption font-medium text-ink-2">
         {label}
-        {required && (
-          <span className="ml-0.5 text-ink-3" aria-hidden>
-            *
-          </span>
-        )}
+        {required && <RequiredMark />}
       </label>
       {children}
       {hint && !error && <p className="mt-1 text-caption text-ink-3">{hint}</p>}

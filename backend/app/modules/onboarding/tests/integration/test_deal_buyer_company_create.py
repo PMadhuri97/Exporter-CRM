@@ -155,7 +155,7 @@ async def test_a_foreign_buyer_without_a_registration_number_is_refused(client: 
     name = _name()
     resp = await _put(client, await _token(client), deal_id, name=name, country="DE")
     assert resp.status_code == 422, resp.text
-    assert "registration_number" in resp.text
+    assert "Registration number is required" in resp.text
     async with db_services.AsyncSessionLocal() as db:
         assert await db.scalar(select(ExporterProfile).where(ExporterProfile.name == name)) is None
         assert (await db.scalar(select(Deal).where(Deal.id == deal_id))).buyer_company_id is None
@@ -313,7 +313,7 @@ async def test_create_is_its_own_form(client: AsyncClient):
     [
         (UserRole.OPERATIONS, 200),
         (UserRole.COMPLIANCE, 200),
-        (UserRole.ADMIN, 200),
+        (UserRole.ADMIN, 403),
         (UserRole.DEVELOPER, 403),
         (UserRole.API_USER, 403),
     ],
@@ -339,7 +339,7 @@ async def test_only_staff_may_create_a_buyer_company(client: AsyncClient, role, 
 
 @pytest.mark.parametrize(
     ("role", "revealed"),
-    [(UserRole.OPERATIONS, False), (UserRole.COMPLIANCE, True), (UserRole.ADMIN, True)],
+    [(UserRole.OPERATIONS, False), (UserRole.COMPLIANCE, True)],
 )
 async def test_the_response_is_masked_per_role(client: AsyncClient, role, revealed):
     deal_id = await make_deal()

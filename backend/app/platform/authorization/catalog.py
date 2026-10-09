@@ -1,25 +1,30 @@
 """The permission catalogue: every module, every action, and what the five
-built-in roles start with.
+built-in roles (and the two lead roles) start with.
 
 This is the single definition of "what permissions exist". The database stores
 which ones a role has been granted; it never defines the vocabulary, so a typo
 in an API request is a 422 rather than a row nobody will ever check.
 
-Two things to be honest about:
+**Every module is enforced.** Each CRM route checks a permission
+(`require_permission`), so what the Roles screen shows a role holding is what that
+role can do. One action, `exporters:search_by_tax_id`, is declared but not consulted
+(its note says why). The `enforced` flag stays in the model for a module added later, before
+its routes move over; anything displaying the catalogue must surface it, since
+presenting an unenforced checkbox as if it gated something would be a lie.
 
-* **`enforced` marks whether a route actually consults the permission today.**
-  `users`, `roles` and `compliance` do, and so does the one action of
-  `exporters` that carries its own flag (`assign_rm`). The rest are declared and seeded to match
-  section 3.7 of the architecture plan so that when a module's routes migrate
-  off `require_role`, the behaviour they land on is already the behaviour they
-  had. Anything reading this catalogue for display must surface that flag —
-  presenting an unenforced checkbox as if it gated something would be a lie.
-* **`exporters:view_full_tax_id` is granted to COMPLIANCE and ADMIN only**,
-  matching today's masking rule: `can_reveal_identifiers` admits exactly those
-  two roles and no other. OPERATIONS is masked on every record, including the
-  ones it is the relationship manager for — architecture decision 12 settled the
-  prototype that way, and ownership-scoped reveal waits until after it. Seeding
-  OPERATIONS here would therefore widen a rule, not describe one.
+**The administrator runs the system, not the business.** ADMIN manages users, roles
+and settings and may read companies, deals and documents to help people, but holds no
+permission that creates, changes, decides or approves a business record, and never
+sees full tax identifiers. Someone who does both jobs has two accounts.
+
+**Senior work belongs to two lead roles**, seeded as ordinary, editable roles:
+*Compliance lead* (Compliance plus assigning reviews and approving high-risk Clears)
+and *Sales lead* (RM plus assigning relationship managers).
+
+**`exporters:view_full_tax_id` is what unmasks tax identifiers**
+(`can_reveal_identifiers`). COMPLIANCE holds it by default; OPERATIONS is masked on
+every record, including the ones it is the relationship manager for — architecture
+decision 12 settled the prototype that way.
 """
 
 from __future__ import annotations
@@ -85,31 +90,117 @@ CATALOG: tuple[ModuleSpec, ...] = (
         actions=CRUD,
     ),
     ModuleSpec(
+        key="settings",
+        label="System configuration",
+        description="Qualification criteria and the documents a deal requires",
+        enforced=True,
+        actions=(
+            ActionSpec(
+                "manage", "Manage", "Change qualification criteria and required documents"
+            ),
+        ),
+    ),
+    ModuleSpec(
         key="exporters",
         label="Companies",
-        description="Exporter profiles, contacts and activities",
-        enforced=False,
+        description="Company records, contacts, activities, follow-ups and trade history",
+        enforced=True,
         actions=(
-            *CRUD[:3],
-            ActionSpec("transition", "Move stage", "Change a company's lifecycle stage"),
+            ActionSpec("view", "View", "See companies, contacts, activities and history"),
+            ActionSpec("create", "Create", "Add companies, by hand or by bulk import"),
+            ActionSpec(
+                "edit",
+                "Edit",
+                "Change company details, contacts, activities, follow-ups and trade history",
+            ),
+            ActionSpec(
+                "transition",
+                "Move stage",
+                "Bring a company into the pipeline, pause or end a relationship, start a "
+                "background check or answer a request for more information",
+            ),
             ActionSpec(
                 "view_full_tax_id",
                 "See full PAN / GSTIN",
                 "View tax identifiers unmasked on every company",
             ),
+            # Not consulted: the company list's exact PAN/GSTIN/IEC filters follow the
+            # reveal rule (`exporters:view_full_tax_id`), since a hit answers "does
+            # this company exist" however the row is masked.
             ActionSpec(
                 "search_by_tax_id",
                 "Search by full PAN",
                 "Look a company up by its complete tax identifier",
+                enforced=False,
             ),
-            # Enforced although the rest of the module is not: the relationship
-            # manager routes consult it (as "ADMIN or this permission").
             ActionSpec(
                 "assign_rm",
                 "Assign relationship managers",
                 "Assign someone else as a company's RM, change or clear an RM, and "
                 "reassign companies in bulk",
-                enforced=True,
+            ),
+            ActionSpec(
+                "partner_intake",
+                "Partner intake",
+                "Take in a company a partner (RXIL) has already qualified",
+            ),
+            ActionSpec(
+                "assign_collector",
+                "Assign collections owners",
+                "Name who chases a company's payments, change or clear them, and "
+                "reassign companies in bulk",
+            ),
+            ActionSpec(
+                "manage_bank_accounts",
+                "Propose bank accounts",
+                "Propose a company's new bank account, or a change to one",
+            ),
+            ActionSpec(
+                "approve_bank_accounts",
+                "Approve bank accounts",
+                "Approve or reject a proposed bank account, and verify one",
+            ),
+            ActionSpec(
+                "view_bank_details",
+                "See full bank account numbers",
+                "Reveal a full account number or IBAN; every reveal is audited",
+            ),
+        ),
+    ),
+    ModuleSpec(
+        key="deals",
+        label="Deals",
+        description="Deals, their buyers and their stages",
+        enforced=True,
+        actions=(
+            ActionSpec("view", "View", "See deals"),
+            ActionSpec("create", "Open", "Open a deal for a company"),
+            ActionSpec(
+                "edit",
+                "Edit",
+                "Move a deal, set its buyer and invoicing branch, record payment outcomes",
+            ),
+        ),
+    ),
+    ModuleSpec(
+        key="documents",
+        label="Documents",
+        description="Company and deal paperwork",
+        enforced=True,
+        actions=(
+            ActionSpec("view", "View", "See the document list and read documents on screen"),
+            ActionSpec("upload", "Upload", "Add documents to a company or a deal"),
+            ActionSpec("download", "Download", "Save a copy of a document"),
+        ),
+    ),
+    ModuleSpec(
+        key="qualification",
+        label="Qualification",
+        description="Whether a lead fits what we finance",
+        enforced=True,
+        actions=(
+            ActionSpec(
+                "record", "Record", "Record criterion results and the qualification outcome"
             ),
         ),
     ),
@@ -117,10 +208,10 @@ CATALOG: tuple[ModuleSpec, ...] = (
         key="verifications",
         label="Verifications",
         description="Background and vendor check results",
-        enforced=False,
+        enforced=True,
         actions=(
             ActionSpec("view", "View", "See verification results"),
-            ActionSpec("create", "Trigger", "Run or record a verification"),
+            ActionSpec("create", "Record", "Record a check result"),
             ActionSpec("review", "Review", "Record a compliance reviewer's decision"),
         ),
     ),
@@ -128,18 +219,28 @@ CATALOG: tuple[ModuleSpec, ...] = (
         key="screening",
         label="Screening",
         description="The compliance screening checklist",
-        enforced=False,
+        enforced=True,
         actions=(
-            ActionSpec("view", "View", "See the checklist"),
+            ActionSpec("view", "View", "See the checklist and bank-activity findings"),
             ActionSpec("decide", "Decide", "Record a checklist decision"),
         ),
     ),
     ModuleSpec(
         key="compliance",
         label="Compliance work",
-        description="Who reviews and approves background checks",
+        description="Background checks: who reviews, decides and approves them",
         enforced=True,
         actions=(
+            ActionSpec(
+                "view", "View", "See background checks, their decisions, cycles and proposals"
+            ),
+            ActionSpec(
+                "decide",
+                "Decide",
+                "Review a background check: claim it, record or propose decisions, start "
+                "re-checks, flag GST branches",
+            ),
+            ActionSpec("approve", "Approve", "Approve or reject another officer's proposal"),
             ActionSpec(
                 "assign",
                 "Assign reviews",
@@ -152,13 +253,19 @@ CATALOG: tuple[ModuleSpec, ...] = (
                 "Approve high-risk Clears",
                 "Approve a CLEAR proposed with HIGH or CRITICAL risk",
             ),
+            ActionSpec(
+                "approve_true_match",
+                "Confirm sanctions true matches",
+                "Confirm a proposed sanctions true match when confirmation needs the head "
+                "of compliance",
+            ),
         ),
     ),
     ModuleSpec(
         key="audit",
         label="Audit",
         description="Audit trails and workflow screens",
-        enforced=False,
+        enforced=True,
         actions=(ActionSpec("view", "View", "Read audit trails"),),
     ),
 )
@@ -185,55 +292,117 @@ def _permissions_for(*pairs: tuple[str, str]) -> frozenset[tuple[str, str]]:
     return frozenset(pairs)
 
 
-#: What each built-in role is seeded with, transcribed from section 3.7 of the
-#: architecture plan. These are starting points, not guarantees: built-in roles
-#: are editable by design, so a deployment can diverge from this table. The
-#: seed migration applies it once and never re-applies it.
+#: The day-to-day company work an RM does, which compliance does too.
+_COMPANY_WORK: frozenset[tuple[str, str]] = _permissions_for(
+    ("exporters", "view"),
+    ("exporters", "create"),
+    ("exporters", "edit"),
+    ("exporters", "transition"),
+    ("exporters", "search_by_tax_id"),
+    ("exporters", "manage_bank_accounts"),
+    ("deals", "view"),
+    ("deals", "create"),
+    ("deals", "edit"),
+    ("documents", "view"),
+    ("documents", "upload"),
+    ("qualification", "record"),
+    ("verifications", "view"),
+    ("screening", "view"),
+    ("compliance", "view"),
+)
+
+#: What each built-in role is seeded with. Starting points, not guarantees: built-in
+#: roles are editable by design, so a deployment can diverge from this table. The seed
+#: migrations apply it once and never re-apply it.
 BUILTIN_ROLE_PERMISSIONS: dict[UserRole, frozenset[tuple[str, str]]] = {
-    # "Full access, including managing users and criteria."
-    UserRole.ADMIN: all_permissions(),
-    UserRole.COMPLIANCE: _permissions_for(
+    # Runs the system — people, roles, settings, the audit trail — and reads the
+    # business to help people with it. Never writes, decides or approves it.
+    UserRole.ADMIN: _permissions_for(
+        ("users", "view"),
+        ("users", "create"),
+        ("users", "edit"),
+        ("roles", "view"),
+        ("roles", "create"),
+        ("roles", "edit"),
+        ("roles", "delete"),
+        ("settings", "manage"),
+        ("audit", "view"),
         ("exporters", "view"),
-        ("exporters", "create"),
-        ("exporters", "edit"),
-        ("exporters", "transition"),
-        ("exporters", "view_full_tax_id"),
-        ("exporters", "search_by_tax_id"),
+        ("deals", "view"),
+        ("documents", "view"),
         ("verifications", "view"),
+        ("screening", "view"),
+        ("compliance", "view"),
+    ),
+    UserRole.COMPLIANCE: _COMPANY_WORK
+    | _permissions_for(
+        ("exporters", "view_full_tax_id"),
+        ("exporters", "partner_intake"),
+        ("exporters", "approve_bank_accounts"),
+        ("exporters", "view_bank_details"),
+        ("exporters", "assign_collector"),
+        ("documents", "download"),
         ("verifications", "create"),
         ("verifications", "review"),
-        ("screening", "view"),
         ("screening", "decide"),
+        ("compliance", "decide"),
+        ("compliance", "approve"),
         ("audit", "view"),
     ),
-    UserRole.OPERATIONS: _permissions_for(
-        ("exporters", "view"),
-        ("exporters", "create"),
-        ("exporters", "edit"),
-        ("exporters", "transition"),
-        # Identifiers are masked for this role on every record (decision 12 — there
-        # is no owner-scoped reveal). Searching by a full PAN is a separate
-        # permission and is granted outright per §3.7.
-        ("exporters", "search_by_tax_id"),
-        ("verifications", "view"),
-        ("verifications", "create"),
-        ("screening", "view"),
-    ),
-    # "Read-only technical access. Tax IDs are always masked."
+    # Relationship managers. Identifiers are masked for this role on every record
+    # (decision 12 — there is no owner-scoped reveal); searching by a full PAN is a
+    # separate permission and is granted outright.
+    UserRole.OPERATIONS: _COMPANY_WORK,
+    # "Read-only technical access. Tax IDs are always masked." Companies, deals and
+    # documents; not the compliance surface.
     UserRole.DEVELOPER: _permissions_for(
         ("exporters", "view"),
-        ("verifications", "view"),
-        ("screening", "view"),
+        ("deals", "view"),
+        ("documents", "view"),
     ),
     # "Reaches nothing in the CRM."
     UserRole.API_USER: frozenset(),
 }
 
+#: The two lead roles: ordinary, editable roles seeded beside the built-in ones, as
+#: ``(slug, name, description, based on, extra grants)``. A lead keeps the enum role
+#: they are based on (COMPLIANCE or OPERATIONS), which is what the compliance and RM
+#: rules read; the role adds the senior permissions.
+LEAD_ROLES: tuple[tuple[str, str, str, UserRole, frozenset[tuple[str, str]]], ...] = (
+    (
+        "compliance-lead",
+        "Compliance lead",
+        "Compliance, plus assigning reviews and approving high-risk Clears.",
+        UserRole.COMPLIANCE,
+        _permissions_for(
+            ("compliance", "assign"),
+            ("compliance", "approve_high_risk"),
+            ("compliance", "approve_true_match"),
+        ),
+    ),
+    (
+        "sales-lead",
+        "Sales lead",
+        "Relationship manager, plus assigning and reassigning relationship managers.",
+        UserRole.OPERATIONS,
+        _permissions_for(("exporters", "assign_rm"), ("exporters", "assign_collector")),
+    ),
+)
+
+
+def lead_role_permissions(slug: str) -> frozenset[tuple[str, str]]:
+    """Everything a lead role is seeded with: its base role's grants plus its own."""
+    for lead_slug, _name, _description, base, extra in LEAD_ROLES:
+        if lead_slug == slug:
+            return BUILTIN_ROLE_PERMISSIONS[base] | extra
+    raise KeyError(slug)
+
+
 BUILTIN_ROLE_METADATA: dict[UserRole, tuple[str, str, str]] = {
     UserRole.ADMIN: (
         "admin",
         "Administrator",
-        "Full access, including user and role management.",
+        "Users, roles and settings; reads the business but never changes it.",
     ),
     UserRole.COMPLIANCE: (
         "compliance",

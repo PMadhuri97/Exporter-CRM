@@ -44,6 +44,9 @@ class DocumentView:
     uploaded_at: datetime
     scan_status: DocumentScanStatus
     scanner_name: str | None
+    #: Whether it can be read on screen: servable, and a type shown as it is or one
+    #: converted to PDF whose conversion has not failed.
+    has_preview: bool = False
 
     @property
     def is_downloadable(self) -> bool:

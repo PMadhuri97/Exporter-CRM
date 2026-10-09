@@ -172,7 +172,7 @@ export function ReviewDialog({
         </select>
       </label>
       <label className="mt-2 block text-ink-3">
-        {supersedes ? 'Why the verdict changes' : 'Note (optional)'}
+        {supersedes ? 'Why the verdict changes' : 'Note'}
         <textarea
           aria-label="Review note"
           className={`${FIELD} min-h-16 resize-y`}

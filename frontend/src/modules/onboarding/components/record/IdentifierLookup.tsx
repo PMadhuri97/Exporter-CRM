@@ -29,6 +29,7 @@ import { paths } from '../../paths';
 import type { CompanyMatch } from '../../types';
 
 import { detectEntry } from './entry';
+import { countryLabel } from '../../countries';
 
 function Answer({ match, onPick }: { match: CompanyMatch; onPick?: (id: string) => void }) {
   if (match.kind === 'NEW') {
@@ -66,7 +67,7 @@ function Answer({ match, onPick }: { match: CompanyMatch; onPick?: (id: string) 
           {(match.candidates ?? []).map((candidate) => (
             <li key={candidate.company_id} className="flex items-center gap-2 text-secondary">
               <span className="text-ink">{candidate.name}</span>
-              <span className="text-ink-3">{candidate.country}</span>
+              <span className="text-ink-3">{candidate.country ? countryLabel(candidate.country) : null}</span>
               {onPick ? (
                 <button type="button" className="font-semibold text-accent underline-offset-2 hover:underline" onClick={() => onPick(candidate.company_id)}>
                   Use it

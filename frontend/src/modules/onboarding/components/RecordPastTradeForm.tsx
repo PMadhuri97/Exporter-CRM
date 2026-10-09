@@ -19,7 +19,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { Button, Field, Input, Select, Textarea } from '@/components';
+import { Button, Field, Input, RequiredNote, Select, Textarea } from '@/components';
 
 import { recordTradeOutcome } from '../api';
 import { useRecordTradeInvoice } from '../hooks';
@@ -139,6 +139,7 @@ export function RecordPastTradeForm({
       aria-label="Record past invoice"
       className="mt-2 flex flex-col gap-3 rounded-lg border border-line bg-paper p-4"
     >
+      <RequiredNote />
       <p className="text-body text-ink-2">
         An invoice with <span className="font-medium text-ink">{counterpartyName}</span> from
         before either company came to us. It records no deal, and its outcome stays

@@ -25,6 +25,7 @@ from app.modules.onboarding.domain.handover_conditions import (
     required_documents_are_present,
     seller_background_check_is_clear,
     seller_compliance_is_current,
+    seller_has_a_primary_contact,
     seller_is_a_customer,
     state_name,
 )
@@ -109,6 +110,15 @@ async def test_the_guard_passes_on_a_clear_customer():
 async def test_a_company_short_of_customer_is_named(journey: str):
     reason = await seller_is_a_customer(subject(seller_journey=journey), HandoverProviders())
     assert reason == f"the company is {journey}, not CUSTOMER"
+
+
+async def test_a_seller_with_no_active_primary_contact_is_refused():
+    """Someone to reach after the handover: a seller with no active primary contact is
+    named; one with a primary contact passes."""
+    assert await seller_has_a_primary_contact(
+        subject(seller_has_active_primary_contact=False), HandoverProviders()
+    ) == "the company has no active primary contact"
+    assert await seller_has_a_primary_contact(subject(), HandoverProviders()) is None
 
 
 @pytest.mark.parametrize("value", ["NOT_STARTED", "IN_REVIEW", "MORE_INFO", "FLAGGED", "ON_HOLD"])
@@ -289,12 +299,14 @@ async def test_the_guard_reports_every_unmet_condition_in_order():
             seller_journey="PROSPECT",
             seller_background_check="FLAGGED",
             seller_gst_registration_id=_BRANCH,
+            seller_has_active_primary_contact=False,
         ),
         providers,
     )
     assert reason == (
         "the company is PROSPECT, not CUSTOMER; "
         "the background check is FLAGGED, not CLEAR; "
+        "the company has no active primary contact; "
         "missing required documents: PRE_SHIPMENT; "
         "the background check expired on 2026-09-01; "
         "the buyer's AML check is FAILED, not PASSED; "

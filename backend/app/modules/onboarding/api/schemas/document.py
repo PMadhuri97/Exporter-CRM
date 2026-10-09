@@ -47,6 +47,10 @@ class DocumentResponse(BaseModel):
     #: Whether content may be fetched at all. ``False`` for `PENDING_SCAN`,
     #: `QUARANTINED` and `SCAN_FAILED`, for every role.
     is_downloadable: bool
+    #: Whether it can be read on screen (`GET /documents/{id}/preview`): servable, and a
+    #: PDF, image or text file, or a Word/Excel/PowerPoint/CSV file whose conversion to
+    #: PDF has not failed.
+    has_preview: bool = False
 
     @classmethod
     def from_view(cls, view: DocumentView) -> DocumentResponse:
@@ -65,6 +69,7 @@ class DocumentResponse(BaseModel):
             scan_status=view.scan_status,
             scanner_name=view.scanner_name,
             is_downloadable=view.is_downloadable,
+            has_preview=view.has_preview,
         )
 
 

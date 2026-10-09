@@ -636,6 +636,20 @@ class VerificationService:
         await self._db.commit()
         await self._db.refresh(result)
 
+        if result.subject_company_id is not None:
+            # Any check about a company may answer an automatic qualification criterion;
+            # which ones a verification feeds is the evaluator's business, not this
+            # method's (it never branches on the verification type).
+            from app.modules.onboarding.application.qualification_auto_service import (
+                QualificationAutoEvaluator,
+            )
+            from app.modules.onboarding.domain.qualification_auto import VERIFICATION_SOURCES
+
+            await QualificationAutoEvaluator(self._db).evaluate_quietly(
+                result.subject_company_id, VERIFICATION_SOURCES
+            )
+            await self._db.refresh(result)
+
         logger.info(
             "verification.triggered",
             verification_result_id=str(result.id),

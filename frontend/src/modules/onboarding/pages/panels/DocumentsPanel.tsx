@@ -37,7 +37,6 @@ export function DocumentsPanel({
           isStaff
             ? {
                 owner: 'COMPANY',
-                isUploading: upload.isPending,
                 onUpload: (input) => upload.mutateAsync(input),
               }
             : undefined

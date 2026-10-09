@@ -12,6 +12,15 @@ vi.mock('../api', () => ({
   getDocument: vi.fn(),
   createDownloadLink: vi.fn(),
   fetchDocumentBlob: vi.fn(),
+  fetchDocumentPreview: vi.fn(),
+}));
+
+// Saving a copy is `documents:download`, read from the server; these tests hold it unless
+// they say otherwise.
+const mayDownload = vi.hoisted(() => ({ value: true }));
+vi.mock('@/platform/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/access')>()),
+  useHasPermission: () => mayDownload.value,
 }));
 
 const DECISION_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';

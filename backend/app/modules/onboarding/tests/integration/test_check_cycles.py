@@ -345,16 +345,18 @@ async def test_an_empty_cycle_cannot_be_followed_by_another():
         assert [c[1] for c in _cycles(cursor, company_id)] == [1, 2]
 
 
-async def test_only_compliance_and_admin_start_a_cycle_and_only_the_offered_kinds():
+async def test_only_compliance_starts_a_cycle_and_only_the_offered_kinds():
     company_id = await make_company()
     await answer_screening(company_id, keys=("address-physical",))
     with pytest.raises(CheckCycleRoleNotAllowedError):
         await start_cycle(company_id, role=UserRole.OPERATIONS)
+    with pytest.raises(CheckCycleRoleNotAllowedError):
+        await start_cycle(company_id, role=UserRole.ADMIN)
     with pytest.raises(ValidationError):
         await start_cycle(company_id, kind=CheckCycleKind.FULL)
     with pytest.raises(ValidationError):
         await start_cycle(company_id, reason="   ")
-    await start_cycle(company_id, role=UserRole.ADMIN)
+    await start_cycle(company_id, role=UserRole.COMPLIANCE)
 
 
 async def test_two_starts_at_the_same_moment_make_one_cycle():
@@ -510,17 +512,18 @@ async def test_the_api_refuses_operations_and_an_empty_or_flagged_start(client, 
     company_id = await make_company()
     url = f"{BASE}/exporters/{company_id}/background-check/cycles"
     body = {"kind": "RE_KYC", "reason": "why"}
-    assert (await client.post(url, json=body, headers=auth_header(tokens[UserRole.OPERATIONS]))
-            ).status_code == 403
+    for refused in (UserRole.OPERATIONS, UserRole.ADMIN):
+        assert (await client.post(url, json=body, headers=auth_header(tokens[refused]))
+                ).status_code == 403
     empty = await client.post(url, json=body, headers=auth_header(tokens[UserRole.COMPLIANCE]))
     assert (empty.status_code, empty.json()["error_code"]) == (409, "CHECK_CYCLE_EMPTY")
     bad = await client.post(
-        url, json={"kind": "FULL", "reason": "x"}, headers=auth_header(tokens[UserRole.ADMIN])
+        url, json={"kind": "FULL", "reason": "x"}, headers=auth_header(tokens[UserRole.COMPLIANCE])
     )
     assert bad.status_code == 422
     unknown = await client.post(
         f"{BASE}/exporters/{uuid.uuid4()}/background-check/cycles", json=body,
-        headers=auth_header(tokens[UserRole.ADMIN]),
+        headers=auth_header(tokens[UserRole.COMPLIANCE]),
     )
     assert unknown.status_code == 404
 

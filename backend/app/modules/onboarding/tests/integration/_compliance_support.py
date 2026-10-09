@@ -112,9 +112,13 @@ async def ready_to_clear(company_id: uuid.UUID) -> uuid.UUID:
 
 
 async def cleared_company(company_id: uuid.UUID) -> uuid.UUID:
-    """Answer the checklist, record the required checks, start the check and clear it."""
+    """Answer the checklist, record the required checks, start the check and clear it —
+    and give the company an active primary contact, which a handover also needs."""
+    from app.modules.onboarding.tests.fixtures.companies import ensure_primary_contact
+
     await ready_to_clear(company_id)
     await clear(company_id)
+    await ensure_primary_contact(company_id)
     return company_id
 
 

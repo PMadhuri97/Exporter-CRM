@@ -28,6 +28,18 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
         uuid-runtime \
     && rm -rf /var/lib/apt/lists/*
 
+# LibreOffice, headless, for reading Word, Excel and PowerPoint files on screen: the
+# document preview converts one to PDF on its first view (`CRM_DOCUMENT_CONVERTER`,
+# `soffice`). The `-nogui` builds and no recommends keep it as small as it gets; it is
+# still the largest thing in this image. Without it those files show "Preview
+# unavailable" and nothing else breaks.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libreoffice-writer-nogui \
+        libreoffice-calc-nogui \
+        libreoffice-impress-nogui \
+        fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt \

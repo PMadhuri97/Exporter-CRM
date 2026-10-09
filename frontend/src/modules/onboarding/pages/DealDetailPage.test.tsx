@@ -30,6 +30,11 @@ vi.mock('@/platform/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/platform/auth')>()),
   useCurrentUser: vi.fn(),
 }));
+// Saving a copy is `documents:download`, read from the server; this page's tests hold it.
+vi.mock('@/platform/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/access')>()),
+  useHasPermission: () => true,
+}));
 vi.mock('../api', () => ({
   getDeal: vi.fn(),
   listDealRequiredDocuments: vi.fn(),
@@ -110,6 +115,7 @@ function document_(overrides: Partial<CrmDocument> = {}): CrmDocument {
     scan_status: 'AVAILABLE',
     scanner_name: 'pass-through',
     is_downloadable: true,
+    has_preview: true,
     ...overrides,
   };
 }

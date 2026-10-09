@@ -5,7 +5,7 @@
  * too, and a file that exports both a component and its constants loses fast refresh.
  */
 
-import { COUNTRY_OPTIONS } from './countries';
+import { countryLabel } from './countries';
 
 import type { BackgroundCheckState, CompanyTradeRole, ExporterSource } from './types';
 
@@ -75,10 +75,7 @@ export function describeFilters(filters: CompanyFilters): string[] {
   if (filters.has_open_deals !== undefined) {
     described.push(filters.has_open_deals ? 'Has an open deal' : 'No open deal');
   }
-  if (filters.country) {
-    const country = COUNTRY_OPTIONS.find((option) => option.code === filters.country);
-    described.push(`Country: ${country?.name ?? filters.country}`);
-  }
+  if (filters.country) described.push(`Country: ${countryLabel(filters.country)}`);
   if (filters.industry) described.push(`Industry: ${filters.industry}`);
   return described;
 }

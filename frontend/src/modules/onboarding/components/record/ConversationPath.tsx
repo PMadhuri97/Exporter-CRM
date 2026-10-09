@@ -19,7 +19,16 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { Button, Input, Path, Popover, PopoverContent, PopoverTrigger, Textarea } from '@/components';
+import {
+  Button,
+  Input,
+  Path,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  RequiredMark,
+  Textarea,
+} from '@/components';
 
 import { useSetExporterConversation } from '../../hooks';
 import type { ConversationMove, ExporterConversation } from '../../types';
@@ -63,7 +72,7 @@ function MoveForm({
           },
           {
             onSuccess: () => {
-              toast.success(`Conversation: ${label}`);
+              toast.success(`Communication: ${label}`);
               close();
             },
             onError: (error) => toast.error(error.message),
@@ -88,7 +97,8 @@ function MoveForm({
         </label>
       )}
       <label className="block text-caption font-medium text-ink-2" htmlFor="conversation-reason">
-        Reason{move.reason_required ? '' : ' (optional)'}
+        Reason
+        {move.reason_required && <RequiredMark />}
         <Textarea
           id="conversation-reason"
           className="mt-1 min-h-[4rem]"
@@ -168,7 +178,7 @@ export function ConversationPath({
     <div className="space-y-2" data-testid="conversation-path">
       <div className="flex flex-wrap items-center gap-3">
         <Path
-          label="Conversation"
+          label="Communication"
           steps={STEPS}
           current={value === 'NOT_NOW' ? null : value}
           selectable={onPath}

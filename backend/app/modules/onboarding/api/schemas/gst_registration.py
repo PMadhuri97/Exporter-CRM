@@ -25,7 +25,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 from app.platform.authentication.models import User, UserRole
 
 #: The GST portal's own search page. The link is built per registration so a
-#: COMPLIANCE or ADMIN user can check a GSTIN against the source without copying it
+#: reader who sees GSTINs in full can check one against the source without copying it
 #: out by hand. Not an API we call: it is a page for a person.
 GST_PORTAL_SEARCH = "https://services.gst.gov.in/services/searchtp?tin="
 
@@ -107,6 +107,8 @@ class GstRegistrationResponse(BaseModel):
     state_name: str | None
     status: GstRegistrationStatus
     address: str | None
+    #: The company address this branch trades from, once one is linked.
+    address_id: uuid.UUID | None = None
     #: `null` for DEVELOPER: a flag is a compliance judgement, withheld from that role
     #: like the background check itself (decided 4 October 2026).
     flag_status: GstRegistrationFlag | None

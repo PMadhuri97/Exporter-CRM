@@ -28,10 +28,19 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from app.modules.onboarding.domain.approval_mode import (
+    APPROVAL_OFF_ALLOWED_ENVIRONMENTS,
+    ApprovalMode,
+    parse_approval_mode,
+)
 from app.modules.onboarding.domain.business_time import (
     BusinessCalendar,
     parse_duration,
     parse_hours,
+)
+from app.modules.onboarding.domain.sanctions import (
+    TrueMatchApproval,
+    parse_true_match_approval,
 )
 from app.platform.configuration.config import Settings, settings
 
@@ -111,6 +120,19 @@ def due_soon_fraction(override: Settings | None = None) -> float:
     return percent / 100
 
 
+def bank_change_approval_mode(override: Settings | None = None) -> ApprovalMode:
+    """Who approves a bank-account proposal (``CRM_BANK_CHANGE_APPROVAL_MODE``)."""
+    return parse_approval_mode(
+        _settings(override).CRM_BANK_CHANGE_APPROVAL_MODE,
+        setting="CRM_BANK_CHANGE_APPROVAL_MODE",
+    )
+
+
+def true_match_approval(override: Settings | None = None) -> TrueMatchApproval:
+    """Who confirms a sanctions true match (``CRM_SANCTIONS_TRUE_MATCH_APPROVAL``)."""
+    return parse_true_match_approval(_settings(override).CRM_SANCTIONS_TRUE_MATCH_APPROVAL)
+
+
 def enforce_compliance_settings(override: Settings | None = None) -> None:
     """Refuse to start with settings the compliance rules forbid.
 
@@ -135,6 +157,24 @@ def enforce_compliance_settings(override: Settings | None = None) -> None:
             "other environment requires a second approver for CLEAR, FLAGGED and ON_HOLD."
         )
     try:
+        if (
+            bank_change_approval_mode(current) is ApprovalMode.OFF
+            and environment not in APPROVAL_OFF_ALLOWED_ENVIRONMENTS
+        ):
+            raise ValueError(
+                "CRM_BANK_CHANGE_APPROVAL_MODE is OFF in the "
+                f"{current.ENVIRONMENT!r} environment; bank-detail changes need an "
+                "approver everywhere but local and test."
+            )
+        if (
+            true_match_approval(current) is TrueMatchApproval.SINGLE
+            and environment not in APPROVAL_OFF_ALLOWED_ENVIRONMENTS
+        ):
+            raise ValueError(
+                "CRM_SANCTIONS_TRUE_MATCH_APPROVAL is SINGLE in the "
+                f"{current.ENVIRONMENT!r} environment; a true match needs a second "
+                "officer everywhere but local and test."
+            )
         clear_validity(current)
         rekyc_due_window(current)
         sla_review(current)
@@ -147,6 +187,8 @@ def enforce_compliance_settings(override: Settings | None = None) -> None:
 
 __all__ = [
     "MAKER_CHECKER_OFF_ALLOWED_ENVIRONMENTS",
+    "bank_change_approval_mode",
+    "true_match_approval",
     "business_calendar",
     "clear_validity",
     "due_soon_fraction",

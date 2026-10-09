@@ -1,5 +1,30 @@
 # Contract — qualification criteria, criterion results and outcomes
 
+> **Amendment, 9 October 2026 — permissions, and a read-only administrator.** Every CRM
+> route now checks a permission (`require_permission`), not a role list; the grants each
+> built-in role starts with are in `platform/authorization/catalog.py`
+> (`BUILTIN_ROLE_PERMISSIONS`), seeded by `auth_0007_business_permissions`. The
+> administrator (ADMIN) manages users, roles and settings and **reads** companies, deals,
+> documents and compliance work, but creates, edits, decides, approves and assigns nothing,
+> and sees tax identifiers masked. Wherever this document says "COMPLIANCE or ADMIN" (or
+> lists ADMIN among those who write, decide, approve, assign, reveal or take in an RXIL
+> package), read **COMPLIANCE** — or the holder of the named permission. The senior
+> permissions (`exporters:assign_rm`, `compliance:assign`, `compliance:approve_high_risk`)
+> are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
+> and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
+
+> **Amendment, 9 October 2026 — automatic results.** A criterion version may carry an
+> `auto_source` (IEC_VERIFICATION and TRADE_HISTORY for yes/no; YEARS_ESTABLISHED and
+> DEAL_VALUE for a number; INDUSTRY and EXPORT_MARKETS for allowed values). When its data
+> changes — a company edit, an IEC verification, a recorded export, a deal value — the
+> criterion is answered with a result of source AUTOMATED, decided by the system
+> (`recorded_by` null), the observed value and its evidence. A result a person recorded
+> is never replaced; nothing is written when the data cannot answer it, or when the
+> latest automatic result already says the same. The outcome stays a person's decision.
+> DEAL_VALUE compares deals in the criterion's currency unit only; with no currency unit,
+> only when every valued deal is in one currency — amounts in different currencies are
+> never compared.
+
 **Owner:** Developer 2 · **Implemented by:** L2-09 (criteria), L2-10 (results and outcomes), migration 0017 · **Status:** implemented — §9a records the as-built detail and §10 what is still open
 
 Qualification answers one question: *did this company meet our requirements?*
@@ -156,6 +181,15 @@ The server suggests `QUALIFIED` when every **active, required** criterion has a
 current result of `PASS` recorded against its **current** version; otherwise it
 suggests `NOT_QUALIFIED`. A result against an older version counts as not yet
 checked for the suggestion and is shown as such.
+
+When **no** active criterion is required, the server suggests `QUALIFIED` when at
+least one active criterion has a current `PASS` and none has a current `FAIL`;
+otherwise `NOT_QUALIFIED`. (Before this rule, a company with only optional criteria
+was always suggested `NOT_QUALIFIED`, whatever it passed.)
+
+The qualification read carries `suggestion_reason` beside `suggested_outcome`: a few
+words for the screen, such as "3 of 7 criteria passed, none failed", "Required
+criteria not yet passed: Annual revenue" or "Failed: Industry we finance".
 
 The person may record either outcome regardless of the suggestion. Recording
 the opposite of the suggestion is allowed and is visible afterwards, because

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -35,6 +36,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Numeric,
     String,
     Text,
 )
@@ -79,6 +81,12 @@ class Deal(AnerModel):
             [f"{SCHEMA}.exporter_gstin.id", f"{SCHEMA}.exporter_gstin.customer_id"],
             name="fk_deal_seller_gst_registration_id",
             ondelete="RESTRICT",
+        ),
+        # The deal's value and terms (migration 0049).
+        CheckConstraint("value_amount IS NULL OR value_amount >= 0", name="ck_deal_value_amount"),
+        CheckConstraint("currency IS NULL OR currency ~ '^[A-Z]{3}$'", name="ck_deal_currency"),
+        CheckConstraint(
+            "value_amount IS NULL OR currency IS NOT NULL", name="ck_deal_value_has_currency"
         ),
         # One company's deals, newest first — what the Deals panel asks for.
         Index("ix_deal_company_recent", "company_id", "created_at"),
@@ -160,6 +168,18 @@ class Deal(AnerModel):
     seller_gst_registration_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+
+    #: What the deal is worth, in ``currency`` (ISO 4217); frozen once the deal closes.
+    value_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    #: The payment term **version** agreed, taken from the company's default when the
+    #: deal opens; ``payment_term_override_reason`` says why it differs from that.
+    payment_term_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{SCHEMA}.payment_term.id", name="fk_deal_payment_term", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    payment_term_override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     buyer: Mapped[DealBuyer | None] = relationship(
         back_populates="deal",

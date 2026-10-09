@@ -537,7 +537,7 @@ async def test_intake_writes_nothing_to_onboarding_request():
 
 
 async def test_the_api_takes_the_actor_from_the_session_not_the_package(client: AsyncClient):
-    user_id, token = await user_with_role(client, UserRole.ADMIN)
+    user_id, token = await user_with_role(client, UserRole.COMPLIANCE)
     payload = _package()
     payload["exporter"]["recorded_by"] = "someone-else"
     payload["qualification"]["decided_by"] = "someone-else"
@@ -556,12 +556,15 @@ async def test_the_api_takes_the_actor_from_the_session_not_the_package(client: 
 
 
 @pytest.mark.parametrize(
-    "role", [UserRole.DEVELOPER, UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.API_USER]
+    "role", [UserRole.DEVELOPER, UserRole.OPERATIONS, UserRole.ADMIN, UserRole.API_USER]
 )
-async def test_only_an_admin_can_take_in_a_company(client: AsyncClient, role: UserRole):
+async def test_only_partner_intake_holders_can_take_in_a_company(
+    client: AsyncClient, role: UserRole
+):
     """Intake records a decision as RXIL's — source, method and confidence the
-    manual routes never let a person set — so only ADMIN may submit one by
-    hand, and nothing is created for anyone else."""
+    manual routes never let a person set — so only a holder of
+    `exporters:partner_intake` (COMPLIANCE by default) may submit one by hand, and
+    nothing is created for anyone else."""
     _, token = await user_with_role(client, role)
     payload = _package()
     resp = await client.post(
@@ -572,7 +575,7 @@ async def test_only_an_admin_can_take_in_a_company(client: AsyncClient, role: Us
 
 
 async def test_an_invalid_package_is_a_422_listing_reasons(client: AsyncClient):
-    _, token = await user_with_role(client, UserRole.ADMIN)
+    _, token = await user_with_role(client, UserRole.COMPLIANCE)
     payload = _package()
     payload["exporter"]["pan"] = "BAD"
     resp = await client.post(

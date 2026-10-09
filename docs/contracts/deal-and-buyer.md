@@ -1,5 +1,31 @@
 # Contract — the deal and its buyer
 
+> **Amendment, 9 October 2026 — permissions, and a read-only administrator.** Every CRM
+> route now checks a permission (`require_permission`), not a role list; the grants each
+> built-in role starts with are in `platform/authorization/catalog.py`
+> (`BUILTIN_ROLE_PERMISSIONS`), seeded by `auth_0007_business_permissions`. The
+> administrator (ADMIN) manages users, roles and settings and **reads** companies, deals,
+> documents and compliance work, but creates, edits, decides, approves and assigns nothing,
+> and sees tax identifiers masked. Wherever this document says "COMPLIANCE or ADMIN" (or
+> lists ADMIN among those who write, decide, approve, assign, reveal or take in an RXIL
+> package), read **COMPLIANCE** — or the holder of the named permission. The senior
+> permissions (`exporters:assign_rm`, `compliance:assign`, `compliance:approve_high_risk`)
+> are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
+> and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
+
+> **Amendment, 9 October 2026 — value, terms and a primary contact.** A deal has
+> `value_amount`, `currency` (ISO 4217), `payment_term` (the version agreed) and
+> `payment_term_override_reason`; the response also carries
+> `company_default_payment_term`. A new deal takes the current version of its company's
+> default term; `PATCH /deals/{id}/terms` (`deals:edit`) changes value, currency or term
+> while the deal is open, and a term other than the default needs a reason (history:
+> `deal_terms_changed`). A closed deal's terms are frozen by
+> `prevent_terminal_deal_change()`, and the handover snapshot gains `terms` (absent on a
+> snapshot backfilled before terms existed). The handover guard gains a condition after
+> the background check: *the company has no active primary contact*; and, after it, *the
+> company is flagged by a sanctions match* — a true match proposed or confirmed on any of
+> its subjects' latest screenings, in whatever cycle (`verification-and-screening.md`).
+
 **Owner:** Developer 2 (post-demo allocation; Developer 3B before it) · **Tables:**
 `onboarding.deal`, `onboarding.deal_buyer`, `onboarding.deal_required_document` ·
 **Migrations:** `onboarding_0018_deal_buyer`, `onboarding_0028_deal_foundation`,

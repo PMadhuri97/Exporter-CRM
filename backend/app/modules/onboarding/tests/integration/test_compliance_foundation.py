@@ -297,7 +297,7 @@ async def test_approve_as_refuses_one_user_as_maker_and_checker(
 async def test_the_five_newer_dimensions_are_listed_and_the_compliance_ones_hidden():
     for dimension in ("check_cycle", "background_check_approval", "gst_registration", "trade", "pipeline"):
         assert dimension in ALL_DIMENSIONS
-    assert {"check_cycle", "background_check_approval"} <= HIDDEN_FROM_DEVELOPER
+    assert {"check_cycle", "background_check_approval", "sanctions"} <= HIDDEN_FROM_DEVELOPER
     assert not {"gst_registration", "trade", "pipeline"} & HIDDEN_FROM_DEVELOPER
     assert all(len(dimension) <= 32 for dimension in ALL_DIMENSIONS)  # varchar(32)
 

@@ -70,7 +70,7 @@ class BackgroundCheckMoveResponse(BaseModel):
         default=False,
         description=(
             "Maker-checker: recording this move creates a proposal that a different "
-            "COMPLIANCE or ADMIN user must approve before the check moves."
+            "COMPLIANCE user must approve before the check moves."
         ),
     )
 
@@ -340,9 +340,9 @@ class BackgroundCheckProposalResponse(BaseModel):
         default_factory=list,
         description=(
             "What **this caller** may do with it: the proposer may WITHDRAW; another "
-            "COMPLIANCE or ADMIN user may APPROVE (unless stale) and REJECT — unless they "
+            "COMPLIANCE user may APPROVE (unless stale) and REJECT — unless they "
             "are the review's reviewer or the company's RM, and APPROVE a HIGH or "
-            "CRITICAL CLEAR only as a senior checker. ADMIN and holders of "
+            "CRITICAL CLEAR only as a senior checker. Holders of "
             "compliance:assign may also WITHDRAW."
         ),
     )

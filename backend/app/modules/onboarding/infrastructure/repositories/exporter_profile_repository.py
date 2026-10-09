@@ -13,6 +13,8 @@ from app.modules.onboarding.domain.company_identity import registration_key
 from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.modules.onboarding.domain.entities.engagement_enums import ContactStatus
+from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
     CompanyTradeRole,
@@ -193,6 +195,9 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         relationship_manager_user_id: uuid.UUID | None = None,
         relationship_manager_unassigned: bool = False,
         relationship_manager_inactive: bool = False,
+        missing_primary_contact: bool = False,
+        collections_owner_user_id: uuid.UUID | None = None,
+        collections_owner_unassigned: bool = False,
         exclude_ended: bool = False,
         exclude_not_in_pipeline: bool = False,
     ) -> list[Any]:
@@ -215,6 +220,14 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
                     select(User.id).where(User.is_active.is_(False))
                 )
             )
+        if missing_primary_contact:
+            conditions.append(~_has_active_primary_contact())
+        if collections_owner_user_id is not None:
+            conditions.append(
+                ExporterProfile.collections_owner_user_id == collections_owner_user_id
+            )
+        if collections_owner_unassigned:
+            conditions.append(ExporterProfile.collections_owner_user_id.is_(None))
         if gstin is not None:
             conditions.append(
                 exists().where(
@@ -313,6 +326,9 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         relationship_manager_user_id: uuid.UUID | None = None,
         relationship_manager_unassigned: bool = False,
         relationship_manager_inactive: bool = False,
+        missing_primary_contact: bool = False,
+        collections_owner_user_id: uuid.UUID | None = None,
+        collections_owner_unassigned: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfile]:
@@ -325,6 +341,10 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         — the service decides when (the default working list); this query only
         applies them.
         """
+        # The other branch's filters go through `_conditions` with the rest, rather
+        # than as `stmt.where(...)` calls here: conditions built in this method alone
+        # are invisible to `count`, which is how a count and its page come to describe
+        # different sets of companies.
         conditions = self._conditions(
             gstin=gstin,
             pan=pan,
@@ -343,6 +363,9 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
             relationship_manager_user_id=relationship_manager_user_id,
             relationship_manager_unassigned=relationship_manager_unassigned,
             relationship_manager_inactive=relationship_manager_inactive,
+            missing_primary_contact=missing_primary_contact,
+            collections_owner_user_id=collections_owner_user_id,
+            collections_owner_unassigned=collections_owner_unassigned,
             exclude_ended=exclude_ended,
             exclude_not_in_pipeline=exclude_not_in_pipeline,
         )
@@ -412,3 +435,28 @@ def _escape_like(value: str) -> str:
 
 
 __all__ = ["ExporterProfileRepository"]
+
+
+def _has_active_primary_contact():
+    """The company has a primary contact who is still active."""
+    return exists().where(
+        ExporterContact.customer_id == ExporterProfile.customer_id,
+        ExporterContact.is_primary_contact.is_(True),
+        ExporterContact.status == ContactStatus.ACTIVE.value,
+    )
+
+
+async def companies_with_active_primary_contact(
+    db: AsyncSession, customer_ids: Sequence[uuid.UUID]
+) -> set[uuid.UUID]:
+    """Which of ``customer_ids`` have an active primary contact — one query for a page."""
+    if not customer_ids:
+        return set()
+    rows = await db.scalars(
+        select(ExporterContact.customer_id).where(
+            ExporterContact.customer_id.in_(customer_ids),
+            ExporterContact.is_primary_contact.is_(True),
+            ExporterContact.status == ContactStatus.ACTIVE.value,
+        )
+    )
+    return set(rows)

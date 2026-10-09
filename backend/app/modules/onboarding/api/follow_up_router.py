@@ -47,23 +47,22 @@ from app.modules.onboarding.api.schemas.follow_up import (
 from app.modules.onboarding.application import FollowUpService
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
 from app.modules.onboarding.domain.follow_up_views import FollowUpState
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import require_permission
 from app.platform.database.services import get_db
 
 router = APIRouter(tags=["Exporter CRM"])
 
-# Completing a follow-up is a routine CRM write: OPERATIONS, COMPLIANCE, ADMIN
-# (`docs/contracts/engagement.md` §5.5) — the same three that may set the conversation
+_COMPANY_EDIT = require_permission("exporters", "edit")
+_COMPANY_VIEW = require_permission("exporters", "view")
+
+# Completing a follow-up is a routine CRM write (`exporters:edit`,
+# `docs/contracts/engagement.md` §5.5) — the same permission that sets the conversation
 # gauge, and for the same reason.
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
-# Reads admit DEVELOPER, like every other CRM read. A follow-up carries a subject, a
+# Reads (`exporters:view`) admit DEVELOPER, like every other CRM read. A follow-up carries a subject, a
 # note and an actor id but no tax identifier, so there is nothing here for the masking
 # rules to apply to and this route returns the same bytes to every role that may call
 # it — the same situation `history_router.py` documents.
-_READER = require_role(
-    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
-)
 
 
 @router.get(
@@ -84,11 +83,11 @@ _READER = require_role(
     responses={
         200: {"model": FollowUpListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {"description": "`exporters:view` permission required"},
     },
 )
 async def list_follow_ups(
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
     state: FollowUpState | None = Query(
         default=None,
@@ -165,7 +164,7 @@ async def list_follow_ups(
     responses={
         201: {"model": FollowUpCompletionResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "No such activity (FOLLOW_UP_NOT_FOUND)"},
         409: {
             "description": (
@@ -187,7 +186,7 @@ async def list_follow_ups(
 async def complete_follow_up(
     activity_id: uuid.UUID,
     body: CompleteFollowUpRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> FollowUpCompletionResponse:
     completion = await FollowUpService(db).complete_follow_up(

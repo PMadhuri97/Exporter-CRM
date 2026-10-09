@@ -351,7 +351,7 @@ describe('CompanyPicker — creating a buyer company', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Create buyer company' }));
     expect(screen.getByLabelText(/Company name/)).toHaveValue('Brand New Buyer BV');
-    expect(screen.getByLabelText(/Country/)).toHaveValue('NL');
+    expect(screen.getByRole('combobox', { name: /Country/ })).toHaveTextContent('Netherlands');
 
     // A buyer outside India needs its registration number before it can be sent.
     const submit = screen.getByRole('button', { name: 'Create buyer company' });
@@ -450,7 +450,7 @@ describe('CompanyPicker — creating a buyer company', () => {
   it("shows the server's refusal in its own words", async () => {
     vi.mocked(matchCompany).mockResolvedValue(matchResult({ kind: 'NEW' }));
     const onCreate = vi.fn().mockRejectedValue(
-      new ApiError(422, 'registration_number is required for a company outside India'),
+      new ApiError(422, 'Registration number is required for a company outside India'),
     );
     renderWithCreate(onCreate, { country: 'DE' });
     await searchByName('Hamburg Imports');
@@ -459,7 +459,7 @@ describe('CompanyPicker — creating a buyer company', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create buyer company' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'registration_number is required for a company outside India',
+      'Registration number is required for a company outside India',
     );
     expect(screen.queryByRole('button', { name: 'Use the company on file' })).not.toBeInTheDocument();
   });

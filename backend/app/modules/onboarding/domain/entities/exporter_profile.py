@@ -108,6 +108,20 @@ class ExporterProfile(AnerModel):
         Index("ix_exporter_profile_journey", "journey"),  # 0017
         Index("ix_exporter_profile_qualification", "qualification"),  # 0017
         Index("ix_exporter_profile_background_check", "background_check"),  # 0015
+        Index("ix_exporter_profile_collections_owner", "collections_owner_user_id"),  # 0050
+        # Parent and child companies (0051): set together, never one's own parent;
+        # `trg_exporter_profile_no_group_cycle` refuses a loop.
+        Index("ix_exporter_profile_parent_company", "parent_company_id"),
+        CheckConstraint(
+            "(parent_company_id IS NULL AND group_relationship IS NULL) OR "
+            "(parent_company_id IS NOT NULL AND group_relationship IN "
+            "('SUBSIDIARY', 'BRANCH_OFFICE', 'GROUP_COMPANY', 'JOINT_VENTURE'))",
+            name="ck_exporter_profile_group_relationship",
+        ),
+        CheckConstraint(
+            "parent_company_id IS NULL OR parent_company_id <> customer_id",
+            name="ck_exporter_profile_not_own_parent",
+        ),
         Index("ix_exporter_profile_conversation", "conversation"),  # 0016
         Index(  # 0016
             "ix_exporter_profile_conversation_check_back",
@@ -209,6 +223,32 @@ class ExporterProfile(AnerModel):
     #: `auth.users` (the codebase's actor-id convention; migration 0009).
     relationship_manager_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
+    )
+    #: Who chases this company's payments (migration 0050). Any active staff user; no
+    #: foreign key to `auth.users`, as for the relationship manager.
+    collections_owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    #: The company this one belongs to, and how (migration 0051).
+    parent_company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.exporter_profile.customer_id",
+            name="fk_exporter_profile_parent_company",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    group_relationship: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: The payment term a new deal with this company starts from (migration 0049).
+    default_payment_term_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.payment_term.id",
+            name="fk_exporter_profile_default_payment_term",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
     )
 
     # ── Identity (columns from migration 0014) ─────────────────────────────

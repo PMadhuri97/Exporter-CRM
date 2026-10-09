@@ -21,8 +21,8 @@ describe('maskIdentifier', () => {
     );
   });
 
-  it('never masks for ADMIN', () => {
-    expect(maskIdentifier(PAN, { role: 'ADMIN' })).toBe(PAN);
+  it('always masks for ADMIN, which runs the system and does not see tax IDs', () => {
+    expect(maskIdentifier(PAN, { role: 'ADMIN' })).toBe('••••••234F');
   });
 
   it('always masks for DEVELOPER, even claiming ownership', () => {
@@ -48,7 +48,7 @@ describe('maskIdentifier', () => {
 describe('canReveal', () => {
   it('matches the role matrix in docs/architecture.md ("Roles and masking")', () => {
     expect(canReveal('COMPLIANCE')).toBe(true);
-    expect(canReveal('ADMIN')).toBe(true);
+    expect(canReveal('ADMIN')).toBe(false);
     expect(canReveal('OPERATIONS')).toBe(false);
     expect(canReveal('DEVELOPER')).toBe(false);
     expect(canReveal('API_USER')).toBe(false);

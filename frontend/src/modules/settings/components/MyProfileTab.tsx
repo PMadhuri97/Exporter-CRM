@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { Button, SidePanel, DetailRow, Editable, EmptyLine, Panel, Skeleton, Tag } from '@/components';
+import {
+  Button,
+  SidePanel,
+  DetailRow,
+  Editable,
+  EmptyLine,
+  Panel,
+  Skeleton,
+  Tag,
+  RequiredNote,
+} from '@/components';
 import { formatDateTime } from '@/lib/format';
 import { roleLabel, useAuth, useCurrentUser } from '@/platform/auth';
 
@@ -51,6 +61,7 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
         )
       }
     >
+      <RequiredNote />
       <PasswordField
         label="Current password"
         value={currentPassword}

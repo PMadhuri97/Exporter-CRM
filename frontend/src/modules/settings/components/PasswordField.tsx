@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 
+import { RequiredMark } from '@/components';
 import { Icon } from '@/design/icons';
 
 import { assessPassword } from '../passwordStrength';
@@ -40,6 +41,7 @@ export function PasswordField({
     <div>
       <label htmlFor={id} className="mb-1 block text-caption font-medium text-ink-2">
         {label}
+        {required && <RequiredMark />}
       </label>
       <div className="relative">
         <input

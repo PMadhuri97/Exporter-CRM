@@ -33,6 +33,7 @@ import {
   Select,
   Skeleton,
   Tag,
+  RequiredNote,
 } from '@/components';
 import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
@@ -45,6 +46,12 @@ import {
   useCriteria,
   useCriterionVersions,
 } from '../hooks';
+import {
+  AUTO_SOURCE_KIND,
+  AUTO_SOURCE_LABEL,
+  AUTO_SOURCE_RULE,
+  type AutoSource,
+} from '../components/auto-source-labels';
 import type {
   Criterion,
   CriterionDefinitionRequest,
@@ -87,6 +94,7 @@ interface Draft {
   allowedValues: string;
   required: boolean;
   active: boolean;
+  autoSource: AutoSource | '';
 }
 
 function draftFrom(criterion: Criterion | null): Draft {
@@ -100,6 +108,7 @@ function draftFrom(criterion: Criterion | null): Draft {
     allowedValues: (criterion?.allowed_values ?? []).join(', '),
     required: criterion?.required ?? true,
     active: criterion?.active ?? true,
+    autoSource: criterion?.auto_source ?? '',
   };
 }
 
@@ -128,6 +137,9 @@ function definitionOf(draft: Draft): CriterionDefinitionRequest {
             .map((value) => value.trim())
             .filter(Boolean)
         : null,
+    // Only a source that fits the kind is sent; switching the kind drops it.
+    auto_source:
+      draft.autoSource && AUTO_SOURCE_KIND[draft.autoSource] === draft.kind ? draft.autoSource : null,
   };
 }
 
@@ -190,6 +202,7 @@ function CriterionComposer({
       fields={FIELDS}
       onSubmit={() => void submit()}
     >
+      <RequiredNote />
       <div className="grid gap-4 sm:grid-cols-2">
         {!base && (
           <Field
@@ -281,6 +294,30 @@ function CriterionComposer({
           </Field>
         )}
       </div>
+      <Field
+        label="Answer automatically from"
+        htmlFor="criterion-auto"
+        hint={
+          draft.autoSource && AUTO_SOURCE_KIND[draft.autoSource] === draft.kind
+            ? `${AUTO_SOURCE_RULE[draft.autoSource]}. A person's answer always wins.`
+            : 'Optional. The result is recorded as automatic; the outcome stays a person’s decision.'
+        }
+      >
+        <Select
+          id="criterion-auto"
+          value={draft.autoSource && AUTO_SOURCE_KIND[draft.autoSource] === draft.kind ? draft.autoSource : ''}
+          onChange={(e) => set('autoSource', e.target.value as AutoSource | '')}
+        >
+          <option value="">Not automatic</option>
+          {(Object.keys(AUTO_SOURCE_LABEL) as AutoSource[])
+            .filter((source) => AUTO_SOURCE_KIND[source] === draft.kind)
+            .map((source) => (
+              <option key={source} value={source}>
+                {AUTO_SOURCE_LABEL[source]}
+              </option>
+            ))}
+        </Select>
+      </Field>
       <div className="space-y-2 border-t border-line pt-4">
         <label className="flex items-center gap-2 text-body text-ink">
           <input
@@ -382,6 +419,9 @@ function RuleCard({ criterion, onNewVersion }: { criterion: Criterion; onNewVers
           {criterion.active ? 'Active' : 'Inactive'}
         </Tag>
         {criterion.required && <Tag tone="ink">Required</Tag>}
+        {criterion.auto_source && (
+          <Tag tone="ink">Auto · {AUTO_SOURCE_LABEL[criterion.auto_source]}</Tag>
+        )}
       </div>
       <div className="mt-auto flex items-center gap-1 border-t border-line pt-3">
         <Button

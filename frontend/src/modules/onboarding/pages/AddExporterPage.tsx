@@ -21,16 +21,22 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState, type ReactNode } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { Button, Field, FormError, Input, Select, Sheet } from '@/components';
+import { Button, Field, FormError, Input, RequiredNote, Select, Sheet } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 
 import { SOURCE_LABEL } from '../companyFilters';
-import { detectEntry, DuplicatePanMessage, duplicatePanHolder, IdentifierLookup } from '../components';
+import {
+  CountrySelect,
+  detectEntry,
+  DuplicatePanMessage,
+  duplicatePanHolder,
+  IdentifierLookup,
+} from '../components';
 import { useCreateExporterLead } from '../hooks';
 import { paths } from '../paths';
 
@@ -42,7 +48,7 @@ const addCompanySchema = z.object({
   country: z
     .string()
     .trim()
-    .regex(/^[A-Za-z]{2}$/, 'Use a 2-letter country code (e.g. IN, US)')
+    .regex(/^[A-Za-z]{2}$/, 'Choose a country')
     .transform((v) => v.toUpperCase()),
   // Kept in step with `SOURCE_LABEL`, which both this panel's dropdown and the
   // Companies filter read: a source you can file a company under is one you can find
@@ -90,6 +96,7 @@ export function NewCompanyPanel({ onClose }: { onClose: () => void }) {
   const detected = detectEntry(entry);
 
   const {
+    control,
     register,
     handleSubmit,
     watch,
@@ -158,6 +165,7 @@ export function NewCompanyPanel({ onClose }: { onClose: () => void }) {
       }
     >
       <form id={FORM_ID} onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="space-y-5">
+        <RequiredNote />
         <IdentifierLookup
           value={entry}
           onChange={(next) => {
@@ -179,12 +187,17 @@ export function NewCompanyPanel({ onClose }: { onClose: () => void }) {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Country" htmlFor="company-country" error={errors.country?.message} required>
-              <Input
-                id="company-country"
-                className="uppercase"
-                placeholder="IN"
-                maxLength={2}
-                {...register('country')}
+              <Controller
+                control={control}
+                name="country"
+                render={({ field }) => (
+                  <CountrySelect
+                    id="company-country"
+                    value={field.value ?? ''}
+                    invalid={Boolean(errors.country)}
+                    onChange={field.onChange}
+                  />
+                )}
               />
             </Field>
             <Field label="Source" htmlFor="company-source" error={errors.source?.message} required>

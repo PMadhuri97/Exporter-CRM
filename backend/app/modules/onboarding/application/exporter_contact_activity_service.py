@@ -29,12 +29,18 @@ import structlog
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.application.history_service import HistoryService
+from app.modules.onboarding.domain import history_dimensions
 from app.modules.onboarding.domain.engagement_views import PendingActivityView
-from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
+from app.modules.onboarding.domain.entities.engagement_enums import (
+    ContactStatus,
+    ExporterActivityType,
+)
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.exceptions import (
     ActivityDueInPastError,
+    ContactNotActiveError,
     ExporterContactNotFoundError,
     ExporterContactPrimaryConflictError,
     ExporterProfileNotFoundError,
@@ -44,6 +50,7 @@ from app.modules.onboarding.infrastructure.repositories import (
     ExporterContactRepository,
     ExporterProfileRepository,
 )
+from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
 
@@ -149,6 +156,8 @@ class ExporterContactActivityService:
             setattr(contact, name, value)
 
         if promote is not None:
+            if promote and contact.status != ContactStatus.ACTIVE.value:
+                raise ContactNotActiveError(contact_id, contact.status)
             if promote:
                 # Everyone else, so this row's own flag is not cleared and re-set.
                 await self._contacts.demote_existing_primary(
@@ -168,6 +177,84 @@ class ExporterContactActivityService:
             # the way out, and a log line is read by people a response is not.
             changed=sorted(changes),
         )
+        return contact
+
+    async def set_contact_status(
+        self,
+        customer_id: uuid.UUID,
+        contact_id: uuid.UUID,
+        *,
+        status: ContactStatus,
+        reason: str | None,
+        actor_id: str,
+    ) -> ExporterContact:
+        """Move a contact to ``status``: a reason is required to leave ACTIVE, and a
+        contact that leaves ACTIVE stops being the primary (only an active contact can be
+        the person to reach — the database refuses anything else). One ``contact``
+        history row records it."""
+        await self._require_company(customer_id)
+        contact = await self._contacts.get_for_customer(customer_id, contact_id)
+        if contact is None:
+            raise ExporterContactNotFoundError(customer_id, contact_id)
+        reason = (reason or "").strip() or None
+        if status is not ContactStatus.ACTIVE and reason is None:
+            raise ValidationError("A reason is required when a contact is no longer active")
+        if contact.status == status.value:
+            return contact
+
+        previous = contact.status
+        was_primary = contact.is_primary_contact
+        contact.status = status.value
+        contact.status_changed_at = datetime.now(UTC)
+        contact.status_reason = reason
+        if status is not ContactStatus.ACTIVE:
+            contact.is_primary_contact = False
+        await HistoryService(self._db).record(
+            customer_id,
+            dimension=history_dimensions.CONTACT,
+            event_type="contact_status_changed",
+            from_value=previous,
+            to_value=status.value,
+            reason=reason,
+            actor_id=actor_id,
+            source="exporter_contact.set_status",
+            details={
+                "contact_id": str(contact_id),
+                "contact_name": contact.name,
+                "was_primary": was_primary and not contact.is_primary_contact,
+            },
+        )
+        await self._db.commit()
+        await self._db.refresh(contact)
+        logger.info(
+            "exporter_contact.status.ok",
+            customer_id=str(customer_id),
+            contact_id=str(contact_id),
+            status=status.value,
+        )
+        return contact
+
+    async def mark_contact_verified(
+        self, customer_id: uuid.UUID, contact_id: uuid.UUID, *, actor_id: str
+    ) -> ExporterContact:
+        """Someone confirmed the contact's details are right: stamp when and who."""
+        await self._require_company(customer_id)
+        contact = await self._contacts.get_for_customer(customer_id, contact_id)
+        if contact is None:
+            raise ExporterContactNotFoundError(customer_id, contact_id)
+        contact.last_verified_at = datetime.now(UTC)
+        contact.last_verified_by = actor_id
+        await HistoryService(self._db).record(
+            customer_id,
+            dimension=history_dimensions.CONTACT,
+            event_type="contact_verified",
+            to_value="VERIFIED",
+            actor_id=actor_id,
+            source="exporter_contact.mark_verified",
+            details={"contact_id": str(contact_id), "contact_name": contact.name},
+        )
+        await self._db.commit()
+        await self._db.refresh(contact)
         return contact
 
     async def list_contacts(self, customer_id: uuid.UUID) -> list[ExporterContact]:

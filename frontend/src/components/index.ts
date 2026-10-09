@@ -27,7 +27,7 @@ export { ConfirmDialog, Dialog, Sheet } from './ui/Dialog';
 export { Editable, EditableRefusal, type EditableOption } from './ui/Editable';
 export { ErrorState } from './ui/ErrorState';
 export { Count, EmptyLine, InlineError, Kbd } from './ui/Feedback';
-export { Field, FormError, Input, Select, Textarea } from './ui/Field';
+export { Field, FormError, Input, RequiredMark, RequiredNote, Select, Textarea } from './ui/Field';
 export { NOT_FOUND_TITLE, NotFound } from './ui/NotFound';
 export { PageHeader } from './ui/PageHeader';
 export { Path, type PathStep } from './ui/Path';

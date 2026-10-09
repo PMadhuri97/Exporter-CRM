@@ -21,6 +21,7 @@ import { Input, Skeleton } from '@/components';
 import { Icon } from '@/design/icons';
 import { cn } from '@/lib/cn';
 
+import { countryLabel } from '../countries';
 import { useExporterProfileDetail, useExporterProfiles } from '../hooks';
 import type { CompanyTradeRole, ExporterProfileListItem } from '../types';
 
@@ -62,7 +63,7 @@ export function CompanySearchSelect({
   placeholder = 'Search companies',
   tradeRole,
   unavailable,
-  describe = (company) => company.country,
+  describe = (company) => countryLabel(company.country),
   className,
 }: CompanySearchSelectProps) {
   const id = useId();

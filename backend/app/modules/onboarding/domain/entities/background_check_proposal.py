@@ -4,7 +4,7 @@ A background-check move that needs a second person — ``IN_REVIEW → CLEAR``,
 ``IN_REVIEW → FLAGGED``, ``FLAGGED → ON_HOLD`` — is recorded first as a
 **proposal**: what the proposer decided, on which inputs (the SHA-256 fingerprint of
 the evidence selection), in which cycle, under which Clear rules. The gauge does not
-move. A different COMPLIANCE or ADMIN user then **approves** it — which writes the
+move. A different COMPLIANCE user then **approves** it — which writes the
 decision, with ``decided_by`` the proposer and ``approved_by`` the approver — or
 **rejects** it with a reason; or the proposer **withdraws** it. Each of those is one
 **resolution** row; a proposal with none is *open* ("awaiting approval").

@@ -237,7 +237,7 @@ async def test_a_gstin_held_elsewhere_is_a_warning_on_an_accepted_row():
         ({"cin": "X12345"}, "INVALID_CIN"),
         ({"name": " "}, "MISSING_NAME"),
         ({"country": ""}, "MISSING_COUNTRY"),
-        ({"country": "India"}, "INVALID_COUNTRY"),
+        ({"country": "Atlantis"}, "INVALID_COUNTRY"),  # a name the country list does not know
         ({"source": "RXIL"}, "INVALID_SOURCE"),
         # A deal's buyer is created outside the pipeline by the buyer-company path; an
         # import creates leads.
@@ -450,8 +450,10 @@ async def test_import_needs_no_background_check_conversation_deal_or_legacy_tabl
         for module in imported
         for word in ("onboarding_request", "screening", "verification", "engagement", "rxil")
     )
+    # `EXISTING_CUSTOMER` is a source a row may give, not the CUSTOMER stage.
+    plain = source.replace("``CUSTOMER``", "").replace("EXISTING_CUSTOMER", "")
     for word in ("background_check", "CLEAR", "CUSTOMER"):
-        assert word not in source.replace("``CUSTOMER``", "")
+        assert word not in plain
 
 
 # ── Through the API ───────────────────────────────────────────────────────────
@@ -486,7 +488,7 @@ async def test_a_developer_cannot_import(client: AsyncClient):
 
 
 async def test_a_file_that_is_not_utf8_is_a_422(client: AsyncClient):
-    _, token = await user_with_role(client, UserRole.ADMIN)
+    _, token = await user_with_role(client, UserRole.COMPLIANCE)
     resp = await client.post(
         f"{BASE}/imports/companies",
         files={"file": ("companies.csv", b"\xff\xfe\x00bad", "text/csv")},
@@ -519,7 +521,7 @@ async def test_a_bad_byte_late_in_the_file_saves_nothing():
 
 
 async def test_a_bad_byte_late_in_an_upload_is_a_422_that_saves_nothing(client: AsyncClient):
-    _, token = await user_with_role(client, UserRole.ADMIN)
+    _, token = await user_with_role(client, UserRole.COMPLIANCE)
     pan = _pan()
     resp = await client.post(
         f"{BASE}/imports/companies",

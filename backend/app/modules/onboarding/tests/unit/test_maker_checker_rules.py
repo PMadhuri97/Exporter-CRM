@@ -263,7 +263,7 @@ class TestAllowedMovesMarkApproval:
     def test_clear_flag_and_hold_are_marked_for_approval(self):
         in_review = {m.to: m.approval_required for m in BackgroundCheckService.allowed_moves(State.IN_REVIEW, UserRole.COMPLIANCE)}
         assert in_review == {State.CLEAR: True, State.MORE_INFO: False, State.FLAGGED: True}
-        flagged = {m.to: m.approval_required for m in BackgroundCheckService.allowed_moves(State.FLAGGED, UserRole.ADMIN)}
+        flagged = {m.to: m.approval_required for m in BackgroundCheckService.allowed_moves(State.FLAGGED, UserRole.COMPLIANCE)}
         assert flagged == {State.ON_HOLD: True, State.IN_REVIEW: False}
         assert not any(
             m.approval_required

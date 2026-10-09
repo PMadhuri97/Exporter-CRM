@@ -109,6 +109,7 @@ function document(overrides: Partial<CrmDocument> = {}): CrmDocument {
     scan_status: 'AVAILABLE',
     scanner_name: 'pass-through',
     is_downloadable: true,
+    has_preview: true,
     ...overrides,
   };
 }
@@ -301,7 +302,7 @@ describe('BuyerChecks — recording a check', () => {
     fireEvent.click(within(form).getByRole('button', { name: 'Record check' }));
 
     expect(await within(form).findByRole('alert')).toHaveTextContent(
-      'A passed check needs evidence',
+      'Add at least one: a note, a document or a link.',
     );
     expect(triggerVerification).not.toHaveBeenCalled();
   });

@@ -29,6 +29,8 @@
 
 import { useState } from 'react';
 
+import { RequiredMark, RequiredNote } from '@/components';
+
 import { RelationshipManagerChoice } from './RelationshipManagerChoice';
 
 import type {
@@ -96,6 +98,7 @@ export function BackgroundCheckMoveDialog({
   return (
     <div className="rounded-lg border border-line bg-surface p-4">
       <h4 className="text-body font-semibold text-ink">Record a decision</h4>
+      {(move?.risk_required || move?.reason_required) && <RequiredNote className="mt-1" />}
 
       <fieldset className="mt-3">
         <legend className="text-caption font-medium text-ink-2">What has been decided?</legend>
@@ -136,9 +139,13 @@ export function BackgroundCheckMoveDialog({
 
       {move?.risk_required && (
         <label className="mt-3 block text-body">
-          <span className="text-caption font-medium text-ink-2">Risk rating (required)</span>
+          <span className="text-caption font-medium text-ink-2">
+            Risk rating
+            <RequiredMark />
+          </span>
           <select
             aria-label="Risk rating"
+            aria-required
             className="mt-1 w-full rounded border border-line-strong p-2 text-body"
             value={risk}
             onChange={(event) => setRisk(event.target.value as BackgroundCheckRisk | '')}
@@ -163,10 +170,12 @@ export function BackgroundCheckMoveDialog({
       {move && (
         <label className="mt-3 block text-body">
           <span className="text-caption font-medium text-ink-2">
-            {move.reason_required ? 'Reason (required)' : 'Reason (optional)'}
+            Reason
+            {move.reason_required && <RequiredMark />}
           </span>
           <textarea
             aria-label="Reason"
+            aria-required={move.reason_required || undefined}
             rows={3}
             className="mt-1 w-full rounded border border-line-strong p-2 text-body"
             value={reason}

@@ -47,14 +47,17 @@ function renderAs(role: UserRole) {
 beforeEach(() => vi.clearAllMocks());
 
 describe('HomePage — compliance cards by role', () => {
-  it.each<UserRole>(['COMPLIANCE', 'ADMIN'])(
-    'shows %s the approval queue and the Re-KYC list',
-    (role) => {
-      renderAs(role);
-      expect(screen.getByTestId('card-proposals')).toBeInTheDocument();
-      expect(screen.getByTestId('card-rekyc')).toBeInTheDocument();
-    },
-  );
+  it('shows COMPLIANCE the approval queue and the Re-KYC list', () => {
+    renderAs('COMPLIANCE');
+    expect(screen.getByTestId('card-proposals')).toBeInTheDocument();
+    expect(screen.getByTestId('card-rekyc')).toBeInTheDocument();
+  });
+
+  it('shows the administrator the Re-KYC list but not the approval queue — it approves nothing', () => {
+    renderAs('ADMIN');
+    expect(screen.queryByTestId('card-proposals')).not.toBeInTheDocument();
+    expect(screen.getByTestId('card-rekyc')).toBeInTheDocument();
+  });
 
   it('shows the RM the Re-KYC list but not the approval queue — the RM never approves', () => {
     renderAs('OPERATIONS');

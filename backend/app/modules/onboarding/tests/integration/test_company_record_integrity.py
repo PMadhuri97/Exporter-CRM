@@ -155,7 +155,7 @@ async def test_removing_the_pan_of_an_indian_company_leaves_it_unidentified():
 
 async def test_moving_a_company_abroad_needs_a_registration_number():
     company_id = await _company("IN")
-    with pytest.raises(ValidationError, match="registration_number is required"):
+    with pytest.raises(ValidationError, match="Registration number is required"):
         await _edit(company_id, country="NL")
     assert (await _profile(company_id)).country == "IN"
 
@@ -181,7 +181,7 @@ async def test_bringing_a_foreign_company_home_keeps_what_identifies_it():
 async def test_clearing_a_foreign_companys_registration_number_is_refused():
     registration = _registration()
     company_id = await _company("NL", registration_number=registration)
-    with pytest.raises(ValidationError, match="registration_number is required"):
+    with pytest.raises(ValidationError, match="Registration number is required"):
         await _edit(company_id, registration_number=None)
     stored = await _profile(company_id)
     assert stored.registration_number == registration
@@ -327,7 +327,7 @@ async def _lookup_events(actor_id: str) -> list:
     return [e for e in page.events if str(e.actor_id) == str(actor_id)]
 
 
-@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN])
+@pytest.mark.parametrize("role", [UserRole.OPERATIONS, UserRole.COMPLIANCE])
 async def test_each_staff_role_is_audited_as_staff_with_its_role(client: AsyncClient, role):
     user_id, token = await user_with_role(client, role)
     pan = _pan()

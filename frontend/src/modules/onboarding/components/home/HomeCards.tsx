@@ -138,7 +138,7 @@ export function CompleteFollowUp({ followUp }: { followUp: FollowUp }) {
               />
             </label>
           )}
-          <Input aria-label="Note" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <Input aria-label="Note" placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} />
           <div className="flex justify-end">
             <Button type="submit" size="sm" variant="primary" loading={mutation.isPending}>
               Record

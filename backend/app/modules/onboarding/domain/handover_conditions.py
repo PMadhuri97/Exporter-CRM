@@ -139,6 +139,12 @@ class HandoverSubject:
     #: One "now" for the whole run, so two conditions cannot disagree about
     #: whether a check had expired.
     now: datetime
+    #: Whether the seller has a primary contact who is still active. Defaults to
+    #: ``True`` — the answer that adds no refusal — for a caller that does not read it.
+    seller_has_active_primary_contact: bool = True
+    #: Whether a sanctions true match is proposed or confirmed on the seller's latest
+    #: screenings. Defaults to ``False`` — the answer that adds no refusal.
+    seller_sanctions_flagged: bool = False
 
 
 # ── The providers ────────────────────────────────────────────────────────────
@@ -288,6 +294,28 @@ async def seller_background_check_is_clear(
     if value == HANDOVER_BACKGROUND_CHECK:
         return None
     return f"the background check is {value}, not {HANDOVER_BACKGROUND_CHECK}"
+
+
+async def seller_has_a_primary_contact(
+    subject: HandoverSubject, providers: HandoverProviders
+) -> str | None:
+    """Someone at the seller to reach once the deal is handed over: an active primary
+    contact. A contact who has left the company stops being primary, so this also
+    catches the primary who left after the deal was opened."""
+    if subject.seller_has_active_primary_contact:
+        return None
+    return "the company has no active primary contact"
+
+
+async def seller_is_not_sanctions_flagged(
+    subject: HandoverSubject, providers: HandoverProviders
+) -> str | None:
+    """A possible sanctions match on the seller — proposed or confirmed — stops every
+    handover until it is decided. A confirmed one also fails the sanctions check, which
+    ``seller_compliance_is_current`` names too."""
+    if not subject.seller_sanctions_flagged:
+        return None
+    return "the company is flagged by a sanctions match"
 
 
 async def required_documents_are_present(
@@ -445,6 +473,8 @@ async def invoicing_branch_is_active(
 HANDOVER_CONDITIONS: tuple[Condition, ...] = (
     seller_is_a_customer,
     seller_background_check_is_clear,
+    seller_has_a_primary_contact,
+    seller_is_not_sanctions_flagged,
     required_documents_are_present,
     seller_compliance_is_current,
     buyer_compliance_passes,

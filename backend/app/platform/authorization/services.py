@@ -72,12 +72,42 @@ async def users_holding(
     return frozenset(str(user_id) for user_id in result.scalars())
 
 
+#: Where a request's resolved permissions are kept on the signed-in user, so a route
+#: and the response shapes it builds read one answer instead of resolving it again.
+_GRANTED_ATTRIBUTE = "_granted_permissions"
+
+
+def remember_permissions(user: User, granted: frozenset[tuple[str, str]]) -> None:
+    """Keep ``granted`` on this request's user object (never persisted)."""
+    setattr(user, _GRANTED_ATTRIBUTE, granted)
+
+
+def granted_permissions(user: User) -> frozenset[tuple[str, str]]:
+    """What ``require_permission`` / ``require_any_permission`` resolved for this user
+    in this request; empty when nothing was resolved, so a reader fails closed."""
+    return getattr(user, _GRANTED_ATTRIBUTE, frozenset())
+
+
+def has_permission(user: User, module: str, action: str) -> bool:
+    """Whether the signed-in user holds ``module:action`` — for a response that says
+    what its reader may do, after the route's own permission check ran."""
+    return (module, action) in granted_permissions(user)
+
+
 async def get_current_permissions(
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: AsyncSession = Depends(get_db),
 ) -> frozenset[tuple[str, str]]:
     """FastAPI dependency: the signed-in user's permissions."""
-    return await resolve_permissions(db, current_user)
+    granted = await resolve_permissions(db, current_user)
+    remember_permissions(current_user, granted)
+    return granted
+
+
+def _forbidden(detail: str):
+    from app.shared.exceptions import AnerBaseException
+
+    return AnerBaseException(detail=detail, error_code="FORBIDDEN", status_code=403)
 
 
 def require_permission(module: str, action: str) -> Callable:
@@ -100,17 +130,32 @@ def require_permission(module: str, action: str) -> Callable:
         db: AsyncSession = Depends(get_db),
     ) -> User:
         granted = await resolve_permissions(db, current_user)
+        remember_permissions(current_user, granted)
         if (module, action) not in granted:
-            from app.shared.exceptions import AnerBaseException
+            # Names the permission, not the roles that happen to hold it: with roles
+            # editable, a role list in this message would go stale the moment someone
+            # changes a grant.
+            raise _forbidden(f"Required permission: {module}:{action}")
+        return current_user
 
-            raise AnerBaseException(
-                # Names the permission, not the roles that happen to hold it:
-                # with roles editable, a role list in this message would go
-                # stale the moment someone changes a grant.
-                detail=f"Required permission: {module}:{action}",
-                error_code="FORBIDDEN",
-                status_code=403,
-            )
+    return _check
+
+
+def require_any_permission(*permissions: tuple[str, str]) -> Callable:
+    """Like ``require_permission``, satisfied by any one of ``permissions`` — for a
+    route two kinds of user reach for different reasons (a background-check move the
+    RM starts and compliance decides; the staff picker an RM lead and a compliance lead
+    both use). The service behind it still decides which move each may make."""
+
+    async def _check(
+        current_user: Annotated[User, Depends(get_current_active_user)],
+        db: AsyncSession = Depends(get_db),
+    ) -> User:
+        granted = await resolve_permissions(db, current_user)
+        remember_permissions(current_user, granted)
+        if not any(permission in granted for permission in permissions):
+            names = " or ".join(f"{module}:{action}" for module, action in permissions)
+            raise _forbidden(f"Required permission: {names}")
         return current_user
 
     return _check

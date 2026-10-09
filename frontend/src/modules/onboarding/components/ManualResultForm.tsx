@@ -7,8 +7,10 @@
  *   offers no choice, so nobody can record a result as RXIL's.
  * - Outcomes are `PASSED`, `FAILED` and `REVIEW`. `PENDING` is never offered: nothing
  *   would ever resolve a manual pending result (§8).
- * - A `PASSED` needs evidence — a note, a document or a link. Checked here to
- *   save a round trip; the server checks it too, and its refusal is shown as worded.
+ * - A `PASSED` needs evidence — a note, a document or a link. The three sit in one
+ *   "Evidence" group that says so as soon as Passed is chosen, and a missing-evidence
+ *   error belongs to the group, never to one of its fields. Checked here to save a
+ *   round trip; the server checks it too, and its refusal is shown as worded.
  * - Only documents the subject owns and that are `AVAILABLE` are offered: nothing
  *   else can be opened, and the server refuses it.
  *
@@ -16,10 +18,12 @@
  * deal documents). The caller shows it only when `capabilities.can_record_result`.
  */
 
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { RequiredMark } from '@/components';
 import { ApiError } from '@/lib/api/errors';
+import { cn } from '@/lib/cn';
 import { humanize } from '@/lib/format';
 
 import { useCompanyDocuments, useDealDocuments, useTriggerVerification } from '../hooks';
@@ -74,6 +78,12 @@ export function ManualResultForm({
   const [documentIds, setDocumentIds] = useState<string[]>([]);
   const [url, setUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  const evidenceErrorId = useId();
+  const linkErrorId = useId();
+  const evidenceNeeded = outcome === 'PASSED';
 
   // Only a document that can be opened can be evidence; the server refuses the rest.
   const available = (documents.data?.documents ?? []).filter(
@@ -88,6 +98,8 @@ export function ManualResultForm({
 
   async function submit() {
     setError(null);
+    setEvidenceError(null);
+    setLinkError(null);
     if (!outcome) {
       setError('Choose an outcome.');
       return;
@@ -97,14 +109,15 @@ export function ManualResultForm({
     // Other staff open this as a link, so only http(s) is accepted; the server refuses
     // anything else too.
     if (link && !isWebLink(link)) {
-      setError('The evidence link must start with http:// or https://.');
+      setLinkError('The link must start with http:// or https://.');
       return;
     }
     if (link) refs.push({ type: 'url', ref: link });
     const trimmedNote = note.trim();
     // A manual PASSED needs a note or at least one reference.
     if (outcome === 'PASSED' && !trimmedNote && refs.length === 0) {
-      setError('A passed check needs evidence: a note, a document or a link.');
+      setEvidenceError('Add at least one: a note, a document or a link.');
+      noteRef.current?.focus();
       return;
     }
     try {
@@ -149,8 +162,10 @@ export function ManualResultForm({
         </label>
         <label className="block text-ink-3">
           Outcome
+          <RequiredMark />
           <select
             aria-label="Outcome"
+            aria-required
             className={FIELD}
             value={outcome}
             disabled={mutation.isPending}
@@ -165,7 +180,7 @@ export function ManualResultForm({
           </select>
         </label>
         <label className="block text-ink-3">
-          Risk (optional)
+          Risk
           <select
             aria-label="Risk"
             className={FIELD}
@@ -182,53 +197,94 @@ export function ManualResultForm({
           </select>
         </label>
       </div>
-      <label className="mt-3 block text-ink-3">
-        Evidence note
-        <textarea
-          aria-label="Evidence note"
-          className={`${FIELD} min-h-16 resize-y`}
-          value={note}
-          disabled={mutation.isPending}
-          onChange={(event) => setNote(event.target.value)}
-        />
-      </label>
-      <fieldset className="mt-3">
-        <legend className="text-ink-3">
-          Evidence documents from this {documentOwner.kind === 'deal' ? 'deal' : 'company'}
+      <fieldset
+        aria-describedby={evidenceError ? evidenceErrorId : undefined}
+        className={cn(
+          'mt-3 rounded-md border p-3',
+          evidenceError ? 'border-negative' : 'border-line',
+        )}
+      >
+        <legend className="px-1 font-medium text-ink-2">
+          Evidence
+          {evidenceNeeded && (
+            <span className="font-normal text-ink-3">
+              {' '}
+              — at least one required for a passed check
+              <RequiredMark />
+            </span>
+          )}
         </legend>
-        {documents.isLoading ? (
-          <p className="mt-1 text-ink-3">Loading documents…</p>
-        ) : documents.isError ? (
-          <p className="mt-1 text-ink-3">Documents could not be loaded.</p>
-        ) : available.length === 0 ? (
-          <p className="mt-1 text-ink-3">No scanned-clean documents to attach.</p>
-        ) : (
-          <div className="mt-1 space-y-1">
-            {available.map((document) => (
-              <label key={document.id} className="flex items-center gap-2 text-ink">
-                <input
-                  type="checkbox"
-                  checked={documentIds.includes(document.id)}
-                  disabled={mutation.isPending}
-                  onChange={() => toggleDocument(document.id)}
-                />
-                {document.file_name}
-              </label>
-            ))}
-          </div>
+        {evidenceError && (
+          <p id={evidenceErrorId} role="alert" className="mb-2 text-negative">
+            {evidenceError}
+          </p>
+        )}
+        <label className="block text-ink-3">
+          Note
+          <textarea
+            ref={noteRef}
+            aria-label="Evidence note"
+            className={`${FIELD} min-h-16 resize-y`}
+            value={note}
+            disabled={mutation.isPending}
+            onChange={(event) => {
+              setNote(event.target.value);
+              setEvidenceError(null);
+            }}
+          />
+        </label>
+        <div className="mt-3">
+          <p className="text-ink-3">
+            Documents from this {documentOwner.kind === 'deal' ? 'deal' : 'company'}
+          </p>
+          {documents.isLoading ? (
+            <p className="mt-1 text-ink-3">Loading documents…</p>
+          ) : documents.isError ? (
+            <p className="mt-1 text-ink-3">Documents could not be loaded.</p>
+          ) : available.length === 0 ? (
+            <p className="mt-1 text-ink-3">No scanned-clean documents to attach.</p>
+          ) : (
+            <div className="mt-1 space-y-1">
+              {available.map((document) => (
+                <label key={document.id} className="flex items-center gap-2 text-ink">
+                  <input
+                    type="checkbox"
+                    checked={documentIds.includes(document.id)}
+                    disabled={mutation.isPending}
+                    onChange={() => {
+                      toggleDocument(document.id);
+                      setEvidenceError(null);
+                    }}
+                  />
+                  {document.file_name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <label className="mt-3 block text-ink-3">
+          Link
+          <input
+            aria-label="Evidence link"
+            aria-invalid={linkError ? true : undefined}
+            aria-describedby={linkError ? linkErrorId : undefined}
+            type="url"
+            className={cn(FIELD, linkError && 'border-negative')}
+            value={url}
+            disabled={mutation.isPending}
+            onChange={(event) => {
+              setUrl(event.target.value);
+              setEvidenceError(null);
+              setLinkError(null);
+            }}
+          />
+        </label>
+        {linkError && (
+          <p id={linkErrorId} role="alert" className="mt-1 text-negative">
+            {linkError}
+          </p>
         )}
       </fieldset>
-      <label className="mt-3 block text-ink-3">
-        Evidence link (optional)
-        <input
-          aria-label="Evidence link"
-          type="url"
-          className={FIELD}
-          value={url}
-          disabled={mutation.isPending}
-          onChange={(event) => setUrl(event.target.value)}
-        />
-      </label>
       {error && (
         <p role="alert" className="mt-2 text-negative">
           {error}

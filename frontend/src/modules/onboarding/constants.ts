@@ -102,3 +102,10 @@ export function corridorDescription(corridor: string): string {
   const [from, to] = corridor.split('-');
   return from && to ? `${countryName(from)} to ${countryName(to)}` : corridor;
 }
+
+/**
+ * What "Communication" means on the company record: the company's contact status
+ * (Not contacted → Ready now). Calls, emails and meetings themselves are Activity.
+ */
+export const COMMUNICATION_HINT =
+  'Communication status. Calls, emails and meetings are on the Activity tab.';

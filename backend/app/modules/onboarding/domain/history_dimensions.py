@@ -38,6 +38,18 @@ PIPELINE = "pipeline"
 RELATIONSHIP_MANAGER = "relationship_manager"
 #: A background-check review claimed, assigned, reassigned, released or ended.
 BACKGROUND_CHECK_ASSIGNMENT = "background_check_assignment"
+#: A contact's status changed, or its details were verified.
+CONTACT = "contact"
+#: A company address added, changed, made a default or deactivated.
+ADDRESS = "address"
+#: A bank account proposed, approved, rejected, verified, made primary or deactivated.
+BANK_ACCOUNT = "bank_account"
+#: A company's collections owner named, changed or cleared.
+COLLECTIONS_OWNER = "collections_owner"
+#: A company linked under a parent, or taken out of its group.
+GROUP = "group"
+#: A sanctions screening recorded, or a decision on one of its possible matches.
+SANCTIONS = "sanctions"
 
 ALL_DIMENSIONS: tuple[str, ...] = (
     JOURNEY,
@@ -56,12 +68,20 @@ ALL_DIMENSIONS: tuple[str, ...] = (
     PIPELINE,
     RELATIONSHIP_MANAGER,
     BACKGROUND_CHECK_ASSIGNMENT,
+    CONTACT,
+    ADDRESS,
+    BANK_ACCOUNT,
+    COLLECTIONS_OWNER,
+    GROUP,
+    SANCTIONS,
 )
 
 #: Dimensions DEVELOPER does not receive from the history routes: the
 #: background check, its inputs, its cycles and its approvals carry the values,
 #: reasons, review notes and comments DEVELOPER is refused on their own routes. Who
-#: holds a review is compliance work too.
+#: holds a review is compliance work too. Sanctions screening rows name the screened
+#: people, the list entries they matched and each decision's reason — what the
+#: screening routes (``screening:view``) refuse DEVELOPER.
 HIDDEN_FROM_DEVELOPER: frozenset[str] = frozenset(
     {
         BACKGROUND_CHECK,
@@ -70,6 +90,7 @@ HIDDEN_FROM_DEVELOPER: frozenset[str] = frozenset(
         CHECK_CYCLE,
         BACKGROUND_CHECK_APPROVAL,
         BACKGROUND_CHECK_ASSIGNMENT,
+        SANCTIONS,
     }
 )
 

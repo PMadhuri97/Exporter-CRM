@@ -59,6 +59,14 @@ async def lifespan(app: FastAPI):
     )
     enforce_compliance_settings()
 
+    # Bank account numbers are stored encrypted. A malformed key setting stops the
+    # start; a missing one outside local/test is announced here and refuses each bank
+    # write with a 503 rather than storing anything in clear.
+    from app.platform.security.field_cipher import check_field_encryption_keys
+
+    if not check_field_encryption_keys():
+        logger.warning("field_encryption.no_keys", setting="FIELD_ENCRYPTION_KEYS")
+
     # ledger_accounts.precision is a denormalised copy of a versioned registry
     # value and is immutable once set. If they ever diverge, every amount posted
     # against the affected account is silently wrong by a power of ten. This is a

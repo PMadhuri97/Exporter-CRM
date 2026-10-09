@@ -117,7 +117,7 @@ describe('VerificationSection — capabilities, not roles', () => {
     renderSection();
     fireEvent.click(await screen.findByRole('button', { name: 'Record a result' }));
     const form = screen.getByTestId('manual-result-form');
-    expect(within(form).getByText('Evidence documents from this company')).toBeInTheDocument();
+    expect(within(form).getByText('Documents from this company')).toBeInTheDocument();
     expect(await within(form).findByText('No scanned-clean documents to attach.')).toBeInTheDocument();
     expect(listCompanyDocuments).toHaveBeenCalledWith(COMPANY_ID, {});
     fireEvent.click(within(form).getByRole('button', { name: 'Cancel' }));

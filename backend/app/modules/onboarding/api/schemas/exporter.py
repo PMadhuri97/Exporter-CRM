@@ -371,12 +371,17 @@ class _RelationshipManagerFields(BaseModel):
 
     relationship_manager_name: str | None = None
     relationship_manager_inactive: bool = False
+    #: Who chases the company's payments, and their name (filled by the route).
+    collections_owner_user_id: uuid.UUID | None = None
+    collections_owner_name: str | None = None
 
 
 class ExporterProfileResponse(_IdentifierMasking, _RelationshipManagerFields, BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     customer_id: uuid.UUID
+    #: The payment term a new deal with this company starts from.
+    default_payment_term_id: uuid.UUID | None = None
     name: str | None
     country: str | None
     cin: str | None
@@ -418,6 +423,8 @@ class ExporterProfileResponse(_IdentifierMasking, _RelationshipManagerFields, Ba
 
 class ExporterProfileDetailResponse(_IdentifierMasking, _RelationshipManagerFields, BaseModel):
     customer_id: uuid.UUID
+    #: The payment term a new deal with this company starts from.
+    default_payment_term_id: uuid.UUID | None = None
     name: str | None
     country: str | None
     cin: str | None
@@ -460,6 +467,8 @@ class ExporterProfileDetailResponse(_IdentifierMasking, _RelationshipManagerFiel
     @classmethod
     def from_detail(cls, detail) -> ExporterProfileDetailResponse:
         return cls(
+            collections_owner_user_id=detail.collections_owner_user_id,
+            default_payment_term_id=detail.default_payment_term_id,
             customer_id=detail.customer_id,
             name=detail.name,
             country=detail.country,
@@ -535,6 +544,9 @@ class ExporterProfileListItemResponse(_IdentifierMasking, _RelationshipManagerFi
     date_added: datetime
     created_at: datetime
     updated_at: datetime
+    #: Whether the company has an active primary contact; a deal is not handed over
+    #: without one.
+    has_active_primary_contact: bool = True
 
 
 class ExporterProfileSearchResponse(BaseModel):
@@ -548,3 +560,34 @@ class ExporterProfileSearchResponse(BaseModel):
             "`limit` of them; this is the number the filters actually select."
         ),
     )
+
+
+class AssignCollectionsOwnerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: The new owner, or `null` to clear.
+    user_id: uuid.UUID | None
+    #: Required to change or clear an owner already named.
+    reason: str | None = Field(default=None, max_length=2000)
+    #: The owner the screen showed (`null` for none).
+    seen_user_id: uuid.UUID | None = None
+
+
+class BulkCollectorReassignRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_user_id: uuid.UUID
+    to_user_id: uuid.UUID
+    company_ids: list[uuid.UUID] | None = None
+    reason: str = Field(min_length=1, max_length=2000)
+    dry_run: bool = False
+
+
+class BulkCollectorReassignResponse(BaseModel):
+    bulk_run_id: str | None
+    dry_run: bool
+    matched: int
+    moved: int
+    skipped: int
+    company_ids: list[uuid.UUID]
+    skipped_company_ids: list[uuid.UUID]

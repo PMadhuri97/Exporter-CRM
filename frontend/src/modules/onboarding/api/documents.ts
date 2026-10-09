@@ -141,3 +141,13 @@ export async function fetchDocumentBlob(url: string): Promise<Blob> {
   const path = url.replace(/^\/api\/v1/, '');
   return apiRequest<Blob>(path, { parseAs: 'blob' });
 }
+
+/**
+ * A document as a reader sees it on screen: a PDF, an image or plain text — a Word,
+ * Excel or PowerPoint file arrives already converted to PDF. Needs only
+ * `documents:view`; saving a copy is the download link (`documents:download`). Fetched
+ * with the access token like every request; the server records the view.
+ */
+export function fetchDocumentPreview(documentId: string): Promise<Blob> {
+  return apiRequest<Blob>(`/onboarding/documents/${documentId}/preview`, { parseAs: 'blob' });
+}

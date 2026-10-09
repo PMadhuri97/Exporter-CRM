@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UserRole } from '@/lib/api/types';
 import { useCurrentUser } from '@/platform/auth';
 
-import { createDownloadLink, fetchDocumentBlob, matchCompany } from '../../api';
+import { createDownloadLink, fetchDocumentBlob, fetchDocumentPreview, matchCompany } from '../../api';
 import type { BackgroundCheckProposal, CrmDocument } from '../../types';
 
 import { detectEntry } from './entry';
@@ -24,7 +24,14 @@ vi.mock('../../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api')>()),
   createDownloadLink: vi.fn(),
   fetchDocumentBlob: vi.fn(),
+  fetchDocumentPreview: vi.fn(),
   matchCompany: vi.fn(),
+}));
+// Saving a copy is `documents:download`, read from the server.
+const mayDownload = vi.hoisted(() => ({ value: true }));
+vi.mock('@/platform/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/access')>()),
+  useHasPermission: () => mayDownload.value,
 }));
 vi.mock('../CompanyComplianceSummary', () => ({
   CompanyComplianceSummary: () => <p data-testid="compliance-summary">compliance</p>,
@@ -48,6 +55,7 @@ function wrap(ui: ReactNode) {
 }
 
 beforeEach(() => {
+  mayDownload.value = true;
   vi.clearAllMocks();
   as('OPERATIONS');
 });
@@ -220,6 +228,7 @@ describe('DocumentsByCategory', () => {
       scan_status: 'AVAILABLE',
       scanner_name: 'pass-through',
       is_downloadable: true,
+      has_preview: true,
       ...over,
     }) as CrmDocument;
 
@@ -257,60 +266,75 @@ describe('DocumentsByCategory', () => {
     expect(screen.queryByRole('button', { name: 'Upload a document' })).not.toBeInTheDocument();
   });
 
-  it('offers View beside Download only for a file the browser can render', () => {
-    wrap(
-      <DocumentsByCategory
-        isLoading={false}
-        emptyMessage="None"
-        documents={[
-          file({ file_name: 'pan.pdf', content_type: 'application/pdf' }),
-          file({ file_name: 'photo.png', content_type: 'image/png' }),
-          // A .docx would "view" by downloading, so it is a download only.
-          file({
-            file_name: 'contract.docx',
-            content_type:
-              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          }),
-          // A blob URL inherits this origin, so a script inside an uploaded SVG would run
-          // as this application. Never viewed, whatever the browser could draw.
-          file({ file_name: 'logo.svg', content_type: 'image/svg+xml' }),
-          // Not served at all: neither action.
-          file({
-            file_name: 'bad.pdf',
-            content_type: 'application/pdf',
-            scan_status: 'QUARANTINED',
-            is_downloadable: false,
-          }),
-        ]}
-        required={[{ category: 'KYC', label: 'KYC' }]}
-      />,
+  it('offers View wherever the server has an on-screen form, and Download only with the permission', () => {
+    const documents = [
+      file({ file_name: 'pan.pdf', content_type: 'application/pdf' }),
+      file({ file_name: 'photo.png', content_type: 'image/png' }),
+      // A Word file is read as the PDF the server converted it to.
+      file({
+        file_name: 'contract.docx',
+        content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+      // No on-screen form (a zip, or a conversion that failed): no View.
+      file({ file_name: 'bundle.zip', content_type: 'application/zip', has_preview: false }),
+      // Not served at all: neither action.
+      file({
+        file_name: 'bad.pdf',
+        scan_status: 'QUARANTINED',
+        is_downloadable: false,
+        has_preview: false,
+      }),
+    ];
+    const { unmount } = wrap(
+      <DocumentsByCategory isLoading={false} emptyMessage="None" documents={documents} required={[]} />,
     );
-
-    for (const name of ['pan.pdf', 'photo.png']) {
+    for (const name of ['pan.pdf', 'photo.png', 'contract.docx']) {
       expect(screen.getByRole('button', { name: `View document ${name}` })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: `Download ${name}` })).toBeInTheDocument();
     }
-
-    for (const name of ['contract.docx', 'logo.svg']) {
-      expect(
-        screen.queryByRole('button', { name: `View document ${name}` }),
-      ).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: `Download ${name}` })).toBeInTheDocument();
-    }
-
-    expect(
-      screen.queryByRole('button', { name: 'View document bad.pdf' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'View document bundle.zip' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download bundle.zip' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'View document bad.pdf' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Download bad.pdf' })).not.toBeInTheDocument();
+    unmount();
+
+    // Without `documents:download`: read on screen, never saved.
+    mayDownload.value = false;
+    wrap(<DocumentsByCategory isLoading={false} emptyMessage="None" documents={documents} required={[]} />);
+    expect(screen.getByRole('button', { name: 'View document contract.docx' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Download/ })).not.toBeInTheDocument();
   });
 
-  it('shows a document in a panel, saves those same bytes, and frees them when it goes', async () => {
+  it('says "Preparing preview…" while an Office file is converted, and cannot start a second one', async () => {
+    let finish!: (blob: Blob) => void;
+    vi.mocked(fetchDocumentPreview).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const documents = [
+      file({
+        file_name: 'contract.docx',
+        content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+    ];
+    wrap(<DocumentsByCategory isLoading={false} emptyMessage="None" documents={documents} required={[]} />);
+
+    const button = screen.getByRole('button', { name: 'View document contract.docx' });
+    fireEvent.click(button);
+    expect(await screen.findByText('Preparing preview…')).toBeInTheDocument();
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(fetchDocumentPreview).toHaveBeenCalledTimes(1);
+
+    finish(new Blob(['pdf'], { type: 'application/pdf' }));
+    await waitFor(() => expect(screen.queryByText('Preparing preview…')).not.toBeInTheDocument());
+  });
+
+  it('reads a document in a panel from the preview, saves the original, and frees it when it goes', async () => {
+    vi.mocked(fetchDocumentPreview).mockResolvedValue(new Blob(['png'], { type: 'image/png' }));
     vi.mocked(createDownloadLink).mockResolvedValue({
       document_id: 'd1',
       url: '/api/v1/onboarding/documents/content?key=k&expires=1&signature=s',
       expires_at: '2026-10-01T10:05:00Z',
     });
-    vi.mocked(fetchDocumentBlob).mockResolvedValue(new Blob(['pdf bytes']));
+    vi.mocked(fetchDocumentBlob).mockResolvedValue(new Blob(['original']));
     const createObjectURL = vi.fn(() => 'blob:viewed');
     const revokeObjectURL = vi.fn();
     vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
@@ -318,23 +342,24 @@ describe('DocumentsByCategory', () => {
     const save = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
     try {
-      const documents = [file({ file_name: 'pan.pdf', content_type: 'application/pdf' })];
+      const documents = [file({ file_name: 'scan.png', content_type: 'image/png' })];
       const { unmount } = wrap(
         <DocumentsByCategory isLoading={false} emptyMessage="None" documents={documents} />,
       );
-      fireEvent.click(screen.getByRole('button', { name: 'View document pan.pdf' }));
+      fireEvent.click(screen.getByRole('button', { name: 'View document scan.png' }));
 
       const viewer = await screen.findByRole('dialog');
-      expect(within(viewer).getByTitle('pan.pdf')).toHaveAttribute('src', 'blob:viewed');
+      expect(fetchDocumentPreview).toHaveBeenCalledTimes(1);
+      expect(createDownloadLink).not.toHaveBeenCalled(); // reading mints no download link
+      expect(within(viewer).getByRole('img', { name: 'scan.png' })).toHaveAttribute('src', 'blob:viewed');
+      expect(within(viewer).getByTestId('document-watermark')).toBeInTheDocument();
 
-      // Download from the panel saves what is on screen: no second link, no second fetch.
+      // Download from the panel saves the original, through the download link.
       fireEvent.click(within(viewer).getByRole('button', { name: /Download/ }));
-      expect(save).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
       expect(createDownloadLink).toHaveBeenCalledTimes(1);
-      expect(fetchDocumentBlob).toHaveBeenCalledTimes(1);
-      expect(revokeObjectURL).not.toHaveBeenCalled();
 
-      // Leaving the page with the panel still open frees the bytes too.
+      // Leaving the page with the panel still open frees the preview too.
       unmount();
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:viewed');
     } finally {

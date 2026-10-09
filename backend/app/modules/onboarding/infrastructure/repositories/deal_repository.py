@@ -170,6 +170,8 @@ class DealRepository(BaseRepository[Deal]):
                 _CORRIDOR.label("corridor"),
                 Deal.created_at,
                 Deal.updated_at,
+                Deal.value_amount,
+                Deal.currency,
             )
         ).where(*self._conditions(filters))
 

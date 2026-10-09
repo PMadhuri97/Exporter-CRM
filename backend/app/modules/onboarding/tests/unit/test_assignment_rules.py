@@ -1,7 +1,8 @@
 """Who may own a company, review its check and approve it — the pure rules.
 
-The permissions are checked as "ADMIN, or the permission": a lead is a custom role
-holding a grant, never an enum value, and nothing here names one.
+The permissions are checked as permissions, nothing else: a lead is a role holding a
+grant (the seeded Compliance lead and Sales lead), never an enum value. The
+administrator holds none of them.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from app.platform.authorization.catalog import (
     BUILTIN_ROLE_PERMISSIONS,
     MODULES_BY_KEY,
     is_valid_permission,
+    lead_role_permissions,
 )
 
 NONE: frozenset = frozenset()
@@ -36,15 +38,18 @@ def test_the_three_permissions_are_in_the_catalogue_and_enforced():
         assert is_valid_permission(module, action)
         spec = MODULES_BY_KEY[module]
         assert next(a for a in spec.actions if a.key == action).is_enforced(spec)
-    # The rest of the exporters module is still declared-only.
+    # The rest of the exporters module is enforced too: every CRM route checks one.
     exporters = MODULES_BY_KEY["exporters"]
-    assert not next(a for a in exporters.actions if a.key == "edit").is_enforced(exporters)
+    assert next(a for a in exporters.actions if a.key == "edit").is_enforced(exporters)
 
 
-def test_only_admin_is_seeded_with_them():
-    for role, granted in BUILTIN_ROLE_PERMISSIONS.items():
+def test_no_built_in_role_is_seeded_with_them_only_the_lead_roles():
+    for granted in BUILTIN_ROLE_PERMISSIONS.values():
         for permission in (ASSIGN_RM, ASSIGN_REVIEWS, APPROVE_HIGH_RISK):
-            assert (permission in granted) is (role is UserRole.ADMIN)
+            assert permission not in granted
+    assert {ASSIGN_REVIEWS, APPROVE_HIGH_RISK} <= lead_role_permissions("compliance-lead")
+    assert ASSIGN_RM in lead_role_permissions("sales-lead")
+    assert ASSIGN_RM not in lead_role_permissions("compliance-lead")
 
 
 def test_no_lead_role_exists():
@@ -58,10 +63,9 @@ def test_no_lead_role_exists():
 
 
 @pytest.mark.parametrize("permission", [ASSIGN_RM, ASSIGN_REVIEWS, APPROVE_HIGH_RISK])
-def test_admin_holds_every_permission_without_a_grant(permission):
-    assert holds(UserRole.ADMIN, NONE, permission)
-    assert not holds(UserRole.COMPLIANCE, NONE, permission)
-    assert holds(UserRole.COMPLIANCE, frozenset({permission}), permission)
+def test_a_permission_is_held_only_through_a_grant(permission):
+    assert not holds(NONE, permission)
+    assert holds(frozenset({permission}), permission)
 
 
 def test_an_rm_may_claim_an_unowned_company_for_themselves_only():
@@ -75,11 +79,12 @@ def test_an_rm_may_claim_an_unowned_company_for_themselves_only():
     assert not may(UserRole.OPERATIONS, "someone", "me")  # a change
     assert not may(UserRole.OPERATIONS, "me", None)  # a clear
     assert not may(UserRole.COMPLIANCE, None, "me")  # compliance is never an RM
-    # A sales lead (OPERATIONS + exporters:assign_rm) and ADMIN may do anything.
+    # A sales lead (OPERATIONS + exporters:assign_rm) may do anything; the
+    # administrator, holding no grant, may do nothing.
     lead = frozenset({ASSIGN_RM})
     assert may(UserRole.OPERATIONS, "someone", "other", lead)
     assert may(UserRole.OPERATIONS, "someone", None, lead)
-    assert may(UserRole.ADMIN, None, "someone")
+    assert not may(UserRole.ADMIN, None, "someone")
 
 
 def test_only_a_high_or_critical_clear_needs_a_senior_checker():

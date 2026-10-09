@@ -29,6 +29,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import {
+  Badge,
   Button,
   buttonClasses,
   EmptyLine,
@@ -62,21 +63,32 @@ import type {
   QualificationState,
   RelationshipManagerFilter,
 } from '../types';
+import { countryLabel } from '../countries';
 
 type Lens = 'ALL' | ExporterJourney;
 const LENSES: readonly Lens[] = ['ALL', ...JOURNEY_STAGES];
 const QUALIFICATIONS: readonly string[] = ['ANY', ...Object.keys(QUALIFICATION_LABEL)];
 const RELATIONSHIPS: readonly string[] = ['ANY', ...Object.keys(MARKER_LABEL)];
 /**
- * Who a company belongs to, as a URL lens rather than a control.
+ * Who a company belongs to.
  *
  * `me` is *My companies*, which has its own row in the side navigation — the page is
- * titled for it. `none` (unassigned) and `inactive` (the RM's account is deactivated)
- * still filter when asked for in the URL and are still the server's own filters; the
- * dropdown that offered them has gone from the bar, so nothing links to them today.
+ * titled for it, so the dropdown hides there. `none` (unassigned) and `inactive` (the
+ * RM's account is deactivated) are offered on the bar: this branch had dropped the
+ * control and left them reachable only by typing the URL, which the merge partner's
+ * side still wires up, and removing a filter people use is the lead's call, not a
+ * merge's.
  */
-type Owner = 'ANY' | 'me' | 'none' | 'inactive';
+const OWNER_LABEL = {
+  none: 'Unassigned',
+  inactive: 'RM deactivated',
+} as const;
+type Owner = 'ANY' | 'me' | keyof typeof OWNER_LABEL;
 const OWNERS: readonly Owner[] = ['ANY', 'me', 'none', 'inactive'];
+type ContactFilter = 'ANY' | 'missing';
+type CollectionsFilter = 'ANY' | 'me' | 'none';
+const COLLECTIONS_FILTERS: readonly CollectionsFilter[] = ['ANY', 'me', 'none'];
+const CONTACT_FILTERS: readonly ContactFilter[] = ['ANY', 'missing'];
 /** A page of rows; "Show more" asks for the next, up to what one request returns. */
 const PAGE_SIZE = 50;
 
@@ -98,7 +110,7 @@ function JourneyCount({ journey }: { journey: ExporterJourney }) {
 function identityLine(profile: ExporterProfileListItem): string | null {
   const parts = [
     profile.industry,
-    profile.country,
+    profile.country ? countryLabel(profile.country) : null,
     profile.relationship_manager_name
       ? `RM ${profile.relationship_manager_name}${profile.relationship_manager_inactive ? ' (deactivated)' : ''}`
       : 'No RM',
@@ -116,6 +128,11 @@ function Row({
 }) {
   const outside = profile.pipeline_status === 'NOT_IN_PIPELINE';
   const line = identityLine(profile);
+  // Prospects and customers need someone to reach before a deal can be handed over.
+  const missingContact =
+    !profile.has_active_primary_contact &&
+    !outside &&
+    (profile.journey === 'PROSPECT' || profile.journey === 'CUSTOMER');
   return (
     <RecordListItem
       to={paths.company(profile.customer_id)}
@@ -126,12 +143,15 @@ function Row({
       data-testid="company-row"
       facts={line}
       badges={
-        <CompanyBadges
-          journey={profile.journey}
-          qualification={profile.qualification}
-          marker={profile.marker}
-          outsidePipeline={outside}
-        />
+        <>
+          <CompanyBadges
+            journey={profile.journey}
+            qualification={profile.qualification}
+            marker={profile.marker}
+            outsidePipeline={outside}
+          />
+          {missingContact && <Badge tone="attention">No primary contact</Badge>}
+        </>
       }
     />
   );
@@ -144,12 +164,22 @@ export function ExportersListPage() {
   const canImport = useCan('company.import');
   const canTakeInRxil = useCan('company.rxilIntake');
   const canReassign = useHasPermission('exporters:assign_rm');
-  const [reassigning, setReassigning] = useState(false);
-  // Read-only here now: the lens comes from the URL, not from a control on the bar.
-  const [owner] = useSearchParamState<Owner>('owner', OWNERS, 'ANY');
+  const canReassignCollections = useHasPermission('exporters:assign_collector');
+  const [reassigning, setReassigning] = useState<'rm' | 'collections' | null>(null);
+  const [owner, setOwner] = useSearchParamState<Owner>('owner', OWNERS, 'ANY');
   const [lens, setLens] = useSearchParamState<Lens>('journey', LENSES, 'ALL');
   const [qualification, setQualification] = useSearchParamState('qualification', QUALIFICATIONS, 'ANY');
   const [relationship, setRelationship] = useSearchParamState('relationship', RELATIONSHIPS, 'ANY');
+  const [contactFilter, setContactFilter] = useSearchParamState<ContactFilter>(
+    'contact',
+    CONTACT_FILTERS,
+    'ANY',
+  );
+  const [collectionsFilter, setCollectionsFilter] = useSearchParamState<CollectionsFilter>(
+    'collections',
+    COLLECTIONS_FILTERS,
+    'ANY',
+  );
   const [pages, setPages] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [name, setName] = useState('');
@@ -185,6 +215,8 @@ export function ExportersListPage() {
     marker: relationship === 'ANY' ? undefined : (relationship as ExporterMarker),
     ...filters,
     relationship_manager: owner === 'ANY' ? undefined : (owner as RelationshipManagerFilter),
+    missing_primary_contact: contactFilter === 'missing' || undefined,
+    collections_owner: collectionsFilter === 'ANY' ? undefined : collectionsFilter,
   };
   const { data, isLoading, isError, isFetching, refetch } = useExporterProfiles({
     ...search,
@@ -200,12 +232,20 @@ export function ExportersListPage() {
       relationship !== 'ANY' ||
       lens !== 'ALL' ||
       owner !== 'ANY' ||
-      filterCount,
+      contactFilter !== 'ANY' ||
+      collectionsFilter !== 'ANY' ||
+      Boolean(filterCount),
   );
   // The panel's filters count here too: they are filters other than the owner, which is
   // the whole distinction this second flag draws.
   const filteringOtherThanOwner = Boolean(
-    name || qualification !== 'ANY' || relationship !== 'ANY' || lens !== 'ALL' || filterCount,
+    name ||
+      qualification !== 'ANY' ||
+      relationship !== 'ANY' ||
+      lens !== 'ALL' ||
+      contactFilter !== 'ANY' ||
+      collectionsFilter !== 'ANY' ||
+      Boolean(filterCount),
   );
   const mayHaveMore = profiles.length === limit && limit < COUNT_CAP;
 
@@ -230,8 +270,16 @@ export function ExportersListPage() {
               </Link>
             )}
             {canReassign && (
-              <Button variant="subtle" onClick={() => setReassigning((open) => !open)}>
+              <Button variant="subtle" onClick={() => setReassigning((open) => (open === 'rm' ? null : 'rm'))}>
                 Reassign companies
+              </Button>
+            )}
+            {canReassignCollections && (
+              <Button
+                variant="subtle"
+                onClick={() => setReassigning((open) => (open === 'collections' ? null : 'collections'))}
+              >
+                Reassign collections
               </Button>
             )}
             {canImport && (
@@ -322,11 +370,56 @@ export function ExportersListPage() {
                 </option>
               ))}
             </Select>
+            {/* On My companies the owner is the page itself. */}
+            {owner !== 'me' && (
+              <Select
+                aria-label="Owner"
+                className="sm:w-auto"
+                value={owner === 'ANY' ? '' : owner}
+                onChange={(event) => {
+                  setOwner((event.target.value || 'ANY') as Owner);
+                  setPages(1);
+                }}
+              >
+                <option value="">Any owner</option>
+                {(Object.keys(OWNER_LABEL) as (keyof typeof OWNER_LABEL)[]).map((value) => (
+                  <option key={value} value={value}>
+                    {OWNER_LABEL[value]}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {/* The two filters the other lane added stay on the bar: each is one
+                click and both read as lenses on the working list, like the three
+                beside them. The rest live behind *Filters*. */}
+            <Select
+              aria-label="Contacts"
+              className="sm:w-auto"
+              value={contactFilter === 'ANY' ? '' : contactFilter}
+              onChange={(event) => {
+                setContactFilter((event.target.value || 'ANY') as ContactFilter);
+                setPages(1);
+              }}
+            >
+              <option value="">Any contacts</option>
+              <option value="missing">No primary contact</option>
+            </Select>
+            <Select
+              aria-label="Collections"
+              className="sm:w-auto"
+              value={collectionsFilter === 'ANY' ? '' : collectionsFilter}
+              onChange={(event) => {
+                setCollectionsFilter((event.target.value || 'ANY') as CollectionsFilter);
+                setPages(1);
+              }}
+            >
+              <option value="">Any collections owner</option>
+              <option value="me">My collections</option>
+              <option value="none">No collections owner</option>
+            </Select>
 
-            {/* What is on screen, as a file. Disabled with nothing to write, and it
-                says the row count so "export" is not read as "export everything" — there
-                is no server-side export, so this is the loaded page of the filtered
-                list. */}
+            {/* Every company the filters match, as a file — gathered a page at a time,
+                not the page on screen. */}
             <Button
               variant="subtle"
               disabled={profiles.length === 0}
@@ -364,9 +457,11 @@ export function ExportersListPage() {
 
         {reassigning && (
           <BulkReassignPanel
+            key={reassigning}
+            kind={reassigning}
             shown={profiles}
             journey={lens === 'ALL' ? undefined : lens}
-            onClose={() => setReassigning(false)}
+            onClose={() => setReassigning(null)}
           />
         )}
 

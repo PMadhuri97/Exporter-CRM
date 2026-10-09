@@ -36,6 +36,7 @@ const PROFILE: ExporterProfileListItem = {
   registration_number: null,
   identity_type: 'IN_PAN',
   pipeline_status: 'IN_PIPELINE',
+  has_active_primary_contact: true,
   source: 'MANUAL',
   relationship_manager: 'Jane RM',
   relationship_manager_name: 'Jane RM',
@@ -102,7 +103,7 @@ describe('ExportersListPage — identifiers are not on the list', () => {
   it('keeps the country and the relationship manager on the second line', async () => {
     mockUser('OPERATIONS', 'someone-else');
     renderPage();
-    expect(await screen.findByText('IN · RM Jane RM')).toBeInTheDocument();
+    expect(await screen.findByText('India · RM Jane RM')).toBeInTheDocument();
   });
 });
 
@@ -151,6 +152,36 @@ describe('ExportersListPage — the journey, qualification and marker filters', 
     );
   });
 
+  it('marks a prospect with no primary contact, and asks the server for only those', async () => {
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [{ ...PROFILE, journey: 'PROSPECT', has_active_primary_contact: false }],
+      limit: 100,
+      offset: 0,
+      total: 1,
+    });
+    renderPage();
+    expect(await screen.findByText('No primary contact', { selector: 'span' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Contacts'), { target: { value: 'missing' } });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ missing_primary_contact: true }),
+      ),
+    );
+  });
+
+  it('does not mark a lead for a missing primary contact', async () => {
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [{ ...PROFILE, has_active_primary_contact: false }],
+      limit: 100,
+      offset: 0,
+      total: 1,
+    });
+    renderPage();
+    await screen.findByText('Acme Exports');
+    expect(screen.queryByText('No primary contact', { selector: 'span' })).not.toBeInTheDocument();
+  });
+
   it('offers no lifecycle status filter and sends no status parameter', async () => {
     renderPage();
     await screen.findByText('Acme Exports');
@@ -166,13 +197,13 @@ describe('ExportersListPage — RXIL intake link', () => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 , total: 0 });
   });
 
-  it('offers RXIL intake to ADMIN', () => {
-    mockUser('ADMIN', 'user-admin');
+  it('offers RXIL intake to COMPLIANCE', () => {
+    mockUser('COMPLIANCE', 'user-compliance');
     renderPage();
     expect(screen.getByRole('link', { name: 'RXIL intake' })).toBeInTheDocument();
   });
 
-  it.each(['OPERATIONS', 'COMPLIANCE', 'DEVELOPER'])(
+  it.each(['OPERATIONS', 'ADMIN', 'DEVELOPER'])(
     'does not offer RXIL intake to %s, whom the server refuses',
     (role) => {
       mockUser(role, 'user-1');
@@ -187,14 +218,14 @@ describe('ExportersListPage — write screens by role', () => {
     vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 , total: 0 });
   });
 
-  it.each(['OPERATIONS', 'COMPLIANCE', 'ADMIN'])('offers %s New company and Import companies', (role) => {
+  it.each(['OPERATIONS', 'COMPLIANCE'])('offers %s New company and Import companies', (role) => {
     mockUser(role, 'user-1');
     renderPage();
     expect(screen.getByRole('link', { name: /New company/ })).toHaveAttribute('href', '/companies/new');
     expect(screen.getByRole('link', { name: /Import companies/ })).toHaveAttribute('href', '/companies/import');
   });
 
-  it.each(['DEVELOPER', 'API_USER'])(
+  it.each(['DEVELOPER', 'ADMIN', 'API_USER'])(
     'offers %s neither, since the server refuses both — absent, not disabled',
     (role) => {
       mockUser(role, 'user-1');
@@ -340,10 +371,11 @@ describe('ExportersListPage — whose companies', () => {
     expect(await screen.findByText(/not the relationship manager of any company yet/)).toBeInTheDocument();
   });
 
-  it('still filters by owner from the URL, with no control on the bar', async () => {
-    // The dropdown that offered Unassigned and RM deactivated has gone from the filter
-    // bar. The lens itself did not: `?owner=` is still read and still sent, so a link
-    // or a bookmark to one of them keeps working.
+  it('filters by owner from the URL, and the bar offers the same lenses', async () => {
+    // `?owner=` is read and sent, so a link or a bookmark to one keeps working, and
+    // the dropdown offers the two that are not a page of their own. This branch had
+    // dropped the control; the merge put it back, because removing a filter people
+    // use is a decision for the lead rather than something a merge settles.
     renderPage('/companies?owner=none');
 
     await waitFor(() =>
@@ -351,6 +383,19 @@ describe('ExportersListPage — whose companies', () => {
         expect.objectContaining({ relationship_manager: 'none' }),
       ),
     );
+    const owner = await screen.findByLabelText('Owner');
+    expect(within(owner).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Any owner',
+      'Unassigned',
+      'RM deactivated',
+    ]);
+  });
+
+  it('hides the owner control on My companies, where the page is the lens', async () => {
+    renderPage('/companies?owner=me');
+    // The page's own title is the lens, which is why the dropdown would be a second
+    // way to say the same thing.
+    await screen.findByRole('heading', { name: 'My companies' });
     expect(screen.queryByLabelText('Owner')).not.toBeInTheDocument();
   });
 

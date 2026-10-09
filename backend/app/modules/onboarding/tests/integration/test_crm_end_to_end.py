@@ -166,6 +166,8 @@ class _Crm:
                       files={"file": ("proforma_invoice.pdf", PDF, "application/pdf")})
         await self.record_the_invoicing_branch(company_id, deal["id"])
         await self.screen_the_buyer(deal["id"])
+        await self.ok("POST", f"/exporters/{company_id}/contacts", self.ops,
+                      json={"name": "Priya Shah", "role": "Export manager", "is_primary": True})
         return company_id, deal["id"]
 
     async def record_the_invoicing_branch(self, company_id: str, deal_id: str) -> None:
@@ -312,6 +314,14 @@ async def test_the_main_path_from_a_new_lead_to_a_handed_over_deal(
     )
     await crm.screen_the_buyer_company(buyer_company_id)
     assert "buyer's" not in ((await crm.deal(deal_id))["handover_blocked_reason"] or "")
+
+    # 7c. Someone at the seller to reach once the deal is handed over.
+    assert "no active primary contact" in (
+        (await crm.deal(deal_id))["handover_blocked_reason"] or ""
+    )
+    await crm.ok("POST", f"/exporters/{company_id}/contacts", crm.ops,
+                 json={"name": "Priya Shah", "role": "Export manager", "is_primary": True})
+    assert "primary contact" not in ((await crm.deal(deal_id))["handover_blocked_reason"] or "")
 
     # 8. The background check: started by staff, its inputs recorded by compliance.
     await crm.decide(company_id, "IN_REVIEW", crm.ops)

@@ -9,6 +9,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.rest.auth import access_audit
 from app.api.rest.auth.roles_router import me_router as roles_me_router
 from app.api.rest.auth.roles_router import router as roles_router
 from app.api.rest.auth.schemas import (
@@ -72,6 +73,16 @@ _CAN_EDIT_USERS = require_permission("users", "edit")
 #: Sentinel for "the request did not mention role_id at all", which is distinct
 #: from `None` ("clear it").
 _UNSET = object()
+
+
+async def _role_name(db: AsyncSession, role_id: uuid.UUID | None) -> str | None:
+    """A permission role's name, for the audit trail (which keeps names, not ids)."""
+    if role_id is None:
+        return None
+    from app.platform.authorization.models import Role
+
+    role = await db.get(Role, role_id)
+    return role.name if role is not None else str(role_id)
 
 #: The permission whose last holder must never be removed: granting any
 #: permission requires it, so once no active account has it, nothing can grant
@@ -569,6 +580,20 @@ async def admin_create_user(
         created_by=current_user.id,
     )
     user = await user_repo.create(user)
+    await access_audit.record(
+        db,
+        event_type=access_audit.USER_CREATED,
+        actor=current_user,
+        subject_type=access_audit.USER,
+        subject_id=user.id,
+        subject_name=user.full_name or user.email,
+        changes=[
+            access_audit.change("email", None, user.email),
+            access_audit.change("full_name", None, user.full_name),
+            access_audit.change("role", None, user.role.value),
+            access_audit.change("permission_role", None, await _role_name(db, user.role_id)),
+        ],
+    )
     logger.info(
         "user_created_by_admin",
         user_id=str(user.id),
@@ -690,6 +715,12 @@ async def admin_update_user(
         new_is_active=new_is_active,
     )
 
+    before = {
+        "full_name": user.full_name,
+        "role": user.role.value,
+        "permission_role": await _role_name(db, user.role_id),
+        "is_active": user.is_active,
+    }
     if "full_name" in fields:
         user.full_name = fields["full_name"]
     if new_role is not None:
@@ -707,6 +738,22 @@ async def admin_update_user(
     if new_is_active is False:
         await RefreshTokenRepository(db).revoke_all_for_user(user.id)
 
+    await access_audit.record(
+        db,
+        event_type=access_audit.USER_UPDATED,
+        actor=current_user,
+        subject_type=access_audit.USER,
+        subject_id=user.id,
+        subject_name=user.full_name or user.email,
+        changes=[
+            access_audit.change("full_name", before["full_name"], user.full_name),
+            access_audit.change("role", before["role"], user.role.value),
+            access_audit.change(
+                "permission_role", before["permission_role"], await _role_name(db, user.role_id)
+            ),
+            access_audit.change("is_active", before["is_active"], user.is_active),
+        ],
+    )
     logger.info(
         "user_updated_by_admin",
         user_id=str(user.id),
@@ -753,9 +800,45 @@ async def admin_reset_password(
     user.hashed_password = hash_password(body.new_password)
     await db.flush()
     await RefreshTokenRepository(db).revoke_all_for_user(user.id)
+    await access_audit.record(
+        db,
+        event_type=access_audit.USER_PASSWORD_RESET,
+        actor=current_user,
+        subject_type=access_audit.USER,
+        subject_id=user.id,
+        subject_name=user.full_name or user.email,
+        changes=[{"field": "password", "from": None, "to": "reset"}],
+    )
     logger.info(
         "user_password_reset_by_admin",
         user_id=str(user.id),
         reset_by=str(current_user.id),
     )
     await db.commit()  # before the response is sent — see the note above `router`
+
+
+@router.get(
+    "/users/{user_id}/history",
+    response_model=access_audit.AccessHistoryResponse,
+    summary="Who changed this account, and what",
+    description=(
+        "Every change to the account — created, renamed, role or permission role "
+        "changed, activated or deactivated, password reset — newest first, with who made "
+        "it. Read from the audit trail; changes before the trail existed are not there."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "The matching users:* permission is required"},
+    },
+    tags=["Auth"],
+)
+async def admin_user_history(
+    user_id: uuid.UUID,
+    current_user: Annotated[User, Depends(_CAN_VIEW_USERS)],
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> access_audit.AccessHistoryResponse:
+    return await access_audit.history(
+        db, access_audit.USER, user_id, limit=limit, offset=offset
+    )

@@ -31,21 +31,21 @@ from app.modules.onboarding.api.schemas.history import (
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.history_dimensions import HIDDEN_FROM_DEVELOPER
 from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authorization.services import require_permission
 from app.platform.database.services import get_db
 
 router = APIRouter(tags=["Exporter CRM"])
 
-# "See companies, contacts, deals, history" in the role matrix (architecture
-# §3.7): OPERATIONS, COMPLIANCE and ADMIN yes, DEVELOPER read-only, API_USER
-# no. Same gate as the other CRM reads.
+_COMPANY_VIEW = require_permission("exporters", "view")
+_DEAL_VIEW = require_permission("deals", "view")
+
+# "See companies, contacts, deals, history" (`exporters:view`, `deals:view`):
+# OPERATIONS, COMPLIANCE, ADMIN and DEVELOPER, API_USER no. Same gate as the other
+# CRM reads.
 #
 # A history row carries an actor id and a free-text reason but no tax
 # identifier, so there is nothing here for the masking rules to apply to. The
 # actor's name is added for every reader (`api/actor_names.py`).
-_READER = require_role(
-    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
-)
 
 #: Dimensions DEVELOPER does not see here. The rule (settled 28 September 2026)
 #: refuses DEVELOPER the background-check gauge, its decision reasons and evidence
@@ -119,20 +119,20 @@ _ORDERING = (
         "Every recorded change to this company: its journey, each of its three "
         "gauges, its marker and its deals, interleaved. Filter to one with "
         "`dimension`. DEVELOPER does not receive `background_check`, "
-        "`verification`, `screening`, `check_cycle` or `background_check_approval` "
-        "rows, nor a row's `risk_rating` or `clearing_decision_id` details, "
+        "`verification`, `screening`, `check_cycle`, `background_check_approval`, "
+        "`background_check_assignment` or `sanctions` rows, nor a row's `risk_rating` or `clearing_decision_id` details, "
         "nor a branch's flag and unflag rows or its `flag_status` "
         "detail. " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {"description": "`exporters:view` permission required"},
     },
 )
 async def list_company_history(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
     dimension: str | None = Query(
         default=None,
@@ -140,8 +140,9 @@ async def list_company_history(
         description=(
             "Restrict to one dimension: journey, qualification, conversation, "
             "background_check, deal, marker, profile, verification, screening, "
-            "check_cycle, background_check_approval, gst_registration, trade or "
-            "pipeline."
+            "check_cycle, background_check_approval, gst_registration, trade, "
+            "pipeline, relationship_manager, background_check_assignment, contact, "
+            "address, bank_account, collections_owner, group or sanctions."
         ),
     ),
     limit: int = Query(default=50, ge=1, le=200),
@@ -172,19 +173,20 @@ async def list_company_history(
     description=(
         "Every recorded change to one deal, including the changes it caused "
         "elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does "
-        "not receive `background_check`, `verification` or `screening` rows, nor a "
+        "not receive `background_check`, `verification`, `screening` or `sanctions` "
+        "rows, nor a "
         "row's `risk_rating` or `clearing_decision_id` details, nor a "
         "branch's flag and unflag rows or its `flag_status` detail. " + _ORDERING
     ),
     responses={
         200: {"model": HistoryListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {"description": "`deals:view` permission required"},
     },
 )
 async def list_deal_history(
     deal_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DEAL_VIEW)],
     db: AsyncSession = Depends(get_db),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),

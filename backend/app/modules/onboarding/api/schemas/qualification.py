@@ -43,6 +43,17 @@ from app.modules.onboarding.domain.qualification_views import (
 # ── Criteria ──────────────────────────────────────────────────────────────────
 
 
+#: Where a criterion's automatic answer comes from.
+AutoSourceValue = Literal[
+    "IEC_VERIFICATION",
+    "YEARS_ESTABLISHED",
+    "INDUSTRY",
+    "EXPORT_MARKETS",
+    "TRADE_HISTORY",
+    "DEAL_VALUE",
+]
+
+
 class CriterionDefinitionRequest(BaseModel):
     """One version of a criterion. Every change is a new version."""
 
@@ -56,6 +67,9 @@ class CriterionDefinitionRequest(BaseModel):
     threshold: Decimal | None = None
     unit: str | None = Field(default=None, max_length=32)
     allowed_values: list[str] | None = None
+    #: Answer this criterion automatically from: IEC_VERIFICATION, YEARS_ESTABLISHED,
+    #: INDUSTRY, EXPORT_MARKETS, TRADE_HISTORY or DEAL_VALUE. Each fits one kind.
+    auto_source: AutoSourceValue | None = None
 
     def to_definition(self) -> CriterionDefinition:
         return CriterionDefinition(
@@ -67,6 +81,7 @@ class CriterionDefinitionRequest(BaseModel):
             threshold=self.threshold,
             unit=self.unit,
             allowed_values=tuple(self.allowed_values) if self.allowed_values is not None else None,
+            auto_source=self.auto_source,
         )
 
 
@@ -90,6 +105,7 @@ class CriterionResponse(BaseModel):
     active: bool
     created_by: str | None
     created_at: datetime
+    auto_source: AutoSourceValue | None = None
 
     @classmethod
     def of(cls, row: QualificationCriterion) -> CriterionResponse:
@@ -107,6 +123,7 @@ class CriterionResponse(BaseModel):
             active=row.active,
             created_by=row.created_by,
             created_at=row.created_at,
+            auto_source=row.auto_source,  # type: ignore[arg-type]
         )
 
 
@@ -278,6 +295,8 @@ class QualificationResponse(BaseModel):
     journey: ExporterJourney
     #: The server's suggestion from the current results. Never the decision.
     suggested_outcome: QualificationOutcomeValue
+    #: Why the server suggests what it does ("3 of 7 criteria passed, none failed").
+    suggestion_reason: str = ""
     standings: list[CriterionStandingResponse]
     results: list[ResultResponse]
     outcomes: list[OutcomeResponse]
@@ -294,6 +313,7 @@ class QualificationResponse(BaseModel):
             state=view.state,
             journey=view.journey,
             suggested_outcome=view.suggested_outcome,
+            suggestion_reason=view.suggestion_reason,
             standings=[
                 CriterionStandingResponse(
                     criterion=CriterionResponse.of(s.criterion),

@@ -4,11 +4,11 @@ Pure rules over a role, a permission set and ids, so they are unit-tested withou
 database and read in one place. The services call them under the company row lock;
 the routes call them to serve ``allowed_actions``.
 
-**The three permissions are checked as "ADMIN role, or the permission".** ADMIN's
-seeded grants are editable like any role's, and editing them must not lock
-administrators out of assigning work. Everyone else holds a permission through a
-custom role (an OPERATIONS or COMPLIANCE enum value plus the grant): there is no lead
-role in the enum, and nothing here checks for one.
+**The three permissions are checked as permissions, nothing else.** They are held
+through a role — the seeded *Compliance lead* and *Sales lead*, or any role an
+administrator grants them to — on top of an OPERATIONS or COMPLIANCE enum value. The
+administrator holds none of them: it runs the system and does not assign, review or
+approve business work.
 
 **Ownership grants nothing.** Being a company's relationship manager neither widens
 what a user may see nor unmasks an identifier (``can_reveal_identifiers``); it only
@@ -33,13 +33,12 @@ ASSIGN_REVIEWS: Permission = ("compliance", "assign")
 #: Approve a CLEAR proposed with HIGH or CRITICAL risk.
 APPROVE_HIGH_RISK: Permission = ("compliance", "approve_high_risk")
 
-#: Who may be a company's relationship manager. ADMIN assigns but is not an RM;
-#: COMPLIANCE never is, which keeps "the reviewer is not the RM" meaningful.
+#: Who may be a company's relationship manager. COMPLIANCE never is, which keeps "the reviewer is not the RM" meaningful.
 RM_ROLES: frozenset[UserRole] = frozenset({UserRole.OPERATIONS})
 #: Who may review a background check (and so be assigned one).
-REVIEWER_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
-#: Who may approve or reject a proposal — unchanged from maker-checker.
-CHECKER_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE, UserRole.ADMIN})
+REVIEWER_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE})
+#: Who may approve or reject a proposal (maker-checker). Never the administrator.
+CHECKER_ROLES: frozenset[UserRole] = frozenset({UserRole.COMPLIANCE})
 
 #: The risks a senior checker must approve a CLEAR at.
 HIGH_RISKS: frozenset[BackgroundCheckRisk] = frozenset(
@@ -67,9 +66,10 @@ REVIEW_ENDED = "review_ended"
 UNASSIGNED = "UNASSIGNED"
 
 
-def holds(role: UserRole, permissions: frozenset[Permission], permission: Permission) -> bool:
-    """ADMIN, or a holder of ``permission``."""
-    return role is UserRole.ADMIN or permission in permissions
+def holds(permissions: frozenset[Permission], permission: Permission) -> bool:
+    """Whether ``permissions`` include ``permission``. Named for the rules that read it
+    ("a holder of ``compliance:assign``"); there is no role that holds everything."""
+    return permission in permissions
 
 
 def needs_senior_checker(
@@ -108,9 +108,9 @@ def may_set_relationship_manager(
     """Whether the actor may move the company's RM from ``current`` to ``target``.
 
     An OPERATIONS user may claim a company with **no** RM for themselves. Anything
-    else — someone else as RM, a change, a clear — needs ADMIN or ``exporters:assign_rm``.
+    else — someone else as RM, a change, a clear — needs ``exporters:assign_rm``.
     """
-    if holds(actor_role, actor_permissions, ASSIGN_RM):
+    if holds(actor_permissions, ASSIGN_RM):
         return True
     return (
         current is None

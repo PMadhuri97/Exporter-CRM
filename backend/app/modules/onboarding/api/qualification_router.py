@@ -1,8 +1,8 @@
 """Qualification routes.
 
-Criteria are managed by ADMIN only; results and outcomes are recorded by
-OPERATIONS, COMPLIANCE and ADMIN; every CRM reader may read (architecture
-§3.3, §3.7). All three gates are enforced here, on the server. The actor is
+Criteria are managed with ``settings:manage`` (the administrator); results and
+outcomes are recorded with ``qualification:record`` (OPERATIONS, COMPLIANCE); every CRM
+reader may read (``exporters:view``). All three gates are enforced here, on the server. The actor is
 always the signed-in user.
 
 Mounted by ``router.py`` under the module's ``/onboarding`` prefix.
@@ -32,26 +32,27 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
     QualificationOutcomeValue,
     QualificationState,
 )
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import get_current_permissions, require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import (
+    get_current_permissions,
+    has_permission,
+    require_permission,
+)
 from app.platform.database.services import get_db
 
 router = APIRouter(tags=["Qualification"])
 
-#: Criterion administration and versions (architecture §3.7).
-_ADMIN = require_role(UserRole.ADMIN)
-#: Recording results and outcomes.
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
-_RECORDING_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
-#: Reading. DEVELOPER is read-only across the CRM.
-_READER = require_role(
-    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
-)
+_COMPANY_VIEW = require_permission("exporters", "view")
+_QUALIFICATION_RECORD = require_permission("qualification", "record")
+_SETTINGS = require_permission("settings", "manage")
+
+#: Criterion administration (`settings:manage`), recording results and outcomes
+#: (`qualification:record`), reading (`exporters:view`, DEVELOPER included).
 
 _401 = {"description": "Unauthorized"}
-_403_ADMIN = {"description": "ADMIN role required"}
-_403_STAFF = {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"}
-_403_READER = {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"}
+_403_ADMIN = {"description": "settings:manage permission required"}
+_403_STAFF = {"description": "qualification:record permission required"}
+_403_READER = {"description": "exporters:view permission required"}
 
 
 # ── Criteria ─────────────────────────────────────────────────────────────────
@@ -64,7 +65,7 @@ _403_READER = {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role r
     responses={401: _401, 403: _403_READER},
 )
 async def list_qualification_criteria(
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> CriterionListResponse:
     criteria = await QualificationService(db).list_criteria()
@@ -85,7 +86,7 @@ async def list_qualification_criteria(
 )
 async def create_qualification_criterion(
     body: CreateCriterionRequest,
-    current_user: Annotated[User, Depends(_ADMIN)],
+    current_user: Annotated[User, Depends(_SETTINGS)],
     db: AsyncSession = Depends(get_db),
 ) -> CriterionResponse:
     criterion = await QualificationService(db).create_criterion(
@@ -102,7 +103,7 @@ async def create_qualification_criterion(
 )
 async def list_qualification_criterion_versions(
     key: str,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> CriterionListResponse:
     versions = await QualificationService(db).list_versions(key)
@@ -130,7 +131,7 @@ async def list_qualification_criterion_versions(
 async def add_qualification_criterion_version(
     key: str,
     body: CriterionDefinitionRequest,
-    current_user: Annotated[User, Depends(_ADMIN)],
+    current_user: Annotated[User, Depends(_SETTINGS)],
     db: AsyncSession = Depends(get_db),
 ) -> CriterionResponse:
     criterion = await QualificationService(db).add_version(
@@ -146,7 +147,7 @@ async def add_qualification_criterion_version(
     responses={401: _401, 403: _403_READER},
 )
 async def list_qualification_reason_codes(
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> ReasonCodeListResponse:
     codes = await QualificationService(db).list_reason_codes()
@@ -166,7 +167,7 @@ async def list_qualification_reason_codes(
 )
 async def get_exporter_qualification(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> QualificationResponse:
     view = await QualificationService(db).get_qualification(customer_id)
@@ -195,7 +196,7 @@ async def get_exporter_qualification(
 async def record_exporter_qualification_results(
     customer_id: uuid.UUID,
     body: RecordResultsRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_QUALIFICATION_RECORD)],
     db: AsyncSession = Depends(get_db),
 ) -> QualificationResponse:
     service = QualificationService(db)
@@ -228,7 +229,7 @@ async def record_exporter_qualification_results(
         404: {"description": "Exporter profile not found"},
         403: {
             "description": (
-                "OPERATIONS, COMPLIANCE or ADMIN role required; "
+                "`qualification:record` permission required; "
                 "`RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED` — naming someone else as RM "
                 "needs ADMIN or exporters:assign_rm"
             )
@@ -250,7 +251,7 @@ async def record_exporter_qualification_results(
 async def record_exporter_qualification_outcome(
     customer_id: uuid.UUID,
     body: RecordOutcomeRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_QUALIFICATION_RECORD)],
     permissions: Annotated[frozenset[tuple[str, str]], Depends(get_current_permissions)],
     db: AsyncSession = Depends(get_db),
 ) -> QualificationResponse:
@@ -276,7 +277,7 @@ def _for_viewer(response: QualificationResponse, viewer: User) -> QualificationR
     once the company is QUALIFIED (final), and nothing for a role that
     may not record results or outcomes."""
     open_for_review = response.state is not QualificationState.QUALIFIED
-    may_record = viewer.role in _RECORDING_ROLES and open_for_review
+    may_record = has_permission(viewer, "qualification", "record") and open_for_review
     response.can_record_results = may_record
     response.allowed_outcomes = list(QualificationOutcomeValue) if may_record else []
     return response

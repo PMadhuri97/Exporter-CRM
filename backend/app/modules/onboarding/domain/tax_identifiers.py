@@ -38,9 +38,9 @@ def normalise_name(value: str | None) -> str | None:
         return None
     cleaned = value.strip()
     if not cleaned:
-        raise ValidationError("name must not be blank")
+        raise ValidationError("Name must not be blank")
     if len(cleaned) > 255:
-        raise ValidationError("name must be at most 255 characters")
+        raise ValidationError("Name must be at most 255 characters")
     return cleaned
 
 
@@ -48,7 +48,7 @@ def normalise_country(value: str | None) -> str | None:
     """An ISO 3166-1 alpha-2 country code, upper-cased (`IN`)."""
     country = _normalise(value)
     if country is not None and not COUNTRY_RE.match(country):
-        raise ValidationError("country must be a two-letter ISO 3166-1 code, e.g. IN")
+        raise ValidationError("Country must be a two-letter ISO 3166-1 code, e.g. IN")
     return country
 
 
@@ -56,7 +56,7 @@ def normalise_pan(value: str | None) -> str | None:
     """A PAN, normalised and checked: 5 letters, 4 digits, 1 letter."""
     pan = _normalise(value)
     if pan is not None and not PAN_RE.match(pan):
-        raise ValidationError("pan must be 10 characters: 5 letters, 4 digits, 1 letter")
+        raise ValidationError("PAN must be 10 characters: 5 letters, 4 digits, 1 letter")
     return pan
 
 
@@ -64,7 +64,7 @@ def normalise_iec(value: str | None) -> str | None:
     """An importer-exporter code, normalised and checked: 10 letters or digits."""
     iec = _normalise(value)
     if iec is not None and not IEC_RE.match(iec):
-        raise ValidationError("iec must be 10 letters or digits")
+        raise ValidationError("IEC must be 10 letters or digits")
     return iec
 
 
@@ -73,7 +73,7 @@ def normalise_cin(value: str | None) -> str | None:
     cin = _normalise(value)
     if cin is not None and not CIN_RE.match(cin):
         raise ValidationError(
-            "cin must be 21 characters: L or U, 5 digits, 2-letter state, "
+            "CIN must be 21 characters: L or U, 5 digits, 2-letter state, "
             "4-digit year, 3 letters, 6 digits"
         )
     return cin
@@ -92,11 +92,11 @@ def normalise_gstins(values: Iterable[str] | None) -> list[str]:
             continue
         if not GSTIN_RE.match(gstin):
             raise ValidationError(
-                f"gstin {gstin!r} must be 15 characters: 2-digit state code, the "
+                f"GSTIN {gstin!r} must be 15 characters: 2-digit state code, the "
                 "10-character PAN, 1 entity character, Z, 1 check character"
             )
         if gstin in gstins:
-            raise ValidationError(f"gstin {gstin!r} is listed twice")
+            raise ValidationError(f"GSTIN {gstin!r} is listed twice")
         gstins.append(gstin)
     return gstins
 

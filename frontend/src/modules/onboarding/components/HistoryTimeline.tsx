@@ -36,6 +36,7 @@ import { Icon, type IconComponent } from '@/design/icons';
 import { cn } from '@/lib/cn';
 import { humanize } from '@/lib/format';
 
+import { COMMUNICATION_HINT } from '../constants';
 import { useCompanyHistory, useDealHistory, useQualification, useScreeningReview } from '../hooks';
 import type { HistoryDimension, HistoryEntry, HistoryList } from '../types';
 
@@ -45,10 +46,10 @@ import { verificationTypeLabel } from './verification-labels';
 
 const PAGE_SIZE = 25;
 
-const DIMENSION_LOOK: Record<string, { label: string; icon: IconComponent }> = {
+const DIMENSION_LOOK: Record<string, { label: string; icon: IconComponent; hint?: string }> = {
   journey: { label: 'Journey', icon: Icon.journey },
   qualification: { label: 'Qualification', icon: Icon.qualification },
-  conversation: { label: 'Conversation', icon: Icon.conversation },
+  conversation: { label: 'Communication', icon: Icon.conversation, hint: COMMUNICATION_HINT },
   background_check: { label: 'Background check', icon: Icon.backgroundCheck },
   deal: { label: 'Deal', icon: Icon.deal },
   marker: { label: 'Relationship', icon: Icon.marker },
@@ -63,6 +64,12 @@ const DIMENSION_LOOK: Record<string, { label: string; icon: IconComponent }> = {
   pipeline: { label: 'Pipeline', icon: Icon.journey },
   relationship_manager: { label: 'Relationship manager', icon: Icon.person },
   background_check_assignment: { label: 'Reviewer', icon: Icon.users },
+  contact: { label: 'Contact', icon: Icon.person },
+  address: { label: 'Address', icon: Icon.place },
+  bank_account: { label: 'Bank account', icon: Icon.receipt },
+  collections_owner: { label: 'Collections owner', icon: Icon.person },
+  group: { label: 'Group', icon: Icon.company },
+  sanctions: { label: 'Sanctions', icon: Icon.shield },
 };
 
 const FALLBACK_LOOK = { label: 'Change', icon: Icon.history };
@@ -86,6 +93,12 @@ const LANES: HistoryDimension[] = [
   'pipeline',
   'relationship_manager',
   'background_check_assignment',
+  'contact',
+  'address',
+  'bank_account',
+  'collections_owner',
+  'group',
+  'sanctions',
 ];
 
 function text(value: unknown): string | null {
@@ -200,6 +213,37 @@ function eventLine(entry: HistoryEntry): { label: string; value?: string | null 
       };
     case 'relationship_manager_cleared':
       return { label: 'Relationship manager cleared', value: text(details.from_user_name) };
+    case 'collections_owner_assigned':
+      return { label: 'Collections owner assigned', value: text(details.to_user_name) };
+    case 'collections_owner_reassigned':
+      return {
+        label: 'Collections owner changed',
+        value: `${text(details.from_user_name) ?? 'someone'} → ${text(details.to_user_name) ?? 'someone'}`,
+      };
+    case 'collections_owner_cleared':
+      return { label: 'Collections owner cleared', value: text(details.from_user_name) };
+    case 'sanctions_run_recorded':
+      return {
+        label: `Sanctions screening recorded: ${humanize(entry.to_value)}`,
+        value: [text(details.subject_name), text(details.lists)].filter(Boolean).join(' · ') || null,
+      };
+    case 'sanctions_hit_decided':
+      return {
+        label: `Possible match marked ${humanize(entry.to_value).toLowerCase()}`,
+        value: text(details.matched_name),
+      };
+    case 'sanctions_true_match_confirmed':
+      return { label: 'Sanctions true match confirmed', value: text(details.matched_name) };
+    case 'sanctions_true_match_rejected':
+      return { label: 'Proposed true match not confirmed', value: text(details.matched_name) };
+    case 'group_parent_set':
+      return { label: 'Linked under a parent', value: text(details.parent_name) };
+    case 'group_parent_cleared':
+      return { label: 'Taken out of its group', value: text(details.previous_parent_name) };
+    case 'group_member_added':
+      return { label: 'Company added to the group', value: text(details.member_name) };
+    case 'group_member_removed':
+      return { label: 'Company left the group', value: text(details.member_name) };
     case 'review_claimed':
       return { label: 'Review taken', value: text(details.to_user_name) };
     case 'review_assigned':
@@ -213,6 +257,61 @@ function eventLine(entry: HistoryEntry): { label: string; value?: string | null 
       return { label: 'Review released', value: text(details.from_user_name) };
     case 'review_ended':
       return { label: 'Review ended with the decision', value: text(details.from_user_name) };
+    case 'contact_status_changed':
+      return {
+        label: `${text(details.contact_name) ?? 'Contact'}: ${humanize(entry.from_value ?? '')} → ${humanize(entry.to_value)}`,
+        value: details.was_primary === true ? 'no longer the primary contact' : null,
+      };
+    case 'deal_terms_changed': {
+      const changed = Array.isArray(details.changed) ? (details.changed as string[]) : [];
+      const words: Record<string, string> = {
+        value_amount: 'value',
+        currency: 'currency',
+        payment_term: 'payment term',
+      };
+      return {
+        label: 'Value and terms changed',
+        value: changed.map((key) => words[key] ?? humanize(key).toLowerCase()).join(', ') || null,
+      };
+    }
+    case 'bank_account_proposed':
+    case 'bank_account_approved':
+    case 'bank_account_rejected':
+    case 'bank_account_verified':
+    case 'bank_account_primary_set':
+    case 'bank_account_deactivated': {
+      const what = {
+        bank_account_proposed: details.replaces_id ? 'Bank account change proposed' : 'Bank account proposed',
+        bank_account_approved: 'Bank account approved',
+        bank_account_rejected: 'Bank account rejected',
+        bank_account_verified: 'Bank account verified',
+        bank_account_primary_set: 'Primary bank account set',
+        bank_account_deactivated: 'Bank account deactivated',
+      }[entry.event_type];
+      const last4 = text(details.account_last4);
+      return {
+        label: what,
+        value: [text(details.bank_name), text(details.currency), last4 ? `••••${last4}` : null]
+          .filter(Boolean)
+          .join(' '),
+      };
+    }
+    case 'address_added':
+      return { label: `${humanize(entry.to_value)} address added`, value: text(details.summary) };
+    case 'address_updated':
+      return { label: `${humanize(entry.to_value)} address changed`, value: text(details.summary) };
+    case 'address_default_set':
+      return {
+        label: `Default ${humanize(entry.to_value).toLowerCase()} address set`,
+        value: text(details.summary),
+      };
+    case 'address_deactivated':
+      return {
+        label: `${humanize(entry.to_value)} address deactivated`,
+        value: text(details.summary),
+      };
+    case 'contact_verified':
+      return { label: 'Contact details verified', value: text(details.contact_name) };
     case 'pipeline_initial':
       return entry.to_value === 'NOT_IN_PIPELINE'
         ? { label: "Created as a deal's buyer", value: 'not in the pipeline' }
@@ -527,6 +626,7 @@ export function CompanyHistory({ customerId }: { customerId: string }) {
               key={value ?? 'all'}
               type="button"
               aria-pressed={active}
+              title={value ? DIMENSION_LOOK[value]?.hint : undefined}
               onClick={() => choose(value)}
               className={cn(
                 'rounded-md border px-2.5 py-1 text-secondary font-medium transition-colors duration-quick',

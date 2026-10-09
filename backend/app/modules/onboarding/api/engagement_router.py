@@ -38,6 +38,7 @@ from app.modules.onboarding.api.schemas.engagement import (
     LogExporterActivityRequest,
     PendingActivityListResponse,
     PendingActivityResponse,
+    SetContactStatusRequest,
     SetConversationRequest,
     UpdateExporterContactRequest,
 )
@@ -47,28 +48,18 @@ from app.modules.onboarding.application import (
 )
 from app.modules.onboarding.domain.engagement_views import ConversationMove
 from app.modules.onboarding.domain.entities.engagement_enums import ExporterActivityType
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import has_permission, require_permission
 from app.platform.database.services import get_db
 
 router = APIRouter(prefix="/exporters", tags=["Exporter CRM"])
 
-# Routine CRM reads and writes by internal staff (Relationship Managers are
-# OPERATIONS, and may read every exporter). Contact email/phone are masked per
-# viewer in the response schemas.
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
-# Masked CRM reads. DEVELOPER may read the CRM but never sees a raw
-# identifier (`can_reveal_identifiers` is always False for it), per the role
-# matrix in docs/architecture.md, "Roles and masking" (architecture §3.7).
-_READER = require_role(
-    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
-)
-#: Who may set the conversation — the roles `_STAFF` admits
-#: (`docs/contracts/engagement.md` §3). Declared as a set as well as a dependency
-#: because the reads below have to answer "what may *this caller* do", and a
-#: `require_role` dependency cannot be asked that. Same pattern, and the same
-#: reason, as `_MARKER_ROLES` in `exporter_router.py`.
-_CONVERSATION_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
+_COMPANY_EDIT = require_permission("exporters", "edit")
+_COMPANY_VIEW = require_permission("exporters", "view")
+
+# Routine CRM reads (`exporters:view`, DEVELOPER and the administrator included) and
+# writes (`exporters:edit`) by internal staff. Contact email/phone are masked per viewer
+# in the response schemas (`can_reveal_identifiers`).
 
 
 # ── Contacts ──────────────────────────────────────────────────────────────
@@ -86,7 +77,7 @@ _CONVERSATION_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserR
     responses={
         201: {"model": ExporterContactResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         409: {
             "description": (
                 "Another contact was made primary for this company at the same moment "
@@ -99,7 +90,7 @@ _CONVERSATION_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserR
 async def add_exporter_contact(
     customer_id: uuid.UUID,
     body: AddExporterContactRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterContactResponse:
     contact = await ExporterContactActivityService(db).add_contact(
@@ -128,7 +119,7 @@ async def add_exporter_contact(
     responses={
         200: {"model": ExporterContactResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "No such company, or no such contact on it"},
         409: {
             "description": (
@@ -143,7 +134,7 @@ async def update_exporter_contact(
     customer_id: uuid.UUID,
     contact_id: uuid.UUID,
     body: UpdateExporterContactRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterContactResponse:
     changes = body.changes()
@@ -166,6 +157,66 @@ async def update_exporter_contact(
     return ExporterContactResponse.model_validate(contact).masked_for(current_user)
 
 
+@router.post(
+    "/{customer_id}/contacts/{contact_id}/status",
+    response_model=ExporterContactResponse,
+    summary="Mark a contact active, inactive or as having left the company",
+    description=(
+        "Leaving ACTIVE needs a `reason`, which is kept with the contact and on its "
+        "`contact` history row. A contact that is no longer active stops being the "
+        "primary contact (only an active contact can be the person to reach)."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`exporters:edit` permission required"},
+        404: {"description": "No such company, or no such contact on it"},
+        422: {"description": "No reason given for leaving ACTIVE"},
+    },
+)
+async def set_exporter_contact_status(
+    customer_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    body: SetContactStatusRequest,
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
+    db: AsyncSession = Depends(get_db),
+) -> ExporterContactResponse:
+    contact = await ExporterContactActivityService(db).set_contact_status(
+        customer_id,
+        contact_id,
+        status=body.status,
+        reason=body.reason,
+        actor_id=str(current_user.id),
+    )
+    return ExporterContactResponse.model_validate(contact).masked_for(current_user)
+
+
+@router.post(
+    "/{customer_id}/contacts/{contact_id}/verification",
+    response_model=ExporterContactResponse,
+    summary="Record that a contact's details were checked and are right",
+    description=(
+        "Stamps `last_verified_at` and `last_verified_by` (the signed-in user) and "
+        "writes a `contact` history row. A contact is `verification_due` again once "
+        "`CRM_CONTACT_REVERIFY_MONTHS` (default 12) have passed."
+    ),
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "`exporters:edit` permission required"},
+        404: {"description": "No such company, or no such contact on it"},
+    },
+)
+async def verify_exporter_contact(
+    customer_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
+    db: AsyncSession = Depends(get_db),
+) -> ExporterContactResponse:
+    contact = await ExporterContactActivityService(db).mark_contact_verified(
+        customer_id, contact_id, actor_id=str(current_user.id)
+    )
+    return ExporterContactResponse.model_validate(contact).masked_for(current_user)
+
+
 @router.get(
     "/{customer_id}/contacts",
     response_model=ExporterContactListResponse,
@@ -173,12 +224,12 @@ async def update_exporter_contact(
     responses={
         200: {"model": ExporterContactListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {"description": "`exporters:view` permission required"},
     },
 )
 async def list_exporter_contacts(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterContactListResponse:
     contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
@@ -203,7 +254,7 @@ async def list_exporter_contacts(
     responses={
         201: {"model": ExporterActivityResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "No such company"},
         422: {
             "description": (
@@ -216,7 +267,7 @@ async def list_exporter_contacts(
 async def log_exporter_activity(
     customer_id: uuid.UUID,
     body: LogExporterActivityRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> ExporterActivityResponse:
     activity = await ExporterContactActivityService(db).log_activity(
@@ -239,12 +290,12 @@ async def log_exporter_activity(
     responses={
         200: {"model": ExporterActivityListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {"description": "`exporters:view` permission required"},
     },
 )
 async def list_exporter_activities(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
     activity_type: ExporterActivityType | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -285,11 +336,11 @@ async def list_exporter_activities(
     responses={
         200: {"model": PendingActivityListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {"description": "`exporters:view` permission required"},
     },
 )
 async def list_pending_exporter_activities(
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
     actor_id: str | None = Query(default=None),
     activity_type: ExporterActivityType | None = Query(default=None),
@@ -337,7 +388,7 @@ def _conversation_moves(
     empty list on a LEAD, so both reasons for "no moves" arrive the same way —
     which is the point: the screen does not re-derive which.
     """
-    if viewer.role not in _CONVERSATION_ROLES:
+    if not has_permission(viewer, "exporters", "edit"):
         return []
     return [ConversationMoveResponse.model_validate(move) for move in moves]
 
@@ -358,13 +409,13 @@ def _conversation_moves(
     responses={
         200: {"model": ConversationResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {"description": "`exporters:view` permission required"},
         404: {"description": "Exporter profile not found"},
     },
 )
 async def get_exporter_conversation(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> ConversationResponse:
     view = await ConversationService(db).get_conversation(customer_id)
@@ -386,13 +437,13 @@ async def get_exporter_conversation(
     responses={
         200: {"model": ConversationMoveListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required"},
+        403: {"description": "`exporters:view` permission required"},
         404: {"description": "Exporter profile not found"},
     },
 )
 async def list_exporter_conversation_moves(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_COMPANY_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> ConversationMoveListResponse:
     view = await ConversationService(db).get_conversation(customer_id)
@@ -420,7 +471,7 @@ async def list_exporter_conversation_moves(
     responses={
         200: {"model": ConversationResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "Exporter profile not found"},
         409: {
             "description": (
@@ -442,7 +493,7 @@ async def list_exporter_conversation_moves(
 async def set_exporter_conversation(
     customer_id: uuid.UUID,
     body: SetConversationRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> ConversationResponse:
     profile = await ConversationService(db).set_conversation(

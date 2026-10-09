@@ -27,6 +27,8 @@ import { MENU_CONTENT, MENU_ITEM } from './styles';
 export interface RecordField {
   label: string;
   value: ReactNode;
+  /** A short explanation, shown when hovering the label. */
+  hint?: string;
 }
 
 export interface RecordAction {
@@ -165,7 +167,9 @@ export function RecordHeader({
             <dl className="mt-4 flex flex-wrap gap-x-10 gap-y-3 border-t border-line pt-3">
               {fields.slice(0, 6).map((field) => (
                 <div key={field.label} className="min-w-0">
-                  <dt className="text-caption text-ink-3">{field.label}</dt>
+                  <dt className="text-caption text-ink-3" title={field.hint}>
+                    {field.label}
+                  </dt>
                   <dd className="mt-0.5 text-body text-ink">{field.value}</dd>
                 </div>
               ))}

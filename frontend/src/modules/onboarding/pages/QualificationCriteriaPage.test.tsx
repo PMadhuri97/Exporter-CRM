@@ -112,7 +112,30 @@ describe('QualificationCriteriaPage', () => {
         threshold: null,
         unit: null,
         allowed_values: null,
+        auto_source: null,
       }),
+    );
+  });
+
+  it('can answer a criterion automatically, offering only the sources its kind fits', async () => {
+    vi.mocked(createCriterion).mockResolvedValue({ ...CRITERION, key: 'has_iec', version: 1 });
+    renderPage();
+    await screen.findByTestId('criterion-row');
+    fireEvent.click(screen.getByRole('button', { name: 'Add criterion' }));
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/^Key/), { target: { value: 'has_iec' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Label/), { target: { value: 'Holds an IEC' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Kind/), { target: { value: 'YES_NO' } });
+    const auto = within(dialog).getByLabelText(/^Answer automatically from/);
+    expect(within(auto).queryByRole('option', { name: 'Year established' })).not.toBeInTheDocument();
+    fireEvent.change(auto, { target: { value: 'IEC_VERIFICATION' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add criterion' }));
+
+    await waitFor(() =>
+      expect(createCriterion).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'YES_NO', auto_source: 'IEC_VERIFICATION' }),
+      ),
     );
   });
 
