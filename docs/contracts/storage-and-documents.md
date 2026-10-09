@@ -1,5 +1,33 @@
 # Contract — storage and documents
 
+> **Amendment, 9 October 2026 — permissions, and a read-only administrator.** Every CRM
+> route now checks a permission (`require_permission`), not a role list; the grants each
+> built-in role starts with are in `platform/authorization/catalog.py`
+> (`BUILTIN_ROLE_PERMISSIONS`), seeded by `auth_0007_business_permissions`. The
+> administrator (ADMIN) manages users, roles and settings and **reads** companies, deals,
+> documents and compliance work, but creates, edits, decides, approves and assigns nothing,
+> and sees tax identifiers masked. Wherever this document says "COMPLIANCE or ADMIN" (or
+> lists ADMIN among those who write, decide, approve, assign, reveal or take in an RXIL
+> package), read **COMPLIANCE** — or the holder of the named permission. The senior
+> permissions (`exporters:assign_rm`, `compliance:assign`, `compliance:approve_high_risk`)
+> are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
+> and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
+>
+> **Documents.** `documents:view` (OPERATIONS, COMPLIANCE, ADMIN, DEVELOPER) lists
+> documents and reads them on screen through `GET /documents/{id}/preview`: a PDF, an image
+> or plain text as it is (a CSV as plain text), a Word/Excel/PowerPoint file as a PDF
+> converted by LibreOffice on its first view and kept beside the original
+> (`crm_document.preview_status`, `preview_storage_key`; migration
+> `onboarding_0045_doc_previews`). A file that links outside itself — an external
+> relationship other than a hyperlink, an INCLUDETEXT/INCLUDEPICTURE/LINK/DDE field, an
+> external workbook or a formula that reaches out, or their marks in an old binary file — is
+> never converted and has no preview (`document_preview.external_reference`); the converter
+> runs with an empty environment. The preview is served
+> inline with a sandboxing CSP, `nosniff` and `no-store`. **Saving a copy** — the download
+> link and `GET /documents/content` — needs `documents:download` (COMPLIANCE by default).
+> Every view and download is written to the audit trail (`document.viewed`,
+> `document.downloaded`). Uploading needs `documents:upload` (OPERATIONS, COMPLIANCE).
+
 **Owner:** Developer 3B · **Port:** `onboarding/domain/storage.py` · **Implementations:** `onboarding/infrastructure/storage/` · **Table:** `onboarding.crm_document` · **Migration:** `onboarding_0019_documents`
 
 **Used by:** Developer 4 (evidence at decision time, plan §8.2), Developer 3A (nothing

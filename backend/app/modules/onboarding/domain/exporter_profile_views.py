@@ -88,6 +88,10 @@ class ExporterProfileDetail:
     contacts: tuple[ExporterContactView, ...]
     recent_activities: tuple[ExporterActivityView, ...]
     gstin_warnings: tuple[DuplicateGstinWarning, ...]
+    #: The payment term a new deal with this company starts from.
+    default_payment_term_id: uuid.UUID | None = None
+    #: Who chases the company's payments.
+    collections_owner_user_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -128,6 +132,11 @@ class ExporterProfileListItem:
     date_added: datetime
     created_at: datetime
     updated_at: datetime
+    #: Whether someone at the company is the active primary contact. A deal is not
+    #: handed over without one.
+    has_active_primary_contact: bool = True
+    #: Who chases the company's payments.
+    collections_owner_user_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)

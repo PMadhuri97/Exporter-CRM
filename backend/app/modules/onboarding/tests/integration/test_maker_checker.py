@@ -7,7 +7,7 @@ What is proved here, against a real database:
   whose proposer copy lies, a second resolution, a proposal for a move that needs no
   approval, and a decision that claims another company's proposal.
 * **The service.** CLEAR, FLAGGED and ON_HOLD are proposed, not made; a
-  *different* COMPLIANCE or ADMIN user approves (decision ``decided_by`` = proposer,
+  *different* COMPLIANCE user approves (never the administrator) (decision ``decided_by`` = proposer,
   ``approved_by`` = approver), rejects with a reason, or the proposer withdraws. No path
   lets one user take a company there. One open proposal per company, and nothing else
   moves the check while it is open. A proposal whose inputs changed cannot be approved.
@@ -252,11 +252,11 @@ async def test_no_single_user_path_reaches_clear_flagged_or_on_hold():
         with pytest.raises(BackgroundCheckApprovalRequiredError):
             await service.clear(
                 company_id, risk=BackgroundCheckRisk.LOW, reason="r",
-                actor_id=MAKER.user_id, actor_role=UserRole.ADMIN,
+                actor_id=MAKER.user_id, actor_role=UserRole.COMPLIANCE,
             )
         with pytest.raises(BackgroundCheckApprovalRequiredError):
             await service.flag(
-                company_id, reason="r", actor_id=MAKER.user_id, actor_role=UserRole.ADMIN
+                company_id, reason="r", actor_id=MAKER.user_id, actor_role=UserRole.COMPLIANCE
             )
         with pytest.raises(BackgroundCheckApprovalRequiredError):
             await service.record_decision(
@@ -312,15 +312,21 @@ async def test_a_second_officer_approves_and_the_decision_names_both():
 @pytest.mark.parametrize(
     ("maker", "checker"),
     [
-        (MAKER, ADMIN),
-        (ADMIN, MAKER),
+        (MAKER, THIRD),
+        (THIRD, MAKER),
     ],
-    ids=["admin-approves-compliance", "compliance-approves-admin"],
+    ids=["one-officer-approves-another", "and-the-other-way-round"],
 )
-async def test_admin_and_compliance_approve_each_other(maker, checker):
+async def test_two_compliance_officers_approve_each_other(maker, checker):
     company_id = await ready_to_clear(await make_company())
     decision = await approve_as(checker, company_id, maker=maker)
     assert (decision.decided_by, decision.approved_by) == (maker.user_id, checker.user_id)
+
+
+async def test_the_administrator_can_neither_propose_nor_approve():
+    company_id = await ready_to_clear(await make_company())
+    with pytest.raises(BackgroundCheckApproverRoleNotAllowedError):
+        await _approve(company_id, (await propose(company_id)).id, who=ADMIN)
 
 
 async def test_the_proposer_cannot_approve_or_reject_their_own_proposal():
@@ -418,8 +424,8 @@ async def test_flagged_and_on_hold_are_proposed_and_approved_too():
 
     on_hold = await propose(company_id, to_value=State.ON_HOLD, risk=None, reason="regulator")
     assert await gauge(company_id) is State.FLAGGED  # a proposed ON_HOLD leaves it FLAGGED
-    decision = (await _approve(company_id, on_hold.id, who=ADMIN)).decision
-    assert decision.to_value is State.ON_HOLD and decision.approved_by == ADMIN.user_id
+    decision = (await _approve(company_id, on_hold.id, who=THIRD)).decision
+    assert decision.to_value is State.ON_HOLD and decision.approved_by == THIRD.user_id
 
 
 async def test_approval_refuses_a_proposal_whose_inputs_changed():

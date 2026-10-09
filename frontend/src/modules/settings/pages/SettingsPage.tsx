@@ -27,7 +27,14 @@ import { RolesTab } from '../components/RolesTab';
 import { UsersTab } from '../components/UsersTab';
 import { usePermissions } from '../usePermissions';
 
-export type SettingsSection = 'profile' | 'users' | 'roles' | 'criteria' | 'requiredDocuments';
+export type SettingsSection =
+  | 'profile'
+  | 'users'
+  | 'roles'
+  | 'criteria'
+  | 'requiredDocuments'
+  | 'paymentTerms'
+  | 'sanctionsLists';
 type Section = SettingsSection;
 
 const SECTION_LABEL: Record<Section, string> = {
@@ -36,6 +43,8 @@ const SECTION_LABEL: Record<Section, string> = {
   roles: 'Roles',
   criteria: 'Qualification criteria',
   requiredDocuments: 'Required documents',
+  paymentTerms: 'Payment terms',
+  sanctionsLists: 'Sanctions lists',
 };
 
 function SectionLink({ to, children }: { to: string; children: ReactNode }) {
@@ -58,12 +67,33 @@ function SectionLink({ to, children }: { to: string; children: ReactNode }) {
   );
 }
 
+/**
+ * One group of the side list: who can sign in and what they may do ("Access"), apart
+ * from how the CRM itself behaves ("System configuration"). The heading shows down the
+ * side; across a narrow page the separator between the groups does the same job.
+ */
+function SectionGroup({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <div role="group" aria-labelledby={id} className="flex gap-1 lg:flex-col lg:gap-0.5">
+      <p
+        id={id}
+        className="hidden px-3 pb-1 pt-1 text-caption font-semibold uppercase tracking-wide text-ink-2 lg:block"
+      >
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
 export function SettingsFrame({ section, children }: { section: Section; children: ReactNode }) {
   const { can, isLoading, roleName } = usePermissions();
   const canViewUsers = can('users', 'view');
   const canViewRoles = can('roles', 'view');
   const canSetCriteria = useCan('settings.criteria');
   const canSetRequiredDocuments = useCan('settings.requiredDocuments');
+  const canSetPaymentTerms = useCan('settings.paymentTerms');
+  const canSetSanctionsLists = useCan('settings.sanctionsLists');
   useCrumbs([{ label: 'Settings', to: '/settings' }, { label: SECTION_LABEL[section] }]);
 
   return (
@@ -79,19 +109,32 @@ export function SettingsFrame({ section, children }: { section: Section; childre
           aria-label="Settings sections"
           className="flex gap-1 overflow-x-auto rounded border border-line bg-surface p-1 lg:sticky lg:top-0 lg:h-fit lg:flex-col lg:gap-0.5 lg:overflow-visible lg:p-2"
         >
-          <SectionLink to="/settings/profile">My profile</SectionLink>
-          {canViewUsers && <SectionLink to="/settings/users">Users</SectionLink>}
-          {canViewRoles && <SectionLink to="/settings/roles">Roles</SectionLink>}
-          {(canSetCriteria || canSetRequiredDocuments) && (
-            <p className="hidden px-3 pb-1 pt-4 text-caption font-medium text-ink-3 lg:block">
-              Rules
-            </p>
-          )}
-          {canSetCriteria && (
-            <SectionLink to="/settings/qualification-criteria">Qualification criteria</SectionLink>
-          )}
-          {canSetRequiredDocuments && (
-            <SectionLink to="/settings/deal-required-documents">Required documents</SectionLink>
+          <SectionGroup id="settings-access" title="Access">
+            <SectionLink to="/settings/profile">My profile</SectionLink>
+            {canViewUsers && <SectionLink to="/settings/users">Users</SectionLink>}
+            {canViewRoles && <SectionLink to="/settings/roles">Roles</SectionLink>}
+          </SectionGroup>
+          {(canSetCriteria || canSetRequiredDocuments || canSetPaymentTerms || canSetSanctionsLists) && (
+            <>
+              <span
+                role="separator"
+                className="mx-1 w-px shrink-0 self-stretch bg-line lg:mx-1 lg:my-2 lg:h-px lg:w-auto"
+              />
+              <SectionGroup id="settings-system" title="System configuration">
+                {canSetCriteria && (
+                  <SectionLink to="/settings/qualification-criteria">Qualification criteria</SectionLink>
+                )}
+                {canSetRequiredDocuments && (
+                  <SectionLink to="/settings/deal-required-documents">Required documents</SectionLink>
+                )}
+                {canSetPaymentTerms && (
+                  <SectionLink to="/settings/payment-terms">Payment terms</SectionLink>
+                )}
+                {canSetSanctionsLists && (
+                  <SectionLink to="/settings/sanctions-lists">Sanctions lists</SectionLink>
+                )}
+              </SectionGroup>
+            </>
           )}
         </nav>
         <div className="min-w-0">{children}</div>

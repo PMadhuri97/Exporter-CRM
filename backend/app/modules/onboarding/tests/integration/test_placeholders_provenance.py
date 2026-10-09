@@ -134,7 +134,7 @@ async def test_a_manual_result_is_labelled_manual(client, token):
     assert (resp.json()["provider"], resp.json()["provenance"]) == ("manual", "MANUAL")
 
 
-@pytest.mark.parametrize("role", [UserRole.COMPLIANCE, UserRole.ADMIN])
+@pytest.mark.parametrize("role", [UserRole.COMPLIANCE])
 async def test_the_manual_route_refuses_provider_rxil_for_every_role(client, token, role):
     """Nobody records a result *as RXIL's* through the manual route."""
     company_id = await make_company()

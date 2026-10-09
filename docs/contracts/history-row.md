@@ -1,5 +1,18 @@
 # Contract — the shared history row
 
+> **Amendment, 9 October 2026 — permissions, and a read-only administrator.** Every CRM
+> route now checks a permission (`require_permission`), not a role list; the grants each
+> built-in role starts with are in `platform/authorization/catalog.py`
+> (`BUILTIN_ROLE_PERMISSIONS`), seeded by `auth_0007_business_permissions`. The
+> administrator (ADMIN) manages users, roles and settings and **reads** companies, deals,
+> documents and compliance work, but creates, edits, decides, approves and assigns nothing,
+> and sees tax identifiers masked. Wherever this document says "COMPLIANCE or ADMIN" (or
+> lists ADMIN among those who write, decide, approve, assign, reveal or take in an RXIL
+> package), read **COMPLIANCE** — or the holder of the named permission. The senior
+> permissions (`exporters:assign_rm`, `compliance:assign`, `compliance:approve_high_risk`)
+> are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
+> and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
+
 **Owner:** Developer 1 · **Table:** `onboarding.exporter_lifecycle_history` · **Migration:** `onboarding_0013_shared_history`
 
 Every change to a company's journey, to any of its three gauges, to its marker,
@@ -71,13 +84,24 @@ architecture.
 | `pipeline` | A company entering or leaving the sales pipeline — created as a buyer-only company, or brought in (plan P4-6, P4-9). **Written** by `CompanyDirectoryService.create_buyer_company` (`NULL` → `NOT_IN_PIPELINE`, with the deal it came from) and by `ExporterProfileService.bring_into_pipeline` (`NOT_IN_PIPELINE` → `IN_PIPELINE`, task 3.11). A buyer-only company's **first** row is on this dimension, not `journey`: it has no journey until it enters the pipeline | Dev 3 |
 | `relationship_manager` | A company's relationship manager assigned, reassigned or cleared. **Written** only by `ExporterProfileService.set_relationship_manager` (the RM route, bulk reassignment, the RM set when a check is started or QUALIFIED is recorded, and the legacy-owner backfill). `from_status` / `to_status` are the user ids, or `UNASSIGNED`; `event_type` is `relationship_manager_assigned` / `_reassigned` / `_cleared`; `reason` is required on a change or clear | — |
 | `background_check_assignment` | A background-check review claimed, assigned, reassigned, released or ended. **Written** only by `BackgroundCheckService._set_reviewer`. `from_status` / `to_status` are the reviewer ids, or `UNASSIGNED`; `event_type` is `review_claimed` / `review_assigned` / `review_reassigned` / `review_released` / `review_ended`; `reason` is required when a review is taken from someone, optional on a release | — |
+| `contact` | A contact's status changed (`contact_status_changed`: `from_status` / `to_status` are ACTIVE, INACTIVE or LEFT_COMPANY; `reason` required to leave ACTIVE) or its details verified (`contact_verified`). **Written** by `ExporterContactActivityService` | — |
+| `address` | A company address added, changed, made its type's default or deactivated (`address_added`, `address_updated`, `address_default_set`, `address_deactivated`); `to_status` is the address type. **Written** by `CompanyAddressService` | — |
+| `bank_account` | A bank account proposed, approved, rejected, verified, made primary or deactivated (`bank_account_*`); `to_status` is the account's status. Never more than the last four characters of a number. **Written** by `CompanyBankAccountService` | — |
+| `collections_owner` | A company's collections owner named, changed or cleared (`collections_owner_assigned` / `_reassigned` / `_cleared`); ids or `UNASSIGNED`, like `relationship_manager`. **Written** by `CollectionsOwnerService` | — |
+| `group` | A company linked under a parent or taken out of its group — on the company (`group_parent_set` / `group_parent_cleared`) and on each parent involved (`group_member_added` / `group_member_removed`). **Written** by `CompanyGroupService` | — |
+| `sanctions` | A sanctions screening recorded (`sanctions_run_recorded`, `to_status` the run's outcome) or a decision on one of its matches (`sanctions_hit_decided`, `sanctions_true_match_confirmed`, `sanctions_true_match_rejected`; `to_status` the disposition, `reason` required). **Written** by `SanctionsScreeningService` | — |
 
 The last five were added together in F1 (allocation §2.2, 1 October 2026) so that no
 lane edits this list again. In code the list is
 `app/modules/onboarding/domain/history_dimensions.py`; a writer imports its constant
 from there rather than typing the string, and the frontend's `HistoryDimension` type
 and timeline labels carry the same sixteen. `relationship_manager` and
-`background_check_assignment` were added on 7 October 2026 (who is working on a company).
+`background_check_assignment` were added on 7 October 2026 (who is working on a company);
+`contact`, `address`, `bank_account`, `collections_owner` and `group` on 9 October 2026
+(contacts and customer master data), and `sanctions` the same day. The `profile` dimension also carries
+`default_payment_term_set` (a company's default payment term), and `deal` carries
+`deal_terms_changed` (a deal's value, currency or payment term; `reason` is the reason
+for a term other than the company's default).
 
 Adding a dimension needs no migration — add the string here and start writing
 it. Adding one **without** adding it here is the thing this table exists to
@@ -85,8 +109,8 @@ prevent, because nothing else records what the value means.
 
 **Who reads what.** The history routes serve every dimension to OPERATIONS,
 COMPLIANCE and ADMIN. DEVELOPER does not receive `background_check`,
-`verification`, `screening`, `check_cycle`, `background_check_approval` or
-`background_check_assignment` rows —
+`verification`, `screening`, `check_cycle`, `background_check_approval`,
+`background_check_assignment` or `sanctions` rows —
 from the page or the total — because decision D8 refuses DEVELOPER the same values,
 reasons, review notes and screening comments on those gauges' own routes
 (`api/history_router.py`, `history_dimensions.HIDDEN_FROM_DEVELOPER`).
@@ -144,6 +168,11 @@ it reached):
 | `background_check_approval` | `proposal_id`, `from_value`, `to_value` (the proposed move); on proposing also `risk_rating`, `based_on_decision_id`, `evidence_count`, `cycle_id`, `rules_version`; on resolving also `proposed_by` and `decision_id` (set on approval) | `background-check.md` §12.5 |
 | `relationship_manager` | `from_user_id`, `to_user_id`, `from_user_name`, `to_user_name` (the names as they were), `bulk_run_id` (a bulk reassignment or backfill run; otherwise `null`) | `company-record.md` §2.5 |
 | `background_check_assignment` | `from_user_id`, `to_user_id`, `from_user_name`, `to_user_name`, `background_check` (the gauge value at the time) | `background-check.md` §12.8 |
+| `contact` | `contact_id`, `contact_name`; on a status change `was_primary` (the contact stopped being primary) | `company-record.md` |
+| `address` | `address_id`, `summary` (the address on one line); `is_default` and `gst_registration_id` on adding; `changed` and `from` on a change; `was_default` on deactivating | `company-record.md` |
+| `bank_account` | `bank_account_id`, `bank_name`, `currency`, `account_type`, `account_last4`, `replaces_id`; `method` and `is_primary` on verifying | `company-record.md` |
+| `collections_owner` | `from_user_id`, `to_user_id`, `from_user_name`, `to_user_name`, `bulk_run_id` | `company-record.md` |
+| `group` | `parent_company_id`, `parent_name`, `previous_parent_name`, `relationship` on the company; `member_company_id`, `member_name` on the parent | `company-record.md` |
 
 ### 3.1 In the read response
 
@@ -175,6 +204,9 @@ enforces it; the column stays nullable because most moves do not need one and a
 | `qualification` | → `NOT_QUALIFIED` | reason **codes** required, note optional |
 | `relationship_manager` | changing or clearing an RM already set (single or bulk) | required |
 | `background_check_assignment` | taking a review from the person who holds it | required |
+| `contact` | moving a contact out of ACTIVE | required |
+| `bank_account` | rejecting or deactivating an account | required |
+| `collections_owner` | changing or clearing an owner already named | required |
 
 In short, every background-check move except the start (`NOT_STARTED` →
 `IN_REVIEW`) carries text; the database refuses the decision row otherwise

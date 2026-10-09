@@ -4,11 +4,12 @@ import { can } from '@/platform/access';
 /**
  * Who may see a raw tax identifier:
  *
- *   COMPLIANCE / ADMIN                — unmasked.
- *   OPERATIONS / DEVELOPER / API_USER — masked, always.
+ *   COMPLIANCE                                — unmasked.
+ *   OPERATIONS / ADMIN / DEVELOPER / API_USER — masked, always.
  *
  * This mirrors `can_reveal_identifiers` in
- * `backend/app/modules/onboarding/api/schemas/exporter.py`, which is what
+ * `backend/app/modules/onboarding/api/schemas/masking.py` (the
+ * `exporters:view_full_tax_id` permission), which is what
  * actually enforces it — the server masks before the value ever reaches the
  * browser, so this function decides whether to render a reveal control, not
  * whether the data is protected.

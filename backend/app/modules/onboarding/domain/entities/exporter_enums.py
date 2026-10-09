@@ -121,6 +121,17 @@ class GstRegistrationStatus(str, enum.Enum):
     SUSPENDED = "SUSPENDED"
 
 
+class CompanyAddressType(str, enum.Enum):
+    """What a company address is for. A company has at most one active default of
+    each."""
+
+    REGISTERED = "REGISTERED"
+    BILLING = "BILLING"
+    SHIPPING = "SHIPPING"
+    FACTORY_WAREHOUSE = "FACTORY_WAREHOUSE"
+    CORRESPONDENCE = "CORRESPONDENCE"
+
+
 class GstRegistrationFlag(str, enum.Enum):
     """Whether compliance has flagged this branch.
 

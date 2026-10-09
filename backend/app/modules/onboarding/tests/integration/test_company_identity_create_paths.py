@@ -194,15 +194,15 @@ async def test_creating_a_foreign_company_needs_a_registration_number(client: As
         headers={**auth_header(token), "Idempotency-Key": str(uuid.uuid4())},
     )
     assert resp.status_code == 422, resp.text
-    assert "registration_number" in resp.text
+    assert "Registration number is required" in resp.text
 
 
 async def test_creating_a_foreign_company_with_a_number_records_foreign_reg(
     client: AsyncClient,
 ):
-    # ADMIN, because the number comes back masked for a role that may not reveal
+    # COMPLIANCE, because the number comes back masked for a role that may not reveal
     # identifiers — which is its own test below.
-    _user_id, token = await user_with_role(client, UserRole.ADMIN)
+    _user_id, token = await user_with_role(client, UserRole.COMPLIANCE)
     registration = _registration()
     resp = await client.post(
         f"{BASE}/exporters",
@@ -282,7 +282,7 @@ async def test_two_companies_cannot_share_a_registration_number_in_one_country(
 async def test_a_registration_number_is_masked_for_a_role_that_may_not_reveal(
     client: AsyncClient,
 ):
-    _admin_id, admin_token = await user_with_role(client, UserRole.ADMIN)
+    _admin_id, admin_token = await user_with_role(client, UserRole.COMPLIANCE)
     registration = _registration()
     created = await client.post(
         f"{BASE}/exporters",
@@ -293,7 +293,7 @@ async def test_a_registration_number_is_masked_for_a_role_that_may_not_reveal(
     assert created.status_code in (200, 201), created.text
     customer_id = created.json()["customer_id"]
 
-    for role in (UserRole.OPERATIONS, UserRole.DEVELOPER):
+    for role in (UserRole.OPERATIONS, UserRole.DEVELOPER, UserRole.ADMIN):
         _user_id, token = await user_with_role(client, role)
         resp = await client.get(f"{BASE}/exporters/{customer_id}", headers=auth_header(token))
         assert resp.status_code == 200, resp.text
@@ -303,7 +303,7 @@ async def test_a_registration_number_is_masked_for_a_role_that_may_not_reveal(
         assert shown.endswith(registration[-4:]), (role, shown)
         assert "•" in shown, (role, shown)
 
-    for role in (UserRole.ADMIN, UserRole.COMPLIANCE):
+    for role in (UserRole.COMPLIANCE,):
         _user_id, token = await user_with_role(client, role)
         resp = await client.get(f"{BASE}/exporters/{customer_id}", headers=auth_header(token))
         assert resp.json()["registration_number"] == registration, role
@@ -312,7 +312,7 @@ async def test_a_registration_number_is_masked_for_a_role_that_may_not_reveal(
 async def test_a_masked_registration_number_cannot_be_written_back(client: AsyncClient):
     """`NotMasked`, as for the other identifiers: a client echoing what it read
     would otherwise overwrite the real number with bullets."""
-    _user_id, token = await user_with_role(client, UserRole.ADMIN)
+    _user_id, token = await user_with_role(client, UserRole.COMPLIANCE)
     created = await client.post(
         f"{BASE}/exporters",
         json={"source": "SALES", "name": "Echo BV", "country": "NL",

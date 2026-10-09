@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { SidePanel, sidePanelFieldError, Field, Input, Select } from '@/components';
+import { SidePanel, sidePanelFieldError, Field, Input, Select, RequiredNote } from '@/components';
 import { roleLabel, useCurrentUser } from '@/platform/auth';
 
 import { useCreateUser, useRoles, useUpdateUser } from '../hooks';
@@ -9,6 +9,7 @@ import { assessPassword } from '../passwordStrength';
 import { ROLE_DESCRIPTION, ROLE_OPTIONS } from '../roles';
 import type { AdminUser } from '../types';
 
+import { AccessHistory } from './AccessHistory';
 import { PasswordField } from './PasswordField';
 
 interface UserFormDialogProps {
@@ -103,9 +104,11 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
       submitDisabled={!canSubmit}
       onSubmit={() => void handleSubmit()}
     >
+      {!isEdit && <RequiredNote />}
       <Field
         label="Email"
         htmlFor="user-email"
+        required={!isEdit}
         error={sidePanelFieldError(error, 'email')}
         hint={
           isEdit
@@ -191,6 +194,8 @@ export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
           required
         />
       )}
+
+      {isEdit && <AccessHistory kind="users" id={user.id} />}
     </SidePanel>
   );
 }

@@ -453,6 +453,21 @@ class ExporterContactNotFoundError(AnerBaseException):
         )
 
 
+class ContactNotActiveError(AnerBaseException):
+    """Only an ACTIVE contact may be the primary contact (409)."""
+
+    def __init__(self, contact_id: object, status: object) -> None:
+        super().__init__(
+            detail=(
+                f"Contact {contact_id} is {status}; only an active contact can be the "
+                "primary contact"
+            ),
+            error_code="CONTACT_NOT_ACTIVE",
+            status_code=409,
+            extensions={"status": str(status)},
+        )
+
+
 class ExporterContactPrimaryConflictError(AnerBaseException):
     """Two writes made two different contacts primary for one company at once.
 
@@ -1229,6 +1244,19 @@ class DocumentNotAvailableError(AnerBaseException):
         )
 
 
+class DocumentPreviewUnavailableError(AnerBaseException):
+    """A document that cannot be shown on screen: a type no browser renders and no
+    converter turns into a PDF (a zip), or a conversion that failed. The original is
+    untouched; a holder of ``documents:download`` can still save it."""
+
+    def __init__(self, document_id: object) -> None:
+        super().__init__(
+            detail=f"Document {document_id} has no on-screen preview",
+            error_code="DOCUMENT_PREVIEW_UNAVAILABLE",
+            status_code=409,
+        )
+
+
 class DocumentLinkInvalidError(AnerBaseException):
     """A download link whose signature does not verify, or which has expired.
 
@@ -1616,7 +1644,7 @@ class CheckCycleEmptyError(AnerBaseException):
 
 
 class CheckCycleRoleNotAllowedError(AnerBaseException):
-    """Only COMPLIANCE and ADMIN may start a check cycle. 403."""
+    """Only COMPLIANCE may start a check cycle. 403."""
 
     def __init__(self, role: object) -> None:
         super().__init__(
@@ -1633,7 +1661,7 @@ class BackgroundCheckApprovalRequiredError(AnerBaseException):
     """A move that needs a second approver was asked to take effect directly.
 
     With maker-checker on, ``CLEAR``, ``FLAGGED`` and ``ON_HOLD`` are recorded as a
-    proposal and take effect only when a different COMPLIANCE or ADMIN user approves
+    proposal and take effect only when a different COMPLIANCE user approves
     them. This is what stops any path letting one user take a company there. 409.
     """
 
@@ -1744,8 +1772,8 @@ class BackgroundCheckProposalNotYoursError(AnerBaseException):
 
 
 class BackgroundCheckApproverRoleNotAllowedError(AnerBaseException):
-    """Only COMPLIANCE and ADMIN propose, approve or reject — never OPERATIONS (the RM
-    never approves compliance). 403."""
+    """Only COMPLIANCE proposes, approves or rejects — never OPERATIONS (the RM never
+    approves compliance) and never the administrator. 403."""
 
     def __init__(self, role: object) -> None:
         super().__init__(
@@ -1902,6 +1930,107 @@ class DealBuyerIsTheSellerError(AnerBaseException):
             ),
             error_code="DEAL_BUYER_IS_THE_SELLER",
             status_code=422,
+        )
+
+
+class SanctionsListNotFoundError(AnerBaseException):
+    """No sanctions list with this code (404)."""
+
+    def __init__(self, code: object) -> None:
+        super().__init__(
+            detail=f"Sanctions list {code} was not found",
+            error_code="SANCTIONS_LIST_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class SanctionsRunNotFoundError(AnerBaseException):
+    """No sanctions screening with this id (404)."""
+
+    def __init__(self, run_id: object) -> None:
+        super().__init__(
+            detail=f"Sanctions screening {run_id} was not found",
+            error_code="SANCTIONS_RUN_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class SanctionsHitNotFoundError(AnerBaseException):
+    """No possible match with this id (404)."""
+
+    def __init__(self, hit_id: object) -> None:
+        super().__init__(
+            detail=f"Possible match {hit_id} was not found",
+            error_code="SANCTIONS_HIT_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class SanctionsTrueMatchRefusedError(AnerBaseException):
+    """This person may not confirm or reject this proposed true match (403)."""
+
+    def __init__(self, why: str) -> None:
+        super().__init__(
+            detail=f"You cannot decide this true match: {why}",
+            error_code="SANCTIONS_TRUE_MATCH_REFUSED",
+            status_code=403,
+        )
+
+
+class PaymentTermNotFoundError(AnerBaseException):
+    """No payment term with this id or code (404)."""
+
+    def __init__(self, term: object) -> None:
+        super().__init__(
+            detail=f"Payment term {term} was not found",
+            error_code="PAYMENT_TERM_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class BankAccountNotFoundError(AnerBaseException):
+    """No bank account with this id (404)."""
+
+    def __init__(self, account_id: object) -> None:
+        super().__init__(
+            detail=f"Bank account {account_id} was not found",
+            error_code="BANK_ACCOUNT_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class BankAccountWrongStatusError(AnerBaseException):
+    """The bank account is not in a state that allows this (409)."""
+
+    def __init__(self, account_id: object, status: str, action: str) -> None:
+        words = status.replace("_", " ").lower()
+        super().__init__(
+            detail=f"A bank account that is {words} cannot be {action}",
+            error_code="BANK_ACCOUNT_WRONG_STATUS",
+            status_code=409,
+            extensions={"status": status},
+        )
+
+
+class BankAccountApprovalRefusedError(AnerBaseException):
+    """This person may not approve this proposal under the approval mode (403)."""
+
+    def __init__(self, why: str) -> None:
+        super().__init__(
+            detail=f"You cannot approve this bank account: {why}",
+            error_code="BANK_ACCOUNT_APPROVAL_REFUSED",
+            status_code=403,
+        )
+
+
+class CompanyAddressNotFoundError(AnerBaseException):
+    """No company address with this id (404)."""
+
+    def __init__(self, address_id: object) -> None:
+        super().__init__(
+            detail=f"Address {address_id} was not found",
+            error_code="COMPANY_ADDRESS_NOT_FOUND",
+            status_code=404,
         )
 
 
@@ -2212,8 +2341,8 @@ class RelationshipManagerAssignNotAllowedError(AnerBaseException):
             detail=(
                 f"You may not change company {company_id}'s relationship manager. An RM "
                 "may claim a company with no RM for themselves; assigning someone else, "
-                "or changing or clearing an RM, needs an administrator or the "
-                "exporters:assign_rm permission"
+                "or changing or clearing an RM, needs the exporters:assign_rm "
+                "permission (the Sales lead role)"
             ),
             error_code="RELATIONSHIP_MANAGER_ASSIGN_NOT_ALLOWED",
             status_code=403,
@@ -2241,6 +2370,35 @@ class RelationshipManagerReasonRequiredError(AnerBaseException):
             detail="Changing or clearing a relationship manager needs a reason",
             error_code="RELATIONSHIP_MANAGER_REASON_REQUIRED",
             status_code=422,
+        )
+
+
+class CollectionsOwnerChangedError(AnerBaseException):
+    """The collections owner the caller saw is no longer the owner (409)."""
+
+    def __init__(self, company_id: object, seen: object, current: object) -> None:
+        super().__init__(
+            detail=(
+                f"Company {company_id}'s collections owner changed since you loaded it. "
+                "Reload it and try again"
+            ),
+            error_code="COLLECTIONS_OWNER_CHANGED",
+            status_code=409,
+            extensions={
+                "seen_user_id": str(seen) if seen else None,
+                "current_user_id": str(current) if current else None,
+            },
+        )
+
+
+class CollectionsOwnerAssignNotAllowedError(AnerBaseException):
+    """Naming a collections owner needs exporters:assign_collector (403)."""
+
+    def __init__(self, company_id: object) -> None:
+        super().__init__(
+            detail=f"You cannot change the collections owner of company {company_id}",
+            error_code="COLLECTIONS_OWNER_ASSIGN_NOT_ALLOWED",
+            status_code=403,
         )
 
 
@@ -2373,7 +2531,7 @@ class ReviewerIsRelationshipManagerError(AnerBaseException):
 
 
 class ReviewerNotEligibleError(AnerBaseException):
-    """The named user cannot review: not an active COMPLIANCE or ADMIN user (422)."""
+    """The named user cannot review: not an active COMPLIANCE user (422)."""
 
     def __init__(self, user_id: object, why: str) -> None:
         super().__init__(
@@ -2385,14 +2543,14 @@ class ReviewerNotEligibleError(AnerBaseException):
 
 
 class ReviewAssignNotAllowedError(AnerBaseException):
-    """Assigning, reassigning or releasing another person's review needs ADMIN or
-    ``compliance:assign`` (403)."""
+    """Assigning, reassigning or releasing another person's review needs
+    ``compliance:assign`` — the Compliance lead role (403)."""
 
     def __init__(self, company_id: object) -> None:
         super().__init__(
             detail=(
-                f"Assigning the review of company {company_id} to someone needs an "
-                "administrator or the compliance:assign permission"
+                f"Assigning the review of company {company_id} to someone needs the "
+                "compliance:assign permission (the Compliance lead role)"
             ),
             error_code="REVIEW_ASSIGN_NOT_ALLOWED",
             status_code=403,

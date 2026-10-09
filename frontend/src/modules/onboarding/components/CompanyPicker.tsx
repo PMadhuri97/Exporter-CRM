@@ -59,6 +59,7 @@ import type {
 } from '../types';
 
 import { CreateBuyerCompanyForm } from './CreateBuyerCompanyForm';
+import { countryLabel } from '../countries';
 
 /** Which identifier the RM is holding. */
 type IdentifierKind = 'pan' | 'gstin' | 'registration_number';
@@ -323,7 +324,7 @@ export function CompanyPicker({
                     {company.name ?? 'Unnamed company'}
                   </span>
                   <span className="mt-0.5 block text-caption text-ink-2">
-                    {company.country ?? '—'} ·{' '}
+                    {company.country ? countryLabel(company.country) : '—'} ·{' '}
                     {company.pipeline_status === 'NOT_IN_PIPELINE'
                       ? 'Not in pipeline'
                       : company.journey}
@@ -360,7 +361,7 @@ function CandidateList({
                 {candidate.name ?? 'Unnamed company'}
               </span>
               <span className="mt-0.5 block text-caption text-ink-2">
-                {candidate.country ?? '—'}
+                {candidate.country ? countryLabel(candidate.country) : '—'}
                 {candidate.pipeline_status === 'NOT_IN_PIPELINE'
                   ? ' · Not in pipeline — exists as a buyer'
                   : ''}

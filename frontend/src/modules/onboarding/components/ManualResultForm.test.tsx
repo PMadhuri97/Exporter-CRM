@@ -119,10 +119,23 @@ describe('ManualResultForm — the evidence rule', () => {
     fireEvent.change(within(form).getByLabelText('Outcome'), { target: { value: 'PASSED' } });
     fireEvent.click(within(form).getByRole('button', { name: 'Record check' }));
 
-    expect(await within(form).findByRole('alert')).toHaveTextContent(
-      'A passed check needs evidence',
-    );
+    const alert = await within(form).findByRole('alert');
+    expect(alert).toHaveTextContent('Add at least one: a note, a document or a link.');
+    // The error belongs to the whole evidence group, not to the (last) link field.
+    const group = within(form).getByRole('group', { name: /Evidence/ });
+    expect(group).toContainElement(alert);
+    expect(group).toHaveAttribute('aria-describedby', alert.id);
+    expect(within(form).getByLabelText('Evidence link')).not.toHaveAttribute('aria-describedby');
+    expect(within(form).getByLabelText('Evidence note')).toHaveFocus();
     expect(triggerVerification).not.toHaveBeenCalled();
+  });
+
+  it('says evidence is needed as soon as Passed is chosen', () => {
+    const form = renderForm();
+    const group = within(form).getByRole('group', { name: /Evidence/ });
+    expect(group).not.toHaveTextContent('at least one required');
+    fireEvent.change(within(form).getByLabelText('Outcome'), { target: { value: 'PASSED' } });
+    expect(group).toHaveTextContent('at least one required for a passed check');
   });
 
   it('asks for an outcome first', async () => {
@@ -182,9 +195,9 @@ describe('ManualResultForm — the evidence rule', () => {
       fireEvent.change(within(form).getByLabelText('Evidence link'), { target: { value: link } });
       fireEvent.click(within(form).getByRole('button', { name: 'Record check' }));
 
-      expect(await within(form).findByRole('alert')).toHaveTextContent(
-        'The evidence link must start with http:// or https://.',
-      );
+      const alert = await within(form).findByRole('alert');
+      expect(alert).toHaveTextContent('The link must start with http:// or https://.');
+      expect(within(form).getByLabelText('Evidence link')).toHaveAttribute('aria-describedby', alert.id);
       expect(triggerVerification).not.toHaveBeenCalled();
     },
   );

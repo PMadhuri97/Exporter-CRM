@@ -41,7 +41,11 @@ from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository im
 )
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
-from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
+from app.modules.onboarding.tests.fixtures.companies import (
+    ensure_primary_contact,
+    make_company,
+    make_prospect,
+)
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 from app.platform.messaging.ports import InMemoryEventBus
@@ -96,6 +100,7 @@ async def _customer() -> uuid.UUID:
         )
         profile.journey = ExporterJourney.CUSTOMER
         await db.commit()
+    await ensure_primary_contact(company_id)
     return company_id
 
 

@@ -20,7 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import { Kbd } from '@/components';
 import { Icon } from '@/design/icons';
 import type { UserRole } from '@/lib/api/types';
-import { JourneyBadge, paths, useCompanyFinder } from '@/modules/onboarding';
+import { countryLabel, JourneyBadge, paths, useCompanyFinder } from '@/modules/onboarding';
 import { useCurrentUser } from '@/platform/auth';
 import { commandKeyLabel, readRecentCompanies } from '@/platform/shell';
 import { navRowsFor } from '@/routes/modules';
@@ -122,7 +122,9 @@ export function SearchResults({ role, close }: { role: UserRole; close: () => vo
                   >
                     <Icon.company size={16} className="shrink-0 text-ink-3" aria-hidden />
                     <span className="min-w-0 flex-1 truncate">{company.name ?? 'Unnamed company'}</span>
-                    {company.country && <span className="shrink-0 text-secondary text-ink-3">{company.country}</span>}
+                    {company.country && (
+                      <span className="shrink-0 text-secondary text-ink-3">{countryLabel(company.country)}</span>
+                    )}
                     <JourneyBadge journey={company.journey} />
                   </Command.Item>
                 ))

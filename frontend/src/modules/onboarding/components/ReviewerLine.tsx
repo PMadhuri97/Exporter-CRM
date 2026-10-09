@@ -122,7 +122,7 @@ export function ReviewerLine({ customerId, standing }: { customerId: string; sta
           )}
           {(mode === 'RELEASE' || replacing) && (
             <Field
-              label={mode === 'RELEASE' ? 'Note (optional)' : 'Reason'}
+              label={mode === 'RELEASE' ? 'Note' : 'Reason'}
               htmlFor="reviewer-text"
               required={replacing}
             >

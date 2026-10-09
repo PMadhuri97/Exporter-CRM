@@ -53,13 +53,20 @@ accounts again.
 |---|---|---|
 | `rm@aner.com` (Relationship Manager) | OPERATIONS | the main path |
 | `compliance@aner.com` (Compliance Officer) | COMPLIANCE | screening, checks, proposing |
-| `compliance2@aner.com` (Compliance Approver) | COMPLIANCE | the second signature |
-| `admin@aner.com` (Admin) | ADMIN | settings |
+| `compliance2@aner.com` (Compliance Approver) | COMPLIANCE, permission role **Compliance lead** | the second signature, high-risk approvals, assigning reviews |
+| `admin@aner.com` (Admin) | ADMIN | users, roles and settings; reads the business but changes none of it |
 | `dev@aner.com` (Developer) | DEVELOPER | read-only and masking |
 | `apiuser@aner.com` (API User) | API_USER | "no workspace" — reaches nothing in the CRM |
 
 A new account must use a real-looking address (`ops@example.com`), never `.local` or
 `.test`: the sign-in form refuses those, and so do `bootstrap` and `promote`.
+
+**The administrator does not work the business.** `admin@aner.com` can open every
+company and deal but has no button that creates, edits, decides or approves anything,
+sees tax IDs masked, and cannot download documents. Senior work comes from the two
+seeded lead roles: give `compliance2@aner.com` the **Compliance lead** permission role
+(Settings → Users → edit → *Permission role*), and an RM who assigns RMs the **Sales
+lead** role. Someone who does both jobs uses two accounts.
 
 **Have a harmless file ready** to upload (a sample PDF). Never upload a real
 exporter's documents — see §6.
@@ -69,12 +76,12 @@ exporter's documents — see §6.
 | Screen | Where |
 |---|---|
 | **Home** — *My follow-ups* (mine / team, with *Mark done*), *Check back on*, pipeline counts, *Re-KYC due*, recent companies; for a compliance officer *Items to approve* first | `/` |
-| **Companies** — the list, or **Pipeline** (the board by journey stage; `/pipeline` opens it); *New company* (a side panel), *Import companies*, RXIL intake (ADMIN) | `/companies`, `/companies?view=board`, `/companies/new`, `/companies/import`, `/companies/rxil-intake` |
+| **Companies** — the list, or **Pipeline** (the board by journey stage; `/pipeline` opens it); *New company* (a side panel), *Import companies*, RXIL intake (COMPLIANCE) | `/companies`, `/companies?view=board`, `/companies/new`, `/companies/import`, `/companies/rxil-intake` |
 | **A company** — the record header (key fields, the actions the server allows, the journey path), the tabs *Details*, *Qualification*, *Activity*, *Deals*, *Documents*, *Background check*, *History*, and related records on the right | `/companies/:id` (`?tab=` selects a tab) |
 | **A deal** — the record header (stage, *Hand over to lending*, *Withdraw*), *Handover readiness*, the seller and buyer cards, *Trade between these two*, *Paperwork*, *What was handed over*, *History* | `/deals/:id` |
 | **Follow-ups** — follow-ups by due date, and check-backs due | `/follow-ups` |
-| **Compliance work** — the compliance working day: awaiting review, my reviews, awaiting my signature, Re-KYC due, and for a lead everyone's reviews, overdue and needs attention (COMPLIANCE, ADMIN) | `/approvals` (`/review` still works) |
-| **Settings** — your profile for everyone; users, roles, *Qualification criteria* and *Required documents* for ADMIN | `/settings/profile`, `/settings/users`, `/settings/roles`, `/settings/qualification-criteria`, `/settings/deal-required-documents` |
+| **Compliance work** — the compliance working day: awaiting review, my reviews, awaiting my signature, Re-KYC due, and for a lead everyone's reviews, overdue and needs attention (COMPLIANCE) | `/approvals` (`/review` still works) |
+| **Settings** — your profile for everyone; users and roles (each with its change **History**), *Qualification criteria* and *Required documents* for ADMIN | `/settings/profile`, `/settings/users`, `/settings/roles`, `/settings/qualification-criteria`, `/settings/deal-required-documents` |
 
 **Search** in the header (`/` or `Ctrl K`) finds any company or page. An address a role
 may not use shows the same **"Page not found"** as an address that does not exist.
@@ -120,11 +127,12 @@ may not use shows the same **"Page not found"** as an address that does not exis
 As **OPERATIONS** (`rm@aner.com`) unless noted.
 
 1. **Add a lead.** **+ New** → **New company** (a side panel). Type a PAN under
-   *Start with an identifier*, then *Company name* and *Country* (`IN`) → **Create
+   *Start with an identifier*, then *Company name* and *Country* (pick **India**) → **Create
    lead**. It starts as a `LEAD`. On *Details* → *GST registrations*, **Add registration** with a GSTIN
    carrying the same PAN (`27` + PAN + `1Z5` is Maharashtra) → **Add**; the state comes
    from the GSTIN. Adding a second company with the same PAN is refused; the same
-   GSTIN only warns. *(Also available: CSV import, and RXIL intake as ADMIN — an RXIL
+   GSTIN only warns. *(Also available: bulk import from the Excel template or a CSV,
+   and RXIL intake as COMPLIANCE — an RXIL
    company arrives already qualified.)*
 2. **No deal yet.** A lead has no **Open a deal**: the server refuses a deal to a
    company that has not been qualified.
@@ -135,8 +143,8 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    *you will become its RM*: qualifying makes it yours. The journey moves to
    **`PROSPECT`** (the path updates), *Details* → *Relationship manager* names you, and
    the company is now under **My companies** in the side navigation.
-   (On a company with no RM, *Details* also offers **Assign to me** at any time; an
-   administrator sees **Assign**, **Change** and **Clear**, the last two with a reason.) The
+   (On a company with no RM, *Details* also offers **Assign to me** at any time; a
+   **Sales lead** sees **Assign**, **Change** and **Clear**, the last two with a reason.) The
    person decides: recording the opposite of the suggestion is allowed and is kept
    with the suggestion it overrode.
 4. **Talk to them.** *Activity*: click **Interested** on the path → **Mark as
@@ -154,8 +162,8 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    with **Select**.
 
    For a buyer that is **genuinely new**, the answer is "No company on file matches"
-   and the picker offers **Create buyer company**. Set *Country (ISO code)* to the
-   buyer's country (for example `DE`): a foreign buyer needs its **Registration
+   and the picker offers **Create buyer company**. Pick the buyer's *Country* (for
+   example **Germany**): a foreign buyer needs its **Registration
    number**, and the button stays unavailable until it is filled (IQ-7); an Indian
    buyer is asked for a PAN or GSTIN instead. **Create buyer company** creates the
    company and names it as this deal's buyer **in one step**, and records the **trade
@@ -176,7 +184,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    **Proforma invoice**, the sample file → **Upload**. It is scanned before it can be
    opened; the scanner is labelled **pass-through** because it is a placeholder. Before
    the upload the deal says `missing required documents: PRE_SHIPMENT`: a handover
-   needs a scanned-clean pre-shipment document (IQ-10, IQ-11), and ADMIN changes which
+   needs a scanned-clean pre-shipment document (IQ-10, IQ-11), and the administrator changes which
    categories are required under **Settings → Required documents**.
 7. **Record the invoicing branch** in the deal's *Parties* panel, under **Invoiced
    from**. Until a branch is chosen the panel says **Not recorded** — the seller has an
@@ -204,8 +212,8 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
     **Items to approve 1** → **Approve** → **Approve** (two clicks; also on
     *Compliance work*, under *Awaiting your signature*). Neither the proposer, the
     reviewer nor the company's RM can approve; a Clear proposed at `HIGH` or `CRITICAL`
-    risk needs a senior approver (`compliance:approve_high_risk`, granted through a custom
-    role in *Settings → Roles*; ADMIN always may). On approval the company becomes a **`CUSTOMER`** in the same step — show
+    risk needs a senior approver (`compliance:approve_high_risk`: the **Compliance lead**
+    role; the administrator never approves). On approval the company becomes a **`CUSTOMER`** in the same step — show
     the journey path — the decision names both people, the Clear shows when it expires (one
     year), and "became customer" is announced (nobody receives it yet; §6). The
     proposer cannot approve their own proposal.
@@ -275,9 +283,71 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
   company** or **Import companies**, there is no **+ New** in the header, and typing
   `/companies/new` gives the same "Page not found"
   as an address that does not exist. Only ADMIN sees **Qualification criteria** and
-  **Required documents** in Settings, and only COMPLIANCE and ADMIN see **Compliance work**. An
+  **Required documents** in Settings, and only COMPLIANCE sees **Compliance work**. ADMIN
+  reads every company and deal with identifiers masked and no write button anywhere. An
   API user signing in gets no workspace at all: no navigation, a short "ask an administrator"
   page, and only My profile.
+- **Documents are read on screen:** as an RM, *Documents* → **View document** opens
+  the file in the CRM's own viewer — a Word or Excel file arrives as a PDF — with the
+  reader's name and the time across every page, and no Download anywhere. As COMPLIANCE
+  the same document also has **Download**. Every view and download is in the audit
+  trail. (Say it: nothing in a browser stops a screenshot; the watermark makes one
+  traceable.)
+
+### 5.1 Contacts and customer details
+
+- **The handover needs someone to reach.** A prospect or customer with no active
+  primary contact shows **No primary contact** in its header and on the Companies list
+  (filter *Contacts* → *No primary contact*), and its deals list "the company has no
+  active primary contact" under *Handover readiness* until one is added. In the main
+  path, add a primary contact (*Contacts* → **Add**, *Make this the primary contact*)
+  any time before step 12, or the handover is refused.
+- **A contact who left** (company → *Contacts* → edit → *Status: Left company* with a
+  reason): the contact drops out of the card behind *Show inactive*, stops being
+  primary, and the change is in *History*. **Mark verified** stamps today's date;
+  after a year the contact shows **Verification due**.
+- **Addresses** (*Details* → *Addresses*): add a registered and a shipping address; the
+  first of each type is its default. A foreign buyer with no GSTIN can hold one. A GST
+  branch with a portal address offers **Create address**. The registered address shows
+  beside "Is the registered address a physical business address?" on the background
+  check, with **Changed since last Clear** if it was edited after the Clear.
+- **Bank accounts** (*Details* → *Bank accounts*): as OPERATIONS, **Propose account**
+  (an EEFC account in USD) → *Pending approval*, number shown as `••••5678`. A second
+  RM or COMPLIANCE **Approve**s it (the proposer is never offered it) → *Pending
+  verification*. COMPLIANCE uploads the cancelled cheque on *Documents*, then
+  **Verify** → *Verified* and *Primary*. Only COMPLIANCE sees **Reveal**, and every
+  reveal is in the audit trail. COMPLIANCE also sees a **Bank details** tab on
+  *Compliance work*.
+- **Payment terms** (ADMIN: *Settings* → *Payment terms*): eleven common terms are
+  seeded. On a customer's *Details*, set the default to *DA 90 days*; a new deal shows
+  it under *Value and terms*. Choosing *LC at sight* there asks why, and the reason is
+  on the deal and in its history. The *Deals* list shows each deal's value.
+- **Collections owner** (COMPLIANCE or a lead: *Details* → *Collections*): name anyone
+  on the staff; *Companies* → *Collections: My collections* lists that person's
+  companies, and **Reassign collections** moves a whole book at once.
+- **Groups** (company → *Group* tab): **Set parent** → choose the parent and the
+  relationship. The tree shows every member's stage, check, risk and open deals.
+  Linking the parent under its own subsidiary is refused with a message.
+
+### 5.2 Sanctions screening and automatic answers
+
+- **Record a screening** (COMPLIANCE: company → *Background check* → *Sanctions
+  screening* → **Record screening**). The UN and MHA lists are ticked and cannot be
+  unticked. Add one possible match on the UN list and save: the standing is *Under
+  review*. Open **Matches**, mark it **False positive** with a reason: the run is
+  *Passed* and the company's SANCTIONS check passes, which is what the Clear needs
+  from sanctions.
+- **A true match** needs a second officer: mark a match **True match** — the company
+  header shows **Sanctions match**, its deals cannot be handed over, and the match
+  appears on *Compliance work → True matches*. A second COMPLIANCE user confirms it
+  (*Failed*) or says it is **Not a match** (back to open, flag lifted).
+- **A new list version** (ADMIN: *Settings → Sanctions lists* → *Change* the MHA list's
+  version date): every company screened before appears on *Compliance work →
+  Re-screen due*, with why.
+- **Automatic answers** (ADMIN: *Settings → Qualification criteria* → add a yes/no
+  criterion "Holds an IEC", *Answer automatically from: IEC check*). Record a passed IEC
+  verification on a lead: its Qualification tab shows **Pass** with *Auto · IEC check ·
+  today*. A person's later answer stands; the outcome is still recorded by a person.
 
 ## 6. Say this plainly during the demo
 

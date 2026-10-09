@@ -6,8 +6,17 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.api.actor_names import actor_names
+from app.modules.onboarding.api.company_address_router import (
+    router as company_address_router,
+)
+from app.modules.onboarding.api.company_bank_account_router import (
+    router as company_bank_account_router,
+)
 from app.modules.onboarding.api.company_directory_router import (
     router as company_directory_router,
+)
+from app.modules.onboarding.api.company_group_router import (
+    router as company_group_router,
 )
 from app.modules.onboarding.api.company_intake_router import router as company_intake_router
 from app.modules.onboarding.api.deal_router import router as deal_router
@@ -20,6 +29,7 @@ from app.modules.onboarding.api.gst_registration_router import (
 )
 from app.modules.onboarding.api.history_router import router as history_router
 from app.modules.onboarding.api.qualification_router import router as qualification_router
+from app.modules.onboarding.api.sanctions_router import router as sanctions_router
 from app.modules.onboarding.api.schemas.case import (
     CaseResponse,
     CaseTransitionListResponse,
@@ -60,20 +70,23 @@ from app.modules.onboarding.exceptions import VerificationResultNotFoundError
 from app.modules.onboarding.infrastructure.repositories.check_cycle_repository import (
     CheckCycleRepository,
 )
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import has_permission, require_permission
 from app.platform.database.services import get_db
 from app.shared.exceptions import AnerBaseException, NotFoundError
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
+_COMPANY_EDIT = require_permission("exporters", "edit")
+_COMPLIANCE_DECIDE = require_permission("compliance", "decide")
+_VERIFICATION_RECORD = require_permission("verifications", "create")
+_VERIFICATION_REVIEW = require_permission("verifications", "review")
+_VERIFICATION_VIEW = require_permission("verifications", "view")
+
 # Decisions that change what compliance relies on (case state, verification
-# outcomes and their review) are compliance-owned.
-_COMPLIANCE_OR_ADMIN = require_role(UserRole.COMPLIANCE, UserRole.ADMIN)
-# Routine internal-staff writes, and every read. API_USER (external callers)
-# and DEVELOPER (internal technical staff) are excluded.
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
+# outcomes and their review) are compliance-owned. The legacy onboarding case routes
+# need `exporters:edit`, so API_USER, DEVELOPER and the administrator are excluded.
 
 # Exporter CRM — kept in its own file; see exporter_router.py's module
 # docstring for why. Included here (rather than registered separately in
@@ -103,6 +116,14 @@ router.include_router(company_directory_router)
 # adding one hangs off a company
 # while flagging one takes only the registration's own id.
 router.include_router(gst_registration_router)
+# A company's addresses: listed and added under the company, changed by their own id.
+router.include_router(company_address_router)
+# A company's bank accounts: proposed, approved, verified; changed by their own id.
+router.include_router(company_bank_account_router)
+# Parent and child companies, under `/exporters/{id}`.
+router.include_router(company_group_router)
+# Structured sanctions screening: lists, runs, hits and worklists.
+router.include_router(sanctions_router)
 # Trade history — what two companies have traded. Absolute paths: a relationship
 # is the pair, not a sub-resource of
 # either company, though one company's relationships are read under `/exporters`.
@@ -163,14 +184,14 @@ router.include_router(background_check_router)
         200: {"model": CaseResponse, "description": "Idempotent replay — the existing case"},
         400: {"description": "Missing Idempotency-Key header"},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         422: {"description": "Invalid request body"},
     },
 )
 async def create_case(
     body: CreateCaseRequest,
     response: Response,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> CaseResponse:
@@ -195,13 +216,13 @@ async def create_case(
     responses={
         200: {"model": CaseResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "Case not found"},
     },
 )
 async def get_case(
     case_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> CaseResponse:
     return await CaseService(db).get_case(case_id)
@@ -219,7 +240,7 @@ async def get_case(
     responses={
         200: {"model": CaseResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "Case not found"},
         422: {"description": "Invalid request body"},
     },
@@ -227,7 +248,7 @@ async def get_case(
 async def update_case(
     case_id: uuid.UUID,
     body: UpdateCaseRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> CaseResponse:
     return await CaseService(db).update_case(case_id, body, actor_id=current_user.id)
@@ -247,7 +268,7 @@ async def update_case(
     responses={
         200: {"model": CaseResponse, "description": "Case transitioned"},
         401: {"description": "Unauthorized"},
-        403: {"description": "COMPLIANCE or ADMIN role required"},
+        403: {"description": "`compliance:decide` permission required"},
         404: {"description": "Case not found"},
         409: {"description": "Illegal state transition — the case is not mutated"},
         422: {
@@ -261,7 +282,7 @@ async def update_case(
 async def transition_case(
     case_id: uuid.UUID,
     body: CaseTransitionRequest,
-    current_user: Annotated[User, Depends(_COMPLIANCE_OR_ADMIN)],
+    current_user: Annotated[User, Depends(_COMPLIANCE_DECIDE)],
     db: AsyncSession = Depends(get_db),
 ) -> CaseResponse:
     return await CaseService(db).transition(case_id, body, actor_id=current_user.id)
@@ -279,13 +300,13 @@ async def transition_case(
     responses={
         200: {"model": CaseTransitionListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "Case not found"},
     },
 )
 async def list_case_transitions(
     case_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> CaseTransitionListResponse:
     return await CaseService(db).list_transitions(case_id)
@@ -308,14 +329,14 @@ async def list_case_transitions(
     responses={
         201: {"model": RegisterResponse, "description": "Customer registered"},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         409: {"description": "A customer with this email is already onboarding"},
         502: {"description": "Identity provider error"},
     },
 )
 async def register_customer(
     body: RegisterRequest,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> RegisterResponse:
     return await OnboardingService(db).register(body, actor_id=current_user.id)
@@ -332,14 +353,14 @@ async def register_customer(
     responses={
         200: {"model": SdkTokenResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "Onboarding customer not found"},
         502: {"description": "Identity provider error"},
     },
 )
 async def get_sdk_token(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> SdkTokenResponse:
     return await OnboardingService(db).generate_sdk_token(customer_id)
@@ -358,13 +379,13 @@ async def get_sdk_token(
     responses={
         200: {"model": OnboardingStatusResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`exporters:edit` permission required"},
         404: {"description": "Onboarding customer not found"},
     },
 )
 async def get_onboarding_status(
     customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_COMPANY_EDIT)],
     db: AsyncSession = Depends(get_db),
 ) -> OnboardingStatusResponse:
     return await OnboardingService(db).get_status(customer_id)
@@ -407,15 +428,12 @@ async def sumsub_webhook(
 # `domain.workflow_dependencies.VerificationAdapter` and
 # `application.verification_service.VerificationService`.
 #
-# Roles (verification-and-screening.md §7): writes COMPLIANCE/ADMIN,
-# reads OPERATIONS/COMPLIANCE/ADMIN; DEVELOPER is refused. The
-# actor and reviewer always come from the session, never the body.
-
-#: Who may record a result or review one. The same tuple gates the two write routes
-#: (`_VERIFICATION_DECIDER`) and answers the served capabilities, so the two cannot
-#: drift.
-_VERIFICATION_DECISION_ROLES = (UserRole.COMPLIANCE, UserRole.ADMIN)
-_VERIFICATION_DECIDER = require_role(*_VERIFICATION_DECISION_ROLES)
+# Permissions (verification-and-screening.md §7): recording a result needs
+# `verifications:create` and reviewing one `verifications:review` (COMPLIANCE by
+# default); reads need `verifications:view` (OPERATIONS, COMPLIANCE, and the
+# administrator read-only); DEVELOPER is refused. The actor and reviewer always come
+# from the session, never the body. The review permission also answers the served
+# capabilities, so the gate and the button cannot drift.
 
 
 async def _initial_cycle_ids(db: AsyncSession, views) -> dict[uuid.UUID, uuid.UUID]:
@@ -463,7 +481,7 @@ def _result_response(view, viewer: User, names, initial: dict[uuid.UUID, uuid.UU
     responses={
         201: {"model": VerificationResultResponse, "description": "Verification result recorded"},
         401: {"description": "Unauthorized"},
-        403: {"description": "COMPLIANCE or ADMIN role required"},
+        403: {"description": "`verifications:create` permission required"},
         404: {"description": "Subject (company or deal buyer) not found"},
         409: {"description": "The buyer's deal is HANDED_OVER or WITHDRAWN"},
         422: {
@@ -477,7 +495,7 @@ def _result_response(view, viewer: User, names, initial: dict[uuid.UUID, uuid.UU
 )
 async def trigger_verification(
     body: TriggerVerificationRequest,
-    current_user: Annotated[User, Depends(_VERIFICATION_DECIDER)],
+    current_user: Annotated[User, Depends(_VERIFICATION_RECORD)],
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResultResponse:
     service = VerificationService(db)
@@ -502,13 +520,13 @@ async def trigger_verification(
     responses={
         200: {"model": VerificationResultResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`verifications:view` permission required"},
         404: {"description": "Verification result not found"},
     },
 )
 async def get_verification_result(
     verification_result_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_VERIFICATION_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResultResponse:
     try:
@@ -534,20 +552,20 @@ async def get_verification_result(
     responses={
         200: {"model": VerificationResultListResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"},
+        403: {"description": "`verifications:view` permission required"},
     },
 )
 async def list_verification_results(
     entity_type: VerificationEntityType,
     entity_reference: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_VERIFICATION_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResultListResponse:
     service = VerificationService(db)
     results = await service.list_verification_results(entity_type, entity_reference)
     views = await service.views_for(results)
     names = await actor_names(db, current_user, reviewer_ids(views))
-    may_decide = current_user.role in _VERIFICATION_DECISION_ROLES
+    may_decide = has_permission(current_user, "verifications", "review")
     # No new check on a buyer of a closed deal — served as a capability too, so
     # the screen never offers a form the server would refuse. Reviews stay open.
     may_record = may_decide and await service.accepts_new_check(entity_type, entity_reference)
@@ -577,7 +595,7 @@ async def list_verification_results(
     responses={
         200: {"model": VerificationResultResponse},
         401: {"description": "Unauthorized"},
-        403: {"description": "COMPLIANCE or ADMIN role required"},
+        403: {"description": "`verifications:review` permission required"},
         404: {"description": "Verification result not found"},
         409: {
             "description": (
@@ -591,7 +609,7 @@ async def list_verification_results(
 async def record_verification_review(
     verification_result_id: uuid.UUID,
     body: RecordReviewRequest,
-    current_user: Annotated[User, Depends(_VERIFICATION_DECIDER)],
+    current_user: Annotated[User, Depends(_VERIFICATION_REVIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResultResponse:
     service = VerificationService(db)

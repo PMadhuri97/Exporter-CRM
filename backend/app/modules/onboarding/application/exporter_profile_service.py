@@ -89,6 +89,7 @@ from app.modules.onboarding.domain.exporter_profile_views import (
     ExporterProfileListItem,
 )
 from app.modules.onboarding.domain.gst_states import state_code_of, state_name_of
+from app.modules.onboarding.domain.qualification_auto import AutoSource
 from app.modules.onboarding.domain.tax_identifiers import (
     check_gstins_match_pan,
     normalise_cin,
@@ -117,6 +118,7 @@ from app.modules.onboarding.infrastructure.repositories import (
     ExporterActivityRepository,
     ExporterContactRepository,
     ExporterProfileRepository,
+    companies_with_active_primary_contact,
 )
 from app.platform.authentication import display_names, staff_member, staff_members
 from app.platform.authentication.models import UserRole
@@ -174,6 +176,14 @@ _EDITABLE_FIELDS = frozenset(
 
 #: A named company keeps its name and country: they can be corrected, never
 #: emptied (company-record contract §2.1).
+#: The company fields an automatic qualification criterion reads, and its source.
+_AUTO_SOURCE_OF_FIELD = {
+    "year_established": AutoSource.YEARS_ESTABLISHED,
+    "cin": AutoSource.YEARS_ESTABLISHED,
+    "industry": AutoSource.INDUSTRY,
+    "export_markets": AutoSource.EXPORT_MARKETS,
+}
+
 _NOT_CLEARABLE = frozenset({"name", "country"})
 
 #: Identifiers written to the history log masked. The history read route
@@ -661,6 +671,14 @@ class ExporterProfileService:
             changed=sorted(edits),
             actor_id=actor_id,
         )
+        fed = {
+            source
+            for field, source in _AUTO_SOURCE_OF_FIELD.items()
+            if field in edits
+        }
+        if fed:
+            await _answer_automatic_criteria(self._db, customer_id, fed)
+            await self._db.refresh(profile)
         return profile
 
     # ── Relationship manager ────────────────────────────────────────────────
@@ -732,7 +750,7 @@ class ExporterProfileService:
         1. the same RM again is not a change: nothing is written (``False``);
         2. who may do it (``domain.assignment.may_set_relationship_manager``): an
            OPERATIONS user may claim a company with no RM for themselves; anything
-           else needs ADMIN or ``exporters:assign_rm`` (403);
+           else needs ``exporters:assign_rm`` (403);
         3. a change or a clear of an RM already set needs a reason (422);
         4. the new RM is an active OPERATIONS user (422).
 
@@ -822,7 +840,7 @@ class ExporterProfileService:
         * a company with an RM goes ahead; a ``user_id`` naming someone else means the
           screen was stale (409 ``RELATIONSHIP_MANAGER_CHANGED``);
         * a company with no RM needs ``user_id``, set under the usual rules (an
-          OPERATIONS caller may name themselves; ADMIN or ``exporters:assign_rm`` may
+          OPERATIONS caller may name themselves; a holder of ``exporters:assign_rm`` may
           name any RM), or the action is refused with 409
           ``RELATIONSHIP_MANAGER_REQUIRED``.
 
@@ -862,7 +880,7 @@ class ExporterProfileService:
         actor_permissions: frozenset[Permission] = frozenset(),
     ) -> BulkReassignment:
         """Move one RM's companies — all, a chosen subset, or one journey stage — to
-        another RM. ADMIN or ``exporters:assign_rm``; a reason always; the target an
+        another RM. ``exporters:assign_rm``; a reason always; the target an
         active OPERATIONS user.
 
         One transaction. The companies are locked in ``customer_id`` order, so two runs
@@ -871,7 +889,7 @@ class ExporterProfileService:
         own history row, sharing one ``bulk_run_id``. A dry run locks and writes
         nothing and reports what a real run would move.
         """
-        if not holds(actor_role, actor_permissions, ASSIGN_RM):
+        if not holds(actor_permissions, ASSIGN_RM):
             raise RelationshipManagerAssignNotAllowedError("(bulk)")
         text = (reason or "").strip() or None
         if text is None:
@@ -1057,6 +1075,9 @@ class ExporterProfileService:
         relationship_manager_user_id: uuid.UUID | None = None,
         relationship_manager_unassigned: bool = False,
         relationship_manager_inactive: bool = False,
+        missing_primary_contact: bool = False,
+        collections_owner_user_id: uuid.UUID | None = None,
+        collections_owner_unassigned: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfileListItem]:
@@ -1084,7 +1105,8 @@ class ExporterProfileService:
 
         The relationship-manager filters (one RM's companies, no RM, an RM whose
         account is deactivated) only narrow the list; they are not search terms.
-        Ownership never narrows what a reader may see.
+        Ownership never narrows what a reader may see. `missing_primary_contact`
+        narrows it to companies with no active primary contact, and is a filter too.
 
         The two exclusions are deliberately separate: `marker=ENDED` must not
         drag buyer-only companies into its list, and `pipeline_status=` must not
@@ -1110,10 +1132,16 @@ class ExporterProfileService:
             relationship_manager_user_id=relationship_manager_user_id,
             relationship_manager_unassigned=relationship_manager_unassigned,
             relationship_manager_inactive=relationship_manager_inactive,
+            missing_primary_contact=missing_primary_contact,
+            collections_owner_user_id=collections_owner_user_id,
+            collections_owner_unassigned=collections_owner_unassigned,
             exclude_ended=marker is None and not searching,
             exclude_not_in_pipeline=pipeline_status is None and not searching,
             limit=limit,
             offset=offset,
+        )
+        with_contact = await companies_with_active_primary_contact(
+            self._db, [profile.customer_id for profile in profiles]
         )
         return [
             ExporterProfileListItem(
@@ -1139,6 +1167,8 @@ class ExporterProfileService:
                 date_added=profile.date_added,
                 created_at=profile.created_at,
                 updated_at=profile.updated_at,
+                has_active_primary_contact=profile.customer_id in with_contact,
+                collections_owner_user_id=profile.collections_owner_user_id,
             )
             for profile in profiles
         ]
@@ -1357,6 +1387,8 @@ class ExporterProfileService:
         warnings = await self.duplicate_gstin_warnings(customer_id, profile.gstins)
 
         return ExporterProfileDetail(
+            collections_owner_user_id=profile.collections_owner_user_id,
+            default_payment_term_id=profile.default_payment_term_id,
             customer_id=profile.customer_id,
             name=profile.name,
             country=profile.country,
@@ -1533,3 +1565,12 @@ def _activity_view(activity: ExporterActivity) -> ExporterActivityView:
 
 
 __all__ = ["BulkReassignment", "ExporterProfileService", "announce_became_customer"]
+
+async def _answer_automatic_criteria(db, company_id, sources) -> None:
+    """Re-answer the company's automatic qualification criteria the change fed (best
+    effort, after the change has committed)."""
+    from app.modules.onboarding.application.qualification_auto_service import (
+        QualificationAutoEvaluator,
+    )
+
+    await QualificationAutoEvaluator(db).evaluate_quietly(company_id, sources)

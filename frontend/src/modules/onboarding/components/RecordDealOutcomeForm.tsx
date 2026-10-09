@@ -209,7 +209,7 @@ export function RecordDealOutcomeForm({
           </select>
         </label>
         <label className="block text-ink-3">
-          Amount paid (optional)
+          Amount paid
           <input
             aria-label="Amount paid"
             className={FIELD}

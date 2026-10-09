@@ -22,6 +22,7 @@ import { formatDate } from '@/lib/format';
 import { useIdentityCompletion } from '../hooks';
 import { paths } from '../paths';
 import type { IdentityCompletionItem } from '../types';
+import { countryLabel } from '../countries';
 
 const PAGE_SIZE = 50;
 /** `GET /companies/identity-completion` refuses a larger page. */
@@ -41,7 +42,7 @@ function Row({ item }: { item: IdentityCompletionItem }) {
       title={item.name ?? 'Unnamed company'}
       data-testid="identity-completion-row"
       facts={[
-        item.country ?? 'No country',
+        item.country ? countryLabel(item.country) : 'No country',
         item.pipeline_status === 'NOT_IN_PIPELINE' ? 'Buyer only' : null,
         item.created_via === 'DEAL_BUYER' ? 'Created from a deal buyer' : null,
         `Added ${formatDate(item.created_at)}`,

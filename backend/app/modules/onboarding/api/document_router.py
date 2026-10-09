@@ -7,8 +7,11 @@ prefix would fit neither. The upload and list paths name their owner
 (`/exporters/{company_id}/documents`, `/deals/{deal_id}/documents`), and everything
 about one document is under `/documents/{document_id}`.
 
-Roles come from architecture §3.7: OPERATIONS, COMPLIANCE and ADMIN upload; those
-three plus DEVELOPER read. **The download path is not only a role check** — a
+Permissions: ``documents:upload`` (OPERATIONS, COMPLIANCE) uploads;
+``documents:view`` (those two, the administrator and DEVELOPER) lists documents and
+reads them on screen (``/preview``); ``documents:download`` (COMPLIANCE) saves a copy.
+Every view and download is written to the audit trail. **The download path is not
+only a permission check** — a
 document that has not passed the scan step is refused to everyone, by state, and a
 link that has expired or been tampered with is refused before the row is read.
 """
@@ -43,18 +46,18 @@ from app.modules.onboarding.domain.entities.document_enums import (
 )
 from app.modules.onboarding.exceptions import DocumentLinkInvalidError
 from app.modules.onboarding.infrastructure.storage import verify_signed_key
-from app.platform.authentication.models import User, UserRole
-from app.platform.authorization.services import require_role
+from app.platform.authentication.models import User
+from app.platform.authorization.services import require_permission
 from app.platform.database.services import get_db
 from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(tags=["Exporter CRM"])
 
-_STAFF = require_role(UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN)
-_READER = require_role(
-    UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER
-)
+_DOCUMENT_DOWNLOAD = require_permission("documents", "download")
+_DOCUMENT_UPLOAD = require_permission("documents", "upload")
+_DOCUMENT_VIEW = require_permission("documents", "view")
+
 
 #: A ceiling on one upload, matched to what the CSV import already refuses, so the
 #: two limits do not disagree. A document larger than this is refused before the
@@ -62,8 +65,8 @@ _READER = require_role(
 MAX_DOCUMENT_BYTES = 25 * 1024 * 1024
 
 _401 = {"description": "Unauthorized"}
-_403_WRITE = {"description": "OPERATIONS, COMPLIANCE or ADMIN role required"}
-_403_READ = {"description": "CRM read role required"}
+_403_WRITE = {"description": "documents:upload permission required"}
+_403_READ = {"description": "documents:view permission required"}
 
 
 def _asciified(part: str) -> str:
@@ -159,7 +162,7 @@ _SourceField = Annotated[DocumentSource, Form()]
     responses={401: _401, 403: _403_READ},
 )
 async def list_document_categories(
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DOCUMENT_VIEW)],
     owner: DocumentOwnerKind = Query(
         default=DocumentOwnerKind.COMPANY,
         description="Whose page the user is on — COMPANY or DEAL.",
@@ -192,19 +195,20 @@ async def list_document_categories(
         "The link `POST /documents/{id}/download-link` returns. The signature "
         "covers the key **and** the expiry, so neither can be changed without "
         "invalidating it, and an expired link is refused.\n\n"
-        "Still role-gated: a signed link is not a way around authentication. The "
-        "scan status is re-checked here too, so a link minted while a document was "
-        "`AVAILABLE` stops working if a later verdict quarantines it."
+        "Saving a copy needs `documents:download` here as well as to mint the link: a "
+        "signed link is not a way around authentication. The scan status is re-checked "
+        "too, so a link minted while a document was `AVAILABLE` stops working if a later "
+        "verdict quarantines it. Every download is written to the audit trail."
     ),
     responses={
         401: _401,
-        403: {"description": "CRM read role required, or the link is invalid or expired"},
+        403: {"description": "documents:download required, or the link is invalid or expired"},
         404: {"description": "No document for that key"},
         409: {"description": "The document has not passed the scan step"},
     },
 )
 async def get_document_content(
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DOCUMENT_DOWNLOAD)],
     key: str = Query(description="The relative storage key from the signed link"),
     expires: int = Query(description="Expiry, as a Unix timestamp, from the link"),
     signature: str = Query(description="The link's signature"),
@@ -214,7 +218,9 @@ async def get_document_content(
     # should not even cause a lookup.
     if not verify_signed_key(key, expires, signature):
         raise DocumentLinkInvalidError
-    document, content = await DocumentService(db).read_content(key)
+    service = DocumentService(db)
+    document, content = await service.read_content(key)
+    await service.record_access(document, actor=current_user, viewed=False)
     return Response(
         content=content,
         media_type=document.content_type,
@@ -224,6 +230,48 @@ async def get_document_content(
             # application. The file name comes from the row, not the key.
             "Content-Disposition": content_disposition(document.file_name),
             "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get(
+    "/documents/{document_id}/preview",
+    response_class=Response,
+    summary="Read a document on screen",
+    description=(
+        "What a reader with `documents:view` sees: a PDF, an image or a text file as it "
+        "is, and a Word, Excel, PowerPoint or CSV file as a PDF (converted on its first "
+        "view and kept). Served **inline** with a sandboxing Content-Security-Policy, "
+        "`nosniff` and `no-store`, for the screen to draw without its own save controls; "
+        "saving a copy is the separate `documents:download` permission. Every view is "
+        "written to the audit trail."
+    ),
+    responses={
+        401: _401,
+        403: _403_READ,
+        404: {"description": "Document not found"},
+        409: {"description": "Not passed the scan step, or no on-screen preview exists"},
+    },
+)
+async def get_document_preview(
+    document_id: uuid.UUID,
+    current_user: Annotated[User, Depends(_DOCUMENT_VIEW)],
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    service = DocumentService(db)
+    document, media_type, content = await service.read_preview(document_id)
+    await service.record_access(document, actor=current_user, viewed=True)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            # Inline only because what is served here is a PDF, an image or plain text,
+            # never markup; the sandbox and nosniff keep it that way even if a browser
+            # were pointed at it directly.
+            "Content-Disposition": "inline",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
         },
     )
 
@@ -260,7 +308,7 @@ async def get_document_content(
 )
 async def upload_company_document(
     company_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_DOCUMENT_UPLOAD)],
     file: Annotated[UploadFile, File(description="The document")],
     category: _CategoryField,
     document_type: _DocumentTypeField,
@@ -295,7 +343,7 @@ async def upload_company_document(
 )
 async def list_company_documents(
     company_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DOCUMENT_VIEW)],
     category: Annotated[list[DocumentCategory] | None, Query()] = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -342,7 +390,7 @@ async def list_company_documents(
 )
 async def upload_deal_document(
     deal_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_STAFF)],
+    current_user: Annotated[User, Depends(_DOCUMENT_UPLOAD)],
     file: Annotated[UploadFile, File(description="The document")],
     category: _CategoryField,
     document_type: _DocumentTypeField,
@@ -371,7 +419,7 @@ async def upload_deal_document(
 )
 async def list_deal_documents(
     deal_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DOCUMENT_VIEW)],
     category: Annotated[list[DocumentCategory] | None, Query()] = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -402,7 +450,7 @@ async def list_deal_documents(
 )
 async def get_document(
     document_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DOCUMENT_VIEW)],
     db: AsyncSession = Depends(get_db),
 ) -> DocumentResponse:
     return DocumentResponse.from_view(await DocumentService(db).get_document(document_id))
@@ -416,20 +464,21 @@ async def get_document(
         "`POST`, not `GET`: this mints a credential rather than reading a "
         "resource, and it should not be something a browser prefetches or a proxy "
         "caches.\n\n"
-        "Refused for a document that is not `AVAILABLE` — to **every** role. An "
-        "unscanned, quarantined or failed-scan file is a state, not a permission "
-        "(architecture §3.4)."
+        "Needs `documents:download` (COMPLIANCE by default); everyone else reads "
+        "documents on screen (`GET /documents/{id}/preview`). Refused for a document "
+        "that is not `AVAILABLE` — to **every** role. An unscanned, quarantined or "
+        "failed-scan file is a state, not a permission (architecture §3.4)."
     ),
     responses={
         401: _401,
-        403: _403_READ,
+        403: {"description": "documents:download permission required"},
         404: {"description": "Document not found"},
         409: {"description": "The document has not passed the scan step"},
     },
 )
 async def create_download_link(
     document_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_READER)],
+    current_user: Annotated[User, Depends(_DOCUMENT_DOWNLOAD)],
     db: AsyncSession = Depends(get_db),
 ) -> DownloadLinkResponse:
     link = await DocumentService(db).open_download_link(document_id)

@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
@@ -71,6 +72,20 @@ class DealStageMove:
 
 
 @dataclass(frozen=True)
+class PaymentTermView:
+    """One version of a payment term, as a deal or a company default names it."""
+
+    id: uuid.UUID
+    code: str
+    version: int
+    label: str
+    kind: str
+    days: int | None
+    active: bool
+    is_current: bool
+
+
+@dataclass(frozen=True)
 class DealView:
     """One deal, its buyer, and what may be done to it next."""
 
@@ -102,6 +117,14 @@ class DealView:
     #: deal is nowhere near it. The screen explains instead of offering a button
     #: that 409s (deal contract §4.1, §6.1).
     handover_blocked_reason: str | None
+    #: What the deal is worth, and in which currency (ISO 4217).
+    value_amount: Decimal | None = None
+    currency: str | None = None
+    #: The payment term version agreed, and why it differs from the company default.
+    payment_term: PaymentTermView | None = None
+    payment_term_override_reason: str | None = None
+    #: The company's default term (current version), for the form to compare against.
+    company_default_payment_term: PaymentTermView | None = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +142,8 @@ class DealListItemView:
     buyer_name: str | None
     created_at: datetime
     updated_at: datetime
+    value_amount: Decimal | None = None
+    currency: str | None = None
 
 
 #: The ``corridor`` filter value for deals whose corridor cannot be worked out yet:
@@ -152,6 +177,8 @@ class DealSummaryView:
     corridor: str | None
     created_at: datetime
     updated_at: datetime
+    value_amount: Decimal | None = None
+    currency: str | None = None
 
 
 @dataclass(frozen=True)

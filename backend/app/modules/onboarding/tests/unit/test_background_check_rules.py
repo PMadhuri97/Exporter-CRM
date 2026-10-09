@@ -139,10 +139,13 @@ class TestAllowedMoves:
         # The architecture requires the note even though `history-row.md` §4 omits it.
         assert moves[0].reason_required is True
 
-    @pytest.mark.parametrize("role", [UserRole.COMPLIANCE, UserRole.ADMIN])
-    def test_compliance_and_admin_get_the_same_moves(self, role):
-        moves = BackgroundCheckService.allowed_moves(State.IN_REVIEW, role)
+    def test_compliance_gets_the_reviewers_moves(self):
+        moves = BackgroundCheckService.allowed_moves(State.IN_REVIEW, UserRole.COMPLIANCE)
         assert {move.to for move in moves} == {State.CLEAR, State.MORE_INFO, State.FLAGGED}
+
+    @pytest.mark.parametrize("current", list(State))
+    def test_the_administrator_makes_no_move_from_anywhere(self, current):
+        assert BackgroundCheckService.allowed_moves(current, UserRole.ADMIN) == []
 
     def test_only_clear_requires_a_risk_rating(self):
         moves = BackgroundCheckService.allowed_moves(State.IN_REVIEW, UserRole.COMPLIANCE)

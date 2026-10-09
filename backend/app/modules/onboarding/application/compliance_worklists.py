@@ -16,9 +16,9 @@ notifications — the nav badges and the Home cards are counts and rows of these
 An unassigned review has no deadline: how long it waited to be picked up is its
 ``waiting_since``, a separate figure from the review clock.
 
-**Eligible checkers.** A proposal's approvers are the active COMPLIANCE and ADMIN users
+**Eligible checkers.** A proposal's approvers are the active COMPLIANCE users
 other than its proposer, the review's reviewer and the company's RM — and, for a CLEAR
-at HIGH or CRITICAL risk, only ADMIN and holders of ``compliance:approve_high_risk``.
+at HIGH or CRITICAL risk, only holders of ``compliance:approve_high_risk``.
 When that set is empty the item needs a lead's attention.
 
 No item carries an identifier, and only the information-request list carries text (the
@@ -84,7 +84,7 @@ from app.shared import clock
 Stage = Literal["review", "info", "approval"]
 View = Literal["awaiting", "mine", "in_review", "overdue", "needs_attention"]
 
-#: Views only ADMIN and holders of ``compliance:assign`` see.
+#: Views only holders of ``compliance:assign`` see.
 LEAD_VIEWS: frozenset[str] = frozenset({"in_review", "overdue", "needs_attention"})
 
 #: Rejections on one check after which a lead should look.
@@ -435,7 +435,7 @@ class ComplianceWorklists:
     ) -> WorklistCounts:
         reviewer = viewer_role in REVIEWER_ROLES
         checker = viewer_role in CHECKER_ROLES
-        lead = holds(viewer_role, viewer_permissions, ASSIGN_REVIEWS)
+        lead = holds(viewer_permissions, ASSIGN_REVIEWS)
         return WorklistCounts(
             awaiting_review=(
                 len(self.view(items, "awaiting", viewer_id=viewer_id)) if reviewer else None
@@ -596,15 +596,14 @@ class ComplianceWorklists:
         return {company_id: count for company_id, count in rows}
 
     async def _checker_pools(self) -> tuple[frozenset[str], frozenset[str]]:
-        """Every active checker, and the senior ones (ADMIN, and COMPLIANCE users
-        holding ``compliance:approve_high_risk``)."""
+        """Every active checker, and the senior ones (COMPLIANCE users holding
+        ``compliance:approve_high_risk``)."""
         checkers = await active_staff(self._db, CHECKER_ROLES)
         pool = frozenset(m.id for m in checkers)
-        admins = frozenset(m.id for m in checkers if m.role is UserRole.ADMIN)
         holders = await users_holding(
             self._db, *APPROVE_HIGH_RISK, among_roles=frozenset({UserRole.COMPLIANCE})
         )
-        return pool, admins | (holders & pool)
+        return pool, holders & pool
 
 
 __all__ = [

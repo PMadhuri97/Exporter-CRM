@@ -26,6 +26,11 @@ os.environ.setdefault("GCP_PROJECT_ID", "test-gcp-project-id")
 os.environ.setdefault("AUDIT_BUCKET_NAME", "test-audit-bucket-name")
 os.environ.setdefault("LOG_SINK_LOGGER_NAME", "test-log-sink-logger-name")
 os.environ.setdefault("SERVICE_ACCOUNT_EMAIL", "test-service-account@example.com")
+# Bank account numbers are encrypted; the suite brings its own key (32 zero bytes,
+# base64) rather than relying on the development fallback.
+os.environ.setdefault(
+    "FIELD_ENCRYPTION_KEYS", "test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+)
 
 from app.main import app  # noqa: E402 — must follow the environ.setdefault calls above
 from app.platform.database import services as database  # noqa: E402

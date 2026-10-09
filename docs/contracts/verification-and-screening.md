@@ -1,5 +1,40 @@
 # Contract — verification results and the screening checklist
 
+> **Amendment, 9 October 2026 — permissions, and a read-only administrator.** Every CRM
+> route now checks a permission (`require_permission`), not a role list; the grants each
+> built-in role starts with are in `platform/authorization/catalog.py`
+> (`BUILTIN_ROLE_PERMISSIONS`), seeded by `auth_0007_business_permissions`. The
+> administrator (ADMIN) manages users, roles and settings and **reads** companies, deals,
+> documents and compliance work, but creates, edits, decides, approves and assigns nothing,
+> and sees tax identifiers masked. Wherever this document says "COMPLIANCE or ADMIN" (or
+> lists ADMIN among those who write, decide, approve, assign, reveal or take in an RXIL
+> package), read **COMPLIANCE** — or the holder of the named permission. The senior
+> permissions (`exporters:assign_rm`, `compliance:assign`, `compliance:approve_high_risk`)
+> are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
+> and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
+
+> **Amendment, 9 October 2026 — structured sanctions screening.** A sanctions check is
+> now recorded as **runs** (`POST /exporters/{id}/sanctions/runs`, `screening:decide`):
+> one subject (the company, a director, a beneficial owner on record) against the lists
+> under Settings → Sanctions lists (`GET|POST /settings/sanctions-lists`, `PATCH
+> .../{code}`; versioned; UN Security Council and India MHA/UAPA seeded, active and
+> mandatory). A run must cover every active mandatory list; each possible match (hit)
+> carries append-only dispositions — OPEN, FALSE_POSITIVE, TRUE_MATCH_PROPOSED,
+> TRUE_MATCH, ESCALATED — each with a reason (`POST /sanctions/hits/{id}/decision`). A
+> run is PASSED with no hits or only false positives, FAILED with a confirmed true match,
+> REVIEW otherwise. A true match is confirmed per `CRM_SANCTIONS_TRUE_MATCH_APPROVAL`
+> (SINGLE, SECOND_OFFICER — the default, HEAD with `compliance:approve_true_match`) via
+> `POST /sanctions/hits/{id}/confirm|reject`; while proposed or confirmed it **flags**
+> the company and blocks its handovers. The flag reads each subject's latest run **in any
+> cycle**, so starting a re-check does not lift it; screening that subject again does. The company's standing (the worst of its
+> subjects' latest runs in the cycle) is written as a SANCTIONS verification result
+> about the company whenever it changes (`provider_reference` starts
+> `sanctions-screening:`), and a REVIEW result written earlier is concluded with a review,
+> so the Clear rule reads sanctions unchanged. `GET /exporters/{id}/sanctions` is the
+> coverage; `GET /sanctions/true-matches` and `GET /sanctions/rescreen-due` are the
+> Compliance work lists (a newer list version, a company renamed since, an unscreened
+> beneficial owner). History dimension `sanctions`.
+
 **Owner:** Developer 1 — the compliance engine (`docs/developer-allocation.md` §2.1, from
 1 October 2026); built by Developer 4B (L4-02, L4-04 review half, L4-07, L4-09, L4-11) ·
 **Migrations:** `onboarding_0021_verif_review`; since then `onboarding_0023_compliance_core`

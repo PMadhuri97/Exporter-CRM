@@ -2,6 +2,7 @@ import { apiRequest } from '@/lib/api/client';
 import type { User } from '@/lib/api/types';
 
 import type {
+  AccessHistory,
   AdminUser,
   ChangePasswordRequest,
   CreateRoleRequest,
@@ -111,4 +112,9 @@ export function deleteRole(roleId: string): Promise<void> {
  * safe to call from anywhere in the shell. */
 export function getMyPermissions(): Promise<MyPermissions> {
   return apiRequest<MyPermissions>('/auth/me/permissions');
+}
+
+/** Who changed this account or role, and what — newest first, from the audit trail. */
+export function getAccessHistory(kind: 'users' | 'roles', id: string): Promise<AccessHistory> {
+  return apiRequest<AccessHistory>(`/auth/${kind}/${id}/history`);
 }

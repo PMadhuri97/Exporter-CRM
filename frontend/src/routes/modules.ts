@@ -27,6 +27,8 @@ import {
   DealDetailPage,
   DealsPage,
   DealRequiredDocumentsPage,
+  PaymentTermsPage,
+  SanctionsListsPage,
   FollowUpsPage,
   LegacyExporterRoutes,
   MyCompaniesRedirect,
@@ -82,6 +84,20 @@ function RequiredDocumentsSection() {
   return createElement(SettingsSectionFrame, {
     section: 'requiredDocuments',
     children: createElement(DealRequiredDocumentsPage),
+  });
+}
+
+function PaymentTermsSection() {
+  return createElement(SettingsSectionFrame, {
+    section: 'paymentTerms',
+    children: createElement(PaymentTermsPage),
+  });
+}
+
+function SanctionsListsSection() {
+  return createElement(SettingsSectionFrame, {
+    section: 'sanctionsLists',
+    children: createElement(SanctionsListsPage),
   });
 }
 
@@ -201,6 +217,34 @@ export const APP_MODULES: readonly AppModule[] = [
       label: 'Required documents',
       to: '/settings/deal-required-documents',
       icon: 'requiredDocuments',
+      group: 'settings',
+      sideNav: false,
+    },
+  },
+  {
+    // The payment terms deals and company defaults choose from.
+    id: 'payment-terms',
+    path: '/settings/payment-terms',
+    requires: ['settings.paymentTerms'],
+    Screen: PaymentTermsSection,
+    nav: {
+      label: 'Payment terms',
+      to: '/settings/payment-terms',
+      icon: 'receipt',
+      group: 'settings',
+      sideNav: false,
+    },
+  },
+  {
+    // The sanctions lists a screening covers.
+    id: 'sanctions-lists',
+    path: '/settings/sanctions-lists',
+    requires: ['settings.sanctionsLists'],
+    Screen: SanctionsListsSection,
+    nav: {
+      label: 'Sanctions lists',
+      to: '/settings/sanctions-lists',
+      icon: 'shield',
       group: 'settings',
       sideNav: false,
     },

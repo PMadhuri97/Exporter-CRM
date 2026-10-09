@@ -6,7 +6,11 @@ import uuid
 
 from pydantic import BaseModel
 
-from app.modules.onboarding.application.company_import_service import ImportReport, RowResult
+from app.modules.onboarding.application.company_import_service import (
+    ImportPreview,
+    ImportReport,
+    RowResult,
+)
 from app.modules.onboarding.application.company_intake_service import IntakeResult
 from app.modules.onboarding.domain.company_intake import Reason
 
@@ -88,4 +92,46 @@ class ImportReportResponse(BaseModel):
             rejected=report.rejected,
             possible_duplicates=report.possible_duplicates,
             rows=[ImportRowResponse.of(r) for r in report.rows],
+        )
+
+
+class ImportPreviewRowResponse(BaseModel):
+    #: The row's line in the file (the sheet's row number for Excel); the header is line 1.
+    line: int
+    #: The row's cells in the header's order, then any cells past the last column.
+    cells: list[str]
+
+
+class ImportPreviewResponse(BaseModel):
+    """A file as the import would read it, before any row is judged or saved."""
+
+    #: The file's header, as written.
+    columns: list[str]
+    #: The first rows of the file.
+    rows: list[ImportPreviewRowResponse]
+    #: Every non-blank data row in the file.
+    total_rows: int
+    #: Template columns the header lacks.
+    missing_columns: list[str]
+    #: Header columns the template does not have.
+    unknown_columns: list[str]
+    #: Header columns given more than once.
+    duplicate_columns: list[str]
+    #: The most rows one file may hold.
+    max_rows: int
+    #: Whether the import would read this file at all. Each row is still judged on
+    #: its own when it is imported.
+    ready: bool
+
+    @classmethod
+    def of(cls, preview: ImportPreview) -> ImportPreviewResponse:
+        return cls(
+            columns=preview.columns,
+            rows=[ImportPreviewRowResponse(line=r.line, cells=r.cells) for r in preview.rows],
+            total_rows=preview.total_rows,
+            missing_columns=preview.missing_columns,
+            unknown_columns=preview.unknown_columns,
+            duplicate_columns=preview.duplicate_columns,
+            max_rows=preview.max_rows,
+            ready=preview.ready,
         )

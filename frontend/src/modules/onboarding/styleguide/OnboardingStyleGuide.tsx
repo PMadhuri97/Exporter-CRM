@@ -104,7 +104,7 @@ function Badges() {
           <QualificationBadge key={state} state={state} />
         ))}
       </Row>
-      <Row label="Conversation">
+      <Row label="Communication">
         {CONVERSATIONS.map((value) => (
           <ConversationBadge key={value} value={value} checkBackOn="2026-11-12" />
         ))}
@@ -194,10 +194,10 @@ function Paths() {
           className="w-full"
         />
       </Row>
-      <Row label="Conversation">
+      <Row label="Communication">
         <div className="w-full space-y-2">
           <Path
-            label="Conversation"
+            label="Communication"
             steps={CONVERSATION_STEPS}
             current="SPOKE_TO_THEM"
             // The served moves: Interested on the path, Not now beside it.

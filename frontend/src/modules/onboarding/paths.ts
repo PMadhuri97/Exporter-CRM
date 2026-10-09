@@ -23,6 +23,7 @@ export const COMPANY_TABS = [
   'documents',
   'background-check',
   'deals',
+  'group',
   'history',
 ] as const;
 
@@ -54,4 +55,5 @@ export const paths = {
   qualificationCriteria: '/settings/qualification-criteria',
   /** Which paperwork a handover needs. ADMIN only. */
   dealRequiredDocuments: '/settings/deal-required-documents',
+  paymentTerms: '/settings/payment-terms',
 } as const;

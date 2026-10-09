@@ -43,6 +43,7 @@ import {
   UNKNOWN_CORRIDOR,
 } from '../constants';
 import { useAllDeals } from '../hooks';
+import { moneyLabel } from '../components/payment-term-labels';
 import { paths } from '../paths';
 import type { AllDealsParams, DealStage, DealSummary } from '../types';
 
@@ -119,6 +120,7 @@ function Row({ deal }: { deal: DealSummary }) {
           {' → '}
           {deal.buyer_name ?? <span className="text-ink-3">no buyer yet</span>}
           {` · opened ${formatDate(deal.created_at)}`}
+          {deal.value_amount && ` · ${moneyLabel(deal.value_amount, deal.currency)}`}
         </>
       }
       badges={

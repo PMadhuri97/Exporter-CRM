@@ -43,7 +43,7 @@ from app.modules.onboarding.domain.storage import DocumentScanStatus, ScanOutcom
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.migrations import onboarding_0029_deal_snapshot as snapshot_migration
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import ensure_primary_contact, make_company
 from app.modules.onboarding.tests.integration.test_handover import (
     record_legacy_buyer_checks,
 )
@@ -87,6 +87,7 @@ async def _customer() -> uuid.UUID:
         )
         profile.journey = ExporterJourney.CUSTOMER
         await db.commit()
+    await ensure_primary_contact(company_id)
     return company_id
 
 
@@ -338,7 +339,10 @@ async def test_the_migration_backfill_rebuilds_what_the_handover_wrote(
         connection.close()
 
     again = rebuilt[deal_id]
-    assert set(again) == set(taken)
+    # Every key but `terms`: a deal's value and payment term arrived after the
+    # backfill was written, so a reconstruction has none to give; a reader treats a
+    # missing `terms` as "not recorded".
+    assert set(again) == set(taken) - {"terms"}
     assert again["snapshot_source"] == "backfilled_from_deal_buyer"
     assert again["buyer"] == taken["buyer"]
     assert again["document_ids"] == taken["document_ids"]
@@ -432,7 +436,7 @@ async def test_the_deal_response_carries_the_snapshot_masked_by_role(
     await _add_document(deal_id, tmp_path, "bol.pdf")
     await _hand_over(deal_id)
 
-    for role in (UserRole.COMPLIANCE, UserRole.ADMIN):
+    for role in (UserRole.COMPLIANCE,):
         token = await token_with_role(client, role)
         body = (await client.get(f"{BASE}/deals/{deal_id}", headers=auth_header(token))).json()
         assert body["handover_snapshot"]["buyer"]["tax_id"] == "NL123456789B01"
@@ -440,7 +444,7 @@ async def test_the_deal_response_carries_the_snapshot_masked_by_role(
             "ops@rotterdamtrading.example"
         )
 
-    for role in (UserRole.OPERATIONS, UserRole.DEVELOPER):
+    for role in (UserRole.OPERATIONS, UserRole.ADMIN, UserRole.DEVELOPER):
         token = await token_with_role(client, role)
         body = (await client.get(f"{BASE}/deals/{deal_id}", headers=auth_header(token))).json()
         buyer = body["handover_snapshot"]["buyer"]

@@ -9,31 +9,46 @@
  * the panel says so. **Check** asks the server for a dry run
  * and shows how many would move; **Reassign** does it. Companies whose RM changed in the
  * meantime are skipped by the server, never overwritten.
+ *
+ * With `kind="collections"` the same panel moves one **collections owner's** companies
+ * (`exporters:assign_collector`): any active staff member, and no journey lens.
  */
 
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
-import { Button, Field, FormError, Select, Textarea } from '@/components';
+import { Button, Field, FormError, Select, Textarea, RequiredNote } from '@/components';
 import { ApiError } from '@/lib/api/errors';
 
 import { JOURNEY_LABEL } from '../constants';
-import { useReassignRelationshipManagers, useStaff } from '../hooks';
+import { useReassignCollectionsOwners, useReassignRelationshipManagers, useStaff } from '../hooks';
 import type { BulkReassignResult, ExporterJourney, ExporterProfileListItem } from '../types';
 
 export function BulkReassignPanel({
   shown,
-  journey,
+  journey: lens,
   onClose,
+  kind = 'rm',
 }: {
   /** The companies the list shows now. */
   shown: readonly ExporterProfileListItem[];
   /** The list's journey lens, applied to "all of their companies" too. */
   journey: ExporterJourney | undefined;
   onClose: () => void;
+  /** Whose companies move: relationship managers' (the default) or collections owners'. */
+  kind?: 'rm' | 'collections';
 }) {
-  const staff = useStaff(['OPERATIONS']);
-  const reassign = useReassignRelationshipManagers();
+  const collections = kind === 'collections';
+  // Collections ignore the journey lens: the server moves an owner's companies whatever
+  // their stage.
+  const journey = collections ? undefined : lens;
+  const staff = useStaff(collections ? ['OPERATIONS', 'COMPLIANCE'] : ['OPERATIONS']);
+  const reassignRm = useReassignRelationshipManagers();
+  const reassignCollections = useReassignCollectionsOwners();
+  const reassign = collections ? reassignCollections : reassignRm;
+  const ownerOf = (row: ExporterProfileListItem) =>
+    collections ? row.collections_owner_user_id : row.relationship_manager_user_id;
+  const noun = collections ? 'a collections owner' : 'an RM';
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [reason, setReason] = useState('');
@@ -46,28 +61,33 @@ export function BulkReassignPanel({
     const options = new Map<string, string>();
     for (const member of staff.data?.staff ?? []) options.set(member.id, member.name);
     for (const row of shown) {
-      if (row.relationship_manager_user_id && !options.has(row.relationship_manager_user_id)) {
+      const owner = collections ? row.collections_owner_user_id : row.relationship_manager_user_id;
+      if (owner && !options.has(owner)) {
         options.set(
-          row.relationship_manager_user_id,
-          `${row.relationship_manager_name ?? 'Unknown'}${row.relationship_manager_inactive ? ' (deactivated)' : ''}`,
+          owner,
+          collections
+            ? (row.collections_owner_name ?? 'Unknown')
+            : `${row.relationship_manager_name ?? 'Unknown'}${row.relationship_manager_inactive ? ' (deactivated)' : ''}`,
         );
       }
     }
     return [...options.entries()];
-  }, [staff.data, shown]);
+  }, [staff.data, shown, collections]);
 
-  const shownIds = shown
-    .filter((row) => row.relationship_manager_user_id === from)
-    .map((row) => row.customer_id);
+  const shownIds = shown.filter((row) => ownerOf(row) === from).map((row) => row.customer_id);
 
   const body = (dryRun: boolean) => ({
     from_user_id: from,
     to_user_id: to,
     company_ids: onlyShown ? shownIds : null,
-    journey: onlyShown ? null : journey ?? null,
+    ...(collections ? {} : { journey: onlyShown ? null : journey ?? null }),
     reason: reason.trim(),
     dry_run: dryRun,
   });
+  const run = (dryRun: boolean, options: { onSuccess: (result: BulkReassignResult) => void }) =>
+    collections
+      ? reassignCollections.mutate(body(dryRun), options)
+      : reassignRm.mutate({ ...body(dryRun), journey: onlyShown ? null : journey ?? null }, options);
 
   // What "all of their companies" means under the list's lens, said in the panel.
   const lensNoun = journey ? `${JOURNEY_LABEL[journey].toLowerCase()}s` : 'companies';
@@ -78,10 +98,13 @@ export function BulkReassignPanel({
   return (
     <div
       role="dialog"
-      aria-label="Reassign companies"
+      aria-label={collections ? 'Reassign collections' : 'Reassign companies'}
       className="space-y-3 border-b border-line bg-sunken px-4 py-3"
     >
-      <h3 className="text-body font-semibold text-ink">Reassign companies</h3>
+      <h3 className="text-body font-semibold text-ink">
+        {collections ? 'Reassign collections' : 'Reassign companies'}
+      </h3>
+      <RequiredNote />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="From" htmlFor="bulk-from" required>
           <Select
@@ -92,7 +115,7 @@ export function BulkReassignPanel({
               changed();
             }}
           >
-            <option value="">Choose an RM</option>
+            <option value="">Choose {noun}</option>
             {fromOptions.map(([id, name]) => (
               <option key={id} value={id}>
                 {name}
@@ -109,7 +132,7 @@ export function BulkReassignPanel({
               changed();
             }}
           >
-            <option value="">Choose an RM</option>
+            <option value="">Choose {noun}</option>
             {(staff.data?.staff ?? [])
               .filter((member) => member.id !== from)
               .map((member) => (
@@ -169,7 +192,7 @@ export function BulkReassignPanel({
             loading={reassign.isPending}
             disabled={!ready}
             onClick={() =>
-              reassign.mutate(body(false), {
+              run(false, {
                 onSuccess: (result) => {
                   toast.success(
                     `${result.moved} compan${result.moved === 1 ? 'y' : 'ies'} reassigned` +
@@ -187,7 +210,7 @@ export function BulkReassignPanel({
             size="sm"
             loading={reassign.isPending}
             disabled={!ready || (onlyShown && shownIds.length === 0)}
-            onClick={() => reassign.mutate(body(true), { onSuccess: setPreview })}
+            onClick={() => run(true, { onSuccess: setPreview })}
           >
             Check
           </Button>

@@ -92,7 +92,7 @@ describe('HeaderSearch', { timeout: 30_000 }, () => {
     expect(await screen.findByText('company page')).toBeInTheDocument();
   });
 
-  it.each<UserRole>(['OPERATIONS', 'DEVELOPER'])(
+  it.each<UserRole>(['OPERATIONS', 'DEVELOPER', 'ADMIN'])(
     'never sends an identifier search for %s, and says how to match one',
     async (role) => {
       await renderBar(role);
@@ -104,7 +104,7 @@ describe('HeaderSearch', { timeout: 30_000 }, () => {
     },
   );
 
-  it.each<UserRole>(['COMPLIANCE', 'ADMIN'])('searches a full PAN for %s, who may see it', async (role) => {
+  it.each<UserRole>(['COMPLIANCE'])('searches a full PAN for %s, who may see it', async (role) => {
     await renderBar(role);
     type('aaapl1234c');
     await waitFor(() => expect(search).toHaveBeenCalledWith({ pan: 'AAAPL1234C', limit: 8 }));

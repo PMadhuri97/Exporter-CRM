@@ -44,7 +44,7 @@ from app.modules.onboarding.domain.storage import DocumentScanStatus, ScanOutcom
 from app.modules.onboarding.exceptions import DealRequiredDocumentChangedError
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import ensure_primary_contact, make_company
 from app.modules.onboarding.tests.integration.test_handover import (
     record_legacy_buyer_checks,
 )
@@ -131,6 +131,7 @@ async def _customer() -> uuid.UUID:
         )
         profile.journey = ExporterJourney.CUSTOMER
         await db.commit()
+    await ensure_primary_contact(company_id)
     return company_id
 
 
@@ -507,6 +508,7 @@ async def test_every_unmet_condition_is_named_at_once(client: AsyncClient):
     assert reason == (
         "the company is PROSPECT, not CUSTOMER; "
         "the background check is NOT_STARTED, not CLEAR; "
+        "the company has no active primary contact; "
         "missing required documents: PRE_SHIPMENT; "
         "the buyer's sanctions check is MISSING, not PASSED; "
         "the buyer's AML check is MISSING, not PASSED"

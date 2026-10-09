@@ -260,7 +260,7 @@ async def test_the_api_records_a_buyer_check_and_masks_the_snapshot_per_role(cli
     url = f"{BASE}/verifications?entity_type=BUYER&entity_reference={buyer_id}"
     for role, revealed in (
         (UserRole.COMPLIANCE, True),
-        (UserRole.ADMIN, True),
+        (UserRole.ADMIN, False),
         (UserRole.OPERATIONS, False),
     ):
         resp = await client.get(url, headers=auth_header(tokens[role]))

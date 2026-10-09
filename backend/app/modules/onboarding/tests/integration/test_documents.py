@@ -485,16 +485,23 @@ async def test_the_api_uploads_lists_and_downloads(client: AsyncClient):
     assert listing.json()["total"] == 1
     # No response ever carries the storage key.
     assert "storage_key" not in listing.json()["documents"][0]
+    assert listing.json()["documents"][0]["has_preview"] is True
 
-    link = await client.post(
+    # The RM reads it on screen; saving a copy is compliance's.
+    refused = await client.post(
         f"{BASE}/documents/{document_id}/download-link", headers=auth_header(token)
+    )
+    assert refused.status_code == 403, refused.text
+    compliance = await token_with_role(client, UserRole.COMPLIANCE)
+    link = await client.post(
+        f"{BASE}/documents/{document_id}/download-link", headers=auth_header(compliance)
     )
     assert link.status_code == 200, link.text
 
     # The link is served by this application, and the path resolves — which is what
     # proves `/documents/content` is declared before `/documents/{document_id}`.
     url = link.json()["url"].removeprefix("/api/v1")
-    content = await client.get(f"/api/v1{url}", headers=auth_header(token))
+    content = await client.get(f"/api/v1{url}", headers=auth_header(compliance))
     assert content.status_code == 200, content.text
     assert content.content == PDF
     assert content.headers["content-disposition"].startswith("attachment")
@@ -535,9 +542,12 @@ async def test_a_tampered_or_expired_link_is_refused(client: AsyncClient):
     assert expired.status_code == 403, expired.text
 
 
-async def test_content_still_needs_a_role(client: AsyncClient):
-    """A signed link is not a way around authentication."""
+async def test_content_still_needs_the_download_permission(client: AsyncClient):
+    """A signed link is not a way around authentication, nor around
+    `documents:download`: an RM handed a compliance officer's link still cannot save
+    the file."""
     token = await token_with_role(client, UserRole.OPERATIONS)
+    compliance = await token_with_role(client, UserRole.COMPLIANCE)
     api_user = await token_with_role(client, UserRole.API_USER)
     company_id = await _company()
     uploaded = await client.post(
@@ -548,12 +558,13 @@ async def test_content_still_needs_a_role(client: AsyncClient):
     )
     link = await client.post(
         f"{BASE}/documents/{uploaded.json()['id']}/download-link",
-        headers=auth_header(token),
+        headers=auth_header(compliance),
     )
     url = link.json()["url"].removeprefix("/api/v1")
 
-    refused = await client.get(f"/api/v1{url}", headers=auth_header(api_user))
-    assert refused.status_code == 403, refused.text
+    for other in (api_user, token):
+        refused = await client.get(f"/api/v1{url}", headers=auth_header(other))
+        assert refused.status_code == 403, refused.text
 
 
 async def test_an_empty_file_is_refused(client: AsyncClient):
@@ -613,12 +624,13 @@ async def test_a_unicode_file_name_survives_the_download(client: AsyncClient):
     )
     assert uploaded.status_code == 201, uploaded.text
 
+    compliance = await token_with_role(client, UserRole.COMPLIANCE)
     link = await client.post(
         f"{BASE}/documents/{uploaded.json()['id']}/download-link",
-        headers=auth_header(token),
+        headers=auth_header(compliance),
     )
     url = link.json()["url"].removeprefix("/api/v1")
-    content = await client.get(f"/api/v1{url}", headers=auth_header(token))
+    content = await client.get(f"/api/v1{url}", headers=auth_header(compliance))
 
     assert content.status_code == 200, content.text
     assert content.content == b"hello"
@@ -684,7 +696,7 @@ async def test_content_is_refused_without_a_token(client: AsyncClient):
     )
     link = await client.post(
         f"{BASE}/documents/{uploaded.json()['id']}/download-link",
-        headers=auth_header(token),
+        headers=auth_header(await token_with_role(client, UserRole.COMPLIANCE)),
     )
     url = link.json()["url"].removeprefix("/api/v1")
 
@@ -739,3 +751,133 @@ async def test_a_terminal_deal_takes_no_more_paperwork(tmp_path: Path):
             category=DocumentCategory.SHIPPING,
             document_type="bill_of_lading",
         )
+
+
+# ── Reading on screen, and the record of it ──────────────────────────────────
+
+DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+async def _upload_as(client: AsyncClient, token: str, name: str, content: bytes, media: str) -> str:
+    company_id = await _company()
+    uploaded = await client.post(
+        f"{BASE}/exporters/{company_id}/documents",
+        data={"category": "OTHER", "document_type": "other"},
+        files={"file": (name, content, media)},
+        headers=auth_header(token),
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    return uploaded.json()["id"]
+
+
+async def _document_events(document_id: str) -> list[str]:
+    from app.modules.audit import AuditService
+
+    async with db_services.AsyncSessionLocal() as db:
+        page = await AuditService(db).list_for_subject("document", uuid.UUID(document_id))
+    return [e.event_type for e in page.events]
+
+
+async def test_a_pdf_is_read_on_screen_by_every_reader_and_each_view_is_recorded(
+    client: AsyncClient,
+):
+    rm = await token_with_role(client, UserRole.OPERATIONS)
+    document_id = await _upload_as(client, rm, "invoice.pdf", PDF, "application/pdf")
+    for role in (UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN, UserRole.DEVELOPER):
+        preview = await client.get(
+            f"{BASE}/documents/{document_id}/preview",
+            headers=auth_header(await token_with_role(client, role)),
+        )
+        assert preview.status_code == 200, (role, preview.text)
+        assert preview.content == PDF
+        assert preview.headers["content-type"] == "application/pdf"
+        assert preview.headers["content-disposition"] == "inline"
+        assert "sandbox" in preview.headers["content-security-policy"]
+        assert preview.headers["x-content-type-options"] == "nosniff"
+        assert preview.headers["cache-control"] == "no-store"
+    assert await _document_events(document_id) == ["document.viewed"] * 4
+
+
+async def test_a_download_is_recorded_too(client: AsyncClient):
+    compliance = await token_with_role(client, UserRole.COMPLIANCE)
+    document_id = await _upload_as(client, compliance, "note.txt", b"hello", "text/plain")
+    link = await client.post(
+        f"{BASE}/documents/{document_id}/download-link", headers=auth_header(compliance)
+    )
+    url = link.json()["url"].removeprefix("/api/v1")
+    assert (await client.get(f"/api/v1{url}", headers=auth_header(compliance))).status_code == 200
+    assert await _document_events(document_id) == ["document.downloaded"]
+
+
+async def test_a_word_file_is_converted_once_and_the_pdf_is_kept(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    from app.modules.onboarding.application import document_service
+
+    calls: list[str] = []
+
+    async def fake_convert(content: bytes, content_type: str) -> bytes:
+        calls.append(content_type)
+        return b"%PDF-1.4 converted"
+
+    monkeypatch.setattr(document_service, "convert_to_pdf", fake_convert)
+    rm = await token_with_role(client, UserRole.OPERATIONS)
+    document_id = await _upload_as(client, rm, "contract.docx", b"PK\x03\x04 docx", DOCX)
+
+    for _ in range(2):
+        preview = await client.get(
+            f"{BASE}/documents/{document_id}/preview", headers=auth_header(rm)
+        )
+        assert preview.status_code == 200, preview.text
+        assert preview.content == b"%PDF-1.4 converted"
+        assert preview.headers["content-type"] == "application/pdf"
+    assert calls == [DOCX]  # converted on the first view only
+
+    detail = await client.get(f"{BASE}/documents/{document_id}", headers=auth_header(rm))
+    assert detail.json()["has_preview"] is True
+
+
+async def test_a_failed_conversion_says_preview_unavailable_and_keeps_the_original(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    from app.modules.onboarding.application import document_service
+
+    async def no_converter(content: bytes, content_type: str) -> None:
+        return None
+
+    monkeypatch.setattr(document_service, "convert_to_pdf", no_converter)
+    rm = await token_with_role(client, UserRole.OPERATIONS)
+    document_id = await _upload_as(client, rm, "contract.docx", b"PK\x03\x04 docx", DOCX)
+
+    preview = await client.get(f"{BASE}/documents/{document_id}/preview", headers=auth_header(rm))
+    assert preview.status_code == 409, preview.text
+    assert preview.json()["error_code"] == "DOCUMENT_PREVIEW_UNAVAILABLE"
+    detail = await client.get(f"{BASE}/documents/{document_id}", headers=auth_header(rm))
+    assert detail.json()["has_preview"] is False
+    assert detail.json()["is_downloadable"] is True  # the original is untouched
+
+
+async def test_a_csv_is_read_on_screen_as_plain_text_without_a_conversion(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    from app.modules.onboarding.application import document_service
+
+    async def must_not_convert(content: bytes, content_type: str) -> None:
+        raise AssertionError("a CSV is never converted")
+
+    monkeypatch.setattr(document_service, "convert_to_pdf", must_not_convert)
+    rm = await token_with_role(client, UserRole.OPERATIONS)
+    document_id = await _upload_as(client, rm, "ledger.csv", b"a,b\n1,2\n", "text/csv")
+    preview = await client.get(f"{BASE}/documents/{document_id}/preview", headers=auth_header(rm))
+    assert preview.status_code == 200, preview.text
+    assert preview.headers["content-type"].startswith("text/plain")
+    assert preview.content == b"a,b\n1,2\n"
+
+
+async def test_a_zip_has_no_preview(client: AsyncClient):
+    rm = await token_with_role(client, UserRole.OPERATIONS)
+    document_id = await _upload_as(client, rm, "bundle.zip", b"PK\x03\x04", "application/zip")
+    detail = await client.get(f"{BASE}/documents/{document_id}", headers=auth_header(rm))
+    assert detail.json()["has_preview"] is False
+    preview = await client.get(f"{BASE}/documents/{document_id}/preview", headers=auth_header(rm))
+    assert preview.status_code == 409, preview.text

@@ -215,7 +215,7 @@ describe('ScreeningChecklist — evidence on an answer', () => {
     const select = await screen.findByLabelText(`${label} status`);
     const card = select.closest('[data-testid="screening-item"]') as HTMLElement;
     fireEvent.change(select, { target: { value: 'PASSED' } });
-    fireEvent.click(within(card).getByRole('button', { name: 'Attach evidence (optional)' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Attach evidence' }));
     // Only a scanned-clean document is offered.
     fireEvent.click(await within(card).findByRole('checkbox', { name: 'registry-extract.pdf' }));
     expect(within(card).queryByText('bad.pdf')).not.toBeInTheDocument();
@@ -241,7 +241,7 @@ describe('ScreeningChecklist — evidence on an answer', () => {
     vi.mocked(listCompanyDocuments).mockResolvedValue({ documents: [], total: 0, limit: 50, offset: 0 });
     renderChecklist();
     const card = (await screen.findAllByTestId('screening-item'))[0]!;
-    fireEvent.click(within(card).getByRole('button', { name: 'Attach evidence (optional)' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Attach evidence' }));
     fireEvent.change(within(card).getByLabelText('Evidence link'), {
       target: { value: 'javascript:alert(1)' },
     });

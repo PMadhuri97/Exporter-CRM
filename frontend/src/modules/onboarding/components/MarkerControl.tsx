@@ -14,7 +14,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { Button, Dialog, Textarea } from '@/components';
+import { Button, Dialog, RequiredMark, Textarea } from '@/components';
 
 import { MARKER_ACTION_LABEL } from '../constants';
 import { useSetExporterMarker } from '../hooks';
@@ -89,7 +89,8 @@ export function MarkerControl({ customerId, moves }: MarkerControlProps) {
             }}
           >
             <label className="block text-body font-medium text-ink" htmlFor="marker-reason">
-              Reason{pending.reason_required ? '' : ' (optional)'}
+              Reason
+              {pending.reason_required && <RequiredMark />}
             </label>
             <Textarea
               id="marker-reason"

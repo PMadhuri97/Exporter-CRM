@@ -968,7 +968,7 @@ async def test_the_company_list_filters_by_journey_and_qualification(client: Asy
 
 
 async def test_the_journey_cannot_be_set_through_the_edit_route(client: AsyncClient, users):
-    _, token = users[UserRole.ADMIN]
+    _, token = users[UserRole.COMPLIANCE]
     customer_id = await make_company()
     for field, value in (("journey", "CUSTOMER"), ("qualification", "QUALIFIED")):
         resp = await client.patch(

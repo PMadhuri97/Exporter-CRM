@@ -99,12 +99,12 @@ def check_identity(
 
     clean_name = None
     if name is None or not name.strip():
-        reasons.append(Reason("MISSING_NAME", "name is required"))
+        reasons.append(Reason("MISSING_NAME", "Name is required"))
     else:
         clean_name = attempt("INVALID_NAME", normalise_name, name)
     clean_country = None
     if country is None or not country.strip():
-        reasons.append(Reason("MISSING_COUNTRY", "country is required"))
+        reasons.append(Reason("MISSING_COUNTRY", "Country is required"))
     else:
         clean_country = attempt("INVALID_COUNTRY", normalise_country, country)
     clean_pan = attempt("INVALID_PAN", normalise_pan, pan)

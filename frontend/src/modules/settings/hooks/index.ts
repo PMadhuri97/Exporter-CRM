@@ -5,6 +5,7 @@ import {
   createRole,
   createUser,
   deleteRole,
+  getAccessHistory,
   getPermissionCatalog,
   listRoles,
   listOwnSessions,
@@ -89,14 +90,19 @@ export function useUpdateUser() {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['settings', 'users'] });
+      void queryClient.invalidateQueries({ queryKey: ['settings', 'accessHistory'] });
     },
   });
 }
 
 export function useResetUserPassword() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ userId, newPassword }: { userId: string; newPassword: string }) =>
       resetUserPassword(userId, { new_password: newPassword }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['settings', 'accessHistory'] });
+    },
   });
 }
 
@@ -167,6 +173,7 @@ function useRoleMutation<TVariables, TResult>(
         queryKey: ['settings', 'myPermissions'],
       });
       void queryClient.invalidateQueries({ queryKey: ['settings', 'users'] });
+      void queryClient.invalidateQueries({ queryKey: ['settings', 'accessHistory'] });
     },
   });
 }
@@ -184,4 +191,13 @@ export function useUpdateRole() {
 
 export function useDeleteRole() {
   return useRoleMutation((roleId: string) => deleteRole(roleId));
+}
+
+/** An account's or a role's change history. Refreshed after every save in the panel. */
+export function useAccessHistory(kind: 'users' | 'roles', id: string | undefined) {
+  return useQuery({
+    queryKey: ['settings', 'accessHistory', kind, id],
+    queryFn: () => getAccessHistory(kind, id as string),
+    enabled: id !== undefined,
+  });
 }
