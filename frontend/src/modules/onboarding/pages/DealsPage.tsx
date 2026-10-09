@@ -209,7 +209,10 @@ export function DealsPage() {
             />
             <form
               role="search"
-              className="relative w-full sm:w-72"
+              // Ends level with the filter row below: both reach the bar's right
+              // edge, that row because its two company fields grow into whatever is
+              // left over. So the bar reads as one block rather than two ragged lines.
+              className="relative w-full sm:w-96"
               onSubmit={(event) => {
                 event.preventDefault();
                 filter({ q: searchInput.trim() || null });
@@ -264,7 +267,10 @@ export function DealsPage() {
               tradeRole="SELLER"
               value={filters.seller}
               onChange={(id) => filter({ seller: id })}
-              className="xl:w-56"
+              // Grows into the row's spare width, so the line ends at the bar's edge
+              // rather than wherever six fixed widths happen to add up to. `basis-56`
+              // is the width it falls back to when there is nothing spare.
+              className="xl:grow xl:basis-56"
             />
             <CompanySearchSelect
               label="Buyer"
@@ -273,8 +279,11 @@ export function DealsPage() {
               tradeRole="BUYER"
               value={filters.buyer}
               onChange={(id) => filter({ buyer: id })}
-              className="xl:w-56"
+              className="xl:grow xl:basis-56"
             />
+            {/* Straight after the buyer field — no `ml-auto`. Pushing the dates to
+                the right edge aligned them with the search above but opened a gap
+                mid-row, and a run of filters reads better unbroken. */}
             <div className="flex items-center gap-2">
               <Input
                 type="date"

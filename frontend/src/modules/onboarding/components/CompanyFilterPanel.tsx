@@ -182,11 +182,11 @@ export function CompanyFilterPanel({
             }
           >
             <option value="">Any</option>
-            {/* As seller: the condition joins the deal's selling company, which is
-                what this list is about. Saying so beats a label that reads as either
-                side and answers as one. */}
-            <option value="true">Has an open deal (as seller)</option>
-            <option value="false">No open deal (as seller)</option>
+            {/* The condition joins the deal's selling company, so this reads by the
+                company's own deals. Whether it should count the buying side too is
+                open (reviewer item 9) and is the lead's to settle. */}
+            <option value="true">Has an open deal</option>
+            <option value="false">No open deal</option>
           </Select>
         </label>
 
