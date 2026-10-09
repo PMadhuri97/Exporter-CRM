@@ -163,7 +163,7 @@ come before R-25 and R-26.
 | R-31 | `POST /exporters` still creates a company with no `name` or `country` | STILL OPEN | Low | `company-record.md` §10 | Remove the unnamed path (`CreateExporterProfileRequest.name/country` are optional) now (§12, PR-E). The `NOT NULL` contract migration refuses to run while any nameless company exists and lands only after OPS-0 shows none in every environment in scope (D-18; §12, PR-L). The shared development database holds 6,029 nameless test companies; `crm_release_audit` none | Decided (D-18) |
 | R-35 | Retire `GET /exporters/activities/pending` | STILL OPEN | Low | `engagement.md` §5.6; plan §19.3 | Superseded by `GET /follow-ups`, still lists completed follow-ups, no screen calls it. Remove the route, its authorisation rows and OpenAPI entry; confirm no outside caller first | No |
 | R-36 | The qualification-criteria screen shows a version's `created_by` as a user id | STILL OPEN | Low | architecture §8; plan §19.3 | Serve `created_by_name`, as every other history-like read does | No |
-| R-37 | The company search returns no `total` | STILL OPEN | Low | plan §19.3 | Add `total` to `GET /exporters`; Home and Companies then show exact counts | No |
+| R-37 | The company search returns no `total` | DONE (partly) | Low | plan §19.3 | `GET /exporters` returns `total`, a `count(*)` over the same conditions as the page (`_repository_filters` builds both, so they cannot disagree). The Companies filter panel shows it. Home's journey counts still read "200+": the same query feeds Home, so uncapping them is its own change | No |
 | R-38 | Two tests fail intermittently (a third of the same kind found 5 October, §15.4: `test_buyer_migration_safety.py::test_a_created_company_gets_one_creation_row_saying_where_it_came_from`, because `migrate_deal_buyers.py` breaks a `created_at` tie by a random deal id) | STILL OPEN | Low | `development.md` §9 | `test_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle`: the listing **already** orders by `decided_at DESC, id DESC`, and that cannot fix it — ids are random UUIDs, and on Windows two quick decisions can share a timestamp — so order ties by the decision chain (a decision follows the one it supersedes) and keep the assertion; `test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index` (asserts a query plan; whole suite only). §12, PR-E | No |
 | R-39 | The OpenAPI artifact test compares `info.title`, which comes from `APP_NAME` | STILL OPEN | Low | `development.md` §8 | Pin the title in code, or leave it out of the comparison | No |
 | R-40 | The suite cannot run inside the `aner-app` container | STILL OPEN | Low | — | `test_openapi_artifact_is_current.py` needs `./frontend`; mount it in compose | No |
@@ -607,8 +607,9 @@ not run in parallel (plan §16.1): PR-B is the only one here.
   OpenAPI entry; `engagement.md` §5.6. Confirm no outside caller first (none in the frontend).
 - **R-36 (A9):** `created_by_name` on criterion versions through `api/actor_names.py`;
   `QualificationCriteriaPage.tsx` shows the name.
-- **R-37 (A2):** `total` on `GET /exporters` (a `count(*)` over the same filter);
-  Home and Companies show exact counts instead of "200+".
+- **R-37 (A2):** done for Companies — `total` on `GET /exporters`, a `count(*)` built
+  from `_repository_filters`, the same function the page's conditions come from. Home's
+  journey counts still cap at "200+" and are the remainder of this item.
 - **R-38:** the decision listing orders ties by the chain (a decision after the one it
   supersedes) — in Python after the query, the page being small — and the test keeps its
   order assertion; the query-plan test in `platform/idempotency` asserts the index exists and

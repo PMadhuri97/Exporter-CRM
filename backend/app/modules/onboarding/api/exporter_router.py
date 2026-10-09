@@ -48,7 +48,10 @@ from app.modules.onboarding.api.schemas.exporter import (
     SetMarkerRequest,
     UpdateExporterProfileRequest,
 )
-from app.modules.onboarding.api.schemas.masking import can_reveal_identifiers
+from app.modules.onboarding.api.schemas.masking import (
+    can_read_background_check,
+    can_reveal_identifiers,
+)
 from app.modules.onboarding.application import ExporterProfileService
 from app.modules.onboarding.domain.assignment import (
     ASSIGN_RM,
@@ -68,6 +71,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.modules.onboarding.exceptions import (
+    BackgroundCheckFilterNotPermittedError,
     IdentifierSearchNotPermittedError,
     RelationshipManagerAssignNotAllowedError,
 )
@@ -118,6 +122,18 @@ def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
     used = sorted(name for name, value in filters.items() if value is not None)
     if used:
         raise IdentifierSearchNotPermittedError(role=viewer.role.value, parameters=used)
+
+
+def _reject_background_check_filter(viewer: User, state: object) -> None:
+    """Refuse `?background_check=` from a role that may not read a background
+    check (decision D8 — DEVELOPER is refused on every background-check route).
+
+    Blanking the column is not enough: the filtered list is the answer. Asking for
+    `FLAGGED` and getting four rows names those four companies however the rows
+    are rendered.
+    """
+    if state is not None and not can_read_background_check(viewer):
+        raise BackgroundCheckFilterNotPermittedError(role=viewer.role.value)
 
 
 # ── Profile ───────────────────────────────────────────────────────────────
@@ -339,7 +355,9 @@ async def update_exporter_profile(
         403: {
             "description": (
                 "OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required; or the "
-                "caller used a gstin/pan/iec filter and may not see raw identifiers"
+                "caller used a gstin/pan/iec filter and may not see raw identifiers; "
+                "or used the background_check filter and may not read background "
+                "checks (DEVELOPER)"
             )
         },
     },
@@ -382,6 +400,7 @@ async def search_exporter_profiles(
     offset: int = Query(default=0, ge=0),
 ) -> ExporterProfileSearchResponse:
     _reject_identifier_search(current_user, gstin=gstin, pan=pan, iec=iec)
+    _reject_background_check_filter(current_user, background_check)
     rm_user_id: uuid.UUID | None = None
     rm_filter = (relationship_manager or "").strip().lower() or None
     if rm_filter == "me":

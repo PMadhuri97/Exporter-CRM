@@ -25,6 +25,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 
 import { Button, Input, Select, Sheet } from '@/components';
+import { useCan } from '@/platform/access';
 
 import { COUNTRY_OPTIONS } from '../countries';
 import {
@@ -36,10 +37,6 @@ import {
 
 /** How long typing must stop before the industry filter is sent. */
 const TYPING_SETTLES_MS = 350;
-
-
-
-
 
 
 /** `filters` with `key` set, or removed when the value is cleared — so the object only
@@ -79,6 +76,9 @@ export function CompanyFilterPanel({
   onClose: () => void;
 }) {
   const [industry, setIndustry] = useState(applied.industry ?? '');
+  // The server refuses `?background_check=` from a role that may not read a
+  // background check (decision D8), so offering the filter would only produce a 403.
+  const canReadChecks = useCan('compliance.read');
 
   // Sent once typing stops, not per keystroke. Cleared on the next change, so only the
   // last pause sends; skipped when it already matches, so re-renders send nothing.
@@ -166,7 +166,7 @@ export function CompanyFilterPanel({
             lifts the list's buyer-only exclusion — both true, both explained in the
             route's own description, and neither worth a paragraph beside a dropdown. */}
         {choice('trade_role', 'Buyer or seller', ROLE_LABEL)}
-        {choice('background_check', 'Background check', CHECK_LABEL)}
+        {canReadChecks && choice('background_check', 'Background check', CHECK_LABEL)}
 
         <label className="block text-caption font-medium text-ink-2">
           Deals
@@ -182,8 +182,11 @@ export function CompanyFilterPanel({
             }
           >
             <option value="">Any</option>
-            <option value="true">Has an open deal</option>
-            <option value="false">No open deal</option>
+            {/* As seller: the condition joins the deal's selling company, which is
+                what this list is about. Saying so beats a label that reads as either
+                side and answers as one. */}
+            <option value="true">Has an open deal (as seller)</option>
+            <option value="false">No open deal (as seller)</option>
           </Select>
         </label>
 

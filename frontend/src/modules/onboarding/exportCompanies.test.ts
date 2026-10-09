@@ -179,6 +179,23 @@ describe('gatherForExport', () => {
     expect(capped).toBe(true);
   });
 
+  it('writes a company once when a new one shifts the pages mid-export', async () => {
+    // Paging is by position: a company created between two pages pushes the rest back,
+    // and the row at the boundary is served twice.
+    const pages = [
+      ['a', 'b'],
+      ['b', 'c'],
+      ['d'],
+    ];
+    let call = 0;
+    const { rows } = await gatherForExport(() => Promise.resolve(pages[call++] ?? []), {
+      page: 2,
+      maxRows: 100,
+      keyOf: (row) => row,
+    });
+    expect(rows).toEqual(['a', 'b', 'c', 'd']);
+  });
+
   it('never asks for more than the cap allows', async () => {
     const { calls } = server(10_000);
     const { fetchPage } = server(10_000);

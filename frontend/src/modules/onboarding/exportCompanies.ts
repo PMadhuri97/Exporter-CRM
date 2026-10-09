@@ -1,10 +1,11 @@
 /**
- * The Companies list as a CSV, built in the browser from the rows already on screen.
+ * The Companies list as a CSV, built in the browser.
  *
- * There is no export route on the server, so this exports **what the list is currently
- * showing** — the filters in force, up to the number already loaded. That is a real
- * limit, not a detail: the button says how many rows it will write so nobody believes
- * they have exported a database when they have exported a page of it.
+ * There is no export route on the server, so the browser asks the list route for the
+ * rows — **every company the filters match**, gathered a page at a time
+ * (`gatherForExport`), not the page on screen. Past `EXPORT_MAX_ROWS` it stops and
+ * says so, so nobody believes they have exported a database when they have exported
+ * the first few thousand of it.
  *
  * **The columns are chosen, not fixed.** Sales wants who and where; operations wants the
  * checks and the paperwork. Rather than one file holding everything, the picker writes
@@ -19,27 +20,10 @@
  * whoever produced it.
  */
 
-import type {
-  BackgroundCheckState,
-  CompanyTradeRole,
-  ExporterProfileListItem,
-} from './types';
-
-/** Words rather than the enum, since these columns are read by people, not parsed. */
-const TRADE_ROLE_LABEL: Record<CompanyTradeRole, string> = {
-  SELLER: 'Seller',
-  BUYER: 'Buyer',
-  BOTH: 'Both',
-};
-
-const CHECK_LABEL: Record<BackgroundCheckState, string> = {
-  NOT_STARTED: 'Not started',
-  IN_REVIEW: 'In review',
-  CLEAR: 'Clear',
-  MORE_INFO: 'More information needed',
-  FLAGGED: 'Flagged',
-  ON_HOLD: 'On hold',
-};
+// The same words the filter panel offers. A file whose "Clear" is the panel's
+// "Cleared" reads as two different states, so there is one list of them.
+import { CHECK_LABEL, ROLE_LABEL } from './companyFilters';
+import type { ExporterProfileListItem } from './types';
 
 /** A list of values as one cell, so a company's three markets stay in one column. */
 const joined = (values: readonly string[] | null | undefined): string | null =>
@@ -108,7 +92,7 @@ export const EXPORT_COLUMNS: readonly ExportColumn[] = [
     id: 'trade_role',
     heading: 'Seller/Buyer',
     group: 'Trade',
-    read: (p) => (p.trade_role ? TRADE_ROLE_LABEL[p.trade_role] : null),
+    read: (p) => (p.trade_role ? ROLE_LABEL[p.trade_role] : null),
   },
 
   { id: 'journey', heading: 'Journey', group: 'Status', read: (p) => p.journey },
@@ -214,16 +198,34 @@ export const EXPORT_MAX_ROWS = 5000;
  *
  * `fetchPage` is the list call itself, passed in so this stays a plain function: the
  * page already knows the filters in force, and this should not rebuild them.
+ *
+ * `keyOf` identifies a row, and a row whose key has already been written is dropped.
+ * The pages are taken by position, so a company created while the export runs shifts
+ * the ones behind it and would otherwise be written twice.
  */
 export async function gatherForExport<T>(
   fetchPage: (limit: number, offset: number) => Promise<readonly T[]>,
-  { maxRows = EXPORT_MAX_ROWS, page = EXPORT_PAGE } = {},
+  {
+    maxRows = EXPORT_MAX_ROWS,
+    page = EXPORT_PAGE,
+    keyOf,
+  }: { maxRows?: number; page?: number; keyOf?: (row: T) => string } = {},
 ): Promise<{ rows: T[]; capped: boolean }> {
   const rows: T[] = [];
+  const seen = new Set<string>();
   for (let offset = 0; offset < maxRows; offset += page) {
     const batch = await fetchPage(Math.min(page, maxRows - offset), offset);
-    rows.push(...batch);
-    // A short page is the end of the list; the route has no total to ask for.
+    for (const row of batch) {
+      if (keyOf) {
+        const key = keyOf(row);
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      rows.push(row);
+    }
+    // A short page is the end of the list. The route does return a total, but the
+    // rows are what decides: asking again until the server runs out cannot disagree
+    // with a count taken a moment earlier.
     if (batch.length < page) return { rows, capped: false };
   }
   return { rows, capped: true };

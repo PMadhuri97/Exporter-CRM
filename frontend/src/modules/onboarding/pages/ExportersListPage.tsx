@@ -17,9 +17,11 @@
  * of them is a filter only: every reader sees every company. ADMIN and holders of
  * `exporters:assign_rm` get **Reassign companies**.
  *
- * The list route has no total: journey counts are capped ("200+"), and the
- * footer says how many are shown rather than guessing how many exist. Hovering or
- * focusing a row loads its record ahead of the click.
+ * **How many.** The list route now returns `total` — the count behind the page — so
+ * the Filters panel says how many companies match rather than how many are loaded.
+ * The journey counts above the list are a separate query and still cap at "200+";
+ * moving them onto `total` would change numbers on Home too, so it is its own change.
+ * Hovering or focusing a row loads its record ahead of the click.
  */
 
 import { useCallback, useState, type SetStateAction } from 'react';
@@ -430,10 +432,12 @@ export function ExportersListPage() {
           onExport={async (columnIds) => {
             // Every row the filters match, not the page on screen: the list loads 50 at
             // a time, and exporting those 50 is how a file of 208 companies becomes 50.
-            const { rows, capped } = await gatherForExport((pageLimit, offset) =>
-              searchExporterProfiles({ ...search, limit: pageLimit, offset }).then(
-                (result) => result.profiles,
-              ),
+            const { rows, capped } = await gatherForExport(
+              (pageLimit, offset) =>
+                searchExporterProfiles({ ...search, limit: pageLimit, offset }).then(
+                  (result) => result.profiles,
+                ),
+              { keyOf: (profile) => profile.customer_id },
             );
             const url = URL.createObjectURL(csvBlob(companiesToCsv(rows, columnIds)));
             saveObjectUrl(url, csvFileName());

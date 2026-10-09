@@ -30,6 +30,7 @@ from app.modules.onboarding.api.schemas.engagement import (
 )
 from app.modules.onboarding.api.schemas.masking import (
     NotMasked,
+    can_read_background_check,
     can_reveal_identifiers,
     mask_identifier,
 )
@@ -79,6 +80,8 @@ class _IdentifierMasking:
 
     def masked_for(self, viewer: User) -> Self:
         if can_reveal_identifiers(viewer):
+            # COMPLIANCE and ADMIN: nothing on these shapes is withheld from them,
+            # the background-check state included.
             return self
         update: dict[str, object] = {
             "gstins": [mask_identifier(g) for g in self.gstins],
@@ -90,6 +93,10 @@ class _IdentifierMasking:
             "registration_number": mask_identifier(self.registration_number),
         }
         fields = type(self).model_fields
+        if "background_check" in fields and not can_read_background_check(viewer):
+            # Not masked — blanked. A partly-shown compliance state is no safer than
+            # the whole of it, and `None` already means "not carried" to the reader.
+            update["background_check"] = None
         if "contacts" in fields:
             update["contacts"] = [contact.masked() for contact in self.contacts]
         if "gstin_warnings" in fields:

@@ -9174,7 +9174,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required; or the caller used a gstin/pan/iec filter and may not see raw identifiers */
+            /** @description OPERATIONS, COMPLIANCE, ADMIN or DEVELOPER role required; or the caller used a gstin/pan/iec filter and may not see raw identifiers; or used the background_check filter and may not read background checks (DEVELOPER) */
             403: {
                 headers: {
                     [name: string]: unknown;

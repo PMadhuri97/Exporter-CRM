@@ -172,25 +172,29 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
     def _conditions(
         self,
         *,
-        gstin: str | None,
-        pan: str | None,
-        iec: str | None,
-        name_contains: str | None,
-        source: ExporterSource | None,
-        journey: ExporterJourney | None,
-        qualification: QualificationState | None,
-        marker: ExporterMarker | None,
-        pipeline_status: CompanyPipelineStatus | None,
-        country: str | None,
-        industry: str | None,
-        background_check: BackgroundCheckState | None,
-        trade_role: CompanyTradeRole | None,
-        has_open_deals: bool | None,
-        relationship_manager_user_id: uuid.UUID | None,
-        relationship_manager_unassigned: bool,
-        relationship_manager_inactive: bool,
-        exclude_ended: bool,
-        exclude_not_in_pipeline: bool,
+        # Every filter defaults to "not filtering", so a caller naming only what it
+        # cares about asks the same question as one naming all nineteen. A keyword
+        # this does not know is still a TypeError, which is what keeps a filter added
+        # to the search from quietly falling out of the count.
+        gstin: str | None = None,
+        pan: str | None = None,
+        iec: str | None = None,
+        name_contains: str | None = None,
+        source: ExporterSource | None = None,
+        journey: ExporterJourney | None = None,
+        qualification: QualificationState | None = None,
+        marker: ExporterMarker | None = None,
+        pipeline_status: CompanyPipelineStatus | None = None,
+        country: str | None = None,
+        industry: str | None = None,
+        background_check: BackgroundCheckState | None = None,
+        trade_role: CompanyTradeRole | None = None,
+        has_open_deals: bool | None = None,
+        relationship_manager_user_id: uuid.UUID | None = None,
+        relationship_manager_unassigned: bool = False,
+        relationship_manager_inactive: bool = False,
+        exclude_ended: bool = False,
+        exclude_not_in_pipeline: bool = False,
     ) -> list[Any]:
         """Every filter as a list of conditions.
 

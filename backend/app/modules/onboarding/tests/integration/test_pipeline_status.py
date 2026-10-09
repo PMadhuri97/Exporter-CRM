@@ -418,17 +418,103 @@ async def test_the_total_counts_what_the_filters_match_not_the_page():
 
 async def test_the_total_applies_the_same_default_exclusions_as_the_list():
     """A buyer-only company is hidden from the default list, so it must not be counted
-    into it either — a total that included it would explain a list that does not."""
+    into it either — a total that included it would explain a list that does not.
+
+    Both companies carry one industry tag, so the count is an exact number rather than
+    a comparison against the whole table: an earlier version of this test asserted
+    `total == len(listed) or total >= len(listed)`, which is true of every pair of
+    numbers and so proved nothing.
+    """
+    tag = f"Excluded {uuid.uuid4().hex[:8]}"
     buyer_only = await _buyer_company()
+    in_pipeline = await make_company()
 
     async with db_services.AsyncSessionLocal() as db:
         service = ExporterProfileService(db)
-        default_total = await service.count_profiles()
-        asked_for = await service.count_profiles(
-            pipeline_status=CompanyPipelineStatus.NOT_IN_PIPELINE
-        )
-        listed = {row.customer_id for row in await service.search_profiles(limit=200)}
+        for company_id in (buyer_only, in_pipeline):
+            await service.update_profile(company_id, {"industry": tag}, actor_id="rm-1")
 
-    assert buyer_only not in listed
-    assert asked_for >= 1
-    assert default_total == len(listed) or default_total >= len(listed)
+    async with db_services.AsyncSessionLocal() as db:
+        service = ExporterProfileService(db)
+        default_total = await service.count_profiles(industry=tag)
+        listed = {row.customer_id for row in await service.search_profiles(industry=tag)}
+        asked_for = await service.count_profiles(
+            industry=tag, pipeline_status=CompanyPipelineStatus.NOT_IN_PIPELINE
+        )
+
+    assert listed == {in_pipeline}, "the buyer-only company is not in the working list"
+    assert default_total == 1, "and it is not counted into it either"
+    # Asked for by name, it is both listed and counted.
+    assert asked_for == 1
+
+
+async def test_the_total_normalises_a_tax_id_the_way_the_search_does():
+    """A lower-case PAN found one company and counted none: the count repeated the
+    search's logic and skipped the clean-up. One filter builder now serves both."""
+    company_id = await make_company()
+    # A PAN is 5 letters, 4 digits, 1 letter, and is unique across companies — hence
+    # the letters from a fresh uuid rather than a fixed prefix the next run reuses.
+    raw = uuid.uuid4().int
+    letters = "".join(chr(ord("A") + (raw >> (5 * i)) % 26) for i in range(5))
+    pan = f"{letters}{raw % 10_000:04d}Z"
+
+    async with db_services.AsyncSessionLocal() as db:
+        await ExporterProfileService(db).update_profile(
+            company_id, {"pan": pan}, actor_id="rm-1"
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        service = ExporterProfileService(db)
+        rows = await service.search_profiles(pan=pan.lower())
+        total = await service.count_profiles(pan=pan.lower())
+
+    assert len(rows) == 1
+    assert total == 1, "the count cleans the term up exactly as the search does"
+
+
+async def test_a_developer_is_refused_the_background_check_filter(client: AsyncClient):
+    """Decision D8 keeps background checks from DEVELOPER. The company list carries the
+    state and can be filtered by it, so it has to answer the same way the
+    background-check routes do — a 403, not a list naming the flagged companies."""
+    _user_id, developer = await user_with_role(client, UserRole.DEVELOPER)
+    _user_id, operations = await user_with_role(client, UserRole.OPERATIONS)
+
+    refused = await client.get(
+        f"{BASE}/exporters",
+        params={"background_check": "FLAGGED"},
+        headers=auth_header(developer),
+    )
+    allowed = await client.get(
+        f"{BASE}/exporters",
+        params={"background_check": "FLAGGED"},
+        headers=auth_header(operations),
+    )
+
+    assert refused.status_code == 403
+    assert refused.json()["error_code"] == "FORBIDDEN"
+    # Named, not silently empty: an empty list is still an answer ("none are flagged").
+    assert "background-check" in refused.json()["detail"]
+    assert allowed.status_code == 200
+
+
+async def test_a_developer_does_not_see_the_background_check_state_on_the_list(
+    client: AsyncClient,
+):
+    """Blanked rather than masked: the list must not report what the background-check
+    routes withhold from this role."""
+    await make_company()
+    _user_id, developer = await user_with_role(client, UserRole.DEVELOPER)
+    _user_id, operations = await user_with_role(client, UserRole.OPERATIONS)
+
+    by_operations = await client.get(f"{BASE}/exporters", headers=auth_header(operations))
+    by_developer = await client.get(f"{BASE}/exporters", headers=auth_header(developer))
+
+    assert by_operations.status_code == 200
+    assert by_developer.status_code == 200
+    operations_rows = by_operations.json()["profiles"]
+    developer_rows = by_developer.json()["profiles"]
+    assert operations_rows, "the fixture company is on the list"
+    # The column is NOT NULL with a NOT_STARTED default, so every company has a state:
+    # "all None" can only mean it was withheld, and "all set" that it was carried.
+    assert all(row["background_check"] is not None for row in operations_rows)
+    assert all(row["background_check"] is None for row in developer_rows)

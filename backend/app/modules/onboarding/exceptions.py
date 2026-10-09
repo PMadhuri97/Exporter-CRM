@@ -580,6 +580,35 @@ class IdentifierSearchNotPermittedError(AnerBaseException):
         )
 
 
+class BackgroundCheckFilterNotPermittedError(AnerBaseException):
+    """The company list filtered by background-check state, by a role that may
+    not read background checks.
+
+    Decision D8 keeps the background-check routes to OPERATIONS, COMPLIANCE and
+    ADMIN; DEVELOPER is refused on all of them. ``GET /exporters?background_check=
+    FLAGGED`` would answer the same question from the side door — it names exactly
+    which companies are flagged — so the filter follows the same rule as the routes
+    it draws from. Blanking the column in the rows is not enough on its own, for
+    the same reason the identifier filter is refused above: which rows come back is
+    itself the answer.
+
+    403 naming the parameter rather than a silently empty list, so nobody debugs a
+    filter that was refused rather than unmatched.
+    """
+
+    def __init__(self, *, role: str) -> None:
+        self.role = role
+        super().__init__(
+            detail=(
+                f"Role {role} may not filter companies by background-check state: "
+                f"the result would name which companies are flagged."
+            ),
+            error_code="FORBIDDEN",
+            status_code=403,
+            extensions={"role": role, "parameters": ["background_check"]},
+        )
+
+
 class DuplicatePanError(AnerBaseException):
     """A PAN already held by another company (architecture decision 4: a
     duplicate PAN is refused, never merged). Names the company that holds it,

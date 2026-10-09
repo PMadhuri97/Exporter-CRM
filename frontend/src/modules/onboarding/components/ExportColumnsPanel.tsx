@@ -14,7 +14,8 @@
 
 import { useEffect, useState } from 'react';
 
-import { Button, Sheet } from '@/components';
+import { Button, InlineError, Sheet } from '@/components';
+import { useCan } from '@/platform/access';
 
 import { DEFAULT_COLUMN_IDS, EXPORT_COLUMNS, type ExportColumn } from '../exportCompanies';
 
@@ -46,10 +47,10 @@ function remember(ids: readonly string[]): void {
   }
 }
 
-/** The groups in the order `EXPORT_COLUMNS` introduces them. */
-function grouped(): [ExportColumn['group'], ExportColumn[]][] {
+/** The groups in the order the columns introduce them. */
+function grouped(columns: readonly ExportColumn[]): [ExportColumn['group'], ExportColumn[]][] {
   const groups = new Map<ExportColumn['group'], ExportColumn[]>();
-  for (const column of EXPORT_COLUMNS) {
+  for (const column of columns) {
     const list = groups.get(column.group) ?? [];
     list.push(column);
     groups.set(column.group, list);
@@ -77,6 +78,16 @@ export function ExportColumnsPanel({
 }) {
   const [chosen, setChosen] = useState<string[]>(rememberedColumnIds);
   const [writing, setWriting] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  // The background-check state is blanked for a role that may not read it (decision
+  // D8), so offering the column would write an empty one and look like a bug.
+  const canReadChecks = useCan('compliance.read');
+  const offered = EXPORT_COLUMNS.filter(
+    (column) => canReadChecks || column.id !== 'background_check',
+  );
+  const allowed = new Set(offered.map((column) => column.id));
+  const writable = chosen.filter((id) => allowed.has(id));
 
   // Written as it changes rather than only on export, so a cancelled visit that
   // reorganised the columns is not lost.
@@ -107,13 +118,20 @@ export function ExportColumnsPanel({
             <Button
               size="sm"
               variant="primary"
-              disabled={chosen.length === 0}
+              disabled={writable.length === 0}
               loading={writing}
               onClick={() => {
                 // Gathering is several requests on a long list, so the button holds
                 // rather than letting a second click start a second file.
                 setWriting(true);
-                void Promise.resolve(onExport(chosen)).finally(() => setWriting(false));
+                setFailed(null);
+                void Promise.resolve(onExport(writable))
+                  .catch(() => {
+                    // A half-gathered export must not save a short file silently: the
+                    // rows it did reach would read as the whole answer.
+                    setFailed("Couldn't write the file. Nothing was saved — try again.");
+                  })
+                  .finally(() => setWriting(false));
               }}
             >
               Export
@@ -141,13 +159,15 @@ export function ExportColumnsPanel({
           )}
         </div>
 
+        {failed && <InlineError>{failed}</InlineError>}
+
         <p className="text-secondary text-ink-2" aria-live="polite">
-          {chosen.length === 0
+          {writable.length === 0
             ? 'Choose at least one column.'
-            : `${chosen.length} ${chosen.length === 1 ? 'column' : 'columns'} selected.`}
+            : `${writable.length} ${writable.length === 1 ? 'column' : 'columns'} selected.`}
         </p>
 
-        {grouped().map(([group, columns]) => (
+        {grouped(offered).map(([group, columns]) => (
           <fieldset key={group} className="border-0 p-0">
             <legend className="mb-2 text-caption font-semibold uppercase tracking-wide text-ink-3">
               {group}

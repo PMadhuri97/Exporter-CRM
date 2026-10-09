@@ -7,17 +7,11 @@
 
 import { COUNTRY_OPTIONS } from './countries';
 
-import type {
-  BackgroundCheckState,
-  CompanyPipelineStatus,
-  CompanyTradeRole,
-  ExporterSource,
-} from './types';
+import type { BackgroundCheckState, CompanyTradeRole, ExporterSource } from './types';
 
 /** The filters the list can be narrowed by. A key is absent when it is not filtering. */
 export interface CompanyFilters {
   source?: ExporterSource;
-  pipeline_status?: CompanyPipelineStatus;
   background_check?: BackgroundCheckState;
   trade_role?: CompanyTradeRole;
   has_open_deals?: boolean;
@@ -86,6 +80,5 @@ export function describeFilters(filters: CompanyFilters): string[] {
     described.push(`Country: ${country?.name ?? filters.country}`);
   }
   if (filters.industry) described.push(`Industry: ${filters.industry}`);
-  if (filters.pipeline_status) described.push(`Pipeline: ${filters.pipeline_status}`);
   return described;
 }

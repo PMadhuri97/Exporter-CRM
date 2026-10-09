@@ -444,3 +444,86 @@ describe('ExportersListPage — exporting', () => {
     expect(within(panel).getByRole('button', { name: 'Export' })).toBeDisabled();
   });
 });
+
+describe('ExportersListPage — what a Developer may not read', () => {
+  // Decision D8: the background-check routes refuse DEVELOPER, so the company list
+  // must not become a second way to read the same thing. The server blanks the column
+  // and refuses the filter; these keep the screen from offering either.
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.mocked(searchExporterProfiles).mockReset();
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [PROFILE],
+      limit: 100,
+      offset: 0,
+      total: 1,
+    });
+  });
+
+  it('does not offer the background-check filter', async () => {
+    mockUser('DEVELOPER', 'dev-1');
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    // The other filters are there, so this is the one being withheld rather than a
+    // panel that failed to open.
+    expect(await screen.findByLabelText('Source')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Background check')).not.toBeInTheDocument();
+  });
+
+  it('offers it to a role that may read checks', async () => {
+    mockUser('OPERATIONS', 'ops-1');
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    expect(await screen.findByLabelText('Background check')).toBeInTheDocument();
+  });
+
+  it('does not offer the background-check export column', async () => {
+    mockUser('DEVELOPER', 'dev-1');
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByRole('checkbox', { name: 'Journey' })).toBeInTheDocument();
+    expect(
+      within(panel).queryByRole('checkbox', { name: 'Background check' }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('ExportersListPage — a failed export', () => {
+  beforeEach(() => {
+    mockUser('OPERATIONS', 'ops-1');
+    window.localStorage.clear();
+    vi.mocked(searchExporterProfiles).mockReset();
+  });
+
+  it('says so instead of saving nothing in silence', async () => {
+    // The list loads normally; the network goes away before the file is gathered. A
+    // flag rather than `mockRejectedValueOnce`: the page runs several searches of its
+    // own, so "the next call" is not the export's call.
+    let gathering = false;
+    vi.mocked(searchExporterProfiles).mockImplementation(() =>
+      gathering
+        ? Promise.reject(new Error('network'))
+        : Promise.resolve({ profiles: [PROFILE], limit: 100, offset: 0, total: 1 }),
+    );
+
+    renderPage();
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    const panel = await screen.findByRole('dialog');
+    gathering = true;
+    fireEvent.click(within(panel).getByRole('button', { name: 'Export' }));
+
+    expect(await within(panel).findByRole('alert')).toHaveTextContent(
+      /Couldn't write the file/,
+    );
+    // Still open, so the person can try again without re-choosing the columns.
+    expect(within(panel).getByRole('button', { name: 'Export' })).toBeEnabled();
+  });
+});

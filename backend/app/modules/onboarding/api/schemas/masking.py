@@ -74,6 +74,26 @@ def can_reveal_identifiers(viewer: User) -> bool:
     return viewer.role in _ALWAYS_REVEAL_ROLES
 
 
+#: Who may read a company's background-check state (decision D8). The same three
+#: roles the background-check routes admit; DEVELOPER is absent there and must be
+#: absent here, or the company list would report what those routes withhold.
+_COMPLIANCE_READING_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
+
+
+def can_read_background_check(viewer: User) -> bool:
+    """Whether a response may carry the background-check state.
+
+    The company list row carries it so a screen can show the check beside the
+    company. That makes the list a second way to read compliance work, and it has
+    to answer the same way the first one does: the background-check routes admit
+    OPERATIONS, COMPLIANCE and ADMIN and refuse DEVELOPER, so the column is blanked
+    for every other role and the matching filter is refused outright
+    (`BackgroundCheckFilterNotPermittedError`) — a filtered list names the flagged
+    companies whether or not the column is rendered.
+    """
+    return viewer.role in _COMPLIANCE_READING_ROLES
+
+
 def _reject_masked(value: str | None) -> str | None:
     """Refuse a value carrying the mask character. A client that writes back
     what it read (a masked PAN is still exactly 10 characters) would otherwise
