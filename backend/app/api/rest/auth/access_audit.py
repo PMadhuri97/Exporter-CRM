@@ -35,6 +35,13 @@ ROLE_CREATED = "access.role_created"
 ROLE_UPDATED = "access.role_updated"
 ROLE_DELETED = "access.role_deleted"
 
+#: The events each kind of subject has — what the history lookup names, so it reads the
+#: audit trail by its event-type index.
+EVENT_TYPES: dict[str, frozenset[str]] = {
+    USER: frozenset({USER_CREATED, USER_UPDATED, USER_PASSWORD_RESET}),
+    ROLE: frozenset({ROLE_CREATED, ROLE_UPDATED, ROLE_DELETED}),
+}
+
 
 def change(field: str, before: Any, after: Any) -> dict[str, Any] | None:
     """One changed field, or ``None`` when nothing changed."""
@@ -109,7 +116,11 @@ async def history(
     db: AsyncSession, subject_type: str, subject_id: uuid.UUID, *, limit: int, offset: int
 ) -> AccessHistoryResponse:
     page = await AuditService(db).list_for_subject(
-        subject_type, subject_id, limit=limit, offset=offset
+        subject_type,
+        subject_id,
+        event_types=EVENT_TYPES[subject_type],
+        limit=limit,
+        offset=offset,
     )
     entries = []
     for event in page.events:

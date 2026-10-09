@@ -4,8 +4,9 @@ Contract: ``docs/contracts/deal-and-buyer.md``.
 
 **The buyer's identifiers and contact details are masked** for every role that
 may not see an exporter's PAN/GSTIN — the same rule, through the same helpers
-(``masking.py``, ``can_reveal_identifiers``): COMPLIANCE and ADMIN see them in
-full; OPERATIONS and DEVELOPER see ``registration_number`` and ``tax_id`` with
+(``masking.py``, ``can_reveal_identifiers``): holders of
+``exporters:view_full_tax_id`` (COMPLIANCE) see them in full; the administrator,
+OPERATIONS and DEVELOPER see ``registration_number`` and ``tax_id`` with
 only the last four characters, the email as ``a•••@domain`` and the phone with
 its last four digits. The buyer's name and country stay visible to everyone: a
 deal is unrecognisable without them.
@@ -287,7 +288,7 @@ class SetDealBuyerRequest(BaseModel):
 
 class DealBuyerResponse(BaseModel):
     """The deal's buyer. The identifiers and contact details are masked for
-    OPERATIONS and DEVELOPER; COMPLIANCE and ADMIN see them in full."""
+    OPERATIONS, the administrator and DEVELOPER; COMPLIANCE sees them in full."""
 
     id: uuid.UUID
     deal_id: uuid.UUID

@@ -118,12 +118,12 @@ def decrypt_field(stored: str, *, purpose: str) -> str:
     key = keys.by_id.get(key_id)
     if key is None:
         raise FieldDecryptionError(key_id)
-    raw = base64.b64decode(body)
     try:
+        raw = base64.b64decode(body, validate=True)
         plain = AESGCM(key).decrypt(raw[:_NONCE_BYTES], raw[_NONCE_BYTES:], purpose.encode("utf-8"))
-    except Exception as exc:  # cryptography raises InvalidTag
+        return plain.decode("utf-8")
+    except Exception as exc:  # a damaged value: bad base64, InvalidTag, not UTF-8
         raise FieldDecryptionError(key_id) from exc
-    return plain.decode("utf-8")
 
 
 __all__ = [

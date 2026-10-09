@@ -109,8 +109,8 @@ prevent, because nothing else records what the value means.
 
 **Who reads what.** The history routes serve every dimension to OPERATIONS,
 COMPLIANCE and ADMIN. DEVELOPER does not receive `background_check`,
-`verification`, `screening`, `check_cycle`, `background_check_approval` or
-`background_check_assignment` rows —
+`verification`, `screening`, `check_cycle`, `background_check_approval`,
+`background_check_assignment` or `sanctions` rows —
 from the page or the total — because decision D8 refuses DEVELOPER the same values,
 reasons, review notes and screening comments on those gauges' own routes
 (`api/history_router.py`, `history_dimensions.HIDDEN_FROM_DEVELOPER`).

@@ -21,6 +21,9 @@
 > (`recorded_by` null), the observed value and its evidence. A result a person recorded
 > is never replaced; nothing is written when the data cannot answer it, or when the
 > latest automatic result already says the same. The outcome stays a person's decision.
+> DEAL_VALUE compares deals in the criterion's currency unit only; with no currency unit,
+> only when every valued deal is in one currency — amounts in different currencies are
+> never compared.
 
 **Owner:** Developer 2 · **Implemented by:** L2-09 (criteria), L2-10 (results and outcomes), migration 0017 · **Status:** implemented — §9a records the as-built detail and §10 what is still open
 

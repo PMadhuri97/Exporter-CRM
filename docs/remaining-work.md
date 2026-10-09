@@ -370,6 +370,7 @@ demo.
 | OPS-5 | **Buyer migration P4-6.** First: P2-7's precondition must be 0 — `SELECT count(*) FROM onboarding.deal WHERE stage = 'HANDED_OVER' AND handover_snapshot IS NULL`. **Freeze writes** from the dump until `--validate` passes (D-02: restoring the dump is the only way back, and the freeze is what makes a restore lose nothing). Then `--dry-run`; Compliance reviews the look-alikes (IQ-8) and the rows that need a person; `--apply --run-id <id>` with `--confirm-name` lines; `--validate` (every count 0); re-run `--apply` (creates nothing). Also check `SELECT count(*) FROM onboarding.verification_result WHERE entity_type = 'BUYER' AND subject_company_id IS NOT NULL` | STILL OPEN in every environment |
 | OPS-6 | **Relationship backfill P5-5**: `--dry-run`, `--apply --run-id <id>`, `--validate`. Undo is one `DELETE` (`--report-run`), as long as no invoice points at the run's relationships | STILL OPEN |
 | OPS-7 | **Relationship managers and review assignment (§16).** `pg_dump`; `alembic upgrade head` (to `auth_0006_assignment_perms`: 0044 adds the reviewer columns and relaxes the withdraw check; auth_0006 grants ADMIN the three new permissions); deploy; then `python -m app.modules.onboarding.backfill_relationship_managers --dry-run`, read the report, `--apply --run-id <id>`, `--validate` (every count 0). Then grant `exporters:assign_rm`, `compliance:assign` and `compliance:approve_high_risk` to the named users through a custom role — at least two must hold `compliance:approve_high_risk`. Applies to `aner_settlement` too: it is at 0043 | STILL OPEN |
+| OPS-8 | **Lead-feedback build (§17).** `pg_dump`; set `FIELD_ENCRYPTION_KEYS` in each environment's secret store first (one key per environment, generated as `.env.example` says, and backed up: losing it loses every stored account number; without it bank details answer 503); `alembic upgrade head` (to `onboarding_0053_auto_criteria`: auth_0007 makes the administrator read-only and seeds the Compliance lead and Sales lead roles; an edited built-in role keeps its old grants and is named in the migration output for review); deploy (the backend image now carries LibreOffice). Then **give people the lead roles** (Settings → Users, permission role): until someone holds *Compliance lead*, nobody can assign reviews, approve a high-risk Clear or, with `CRM_SANCTIONS_TRUE_MATCH_APPROVAL=HEAD`, confirm a true match; until someone holds *Sales lead*, nobody can assign RMs or collections owners. **Tell the users what changes:** (1) the administrator reads the business but no longer edits, decides, approves, assigns or sees full tax identifiers; (2) only COMPLIANCE saves a copy of a document — everyone else reads it on screen; (3) a deal cannot be handed over while its seller has no active primary contact, or is flagged by a sanctions match; (4) bank details and sanctions true matches need a second person (`CRM_BANK_CHANGE_APPROVAL_MODE`, `CRM_SANCTIONS_TRUE_MATCH_APPROVAL`). Applies to `aner_settlement` too: it is at head, but nobody holds a lead role yet | STILL OPEN |
 | — | Then R-25 (PR-J), then R-26 (PR-K), then R-31's contract migration once OPS-0 shows no nameless company (PR-L) | — |
 
 **What the rehearsal on `p46_scratch` does and does not show.** `p46_scratch` is a copy of a
@@ -1014,3 +1015,37 @@ plan and its agreed decisions are [`rm-and-review-assignment-plan.md`](rm-and-re
   The badge refetches every 60 seconds per open tab. Past a few thousand companies under
   review at once, store the deadlines or cache the counts per minute.
 - OPS-7 on every environment, `aner_settlement` included.
+
+## 17. Lead feedback (`feature/review-feedback`, 9 October 2026)
+
+The four waves of `feedback-plan.md`: import, wording and the qualification suggestion;
+permissions on every route with a read-only administrator, the access audit trail and
+on-screen document previews; contacts, addresses, encrypted bank accounts, payment terms,
+collections owners and company groups; structured sanctions screening and automatic
+qualification results. Live steps: OPS-8 (§8).
+
+### 17.1 PR audit fixes (9 October 2026, unstaged on `d799148`)
+
+| Finding | Fix | Covered by |
+|---|---|---|
+| The `sanctions` history dimension was served to DEVELOPER: screened names, matched list entries and each decision's reason, which the screening routes refuse it | `sanctions` joins `HIDDEN_FROM_DEVELOPER`; the history routes' descriptions list every dimension | `test_sanctions_screening.py`, `test_compliance_foundation.py` |
+| The pdf.js worker is `pdf.worker.min-<hash>.mjs`, and the frontend's nginx served `.mjs` as `application/octet-stream`: every PDF preview would have failed in the container | An `.mjs` location serving `application/javascript`, cached like the other assets (checked against `nginx:1.27-alpine` with the built `dist/`) | — |
+| LibreOffice converted outside documents inside the backend container, which holds the database credentials and `FIELD_ENCRYPTION_KEYS`; a linked image, an INCLUDETEXT field or an external workbook can pull a local file into the PDF every reader sees | A document is converted only when it links to nothing but web pages (`document_preview.external_reference`: external relationships, including/linking fields, external workbooks, reaching formulas, and their marks in old binary files); the converter runs with an empty environment in its private directory; a CSV is served as plain text and never converted | `test_document_preview.py`, `test_documents.py` |
+| The user and role history read `audit_events` by unindexed payload fields: a full scan of the seven-year trail, which now gains a row per document view | The lookup names its event types, so it walks `ix_audit_events_event_type_created_at` | `test_access_history.py` |
+| The re-screen worklist rebuilt the whole sanctions picture per company (up to 5,000), the true-match queue read one row per proposal | Both read in a fixed number of queries | `test_sanctions_screening.py` |
+| Starting a re-check lifted the sanctions flag: a true match confirmed in the previous cycle no longer held the company's deals | The flag follows each subject's latest screening in any cycle; the standing stays the current cycle's | `test_sanctions_screening.py` |
+| The deal-value criterion compared the largest deal across currencies when its unit was not a currency | A currency unit picks its deals; with none, the deals must all be in one currency, or there is no answer | `test_qualification_auto.py` |
+| The Excel import read every row of a sheet before applying the 1,000-row limit | Rows past the limit are counted, not kept; a sheet past 50,000 rows is refused unread | `test_company_import_files.py` |
+| A damaged stored bank number surfaced as a bare 500 | Any decryption failure is `FIELD_DECRYPTION_FAILED` | `test_field_cipher.py` |
+| The administrator could be named a company's collections owner through the API | Only RMs and compliance officers can be | `test_collections_owner.py` |
+| `company_address` and `exporter_gstin` name each other, and the ORM warned it could not order its tables (an error in a future SQLAlchemy) | `fk_exporter_gstin_address` is `use_alter`, as `background_check_decision`'s proposal key is; the database is unchanged. The `deal`–`exporter_profile` cycle (`created_via_deal_id`) is older and left | `test_profile_edit_history.py` |
+| Docstrings and API descriptions still said "COMPLIANCE or ADMIN" decides, approves, reveals and withdraws; the deal contract missed the sanctions-flag handover condition | Corrected; `deal-and-buyer.md`, `storage-and-documents.md`, `verification-and-screening.md`, `criterion-result.md` and `history-row.md` amended | — |
+
+### 17.2 Still open, and for the leads
+
+| Id | What | Why it is not done here |
+|---|---|---|
+| R-65 | **Run the document converter where the server's secrets are not**: a separate container or job with no database credentials, no `FIELD_ENCRYPTION_KEYS` and no network, which the backend hands a file and gets a PDF back from | The link inspection and the empty environment close the known paths; LibreOffice still runs as the backend's user beside its files. Infrastructure, not code in this repository |
+| R-66 | **The deal-value criterion never fires.** A deal can be opened only for a qualified company, and `QUALIFIED` is final, so the automatic answer for a seller's "deal size" criterion has nothing to write to (every company with a deal on `aner_settlement` is `QUALIFIED`) | A lead decision: drop `DEAL_VALUE` as an automatic source, or answer it from something known before qualification (an expected deal size on the lead) |
+| R-67 | **DEVELOPER reads a company's bank accounts** (masked to the last four, with bank name, IFSC and SWIFT) and their history rows | Consistent with masked tax identifiers, but bank details were not part of decision D8; a lead decision |
+| R-68 | **The administrator changes the sanctions lists** (`settings:manage`), including making a mandatory list optional or inactive | The plan put the lists under Settings, which is the administrator's; whether a compliance permission should guard them is a lead decision |

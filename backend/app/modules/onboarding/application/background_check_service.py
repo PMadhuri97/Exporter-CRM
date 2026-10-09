@@ -50,7 +50,7 @@ because there is no ``CLEAR → CLEAR`` move and the gauge must not read
 ``FLAGGED`` and ``ON_HOLD`` need two people. :meth:`propose` records the move as a
 proposal — every rule a move checks, plus ``CLEAR``'s prerequisites, evaluated now —
 and the gauge does not move ("awaiting approval"). :meth:`approve`, by a *different*
-COMPLIANCE or ADMIN user, re-checks that nothing has moved (the chain head, the gauge
+COMPLIANCE user, re-checks that nothing has moved (the chain head, the gauge
 and the inputs' fingerprint) and then writes the decision through the same
 :meth:`_apply_move` every move uses, with ``decided_by`` the proposer and
 ``approved_by`` the approver, pins the evidence and promotes, in one transaction.
@@ -65,14 +65,14 @@ path lets one user take a company to ``CLEAR``. The switch
 **Who holds the review.** ``exporter_profile.background_check_reviewer_id`` names
 the reviewer, written only here (:meth:`_set_reviewer`), each change with a
 ``background_check_assignment`` history row. A start leaves the review unassigned
-(Awaiting review); a COMPLIANCE or ADMIN user claims it, or a holder of
+(Awaiting review); a COMPLIANCE user claims it, or a holder of
 ``compliance:assign`` assigns it. Requesting information and proposing an outcome are
 the reviewer's moves: an unassigned review is claimed by whoever makes one, and one held
 by someone else refuses them. A reassessment or reopen makes the actor the reviewer;
 landing on ``CLEAR``, ``FLAGGED`` or ``ON_HOLD`` ends the review. The reviewer is never
 the company's relationship manager, and neither the reviewer nor the RM approves
 (``domain/assignment.py``). A ``CLEAR`` at ``HIGH`` or ``CRITICAL`` risk is approved
-only by ADMIN or a holder of ``compliance:approve_high_risk`` — the second person, not
+only by a holder of ``compliance:approve_high_risk`` — the second person, not
 a third.
 
 **The relationship manager at the start.** Starting the check on an in-pipeline company
@@ -627,7 +627,7 @@ class BackgroundCheckService:
     ) -> BackgroundCheckDecisionView:
         """Move 2 — ``IN_REVIEW → CLEAR``.
 
-        A COMPLIANCE or ADMIN user decides (with maker-checker on, through a
+        A COMPLIANCE user decides (with maker-checker on, through a
         proposal and :meth:`approve`). Risk is required. The four prerequisites are
         evaluated by one pure function (``evaluate_clear_prerequisites``) under the row
         lock; what its phrases mean was settled on 28 September 2026. Nothing is
@@ -781,7 +781,7 @@ class BackgroundCheckService:
 
         1. lock the company ``FOR UPDATE`` — writers of inputs hold ``FOR SHARE``, so no
            input can land half in the old cycle and half in the new;
-        2. check the role (COMPLIANCE, ADMIN), the kind, the reason and the gauge:
+        2. check the role (COMPLIANCE), the kind, the reason and the gauge:
            ``NOT_STARTED``, ``IN_REVIEW``, ``MORE_INFO`` and ``CLEAR`` may start one;
            ``FLAGGED`` and ``ON_HOLD`` are reassessed first (409);
         3. refuse if the current cycle is still empty (409) — which is also why two
@@ -795,7 +795,7 @@ class BackgroundCheckService:
         7. commit once.
 
         Raises:
-            CheckCycleRoleNotAllowedError: (403) not COMPLIANCE or ADMIN.
+            CheckCycleRoleNotAllowedError: (403) not COMPLIANCE.
             ValidationError: (422) a kind the API does not start, or no reason.
             CheckCycleNotAllowedError: (409) the company is ``FLAGGED`` or ``ON_HOLD``.
             CheckCycleEmptyError: (409) the current cycle has nothing recorded yet.
@@ -1046,7 +1046,7 @@ class BackgroundCheckService:
         actor_role: UserRole,
         actor_permissions: frozenset[Permission] = frozenset(),
     ) -> ApprovedProposal:
-        """Approve a proposal as a **different** COMPLIANCE or ADMIN user. One
+        """Approve a proposal as a **different** COMPLIANCE user. One
         transaction: lock the company; refuse the proposer, a resolved proposal and a
         stale one (the gauge, the chain head or the inputs' fingerprint moved); write
         the decision through ``_apply_move`` — the same rules, ``CLEAR``'s prerequisites
@@ -1055,7 +1055,7 @@ class BackgroundCheckService:
         ``APPROVED`` resolution and its history row; commit once and announce.
 
         Raises:
-            BackgroundCheckApproverRoleNotAllowedError: (403) not COMPLIANCE or ADMIN.
+            BackgroundCheckApproverRoleNotAllowedError: (403) not COMPLIANCE.
             BackgroundCheckProposalNotFoundError: (404) not this company's.
             BackgroundCheckProposalResolvedError: (409) already resolved.
             BackgroundCheckSelfApprovalError: (403) the proposer.
@@ -1166,7 +1166,7 @@ class BackgroundCheckService:
         actor_permissions: frozenset[Permission] = frozenset(),
     ) -> BackgroundCheckProposalView:
         """Withdraw a proposal: the proposer, or — once the proposer has left (their
-        account is deactivated, gone, or no longer a reviewer's) — ADMIN or a holder of
+        account is deactivated, gone, or no longer a reviewer's) — a holder of
         ``compliance:assign``. While the proposer can still act, anyone else rejects it,
         with a reason, instead. The reason is optional.
 
@@ -1321,10 +1321,10 @@ class BackgroundCheckService:
         actor_id: str,
         actor_role: UserRole,
     ) -> ExporterProfile:
-        """"Assign to me": a COMPLIANCE or ADMIN user takes an unassigned review.
+        """"Assign to me": a COMPLIANCE user takes an unassigned review.
 
         Raises:
-            ReviewerNotEligibleError: (422) not COMPLIANCE or ADMIN.
+            ReviewerNotEligibleError: (422) not COMPLIANCE.
             ReviewNotAssignableError: (409) the check is not under review.
             ReviewAlreadyAssignedError: (409) someone holds it.
             ReviewerIsRelationshipManagerError: (409) the caller is the company's RM.
@@ -1362,11 +1362,11 @@ class BackgroundCheckService:
         actor_permissions: frozenset[Permission] = frozenset(),
     ) -> ExporterProfile:
         """Assign or reassign the review: ``compliance:assign``. The target is an
-        active COMPLIANCE or ADMIN user who is not the company's RM; taking a review
+        active COMPLIANCE user who is not the company's RM; taking a review
         from someone needs a reason. An open proposal survives the change.
 
         Raises:
-            ReviewAssignNotAllowedError: (403) neither ADMIN nor ``compliance:assign``.
+            ReviewAssignNotAllowedError: (403) not a holder of ``compliance:assign``.
             ReviewNotAssignableError: (409) the check is not under review.
             ReviewerNotEligibleError: (422) the target cannot review.
             ReviewerIsRelationshipManagerError: (409) the target is the company's RM.
@@ -1416,7 +1416,7 @@ class BackgroundCheckService:
         actor_role: UserRole,
         actor_permissions: frozenset[Permission] = frozenset(),
     ) -> ExporterProfile:
-        """Hand the review back to Awaiting review. The reviewer, ADMIN or
+        """Hand the review back to Awaiting review. The reviewer, or a holder of
         ``compliance:assign``; refused while the reviewer's own proposal is open
         (withdraw it first). A note is optional.
 

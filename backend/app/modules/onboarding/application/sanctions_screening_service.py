@@ -40,6 +40,7 @@ from decimal import Decimal
 import structlog
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.modules.audit import ActorType, AuditService
 from app.modules.onboarding.application.compliance_settings import true_match_approval
@@ -166,6 +167,50 @@ def _subject_key(subject_type: str, reference: uuid.UUID | None, name: str) -> t
     if subject_type == "COMPANY":
         return ("COMPANY",)
     return (subject_type, str(reference) if reference else " ".join(name.lower().split()))
+
+
+def _run_in_cycle(run: SanctionsRun, cycle: CheckCycle | None) -> bool:
+    """``in_cycle``'s rule in Python, for runs already read: a NULL cycle is cycle 1."""
+    if cycle is None:
+        return True
+    if cycle.number == 1:
+        return run.cycle_id in (cycle.id, None)
+    return run.cycle_id == cycle.id
+
+
+def _latest_by_subject(runs: Iterable[SanctionsRun]) -> dict[tuple, SanctionsRun]:
+    """Each subject's first run in ``runs`` (newest first)."""
+    latest: dict[tuple, SanctionsRun] = {}
+    for run in runs:
+        latest.setdefault(_subject_key(run.subject_type, run.subject_reference, run.subject_name), run)
+    return latest
+
+
+def _run_reasons(
+    run: SanctionsRun,
+    lists: Iterable[SanctionsRunList],
+    current_lists: list[SanctionsList],
+    *,
+    current_name: str | None = None,
+) -> list[str]:
+    """Why a subject's latest run is out of date: a list it missed or an older version
+    of one, or the company's name changed since."""
+    covered = {row.code: row.list_version_date for row in lists}
+    reasons = []
+    for listed in current_lists:
+        used = covered.get(listed.code)
+        if used is None and listed.mandatory:
+            reasons.append(f"not screened against {listed.name}")
+        elif used is not None and used < listed.list_version_date:
+            reasons.append(
+                f"{listed.name} has a newer version ({listed.list_version_date.isoformat()})"
+            )
+    searched = str(run.search_terms.get("name") or run.subject_name)
+    if current_name and " ".join(searched.lower().split()) != " ".join(
+        current_name.lower().split()
+    ):
+        reasons.append(f"the company's name changed (screened as {searched})")
+    return reasons
 
 
 class SanctionsScreeningService:
@@ -387,27 +432,34 @@ class SanctionsScreeningService:
 
     async def company(self, company_id: uuid.UUID) -> CompanySanctions:
         """Every subject with its latest run in the current cycle, what needs
-        re-screening, the standing and whether the company is flagged."""
+        re-screening, the standing and whether the company is flagged.
+
+        The standing and the coverage are the current cycle's: a new cycle screens
+        afresh. The **flag** is not: it reads each subject's latest run in any cycle, so
+        a true match proposed or confirmed before a re-check started keeps the company
+        flagged — and its deals held — until that subject is screened again."""
         company = await self._db.scalar(
             select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
         )
         if company is None:
             raise ExporterProfileNotFoundError(company_id)
         cycle = await self._current_cycle(company_id)
-        runs = list(
+        every_run = list(
             await self._db.scalars(
                 select(SanctionsRun)
-                .where(SanctionsRun.company_id == company_id, in_cycle(SanctionsRun.cycle_id, cycle))
+                .where(SanctionsRun.company_id == company_id)
                 .order_by(SanctionsRun.performed_at.desc(), SanctionsRun.created_at.desc())
             )
         )
-        latest: dict[tuple, SanctionsRun] = {}
-        for run in runs:
-            latest.setdefault(_subject_key(run.subject_type, run.subject_reference, run.subject_name), run)
-        views = {
-            _subject_key(v.run.subject_type, v.run.subject_reference, v.run.subject_name): v
-            for v in await self._views(list(latest.values()))
+        latest = _latest_by_subject(run for run in every_run if _run_in_cycle(run, cycle))
+        latest_ever = _latest_by_subject(every_run)
+        all_views = {
+            view.run.id: view
+            for view in await self._views(
+                list({run.id: run for run in [*latest.values(), *latest_ever.values()]}.values())
+            )
         }
+        views = {key: all_views[run.id] for key, run in latest.items()}
 
         subjects: list[SubjectCoverage] = []
         current_lists = [row for row in await self._current_lists() if row.active]
@@ -451,7 +503,9 @@ class SanctionsScreeningService:
 
         outcomes = {str(key): view.outcome for key, view in views.items()}
         flagged = any(
-            hit.current.disposition in rules.FLAGGING for view in views.values() for hit in view.hits
+            hit.current.disposition in rules.FLAGGING
+            for run in latest_ever.values()
+            for hit in all_views[run.id].hits
         )
         return CompanySanctions(
             company_id=company_id,
@@ -463,50 +517,118 @@ class SanctionsScreeningService:
     async def rescreen_due(self, *, limit: int = 200) -> list[RescreenDue]:
         """Companies screened before whose latest screening is now out of date: a list
         has a newer version or became mandatory, the company's name changed, or a
-        beneficial owner has never been screened."""
-        company_ids = list(
-            await self._db.scalars(select(SanctionsRun.company_id).distinct().limit(5000))
+        beneficial owner has never been screened.
+
+        A fixed number of reads, whatever the number of companies: every run, cycle,
+        list version and beneficial owner is read once, and the same subjects and
+        reasons as :meth:`company` are worked out from them."""
+        runs = list(
+            await self._db.scalars(
+                select(SanctionsRun).order_by(
+                    SanctionsRun.performed_at.desc(), SanctionsRun.created_at.desc()
+                )
+            )
         )
+        if not runs:
+            return []
+        company_ids = {run.company_id for run in runs}
+        cycles: dict[uuid.UUID, CheckCycle] = {}
+        for cycle in await self._db.scalars(
+            select(CheckCycle)
+            .where(CheckCycle.company_id.in_(company_ids))
+            .order_by(CheckCycle.number.desc())
+        ):
+            cycles.setdefault(cycle.company_id, cycle)
+        by_company: dict[uuid.UUID, list[SanctionsRun]] = defaultdict(list)
+        for run in runs:
+            if _run_in_cycle(run, cycles.get(run.company_id)):
+                by_company[run.company_id].append(run)
+        latest = {company_id: _latest_by_subject(rows) for company_id, rows in by_company.items()}
+        run_lists: dict[uuid.UUID, list[SanctionsRunList]] = defaultdict(list)
+        latest_ids = [run.id for subjects in latest.values() for run in subjects.values()]
+        if latest_ids:
+            for row in await self._db.scalars(
+                select(SanctionsRunList)
+                .where(SanctionsRunList.run_id.in_(latest_ids))
+                .order_by(SanctionsRunList.code)
+            ):
+                run_lists[row.run_id].append(row)
+        names = dict(
+            (
+                await self._db.execute(
+                    select(ExporterProfile.customer_id, ExporterProfile.name).where(
+                        ExporterProfile.customer_id.in_(company_ids)
+                    )
+                )
+            ).all()
+        )
+        ubos: dict[uuid.UUID, list[UboRecord]] = defaultdict(list)
+        for ubo, owner in await self._db.execute(
+            select(UboRecord, OnboardingRequest.customer_id)
+            .join(OnboardingRequest, OnboardingRequest.id == UboRecord.onboarding_request_id)
+            .where(OnboardingRequest.customer_id.in_(company_ids))
+            .order_by(UboRecord.last_name, UboRecord.first_name)
+        ):
+            ubos[owner].append(ubo)
+        current_lists = [row for row in await self._current_lists() if row.active]
+
+        def reasons_for(run: SanctionsRun | None, *, current_name: str | None = None):
+            if run is None:
+                return ["never screened"]
+            return _run_reasons(run, run_lists[run.id], current_lists, current_name=current_name)
+
         due: list[RescreenDue] = []
         for company_id in company_ids:
-            standing = await self.company(company_id)
+            if company_id not in names:
+                continue
+            subjects = latest.get(company_id, {})
+            name = names[company_id]
+            company_key = _subject_key("COMPANY", None, "")
+            found = [
+                (name or "", reasons_for(subjects.get(company_key), current_name=name))
+            ]
+            seen = {company_key}
+            for ubo in ubos[company_id]:
+                key = _subject_key("UBO", ubo.id, "")
+                seen.add(key)
+                found.append(
+                    (f"{ubo.first_name} {ubo.last_name}".strip(), reasons_for(subjects.get(key)))
+                )
+            for key, run in subjects.items():
+                if key not in seen:
+                    found.append((run.subject_name, reasons_for(run)))
             reasons = [
-                f"{subject.subject_name or 'The company'}: {reason}"
-                for subject in standing.subjects
-                for reason in subject.rescreen_reasons
+                f"{subject or 'The company'}: {reason}"
+                for subject, subject_reasons in found
+                for reason in subject_reasons
             ]
             if reasons:
-                name = await self._db.scalar(
-                    select(ExporterProfile.name).where(ExporterProfile.customer_id == company_id)
-                )
                 due.append(RescreenDue(company_id, name, reasons))
-            if len(due) >= limit:
-                break
-        return sorted(due, key=lambda row: (row.company_name or "").lower())
+        due.sort(key=lambda row: (row.company_name or "").lower())
+        return due[:limit]
 
     async def pending_true_matches(self) -> list[PendingTrueMatch]:
         """Every proposed true match awaiting confirmation, oldest first."""
+        later = aliased(SanctionsDisposition)
         rows = await self._db.execute(
             select(SanctionsDisposition, SanctionsHit, SanctionsRun, ExporterProfile.name)
             .join(SanctionsHit, SanctionsHit.id == SanctionsDisposition.hit_id)
             .join(SanctionsRun, SanctionsRun.id == SanctionsHit.run_id)
             .join(ExporterProfile, ExporterProfile.customer_id == SanctionsRun.company_id)
-            .where(SanctionsDisposition.disposition == rules.TRUE_MATCH_PROPOSED)
+            .where(
+                SanctionsDisposition.disposition == rules.TRUE_MATCH_PROPOSED,
+                ~exists().where(later.supersedes_id == SanctionsDisposition.id),
+            )
             .order_by(SanctionsDisposition.decided_at)
         )
-        out = []
-        for proposal, hit, run, name in rows:
-            superseded = await self._db.scalar(
-                select(
-                    exists().where(SanctionsDisposition.supersedes_id == proposal.id)
-                )
-            )
-            if not superseded:
-                out.append(PendingTrueMatch(run.company_id, name, run, hit, proposal))
-        return out
+        return [
+            PendingTrueMatch(run.company_id, name, run, hit, proposal)
+            for proposal, hit, run, name in rows
+        ]
 
     async def is_flagged(self, company_id: uuid.UUID) -> bool:
-        """Whether a true match is proposed or confirmed on the company's latest runs."""
+        """Whether a true match is proposed or confirmed on a subject's latest run, in
+        whichever cycle that run was."""
         return (await self.company(company_id)).flagged
 
     # ── Internals ────────────────────────────────────────────────────────────
@@ -520,22 +642,7 @@ class SanctionsScreeningService:
     ) -> list[str]:
         if view is None:
             return ["never screened"]
-        covered = {row.code: row.list_version_date for row in view.lists}
-        reasons = []
-        for listed in current_lists:
-            used = covered.get(listed.code)
-            if used is None and listed.mandatory:
-                reasons.append(f"not screened against {listed.name}")
-            elif used is not None and used < listed.list_version_date:
-                reasons.append(
-                    f"{listed.name} has a newer version ({listed.list_version_date.isoformat()})"
-                )
-        searched = str(view.run.search_terms.get("name") or view.run.subject_name)
-        if current_name and " ".join(searched.lower().split()) != " ".join(
-            current_name.lower().split()
-        ):
-            reasons.append(f"the company's name changed (screened as {searched})")
-        return reasons
+        return _run_reasons(view.run, view.lists, current_lists, current_name=current_name)
 
     async def _write_decision(
         self,

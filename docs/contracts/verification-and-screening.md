@@ -25,7 +25,8 @@
 > REVIEW otherwise. A true match is confirmed per `CRM_SANCTIONS_TRUE_MATCH_APPROVAL`
 > (SINGLE, SECOND_OFFICER — the default, HEAD with `compliance:approve_true_match`) via
 > `POST /sanctions/hits/{id}/confirm|reject`; while proposed or confirmed it **flags**
-> the company and blocks its handovers. The company's standing (the worst of its
+> the company and blocks its handovers. The flag reads each subject's latest run **in any
+> cycle**, so starting a re-check does not lift it; screening that subject again does. The company's standing (the worst of its
 > subjects' latest runs in the cycle) is written as a SANCTIONS verification result
 > about the company whenever it changes (`provider_reference` starts
 > `sanctions-screening:`), and a REVIEW result written earlier is concluded with a review,

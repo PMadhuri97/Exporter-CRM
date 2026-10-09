@@ -92,11 +92,14 @@ class ExporterGstin(AnerModel):
             name="ck_exporter_gstin_deactivation",
         ),
         # The address this branch trades from, which must be its own company's.
+        # `use_alter`: an address names its GST registration too, so the two tables
+        # refer to each other.
         ForeignKeyConstraint(
             ["address_id", "customer_id"],
             [f"{SCHEMA}.company_address.id", f"{SCHEMA}.company_address.customer_id"],
             name="fk_exporter_gstin_address",
             ondelete="RESTRICT",
+            use_alter=True,
         ),
         {"schema": SCHEMA},
     )

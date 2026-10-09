@@ -59,6 +59,9 @@ headless, which turns a Word, Excel, PowerPoint or CSV document into the PDF peo
 on screen; the backend image installs it) and `CRM_DOCUMENT_CONVERTER_TIMEOUT_SECONDS`
 (default `60`). Without LibreOffice on your machine those files show "Preview
 unavailable"; PDFs, images and text files are unaffected, and downloads work as before.
+A document that links outside itself (a linked image, an INCLUDETEXT field, an external
+workbook) is never converted, and the converter runs with an empty environment; outside
+local development, run it where the server's secrets are not (`remaining-work.md` R-65).
 
 Bank accounts: `FIELD_ENCRYPTION_KEYS` (see `.env.example`) encrypts account numbers
 and IBANs; without it, saving bank details answers 503 unless `ENVIRONMENT` is `local` or

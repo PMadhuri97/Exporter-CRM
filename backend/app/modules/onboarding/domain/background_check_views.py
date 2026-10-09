@@ -86,7 +86,7 @@ class BackgroundCheckMove:
     reason_required: bool
     risk_required: bool
     #: Maker-checker: this move is recorded as a proposal and takes effect only
-    #: when a different COMPLIANCE or ADMIN user approves it.
+    #: when a different COMPLIANCE user approves it.
     approval_required: bool = False
 
 
@@ -194,7 +194,7 @@ def proposal_actions(
 ) -> tuple[str, ...]:
     """What this viewer may do with ``proposal`` — role- **and user**-aware.
 
-    The proposer may only withdraw; any other COMPLIANCE or ADMIN user may approve or
+    The proposer may only withdraw; any other COMPLIANCE user may approve or
     reject. A stale proposal (the chain or the inputs moved) can no longer be approved,
     only rejected or withdrawn. Nothing on a resolved proposal.
     """

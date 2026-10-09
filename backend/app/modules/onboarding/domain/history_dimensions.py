@@ -79,7 +79,9 @@ ALL_DIMENSIONS: tuple[str, ...] = (
 #: Dimensions DEVELOPER does not receive from the history routes: the
 #: background check, its inputs, its cycles and its approvals carry the values,
 #: reasons, review notes and comments DEVELOPER is refused on their own routes. Who
-#: holds a review is compliance work too.
+#: holds a review is compliance work too. Sanctions screening rows name the screened
+#: people, the list entries they matched and each decision's reason — what the
+#: screening routes (``screening:view``) refuse DEVELOPER.
 HIDDEN_FROM_DEVELOPER: frozenset[str] = frozenset(
     {
         BACKGROUND_CHECK,
@@ -88,6 +90,7 @@ HIDDEN_FROM_DEVELOPER: frozenset[str] = frozenset(
         CHECK_CYCLE,
         BACKGROUND_CHECK_APPROVAL,
         BACKGROUND_CHECK_ASSIGNMENT,
+        SANCTIONS,
     }
 )
 

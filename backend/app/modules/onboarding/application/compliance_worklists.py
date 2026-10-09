@@ -16,9 +16,9 @@ notifications — the nav badges and the Home cards are counts and rows of these
 An unassigned review has no deadline: how long it waited to be picked up is its
 ``waiting_since``, a separate figure from the review clock.
 
-**Eligible checkers.** A proposal's approvers are the active COMPLIANCE and ADMIN users
+**Eligible checkers.** A proposal's approvers are the active COMPLIANCE users
 other than its proposer, the review's reviewer and the company's RM — and, for a CLEAR
-at HIGH or CRITICAL risk, only ADMIN and holders of ``compliance:approve_high_risk``.
+at HIGH or CRITICAL risk, only holders of ``compliance:approve_high_risk``.
 When that set is empty the item needs a lead's attention.
 
 No item carries an identifier, and only the information-request list carries text (the
@@ -84,7 +84,7 @@ from app.shared import clock
 Stage = Literal["review", "info", "approval"]
 View = Literal["awaiting", "mine", "in_review", "overdue", "needs_attention"]
 
-#: Views only ADMIN and holders of ``compliance:assign`` see.
+#: Views only holders of ``compliance:assign`` see.
 LEAD_VIEWS: frozenset[str] = frozenset({"in_review", "overdue", "needs_attention"})
 
 #: Rejections on one check after which a lead should look.

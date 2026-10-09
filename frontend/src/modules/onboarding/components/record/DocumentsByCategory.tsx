@@ -47,6 +47,9 @@ function Item({ document_ }: { document_: CrmDocument }) {
   // owns it because the row opened it, so a session of opening one document after
   // another does not hold every one of them in memory.
   const [viewing, setViewing] = useState<DocumentPreview | null>(null);
+  // An Office file is converted to PDF the first time it is read, which can take a
+  // while; the button says so and cannot start a second conversion meanwhile.
+  const [preparing, setPreparing] = useState(false);
 
   // Revoked when the viewer closes, and also when the row goes while it is open — the
   // user leaves the page, or a refetch drops the file — which a close handler alone
@@ -57,8 +60,13 @@ function Item({ document_ }: { document_: CrmDocument }) {
   }, [viewing]);
 
   async function showInApp() {
-    const preview = await view(document_);
-    if (preview) setViewing(preview);
+    setPreparing(true);
+    try {
+      const preview = await view(document_);
+      if (preview) setViewing(preview);
+    } finally {
+      setPreparing(false);
+    }
   }
 
   return (
@@ -88,11 +96,12 @@ function Item({ document_ }: { document_: CrmDocument }) {
           variant="subtle"
           className="shrink-0"
           onClick={() => void showInApp()}
+          loading={preparing}
           // The name carries the file, so rows are told apart by assistive tech; it opens
           // with the visible words, which is what a voice command will say.
           aria-label={`View document ${document_.file_name}`}
         >
-          View document
+          {preparing ? 'Preparing preview…' : 'View document'}
         </Button>
       )}
       {document_.is_downloadable && mayDownload && (

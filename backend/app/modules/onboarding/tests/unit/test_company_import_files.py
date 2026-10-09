@@ -142,6 +142,26 @@ def test_the_preview_reports_a_file_over_the_row_limit(monkeypatch):
     assert (preview.total_rows, preview.max_rows, preview.ready) == (2, 1, False)
 
 
+def test_a_long_workbook_is_counted_but_only_what_an_import_can_take_is_kept(monkeypatch):
+    from app.modules.onboarding.application import company_import_service
+
+    monkeypatch.setattr(company_import_service, "MAX_ROWS", 2)
+    content = _xlsx([TEMPLATE_COLUMNS, *[[f"Co {n}", "IN"] for n in range(5)]])
+    parsed = read_file("companies.xlsx", content)
+    assert (len(parsed.rows), parsed.total_rows) == (3, 5)
+    preview = preview_file("companies.xlsx", content)
+    assert (preview.total_rows, preview.ready) == (5, False)
+
+
+def test_a_workbook_longer_than_any_list_of_companies_is_refused_unread(monkeypatch):
+    from app.modules.onboarding.application import company_import_service
+
+    monkeypatch.setattr(company_import_service, "_XLSX_MAX_SHEET_ROWS", 3)
+    content = _xlsx([TEMPLATE_COLUMNS, *[[None] for _ in range(5)], ["Late Co", "IN"]])
+    with pytest.raises(ValidationError, match="at most"):
+        read_file("companies.xlsx", content)
+
+
 # ── Names for codes ───────────────────────────────────────────────────────────
 
 

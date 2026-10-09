@@ -119,8 +119,8 @@ _ORDERING = (
         "Every recorded change to this company: its journey, each of its three "
         "gauges, its marker and its deals, interleaved. Filter to one with "
         "`dimension`. DEVELOPER does not receive `background_check`, "
-        "`verification`, `screening`, `check_cycle` or `background_check_approval` "
-        "rows, nor a row's `risk_rating` or `clearing_decision_id` details, "
+        "`verification`, `screening`, `check_cycle`, `background_check_approval`, "
+        "`background_check_assignment` or `sanctions` rows, nor a row's `risk_rating` or `clearing_decision_id` details, "
         "nor a branch's flag and unflag rows or its `flag_status` "
         "detail. " + _ORDERING
     ),
@@ -140,8 +140,9 @@ async def list_company_history(
         description=(
             "Restrict to one dimension: journey, qualification, conversation, "
             "background_check, deal, marker, profile, verification, screening, "
-            "check_cycle, background_check_approval, gst_registration, trade or "
-            "pipeline."
+            "check_cycle, background_check_approval, gst_registration, trade, "
+            "pipeline, relationship_manager, background_check_assignment, contact, "
+            "address, bank_account, collections_owner, group or sanctions."
         ),
     ),
     limit: int = Query(default=50, ge=1, le=200),
@@ -172,7 +173,8 @@ async def list_company_history(
     description=(
         "Every recorded change to one deal, including the changes it caused "
         "elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does "
-        "not receive `background_check`, `verification` or `screening` rows, nor a "
+        "not receive `background_check`, `verification`, `screening` or `sanctions` "
+        "rows, nor a "
         "row's `risk_rating` or `clearing_decision_id` details, nor a "
         "branch's flag and unflag rows or its `flag_status` detail. " + _ORDERING
     ),

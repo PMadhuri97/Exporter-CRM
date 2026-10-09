@@ -216,21 +216,33 @@ class QualificationAutoEvaluator:
                 f"Automatic: {label}",
             )
         if source is AutoSource.DEAL_VALUE:
+            # Amounts in different currencies are never compared with each other or with
+            # the threshold: a currency unit picks its deals; with no currency unit the
+            # deals must all be in one currency, or there is no answer.
             unit = (criterion.unit or "").strip().upper()
-            statement = select(func.max(Deal.value_amount)).where(
-                Deal.company_id == profile.customer_id, Deal.value_amount.is_not(None)
+            by_currency = dict(
+                (
+                    await self._db.execute(
+                        select(Deal.currency, func.max(Deal.value_amount))
+                        .where(
+                            Deal.company_id == profile.customer_id,
+                            Deal.value_amount.is_not(None),
+                        )
+                        .group_by(Deal.currency)
+                    )
+                ).all()
             )
             if len(unit) == 3 and unit.isalpha():
-                statement = statement.where(Deal.currency == unit)
-            largest = await self._db.scalar(statement)
+                currency = unit
+            elif len(by_currency) == 1:
+                currency = next(iter(by_currency))
+            else:
+                return None
+            largest = by_currency.get(currency)
             result = threshold_result(largest, criterion.comparison, criterion.threshold)
             if result is None:
                 return None
-            return Answer(
-                result,
-                f"largest deal {unit + ' ' if len(unit) == 3 else ''}{largest:,.2f}",
-                f"Automatic: {label}",
-            )
+            return Answer(result, f"largest deal {currency} {largest:,.2f}", f"Automatic: {label}")
         return None
 
 

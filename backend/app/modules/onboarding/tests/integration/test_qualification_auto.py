@@ -157,3 +157,52 @@ async def test_an_auto_source_must_fit_the_kind_of_criterion():
                 ),
                 actor_id="test",
             )
+
+
+async def test_deal_values_in_different_currencies_are_never_compared():
+    """A currency unit picks its own deals; with no currency unit the deals must all be
+    in one currency, or there is no answer at all."""
+    from types import SimpleNamespace
+
+    from sqlalchemy import select
+
+    from app.modules.onboarding.application.deal_service import DealService, DealTerms
+    from app.modules.onboarding.application.qualification_auto_service import (
+        QualificationAutoEvaluator,
+    )
+    from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
+    from app.modules.onboarding.domain.qualification_auto import AutoSource
+    from app.modules.onboarding.tests.fixtures.companies import make_prospect
+
+    company_id = await make_prospect()
+    for amount, currency in (("90000", "INR"), ("2000", "USD")):
+        async with db_services.AsyncSessionLocal() as db:
+            await DealService(db).open_deal(
+                company_id,
+                reference=f"VAL-{uuid.uuid4().hex[:8]}",
+                actor_id="test",
+                terms=DealTerms(
+                    sent=frozenset({"value_amount", "currency"}),
+                    value_amount=Decimal(amount),
+                    currency=currency,
+                ),
+            )
+
+    def at_least(threshold: int, unit: str | None):
+        return SimpleNamespace(
+            comparison=ThresholdComparison.AT_LEAST, threshold=Decimal(threshold), unit=unit
+        )
+
+    async with db_services.AsyncSessionLocal() as db:
+        profile = await db.scalar(
+            select(ExporterProfile).where(ExporterProfile.customer_id == company_id)
+        )
+        evaluator = QualificationAutoEvaluator(db)
+        # 90,000 INR is not "at least 5,000" USD: only the USD deal counts.
+        usd = await evaluator._answer(AutoSource.DEAL_VALUE, at_least(5000, "USD"), profile)
+        assert usd is not None and usd.result is CriterionResultValue.FAIL
+        assert usd.observed == "largest deal USD 2,000.00"
+        inr = await evaluator._answer(AutoSource.DEAL_VALUE, at_least(5000, "inr"), profile)
+        assert inr is not None and inr.result is CriterionResultValue.PASS
+        # No currency unit and two currencies: nothing to compare.
+        assert await evaluator._answer(AutoSource.DEAL_VALUE, at_least(5000, None), profile) is None

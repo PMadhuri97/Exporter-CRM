@@ -115,6 +115,9 @@ _KNOWN_COLUMNS: frozenset[str] = frozenset(
 #: 5,000 would run for about four, past a typical proxy timeout, leaving the
 #: user an error while rows kept saving. A larger file needs a background job.
 MAX_ROWS = 1000
+#: How far down a workbook's sheet is read at all — blank rows included — before the
+#: file is refused: past what any real list of companies needs.
+_XLSX_MAX_SHEET_ROWS = 50 * MAX_ROWS
 
 #: The sheet of an Excel file that holds the companies. A workbook with a single
 #: sheet is read whatever that sheet is called.
@@ -196,10 +199,16 @@ class ParsedFile:
     """A file as read: its header, and every non-blank data row with its line.
 
     A row is a mapping of column to cell text, like ``csv.DictReader`` gives;
-    cells past the header's last column sit under the key ``None``."""
+    cells past the header's last column sit under the key ``None``. A workbook's
+    rows past what an import can take are counted (``uncollected``) but not kept."""
 
     header: list[str]
     rows: list[tuple[int, dict]]
+    uncollected: int = 0
+
+    @property
+    def total_rows(self) -> int:
+        return len(self.rows) + self.uncollected
 
 
 @dataclass
@@ -397,7 +406,7 @@ def preview_file(file_name: str | None, content: bytes) -> ImportPreview:
             )
             for line, raw in parsed.rows[:PREVIEW_ROWS]
         ],
-        total_rows=len(parsed.rows),
+        total_rows=parsed.total_rows,
         missing_columns=missing,
         unknown_columns=unknown,
         duplicate_columns=duplicate,
@@ -446,7 +455,7 @@ def _checked_rows(parsed: ParsedFile) -> list[tuple[int, dict]]:
             "The file's header must be exactly the template's columns: "
             + ", ".join(TEMPLATE_COLUMNS)
         )
-    if len(parsed.rows) > MAX_ROWS:
+    if parsed.total_rows > MAX_ROWS:
         raise ValidationError(f"A file may hold at most {MAX_ROWS} rows")
     return parsed.rows
 
@@ -477,7 +486,11 @@ def _read_csv(lines: Iterable[str]) -> ParsedFile:
 def _read_xlsx(content: bytes) -> ParsedFile:
     """The *Companies* sheet of an Excel workbook (or its only sheet), read like a
     CSV: the first row is the header, blank rows are skipped, and each row keeps
-    its sheet row number."""
+    its sheet row number.
+
+    A small upload can unpack into a vast sheet, so only the rows an import could take
+    (and one more) are kept; the rest are counted, and a sheet longer than
+    ``_XLSX_MAX_SHEET_ROWS`` is refused without reading on."""
     try:
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except (zipfile.BadZipFile, InvalidFileException, KeyError, OSError, ValueError) as exc:
@@ -494,13 +507,19 @@ def _read_xlsx(content: bytes) -> ParsedFile:
             )
         header: list[str] | None = None
         rows: list[tuple[int, dict]] = []
+        uncollected = 0
         for number, values in enumerate(sheet.iter_rows(values_only=True), start=1):
+            if number > _XLSX_MAX_SHEET_ROWS:
+                raise ValidationError(f"A file may hold at most {MAX_ROWS} rows")
             cells = _trimmed([_cell_text(value) for value in values])
             if header is None:
                 header = [c.strip() for c in cells]
                 continue
             if not any(c.strip() for c in cells):
                 continue  # a blank row
+            if len(rows) > MAX_ROWS:
+                uncollected += 1
+                continue
             raw: dict = {column: (cells[i] if i < len(cells) else "") for i, column in enumerate(header)}
             extra = [c for c in cells[len(header):] if c.strip()]
             if extra:
@@ -508,7 +527,7 @@ def _read_xlsx(content: bytes) -> ParsedFile:
             rows.append((number, raw))
     finally:
         workbook.close()
-    return ParsedFile(header=header or [], rows=rows)
+    return ParsedFile(header=header or [], rows=rows, uncollected=uncollected)
 
 
 def _trimmed(cells: list[str]) -> list[str]:

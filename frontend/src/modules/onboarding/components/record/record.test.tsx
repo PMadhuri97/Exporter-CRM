@@ -305,6 +305,28 @@ describe('DocumentsByCategory', () => {
     expect(screen.queryByRole('button', { name: /^Download/ })).not.toBeInTheDocument();
   });
 
+  it('says "Preparing preview…" while an Office file is converted, and cannot start a second one', async () => {
+    let finish!: (blob: Blob) => void;
+    vi.mocked(fetchDocumentPreview).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const documents = [
+      file({
+        file_name: 'contract.docx',
+        content_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+    ];
+    wrap(<DocumentsByCategory isLoading={false} emptyMessage="None" documents={documents} required={[]} />);
+
+    const button = screen.getByRole('button', { name: 'View document contract.docx' });
+    fireEvent.click(button);
+    expect(await screen.findByText('Preparing preview…')).toBeInTheDocument();
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(fetchDocumentPreview).toHaveBeenCalledTimes(1);
+
+    finish(new Blob(['pdf'], { type: 'application/pdf' }));
+    await waitFor(() => expect(screen.queryByText('Preparing preview…')).not.toBeInTheDocument());
+  });
+
   it('reads a document in a panel from the preview, saves the original, and frees it when it goes', async () => {
     vi.mocked(fetchDocumentPreview).mockResolvedValue(new Blob(['png'], { type: 'image/png' }));
     vi.mocked(createDownloadLink).mockResolvedValue({

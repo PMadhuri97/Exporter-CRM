@@ -10,7 +10,7 @@ from. Each source fits one kind of criterion:
 | ``INDUSTRY`` | allowed values | The company's industry is one of them |
 | ``EXPORT_MARKETS`` | allowed values | Any of the company's export markets is one of them |
 | ``TRADE_HISTORY`` | yes/no | Pass if at least one export is recorded |
-| ``DEAL_VALUE`` | number | The largest deal value (in the criterion's unit, when that is a currency) |
+| ``DEAL_VALUE`` | number | The largest deal value in the criterion's currency unit; with no currency unit, only when every valued deal is in one currency |
 
 These functions only judge; they never decide that nothing is known. ``None`` means
 "no answer to give" — the evaluator then writes nothing, rather than an Unknown.

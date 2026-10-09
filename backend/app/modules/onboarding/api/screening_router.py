@@ -7,8 +7,8 @@ every path stays `/onboarding/exporters/...`.
 
 The list serves the one screening catalogue and the caller's
 capabilities, so the frontend keeps neither a key list nor a role list; unknown
-companies are 404; each item's history is readable. Roles are unchanged — read
-OPERATIONS/COMPLIANCE/ADMIN, write COMPLIANCE/ADMIN; DEVELOPER stays refused
+companies are 404; each item's history is readable. Read with ``screening:view``
+(OPERATIONS, COMPLIANCE, ADMIN), write with ``screening:decide`` (COMPLIANCE); DEVELOPER stays refused
 (decided 28 Sep 2026: no widening). Each decision is also recorded in the
 company history under the `screening` dimension.
 

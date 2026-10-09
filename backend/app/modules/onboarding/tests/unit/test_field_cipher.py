@@ -66,3 +66,10 @@ def test_a_malformed_key_is_refused(keys):
     keys("a:short")
     with pytest.raises(ValueError, match="FIELD_ENCRYPTION_KEYS"):
         encrypt_field("x", purpose="p")
+
+
+@pytest.mark.parametrize("damaged", ["v1.a.not base64!", "v1.a.AAAA", "v1.a.", "v2.a.AAAA", "plain"])
+def test_a_damaged_stored_value_is_a_decryption_error_not_a_crash(keys, damaged):
+    keys(f"a:{KEY_A}")
+    with pytest.raises(FieldDecryptionError):
+        decrypt_field(damaged, purpose="p")

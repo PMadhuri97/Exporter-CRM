@@ -19,6 +19,7 @@ import { useCan } from '@/platform/access';
 
 import { CompanyBadges } from '../components';
 import { JOURNEY_LABEL, JOURNEY_STAGES } from '../constants';
+import { countryLabel } from '../countries';
 import { useExporterProfiles, usePrefetchCompany } from '../hooks';
 import { preloadExporterDetailPage } from '../lazyPages';
 import { paths } from '../paths';
@@ -99,7 +100,7 @@ function nextStep(profile: ExporterProfileListItem): NextStep | null {
 function factsLine(profile: ExporterProfileListItem): string | null {
   const parts = [
     profile.industry,
-    profile.country,
+    profile.country ? countryLabel(profile.country) : null,
     profile.relationship_manager_name ? `RM ${profile.relationship_manager_name}` : null,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : null;

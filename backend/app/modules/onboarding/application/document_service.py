@@ -33,11 +33,11 @@ from app.modules.audit import ActorType, AuditService
 from app.modules.onboarding.application.document_preview import (
     READY,
     UNAVAILABLE,
-    base_type,
     convert_to_pdf,
     is_convertible,
     is_shown_as_is,
     preview_key,
+    preview_media_type,
 )
 from app.modules.onboarding.application.storage_service import (
     DocumentNotServableError,
@@ -323,8 +323,8 @@ class DocumentService:
     async def read_preview(self, document_id: uuid.UUID) -> tuple[CrmDocument, str, bytes]:
         """What a reader sees on screen: ``(document, content type, bytes)``.
 
-        A PDF, an image or a text file is its own preview. A Word, Excel, PowerPoint
-        or CSV file is converted to PDF on its first view, under the row lock so two
+        A PDF, an image or a text file is its own preview (a CSV is served as plain
+        text). A Word, Excel or PowerPoint file is converted to PDF on its first view, under the row lock so two
         first readers convert it once, and the PDF is kept beside the original. Refused
         like content for a document that has not passed the scan step, and with
         ``DocumentPreviewUnavailableError`` for a type with no preview or a conversion
@@ -336,7 +336,7 @@ class DocumentService:
             content = await self._storage.read(
                 document.storage_key, scan_status=document.scan_status
             )
-            return document, base_type(document.content_type), content
+            return document, preview_media_type(document.content_type), content
         if not is_convertible(document.content_type):
             raise DocumentPreviewUnavailableError(document_id)
 

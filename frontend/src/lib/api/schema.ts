@@ -2053,7 +2053,7 @@ export interface paths {
         };
         /**
          * A company's history
-         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details, nor a branch's flag and unflag rows or its `flag_status` detail. Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
+         * @description Every recorded change to this company: its journey, each of its three gauges, its marker and its deals, interleaved. Filter to one with `dimension`. DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle`, `background_check_approval`, `background_check_assignment` or `sanctions` rows, nor a row's `risk_rating` or `clearing_decision_id` details, nor a branch's flag and unflag rows or its `flag_status` detail. Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
          */
         get: operations["list_company_history_api_v1_onboarding_exporters__customer_id__history_get"];
         put?: never;
@@ -2073,7 +2073,7 @@ export interface paths {
         };
         /**
          * A deal's history
-         * @description Every recorded change to one deal, including the changes it caused elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does not receive `background_check`, `verification` or `screening` rows, nor a row's `risk_rating` or `clearing_decision_id` details, nor a branch's flag and unflag rows or its `flag_status` detail. Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
+         * @description Every recorded change to one deal, including the changes it caused elsewhere (the conversation it moved, checks on its buyer). DEVELOPER does not receive `background_check`, `verification`, `screening` or `sanctions` rows, nor a row's `risk_rating` or `clearing_decision_id` details, nor a branch's flag and unflag rows or its `flag_status` detail. Newest first. `created_at` defaults to the transaction clock, so rows written in one transaction share a timestamp; `id` breaks the tie so paging is stable, though between two such rows the order is deterministic rather than chronological.
          */
         get: operations["list_deal_history_api_v1_onboarding_deals__deal_id__history_get"];
         put?: never;
@@ -3669,7 +3669,7 @@ export interface components {
             risk_required: boolean;
             /**
              * Approval Required
-             * @description Maker-checker: recording this move creates a proposal that a different COMPLIANCE or ADMIN user must approve before the check moves.
+             * @description Maker-checker: recording this move creates a proposal that a different COMPLIANCE user must approve before the check moves.
              * @default false
              */
             approval_required: boolean;
@@ -3764,7 +3764,7 @@ export interface components {
             stale_reason?: string | null;
             /**
              * Allowed Actions
-             * @description What **this caller** may do with it: the proposer may WITHDRAW; another COMPLIANCE or ADMIN user may APPROVE (unless stale) and REJECT — unless they are the review's reviewer or the company's RM, and APPROVE a HIGH or CRITICAL CLEAR only as a senior checker. ADMIN and holders of compliance:assign may also WITHDRAW.
+             * @description What **this caller** may do with it: the proposer may WITHDRAW; another COMPLIANCE user may APPROVE (unless stale) and REJECT — unless they are the review's reviewer or the company's RM, and APPROVE a HIGH or CRITICAL CLEAR only as a senior checker. Holders of compliance:assign may also WITHDRAW.
              */
             allowed_actions?: ("APPROVE" | "REJECT" | "WITHDRAW")[];
             /**
@@ -5186,7 +5186,7 @@ export interface components {
         /**
          * DealBuyerResponse
          * @description The deal's buyer. The identifiers and contact details are masked for
-         *     OPERATIONS and DEVELOPER; COMPLIANCE and ADMIN see them in full.
+         *     OPERATIONS, the administrator and DEVELOPER; COMPLIANCE sees them in full.
          */
         DealBuyerResponse: {
             /**
@@ -15191,7 +15191,7 @@ export interface operations {
     list_company_history_api_v1_onboarding_exporters__customer_id__history_get: {
         parameters: {
             query?: {
-                /** @description Restrict to one dimension: journey, qualification, conversation, background_check, deal, marker, profile, verification, screening, check_cycle, background_check_approval, gst_registration, trade or pipeline. */
+                /** @description Restrict to one dimension: journey, qualification, conversation, background_check, deal, marker, profile, verification, screening, check_cycle, background_check_approval, gst_registration, trade, pipeline, relationship_manager, background_check_assignment, contact, address, bank_account, collections_owner, group or sanctions. */
                 dimension?: string | null;
                 limit?: number;
                 offset?: number;

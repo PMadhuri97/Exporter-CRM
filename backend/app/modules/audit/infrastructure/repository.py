@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,14 +60,26 @@ class AuditEventRepository(AppendOnlyRepository[AuditEvent]):
         return result.scalars().all()
 
     async def list_for_subject(
-        self, subject_type: str, subject_id: str, *, skip: int = 0, limit: int = 100
+        self,
+        subject_type: str,
+        subject_id: str,
+        *,
+        event_types: Collection[str] | None = None,
+        skip: int = 0,
+        limit: int = 100,
     ) -> tuple[Sequence[AuditEvent], int]:
         """Newest first — every event whose payload names this subject
-        (``payload.subject_type`` / ``payload.subject_id``), with the total."""
-        criteria = (
+        (``payload.subject_type`` / ``payload.subject_id``), with the total.
+
+        The payload is not indexed, so a caller that knows which event types it wants
+        names them: the lookup then walks ``ix_audit_events_event_type_created_at``
+        instead of the whole, ever-growing trail."""
+        criteria = [
             AuditEvent.payload["subject_type"].astext == subject_type,
             AuditEvent.payload["subject_id"].astext == subject_id,
-        )
+        ]
+        if event_types is not None:
+            criteria.append(AuditEvent.event_type.in_(sorted(event_types)))
         result = await self.session.execute(
             select(AuditEvent)
             .where(*criteria)

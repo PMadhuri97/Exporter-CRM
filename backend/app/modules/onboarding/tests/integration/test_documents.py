@@ -857,6 +857,23 @@ async def test_a_failed_conversion_says_preview_unavailable_and_keeps_the_origin
     assert detail.json()["is_downloadable"] is True  # the original is untouched
 
 
+async def test_a_csv_is_read_on_screen_as_plain_text_without_a_conversion(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    from app.modules.onboarding.application import document_service
+
+    async def must_not_convert(content: bytes, content_type: str) -> None:
+        raise AssertionError("a CSV is never converted")
+
+    monkeypatch.setattr(document_service, "convert_to_pdf", must_not_convert)
+    rm = await token_with_role(client, UserRole.OPERATIONS)
+    document_id = await _upload_as(client, rm, "ledger.csv", b"a,b\n1,2\n", "text/csv")
+    preview = await client.get(f"{BASE}/documents/{document_id}/preview", headers=auth_header(rm))
+    assert preview.status_code == 200, preview.text
+    assert preview.headers["content-type"].startswith("text/plain")
+    assert preview.content == b"a,b\n1,2\n"
+
+
 async def test_a_zip_has_no_preview(client: AsyncClient):
     rm = await token_with_role(client, UserRole.OPERATIONS)
     document_id = await _upload_as(client, rm, "bundle.zip", b"PK\x03\x04", "application/zip")

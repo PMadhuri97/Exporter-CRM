@@ -15,9 +15,14 @@
 >
 > **Documents.** `documents:view` (OPERATIONS, COMPLIANCE, ADMIN, DEVELOPER) lists
 > documents and reads them on screen through `GET /documents/{id}/preview`: a PDF, an image
-> or plain text as it is, a Word/Excel/PowerPoint/CSV file as a PDF converted by LibreOffice
-> on its first view and kept beside the original (`crm_document.preview_status`,
-> `preview_storage_key`; migration `onboarding_0045_doc_previews`). The preview is served
+> or plain text as it is (a CSV as plain text), a Word/Excel/PowerPoint file as a PDF
+> converted by LibreOffice on its first view and kept beside the original
+> (`crm_document.preview_status`, `preview_storage_key`; migration
+> `onboarding_0045_doc_previews`). A file that links outside itself — an external
+> relationship other than a hyperlink, an INCLUDETEXT/INCLUDEPICTURE/LINK/DDE field, an
+> external workbook or a formula that reaches out, or their marks in an old binary file — is
+> never converted and has no preview (`document_preview.external_reference`); the converter
+> runs with an empty environment. The preview is served
 > inline with a sandboxing CSP, `nosniff` and `no-store`. **Saving a copy** — the download
 > link and `GET /documents/content` — needs `documents:download` (COMPLIANCE by default).
 > Every view and download is written to the audit trail (`document.viewed`,

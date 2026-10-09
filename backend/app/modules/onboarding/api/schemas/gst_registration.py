@@ -25,7 +25,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 from app.platform.authentication.models import User, UserRole
 
 #: The GST portal's own search page. The link is built per registration so a
-#: COMPLIANCE or ADMIN user can check a GSTIN against the source without copying it
+#: reader who sees GSTINs in full can check one against the source without copying it
 #: out by hand. Not an API we call: it is a page for a person.
 GST_PORTAL_SEARCH = "https://services.gst.gov.in/services/searchtp?tin="
 

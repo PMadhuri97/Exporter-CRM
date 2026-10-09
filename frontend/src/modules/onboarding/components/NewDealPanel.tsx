@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { Field, Input, SidePanel, sidePanelFieldError } from '@/components';
 
 import { JOURNEY_LABEL } from '../constants';
+import { countryLabel } from '../countries';
 import { useOpenDealOnCompany } from '../hooks';
 import { paths } from '../paths';
 import type { ExporterProfileListItem } from '../types';
@@ -33,7 +34,7 @@ function sellerUnavailableReason(company: ExporterProfileListItem): string | nul
 }
 
 function describeSeller(company: ExporterProfileListItem): string {
-  return [company.country, company.pipeline_status === 'NOT_IN_PIPELINE' ? null : JOURNEY_LABEL[company.journey]]
+  return [countryLabel(company.country), company.pipeline_status === 'NOT_IN_PIPELINE' ? null : JOURNEY_LABEL[company.journey]]
     .filter(Boolean)
     .join(' · ');
 }

@@ -188,7 +188,7 @@ describe('PipelinePage — the three-column journey', () => {
     renderPage();
 
     const customer = await screen.findByRole('region', { name: 'Customer' });
-    expect(await within(customer).findByText('Spices · IN · RM Srikar')).toBeInTheDocument();
+    expect(await within(customer).findByText('Spices · India · RM Srikar')).toBeInTheDocument();
     // The country used to sit alone in the corner, where "IN" said nothing.
     expect(within(customer).queryByText('IN', { exact: true })).not.toBeInTheDocument();
     // A customer's next step is "trade", which the column note already says once.

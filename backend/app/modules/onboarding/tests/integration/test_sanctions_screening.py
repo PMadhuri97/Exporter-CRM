@@ -186,6 +186,35 @@ async def test_a_rejected_true_match_goes_back_to_open_and_lifts_the_flag(client
     assert coverage["standing"] == "REVIEW"
 
 
+async def test_a_true_match_still_flags_the_company_after_a_re_check_starts(client: AsyncClient):
+    """A new cycle screens afresh, but it does not wash a match away: the flag follows
+    each subject's latest screening, in whatever cycle, until it is screened again."""
+    from app.modules.onboarding.tests.integration._compliance_support import (
+        cleared_company,
+        start_cycle,
+    )
+
+    _, officer = await user_with_role(client, UserRole.COMPLIANCE)
+    company_id = await cleared_company(await make_company())
+    proposed = await _record(
+        client, officer, company_id,
+        hits=[{**HIT, "disposition": "TRUE_MATCH", "reason": "Same name and address"}],
+    )
+    assert proposed.status_code == 201, proposed.text
+    url = f"{BASE}/exporters/{company_id}/sanctions"
+    assert (await client.get(url, headers=auth_header(officer))).json()["flagged"] is True
+
+    await start_cycle(company_id)
+    after = (await client.get(url, headers=auth_header(officer))).json()
+    assert after["flagged"] is True
+    assert after["standing"] is None  # the new cycle has not screened the company yet
+
+    assert (await _record(client, officer, company_id)).status_code == 201
+    rescreened = (await client.get(url, headers=auth_header(officer))).json()
+    assert rescreened["flagged"] is False
+    assert rescreened["standing"] == "PASSED"
+
+
 async def test_a_flagged_seller_cannot_hand_over(client: AsyncClient):
     from app.modules.onboarding.tests.fixtures.companies import make_prospect
 
@@ -262,7 +291,28 @@ async def test_an_rm_reads_screenings_but_may_not_record_them_and_developer_read
     ).status_code == 403
 
 
-def test_hits_and_decisions_cannot_be_changed_or_deleted():
+async def test_developer_is_not_served_sanctions_history(client: AsyncClient):
+    """The history rows carry the screened names, the matches and each decision's
+    reason — what the screening routes refuse DEVELOPER."""
+    _, officer = await user_with_role(client, UserRole.COMPLIANCE)
+    _, developer = await user_with_role(client, UserRole.DEVELOPER)
+    company_id = await make_company()
+    assert (await _record(client, officer, company_id, hits=[HIT])).status_code == 201
+    url = f"{BASE}/exporters/{company_id}/history"
+
+    staff = await client.get(url, headers=auth_header(officer))
+    assert "sanctions" in {entry["dimension"] for entry in staff.json()["entries"]}
+
+    everything = await client.get(url, headers=auth_header(developer))
+    assert everything.status_code == 200
+    assert "sanctions" not in {entry["dimension"] for entry in everything.json()["entries"]}
+    filtered = await client.get(
+        url, params={"dimension": "sanctions"}, headers=auth_header(developer)
+    )
+    assert filtered.json()["entries"] == [] and filtered.json()["total"] == 0
+
+
+async def test_hits_and_decisions_cannot_be_changed_or_deleted():
     conn = _connect()
     try:
         with conn.cursor() as cursor:

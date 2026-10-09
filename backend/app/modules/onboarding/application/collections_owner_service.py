@@ -5,9 +5,9 @@ The rules follow the relationship manager's:
 * naming, changing or clearing a collections owner needs ``exporters:assign_collector``
   (COMPLIANCE and whoever may assign relationship managers);
 * changing or clearing one already named needs a reason;
-* the owner is any **active staff** user — collectors are usually finance staff, and
-  there is no finance role yet, so OPERATIONS, COMPLIANCE and ADMIN accounts may all be
-  named;
+* the owner is an **active** relationship manager or compliance officer — collectors
+  are usually finance staff, and there is no finance role yet; the administrator runs
+  the system and works no company, so is never named;
 * the caller says which owner they saw (``seen_user_id``), so a screen that is out of
   date is refused rather than overwriting someone else's change;
 * each change writes one ``collections_owner`` history row with both names as they
@@ -39,8 +39,10 @@ from app.shared.exceptions import ValidationError
 logger = structlog.get_logger(__name__)
 
 ASSIGN_COLLECTOR = ("exporters", "assign_collector")
-#: Who may be named: any staff account. API_USER and DEVELOPER never collect.
-COLLECTOR_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE, UserRole.ADMIN})
+#: Who may be named: the people who work the business — relationship managers and
+#: compliance. The administrator runs the system and works no company; API_USER and
+#: DEVELOPER never collect.
+COLLECTOR_ROLES = frozenset({UserRole.OPERATIONS, UserRole.COMPLIANCE})
 UNASSIGNED = "UNASSIGNED"
 
 
@@ -194,7 +196,10 @@ class CollectionsOwnerService:
         if not member.is_active:
             raise ValidationError("That account is deactivated")
         if member.role not in COLLECTOR_ROLES:
-            raise ValidationError("Only a staff member can own a company's collections")
+            raise ValidationError(
+                "Only a relationship manager or a compliance officer can own a company's "
+                "collections"
+            )
 
     async def _lock(self, customer_id: uuid.UUID) -> ExporterProfile:
         profile = await self._db.scalar(

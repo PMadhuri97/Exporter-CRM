@@ -61,6 +61,17 @@ async def test_an_rm_and_the_admin_may_not_name_one_but_a_sales_lead_may(client:
     assert (await _assign(client, lead, company_id, owner_id)).status_code == 200
 
 
+async def test_the_administrator_and_developer_cannot_be_named(client: AsyncClient):
+    _, compliance = await user_with_role(client, UserRole.COMPLIANCE)
+    admin_id, _ = await user_with_role(client, UserRole.ADMIN)
+    developer_id, _ = await user_with_role(client, UserRole.DEVELOPER)
+    company_id = await make_company()
+
+    for user_id in (admin_id, developer_id):
+        refused = await _assign(client, compliance, company_id, user_id)
+        assert refused.status_code == 422, refused.text
+
+
 async def test_a_change_needs_a_reason_and_a_stale_screen_is_refused(client: AsyncClient):
     _, compliance = await user_with_role(client, UserRole.COMPLIANCE)
     first, _ = await user_with_role(client, UserRole.OPERATIONS)

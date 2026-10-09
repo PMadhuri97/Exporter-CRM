@@ -51,7 +51,9 @@ export function EvidenceList({
   const { open: save, view, isSaving } = useOpenDocument();
   const mayDownload = useHasPermission('documents:download');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // The document being opened: an Office file is converted on its first read, which
+  // can take a while.
+  const [busy, setBusy] = useState<string | null>(null);
   const [viewing, setViewing] = useState<{ document_: CrmDocument; preview: DocumentPreview } | null>(
     null,
   );
@@ -75,7 +77,7 @@ export function EvidenceList({
 
   async function read(documentId: string) {
     setError(null);
-    setBusy(true);
+    setBusy(documentId);
     try {
       const document_ = await servable(documentId);
       if (!document_) return;
@@ -88,7 +90,7 @@ export function EvidenceList({
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not open that document.');
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -116,11 +118,11 @@ export function EvidenceList({
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 font-medium text-ink hover:underline disabled:opacity-50"
-                    disabled={busy}
+                    disabled={busy !== null}
                     onClick={() => void read(ref.ref)}
                     aria-label={`View evidence document ${ref.ref}`}
                   >
-                    <Icon.reveal size={12} /> View
+                    <Icon.reveal size={12} /> {busy === ref.ref ? 'Preparing preview…' : 'View'}
                   </button>
                   {mayDownload && (
                     <button

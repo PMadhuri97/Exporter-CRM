@@ -155,8 +155,8 @@ class ExporterContactResponse(BaseModel):
         )
 
     def masked_for(self, viewer: User) -> ExporterContactResponse:
-        """Same reveal rule as the exporter's identifiers: COMPLIANCE and ADMIN
-        see the contact's real email and phone, everyone else sees them
+        """Same reveal rule as the exporter's identifiers: COMPLIANCE (a holder of
+        ``exporters:view_full_tax_id``) sees the contact's real email and phone, everyone else sees them
         masked."""
         if can_reveal_identifiers(viewer):
             return self

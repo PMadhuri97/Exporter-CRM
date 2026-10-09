@@ -1644,7 +1644,7 @@ class CheckCycleEmptyError(AnerBaseException):
 
 
 class CheckCycleRoleNotAllowedError(AnerBaseException):
-    """Only COMPLIANCE and ADMIN may start a check cycle. 403."""
+    """Only COMPLIANCE may start a check cycle. 403."""
 
     def __init__(self, role: object) -> None:
         super().__init__(

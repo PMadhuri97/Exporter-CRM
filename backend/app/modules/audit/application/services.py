@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Collection
 
 import structlog
 import structlog.contextvars
@@ -97,13 +98,21 @@ class AuditService:
         return self._page(events, total=total, limit=limit, offset=offset)
 
     async def list_for_subject(
-        self, subject_type: str, subject_id: uuid.UUID, *, limit: int = 100, offset: int = 0
+        self,
+        subject_type: str,
+        subject_id: uuid.UUID,
+        *,
+        event_types: Collection[str] | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> AuditEventListResponse:
         """Every event about one subject — a user account, a role — newest first.
         The writer names the subject in the payload (``subject_type``,
-        ``subject_id``); nothing else about the payload is assumed."""
+        ``subject_id``); nothing else about the payload is assumed. Name the
+        ``event_types`` wanted wherever they are known: that is what keeps the lookup on
+        an index."""
         events, total = await self._repo.list_for_subject(
-            subject_type, str(subject_id), skip=offset, limit=limit
+            subject_type, str(subject_id), event_types=event_types, skip=offset, limit=limit
         )
         return self._page(events, total=total, limit=limit, offset=offset)
 

@@ -22,7 +22,9 @@
 > `deal_terms_changed`). A closed deal's terms are frozen by
 > `prevent_terminal_deal_change()`, and the handover snapshot gains `terms` (absent on a
 > snapshot backfilled before terms existed). The handover guard gains a condition after
-> the background check: *the company has no active primary contact*.
+> the background check: *the company has no active primary contact*; and, after it, *the
+> company is flagged by a sanctions match* — a true match proposed or confirmed on any of
+> its subjects' latest screenings, in whatever cycle (`verification-and-screening.md`).
 
 **Owner:** Developer 2 (post-demo allocation; Developer 3B before it) · **Tables:**
 `onboarding.deal`, `onboarding.deal_buyer`, `onboarding.deal_required_document` ·
