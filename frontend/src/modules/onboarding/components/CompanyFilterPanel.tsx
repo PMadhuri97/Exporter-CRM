@@ -53,11 +53,47 @@ function withValue<K extends keyof CompanyFilters>(
   return next;
 }
 
+/**
+ * The three filters that live in the URL rather than in `CompanyFilters`.
+ *
+ * `?owner=`, `?contact=` and `?collections=` are lenses: a link to one can be shared,
+ * and *My companies* is `?owner=me` with its own row in the side navigation. They are
+ * shown here with the rest so the bar holds the few used on every visit, but they keep
+ * their own state — folding them into `CompanyFilters` would change what a shared link
+ * means.
+ */
+export interface CompanyLenses {
+  owner: string;
+  contacts: string;
+  collections: string;
+}
+
+const LENS_LABEL: Record<keyof CompanyLenses, string> = {
+  owner: 'Owner',
+  contacts: 'Contacts',
+  collections: 'Collections owner',
+};
+
+/** What each lens offers, after its own "Any". */
+const LENS_OPTIONS: Record<keyof CompanyLenses, { value: string; label: string }[]> = {
+  owner: [
+    { value: 'none', label: 'Unassigned' },
+    { value: 'inactive', label: 'RM deactivated' },
+  ],
+  contacts: [{ value: 'missing', label: 'No primary contact' }],
+  collections: [
+    { value: 'me', label: 'My collections' },
+    { value: 'none', label: 'No collections owner' },
+  ],
+};
+
 export function CompanyFilterPanel({
   applied,
+  lenses,
   shown,
   loading,
   onChange,
+  onLensChange,
   onClose,
 }: {
   /** The filters in force; the controls read from these. */
@@ -67,6 +103,11 @@ export function CompanyFilterPanel({
    * page on screen. The two differ by a page size, which is how "50 shown" appeared
    * against a filter matching 185.
    */
+  /**
+   * The URL-backed lenses. `owner` is absent from the panel on *My companies*, where
+   * the page itself is the lens and a second way to say it would contradict the title.
+   */
+  lenses: CompanyLenses;
   shown: number;
   loading: boolean;
   /**
@@ -74,6 +115,8 @@ export function CompanyFilterPanel({
    * function each render would restart the timer on every render and never fire.
    */
   onChange: Dispatch<SetStateAction<CompanyFilters>>;
+  /** `'ANY'` clears a lens, matching what the URL state treats as not filtering. */
+  onLensChange: (key: keyof CompanyLenses, value: string) => void;
   onClose: () => void;
 }) {
   const [industry, setIndustry] = useState(applied.industry ?? '');
@@ -122,7 +165,10 @@ export function CompanyFilterPanel({
     </label>
   );
 
-  const count = Object.keys(applied).length;
+  const setLenses = (Object.keys(LENS_LABEL) as (keyof CompanyLenses)[]).filter(
+    (key) => lenses[key] !== 'ANY',
+  );
+  const count = Object.keys(applied).length + setLenses.length;
 
   return (
     <Sheet
@@ -141,6 +187,7 @@ export function CompanyFilterPanel({
             onClick={() => {
               setIndustry('');
               onChange({});
+              for (const key of setLenses) onLensChange(key, 'ANY');
             }}
           >
             Clear all
@@ -221,6 +268,31 @@ export function CompanyFilterPanel({
             Matches any part of the industry, so &ldquo;ma&rdquo; finds &ldquo;Marine exports&rdquo;.
           </span>
         </label>
+
+        {/* Who holds the company, and what it is missing. Last because they answer
+            "whose work is this" rather than "what kind of company is this", which is
+            what everything above asks. */}
+        {(Object.keys(LENS_LABEL) as (keyof CompanyLenses)[]).map((key) =>
+          // On My companies the owner is the page itself.
+          key === 'owner' && lenses.owner === 'me' ? null : (
+            <label key={key} className="block text-caption font-medium text-ink-2">
+              {LENS_LABEL[key]}
+              <Select
+                aria-label={LENS_LABEL[key]}
+                className="mt-1"
+                value={lenses[key] === 'ANY' ? '' : lenses[key]}
+                onChange={(event) => onLensChange(key, event.target.value || 'ANY')}
+              >
+                <option value="">Any</option>
+                {LENS_OPTIONS[key].map(({ value, label }) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ),
+        )}
       </div>
     </Sheet>
   );

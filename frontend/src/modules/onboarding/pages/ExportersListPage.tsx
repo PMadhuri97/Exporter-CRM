@@ -73,17 +73,11 @@ const RELATIONSHIPS: readonly string[] = ['ANY', ...Object.keys(MARKER_LABEL)];
  * Who a company belongs to.
  *
  * `me` is *My companies*, which has its own row in the side navigation — the page is
- * titled for it, so the dropdown hides there. `none` (unassigned) and `inactive` (the
- * RM's account is deactivated) are offered on the bar: this branch had dropped the
- * control and left them reachable only by typing the URL, which the merge partner's
- * side still wires up, and removing a filter people use is the lead's call, not a
- * merge's.
+ * titled for it, so the panel hides the control there. `none` (unassigned) and
+ * `inactive` (the RM's account is deactivated) are offered in the Filters panel, with
+ * the labels the panel holds. Each stays a URL lens, so a link to one can be shared.
  */
-const OWNER_LABEL = {
-  none: 'Unassigned',
-  inactive: 'RM deactivated',
-} as const;
-type Owner = 'ANY' | 'me' | keyof typeof OWNER_LABEL;
+type Owner = 'ANY' | 'me' | 'none' | 'inactive';
 const OWNERS: readonly Owner[] = ['ANY', 'me', 'none', 'inactive'];
 type ContactFilter = 'ANY' | 'missing';
 type CollectionsFilter = 'ANY' | 'me' | 'none';
@@ -196,7 +190,29 @@ export function ExportersListPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   // The panel stores only filters that are actually set, so the key count is the badge.
-  const filterCount = Object.keys(filters).length;
+  /** The panel's own filters, which is what `filteringOtherThanOwner` may count. */
+  const panelFilterCount = Object.keys(filters).length;
+  /**
+   * What the Filters badge shows: the panel's filters and the lenses it now holds.
+   * The owner is one of them, so this must not be used where the owner is deliberately
+   * excluded — see `filteringOtherThanOwner`, which is what decides whether *My
+   * companies* says "you hold none yet" or "nothing matches this filter".
+   */
+  const filterCount =
+    panelFilterCount +
+    [owner, contactFilter, collectionsFilter].filter((lens) => lens !== 'ANY').length;
+
+  /**
+   * One of the URL-backed lenses, set from the panel. They keep their own state rather
+   * than joining `filters`: each is a shareable link (`?owner=none`), and *My
+   * companies* is `?owner=me` with its own navigation row.
+   */
+  function changeLens(key: 'owner' | 'contacts' | 'collections', value: string) {
+    setPages(1);
+    if (key === 'owner') setOwner(value as Owner);
+    else if (key === 'contacts') setContactFilter(value as ContactFilter);
+    else setCollectionsFilter(value as CollectionsFilter);
+  }
   const prefetch = usePrefetchCompany();
   // The company record, ready to draw: its code and the company's data.
   const prepare = (customerId: string) =>
@@ -236,8 +252,8 @@ export function ExportersListPage() {
       collectionsFilter !== 'ANY' ||
       Boolean(filterCount),
   );
-  // The panel's filters count here too: they are filters other than the owner, which is
-  // the whole distinction this second flag draws.
+  // The panel's filters count here too — but not the owner lens, which is the whole
+  // distinction this second flag draws, so `panelFilterCount` rather than `filterCount`.
   const filteringOtherThanOwner = Boolean(
     name ||
       qualification !== 'ANY' ||
@@ -245,7 +261,7 @@ export function ExportersListPage() {
       lens !== 'ALL' ||
       contactFilter !== 'ANY' ||
       collectionsFilter !== 'ANY' ||
-      Boolean(filterCount),
+      Boolean(panelFilterCount),
   );
   const mayHaveMore = profiles.length === limit && limit < COUNT_CAP;
 
@@ -370,53 +386,9 @@ export function ExportersListPage() {
                 </option>
               ))}
             </Select>
-            {/* On My companies the owner is the page itself. */}
-            {owner !== 'me' && (
-              <Select
-                aria-label="Owner"
-                className="sm:w-auto"
-                value={owner === 'ANY' ? '' : owner}
-                onChange={(event) => {
-                  setOwner((event.target.value || 'ANY') as Owner);
-                  setPages(1);
-                }}
-              >
-                <option value="">Any owner</option>
-                {(Object.keys(OWNER_LABEL) as (keyof typeof OWNER_LABEL)[]).map((value) => (
-                  <option key={value} value={value}>
-                    {OWNER_LABEL[value]}
-                  </option>
-                ))}
-              </Select>
-            )}
-            {/* The two filters the other lane added stay on the bar: each is one
-                click and both read as lenses on the working list, like the three
-                beside them. The rest live behind *Filters*. */}
-            <Select
-              aria-label="Contacts"
-              className="sm:w-auto"
-              value={contactFilter === 'ANY' ? '' : contactFilter}
-              onChange={(event) => {
-                setContactFilter((event.target.value || 'ANY') as ContactFilter);
-                setPages(1);
-              }}
-            >
-              <option value="">Any contacts</option>
-              <option value="missing">No primary contact</option>
-            </Select>
-            <Select
-              aria-label="Collections"
-              className="sm:w-auto"
-              value={collectionsFilter === 'ANY' ? '' : collectionsFilter}
-              onChange={(event) => {
-                setCollectionsFilter((event.target.value || 'ANY') as CollectionsFilter);
-                setPages(1);
-              }}
-            >
-              <option value="">Any collections owner</option>
-              <option value="me">My collections</option>
-              <option value="none">No collections owner</option>
-            </Select>
+            {/* Owner, Contacts and Collections owner are behind *Filters* with the
+                rest: the bar keeps the lenses used on almost every visit, and five
+                dropdowns on one line read as a form rather than a list. */}
 
             {/* Every company the filters match, as a file — gathered a page at a time,
                 not the page on screen. */}
@@ -552,9 +524,11 @@ export function ExportersListPage() {
       {filtersOpen && (
         <CompanyFilterPanel
           applied={filters}
+          lenses={{ owner, contacts: contactFilter, collections: collectionsFilter }}
           shown={matching}
           loading={isLoading || isFetching}
           onChange={changeFilters}
+          onLensChange={changeLens}
           onClose={() => setFiltersOpen(false)}
         />
       )}

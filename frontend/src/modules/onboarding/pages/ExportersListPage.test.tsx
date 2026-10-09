@@ -162,7 +162,8 @@ describe('ExportersListPage — the journey, qualification and marker filters', 
     renderPage();
     expect(await screen.findByText('No primary contact', { selector: 'span' })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Contacts'), { target: { value: 'missing' } });
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Contacts'), { target: { value: 'missing' } });
     await waitFor(() =>
       expect(searchExporterProfiles).toHaveBeenLastCalledWith(
         expect.objectContaining({ missing_primary_contact: true }),
@@ -366,16 +367,16 @@ describe('ExportersListPage — whose companies', () => {
         expect.objectContaining({ relationship_manager: 'me' }),
       ),
     );
-    // The owner is the page itself, so there is no owner filter to change it.
+    // The owner is the page itself, so the panel offers no owner filter to change it.
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    expect(await screen.findByLabelText('Country')).toBeInTheDocument();
     expect(screen.queryByLabelText('Owner')).not.toBeInTheDocument();
     expect(await screen.findByText(/not the relationship manager of any company yet/)).toBeInTheDocument();
   });
 
-  it('filters by owner from the URL, and the bar offers the same lenses', async () => {
+  it('filters by owner from the URL, and the panel offers the same lenses', async () => {
     // `?owner=` is read and sent, so a link or a bookmark to one keeps working, and
-    // the dropdown offers the two that are not a page of their own. This branch had
-    // dropped the control; the merge put it back, because removing a filter people
-    // use is a decision for the lead rather than something a merge settles.
+    // the panel offers the two that are not a page of their own.
     renderPage('/companies?owner=none');
 
     await waitFor(() =>
@@ -383,20 +384,38 @@ describe('ExportersListPage — whose companies', () => {
         expect.objectContaining({ relationship_manager: 'none' }),
       ),
     );
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
     const owner = await screen.findByLabelText('Owner');
     expect(within(owner).getAllByRole('option').map((o) => o.textContent)).toEqual([
-      'Any owner',
+      'Any',
       'Unassigned',
       'RM deactivated',
     ]);
   });
 
-  it('hides the owner control on My companies, where the page is the lens', async () => {
-    renderPage('/companies?owner=me');
-    // The page's own title is the lens, which is why the dropdown would be a second
-    // way to say the same thing.
-    await screen.findByRole('heading', { name: 'My companies' });
+  it('sends a lens chosen in the panel, and keeps it in the URL', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Companies' });
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Collections owner'), {
+      target: { value: 'none' },
+    });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ collections_owner: 'none' }),
+      ),
+    );
+  });
+
+  it('keeps the three lenses off the bar, where only the everyday ones belong', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Companies' });
+    // Closed, these are not on screen at all — the bar holds the journey, the search
+    // and the two filters used on almost every visit.
     expect(screen.queryByLabelText('Owner')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Contacts')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Collections owner')).not.toBeInTheDocument();
   });
 
   it('says "Any relationship" without explaining the ended rule in the option', async () => {
