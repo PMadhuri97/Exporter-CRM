@@ -22,7 +22,7 @@ import { Icon } from '@/design/icons';
 import { cn } from '@/lib/cn';
 
 import { useExporterProfileDetail, useExporterProfiles } from '../hooks';
-import type { ExporterProfileListItem } from '../types';
+import type { CompanyTradeRole, ExporterProfileListItem } from '../types';
 
 export interface CompanySearchSelectProps {
   /** `exporter_profile.customer_id`, or `null` for none chosen. */
@@ -32,6 +32,19 @@ export interface CompanySearchSelectProps {
   label: string;
   hideLabel?: boolean;
   placeholder?: string;
+  /**
+   * Narrow the matches to companies that have traded on this side — by what they have
+   * actually done, not by how their record was created.
+   *
+   * The Deals page's two filters set it: a buyer-only company has no deals it sold, so
+   * offering it under *Seller company* suggests a filter that can only come back empty.
+   * `BUYER` also lifts the list's buyer-only exclusion, which is what makes those
+   * companies findable under *Buyer company* at all.
+   *
+   * Left unset where a company is being chosen for something new — *New deal*'s seller
+   * may never have sold anything yet, and that is the normal case for a first deal.
+   */
+  tradeRole?: CompanyTradeRole;
   /** Why this company cannot be chosen here, or `null` when it can. */
   unavailable?(company: ExporterProfileListItem): string | null;
   /** The facts line under each match. Defaults to the country. */
@@ -47,6 +60,7 @@ export function CompanySearchSelect({
   label,
   hideLabel = false,
   placeholder = 'Search companies',
+  tradeRole,
   unavailable,
   describe = (company) => company.country,
   className,
@@ -64,7 +78,9 @@ export function CompanySearchSelect({
 
   const trimmed = term.trim();
   const searching = trimmed.length >= MIN_TERM;
-  const query = useExporterProfiles(searching ? { name: trimmed, limit: 10 } : { limit: 1 });
+  const query = useExporterProfiles(
+    searching ? { name: trimmed, limit: 10, trade_role: tradeRole } : { limit: 1 },
+  );
   // The list query keeps its previous answer on screen while the next one loads. That
   // answer may be the one-row request made while not searching, which is not a match
   // for anything — offered here, a quick click would choose a company nobody searched

@@ -209,6 +209,33 @@ describe('DealsPage — filters', () => {
     expect(sent?.buyerCompanyId).toBeUndefined();
   });
 
+  it('suggests only sellers under Seller company, and only buyers under Buyer', async () => {
+    // The bug: typing a buyer-only company's name under *Seller company* offered it,
+    // and choosing it could only produce an empty list — it has never sold anything.
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [company({ customer_id: 's1', name: 'Sweep Exports' })],
+      limit: 10,
+      offset: 0,
+      total: 1,
+    });
+    renderAt('/deals');
+    await screen.findAllByTestId('deal-row');
+
+    fireEvent.change(screen.getByLabelText('Seller'), { target: { value: 'sweep' } });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ name: 'sweep', trade_role: 'SELLER' }),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText('Buyer'), { target: { value: 'sweep' } });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ name: 'sweep', trade_role: 'BUYER' }),
+      ),
+    );
+  });
+
   it('ignores a malformed filter in the URL instead of failing', async () => {
     renderAt('/deals?corridor=india&stage=SIDEWAYS&from=yesterday');
     await screen.findAllByTestId('deal-row');

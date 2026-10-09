@@ -261,6 +261,7 @@ export function DealsPage() {
               label="Seller"
               hideLabel
               placeholder="Seller company"
+              tradeRole="SELLER"
               value={filters.seller}
               onChange={(id) => filter({ seller: id })}
               className="xl:w-56"
@@ -269,6 +270,7 @@ export function DealsPage() {
               label="Buyer"
               hideLabel
               placeholder="Buyer company"
+              tradeRole="BUYER"
               value={filters.buyer}
               onChange={(id) => filter({ buyer: id })}
               className="xl:w-56"
