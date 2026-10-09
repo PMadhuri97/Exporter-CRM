@@ -48,6 +48,8 @@ BANK_ACCOUNT = "bank_account"
 COLLECTIONS_OWNER = "collections_owner"
 #: A company linked under a parent, or taken out of its group.
 GROUP = "group"
+#: A sanctions screening recorded, or a decision on one of its possible matches.
+SANCTIONS = "sanctions"
 
 ALL_DIMENSIONS: tuple[str, ...] = (
     JOURNEY,
@@ -71,6 +73,7 @@ ALL_DIMENSIONS: tuple[str, ...] = (
     BANK_ACCOUNT,
     COLLECTIONS_OWNER,
     GROUP,
+    SANCTIONS,
 )
 
 #: Dimensions DEVELOPER does not receive from the history routes: the

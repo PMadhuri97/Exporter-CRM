@@ -8,6 +8,7 @@ export {
   FollowUpsPage,
   DealRequiredDocumentsPage,
   PaymentTermsPage,
+  SanctionsListsPage,
   ApprovalsPage,
   QualificationCriteriaPage,
 } from './lazyPages';

@@ -40,6 +40,7 @@ import {
   useRecordQualificationOutcome,
   useRecordQualificationResults,
 } from '../../hooks';
+import { AUTO_SOURCE_LABEL } from '../../components/auto-source-labels';
 import type {
   CriterionResultValue,
   Qualification,
@@ -135,7 +136,15 @@ function Scorecard({
                   <>
                     <Tag tone={RESULT_TONE[latest_result.result]}>{RESULT_LABEL[latest_result.result]}</Tag>
                     {latest_result.observed_value && <span>observed {latest_result.observed_value}</span>}
-                    <span className="text-ink-3">{formatDate(latest_result.recorded_at)}</span>
+                    {latest_result.decided_by_kind === 'AUTOMATED' ? (
+                      <span className="text-ink-3" data-testid="auto-result">
+                        Auto
+                        {criterion.auto_source ? ` · ${AUTO_SOURCE_LABEL[criterion.auto_source]}` : ''} ·{' '}
+                        {formatDate(latest_result.recorded_at)}
+                      </span>
+                    ) : (
+                      <span className="text-ink-3">{formatDate(latest_result.recorded_at)}</span>
+                    )}
                     {!counts && <span className="text-ink-3">(earlier version)</span>}
                   </>
                 ) : (

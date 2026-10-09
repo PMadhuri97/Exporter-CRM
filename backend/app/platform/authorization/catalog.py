@@ -253,6 +253,12 @@ CATALOG: tuple[ModuleSpec, ...] = (
                 "Approve high-risk Clears",
                 "Approve a CLEAR proposed with HIGH or CRITICAL risk",
             ),
+            ActionSpec(
+                "approve_true_match",
+                "Confirm sanctions true matches",
+                "Confirm a proposed sanctions true match when confirmation needs the head "
+                "of compliance",
+            ),
         ),
     ),
     ModuleSpec(
@@ -368,7 +374,11 @@ LEAD_ROLES: tuple[tuple[str, str, str, UserRole, frozenset[tuple[str, str]]], ..
         "Compliance lead",
         "Compliance, plus assigning reviews and approving high-risk Clears.",
         UserRole.COMPLIANCE,
-        _permissions_for(("compliance", "assign"), ("compliance", "approve_high_risk")),
+        _permissions_for(
+            ("compliance", "assign"),
+            ("compliance", "approve_high_risk"),
+            ("compliance", "approve_true_match"),
+        ),
     ),
     (
         "sales-lead",

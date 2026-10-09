@@ -89,6 +89,7 @@ from app.modules.onboarding.domain.exporter_profile_views import (
     ExporterProfileListItem,
 )
 from app.modules.onboarding.domain.gst_states import state_code_of, state_name_of
+from app.modules.onboarding.domain.qualification_auto import AutoSource
 from app.modules.onboarding.domain.tax_identifiers import (
     check_gstins_match_pan,
     normalise_cin,
@@ -175,6 +176,14 @@ _EDITABLE_FIELDS = frozenset(
 
 #: A named company keeps its name and country: they can be corrected, never
 #: emptied (company-record contract §2.1).
+#: The company fields an automatic qualification criterion reads, and its source.
+_AUTO_SOURCE_OF_FIELD = {
+    "year_established": AutoSource.YEARS_ESTABLISHED,
+    "cin": AutoSource.YEARS_ESTABLISHED,
+    "industry": AutoSource.INDUSTRY,
+    "export_markets": AutoSource.EXPORT_MARKETS,
+}
+
 _NOT_CLEARABLE = frozenset({"name", "country"})
 
 #: Identifiers written to the history log masked. The history read route
@@ -662,6 +671,14 @@ class ExporterProfileService:
             changed=sorted(edits),
             actor_id=actor_id,
         )
+        fed = {
+            source
+            for field, source in _AUTO_SOURCE_OF_FIELD.items()
+            if field in edits
+        }
+        if fed:
+            await _answer_automatic_criteria(self._db, customer_id, fed)
+            await self._db.refresh(profile)
         return profile
 
     # ── Relationship manager ────────────────────────────────────────────────
@@ -1548,3 +1565,12 @@ def _activity_view(activity: ExporterActivity) -> ExporterActivityView:
 
 
 __all__ = ["BulkReassignment", "ExporterProfileService", "announce_became_customer"]
+
+async def _answer_automatic_criteria(db, company_id, sources) -> None:
+    """Re-answer the company's automatic qualification criteria the change fed (best
+    effort, after the change has committed)."""
+    from app.modules.onboarding.application.qualification_auto_service import (
+        QualificationAutoEvaluator,
+    )
+
+    await QualificationAutoEvaluator(db).evaluate_quietly(company_id, sources)

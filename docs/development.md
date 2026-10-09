@@ -64,6 +64,9 @@ Bank accounts: `FIELD_ENCRYPTION_KEYS` (see `.env.example`) encrypts account num
 and IBANs; without it, saving bank details answers 503 unless `ENVIRONMENT` is `local` or
 `test`. `CRM_BANK_CHANGE_APPROVAL_MODE` (default `SECOND_PERSON`; also `PERMISSION_HOLDER`,
 `BOTH`, and `OFF` in local/test only) decides who approves a proposed account.
+Sanctions: `CRM_SANCTIONS_TRUE_MATCH_APPROVAL` (default `SECOND_OFFICER`; `HEAD` needs
+`compliance:approve_true_match`, held by the Compliance lead; `SINGLE` in local/test only)
+decides who confirms a true match.
 Contacts: `CRM_CONTACT_REVERIFY_MONTHS` (default `12`) marks a contact "Verification due".
 
 Compliance engine (plans P3-1b, P3-3; `onboarding/application/compliance_settings.py`):

@@ -36,6 +36,8 @@ class CriterionDefinition:
     threshold: Decimal | None = None
     unit: str | None = None
     allowed_values: tuple[str, ...] | None = None
+    #: Where an automatic result comes from (`AutoSource`), or `None`.
+    auto_source: str | None = None
 
 
 @dataclass(frozen=True)

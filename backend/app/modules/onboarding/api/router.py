@@ -29,6 +29,7 @@ from app.modules.onboarding.api.gst_registration_router import (
 )
 from app.modules.onboarding.api.history_router import router as history_router
 from app.modules.onboarding.api.qualification_router import router as qualification_router
+from app.modules.onboarding.api.sanctions_router import router as sanctions_router
 from app.modules.onboarding.api.schemas.case import (
     CaseResponse,
     CaseTransitionListResponse,
@@ -121,6 +122,8 @@ router.include_router(company_address_router)
 router.include_router(company_bank_account_router)
 # Parent and child companies, under `/exporters/{id}`.
 router.include_router(company_group_router)
+# Structured sanctions screening: lists, runs, hits and worklists.
+router.include_router(sanctions_router)
 # Trade history — what two companies have traded. Absolute paths: a relationship
 # is the pair, not a sub-resource of
 # either company, though one company's relationships are read under `/exporters`.

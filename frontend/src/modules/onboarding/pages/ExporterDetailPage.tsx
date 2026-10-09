@@ -68,6 +68,7 @@ import {
   useBringIntoPipeline,
   useCompanyDeals,
   useExporterActivities,
+  useCompanySanctions,
   useExporterContacts,
   useExporterConversation,
   useExporterProfileDetail,
@@ -137,6 +138,8 @@ export function ExporterDetailPage() {
   const [activityPage, setActivityPage] = useState(0);
 
   const contactQuery = useExporterContacts(customerId);
+  // A sanctions true match flags the company: read only by those who see compliance work.
+  const sanctions = useCompanySanctions(customerId, canReadCompliance);
   const activityParams = useMemo(
     () => ({
       activityType: activityType || undefined,
@@ -291,6 +294,11 @@ export function ExporterDetailPage() {
         titleBadges={
           <>
             <MarkerBadge marker={profile.marker} reason={profile.marker_reason} />
+            {sanctions.data?.flagged && (
+              <Badge tone="negative" title="A sanctions true match is proposed or confirmed">
+                Sanctions match
+              </Badge>
+            )}
             {missingPrimaryContact && (
               <Badge tone="attention" title="Add an active primary contact before handing over a deal">
                 No primary contact

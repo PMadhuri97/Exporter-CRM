@@ -329,6 +329,26 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
   relationship. The tree shows every member's stage, check, risk and open deals.
   Linking the parent under its own subsidiary is refused with a message.
 
+### 5.2 Sanctions screening and automatic answers
+
+- **Record a screening** (COMPLIANCE: company → *Background check* → *Sanctions
+  screening* → **Record screening**). The UN and MHA lists are ticked and cannot be
+  unticked. Add one possible match on the UN list and save: the standing is *Under
+  review*. Open **Matches**, mark it **False positive** with a reason: the run is
+  *Passed* and the company's SANCTIONS check passes, which is what the Clear needs
+  from sanctions.
+- **A true match** needs a second officer: mark a match **True match** — the company
+  header shows **Sanctions match**, its deals cannot be handed over, and the match
+  appears on *Compliance work → True matches*. A second COMPLIANCE user confirms it
+  (*Failed*) or says it is **Not a match** (back to open, flag lifted).
+- **A new list version** (ADMIN: *Settings → Sanctions lists* → *Change* the MHA list's
+  version date): every company screened before appears on *Compliance work →
+  Re-screen due*, with why.
+- **Automatic answers** (ADMIN: *Settings → Qualification criteria* → add a yes/no
+  criterion "Holds an IEC", *Answer automatically from: IEC check*). Record a passed IEC
+  verification on a lead: its Qualification tab shows **Pass** with *Auto · IEC check ·
+  today*. A person's later answer stands; the outcome is still recorded by a person.
+
 ## 6. Say this plainly during the demo
 
 Everything below is labelled on screen or in the data; say it anyway.

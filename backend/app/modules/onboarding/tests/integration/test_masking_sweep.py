@@ -414,6 +414,13 @@ EXPECTED_REFUSALS: dict[str, frozenset[UserRole]] = {
     # possible group members name beneficial owners: neither is DEVELOPER's.
     f"{BASE}/bank-accounts/pending": frozenset({DEV}),
     f"{BASE}/exporters/{{company_id}}/group/suggestions": frozenset({DEV}),
+    # Sanctions screening is compliance work: staff read it, DEVELOPER does not.
+    f"{BASE}/settings/sanctions-lists": frozenset({DEV}),
+    f"{BASE}/exporters/{{company_id}}/sanctions": frozenset({DEV}),
+    f"{BASE}/exporters/{{company_id}}/sanctions/runs": frozenset({DEV}),
+    f"{BASE}/sanctions/runs/{{run_id}}": frozenset({DEV}),
+    f"{BASE}/sanctions/true-matches": BOTH,
+    f"{BASE}/sanctions/rescreen-due": frozenset({DEV}),
     # Who is working on what. The review worklists are compliance's; the information
     # requests, badge counts, recent decisions and the staff picker are every staff
     # user's — and none of them DEVELOPER's.
@@ -444,6 +451,9 @@ UNSWEPT: dict[str, str] = {
     # swept for leaks below all the same, just not expected to answer.
     f"{BASE}/{{customer_id}}/sdk-token": "no onboarding_request row for a CRM company",
     f"{BASE}/{{customer_id}}/status": "no onboarding_request row for a CRM company",
+    # A screening carries no tax identifier, and DEVELOPER is refused it outright; its
+    # company's runs are swept through `/exporters/{company_id}/sanctions/runs`.
+    f"{BASE}/sanctions/runs/{{run_id}}": "refused to DEVELOPER; same rows as the company's runs",
 }
 
 @pytest.fixture(scope="module")

@@ -48,6 +48,20 @@ export type CompanyGroup = Schemas['CompanyGroupResponse'];
 export type GroupMember = Schemas['GroupMemberResponse'];
 export type SetParentCompanyRequest = Schemas['SetParentCompanyRequest'];
 export type GroupSuggestionList = Schemas['GroupSuggestionListResponse'];
+export type SanctionsList = Schemas['SanctionsListResponse'];
+export type SanctionsLists = Schemas['SanctionsListsResponse'];
+export type AddSanctionsListRequest = Schemas['AddSanctionsListRequest'];
+export type ReviseSanctionsListRequest = Schemas['ReviseSanctionsListRequest'];
+export type CompanySanctions = Schemas['CompanySanctionsResponse'];
+export type SanctionsSubject = Schemas['SubjectCoverageResponse'];
+export type SanctionsRun = Schemas['RunResponse'];
+export type SanctionsRunList = Schemas['RunListOfCompanyResponse'];
+export type SanctionsHit = Schemas['HitResponse'];
+export type SanctionsDisposition = Schemas['DispositionResponse']['disposition'];
+export type RecordSanctionsRunRequest = Schemas['RecordRunRequest'];
+export type SanctionsHitRequest = Schemas['HitRequest'];
+export type PendingTrueMatchList = Schemas['PendingTrueMatchListResponse'];
+export type RescreenDueList = Schemas['RescreenDueListResponse'];
 export type SetContactStatusRequest = Schemas['SetContactStatusRequest'];
 export type AddExporterContactRequest = Schemas['AddExporterContactRequest'];
 export type UpdateExporterContactRequest = Schemas['UpdateExporterContactRequest'];
@@ -204,7 +218,9 @@ export type HistoryDimension =
   // Who chases the company's payments.
   | 'collections_owner'
   // A company linked under a parent, or taken out of its group.
-  | 'group';
+  | 'group'
+  // A sanctions screening recorded, or a decision on one of its possible matches.
+  | 'sanctions';
 export interface HistoryListParams {
   dimension?: HistoryDimension;
   limit?: number;

@@ -71,6 +71,11 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
     QualificationState,
 )
 from app.modules.onboarding.domain.exporter_profile_views import CustomerAnnouncement
+from app.modules.onboarding.domain.qualification_auto import (
+    SOURCE_KIND,
+    SOURCE_LABEL,
+    AutoSource,
+)
 from app.modules.onboarding.domain.qualification_views import (
     CriterionDefinition,
     CriterionStanding,
@@ -742,6 +747,16 @@ def _check_definition(definition: CriterionDefinition) -> None:
             )
         if any(not v.strip() for v in values) or len(set(values)) != len(values):
             raise ValidationError("allowed values must be distinct and not blank")
+    if definition.auto_source is not None:
+        try:
+            source = AutoSource(definition.auto_source)
+        except ValueError:
+            raise ValidationError(f"unknown auto source {definition.auto_source!r}") from None
+        if SOURCE_KIND[source] is not definition.kind:
+            raise ValidationError(
+                f"{SOURCE_LABEL[source]} answers a {SOURCE_KIND[source].value} criterion, "
+                f"not a {definition.kind.value} one"
+            )
 
 
 def _criterion_row(
@@ -761,6 +776,7 @@ def _criterion_row(
         required=definition.required,
         active=definition.active,
         created_by=actor_id,
+        auto_source=definition.auto_source,
     )
 
 

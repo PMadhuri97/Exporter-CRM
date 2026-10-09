@@ -33,7 +33,8 @@ export type SettingsSection =
   | 'roles'
   | 'criteria'
   | 'requiredDocuments'
-  | 'paymentTerms';
+  | 'paymentTerms'
+  | 'sanctionsLists';
 type Section = SettingsSection;
 
 const SECTION_LABEL: Record<Section, string> = {
@@ -43,6 +44,7 @@ const SECTION_LABEL: Record<Section, string> = {
   criteria: 'Qualification criteria',
   requiredDocuments: 'Required documents',
   paymentTerms: 'Payment terms',
+  sanctionsLists: 'Sanctions lists',
 };
 
 function SectionLink({ to, children }: { to: string; children: ReactNode }) {
@@ -91,6 +93,7 @@ export function SettingsFrame({ section, children }: { section: Section; childre
   const canSetCriteria = useCan('settings.criteria');
   const canSetRequiredDocuments = useCan('settings.requiredDocuments');
   const canSetPaymentTerms = useCan('settings.paymentTerms');
+  const canSetSanctionsLists = useCan('settings.sanctionsLists');
   useCrumbs([{ label: 'Settings', to: '/settings' }, { label: SECTION_LABEL[section] }]);
 
   return (
@@ -111,7 +114,7 @@ export function SettingsFrame({ section, children }: { section: Section; childre
             {canViewUsers && <SectionLink to="/settings/users">Users</SectionLink>}
             {canViewRoles && <SectionLink to="/settings/roles">Roles</SectionLink>}
           </SectionGroup>
-          {(canSetCriteria || canSetRequiredDocuments || canSetPaymentTerms) && (
+          {(canSetCriteria || canSetRequiredDocuments || canSetPaymentTerms || canSetSanctionsLists) && (
             <>
               <span
                 role="separator"
@@ -126,6 +129,9 @@ export function SettingsFrame({ section, children }: { section: Section; childre
                 )}
                 {canSetPaymentTerms && (
                   <SectionLink to="/settings/payment-terms">Payment terms</SectionLink>
+                )}
+                {canSetSanctionsLists && (
+                  <SectionLink to="/settings/sanctions-lists">Sanctions lists</SectionLink>
                 )}
               </SectionGroup>
             </>

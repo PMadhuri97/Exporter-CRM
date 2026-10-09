@@ -26,6 +26,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -64,6 +65,11 @@ class QualificationCriterion(AppendOnlyModel):
     __tablename__ = "qualification_criterion"
     __table_args__ = (
         UniqueConstraint("key", "version", name="uq_qualification_criterion_key_version"),
+        CheckConstraint(
+            "auto_source IS NULL OR auto_source IN ('IEC_VERIFICATION', 'YEARS_ESTABLISHED', "
+            "'INDUSTRY', 'EXPORT_MARKETS', 'TRADE_HISTORY', 'DEAL_VALUE')",
+            name="ck_qualification_criterion_auto_source",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -87,6 +93,8 @@ class QualificationCriterion(AppendOnlyModel):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False)
     #: Who wrote this version, from the session. `NULL` for the seeded v1s.
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Where an automatic result comes from (``domain/qualification_auto.py``), if any.
+    auto_source: Mapped[str | None] = mapped_column(String(24), nullable=True)
 
 
 class QualificationReasonCode(AnerModel):

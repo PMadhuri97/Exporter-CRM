@@ -89,6 +89,7 @@ architecture.
 | `bank_account` | A bank account proposed, approved, rejected, verified, made primary or deactivated (`bank_account_*`); `to_status` is the account's status. Never more than the last four characters of a number. **Written** by `CompanyBankAccountService` | — |
 | `collections_owner` | A company's collections owner named, changed or cleared (`collections_owner_assigned` / `_reassigned` / `_cleared`); ids or `UNASSIGNED`, like `relationship_manager`. **Written** by `CollectionsOwnerService` | — |
 | `group` | A company linked under a parent or taken out of its group — on the company (`group_parent_set` / `group_parent_cleared`) and on each parent involved (`group_member_added` / `group_member_removed`). **Written** by `CompanyGroupService` | — |
+| `sanctions` | A sanctions screening recorded (`sanctions_run_recorded`, `to_status` the run's outcome) or a decision on one of its matches (`sanctions_hit_decided`, `sanctions_true_match_confirmed`, `sanctions_true_match_rejected`; `to_status` the disposition, `reason` required). **Written** by `SanctionsScreeningService` | — |
 
 The last five were added together in F1 (allocation §2.2, 1 October 2026) so that no
 lane edits this list again. In code the list is
@@ -97,7 +98,7 @@ from there rather than typing the string, and the frontend's `HistoryDimension` 
 and timeline labels carry the same sixteen. `relationship_manager` and
 `background_check_assignment` were added on 7 October 2026 (who is working on a company);
 `contact`, `address`, `bank_account`, `collections_owner` and `group` on 9 October 2026
-(contacts and customer master data). The `profile` dimension also carries
+(contacts and customer master data), and `sanctions` the same day. The `profile` dimension also carries
 `default_payment_term_set` (a company's default payment term), and `deal` carries
 `deal_terms_changed` (a deal's value, currency or payment term; `reason` is the reason
 for a term other than the company's default).

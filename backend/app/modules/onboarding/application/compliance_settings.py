@@ -38,6 +38,10 @@ from app.modules.onboarding.domain.business_time import (
     parse_duration,
     parse_hours,
 )
+from app.modules.onboarding.domain.sanctions import (
+    TrueMatchApproval,
+    parse_true_match_approval,
+)
 from app.platform.configuration.config import Settings, settings
 
 #: Where maker-checker may be switched off ("local/test", taken literally).
@@ -124,6 +128,11 @@ def bank_change_approval_mode(override: Settings | None = None) -> ApprovalMode:
     )
 
 
+def true_match_approval(override: Settings | None = None) -> TrueMatchApproval:
+    """Who confirms a sanctions true match (``CRM_SANCTIONS_TRUE_MATCH_APPROVAL``)."""
+    return parse_true_match_approval(_settings(override).CRM_SANCTIONS_TRUE_MATCH_APPROVAL)
+
+
 def enforce_compliance_settings(override: Settings | None = None) -> None:
     """Refuse to start with settings the compliance rules forbid.
 
@@ -157,6 +166,15 @@ def enforce_compliance_settings(override: Settings | None = None) -> None:
                 f"{current.ENVIRONMENT!r} environment; bank-detail changes need an "
                 "approver everywhere but local and test."
             )
+        if (
+            true_match_approval(current) is TrueMatchApproval.SINGLE
+            and environment not in APPROVAL_OFF_ALLOWED_ENVIRONMENTS
+        ):
+            raise ValueError(
+                "CRM_SANCTIONS_TRUE_MATCH_APPROVAL is SINGLE in the "
+                f"{current.ENVIRONMENT!r} environment; a true match needs a second "
+                "officer everywhere but local and test."
+            )
         clear_validity(current)
         rekyc_due_window(current)
         sla_review(current)
@@ -170,6 +188,7 @@ def enforce_compliance_settings(override: Settings | None = None) -> None:
 __all__ = [
     "MAKER_CHECKER_OFF_ALLOWED_ENVIRONMENTS",
     "bank_change_approval_mode",
+    "true_match_approval",
     "business_calendar",
     "clear_validity",
     "due_soon_fraction",

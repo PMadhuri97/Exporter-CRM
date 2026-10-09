@@ -1715,6 +1715,193 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/settings/sanctions-lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The sanctions lists screenings cover
+         * @description `lists` is the current version of each list, inactive ones included; `history` every version. A screening must cover every active, mandatory list.
+         */
+        get: operations["list_sanctions_lists_api_v1_onboarding_settings_sanctions_lists_get"];
+        put?: never;
+        /** Add a sanctions list */
+        post: operations["add_sanctions_list_api_v1_onboarding_settings_sanctions_lists_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/settings/sanctions-lists/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change a sanctions list, or record a new version of it */
+        patch: operations["revise_sanctions_list_api_v1_onboarding_settings_sanctions_lists__code__patch"];
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/sanctions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A company's sanctions coverage
+         * @description Every subject — the company, each beneficial owner on record, and anyone else screened — with its latest run in the current check cycle and why it is due a re-screen; the company's standing; and whether a true match flags it.
+         */
+        get: operations["get_company_sanctions_api_v1_onboarding_exporters__company_id__sanctions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/exporters/{company_id}/sanctions/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every sanctions screening of a company, newest first */
+        get: operations["list_company_sanctions_runs_api_v1_onboarding_exporters__company_id__sanctions_runs_get"];
+        put?: never;
+        /**
+         * Record a sanctions screening
+         * @description One subject against the lists named — every active mandatory list included — with each possible match and a first decision on it. The company's SANCTIONS check is updated from the result.
+         */
+        post: operations["record_sanctions_run_api_v1_onboarding_exporters__company_id__sanctions_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/sanctions/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One sanctions screening, with its hits and every decision on them */
+        get: operations["get_sanctions_run_api_v1_onboarding_sanctions_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/sanctions/hits/{hit_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide a possible match
+         * @description A new decision that supersedes the previous one. Anything but OPEN needs a reason. TRUE_MATCH is recorded as proposed and waits for confirmation, unless confirmation is switched off.
+         */
+        post: operations["decide_sanctions_hit_api_v1_onboarding_sanctions_hits__hit_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/sanctions/hits/{hit_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a proposed true match */
+        post: operations["confirm_true_match_api_v1_onboarding_sanctions_hits__hit_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/sanctions/hits/{hit_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a proposed true match; the match goes back to open */
+        post: operations["reject_true_match_api_v1_onboarding_sanctions_hits__hit_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/sanctions/true-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Proposed true matches awaiting confirmation */
+        get: operations["list_pending_true_matches_api_v1_onboarding_sanctions_true_matches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/sanctions/rescreen-due": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Companies due a sanctions re-screen
+         * @description Companies screened before whose latest screening is out of date: a list has a newer version or became mandatory, the company's name changed, or a beneficial owner was never screened.
+         */
+        get: operations["list_rescreen_due_api_v1_onboarding_sanctions_rescreen_due_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/exporters/{customer_id}/trade-relationships": {
         parameters: {
             query?: never;
@@ -3098,6 +3285,25 @@ export interface components {
             kind: string;
             /** Days */
             days?: number | null;
+        };
+        /** AddSanctionsListRequest */
+        AddSanctionsListRequest: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Authority */
+            authority?: string | null;
+            /**
+             * Mandatory
+             * @default false
+             */
+            mandatory: boolean;
+            /**
+             * List Version Date
+             * Format: date
+             */
+            list_version_date: string;
         };
         /**
          * AdminCreateUserRequest
@@ -4529,6 +4735,27 @@ export interface components {
          * @enum {string}
          */
         CompanyPipelineStatus: "IN_PIPELINE" | "NOT_IN_PIPELINE";
+        /** CompanySanctionsResponse */
+        CompanySanctionsResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Standing */
+            standing: ("PASSED" | "FAILED" | "REVIEW") | null;
+            /** Flagged */
+            flagged: boolean;
+            /** Subjects */
+            subjects: components["schemas"]["SubjectCoverageResponse"][];
+            /** Can Record */
+            can_record: boolean;
+            /**
+             * True Match Approval
+             * @enum {string}
+             */
+            true_match_approval: "SINGLE" | "SECOND_OFFICER" | "HEAD";
+        };
         /**
          * CompleteFollowUpRequest
          * @description Record that a follow-up was dealt with.
@@ -4784,6 +5011,8 @@ export interface components {
             unit?: string | null;
             /** Allowed Values */
             allowed_values?: string[] | null;
+            /** Auto Source */
+            auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
             /** Key */
             key: string;
         };
@@ -4879,6 +5108,8 @@ export interface components {
             unit?: string | null;
             /** Allowed Values */
             allowed_values?: string[] | null;
+            /** Auto Source */
+            auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
         };
         /**
          * CriterionKind
@@ -4922,6 +5153,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Auto Source */
+            auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
         };
         /**
          * CriterionResultValue
@@ -5244,6 +5477,16 @@ export interface components {
             /** Currency */
             currency?: string | null;
         };
+        /** DecideHitRequest */
+        DecideHitRequest: {
+            /**
+             * Disposition
+             * @enum {string}
+             */
+            disposition: "OPEN" | "FALSE_POSITIVE" | "TRUE_MATCH" | "ESCALATED";
+            /** Reason */
+            reason?: string | null;
+        };
         /**
          * DecidedByKind
          * @description Whether a person or a computer decided (architecture §2.6: manual
@@ -5447,6 +5690,34 @@ export interface components {
              * @description Present only when healthy
              */
             latency_ms?: string | null;
+        };
+        /** DispositionResponse */
+        DispositionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Disposition
+             * @enum {string}
+             */
+            disposition: "OPEN" | "FALSE_POSITIVE" | "TRUE_MATCH_PROPOSED" | "TRUE_MATCH" | "ESCALATED";
+            /** Reason */
+            reason: string | null;
+            /** Decided By */
+            decided_by: string;
+            /** Decided By Name */
+            decided_by_name?: string | null;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /** Approved By */
+            approved_by: string | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
         };
         /**
          * DocumentCategory
@@ -6510,6 +6781,44 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /** HitRequest */
+        HitRequest: {
+            /** List Code */
+            list_code: string;
+            /** Matched Name */
+            matched_name: string;
+            /** List Entry Id */
+            list_entry_id?: string | null;
+            /** Score */
+            score?: number | string | null;
+            /**
+             * Disposition
+             * @default OPEN
+             * @enum {string}
+             */
+            disposition: "OPEN" | "FALSE_POSITIVE" | "TRUE_MATCH" | "ESCALATED";
+            /** Reason */
+            reason?: string | null;
+        };
+        /** HitResponse */
+        HitResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** List Code */
+            list_code: string;
+            /** Matched Name */
+            matched_name: string;
+            /** List Entry Id */
+            list_entry_id: string | null;
+            /** Score */
+            score: string | null;
+            current: components["schemas"]["DispositionResponse"];
+            /** Decisions */
+            decisions: components["schemas"]["DispositionResponse"][];
+        };
         /**
          * IdentityCompletionItem
          * @description One company the CRM cannot yet identify (the identity completion list).
@@ -7019,6 +7328,31 @@ export interface components {
             /** Iban Masked */
             readonly iban_masked: string | null;
         };
+        /** PendingTrueMatchListResponse */
+        PendingTrueMatchListResponse: {
+            /** Matches */
+            matches: components["schemas"]["PendingTrueMatchResponse"][];
+        };
+        /** PendingTrueMatchResponse */
+        PendingTrueMatchResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string | null;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Subject Name */
+            subject_name: string;
+            hit: components["schemas"]["HitResponse"];
+            /** Can Confirm */
+            can_confirm: boolean;
+        };
         /** PermissionCatalogResponse */
         PermissionCatalogResponse: {
             /** Modules */
@@ -7391,6 +7725,36 @@ export interface components {
             /** Supersedes Review Id */
             supersedes_review_id?: string | null;
         };
+        /** RecordRunRequest */
+        RecordRunRequest: {
+            /**
+             * Subject Type
+             * @default COMPANY
+             * @enum {string}
+             */
+            subject_type: "COMPANY" | "DIRECTOR" | "UBO";
+            /** Subject Name */
+            subject_name?: string | null;
+            /** Subject Reference */
+            subject_reference?: string | null;
+            /** List Codes */
+            list_codes: string[];
+            /** Aliases */
+            aliases?: string[];
+            /** Country */
+            country?: string | null;
+            /**
+             * Provider
+             * @default MANUAL
+             */
+            provider: string;
+            /** Provider Reference */
+            provider_reference?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Hits */
+            hits?: components["schemas"]["HitRequest"][];
+        };
         /**
          * RecordTradeInvoiceRequest
          * @description Record an invoice against a relationship.
@@ -7468,6 +7832,11 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** RejectTrueMatchRequest */
+        RejectTrueMatchRequest: {
+            /** Reason */
+            reason: string;
+        };
         /**
          * ReleaseReviewRequest
          * @description Hand a review back to Awaiting review, with an optional note.
@@ -7489,6 +7858,25 @@ export interface components {
              * @enum {string}
              */
             state: "PASSED" | "FAILED" | "MISSING" | "PENDING";
+        };
+        /** RescreenDueListResponse */
+        RescreenDueListResponse: {
+            /** Companies */
+            companies: components["schemas"]["RescreenDueResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** RescreenDueResponse */
+        RescreenDueResponse: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Company Name */
+            company_name: string | null;
+            /** Reasons */
+            reasons: string[];
         };
         /**
          * ResultRequest
@@ -7566,6 +7954,23 @@ export interface components {
             /** Active */
             active?: boolean | null;
         };
+        /**
+         * ReviseSanctionsListRequest
+         * @description Writes the next version. A newer `list_version_date` puts every company screened
+         *     against an older one on the re-screen worklist.
+         */
+        ReviseSanctionsListRequest: {
+            /** Name */
+            name?: string | null;
+            /** Authority */
+            authority?: string | null;
+            /** Active */
+            active?: boolean | null;
+            /** Mandatory */
+            mandatory?: boolean | null;
+            /** List Version Date */
+            list_version_date?: string | null;
+        };
         /** RoleListResponse */
         RoleListResponse: {
             /** Roles */
@@ -7598,6 +8003,107 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** RunListOfCompanyResponse */
+        RunListOfCompanyResponse: {
+            /** Runs */
+            runs: components["schemas"]["RunResponse"][];
+        };
+        /** RunListResponse */
+        RunListResponse: {
+            /** Code */
+            code: string;
+            /**
+             * List Version Date
+             * Format: date
+             */
+            list_version_date: string;
+        };
+        /** RunResponse */
+        RunResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Subject Type
+             * @enum {string}
+             */
+            subject_type: "COMPANY" | "DIRECTOR" | "UBO";
+            /** Subject Name */
+            subject_name: string;
+            /** Subject Reference */
+            subject_reference: string | null;
+            /** Cycle Id */
+            cycle_id: string | null;
+            /** Performed By */
+            performed_by: string;
+            /** Performed By Name */
+            performed_by_name?: string | null;
+            /**
+             * Performed At
+             * Format: date-time
+             */
+            performed_at: string;
+            /** Provider */
+            provider: string;
+            /** Provider Reference */
+            provider_reference: string | null;
+            /** Search Terms */
+            search_terms: Record<string, never>;
+            /** Note */
+            note: string | null;
+            /** Lists */
+            lists: components["schemas"]["RunListResponse"][];
+            /** Hits */
+            hits: components["schemas"]["HitResponse"][];
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "PASSED" | "FAILED" | "REVIEW";
+        };
+        /** SanctionsListResponse */
+        SanctionsListResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Version */
+            version: number;
+            /** Name */
+            name: string;
+            /** Authority */
+            authority: string | null;
+            /** Active */
+            active: boolean;
+            /** Mandatory */
+            mandatory: boolean;
+            /**
+             * List Version Date
+             * Format: date
+             */
+            list_version_date: string;
+            /** Is Current */
+            is_current: boolean;
+        };
+        /** SanctionsListsResponse */
+        SanctionsListsResponse: {
+            /** Lists */
+            lists: components["schemas"]["SanctionsListResponse"][];
+            /** History */
+            history: components["schemas"]["SanctionsListResponse"][];
+            /** Can Edit */
+            can_edit: boolean;
         };
         /**
          * ScreeningCapabilities
@@ -7986,6 +8492,21 @@ export interface components {
             cycle: components["schemas"]["CheckCycleResponse"];
             /** @description The CLEAR → IN_REVIEW decision recorded with it, when the company was CLEAR. */
             reopen_decision?: components["schemas"]["BackgroundCheckDecisionResponse"] | null;
+        };
+        /** SubjectCoverageResponse */
+        SubjectCoverageResponse: {
+            /**
+             * Subject Type
+             * @enum {string}
+             */
+            subject_type: "COMPANY" | "DIRECTOR" | "UBO";
+            /** Subject Name */
+            subject_name: string;
+            /** Subject Reference */
+            subject_reference: string | null;
+            latest: components["schemas"]["RunResponse"] | null;
+            /** Rescreen Reasons */
+            rescreen_reasons: string[];
         };
         /**
          * SubjectType
@@ -13751,6 +14272,579 @@ export interface operations {
             };
             /** @description Company not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sanctions_lists_api_v1_onboarding_settings_sanctions_lists_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SanctionsListsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `screening:view` required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    add_sanctions_list_api_v1_onboarding_settings_sanctions_lists_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSanctionsListRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SanctionsListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `settings:manage` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A code already used */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    revise_sanctions_list_api_v1_onboarding_settings_sanctions_lists__code__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseSanctionsListRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SanctionsListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `settings:manage` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such list */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing changes, or a version date earlier than the current one */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_company_sanctions_api_v1_onboarding_exporters__company_id__sanctions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanySanctionsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `screening:view` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_company_sanctions_runs_api_v1_onboarding_exporters__company_id__sanctions_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListOfCompanyResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `screening:view` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_sanctions_run_api_v1_onboarding_exporters__company_id__sanctions_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `screening:decide` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Company not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A mandatory list missing, an unknown list, or a decision with no reason */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_sanctions_run_api_v1_onboarding_sanctions_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `screening:view` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such screening */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_sanctions_hit_api_v1_onboarding_sanctions_hits__hit_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideHitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `screening:decide` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such possible match */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No reason, a final true match, or one awaiting confirmation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    confirm_true_match_api_v1_onboarding_sanctions_hits__hit_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `SANCTIONS_TRUE_MATCH_REFUSED`, with why */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such possible match */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No proposed true match on this hit */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reject_true_match_api_v1_onboarding_sanctions_hits__hit_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                hit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectTrueMatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `SANCTIONS_TRUE_MATCH_REFUSED`, with why */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such possible match */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No proposed true match, or no reason */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_pending_true_matches_api_v1_onboarding_sanctions_true_matches_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingTrueMatchListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `screening:decide` or `compliance:approve_true_match` required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_rescreen_due_api_v1_onboarding_sanctions_rescreen_due_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescreenDueListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `screening:view` permission required */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

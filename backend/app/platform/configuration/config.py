@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # of exporters:approve_bank_accounts) or BOTH (a holder who is not the proposer).
     # OFF is accepted only where ENVIRONMENT is local or test.
     CRM_BANK_CHANGE_APPROVAL_MODE: str = "SECOND_PERSON"
+    # Who confirms a sanctions true match: SINGLE (the officer's decision stands),
+    # SECOND_OFFICER (another compliance officer) or HEAD (a holder of
+    # compliance:approve_true_match). SINGLE is accepted only in local and test.
+    CRM_SANCTIONS_TRUE_MATCH_APPROVAL: str = "SECOND_OFFICER"
 
     # ── Field encryption ─────────────────────────────────────────────────────
     # `<key id>:<base64 of 32 bytes>`, comma-separated; the first encrypts, all

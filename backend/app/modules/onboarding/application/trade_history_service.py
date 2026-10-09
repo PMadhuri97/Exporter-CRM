@@ -250,7 +250,26 @@ class TradeHistoryService:
             relationship_id=str(relationship_id),
             currency=invoice.currency,
         )
+        await self._answer_trade_history(relationship_id)
+        await self._db.refresh(invoice)
         return invoice
+
+    async def _answer_trade_history(self, relationship_id: uuid.UUID) -> None:
+        """A recorded export answers the seller's "has traded" criterion, if it has one."""
+        from app.modules.onboarding.application.qualification_auto_service import (
+            QualificationAutoEvaluator,
+        )
+        from app.modules.onboarding.domain.qualification_auto import AutoSource
+
+        seller = await self._db.scalar(
+            select(TradeRelationship.seller_company_id).where(
+                TradeRelationship.id == relationship_id
+            )
+        )
+        if seller is not None:
+            await QualificationAutoEvaluator(self._db).evaluate_quietly(
+                seller, {AutoSource.TRADE_HISTORY}
+            )
 
     async def _write_invoice(
         self,
@@ -619,6 +638,10 @@ class TradeHistoryService:
             outcome_id=str(outcome.id),
             created_invoice=created_invoice,
         )
+        if created_invoice:
+            await self._answer_trade_history(target.relationship_id)
+            await self._db.refresh(target)
+            await self._db.refresh(outcome)
         return target, outcome
 
     async def _outcome_for_deal(

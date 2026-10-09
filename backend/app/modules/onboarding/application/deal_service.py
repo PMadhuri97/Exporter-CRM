@@ -83,6 +83,9 @@ from app.modules.onboarding.application.payment_term_service import (
     PaymentTermService,
     term_summary,
 )
+from app.modules.onboarding.application.sanctions_screening_service import (
+    SanctionsScreeningService,
+)
 from app.modules.onboarding.application.trade_history_service import (
     SOURCE_DEAL_BUYER_RECORDED,
     TradeHistoryService,
@@ -511,6 +514,8 @@ class DealService:
         )
 
         await self._db.commit()
+        if deal.value_amount is not None:
+            await self._answer_deal_value(company_id)
         await self._db.refresh(deal)
         logger.info(
             "deal.open.ok",
@@ -1137,8 +1142,21 @@ class DealService:
             details={"changed": changed, "from": before, "to": after},
         )
         await self._db.commit()
+        if "value_amount" in changed or "currency" in changed:
+            await self._answer_deal_value(deal.company_id)
         await self._db.refresh(deal)
         return await self._to_view(deal)
+
+    async def _answer_deal_value(self, company_id: uuid.UUID) -> None:
+        """A deal's value answers the seller's deal-size criterion, if it has one."""
+        from app.modules.onboarding.application.qualification_auto_service import (
+            QualificationAutoEvaluator,
+        )
+        from app.modules.onboarding.domain.qualification_auto import AutoSource
+
+        await QualificationAutoEvaluator(self._db).evaluate_quietly(
+            company_id, {AutoSource.DEAL_VALUE}
+        )
 
     async def _company_default_term(self, company_id: uuid.UUID) -> PaymentTerm | None:
         """The current, offered version of the company's default term, if it has one."""
@@ -1286,6 +1304,9 @@ class DealService:
             # rewriting a decision the database refuses to change anyway.
             now=clock.now(),
             seller_has_active_primary_contact=await self._has_active_primary_contact(
+                deal.company_id
+            ),
+            seller_sanctions_flagged=await SanctionsScreeningService(self._db).is_flagged(
                 deal.company_id
             ),
         )

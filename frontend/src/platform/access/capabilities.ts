@@ -87,7 +87,9 @@ export type Capability =
   /** The deal-required-documents screen (an editing screen). ADMIN. */
   | 'settings.requiredDocuments'
   /** The payment-terms screen (an editing screen). ADMIN. */
-  | 'settings.paymentTerms';
+  | 'settings.paymentTerms'
+  /** The sanctions-lists screen (an editing screen). ADMIN. */
+  | 'settings.sanctionsLists';
 
 const STAFF: readonly Capability[] = [
   'crm.read',
@@ -119,6 +121,7 @@ const ROLE_CAPABILITIES: Readonly<Record<UserRole, readonly Capability[]>> = {
     'settings.criteria',
     'settings.requiredDocuments',
     'settings.paymentTerms',
+    'settings.sanctionsLists',
   ],
   // Reads the CRM, masked, and writes nothing.
   DEVELOPER: ['crm.read'],

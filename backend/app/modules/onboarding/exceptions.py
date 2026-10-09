@@ -1933,6 +1933,50 @@ class DealBuyerIsTheSellerError(AnerBaseException):
         )
 
 
+class SanctionsListNotFoundError(AnerBaseException):
+    """No sanctions list with this code (404)."""
+
+    def __init__(self, code: object) -> None:
+        super().__init__(
+            detail=f"Sanctions list {code} was not found",
+            error_code="SANCTIONS_LIST_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class SanctionsRunNotFoundError(AnerBaseException):
+    """No sanctions screening with this id (404)."""
+
+    def __init__(self, run_id: object) -> None:
+        super().__init__(
+            detail=f"Sanctions screening {run_id} was not found",
+            error_code="SANCTIONS_RUN_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class SanctionsHitNotFoundError(AnerBaseException):
+    """No possible match with this id (404)."""
+
+    def __init__(self, hit_id: object) -> None:
+        super().__init__(
+            detail=f"Possible match {hit_id} was not found",
+            error_code="SANCTIONS_HIT_NOT_FOUND",
+            status_code=404,
+        )
+
+
+class SanctionsTrueMatchRefusedError(AnerBaseException):
+    """This person may not confirm or reject this proposed true match (403)."""
+
+    def __init__(self, why: str) -> None:
+        super().__init__(
+            detail=f"You cannot decide this true match: {why}",
+            error_code="SANCTIONS_TRUE_MATCH_REFUSED",
+            status_code=403,
+        )
+
+
 class PaymentTermNotFoundError(AnerBaseException):
     """No payment term with this id or code (404)."""
 

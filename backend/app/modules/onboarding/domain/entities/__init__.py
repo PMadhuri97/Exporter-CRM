@@ -59,6 +59,13 @@ from app.modules.onboarding.domain.entities.qualification import (
     QualificationReasonCode,
     QualificationResult,
 )
+from app.modules.onboarding.domain.entities.sanctions import (
+    SanctionsDisposition,
+    SanctionsHit,
+    SanctionsList,
+    SanctionsRun,
+    SanctionsRunList,
+)
 from app.modules.onboarding.domain.entities.screening_review import (
     BankActivityFinding,
     ScreeningReviewItem,
@@ -103,6 +110,11 @@ __all__ = [
     "KybNormalisedResult",
     "ExporterProfile",
     "PaymentTerm",
+    "SanctionsDisposition",
+    "SanctionsHit",
+    "SanctionsList",
+    "SanctionsRun",
+    "SanctionsRunList",
     "CompanyAddress",
     "CompanyBankAccount",
     "ExporterGstin",

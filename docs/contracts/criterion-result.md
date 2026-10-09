@@ -13,6 +13,15 @@
 > are no longer "ADMIN, or the permission": they are held through the seeded **Sales lead**
 > and **Compliance lead** roles. RXIL intake needs `exporters:partner_intake` (COMPLIANCE).
 
+> **Amendment, 9 October 2026 — automatic results.** A criterion version may carry an
+> `auto_source` (IEC_VERIFICATION and TRADE_HISTORY for yes/no; YEARS_ESTABLISHED and
+> DEAL_VALUE for a number; INDUSTRY and EXPORT_MARKETS for allowed values). When its data
+> changes — a company edit, an IEC verification, a recorded export, a deal value — the
+> criterion is answered with a result of source AUTOMATED, decided by the system
+> (`recorded_by` null), the observed value and its evidence. A result a person recorded
+> is never replaced; nothing is written when the data cannot answer it, or when the
+> latest automatic result already says the same. The outcome stays a person's decision.
+
 **Owner:** Developer 2 · **Implemented by:** L2-09 (criteria), L2-10 (results and outcomes), migration 0017 · **Status:** implemented — §9a records the as-built detail and §10 what is still open
 
 Qualification answers one question: *did this company meet our requirements?*

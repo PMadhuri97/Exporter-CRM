@@ -284,6 +284,7 @@ describe('SettingsPage — sections follow permissions, not role names', () => {
       'Qualification criteria',
       'Required documents',
       'Payment terms',
+      'Sanctions lists',
     ]);
     expect(within(sections).getByRole('separator')).toBeInTheDocument();
   });

@@ -69,6 +69,7 @@ const DIMENSION_LOOK: Record<string, { label: string; icon: IconComponent; hint?
   bank_account: { label: 'Bank account', icon: Icon.receipt },
   collections_owner: { label: 'Collections owner', icon: Icon.person },
   group: { label: 'Group', icon: Icon.company },
+  sanctions: { label: 'Sanctions', icon: Icon.shield },
 };
 
 const FALLBACK_LOOK = { label: 'Change', icon: Icon.history };
@@ -97,6 +98,7 @@ const LANES: HistoryDimension[] = [
   'bank_account',
   'collections_owner',
   'group',
+  'sanctions',
 ];
 
 function text(value: unknown): string | null {
@@ -220,6 +222,20 @@ function eventLine(entry: HistoryEntry): { label: string; value?: string | null 
       };
     case 'collections_owner_cleared':
       return { label: 'Collections owner cleared', value: text(details.from_user_name) };
+    case 'sanctions_run_recorded':
+      return {
+        label: `Sanctions screening recorded: ${humanize(entry.to_value)}`,
+        value: [text(details.subject_name), text(details.lists)].filter(Boolean).join(' · ') || null,
+      };
+    case 'sanctions_hit_decided':
+      return {
+        label: `Possible match marked ${humanize(entry.to_value).toLowerCase()}`,
+        value: text(details.matched_name),
+      };
+    case 'sanctions_true_match_confirmed':
+      return { label: 'Sanctions true match confirmed', value: text(details.matched_name) };
+    case 'sanctions_true_match_rejected':
+      return { label: 'Proposed true match not confirmed', value: text(details.matched_name) };
     case 'group_parent_set':
       return { label: 'Linked under a parent', value: text(details.parent_name) };
     case 'group_parent_cleared':

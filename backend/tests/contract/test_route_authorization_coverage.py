@@ -392,6 +392,18 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
     ("GET", f"{CRM}/exporters/{{company_id}}/group"): READERS,
     ("PUT", f"{CRM}/exporters/{{company_id}}/parent"): CRM_WRITERS,
     ("GET", f"{CRM}/exporters/{{company_id}}/group/suggestions"): CRM_STAFF_READERS,
+    ("GET", f"{CRM}/settings/sanctions-lists"): CRM_STAFF_READERS,
+    ("POST", f"{CRM}/settings/sanctions-lists"): ADMIN_ONLY,
+    ("PATCH", f"{CRM}/settings/sanctions-lists/{{code}}"): ADMIN_ONLY,
+    ("GET", f"{CRM}/exporters/{{company_id}}/sanctions"): CRM_STAFF_READERS,
+    ("GET", f"{CRM}/exporters/{{company_id}}/sanctions/runs"): CRM_STAFF_READERS,
+    ("POST", f"{CRM}/exporters/{{company_id}}/sanctions/runs"): COMPLIANCE_ONLY,
+    ("GET", f"{CRM}/sanctions/runs/{{run_id}}"): CRM_STAFF_READERS,
+    ("POST", f"{CRM}/sanctions/hits/{{hit_id}}/decision"): COMPLIANCE_ONLY,
+    ("POST", f"{CRM}/sanctions/hits/{{hit_id}}/confirm"): COMPLIANCE_ONLY,
+    ("POST", f"{CRM}/sanctions/hits/{{hit_id}}/reject"): COMPLIANCE_ONLY,
+    ("GET", f"{CRM}/sanctions/true-matches"): COMPLIANCE_ONLY,
+    ("GET", f"{CRM}/sanctions/rescreen-due"): CRM_STAFF_READERS,
     # Reviews are claimed, assigned and released by compliance and admin (assigning
     # needs ADMIN or compliance:assign, checked in the service).
     ("POST", f"{CRM}/exporters/{{company_id}}/background-check/reviewer/claim"): COMPLIANCE_ONLY,
