@@ -848,6 +848,8 @@ export interface paths {
         /**
          * Add a contact to an exporter relationship
          * @description Setting is_primary=true demotes any existing primary contact for this customer in the same transaction — never two primaries at once.
+         *
+         *     A contact this company can already reach at the same email address or phone number is refused (409), not recorded a second time.
          */
         post: operations["add_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts_post"];
         delete?: never;
@@ -11677,7 +11679,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Another contact was made primary for this company at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
+            /** @description This company already has a contact with the same email address and phone number (EXPORTER_CONTACT_ALREADY_EXISTS), or another contact was made primary for it at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -11739,7 +11741,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Another contact was made primary for this company at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
+            /** @description This company already has a contact with the same email address and phone number (EXPORTER_CONTACT_ALREADY_EXISTS), or another contact was made primary for it at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
             409: {
                 headers: {
                     [name: string]: unknown;

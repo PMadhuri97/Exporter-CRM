@@ -468,6 +468,40 @@ class ContactNotActiveError(AnerBaseException):
         )
 
 
+#: How the refusal below names the field that matched.
+_CONTACT_FIELD_WORDS = {"email": "email address", "phone": "phone number"}
+
+
+class ExporterContactAlreadyExistsError(AnerBaseException):
+    """A contact of this company is already reachable at this email address or this
+    phone number.
+
+    Refused, not recorded. A second row with the same way of reaching someone holds
+    nothing the first does not, and two identical contacts on a company are what a
+    double submit or a re-typed form leaves behind.
+
+    **Either field is enough.** One person listed twice under two roles, and an office
+    switchboard shared by several people, are both refused by this rule — a deliberate
+    narrowing, decided for the CRM, not an oversight. Where one of those is real, the
+    second contact goes in without the shared field, or the first is edited.
+
+    409 naming the contact already there and the field that matched, so the form can
+    say which line to change and point at the contact that already holds it.
+
+    The value is not repeated back: the caller sent it, and the response may be read by
+    a role that sees contact details masked.
+    """
+
+    def __init__(self, *, contact_id: object, name: str, field: str) -> None:
+        words = _CONTACT_FIELD_WORDS.get(field, field)
+        super().__init__(
+            detail=f"{name} is already a contact of this company with this {words}.",
+            error_code="EXPORTER_CONTACT_ALREADY_EXISTS",
+            status_code=409,
+            extensions={"contact_id": str(contact_id), "name": name, "field": field},
+        )
+
+
 class ExporterContactPrimaryConflictError(AnerBaseException):
     """Two writes made two different contacts primary for one company at once.
 

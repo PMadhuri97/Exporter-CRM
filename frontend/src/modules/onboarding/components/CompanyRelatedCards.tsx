@@ -19,6 +19,7 @@ import {
   EmptyLine,
   FormPanel,
   Field,
+  InlineError,
   Input,
   RequiredMark,
   RequiredNote,
@@ -27,6 +28,7 @@ import {
   Textarea,
 } from '@/components';
 import { Icon } from '@/design/icons';
+import { ApiError } from '@/lib/api/errors';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { useCan } from '@/platform/access';
 
@@ -168,6 +170,8 @@ function DealsCard({ customerId }: { customerId: string }) {
 /** Adding a person: their name, and whatever else is known. */
 function AddContactForm({ customerId, onDone }: { customerId: string; onDone: () => void }) {
   const mutation = useAddExporterContact(customerId);
+  /** Why the last attempt was refused, under the fields it is about. */
+  const [refusal, setRefusal] = useState<string | null>(null);
   const [form, setForm] = useState<AddExporterContactRequest>({
     name: '',
     role: null,
@@ -180,6 +184,7 @@ function AddContactForm({ customerId, onDone }: { customerId: string; onDone: ()
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!form.name.trim()) return;
+    setRefusal(null);
     try {
       await mutation.mutateAsync({
         ...form,
@@ -191,8 +196,14 @@ function AddContactForm({ customerId, onDone }: { customerId: string; onDone: ()
       });
       toast.success('Contact added');
       onDone();
-    } catch {
-      toast.error('Could not add contact');
+    } catch (error) {
+      // Said here rather than in a toast over a closed panel: the server refuses a
+      // contact this company can already reach, and the person has to change the
+      // email or the phone in front of them. The form stays open, holding what they
+      // typed, with the server's own words — it names who already has it.
+      setRefusal(
+        error instanceof ApiError ? error.message : 'Could not add contact.',
+      );
     }
   }
 
@@ -234,6 +245,7 @@ function AddContactForm({ customerId, onDone }: { customerId: string; onDone: ()
         />
         Make this the primary contact
       </label>
+      {refusal && <InlineError>{refusal}</InlineError>}
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <Button onClick={onDone}>Cancel</Button>
         <Button type="submit" variant="primary" disabled={!form.name.trim()} loading={mutation.isPending}>
@@ -267,6 +279,8 @@ function EditContactForm({
   const statusMutation = useSetExporterContactStatus(customerId);
   const verify = useVerifyExporterContact(customerId);
   const mayReveal = useCan('identifiers.reveal');
+  /** Why the last save was refused, shown under the fields it is about. */
+  const [refusal, setRefusal] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: contact.name,
     role: contact.role ?? '',
@@ -316,6 +330,7 @@ function EditContactForm({
       return;
     }
 
+    setRefusal(null);
     const changeStatus = () =>
       statusMutation.mutateAsync({
         contactId: contact.id,
@@ -332,7 +347,9 @@ function EditContactForm({
       toast.success('Contact updated');
       onDone();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not update contact');
+      // In the form, as on Add: an edit onto an email or phone the company already
+      // has is refused, and the person has to change the field in front of them.
+      setRefusal(error instanceof ApiError ? error.message : 'Could not update contact.');
     }
   }
 
@@ -429,6 +446,7 @@ function EditContactForm({
           Mark verified
         </Button>
       </div>
+      {refusal && <InlineError>{refusal}</InlineError>}
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <Button onClick={onDone}>Cancel</Button>
         <Button
