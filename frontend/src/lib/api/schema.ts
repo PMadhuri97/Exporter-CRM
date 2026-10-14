@@ -2751,6 +2751,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/background-check/proposals/reviewed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Background-check proposals this user reviewed
+         * @description What the signed-in compliance officer has had a hand in, newest first: the proposals they made, whatever became of them, and the ones they approved or rejected for somebody else. Their own work only — there is no parameter for reading another officer's.
+         *
+         *     A proposal they made and nobody has resolved yet is included, marked open: it is work they did, and leaving it out would hide the one they are waiting on.
+         *
+         *     `days` bounds how far back it reaches. On `compliance:decide` rather than `compliance:approve`, so an officer who proposes but may not approve can still see their own record.
+         */
+        get: operations["list_proposals_i_reviewed_api_v1_onboarding_background_check_proposals_reviewed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/background-check/due": {
         parameters: {
             query?: never;
@@ -17233,6 +17257,54 @@ export interface operations {
                 content?: never;
             };
             /** @description `compliance:approve` permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_proposals_i_reviewed_api_v1_onboarding_background_check_proposals_reviewed_get: {
+        parameters: {
+            query?: {
+                /** @description How many days back to reach. */
+                days?: number;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundCheckProposalListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `compliance:decide` permission required */
             403: {
                 headers: {
                     [name: string]: unknown;

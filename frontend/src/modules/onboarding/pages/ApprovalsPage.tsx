@@ -35,6 +35,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { buttonClasses, EmptyLine, PageHeader, Segmented, Skeleton } from '@/components';
 import { cn } from '@/lib/cn';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { useCurrentUser } from '@/platform/auth';
 import { useHasPermission } from '@/platform/access';
 
 import { actorLabel } from '../components/actor-label';
@@ -50,6 +51,7 @@ import {
   usePendingBankAccounts,
   usePendingTrueMatches,
   useProposalsAwaitingMe,
+  useProposalsIReviewed,
   useReKycDue,
   useRescreenDue,
 } from '../hooks';
@@ -62,13 +64,33 @@ const BackgroundCheckPanel = lazy(() =>
 
 const QUEUE_LIMIT = 50;
 
-type Tab = 'awaiting' | 'mine' | 'approve' | 'rekyc' | 'truematch' | 'rescreen' | 'bank' | 'team';
+/**
+ * How far back *Reviewed* reaches, in days.
+ *
+ * It is a record, not a queue: left unbounded it would grow without end, and the list
+ * nobody can read is the one that answers "everything you have ever decided". A
+ * quarter covers the question people actually ask of it — what did I decide recently,
+ * and what came of it.
+ */
+const REVIEWED_DAYS = 90;
+
+type Tab =
+  | 'awaiting'
+  | 'mine'
+  | 'approve'
+  | 'reviewed'
+  | 'rekyc'
+  | 'truematch'
+  | 'rescreen'
+  | 'bank'
+  | 'team';
 type TeamView = 'in_review' | 'overdue' | 'needs_attention';
 
 const TAB_LABEL: Record<Tab, string> = {
   awaiting: 'Awaiting review',
   mine: 'My reviews',
   approve: 'To approve',
+  reviewed: 'Reviewed',
   rekyc: 'Re-KYC due',
   truematch: 'True matches',
   rescreen: 'Re-screen due',
@@ -86,12 +108,50 @@ const EMPTY: Record<Tab, string> = {
   awaiting: 'Every started check has a reviewer.',
   mine: 'You hold no reviews. Take one from Awaiting review.',
   approve: 'Nothing is waiting for your signature.',
+  reviewed: 'You have not proposed or decided anything in this period.',
   rekyc: 'No Clear is due for Re-KYC.',
   truematch: 'No sanctions true match is waiting for confirmation.',
   rescreen: 'Every screened company is up to date.',
   bank: 'No bank account is waiting for approval or verification.',
   team: 'Nothing here.',
 };
+
+/**
+ * What this officer did, and what came of it — the line under a company on *Reviewed*.
+ *
+ * Which half of maker-checker they were is the thing worth saying first: "you
+ * proposed" and "you approved" are different claims about the same company, and a row
+ * that only named the company would answer "did I touch this" rather than "what did I
+ * decide". A proposal still waiting says so, because the one an officer is waiting on
+ * is the one they look for.
+ */
+function reviewedDetail(
+  proposal: {
+    to_value: string;
+    status: string;
+    proposed_by: string;
+    proposed_by_name?: string | null;
+    resolved_by?: string | null;
+    resolved_by_name?: string | null;
+    resolved_at?: string | null;
+    proposed_at: string;
+  },
+  viewerId: string,
+): string {
+  const move = proposedMoveLabel(proposal.to_value);
+  const ended = proposal.resolved_at ? formatDateTime(proposal.resolved_at) : null;
+
+  if (proposal.proposed_by === viewerId) {
+    const outcome =
+      proposal.status === 'OPEN'
+        ? 'awaiting approval'
+        : `${proposal.status.toLowerCase()} by ${actorLabel(proposal.resolved_by_name, proposal.resolved_by)}, ${ended}`;
+    return `You proposed ${move} · ${outcome}`;
+  }
+  // Their own resolution of somebody else's proposal.
+  const verb = proposal.status === 'APPROVED' ? 'approved' : proposal.status.toLowerCase();
+  return `You ${verb} ${move} · proposed by ${actorLabel(proposal.proposed_by_name, proposal.proposed_by)}, ${ended ?? formatDateTime(proposal.proposed_at)}`;
+}
 
 /** One row of the list: the company, then one line of what it is waiting for. */
 interface Row {
@@ -141,6 +201,9 @@ function ListRow({ row, selected, onSelect }: { row: Row; selected: boolean; onS
 }
 
 export function ApprovalsPage() {
+  // Which half of maker-checker this officer was on a proposal is read from their own
+  // id, so *Reviewed* can say "you proposed" or "you approved".
+  const user = useCurrentUser();
   const lead = useHasPermission('compliance:assign');
   const approvesBank = useHasPermission('exporters:approve_bank_accounts');
   const [params, setParams] = useSearchParams();
@@ -148,6 +211,7 @@ export function ApprovalsPage() {
     'awaiting',
     'mine',
     'approve',
+    'reviewed',
     'rekyc',
     'truematch',
     'rescreen',
@@ -165,6 +229,7 @@ export function ApprovalsPage() {
   const mine = useComplianceWork('mine');
   const team = useComplianceWork(teamView, lead);
   const proposals = useProposalsAwaitingMe({ limit: QUEUE_LIMIT, enabled: true });
+  const reviewed = useProposalsIReviewed({ days: REVIEWED_DAYS, limit: QUEUE_LIMIT });
   const due = useReKycDue({ limit: QUEUE_LIMIT, enabled: true });
   const bank = usePendingBankAccounts(approvesBank);
   const trueMatches = usePendingTrueMatches();
@@ -202,6 +267,13 @@ export function ApprovalsPage() {
               <DueChip dueAt={proposal.due_at} isOverdue={proposal.is_overdue} isDueSoon={proposal.is_due_soon} />
             </>
           ),
+        }));
+      case 'reviewed':
+        return (reviewed.data?.proposals ?? []).map((proposal) => ({
+          companyId: proposal.company_id,
+          companyName: proposal.company_name ?? 'Unnamed company',
+          detail: reviewedDetail(proposal, user.id),
+          extra: proposal.risk_rating ? <RiskChip risk={proposal.risk_rating} /> : undefined,
         }));
       case 'rekyc':
         return (due.data?.companies ?? []).map((row) => ({
@@ -254,11 +326,15 @@ export function ApprovalsPage() {
     truematch: trueMatches,
     rescreen,
     bank,
+    reviewed,
   };
   const countFor: Record<Tab, number | undefined> = {
     awaiting: awaiting.data?.total,
     mine: mine.data?.total,
     approve: proposals.data?.total,
+    // No count. The others count work waiting to be done and fall to zero as it is;
+    // this one only grows, and a tab reading "847" says nothing anybody can act on.
+    reviewed: undefined,
     rekyc: due.data?.total,
     truematch: trueMatches.data?.matches.length,
     rescreen: rescreen.data?.total,

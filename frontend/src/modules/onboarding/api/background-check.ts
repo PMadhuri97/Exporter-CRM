@@ -177,6 +177,22 @@ export async function listOpenProposals(
 }
 
 /**
+ * What the signed-in compliance officer has had a hand in, newest first: proposals
+ * they made, whatever became of them, and ones they approved or rejected for somebody
+ * else. Their own work only — the server takes no parameter for anyone else's.
+ */
+export async function listProposalsIReviewed(
+  params: { days?: number; limit?: number } = {},
+): Promise<BackgroundCheckProposalList> {
+  const query = new URLSearchParams();
+  if (params.days !== undefined) query.set('days', String(params.days));
+  if (params.limit !== undefined) query.set('limit', String(params.limit));
+  return apiRequest<BackgroundCheckProposalList>(
+    `/onboarding/background-check/proposals/reviewed?${query}`,
+  );
+}
+
+/**
  * CLEAR companies whose Clear has expired or expires before `before` (default: the
  * server's Re-KYC window from now), expired first.
  */
