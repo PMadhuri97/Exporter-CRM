@@ -119,8 +119,8 @@ staged or committed by Claude.
 
 | Phase | Steps | Migrations | Status |
 |---|---|---|---|
-| 1 | 1–3: ORM catch-up, integrity rules, frozen configuration versions | `0054`, `0055` | Built |
-| 2 | 4–5: buyer mapping onto `deal_buyer`; people in `exporter_contact` | `0056`, `0057` | — |
+| 1 | 1–3: ORM catch-up, integrity rules, frozen configuration versions | `0054`, `0055` | Committed (`9224daf`) |
+| 2 | 4–5: buyer mapping onto `deal_buyer`; people in `exporter_contact` | `0056_buyer_map_cols`, `0057_people` | Built |
 | 3 | 6–8: reason codes into code; bank placeholder and legacy result columns out of code | none | — |
 | 4 | 10–12, 14, 15: RM text and GST address out of code, GST command, `deal_buyer` freeze, deal reference rule, documents | `0058`, `0059` | — |
 | Follow-up PR | D: drop `qualification_reason_code`, `bank_activity_finding`, the three `verification_result` columns, `exporter_profile.relationship_manager`, `exporter_gstin.address` | `0060` | after deploy |

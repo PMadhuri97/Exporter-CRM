@@ -35,7 +35,7 @@ from pathlib import Path
 
 import psycopg2
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.modules.onboarding.application.company_directory import BUYER_CONTACT_ROLE
 from app.modules.onboarding.application.deal_service import DealService
@@ -43,10 +43,7 @@ from app.modules.onboarding.application.exporter_profile_service import Exporter
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions
 from app.modules.onboarding.domain.entities.deal import Deal
-from app.modules.onboarding.domain.entities.deal_buyer_company_map import (
-    BuyerMatchRule,
-    DealBuyerCompanyMap,
-)
+from app.modules.onboarding.domain.entities.deal_buyer import BuyerMatchRule, DealBuyer
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
@@ -163,10 +160,13 @@ async def _apply_only(report, *, confirmed=None, run_id: str | None = None):
         )
 
 
-async def _mapping(deal_buyer_id: uuid.UUID) -> DealBuyerCompanyMap | None:
+async def _mapping(deal_buyer_id: uuid.UUID) -> DealBuyer | None:
+    """The deal buyer, when the migration has mapped it; ``None`` while it is unmapped."""
     async with db_services.AsyncSessionLocal() as db:
         return await db.scalar(
-            select(DealBuyerCompanyMap).where(DealBuyerCompanyMap.deal_buyer_id == deal_buyer_id)
+            select(DealBuyer).where(
+                DealBuyer.id == deal_buyer_id, DealBuyer.mapped_company_id.isnot(None)
+            )
         )
 
 
@@ -225,7 +225,7 @@ async def test_identifier_less_buyers_sharing_a_name_become_separate_companies()
     counts = await _apply_only(report)
     assert counts["companies_created"] == 2
     one, two = await _mapping(first), await _mapping(second)
-    assert one.company_id != two.company_id
+    assert one.mapped_company_id != two.mapped_company_id
     assert one.match_rule is two.match_rule is BuyerMatchRule.NEW
 
 
@@ -235,7 +235,7 @@ async def test_a_later_row_with_that_name_needs_a_person_once_the_first_exists()
     name = _unique("Second Wave Imports")
     _d1, first = await _deal_with_legacy_buyer(name=name, country="DE")
     await _apply_only(await _resolve_only(first))
-    company_id = (await _mapping(first)).company_id
+    company_id = (await _mapping(first)).mapped_company_id
 
     _d2, later = await _deal_with_legacy_buyer(name=name, country="DE")
     [blocked] = (await _resolve_only(later)).needs_a_person
@@ -262,7 +262,7 @@ async def test_a_name_only_legacy_buyer_maps_to_the_company_its_deal_already_nam
     counts = await _apply_only(report)
     assert counts["companies_created"] == 0
     mapping = await _mapping(buyer_id)
-    assert (mapping.company_id, mapping.match_rule) == (named, BuyerMatchRule.ALREADY_LINKED)
+    assert (mapping.mapped_company_id, mapping.match_rule) == (named, BuyerMatchRule.ALREADY_LINKED)
     assert (await _deal(deal_id)).buyer_company_id == named
     # The deal's BUYER result belongs to the company the deal names — and to no other.
     [result] = await _buyer_results(buyer_id)
@@ -312,7 +312,7 @@ async def test_a_conflicting_identifier_needs_a_person_and_nothing_is_written():
     assert "already linked to" in errors[0]
     await _apply_only(report, confirmed={buyer_id: named})
     mapping = await _mapping(buyer_id)
-    assert (mapping.company_id, mapping.match_rule) == (named, BuyerMatchRule.NAME_CONFIRMED)
+    assert (mapping.mapped_company_id, mapping.match_rule) == (named, BuyerMatchRule.NAME_CONFIRMED)
 
 
 async def _subject_results(deal_buyer_id: uuid.UUID, company_id: uuid.UUID) -> None:
@@ -347,7 +347,7 @@ async def test_a_buyer_result_that_already_names_a_company_links_the_row_to_it()
 
     counts = await _apply_only(report)
     assert counts["companies_created"] == 0
-    assert (await _mapping(buyer_id)).company_id == subject
+    assert (await _mapping(buyer_id)).mapped_company_id == subject
     assert (await _deal(deal_id)).buyer_company_id == subject
 
 
@@ -450,7 +450,7 @@ async def test_a_contest_survives_its_rows_being_confirmed_in_an_earlier_run():
 
     report = await _resolve_only(buyer_1, buyer_2, left_over)
     await _apply_only(report, confirmed={buyer_1: first_pick, buyer_2: second_pick})
-    assert (await _mapping(buyer_1)).company_id == first_pick
+    assert (await _mapping(buyer_1)).mapped_company_id == first_pick
 
     [still_blocked] = (await _resolve_only(left_over)).needs_a_person
     assert still_blocked.problems[0].startswith("CONFLICT: buyers already linked")
@@ -493,9 +493,9 @@ async def test_a_deal_that_names_a_company_after_the_report_is_skipped():
     assert await _mapping(buyer_id) is None
 
 
-async def test_validation_fails_when_the_map_disagrees_with_the_deal():
-    """Deliberately corrupted: a mapping row (the table is append-only, but inserting
-    is allowed) naming a company the deal does not."""
+async def test_validation_fails_when_the_mapping_disagrees_with_the_deal():
+    """Deliberately corrupted: a mapping (set once, but NULL -> a value is allowed)
+    naming a company the deal does not."""
     label = "mapped deal buyers whose company is not the deal's buyer company"
     before = (await _validation())[label]
 
@@ -505,13 +505,15 @@ async def test_validation_fails_when_the_map_disagrees_with_the_deal():
     )
     wrong = await _company(_unique("Map Says"), "NL", registration_number=_registration())
     async with db_services.AsyncSessionLocal() as db:
-        db.add(
-            DealBuyerCompanyMap(
-                deal_buyer_id=buyer_id,
-                company_id=wrong,
+        await db.execute(
+            update(DealBuyer)
+            .where(DealBuyer.id == buyer_id)
+            .values(
+                mapped_company_id=wrong,
                 match_rule=BuyerMatchRule.NEW,
                 matched_by="corruption-test",
-                run_id=f"corrupt-{uuid.uuid4().hex[:8]}",
+                matched_at=func.now(),
+                mapping_run_id=f"corrupt-{uuid.uuid4().hex[:8]}",
             )
         )
         await db.commit()
@@ -567,7 +569,7 @@ async def test_a_pan_carried_by_several_companies_gstins_is_a_conflict():
     # A person chooses one of the two.
     await _apply_only(report, confirmed={buyer_id: second})
     mapping = await _mapping(buyer_id)
-    assert (mapping.company_id, mapping.match_rule) == (second, BuyerMatchRule.NAME_CONFIRMED)
+    assert (mapping.mapped_company_id, mapping.match_rule) == (second, BuyerMatchRule.NAME_CONFIRMED)
 
 
 async def test_a_pan_carried_by_one_companys_gstin_still_matches():
@@ -676,8 +678,8 @@ async def test_a_created_company_gets_one_creation_row_saying_where_it_came_from
     run_id = f"creation-{uuid.uuid4().hex[:8]}"
     await _apply_only(await _resolve_only(first, second), run_id=run_id)
 
-    company_id = (await _mapping(first)).company_id
-    assert (await _mapping(second)).company_id == company_id
+    company_id = (await _mapping(first)).mapped_company_id
+    assert (await _mapping(second)).mapped_company_id == company_id
     assert (await _profile(company_id)).created_via_deal_id == first_deal
     async with db_services.AsyncSessionLocal() as db:
         rows = list(
@@ -723,7 +725,7 @@ async def test_the_buyers_email_and_phone_become_contact_records():
     counts = await _apply_only(await _resolve_only(first, second, third))
     assert counts["contacts_created"] == 2
 
-    company_id = (await _mapping(first)).company_id
+    company_id = (await _mapping(first)).mapped_company_id
     async with db_services.AsyncSessionLocal() as db:
         contacts = list(
             await db.scalars(
@@ -758,7 +760,7 @@ async def test_a_one_character_registration_number_is_not_an_identity():
 
     assert (await _apply_only(report))["companies_created"] == 2
     for buyer in (first, second):
-        assert (await _profile((await _mapping(buyer)).company_id)).registration_number is None
+        assert (await _profile((await _mapping(buyer)).mapped_company_id)).registration_number is None
 
 
 async def test_rows_sharing_either_identifier_are_one_company():
@@ -776,7 +778,7 @@ async def test_rows_sharing_either_identifier_are_one_company():
     report = await _resolve_only(both, reg_only)
     assert len(report.ready) == 2
     assert (await _apply_only(report))["companies_created"] == 1
-    assert (await _mapping(both)).company_id == (await _mapping(reg_only)).company_id
+    assert (await _mapping(both)).mapped_company_id == (await _mapping(reg_only)).mapped_company_id
 
 
 async def test_query_5_counts_only_companies_a_run_created():
@@ -797,7 +799,7 @@ async def test_query_5_counts_only_companies_a_run_created():
         name=_unique("Brought In Later"), country="NL", registration_number=_registration()
     )
     await _apply_only(await _resolve_only(buyer_id))
-    company_id = (await _mapping(buyer_id)).company_id
+    company_id = (await _mapping(buyer_id)).mapped_company_id
     async with db_services.AsyncSessionLocal() as db:
         await ExporterProfileService(db).bring_into_pipeline(company_id, actor_id="rm-1")
     assert (await _validation())[label] == before
@@ -933,7 +935,11 @@ async def test_a_dry_run_on_a_cp1252_console_writes_nothing():
         async with db_services.AsyncSessionLocal() as db:
             return (
                 await db.scalar(select(func.count()).select_from(ExporterProfile)),
-                await db.scalar(select(func.count()).select_from(DealBuyerCompanyMap)),
+                await db.scalar(
+                    select(func.count())
+                    .select_from(DealBuyer)
+                    .where(DealBuyer.mapped_company_id.isnot(None))
+                ),
                 await db.scalar(select(func.count()).select_from(ExporterContact)),
                 await db.scalar(select(func.count()).select_from(ExporterLifecycleHistory)),
                 await db.scalar(

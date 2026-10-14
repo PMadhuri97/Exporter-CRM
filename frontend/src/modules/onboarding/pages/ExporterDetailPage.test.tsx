@@ -416,6 +416,9 @@ describe('ExporterDetailPage — screening review', () => {
           last_verified_by: null,
           created_at: null,
           verification_due: false,
+          is_contact: true,
+          is_director: false,
+          is_ubo: false,
         },
       ],
     });

@@ -81,6 +81,14 @@ class SanctionsRun(AnerModel):
             name="fk_sanctions_run_cycle",
             ondelete="RESTRICT",
         ),
+        # A director or beneficial owner screened by record is one of the company's own
+        # people (0057). A free-text director has no reference and is not checked.
+        ForeignKeyConstraint(
+            ["subject_reference", "company_id"],
+            [f"{SCHEMA}.exporter_contact.id", f"{SCHEMA}.exporter_contact.customer_id"],
+            name="fk_sanctions_run_subject_person",
+            ondelete="RESTRICT",
+        ),
         {"schema": SCHEMA},
     )
 

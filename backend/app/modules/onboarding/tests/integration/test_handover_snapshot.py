@@ -344,7 +344,12 @@ async def test_the_migration_backfill_rebuilds_what_the_handover_wrote(
     # missing `terms` as "not recorded".
     assert set(again) == set(taken) - {"terms"}
     assert again["snapshot_source"] == "backfilled_from_deal_buyer"
-    assert again["buyer"] == taken["buyer"]
+    # 0029's statement copies every `deal_buyer` column, so replayed against today's
+    # schema it also carries the buyer migration's mapping columns (0056) — empty here.
+    # When 0029 ran for real they did not exist yet.
+    mapping = {"mapped_company_id", "match_rule", "matched_by", "matched_at", "mapping_run_id"}
+    assert {k: v for k, v in again["buyer"].items() if k not in mapping} == taken["buyer"]
+    assert {k: again["buyer"][k] for k in mapping} == dict.fromkeys(mapping)
     assert again["document_ids"] == taken["document_ids"]
     assert again["buyer_company_id"] is None
     assert datetime.fromisoformat(again["snapshot_at"]) == datetime.fromisoformat(

@@ -54,8 +54,23 @@
 >   `trg_exporter_profile_no_group_cycle`. `GET /exporters/{id}/group` is the tree from
 >   the ultimate parent (worked out on read), with each member's stage, check and risk
 >   (for `compliance:view`), open deals and their value. `GET .../group/suggestions`
->   (`compliance:view`) lists companies sharing a beneficial owner; nothing is linked
->   automatically.
+>   (`compliance:view`) lists companies sharing a director or beneficial owner; nothing
+>   is linked automatically.
+>
+> **Amendment, 14 October 2026 — people (migration 0057).** A company's directors and
+> beneficial owners are **people** on `exporter_contact`, beside its contacts: one row
+> per person with roles `is_contact`, `is_director`, `is_ubo`, so a director who is also
+> the main contact is one row. `POST /exporters/{id}/contacts` and `PATCH .../{contact_id}`
+> take the roles and the optional person fields — date of birth, nationality, residence
+> country, DIN (a director's), ownership % and control type (an owner's), identification
+> type and number (stored encrypted). Only the name and a role are required; a rule
+> broken is a 422. `GET .../contacts?role=CONTACT|DIRECTOR|UBO|ALL` (default `CONTACT`)
+> lists them; the company detail embeds contacts only. Date of birth, DIN and the
+> identification number are masked unless the viewer holds `exporters:view_full_tax_id`.
+> A person is never deleted; adding a director or owner, or changing those roles, writes
+> a `contact` history row (`person_added`, `person_roles_changed`). The sanctions
+> screening and group suggestions read these people; the CRM no longer reads the old
+> onboarding system's `ubo_record`, whose owners 0057 copied across with their ids.
 
 **Owner:** Developer 2 · **Implemented by:** L2-03 (identity), L2-04 (journey), L2-05 (migration 0014), L2-06 (tax IDs), L2-08 (marker), L2-11 (the move to `CUSTOMER`) · **Status:** implemented — §10 lists what is still open
 

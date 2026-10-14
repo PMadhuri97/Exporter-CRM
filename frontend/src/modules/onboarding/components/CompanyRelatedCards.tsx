@@ -1,8 +1,9 @@
 /**
  * The company record's right column (frontend-plan §6.6, §8.5): related records as
  * cards, three items each, as Salesforce shows related lists in a narrow column —
- * open follow-ups, deals, contacts and documents. *View all* opens the matching tab;
- * *+ Add* on Contacts is offered only to a role that may write (Developer reads).
+ * open follow-ups, deals, contacts, directors and owners, and documents. *View all*
+ * opens the matching tab; *+ Add* on Contacts and on Directors and owners is offered
+ * only to a role that may write (Developer reads).
  *
  * Every list is the server's, capped at three here; the count beside each title is
  * the server's total, not the length of what is shown.
@@ -49,6 +50,7 @@ import type {
 
 import { categoryLabel } from './record/categoryLabel';
 import { DealStageChip } from './DealStageChip';
+import { PeopleCard } from './PeopleCard';
 import { ScanStatusBadge } from './ScanStatusBadge';
 
 const SHOWN = 3;
@@ -175,6 +177,9 @@ function AddContactForm({ customerId, onDone }: { customerId: string; onDone: ()
     phone: null,
     department: null,
     is_primary: false,
+    is_contact: true,
+    is_director: false,
+    is_ubo: false,
   });
 
   async function submit(event: React.FormEvent) {
@@ -622,6 +627,7 @@ export function CompanyRelatedCards({
         <FollowUpsCard customerId={customerId} />
         <DealsCard customerId={customerId} />
         <ContactsCard customerId={customerId} contacts={contacts} loading={contactsLoading} canAdd={canAdd} />
+        <PeopleCard customerId={customerId} canAdd={canAdd} />
         <DocumentsCard customerId={customerId} />
       </div>
     </aside>

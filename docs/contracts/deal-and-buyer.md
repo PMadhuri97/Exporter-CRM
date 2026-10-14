@@ -289,14 +289,16 @@ candidates the report prints (`match_rule = NAME_CONFIRMED`, so the row says a h
 decided). Every confirmation is checked before anything is written: one bad line
 stops the run, not half of it.
 
-It writes `deal_buyer_company_map` (0038, append-only, keyed on `deal_buyer_id`, which
-is what makes a re-run a no-op), the created companies — each with one history row,
+It writes the mapping onto each `deal_buyer` row — `mapped_company_id`, `match_rule`,
+`matched_by`, `matched_at`, `mapping_run_id`, written together and set once (0056, which
+replaced 0038's one-to-one `deal_buyer_company_map`), so a re-run skips a mapped row and
+creates nothing — the created companies — each with one history row,
 `company_created_from_deal_buyer`, carrying `{run_id, deal_buyer_ids, deal_ids,
 match_rule}`, and the buyers' email and phone as non-primary contact records —
 `deal.buyer_company_id`, and `verification_result.subject_company_id` for the deal's
-BUYER results. It touches no `deal_buyer` row, no `entity_type`, no
+BUYER results. It touches no other `deal_buyer` column, no `entity_type`, no
 `entity_reference`, no `subject_snapshot` and no existing history row. `--validate`
-also checks that the map and the BUYER results agree with each deal's buyer company.
+also checks that the mapping and the BUYER results agree with each deal's buyer company.
 
 **There is no logical rollback**, and `--rollback` writes nothing: it reports what a
 run did and names the dump. §17.2 allowed for one *"before enabling the freeze

@@ -43,7 +43,7 @@ from app.modules.onboarding.api.schemas.masking import mask_identifier
 from app.modules.onboarding.application.background_check_reader import BackgroundCheckReader
 from app.modules.onboarding.application.compliance_facts import ComplianceFactsService
 from app.modules.onboarding.application.history_service import HistoryService
-from app.modules.onboarding.domain import history_dimensions
+from app.modules.onboarding.domain import history_dimensions, people
 from app.modules.onboarding.domain.assignment import (
     ASSIGN_RM,
     RM_ASSIGNED,
@@ -1383,7 +1383,8 @@ class ExporterProfileService:
         warning for each of its GSTINs another company also holds — all
         queried by `customer_id` alone."""
         profile = await self._require_profile(customer_id)
-        contacts = await self._contacts.list_by_customer(customer_id)
+        # Contacts only: the company's directors and owners are its People, not who to call.
+        contacts = await self._contacts.list_by_customer(customer_id, role=people.CONTACT)
         activities = await self._activities.list_by_customer(
             customer_id, limit=recent_activities_limit
         )

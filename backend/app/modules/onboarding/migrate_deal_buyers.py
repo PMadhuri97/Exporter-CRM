@@ -63,15 +63,16 @@ report prints. Every confirmation is checked **before anything is written**
 
 What ``--apply`` writes, per §17.2
 ----------------------------------
-``deal_buyer_company_map`` (one row per deal buyer, append-only, carrying the rule
-and the run), the created companies (through ``CompanyDirectory.create_buyer_company``,
+The mapping on each ``deal_buyer`` row (``mapped_company_id``, ``match_rule``,
+``matched_by``, ``matched_at``, ``mapping_run_id``: set once, so a re-run skips the row
+and a mapping never changes), the created companies (through ``CompanyDirectory.create_buyer_company``,
 so they get ``DEAL_BUYER``, ``NOT_IN_PIPELINE``, ``created_via_deal_id`` = the earliest
 of their deals, the buyer's email and phone as a contact record, and one history row,
 ``company_created_from_deal_buyer``, with ``{run_id, deal_buyer_ids, deal_ids,
 match_rule}``), ``deal.buyer_company_id``, and ``verification_result.subject_company_id``
 for the deal's BUYER results.
 
-It does **not** touch ``deal_buyer`` rows, ``entity_type``, ``entity_reference``,
+It does **not** touch any other ``deal_buyer`` column, ``entity_type``, ``entity_reference``,
 ``subject_snapshot`` or any existing history row. Existing history stays on the
 seller's timeline and reaches the buyer company by the read-side union for deals
 as buyer. The ``handover_snapshot`` of a handed-over deal was taken from the
@@ -108,11 +109,7 @@ from app.modules.onboarding.domain.company_directory import BuyerCompanyDraft
 from app.modules.onboarding.domain.company_identity import registration_key
 from app.modules.onboarding.domain.company_names import name_key
 from app.modules.onboarding.domain.entities.deal import Deal
-from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
-from app.modules.onboarding.domain.entities.deal_buyer_company_map import (
-    BuyerMatchRule,
-    DealBuyerCompanyMap,
-)
+from app.modules.onboarding.domain.entities.deal_buyer import BuyerMatchRule, DealBuyer
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
@@ -124,8 +121,6 @@ from app.modules.onboarding.domain.tax_identifiers import GSTIN_RE, PAN_RE, embe
 from app.platform.database import services as db_services
 
 logger = structlog.get_logger(__name__)
-
-SOURCE = "migration_p4_6_deal_buyers"
 
 #: The event of the one history row a created company starts with (§17.2, "Creation").
 CREATION_EVENT = "company_created_from_deal_buyer"
@@ -516,7 +511,9 @@ async def resolve(db: AsyncSession) -> Report:
     points at that company before any other row claims it; the report keeps the
     original order.
     """
-    mapped = set(await db.scalars(select(DealBuyerCompanyMap.deal_buyer_id)))
+    mapped = set(
+        await db.scalars(select(DealBuyer.id).where(DealBuyer.mapped_company_id.isnot(None)))
+    )
     subjects: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
     for buyer_id, subject_id in await db.execute(
         select(VerificationResult.entity_reference, VerificationResult.subject_company_id).where(
@@ -709,12 +706,9 @@ async def _seed_from_earlier_runs(db: AsyncSession, claimed: dict[str, _Group]) 
     the rows left over would be mapped by rule to whatever was left: a later run must
     reach the decision one run would have.
     """
-    rows = await db.execute(
-        select(DealBuyer, DealBuyerCompanyMap.company_id).join(
-            DealBuyerCompanyMap, DealBuyerCompanyMap.deal_buyer_id == DealBuyer.id
-        )
-    )
-    for buyer, company_id in rows:
+    rows = await db.scalars(select(DealBuyer).where(DealBuyer.mapped_company_id.isnot(None)))
+    for buyer in rows:
+        company_id = buyer.mapped_company_id
         country = (buyer.country or "").strip().upper()
         keys = _identity_keys(country, _buyer_pan(buyer), buyer.registration_number)
         groups = list({id(g): g for g in (claimed.get(k) for k in keys) if g}.values())
@@ -844,15 +838,13 @@ async def check_confirmations(
         line = f"--confirm-name {buyer_id}={company_id}"
         r = by_id.get(buyer_id)
         if r is None:
-            if await db.scalar(select(DealBuyer.id).where(DealBuyer.id == buyer_id)) is None:
+            buyer = await db.get(DealBuyer, buyer_id)
+            if buyer is None:
                 errors.append(f"{line}: no deal buyer has that id")
                 continue
-            mapping = await db.scalar(
-                select(DealBuyerCompanyMap).where(DealBuyerCompanyMap.deal_buyer_id == buyer_id)
-            )
-            if mapping is not None:
+            if buyer.mapped_company_id is not None:
                 errors.append(
-                    f"{line}: that deal buyer is already mapped (run {mapping.run_id}), "
+                    f"{line}: that deal buyer is already mapped (run {buyer.mapping_run_id}), "
                     "and a mapping never changes"
                 )
             else:
@@ -975,15 +967,25 @@ async def apply(
                 counts["skipped_deal_changed"] += 1
                 continue
 
-        db.add(
-            DealBuyerCompanyMap(
-                deal_buyer_id=r.deal_buyer_id,
-                company_id=company_id,
+        # Only an unmapped row is written. The report was built from unmapped rows, so
+        # anything else means another run mapped it meanwhile; the set-once trigger
+        # would refuse the write anyway, and stopping says so plainly.
+        mapped = await db.execute(
+            update(DealBuyer)
+            .where(DealBuyer.id == r.deal_buyer_id, DealBuyer.mapped_company_id.is_(None))
+            .values(
+                mapped_company_id=company_id,
                 match_rule=rule,
                 matched_by=actor_id,
-                run_id=run_id,
+                matched_at=func.now(),
+                mapping_run_id=run_id,
             )
         )
+        if mapped.rowcount != 1:
+            raise RuntimeError(
+                f"deal buyer {r.deal_buyer_id} was mapped by another run while this one "
+                "was applying; run --dry-run again"
+            )
         counts["mapped"] += 1
 
         # `deal.buyer_company_id` is set-once, so only a deal that has none is
@@ -1129,11 +1131,7 @@ VALIDATION_QUERIES: tuple[tuple[str, str], ...] = (
     ),
     (
         "deal_buyer rows with no mapping",
-        """
-        SELECT count(*) FROM onboarding.deal_buyer b
-        LEFT JOIN onboarding.deal_buyer_company_map m ON m.deal_buyer_id = b.id
-        WHERE m.deal_buyer_id IS NULL
-        """,
+        "SELECT count(*) FROM onboarding.deal_buyer WHERE mapped_company_id IS NULL",
     ),
     (
         # Only companies a run created: mapped by a run, on the deal the company was
@@ -1145,11 +1143,10 @@ VALIDATION_QUERIES: tuple[tuple[str, str], ...] = (
         SELECT count(*) FROM onboarding.exporter_profile p
         WHERE p.created_via = 'DEAL_BUYER'
           AND EXISTS (
-            SELECT 1 FROM onboarding.deal_buyer_company_map m
-            JOIN onboarding.deal_buyer b ON b.id = m.deal_buyer_id
-            WHERE m.company_id = p.customer_id
+            SELECT 1 FROM onboarding.deal_buyer b
+            WHERE b.mapped_company_id = p.customer_id
               AND b.deal_id = p.created_via_deal_id
-              AND m.match_rule <> 'ALREADY_LINKED'
+              AND b.match_rule <> 'ALREADY_LINKED'
           )
           AND (
             SELECT count(*) FROM onboarding.exporter_lifecycle_history h
@@ -1176,13 +1173,12 @@ VALIDATION_QUERIES: tuple[tuple[str, str], ...] = (
         """,
     ),
     (
-        # The map and the deal must agree on who the buyer is.
+        # The mapping and the deal must agree on who the buyer is.
         "mapped deal buyers whose company is not the deal's buyer company",
         """
-        SELECT count(*) FROM onboarding.deal_buyer_company_map m
-        JOIN onboarding.deal_buyer b ON b.id = m.deal_buyer_id
+        SELECT count(*) FROM onboarding.deal_buyer b
         JOIN onboarding.deal d ON d.id = b.deal_id
-        WHERE d.buyer_company_id IS NOT NULL AND d.buyer_company_id <> m.company_id
+        WHERE d.buyer_company_id IS NOT NULL AND d.buyer_company_id <> b.mapped_company_id
         """,
     ),
     (
@@ -1233,13 +1229,7 @@ async def rollback(db: AsyncSession, *, run_id: str) -> dict[str, int]:
     prints the one route back, which is the ``pg_dump`` taken before it. That is why
     the dump is step zero and not a precaution.
     """
-    mapped = list(
-        await db.scalars(
-            select(DealBuyerCompanyMap.deal_buyer_id).where(
-                DealBuyerCompanyMap.run_id == run_id
-            )
-        )
-    )
+    mapped = list(await db.scalars(select(DealBuyer.id).where(DealBuyer.mapping_run_id == run_id)))
     if not mapped:
         return {"mapped": 0, "deals_linked": 0, "results_linked": 0, "companies_created": 0}
 
@@ -1268,8 +1258,8 @@ async def rollback(db: AsyncSession, *, run_id: str) -> dict[str, int]:
     )
     companies_created = int(
         await db.scalar(
-            select(func.count(func.distinct(DealBuyerCompanyMap.company_id))).where(
-                DealBuyerCompanyMap.run_id == run_id
+            select(func.count(func.distinct(DealBuyer.mapped_company_id))).where(
+                DealBuyer.mapping_run_id == run_id
             )
         )
         or 0
@@ -1325,7 +1315,7 @@ async def _main(args: argparse.Namespace) -> int:
         if args.validate:
             results = await validate(db)
             failures = 0
-            print("\nP4-6 validation (plan section 17.2)")
+            print("\nBuyer migration validation (plan section 17.2)")
             print("=" * 60)
             for label, count in results:
                 status = "OK  " if count == 0 else "FAIL"
@@ -1347,7 +1337,7 @@ async def _main(args: argparse.Namespace) -> int:
             print(f"\nRun {args.run_id} - what it did")
             print("=" * 60)
             if not counts["mapped"]:
-                print("Nothing: no mapping rows carry that run id.\n")
+                print("Nothing: no deal buyer was mapped by that run id.\n")
                 return 0
             print(f"  deal buyers mapped:    {counts['mapped']}")
             print(f"  companies involved:    {counts['companies_created']}")

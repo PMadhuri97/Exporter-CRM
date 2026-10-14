@@ -842,12 +842,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List an exporter's contacts */
+        /**
+         * List a company's contacts, or its directors and beneficial owners
+         * @description `role` picks who: `CONTACT` (the default: who we talk to), `DIRECTOR`, `UBO`, or `ALL` for every person at the company.
+         */
         get: operations["list_exporter_contacts_api_v1_onboarding_exporters__customer_id__contacts_get"];
         put?: never;
         /**
-         * Add a contact to an exporter relationship
-         * @description Setting is_primary=true demotes any existing primary contact for this customer in the same transaction — never two primaries at once.
+         * Add a contact, director or beneficial owner to a company
+         * @description A person with roles: `is_contact` (the default), `is_director`, `is_ubo`. Only the name and a role are required; a DIN needs the director role, an ownership share and control type the beneficial-owner role. The identification number is stored encrypted. Adding a director or beneficial owner writes a `contact` history row. Setting is_primary=true demotes any existing primary contact for this customer in the same transaction — never two primaries at once; only a contact can be primary.
          */
         post: operations["add_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts_post"];
         delete?: never;
@@ -871,7 +874,7 @@ export interface paths {
         head?: never;
         /**
          * Change a contact on an exporter relationship
-         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `name` and `is_primary` may be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary.
+         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `name` and `is_primary` may be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary. Roles change the same way: taking one away clears the fields that belong only to it, and taking away `is_contact` stops the person being the primary contact.
          */
         patch: operations["update_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts__contact_id__patch"];
         trace?: never;
@@ -3234,7 +3237,12 @@ export interface components {
             /** Gst Registration Id */
             gst_registration_id?: string | null;
         };
-        /** AddExporterContactRequest */
+        /**
+         * AddExporterContactRequest
+         * @description A person at the company: a contact (the default), a director, a beneficial owner,
+         *     or several at once. Only the name and a role are required; the person fields are
+         *     optional, and the director-only and owner-only ones need that role.
+         */
         AddExporterContactRequest: {
             /** Name */
             name: string;
@@ -3251,6 +3259,37 @@ export interface components {
              * @default false
              */
             is_primary: boolean;
+            /**
+             * Is Contact
+             * @default true
+             */
+            is_contact: boolean;
+            /**
+             * Is Director
+             * @default false
+             */
+            is_director: boolean;
+            /**
+             * Is Ubo
+             * @default false
+             */
+            is_ubo: boolean;
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Nationality */
+            nationality?: string | null;
+            /** Residence Country */
+            residence_country?: string | null;
+            /** Din */
+            din?: string | null;
+            /** Ownership Pct */
+            ownership_pct?: number | string | null;
+            /** Control Type */
+            control_type?: ("DIRECT_OWNERSHIP" | "INDIRECT_OWNERSHIP" | "VOTING_RIGHTS" | "OTHER_CONTROL") | null;
+            /** Identification Type */
+            identification_type?: ("PASSPORT" | "NATIONAL_ID" | "DRIVING_LICENCE") | null;
+            /** Identification Number */
+            identification_number?: string | null;
         };
         /**
          * AddGstRegistrationRequest
@@ -6011,6 +6050,39 @@ export interface components {
             last_verified_by?: string | null;
             /** Created At */
             created_at?: string | null;
+            /**
+             * Is Contact
+             * @default true
+             */
+            is_contact: boolean;
+            /**
+             * Is Director
+             * @default false
+             */
+            is_director: boolean;
+            /**
+             * Is Ubo
+             * @default false
+             */
+            is_ubo: boolean;
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Nationality */
+            nationality?: string | null;
+            /** Residence Country */
+            residence_country?: string | null;
+            /** Din */
+            din?: string | null;
+            /** Ownership Pct */
+            ownership_pct?: string | null;
+            /** Control Type */
+            control_type?: string | null;
+            /** Identification Type */
+            identification_type?: string | null;
+            /** Identification Number */
+            identification_number?: string | null;
+            /** Source */
+            source?: string | null;
             /**
              * Verification Due
              * @description An active contact whose details were last verified — or, never verified, were
@@ -8860,6 +8932,28 @@ export interface components {
             department?: string | null;
             /** Is Primary */
             is_primary?: boolean | null;
+            /** Is Contact */
+            is_contact?: boolean | null;
+            /** Is Director */
+            is_director?: boolean | null;
+            /** Is Ubo */
+            is_ubo?: boolean | null;
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Nationality */
+            nationality?: string | null;
+            /** Residence Country */
+            residence_country?: string | null;
+            /** Din */
+            din?: string | null;
+            /** Ownership Pct */
+            ownership_pct?: number | string | null;
+            /** Control Type */
+            control_type?: ("DIRECT_OWNERSHIP" | "INDIRECT_OWNERSHIP" | "VOTING_RIGHTS" | "OTHER_CONTROL") | null;
+            /** Identification Type */
+            identification_type?: ("PASSPORT" | "NATIONAL_ID" | "DRIVING_LICENCE") | null;
+            /** Identification Number */
+            identification_number?: string | null;
         };
         /**
          * UpdateExporterProfileRequest
@@ -11596,7 +11690,9 @@ export interface operations {
     };
     list_exporter_contacts_api_v1_onboarding_exporters__customer_id__contacts_get: {
         parameters: {
-            query?: never;
+            query?: {
+                role?: "CONTACT" | "DIRECTOR" | "UBO" | "ALL";
+            };
             header?: never;
             path: {
                 customer_id: string;
@@ -11684,7 +11780,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid request body */
+            /** @description Invalid request body, or a person that breaks a role rule */
             422: {
                 headers: {
                     [name: string]: unknown;

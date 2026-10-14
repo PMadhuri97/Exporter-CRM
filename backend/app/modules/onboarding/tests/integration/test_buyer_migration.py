@@ -27,10 +27,7 @@ from sqlalchemy import select
 from app.modules.onboarding.application.deal_service import DealService
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
 from app.modules.onboarding.domain.entities.deal import Deal
-from app.modules.onboarding.domain.entities.deal_buyer_company_map import (
-    BuyerMatchRule,
-    DealBuyerCompanyMap,
-)
+from app.modules.onboarding.domain.entities.deal_buyer import BuyerMatchRule, DealBuyer
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
     ExporterSource,
@@ -94,11 +91,12 @@ async def _apply_only(report, *, run_id: str, confirmed=None) -> dict[str, int]:
         )
 
 
-async def _mapping(deal_buyer_id: uuid.UUID) -> DealBuyerCompanyMap | None:
+async def _mapping(deal_buyer_id: uuid.UUID) -> DealBuyer | None:
+    """The deal buyer, when the migration has mapped it; ``None`` while it is unmapped."""
     async with db_services.AsyncSessionLocal() as db:
         return await db.scalar(
-            select(DealBuyerCompanyMap).where(
-                DealBuyerCompanyMap.deal_buyer_id == deal_buyer_id
+            select(DealBuyer).where(
+                DealBuyer.id == deal_buyer_id, DealBuyer.mapped_company_id.isnot(None)
             )
         )
 
@@ -133,7 +131,7 @@ async def test_a_buyer_with_no_match_becomes_a_not_in_pipeline_company():
     async with db_services.AsyncSessionLocal() as db:
         company = await db.scalar(
             select(ExporterProfile).where(
-                ExporterProfile.customer_id == mapping.company_id
+                ExporterProfile.customer_id == mapping.mapped_company_id
             )
         )
     # §17.2's creation rules, every one of them.
@@ -141,7 +139,7 @@ async def test_a_buyer_with_no_match_becomes_a_not_in_pipeline_company():
     assert company.source is ExporterSource.DEAL_BUYER
     assert company.created_via == "DEAL_BUYER"
     assert company.created_via_deal_id == deal_id
-    assert (await _deal(deal_id)).buyer_company_id == mapping.company_id
+    assert (await _deal(deal_id)).buyer_company_id == mapping.mapped_company_id
 
 
 async def test_an_indian_buyer_joins_the_company_holding_its_pan():
@@ -170,7 +168,7 @@ async def test_an_indian_buyer_joins_the_company_holding_its_pan():
     counts = await _apply_only(report, run_id="test-pan")
     # Joined, not created: one set of checks per company.
     assert counts["companies_created"] == 0
-    assert (await _mapping(buyer_id)).company_id == existing
+    assert (await _mapping(buyer_id)).mapped_company_id == existing
 
 
 async def test_a_gstin_in_tax_id_resolves_through_its_embedded_pan():
@@ -218,7 +216,7 @@ async def test_several_deal_buyers_with_one_registration_number_become_one_compa
     assert counts["companies_created"] == 1
     assert counts["mapped"] == 3
 
-    companies = {(await _mapping(b)).company_id for b in buyers}
+    companies = {(await _mapping(b)).mapped_company_id for b in buyers}
     assert len(companies) == 1
 
 
@@ -279,7 +277,7 @@ async def test_a_confirmed_name_match_is_mapped_and_marked_as_a_persons_decision
     assert counts["mapped"] == 1
     assert counts["companies_created"] == 0
     mapping = await _mapping(buyer_id)
-    assert mapping.company_id == existing
+    assert mapping.mapped_company_id == existing
     assert mapping.match_rule is BuyerMatchRule.NAME_CONFIRMED
     assert (await _deal(deal_id)).buyer_company_id == existing
 
@@ -342,7 +340,7 @@ async def test_a_buyers_checks_become_the_companys_without_touching_the_row():
     counts = await _apply_only(report, run_id="test-checks")
     assert counts["results_linked"] == 1
 
-    company_id = (await _mapping(buyer_id)).company_id
+    company_id = (await _mapping(buyer_id)).mapped_company_id
     async with db_services.AsyncSessionLocal() as db:
         [result] = list(
             await db.scalars(
@@ -493,7 +491,7 @@ async def test_rollback_reports_what_a_run_did_and_writes_nothing():
     assert counts["companies_created"] == 1
 
     # Nothing was undone, which is the point: every link the run made is still there.
-    company_id = (await _mapping(buyer_id)).company_id
+    company_id = (await _mapping(buyer_id)).mapped_company_id
     assert (await _deal(deal_id)).buyer_company_id == company_id
     async with db_services.AsyncSessionLocal() as db:
         [result] = list(

@@ -34,6 +34,16 @@
 > coverage; `GET /sanctions/true-matches` and `GET /sanctions/rescreen-due` are the
 > Compliance work lists (a newer list version, a company renamed since, an unscreened
 > beneficial owner). History dimension `sanctions`.
+>
+> **Amendment, 14 October 2026 — people as subjects (migration 0057).** The directors and
+> beneficial owners on record are the company's people (`exporter_contact`, see
+> `company-record.md`). Every active one is a subject of the coverage and of Re-screen
+> due ("never screened" until screened). A run on one names it by `subject_reference`
+> (subject type UBO or DIRECTOR, matching the person's role), and
+> `fk_sanctions_run_subject_person` ties that reference to a person of the run's own
+> company; a person's runs are one subject whichever role they were screened under. A
+> director not on record is still screened by name, with no reference. A hand-entered
+> SANCTIONS verification result remains allowed.
 
 **Owner:** Developer 1 — the compliance engine (`docs/developer-allocation.md` §2.1, from
 1 October 2026); built by Developer 4B (L4-02, L4-04 review half, L4-07, L4-09, L4-11) ·

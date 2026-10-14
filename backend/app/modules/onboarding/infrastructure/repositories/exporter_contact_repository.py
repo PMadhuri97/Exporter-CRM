@@ -8,6 +8,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
+from app.modules.onboarding.domain.people import ROLE_COLUMNS
 from app.platform.database.adapters.repository import BaseRepository
 
 
@@ -15,12 +16,15 @@ class ExporterContactRepository(BaseRepository[ExporterContact]):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(ExporterContact, session)
 
-    async def list_by_customer(self, customer_id: uuid.UUID) -> list[ExporterContact]:
-        result = await self.session.execute(
-            select(ExporterContact)
-            .where(ExporterContact.customer_id == customer_id)
-            .order_by(ExporterContact.created_at.asc())
-        )
+    async def list_by_customer(
+        self, customer_id: uuid.UUID, *, role: str | None = None
+    ) -> list[ExporterContact]:
+        """The company's people, oldest first; only those holding ``role`` (``CONTACT``,
+        ``DIRECTOR``, ``UBO``) when one is given."""
+        statement = select(ExporterContact).where(ExporterContact.customer_id == customer_id)
+        if role is not None:
+            statement = statement.where(getattr(ExporterContact, ROLE_COLUMNS[role]).is_(True))
+        result = await self.session.execute(statement.order_by(ExporterContact.created_at.asc()))
         return list(result.scalars().all())
 
     async def get_for_customer(
