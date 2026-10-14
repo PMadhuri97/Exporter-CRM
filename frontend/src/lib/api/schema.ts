@@ -655,6 +655,8 @@ export interface paths {
          *     `relationship_manager` narrows the list by owner: `me` (My companies), `none` (Unassigned), `inactive` (an RM whose account is deactivated) or a user id. It is a filter only: ownership never changes what a reader may see.
          *
          *     `missing_primary_contact=true` lists only companies with no active primary contact (each row carries `has_active_primary_contact`).
+         *
+         *     `sort` orders the list by `updated_at` (when the company record last changed; the default), `name` (ignoring case, unnamed companies last) or `stage` (Lead, Prospect, Customer); `order` is `desc` (the default) or `asc`. Ties fall back to the most recent change, so paging never repeats or skips a company.
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -1891,7 +1893,7 @@ export interface paths {
         };
         /**
          * Companies due a sanctions re-screen
-         * @description Companies screened before whose latest screening is out of date: a list has a newer version or became mandatory, the company's name changed, or a beneficial owner was never screened.
+         * @description Companies screened before whose latest screening is out of date: a list has a newer version or became mandatory, the company's name changed, or a beneficial owner was never screened. By company name, or with `order=newest` (or `oldest`) by when each company was last screened.
          */
         get: operations["list_rescreen_due_api_v1_onboarding_sanctions_rescreen_due_get"];
         put?: never;
@@ -2759,6 +2761,8 @@ export interface paths {
         /**
          * Companies due for Re-KYC
          * @description CLEAR companies whose Clear has expired or expires before `before` (default: now + the Re-KYC window, 30 days unless configured) — the expired first, then the soonest. An expired Clear still reads CLEAR (nothing moves the gauge automatically) but no longer promotes the company or lets its deals be handed over. A company whose Re-KYC has started is not listed: starting it reopens the check. Names only, never an identifier. Staff; DEVELOPER is refused.
+         *
+         *     `order=newest` lists the latest expiry first instead — the Clear that most recently came due at the top, as Compliance work shows it.
          */
         get: operations["list_rekyc_due_api_v1_onboarding_background_check_due_get"];
         put?: never;
@@ -4775,6 +4779,11 @@ export interface components {
              */
             true_match_approval: "SINGLE" | "SECOND_OFFICER" | "HEAD";
         };
+        /**
+         * CompanySort
+         * @enum {string}
+         */
+        CompanySort: "updated_at" | "name" | "stage";
         /**
          * CompleteFollowUpRequest
          * @description Record that a follow-up was dealt with.
@@ -7922,6 +7931,8 @@ export interface components {
             company_name: string | null;
             /** Reasons */
             reasons: string[];
+            /** Last Screened At */
+            last_screened_at?: string | null;
         };
         /**
          * ResultRequest
@@ -8512,6 +8523,11 @@ export interface components {
             /** Relationship */
             relationship?: ("SUBSIDIARY" | "BRANCH_OFFICE" | "GROUP_COMPANY" | "JOINT_VENTURE") | null;
         };
+        /**
+         * SortOrder
+         * @enum {string}
+         */
+        SortOrder: "asc" | "desc";
         /** StaffListResponse */
         StaffListResponse: {
             /** Staff */
@@ -11066,6 +11082,8 @@ export interface operations {
                 missing_primary_contact?: boolean;
                 /** @description `me` (My collections), `none` or a user id */
                 collections_owner?: string | null;
+                sort?: components["schemas"]["CompanySort"];
+                order?: components["schemas"]["SortOrder"];
                 limit?: number;
                 offset?: number;
             };
@@ -14892,6 +14910,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                order?: "name" | "newest" | "oldest";
             };
             header?: never;
             path?: never;
@@ -17277,6 +17296,8 @@ export interface operations {
                 awaiting?: "me" | null;
                 limit?: number;
                 offset?: number;
+                /** @description With `awaiting=me`: `oldest` (the default) lists the longest waiting first; `newest` the most recently proposed first. */
+                order?: "oldest" | "newest";
             };
             header?: never;
             path?: never;
@@ -17325,6 +17346,8 @@ export interface operations {
                 before?: string | null;
                 limit?: number;
                 offset?: number;
+                /** @description `oldest` (the default): expired first, then the soonest. */
+                order?: "oldest" | "newest";
             };
             header?: never;
             path?: never;

@@ -244,6 +244,8 @@ class RescreenDueResponse(BaseModel):
     company_id: uuid.UUID
     company_name: str | None
     reasons: list[str]
+    #: When the company was last screened (its most recent run, of any subject).
+    last_screened_at: datetime | None = None
 
 
 class RescreenDueListResponse(BaseModel):
@@ -668,7 +670,8 @@ async def list_pending_true_matches(
     description=(
         "Companies screened before whose latest screening is out of date: a list has a "
         "newer version or became mandatory, the company's name changed, or a beneficial "
-        "owner was never screened."
+        "owner was never screened. By company name, or with `order=newest` (or "
+        "`oldest`) by when each company was last screened."
     ),
     responses={
         401: {"description": "Unauthorized"},
@@ -679,11 +682,17 @@ async def list_rescreen_due(
     current_user: Annotated[User, Depends(_VIEW)],
     db: AsyncSession = Depends(get_db),
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
+    order: Annotated[Literal["name", "newest", "oldest"], Query()] = "name",
 ) -> RescreenDueListResponse:
-    rows = await SanctionsScreeningService(db).rescreen_due(limit=limit)
+    rows = await SanctionsScreeningService(db).rescreen_due(limit=limit, order=order)
     return RescreenDueListResponse(
         companies=[
-            RescreenDueResponse(company_id=r.company_id, company_name=r.company_name, reasons=r.reasons)
+            RescreenDueResponse(
+                company_id=r.company_id,
+                company_name=r.company_name,
+                reasons=r.reasons,
+                last_screened_at=r.last_screened_at,
+            )
             for r in rows
         ],
         total=len(rows),

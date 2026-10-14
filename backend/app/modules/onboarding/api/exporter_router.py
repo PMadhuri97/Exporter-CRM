@@ -69,6 +69,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 )
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
+from app.modules.onboarding.domain.list_sort import CompanySort, SortOrder
 from app.modules.onboarding.exceptions import (
     IdentifierSearchNotPermittedError,
     RelationshipManagerAssignNotAllowedError,
@@ -337,7 +338,11 @@ async def update_exporter_profile(
         "`none` (Unassigned), `inactive` (an RM whose account is deactivated) or a "
         "user id. It is a filter only: ownership never changes what a reader may see.\n\n"
         "`missing_primary_contact=true` lists only companies with no active primary "
-        "contact (each row carries `has_active_primary_contact`)."
+        "contact (each row carries `has_active_primary_contact`).\n\n"
+        "`sort` orders the list by `updated_at` (when the company record last changed; "
+        "the default), `name` (ignoring case, unnamed companies last) or `stage` (Lead, "
+        "Prospect, Customer); `order` is `desc` (the default) or `asc`. Ties fall back "
+        "to the most recent change, so paging never repeats or skips a company."
     ),
     responses={
         200: {"model": ExporterProfileSearchResponse},
@@ -371,6 +376,8 @@ async def search_exporter_profiles(
     collections_owner: str | None = Query(
         default=None, description="`me` (My collections), `none` or a user id"
     ),
+    sort: CompanySort = Query(default=CompanySort.UPDATED_AT),
+    order: SortOrder = Query(default=SortOrder.DESC),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ExporterProfileSearchResponse:
@@ -403,6 +410,8 @@ async def search_exporter_profiles(
         missing_primary_contact=missing_primary_contact,
         collections_owner_user_id=_collector_filter(collections_owner, current_user),
         collections_owner_unassigned=(collections_owner or "").strip().lower() == "none",
+        sort=sort,
+        order=order,
         limit=limit,
         offset=offset,
     )

@@ -322,6 +322,35 @@ async def test_the_due_list_has_the_expired_and_the_soon_expiring_and_not_the_re
             await _reopen(company_id)
 
 
+async def test_the_due_list_can_list_the_latest_expiry_first(
+    client: AsyncClient, tokens, monkeypatch
+):
+    """`order=newest`: the Clear that most recently came due is at the top, as
+    Compliance work lists it. The default stays soonest first, for Home."""
+    soon = await _cleared_with_validity(monkeypatch, 1)
+    later = await _cleared_with_validity(monkeypatch, 20)
+    try:
+        now = clock.now() + timedelta(days=2)
+        with use_clock(FixedClock(now)):
+            response = await client.get(
+                f"{BASE}/background-check/due",
+                params={
+                    "before": (now + timedelta(days=25)).isoformat(),
+                    "limit": 100,
+                    "order": "newest",
+                },
+                headers=auth_header(tokens[UserRole.COMPLIANCE]),
+            )
+        assert response.status_code == 200, response.text
+        order = [row["company_id"] for row in response.json()["companies"]]
+        assert order.index(str(later)) < order.index(str(soon))
+        expiries = [row["expires_at"] for row in response.json()["companies"]]
+        assert expiries == sorted(expiries, reverse=True)
+    finally:
+        for company_id in (soon, later):
+            await _reopen(company_id)
+
+
 async def test_the_due_list_says_which_renewals_are_for_a_buyer_only_company(
     client: AsyncClient, tokens, monkeypatch
 ):

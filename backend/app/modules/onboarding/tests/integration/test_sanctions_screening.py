@@ -119,6 +119,35 @@ async def test_a_new_list_version_puts_the_company_on_rescreen_due(client: Async
     assert str(company_id) not in {r["company_id"] for r in due.json()["companies"]}
 
 
+async def test_rescreen_due_can_list_the_most_recently_screened_first(client: AsyncClient):
+    _, officer = await user_with_role(client, UserRole.COMPLIANCE)
+    _, admin = await user_with_role(client, UserRole.ADMIN)
+    earlier, later = await make_company(), await make_company()
+    await _record(client, officer, earlier)
+    await _record(client, officer, later)
+
+    lists = (await client.get(f"{BASE}/settings/sanctions-lists", headers=auth_header(admin))).json()
+    mha = next(row for row in lists["lists"] if row["code"] == "IN_MHA_UAPA")
+    newer = (date.fromisoformat(mha["list_version_date"]) + timedelta(days=1)).isoformat()
+    await client.patch(
+        f"{BASE}/settings/sanctions-lists/IN_MHA_UAPA",
+        headers=auth_header(admin),
+        json={"list_version_date": newer, "change_reason": CHANGE_REASON},
+    )
+
+    due = await client.get(
+        f"{BASE}/sanctions/rescreen-due",
+        params={"order": "newest", "limit": 500},
+        headers=auth_header(officer),
+    )
+    assert due.status_code == 200, due.text
+    rows = due.json()["companies"]
+    ids = [row["company_id"] for row in rows]
+    assert ids.index(str(later)) < ids.index(str(earlier))
+    screened = [row["last_screened_at"] for row in rows if row["last_screened_at"]]
+    assert screened == sorted(screened, reverse=True)
+
+
 async def test_every_mandatory_list_must_be_covered(client: AsyncClient):
     _, officer = await user_with_role(client, UserRole.COMPLIANCE)
     company_id = await make_company()

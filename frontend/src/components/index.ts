@@ -44,6 +44,13 @@ export {
 export { RecordHeader, type RecordAction, type RecordField } from './ui/RecordHeader';
 export { RecordListItem } from './ui/RecordListItem';
 export { Segmented, type SegmentedOption } from './ui/Segmented';
+export { SortMenu } from './ui/SortMenu';
+export {
+  type SortColumn,
+  type SortDirection,
+  type SortState,
+  useSortParams,
+} from './ui/useSortParams';
 export { SidePanel } from './ui/SidePanel';
 export { sidePanelFieldError } from './ui/sidePanelFieldError';
 export { Skeleton } from './ui/Skeleton';

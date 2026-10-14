@@ -35,7 +35,9 @@ import uuid
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Literal
 
 import structlog
 from sqlalchemy import exists, select
@@ -137,11 +139,18 @@ class CompanySanctions:
     subjects: list[SubjectCoverage]
 
 
+#: How the re-screen worklist is ordered: by company name, or by when each company
+#: was last screened.
+RescreenOrder = Literal["name", "newest", "oldest"]
+
+
 @dataclass(frozen=True)
 class RescreenDue:
     company_id: uuid.UUID
     company_name: str | None
     reasons: list[str]
+    #: When the company's most recent screening (of any subject) was performed.
+    last_screened_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -514,10 +523,15 @@ class SanctionsScreeningService:
             subjects=subjects,
         )
 
-    async def rescreen_due(self, *, limit: int = 200) -> list[RescreenDue]:
+    async def rescreen_due(
+        self, *, limit: int = 200, order: RescreenOrder = "name"
+    ) -> list[RescreenDue]:
         """Companies screened before whose latest screening is now out of date: a list
         has a newer version or became mandatory, the company's name changed, or a
         beneficial owner has never been screened.
+
+        By company name (``order="name"``, the default), or by when each company was
+        last screened: ``newest`` or ``oldest`` first.
 
         A fixed number of reads, whatever the number of companies: every run, cycle,
         list version and beneficial owner is read once, and the same subjects and
@@ -603,8 +617,15 @@ class SanctionsScreeningService:
                 for reason in subject_reasons
             ]
             if reasons:
-                due.append(RescreenDue(company_id, name, reasons))
+                last = max((run.performed_at for run in subjects.values()), default=None)
+                due.append(RescreenDue(company_id, name, reasons, last))
         due.sort(key=lambda row: (row.company_name or "").lower())
+        if order != "name":
+            # Stable on the name order, so companies screened at one moment stay A-Z.
+            oldest = datetime.min.replace(tzinfo=UTC)
+            due.sort(
+                key=lambda row: row.last_screened_at or oldest, reverse=order == "newest"
+            )
         return due[:limit]
 
     async def pending_true_matches(self) -> list[PendingTrueMatch]:
