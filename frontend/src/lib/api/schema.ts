@@ -2225,11 +2225,9 @@ export interface paths {
          *
          *     **`{create: {name, country, pan?, gstin?, registration_number?}}`** creates the buyer as a company that is **not in the pipeline** (not a lead) and names it, in one step. The server matches first, as `POST /companies/match` does, and audits every identifier lookup: an identifier a company on file holds is refused with 409 `BUYER_COMPANY_ALREADY_KNOWN` naming that company, rather than duplicated. A name that only resembles one does not stop it. A company outside India needs its registration number unless it has a PAN.
          *
-         *     **`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer per deal, so it replaces that row rather than adding another (deal contract §3); `PUT` rather than `POST` for the same reason. Still accepted because deals written before the buyer migration have one, and because a `deal_buyer`'s own sanctions and AML are the only thing the buyer-compliance rule can read for such a deal. These writes will retire.
+         *     The old third form, the buyer's own details as a legacy `deal_buyer` row, is gone: no new legacy buyer is recorded (`trg_deal_buyer_frozen`). Deals written before keep theirs, read-only.
          *
          *     A buyer's problems stay on the buyer: a failed buyer check is recorded against the buyer and never against the selling company (architecture §3.5).
-         *
-         *     In the legacy form the registration number, tax ID, contact email and contact phone are masked for OPERATIONS and DEVELOPER. Leave any of them out to keep its stored value — so a role that only sees the masked form can edit the rest — or send null to clear it. A masked value is refused.
          */
         put: operations["set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put"];
         post?: never;
@@ -3286,8 +3284,6 @@ export interface components {
         AddGstRegistrationRequest: {
             /** Gstin */
             gstin: string;
-            /** Address */
-            address?: string | null;
             /** @default UNVERIFIED */
             status: components["schemas"]["GstRegistrationStatus"];
         };
@@ -6076,8 +6072,6 @@ export interface components {
             /** Iec */
             iec: string | null;
             source: components["schemas"]["ExporterSource"];
-            /** Relationship Manager */
-            relationship_manager: string | null;
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
             journey: components["schemas"]["ExporterJourney"];
@@ -6159,8 +6153,6 @@ export interface components {
             /** Iec */
             iec: string | null;
             source: components["schemas"]["ExporterSource"];
-            /** Relationship Manager */
-            relationship_manager: string | null;
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
             journey: components["schemas"]["ExporterJourney"];
@@ -6230,8 +6222,6 @@ export interface components {
             /** Iec */
             iec: string | null;
             source: components["schemas"]["ExporterSource"];
-            /** Relationship Manager */
-            relationship_manager: string | null;
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
             journey: components["schemas"]["ExporterJourney"];
@@ -6605,8 +6595,6 @@ export interface components {
             /** State Name */
             state_name: string | null;
             status: components["schemas"]["GstRegistrationStatus"];
-            /** Address */
-            address: string | null;
             /** Address Id */
             address_id?: string | null;
             flag_status: components["schemas"]["GstRegistrationFlag"] | null;
@@ -8302,47 +8290,25 @@ export interface components {
         };
         /**
          * SetDealBuyerRequest
-         * @description Record the deal's buyer, in **one of two forms**.
+         * @description Name the deal's buyer company, in **one of two forms**.
          *
          *     *The company form* — ``{"buyer_company_id": "..."}`` — names the company the
-         *     buyer **is**. This is the form to use. The buyer is then a full company record:
-         *     it can be screened on its own timeline, the handover guard asks about it,
-         *     and the same company can be a seller on another deal. It is **set
-         *     once**; see ``DealBuyerCompanyAlreadySetError``.
+         *     buyer **is**. The buyer is then a full company record: it can be screened on its
+         *     own timeline, the handover guard asks about it, and the same company can be a
+         *     seller on another deal. It is **set once**; see ``DealBuyerCompanyAlreadySetError``.
          *
-         *     *The legacy form* — ``{"name": ..., "country": ..., ...}`` — records a
-         *     ``deal_buyer`` row: a set of details with no record of its own. It is still
-         *     accepted because deals written before the buyer migration have one, and
-         *     because a ``deal_buyer``'s sanctions and AML are the only place the buyer-compliance
-         *     rule can read for such a deal (``background-check.md`` §12.2). These writes will
-         *     retire, and the table is kept.
+         *     *The create form* — ``{"create": {...}}`` — creates that company first, outside
+         *     the pipeline, and names it.
          *
-         *     **Exactly one form per request.** Mixing them is refused rather than merged:
-         *     the two disagree about what a buyer *is*, and silently writing both would leave
-         *     a deal whose company says one thing and whose row says another, with no way to
-         *     tell which the person meant.
-         *
-         *     In the legacy form, ``registration_number``, ``tax_id``, ``contact_email`` and
-         *     ``contact_phone`` are masked for OPERATIONS and DEVELOPER. Leave one out to
-         *     keep its stored value; send ``null`` or an empty string to clear it; a masked
-         *     value is refused (422).
+         *     **Exactly one form per request.** The old third form — the buyer's own details,
+         *     recorded as a ``deal_buyer`` row — is gone: no new legacy buyer is recorded, and
+         *     ``trg_deal_buyer_frozen`` refuses one. Its fields are refused (422) like any other
+         *     unknown field.
          */
         SetDealBuyerRequest: {
             /** Buyer Company Id */
             buyer_company_id?: string | null;
             create?: components["schemas"]["CreateBuyerCompanyRequest"] | null;
-            /** Name */
-            name?: string | null;
-            /** Country */
-            country?: string | null;
-            /** Registration Number */
-            registration_number?: string | null;
-            /** Tax Id */
-            tax_id?: string | null;
-            /** Contact Email */
-            contact_email?: string | null;
-            /** Contact Phone */
-            contact_phone?: string | null;
         };
         /**
          * SetDealInvoicingBranchRequest
@@ -15452,7 +15418,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The company is still a LEAD (`DEAL_COMPANY_NOT_READY`) */
+            /** @description The company is still a LEAD (`DEAL_COMPANY_NOT_READY`), or already has a deal with this reference (`DEAL_REFERENCE_TAKEN`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -15685,7 +15651,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description More than one form, no form complete, a country that is not ISO-3166-1 alpha-2, a buyer company that is the seller, a foreign buyer company with no registration number and no PAN, or a masked value sent back */
+            /** @description Both forms or neither (the old buyer-details fields included), a buyer company that is the seller, or a foreign buyer company with no registration number and no PAN */
             422: {
                 headers: {
                     [name: string]: unknown;

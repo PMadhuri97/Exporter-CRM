@@ -145,11 +145,12 @@ class ExporterGstin(AnerModel):
         server_default=GstRegistrationStatus.UNVERIFIED.value,
         default=GstRegistrationStatus.UNVERIFIED,
     )
-    #: The registered address of this branch, as the portal prints it. Free text: it
-    #: is shown and printed, never parsed, and an address model that could not hold
-    #: what the portal returned would be worse than the text.
-    address: Mapped[str | None] = mapped_column(Text, nullable=True)
-    #: The company address this branch trades from, when one has been linked.
+    #: The branch's old free-text address. **Retired**: the API no longer takes or
+    #: serves it; `convert_gst_addresses` turns it into a linked company address, and a
+    #: later migration drops it. Mapped `deferred` so no ordinary query loads it.
+    address: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
+    #: The company address this branch trades from, when one has been linked — the
+    #: branch's only address.
     address_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     #: Compliance's flag on this branch. ``FLAGGED`` needs a reason.

@@ -49,6 +49,7 @@ from app.modules.onboarding.exceptions import (
     VerificationReviewStaleError,
 )
 from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.database import services as db_services
 from app.shared.contracts.kyb import VendorHealthStatus
 from app.shared.enums.kyb import KYBVendorProcessingMode, VendorHealthStatusEnum
@@ -66,9 +67,8 @@ async def _deal_buyer() -> uuid.UUID:
     company_id = await make_prospect()  # a deal needs a prospect
     async with db_services.AsyncSessionLocal() as db:
         deal = await DealService(db).open_deal(company_id, reference="Verification", actor_id="t")
-    async with db_services.AsyncSessionLocal() as db:
-        view = await DealService(db).set_buyer(deal.id, actor_id="t", name="Buyer BV", country="NL")
-    return view.buyer.id
+    buyer_id = await record_legacy_buyer(deal.id, name="Buyer BV", country="NL")
+    return buyer_id
 
 
 class _FakeAlwaysPassAdapter:

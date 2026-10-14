@@ -284,9 +284,9 @@ async def test_the_route_records_a_buyer_company(client: AsyncClient):
     assert body["buyer"] is None
 
 
-async def test_the_route_still_records_a_legacy_buyer(client: AsyncClient):
-    """Deals written before the buyer migration have one, and it is the only place
-    such a deal's sanctions and AML can be recorded (the buyer rule needs them)."""
+async def test_the_route_no_longer_records_a_legacy_buyer(client: AsyncClient):
+    """The buyer's own details are not a form any more: no new legacy buyer is
+    recorded (`trg_deal_buyer_frozen`), and a buyer is a company."""
     token = await token_with_role(client, UserRole.OPERATIONS)
     deal_id, _seller = await _deal()
 
@@ -295,9 +295,9 @@ async def test_the_route_still_records_a_legacy_buyer(client: AsyncClient):
         json={"name": "Rotterdam Trading BV", "country": "NL"},
         headers=auth_header(token),
     )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["buyer"]["name"] == "Rotterdam Trading BV"
-    assert resp.json()["buyer_company"] is None
+    assert resp.status_code == 422, resp.text
+    reloaded = await _reload(deal_id)
+    assert reloaded.buyer_company_id is None
 
 
 async def test_both_forms_at_once_are_refused(client: AsyncClient):
@@ -314,7 +314,6 @@ async def test_both_forms_at_once_are_refused(client: AsyncClient):
         headers=auth_header(token),
     )
     assert resp.status_code == 422, resp.text
-    assert "not both" in resp.text
     assert (await _reload(deal_id)).buyer_company_id is None
 
 

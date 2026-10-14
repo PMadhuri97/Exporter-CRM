@@ -40,6 +40,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
 from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
 from app.modules.onboarding.migrate_deal_buyers import apply, resolve, rollback, validate
 from app.modules.onboarding.tests.fixtures.companies import make_prospect
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.database import services as db_services
 
 pytestmark = pytest.mark.asyncio
@@ -67,8 +68,7 @@ async def _deal_with_legacy_buyer(seller: uuid.UUID, **buyer) -> tuple[uuid.UUID
             seller, reference=f"Migration deal {uuid.uuid4().hex[:8]}", actor_id="rm-1"
         )
     deal_id = view.id
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(deal_id, actor_id="rm-1", **buyer)
+    await record_legacy_buyer(deal_id, **buyer)
     async with db_services.AsyncSessionLocal() as db:
         deal = await db.scalar(select(Deal).where(Deal.id == deal_id))
         await db.refresh(deal, ["buyer"])

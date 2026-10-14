@@ -67,6 +67,7 @@ from app.modules.onboarding.migrate_deal_buyers import (
     validate,
 )
 from app.modules.onboarding.tests.fixtures.companies import make_prospect
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
 
@@ -110,8 +111,7 @@ async def _deal_with_legacy_buyer(
         view = await DealService(db).open_deal(
             seller, reference=f"Safety deal {uuid.uuid4().hex[:8]}", actor_id="rm-1"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(view.id, actor_id="rm-1", **buyer)
+    await record_legacy_buyer(view.id, **buyer)
     async with db_services.AsyncSessionLocal() as db:
         deal = await db.scalar(select(Deal).where(Deal.id == view.id))
         await db.refresh(deal, ["buyer"])

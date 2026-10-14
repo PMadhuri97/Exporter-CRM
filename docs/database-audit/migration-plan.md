@@ -121,8 +121,8 @@ staged or committed by Claude.
 |---|---|---|---|
 | 1 | 1–3: ORM catch-up, integrity rules, frozen configuration versions | `0054`, `0055` | Committed (`9224daf`) |
 | 2 | 4–5: buyer mapping onto `deal_buyer`; people in `exporter_contact` | `0056_buyer_map_cols`, `0057_people` | Committed (`a103c12`) |
-| 3 | 6–8: reason codes into code; bank placeholder and legacy result columns out of code | none | Built |
-| 4 | 10–12, 14, 15: RM text and GST address out of code, GST command, `deal_buyer` freeze, deal reference rule, documents | `0058`, `0059` | — |
+| 3 | 6–8: reason codes into code; bank placeholder and legacy result columns out of code | none | Committed (`762a26c`) |
+| 4 | 10–12, 14, 15: RM text and GST address out of code, GST command, `deal_buyer` freeze, deal reference rule, documents | `0058_buyer_freeze`, `0059_deal_reference` | Built |
 | Follow-up PR | D: drop `qualification_reason_code`, `bank_activity_finding`, the three `verification_result` columns, `exporter_profile.relationship_manager`, `exporter_gstin.address` | `0060` | after deploy |
 
 **Tests at each phase.**
@@ -678,6 +678,18 @@ reads what it drops. Precondition: a `pg_dump -Fc` of `aner_settlement`.
 | `exporter_gstin.address` | refuse while a branch has text and no `address_id` |
 
 `verification_review_status_enum` stays, because `verification_review` uses it.
+
+**Code in the same PR.** Release N kept every retired table and column declared on its
+model (the columns `deferred`), so `alembic check` stayed clean and an instance on the
+previous release never met a missing column. With the drops:
+
+- delete `QualificationReasonCode` and `BankActivityFinding`, and the `deferred`
+  columns (`ExporterProfile.relationship_manager`, `ExporterGstin.address`, and
+  `VerificationResult.evidence_reference` / `reviewed_by` / `review_status`);
+- delete the two commands that read dropped columns, `backfill_relationship_managers`
+  and `convert_gst_addresses`, with their tests, once both have run (`--validate` at 0);
+- delete the tests that pin the dropped columns' triggers and the reason-code table
+  (`test_the_catalogue_is_the_table_it_replaced`).
 
 **Validation.** `alembic check` is clean, the CRM has **32** tables, and the qualification,
 verification, GST and exporter suites pass.

@@ -83,7 +83,6 @@ const DETAIL: ExporterProfileDetail = {
   pan: 'ABCDE1234F',
   iec: '1234567890',
   source: 'MANUAL',
-  relationship_manager: 'Jane RM',
   relationship_manager_user_id: '22222222-2222-4222-8222-222222222222',
   industry: 'Textiles',
   export_markets: ['US', 'GB'],

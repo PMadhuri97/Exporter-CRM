@@ -44,6 +44,7 @@ from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.migrations import onboarding_0029_deal_snapshot as snapshot_migration
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import ensure_primary_contact, make_company
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.modules.onboarding.tests.integration.test_handover import (
     record_legacy_buyer_checks,
 )
@@ -96,16 +97,14 @@ async def _deal_ready_to_hand_over(company_id: uuid.UUID) -> uuid.UUID:
         view = await DealService(db).open_deal(
             company_id, reference=f"Snapshot {uuid.uuid4().hex[:8]}", actor_id="tester"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(
-            view.id,
-            name="Rotterdam Trading BV",
-            country="NL",
-            registration_number="NL-8899",
-            tax_id="NL123456789B01",
-            contact_email="ops@rotterdamtrading.example",
-            contact_phone="+31201234567",
-            actor_id="tester",
+    await record_legacy_buyer(
+        view.id,
+        name="Rotterdam Trading BV",
+        country="NL",
+        registration_number="NL-8899",
+        tax_id="NL123456789B01",
+        contact_email="ops@rotterdamtrading.example",
+        contact_phone="+31201234567",
         )
     async with db_services.AsyncSessionLocal() as db:
         await DealService(db).transition_stage(
@@ -218,10 +217,11 @@ async def test_editing_the_buyer_afterwards_cannot_change_the_snapshot(
     await _hand_over(deal_id)
     before = await _stored_snapshot(deal_id)
 
+    other_buyer = await make_company()
     with pytest.raises(Exception) as caught:
         async with db_services.AsyncSessionLocal() as db:
-            await DealService(db).set_buyer(
-                deal_id, name="Someone Else BV", country="DE", actor_id="tester"
+            await DealService(db).set_buyer_company(
+                deal_id, buyer_company_id=other_buyer, actor_id="tester"
             )
     assert getattr(caught.value, "error_code", None) == "DEAL_TERMINAL"
     assert await _stored_snapshot(deal_id) == before

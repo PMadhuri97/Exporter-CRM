@@ -173,10 +173,16 @@ P4-10, after every environment has migrated; the table itself is kept.
 **Writing it (task 2.4, R-24).** `PUT /deals/{id}/buyer` takes one of three forms,
 and exactly one per request: `{buyer_company_id}` names a company on file as the buyer;
 `{create: {name, country, pan?, gstin?, registration_number?}}` creates the buyer as a
-company and names it; and the legacy `{name, country, …}` records a `deal_buyer` row. A
-body carrying more than one is refused (422) rather than merged — they disagree about
-what a buyer *is*, and writing two would leave a deal whose company says one thing and
-whose row says another.
+company and names it. A body carrying both, or neither, is refused (422).
+
+> **Amendment, 14 October 2026.** The third, legacy form — `{name, country, …}`, which
+> recorded a `deal_buyer` row — is gone, with `DealService.set_buyer`: its fields are
+> refused (422) like any unknown field. `deal_buyer` is frozen (migration 0058,
+> `trg_deal_buyer_frozen`): no new row, and an existing one is never edited; deals that
+> have one keep it, read-only, with its BUYER checks and handover snapshot. Only the
+> buyer migration's mapping columns are still filled. A seller's deals also have
+> different references now (0059, `uq_deal_company_reference`; `open_deal` answers 409
+> `DEAL_REFERENCE_TAKEN`).
 
 **Creating the buyer company (R-24, plan P4-3, P4-4's "or creates one").** For a buyer
 not on file. Before it, the only ways in were the legacy form, which P4-10 retires, and

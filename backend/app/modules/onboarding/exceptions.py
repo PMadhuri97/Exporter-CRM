@@ -1125,6 +1125,26 @@ class DealTerminalError(AnerBaseException):
         )
 
 
+class DealReferenceTakenError(AnerBaseException):
+    """The seller already has a deal with this reference.
+
+    A reference is how people tell a company's deals apart (``uq_deal_company_reference``,
+    migration 0059), so two deals of one seller never share one. Another seller may use
+    the same reference.
+    """
+
+    def __init__(self, company_id: object, reference: str) -> None:
+        super().__init__(
+            detail=(
+                f"Company {company_id} already has a deal called {reference!r}; "
+                "give this one a different reference"
+            ),
+            error_code="DEAL_REFERENCE_TAKEN",
+            status_code=409,
+            extensions={"reference": reference},
+        )
+
+
 class DealWithdrawalReasonRequiredError(AnerBaseException):
     """``WITHDRAWN`` without a reason.
 

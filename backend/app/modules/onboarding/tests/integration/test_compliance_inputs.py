@@ -52,6 +52,7 @@ from app.modules.onboarding.exceptions import (
     ExporterProfileNotFoundError,
 )
 from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
 
@@ -144,11 +145,10 @@ async def _deal_buyer(company_id: uuid.UUID) -> uuid.UUID:
         deal = await DealService(db).open_deal(
             company_id, reference="Rotterdam shipment", actor_id="tester"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        view = await DealService(db).set_buyer(
-            deal.id, actor_id="tester", name="Rotterdam Trading BV", country="NL"
+    buyer_id = await record_legacy_buyer(
+        deal.id, name="Rotterdam Trading BV", country="NL"
         )
-    return view.buyer.id
+    return buyer_id
 
 
 # ── Empty and shape ──────────────────────────────────────────────────────────

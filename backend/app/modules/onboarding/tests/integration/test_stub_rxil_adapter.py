@@ -39,6 +39,7 @@ from app.modules.onboarding.infrastructure.adapters.stub_rxil_adapter import (
     StubRxilAdapter,
 )
 from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.database import services as db_services
 
 pytestmark = pytest.mark.asyncio
@@ -52,11 +53,10 @@ async def _deal_buyer() -> uuid.UUID:
     company_id = await make_prospect()  # a deal needs a prospect
     async with db_services.AsyncSessionLocal() as db:
         deal = await DealService(db).open_deal(company_id, reference="Batch", actor_id="t")
-    async with db_services.AsyncSessionLocal() as db:
-        view = await DealService(db).set_buyer(
-            deal.id, actor_id="t", name="Hamburg Imports GmbH", country="DE"
+    buyer_id = await record_legacy_buyer(
+        deal.id, name="Hamburg Imports GmbH", country="DE"
         )
-    return view.buyer.id
+    return buyer_id
 
 
 async def test_the_stub_reports_a_lower_case_provider_that_says_stub():

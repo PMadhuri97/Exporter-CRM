@@ -36,6 +36,7 @@ from app.modules.onboarding.domain.storage import DocumentScanStatus, ScanOutcom
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.tests.fixtures.companies import make_company
 from app.modules.onboarding.tests.fixtures.compliance import record_required_checks
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.modules.onboarding.tests.integration._compliance_support import cleared_company
 from app.modules.onboarding.tests.integration.test_handover import (
     record_legacy_buyer_checks,
@@ -89,9 +90,8 @@ async def _deal_ready(
         view = await DealService(db).open_deal(
             company_id, reference=f"Compliance {uuid.uuid4().hex[:8]}", actor_id="t"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(
-            view.id, name="Rotterdam Trading BV", country="NL", actor_id="t"
+    await record_legacy_buyer(
+        view.id, name="Rotterdam Trading BV", country="NL"
         )
     async with db_services.AsyncSessionLocal() as db:
         await DealService(db).transition_stage(

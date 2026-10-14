@@ -35,6 +35,10 @@ from app.modules.onboarding.exceptions import (
 )
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import insert_company, make_company
+from app.modules.onboarding.tests.fixtures.legacy_buyers import (
+    FREEZE_TRIGGER,
+    record_legacy_buyer,
+)
 from app.platform.authentication.models import UserRole
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
@@ -91,10 +95,10 @@ async def _transition(deal_id: uuid.UUID, to_stage: DealStage, **kwargs):
 
 
 async def _set_buyer(deal_id: uuid.UUID, **overrides):
-    async with db_services.AsyncSessionLocal() as db:
-        return await DealService(db).set_buyer(
-            deal_id, actor_id="tester", **{**BUYER, **overrides}
-        )
+    """A legacy buyer row on this deal (nothing in the CRM records one any more), and
+    the deal as read back."""
+    await record_legacy_buyer(deal_id, **{**BUYER, **overrides})
+    return await _get(deal_id)
 
 
 async def _get(deal_id: uuid.UUID):
@@ -189,6 +193,8 @@ def test_a_second_buyer_on_one_deal_is_refused_by_the_database():
             (str(company_id), "two buyers?"),
         )
         deal_id = cursor.fetchone()[0]
+        # A legacy row, staged with the freeze off inside this transaction only.
+        cursor.execute(f"ALTER TABLE onboarding.deal_buyer DISABLE TRIGGER {FREEZE_TRIGGER}")
         cursor.execute(
             "INSERT INTO onboarding.deal_buyer (deal_id, name, country)"
             " VALUES (%s, %s, 'NL')",
@@ -224,6 +230,7 @@ def test_a_buyer_country_that_is_not_two_uppercase_letters_is_refused():
             (str(company_id), "bad country"),
         )
         deal_id = cursor.fetchone()[0]
+        cursor.execute(f"ALTER TABLE onboarding.deal_buyer DISABLE TRIGGER {FREEZE_TRIGGER}")
         for bad, expected in cases:
             # A savepoint per attempt: a plain rollback would undo the company and
             # the deal these inserts depend on, and the next attempt would fail on
@@ -236,6 +243,40 @@ def test_a_buyer_country_that_is_not_two_uppercase_letters_is_refused():
                     (str(deal_id), "Bad Country BV", bad),
                 )
             cursor.execute("ROLLBACK TO SAVEPOINT bad_country")
+        cursor.execute(f"ALTER TABLE onboarding.deal_buyer ENABLE TRIGGER {FREEZE_TRIGGER}")
+
+
+def test_no_new_legacy_buyer_is_recorded():
+    """``trg_deal_buyer_frozen`` (0058): a deal names its buyer as a company now."""
+    with _connect() as connection, connection.cursor() as cursor:
+        company_id = insert_company(cursor)
+        cursor.execute(
+            "INSERT INTO onboarding.deal (company_id, reference, stage)"
+            " VALUES (%s, %s, 'OPEN') RETURNING id",
+            (str(company_id), "a new legacy buyer?"),
+        )
+        deal_id = cursor.fetchone()[0]
+        with pytest.raises(psycopg2.errors.RaiseException, match="deal_buyer is frozen"):
+            cursor.execute(
+                "INSERT INTO onboarding.deal_buyer (deal_id, name, country)"
+                " VALUES (%s, %s, 'NL')",
+                (str(deal_id), "Too Late BV"),
+            )
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [("name", "Renamed BV"), ("country", "DE"), ("tax_id", "X"), ("contact_email", None)],
+)
+async def test_a_legacy_buyer_is_never_edited(column, value):
+    deal = await _open(await _company())
+    buyer_id = await record_legacy_buyer(deal.id, **BUYER)
+    with _connect() as connection, connection.cursor() as cursor:
+        with pytest.raises(psycopg2.errors.RaiseException, match="deal_buyer is frozen"):
+            cursor.execute(
+                f"UPDATE onboarding.deal_buyer SET {column} = %s WHERE id = %s",
+                (value, str(buyer_id)),
+            )
 
 
 # ── Opening a deal, and seam S1 ──────────────────────────────────────────────
@@ -416,93 +457,6 @@ async def test_a_move_on_a_deal_that_does_not_exist_is_a_404():
         await _transition(uuid.uuid4(), DealStage.WITHDRAWN, reason="nothing there")
 
 
-# ── The buyer ────────────────────────────────────────────────────────────────
-
-
-async def test_a_buyer_is_recorded_and_returned_with_the_deal():
-    company_id = await _company()
-    deal = await _open(company_id)
-
-    view = await _set_buyer(deal.id)
-    assert view.buyer is not None
-    assert view.buyer.name == "Rotterdam Trading BV"
-    assert view.buyer.country == "NL"
-    assert view.buyer.tax_id == "NL123456789B01"
-
-    rows = await _deal_history(company_id)
-    assert rows[-1].event_type == "deal_buyer_changed"
-    assert rows[-1].event_metadata["buyer_name"] == "Rotterdam Trading BV"
-    # The history screen says "Buyer recorded" for the first, "Buyer updated" after.
-    assert rows[-1].event_metadata["created"] is True
-
-
-async def test_setting_the_buyer_twice_replaces_the_same_row():
-    """One buyer per deal (contract §3): the second call is an update, not a
-    second row, which is what keeps the handover payload unambiguous."""
-    company_id = await _company()
-    deal = await _open(company_id)
-
-    first = await _set_buyer(deal.id)
-    second = await _set_buyer(deal.id, name="Hamburg Handels GmbH", country="DE")
-
-    assert second.buyer is not None
-    assert second.buyer.id == first.buyer.id
-    assert second.buyer.name == "Hamburg Handels GmbH"
-    assert second.buyer.country == "DE"
-
-    rows = await _deal_history(company_id)
-    changed = rows[-1].event_metadata["changed"]
-    assert "name" in changed and "country" in changed
-    assert rows[-1].event_metadata["created"] is False
-
-
-async def test_a_buyer_country_is_upper_cased_rather_than_refused():
-    company_id = await _company()
-    deal = await _open(company_id)
-
-    view = await _set_buyer(deal.id, country="nl")
-    assert view.buyer.country == "NL"
-
-
-@pytest.mark.parametrize("bad_country", ["N", "NLD", "12", "  "])
-async def test_a_buyer_country_that_is_not_two_letters_is_refused(bad_country: str):
-    company_id = await _company()
-    deal = await _open(company_id)
-
-    with pytest.raises(ValidationError):
-        await _set_buyer(deal.id, country=bad_country)
-
-
-async def test_a_buyer_needs_a_name():
-    company_id = await _company()
-    deal = await _open(company_id)
-
-    with pytest.raises(ValidationError):
-        await _set_buyer(deal.id, name="  ")
-
-
-async def test_blank_optional_buyer_fields_become_null():
-    """"Not given" is one value in the database rather than three."""
-    company_id = await _company()
-    deal = await _open(company_id)
-
-    view = await _set_buyer(deal.id, tax_id="   ", contact_phone="")
-    assert view.buyer.tax_id is None
-    assert view.buyer.contact_phone is None
-
-
-async def test_a_terminal_deals_buyer_cannot_be_edited():
-    """A withdrawn deal's buyer is history, and a handed-over deal's is what the
-    lending team was given."""
-    company_id = await _company()
-    deal = await _open(company_id)
-    await _set_buyer(deal.id)
-    await _transition(deal.id, DealStage.WITHDRAWN, reason="fell through")
-
-    with pytest.raises(DealTerminalError):
-        await _set_buyer(deal.id, name="Too late BV")
-
-
 # ── The handover guard ───────────────────────────────────────────────────────
 
 
@@ -580,7 +534,7 @@ async def test_the_api_opens_lists_and_reads_a_deal(client: AsyncClient):
     }
 
 
-async def test_the_api_moves_a_stage_and_records_a_buyer(client: AsyncClient):
+async def test_the_api_moves_a_stage_and_refuses_the_old_buyer_details(client: AsyncClient):
     token = await token_with_role(client, UserRole.COMPLIANCE)
     company_id = await _company()
     opened = await client.post(
@@ -590,11 +544,11 @@ async def test_the_api_moves_a_stage_and_records_a_buyer(client: AsyncClient):
     )
     deal_id = opened.json()["id"]
 
+    # The buyer's own details are no longer a form: a buyer is a company.
     buyer = await client.put(
         f"{BASE}/deals/{deal_id}/buyer", json=BUYER, headers=auth_header(token)
     )
-    assert buyer.status_code == 200, buyer.text
-    assert buyer.json()["buyer"]["name"] == "Rotterdam Trading BV"
+    assert buyer.status_code == 422, buyer.text
 
     moved = await client.post(
         f"{BASE}/deals/{deal_id}/transitions",
@@ -791,88 +745,4 @@ async def test_every_deal_response_masks_the_buyer_not_just_the_read(client: Asy
     )
     assert moved.status_code == 200, moved.text
     assert moved.json()["buyer"]["tax_id"] == MASKED_BUYER["tax_id"]
-
-    put = await client.put(
-        f"{BASE}/deals/{deal.id}/buyer",
-        json={"name": "Rotterdam Trading BV", "country": "NL"},
-        headers=auth_header(token),
-    )
-    assert put.status_code == 200, put.text
-    assert put.json()["buyer"]["contact_email"] == MASKED_BUYER["contact_email"]
-
-
-async def test_a_masked_value_sent_back_is_refused_not_saved(client: AsyncClient):
-    """A client that writes back what it read would otherwise overwrite the real
-    tax ID with bullets."""
-    token = await token_with_role(client, UserRole.OPERATIONS)
-    deal = await _open(await _company())
-    await _set_buyer(deal.id)
-
-    resp = await client.put(
-        f"{BASE}/deals/{deal.id}/buyer",
-        json={**BUYER, "tax_id": MASKED_BUYER["tax_id"]},
-        headers=auth_header(token),
-    )
-    assert resp.status_code == 422, resp.text
-    assert (await _get(deal.id)).buyer.tax_id == BUYER["tax_id"]
-
-
-async def test_a_masked_field_left_out_keeps_its_stored_value(client: AsyncClient):
-    """OPERATIONS can edit the buyer's name without erasing what it cannot see."""
-    token = await token_with_role(client, UserRole.OPERATIONS)
-    deal = await _open(await _company())
-    await _set_buyer(deal.id)
-
-    resp = await client.put(
-        f"{BASE}/deals/{deal.id}/buyer",
-        json={"name": "Rotterdam Trading B.V.", "country": "NL", "contact_phone": "+31 10 555 0199"},
-        headers=auth_header(token),
-    )
-    assert resp.status_code == 200, resp.text
-
-    stored = (await _get(deal.id)).buyer
-    assert stored.name == "Rotterdam Trading B.V."
-    assert stored.contact_phone == "+31 10 555 0199"
-    assert stored.registration_number == BUYER["registration_number"]
-    assert stored.tax_id == BUYER["tax_id"]
-    assert stored.contact_email == BUYER["contact_email"]
-
-
-async def test_a_masked_field_sent_as_null_is_cleared(client: AsyncClient):
-    """Left out keeps; null clears — two different requests, two different answers."""
-    token = await token_with_role(client, UserRole.COMPLIANCE)
-    deal = await _open(await _company())
-    await _set_buyer(deal.id)
-
-    resp = await client.put(
-        f"{BASE}/deals/{deal.id}/buyer",
-        json={"name": "Rotterdam Trading BV", "country": "NL", "tax_id": None},
-        headers=auth_header(token),
-    )
-    assert resp.status_code == 200, resp.text
-    stored = (await _get(deal.id)).buyer
-    assert stored.tax_id is None
-    assert stored.registration_number == BUYER["registration_number"]
-
-
-async def test_keeping_a_field_on_a_new_buyer_leaves_it_empty():
-    deal = await _open(await _company())
-    async with db_services.AsyncSessionLocal() as db:
-        view = await DealService(db).set_buyer(
-            deal.id,
-            name="Rotterdam Trading BV",
-            country="NL",
-            tax_id="ignored because kept",
-            keep={"tax_id"},
-            actor_id="tester",
-        )
-    assert view.buyer.tax_id is None
-
-
-async def test_keep_names_only_the_optional_buyer_fields():
-    deal = await _open(await _company())
-    async with db_services.AsyncSessionLocal() as db:
-        with pytest.raises(ValueError):
-            await DealService(db).set_buyer(
-                deal.id, name="X", country="NL", keep={"name"}, actor_id="tester"
-            )
+    assert moved.json()["buyer"]["contact_email"] == MASKED_BUYER["contact_email"]

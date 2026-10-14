@@ -242,10 +242,14 @@ class ExporterProfile(AnerModel):
         Enum(ExporterSource, name="exporter_source_enum", schema=SCHEMA), nullable=False
     )
 
-    #: The legacy free-text owner label. **Read-only**: no route writes it any more;
-    #: the backfill command matches it to a user, and the relationship manager is
-    #: `relationship_manager_user_id`.
-    relationship_manager: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: The legacy free-text owner label. **Retired**: no route writes or serves it; only
+    #: the `backfill_relationship_managers` command reads it, to match a name to a user.
+    #: The relationship manager is `relationship_manager_user_id`. Mapped `deferred` so
+    #: no ordinary query loads it; a later migration drops it (the names the backfill
+    #: cannot match are discarded).
+    relationship_manager: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, deferred=True
+    )
 
     #: The company's relationship manager: an active OPERATIONS user when written,
     #: and written only by `ExporterProfileService.assign_relationship_manager`, with a

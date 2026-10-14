@@ -117,11 +117,6 @@ export function RelationshipManagerField({ profile }: { profile: ExporterProfile
           {assign.error instanceof ApiError ? assign.error.message : 'Could not change the RM.'}
         </p>
       )}
-      {profile.relationship_manager && !profile.relationship_manager_name && (
-        <p className="mt-1 text-caption text-ink-3">
-          Recorded before RMs were users: “{profile.relationship_manager}”
-        </p>
-      )}
 
       {mode !== null && (
         <div

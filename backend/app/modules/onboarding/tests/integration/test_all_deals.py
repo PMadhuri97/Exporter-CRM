@@ -35,6 +35,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationOutcomeValue
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import ensure_relationship_manager
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -90,8 +91,7 @@ async def _deal(
             )
     if legacy_buyer is not None:
         name, country = legacy_buyer
-        async with db_services.AsyncSessionLocal() as db:
-            await DealService(db).set_buyer(view.id, name=name, country=country, actor_id="rm-1")
+        await record_legacy_buyer(view.id, name=name, country=country)
     return view.id
 
 

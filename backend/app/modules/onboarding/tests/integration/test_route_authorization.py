@@ -316,7 +316,7 @@ GATED_ROUTES = [
     (
         "PUT",
         f"{BASE}/deals/{_ID}/buyer",
-        {"name": "Rotterdam Trading BV", "country": "NL"},
+        {"buyer_company_id": _ID},
         STAFF,
     ),
     # Required document categories. A settings

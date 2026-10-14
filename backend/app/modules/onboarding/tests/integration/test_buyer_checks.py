@@ -2,7 +2,7 @@
 architecture §3.5 and decision 9).
 
 * a BUYER check names a ``deal_buyer.id`` — a company id or a deal id is refused;
-* the buyer's identity is snapshotted at record time and survives ``set_buyer``;
+* the buyer's identity is snapshotted at record time and survives a later edit of the row;
 * the snapshot's registration number and tax id are masked for OPERATIONS;
 * the history row lands on the deal's company with ``deal_id`` set;
 * a failed buyer check leaves the company record and every company input unchanged;
@@ -34,6 +34,7 @@ from app.modules.onboarding.exceptions import (
     VerificationBuyerDealClosedError,
 )
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
+from app.modules.onboarding.tests.fixtures.legacy_buyers import FREEZE_TRIGGER
 from app.modules.onboarding.tests.integration._verification_support import (
     BASE,
     NOTE,
@@ -42,7 +43,6 @@ from app.modules.onboarding.tests.integration._verification_support import (
     insert_document,
     open_deal,
     pg,
-    set_buyer,
 )
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
@@ -94,14 +94,22 @@ async def test_an_unknown_id_is_not_a_buyer_subject():
 # ── Snapshot ─────────────────────────────────────────────────────────────────
 
 
-async def test_the_snapshot_survives_a_later_set_buyer():
+async def test_the_snapshot_survives_a_later_edit_of_the_buyer_row():
     _, deal_id, buyer_id = await deal_buyer(**_IDENTITY)
     result = await _buyer_check(buyer_id)
 
-    # DealService.set_buyer rewrites the same buyer row in place.
-    assert await set_buyer(
-        deal_id, name="Renamed Holdings", country="BE", registration_number="X", tax_id="Y"
-    ) == buyer_id
+    # A legacy row could be rewritten in place until 0058 froze it; staged here with
+    # the freeze off for this one transaction.
+    with pg() as cur:
+        cur.execute("BEGIN")
+        cur.execute(f"ALTER TABLE onboarding.deal_buyer DISABLE TRIGGER {FREEZE_TRIGGER}")
+        cur.execute(
+            "UPDATE onboarding.deal_buyer SET name = 'Renamed Holdings', country = 'BE', "
+            "registration_number = 'X', tax_id = 'Y' WHERE id = %s",
+            (str(buyer_id),),
+        )
+        cur.execute(f"ALTER TABLE onboarding.deal_buyer ENABLE TRIGGER {FREEZE_TRIGGER}")
+        cur.execute("COMMIT")
 
     async with db_services.AsyncSessionLocal() as db:
         view = await VerificationService(db).get_result_view(result.id)

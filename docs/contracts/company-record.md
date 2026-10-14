@@ -213,7 +213,9 @@ row with both ids, both names and the reason (`history-row.md` §2).
   background check on an in-pipeline company, and a person's `QUALIFIED`, need one in the same
   request (409 `RELATIONSHIP_MANAGER_REQUIRED`); imports, the RXIL intake, the platform's own
   loaders and buyer-only companies are exempt.
-- **The legacy `relationship_manager` text** is read-only: no route writes it, and
+- **The legacy `relationship_manager` text** is retired (14 October 2026): no response
+  carries it either, and a later migration drops it; names the backfill cannot match are
+  discarded. Until then no route writes it, and
   `POST /exporters` and `PATCH /exporters/{id}` refuse the field (422, the schemas forbid unknown
   fields) — a caller that still sends it must stop, and set the RM through
   `POST /exporters/{id}/relationship-manager` instead. The command
@@ -352,8 +354,15 @@ every other identifier. Only the database's per-company uniqueness
 
 `exporter_gstin` grew in place rather than being copied into a `gst_registration`
 table. A row is now a **branch**: a GSTIN plus the state it was issued in, the GST
-portal's status, the registered address, a compliance flag, and whether the company
-still uses it.
+portal's status, its address, a compliance flag, and whether the company still uses it.
+
+> **Amendment, 14 October 2026.** A branch's address is its linked company address
+> (`address_id`) only. The free-text `address` is retired: `POST
+> /exporters/{id}/gst-registrations` refuses it (422) and no response carries it;
+> `python -m app.modules.onboarding.convert_gst_addresses` turns the text already stored
+> into `CORRESPONDENCE` company addresses (line 1 and 2 from the text, the GSTIN's state,
+> India, city "Not recorded" for a person to correct) linked to their branches, and a
+> later migration drops the column.
 
 Three facts that are easy to confuse, kept apart:
 

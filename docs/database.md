@@ -160,7 +160,8 @@ The enduring company record. A company may exist before any onboarding journey s
 | `identity_type` | `company_identity_type_enum` | `IN_PAN` \| `FOREIGN_REG`, derived from `pan` / `registration_number` |
 | `registration_number` | `varchar(100)` | unique **per country, normalised** — see the index below |
 | `source` | `exporter_source_enum` | **immutable once set** (trigger) |
-| `relationship_manager`, `relationship_manager_user_id` | `varchar(255)`, `uuid` | |
+| `relationship_manager_user_id` | `uuid` | the relationship manager, a user |
+| `relationship_manager` | `varchar(255)` | **retired** free-text owner: served and written by nothing; only `backfill_relationship_managers` reads it. A later migration drops it (unmatched names are discarded) |
 | `journey` | `exporter_journey_enum` | `LEAD` → `PROSPECT` → `CUSTOMER`, forward only |
 | `marker` | `exporter_marker_enum` | `NONE` \| `PAUSED` \| `ENDED`; `marker_reason` required when set |
 | `qualification` | `qualification_state_enum` | current value of the qualification gauge |
@@ -202,8 +203,10 @@ duplicate must normalise the same way or it will miss one.
 ### `exporter_gstin` — a company's branches
 
 Several per company; `UNIQUE (customer_id, gstin)`. Since 0035 each row is a **branch
-record**: `state_code`, `state_name`, `status`, `address`, `flag_status`, `flag_reason`,
-`active`, `deactivated_at/by`.
+record**: `state_code`, `state_name`, `status`, `address_id` (its company address),
+`flag_status`, `flag_reason`, `active`, `deactivated_at/by`. The old free-text `address`
+is **retired**: the API neither takes nor serves it, `convert_gst_addresses` turns what
+is there into linked `CORRESPONDENCE` addresses, and a later migration drops it.
 
 - **`DELETE` is refused by a trigger** (`trg_exporter_gstin_no_delete`), with a message
   saying to deactivate instead. A branch a company traded through is not removable.
@@ -422,14 +425,18 @@ body (0039) refuses, once `stage IN ('HANDED_OVER', 'WITHDRAWN')`:
 > Editing this function means restating all of it. Reading only the newest migration
 > tells you the whole rule; reading only an older one does not.
 
-> **`deal.reference` has no unique constraint or index.** Uniqueness, if it is intended,
-> is service-side only.
+> **`deal.reference` is unique per seller** (`uq_deal_company_reference`, 0059):
+> `open_deal` answers 409 `DEAL_REFERENCE_TAKEN`. Another seller may use the same words.
 
 ### `deal_buyer`
 
-`deal_buyer` is the typed-in buyer, one per deal (`uq_deal_buyer_deal_id`), and the one
-CRM table with `ON DELETE CASCADE` — it is the deal's own detail, not an independent
-record. `CHECK country ~ '^[A-Z]{2}$'`.
+`deal_buyer` is the typed-in buyer of deals written before buyers were companies, one
+per deal (`uq_deal_buyer_deal_id`), and the one CRM table with `ON DELETE CASCADE` — it
+is the deal's own detail, not an independent record. `CHECK country ~ '^[A-Z]{2}$'`.
+
+**Frozen** (0058, `trg_deal_buyer_frozen`, `onboarding.prevent_deal_buyer_change()`): an
+`INSERT` is refused, and so is any `UPDATE` of the row's own columns. A deal names its
+buyer as a company now; nothing in the CRM writes this table.
 
 The buyer migration's answer is on the row itself (0056, which folded in and dropped the
 one-to-one `deal_buyer_company_map`): `mapped_company_id` (FK to the company),
@@ -568,9 +575,10 @@ SQL through `psycopg2`, bypassing the ORM, so the test proves the *database* ref
 | `onboarding.prevent_terminal_deal_change()` | §6. |
 | `onboarding.prevent_reviewed_verification_outcome_change()` | Refuses an outcome change on a verification result that has been reviewed. |
 | `onboarding.prevent_gst_registration_delete()` | Refuses any `DELETE` on `exporter_gstin`, telling the caller to deactivate. |
+| `onboarding.prevent_deal_buyer_change()` | Refuses an `INSERT` on `deal_buyer`, and an `UPDATE` of anything but the buyer migration's mapping columns and `updated_at` (0058). |
 | `onboarding.prevent_delete()` | Refuses any `DELETE` on the table it guards (`exporter_contact`), telling the caller to change the status instead. |
 
-### The 44 triggers on the `onboarding` schema
+### The 45 triggers on the `onboarding` schema
 
 Fully append-only — `UPDATE` and `DELETE` both refused:
 
@@ -612,7 +620,7 @@ Delete-only refusals: `crm_document`, `verification_result` (both via
 `FOR EACH ROW`).
 
 **No table in the `onboarding` schema has a `NOT VALID` constraint, an exclusion
-constraint or a sequence.** 182 indexes, all validated.
+constraint or a sequence.** 183 indexes, all validated.
 
 ### Writing a new rule
 
@@ -794,7 +802,6 @@ To rehearse a migration safely, copy the database first (`createdb -T <source>
     only when no existing row breaks it; otherwise they print the rows and leave it
     `NOT VALID`, enforced on every new or changed row. `SELECT conname FROM pg_constraint
     WHERE NOT convalidated` lists any still waiting.
-13. **Known gaps, if you are looking for one:** `deal.reference` has no unique
-    constraint; `bank_activity_finding.customer_id` has no foreign key (the table is
-    retired);
+13. **Known gaps, if you are looking for one:** `bank_activity_finding.customer_id` has
+    no foreign key (the table is retired);
     `verification_result.entity_reference` is polymorphic and unconstrained by design.

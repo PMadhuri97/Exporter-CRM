@@ -39,6 +39,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -91,6 +92,8 @@ class Deal(DatabaseGeneratedId, AnerModel):
         ),
         # One company's deals, newest first — what the Deals panel asks for.
         Index("ix_deal_company_recent", "company_id", "created_at"),
+        # A seller's deals are told apart by their reference (0059).
+        UniqueConstraint("company_id", "reference", name="uq_deal_company_reference"),
         # The mirror of it: the deals a company is the *buyer* on.
         Index("ix_deal_buyer_company_recent", "buyer_company_id", "created_at"),
         # The open-work views filter by stage across companies.

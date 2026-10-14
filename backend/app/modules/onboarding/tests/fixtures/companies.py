@@ -63,7 +63,7 @@ async def make_company(
     return customer_id
 
 
-async def make_bare_deal(customer_id: uuid.UUID, reference: str = "Fixture deal") -> uuid.UUID:
+async def make_bare_deal(customer_id: uuid.UUID, reference: str | None = None) -> uuid.UUID:
     """Insert a bare ``OPEN`` deal for ``customer_id`` through the ORM and return its id.
 
     For a test that needs a real deal for a history row to name (``deal_id`` has a
@@ -71,7 +71,10 @@ async def make_bare_deal(customer_id: uuid.UUID, reference: str = "Fixture deal"
     also write, or the prospect the service requires.
     """
     async with db_services.AsyncSessionLocal() as db:
-        deal = Deal(company_id=customer_id, reference=reference)
+        # A seller's references are unique (0059), so the default is too.
+        deal = Deal(
+            company_id=customer_id, reference=reference or f"Fixture deal {uuid.uuid4().hex[:8]}"
+        )
         db.add(deal)
         await db.commit()
     return deal.id
