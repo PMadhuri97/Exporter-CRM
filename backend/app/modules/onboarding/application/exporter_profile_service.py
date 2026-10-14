@@ -1541,6 +1541,8 @@ def _contact_view(contact: ExporterContact) -> ExporterContactView:
     return ExporterContactView(
         id=contact.id,
         customer_id=contact.customer_id,
+        first_name=contact.first_name,
+        last_name=contact.last_name,
         name=contact.name,
         role=contact.role,
         email=contact.email,

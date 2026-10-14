@@ -126,7 +126,7 @@ async def ensure_primary_contact(customer_id: uuid.UUID) -> None:
         if not has_one:
             db.add(
                 ExporterContact(
-                    customer_id=customer_id, name="Fixture Contact", is_primary_contact=True
+                    customer_id=customer_id, first_name="Fixture", last_name="Contact", is_primary_contact=True
                 )
             )
             await db.commit()

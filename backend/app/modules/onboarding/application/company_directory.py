@@ -469,7 +469,8 @@ def buyer_contact(
     """
     return ExporterContact(
         customer_id=company_id,
-        name=name,
+        # A company's name, not a person's: kept whole rather than split in two.
+        first_name=name,
         role=BUYER_CONTACT_ROLE,
         email=(email or "").strip() or None,
         phone=(phone or "").strip() or None,

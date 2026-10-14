@@ -101,11 +101,16 @@ SECTION_9_3_SLUG = "section-9.3"
 
 @dataclass(frozen=True)
 class SampleContact:
-    name: str
+    first_name: str
+    last_name: str
     role: str
     email: str
     phone: str
     is_primary: bool = False
+
+    @property
+    def name(self) -> str:
+        return f"{self.first_name} {self.last_name}"
 
 
 @dataclass(frozen=True)
@@ -168,7 +173,7 @@ COMPANIES: tuple[SampleCompany, ...] = (
         iec="AAACA1111A",
         cin="U17110MH2012PTC111111",
         contacts=(
-            SampleContact("Priya Nair", "Finance Director", "priya.nair@aarav.example",
+            SampleContact("Priya", "Nair", "Finance Director", "priya.nair@aarav.example",
                           "+91 22 5550 1111", is_primary=True),
         ),
         activities=(
@@ -195,9 +200,9 @@ COMPANIES: tuple[SampleCompany, ...] = (
         iec="AABCB2222B",
         cin="L27100MH2001PLC222222",
         contacts=(
-            SampleContact("Rohan Mehta", "CFO", "rohan.mehta@bharatmetals.example",
+            SampleContact("Rohan", "Mehta", "CFO", "rohan.mehta@bharatmetals.example",
                           "+91 22 5550 2222", is_primary=True),
-            SampleContact("Anita Rao", "Export Manager", "anita.rao@bharatmetals.example",
+            SampleContact("Anita", "Rao", "Export Manager", "anita.rao@bharatmetals.example",
                           "+91 80 5550 2223"),
         ),
         activities=(
@@ -220,7 +225,7 @@ COMPANIES: tuple[SampleCompany, ...] = (
         gstins=("32AAACC3333C1Z1",),
         iec="AAACC3333C",
         contacts=(
-            SampleContact("Joseph Varghese", "Managing Director", "joseph@coastalseafood.example",
+            SampleContact("Joseph", "Varghese", "Managing Director", "joseph@coastalseafood.example",
                           "+91 484 555 3333", is_primary=True),
         ),
         activities=(
@@ -319,7 +324,8 @@ async def _ensure_contacts(company: SampleCompany) -> int:
                 continue
             await service.add_contact(
                 company.customer_id,
-                name=contact.name,
+                first_name=contact.first_name,
+                last_name=contact.last_name,
                 role=contact.role,
                 email=contact.email,
                 phone=contact.phone,

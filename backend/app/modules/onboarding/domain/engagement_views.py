@@ -28,6 +28,9 @@ from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourne
 class ExporterContactView:
     id: uuid.UUID
     customer_id: uuid.UUID
+    first_name: str
+    last_name: str | None
+    #: The full name, "first last".
     name: str
     role: str | None
     email: str | None

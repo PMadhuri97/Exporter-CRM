@@ -27,7 +27,16 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Computed,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import text
@@ -75,7 +84,17 @@ class ExporterContact(AnerModel):
         ),
         nullable=False,
     )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: A person's first and last name, kept apart (migration 0054). The last name is
+    #: optional: plenty of people go by one name.
+    first_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: The full name, computed by the database from the two above and never written:
+    #: every reader that wants "the contact's name" reads this, and it cannot drift.
+    name: Mapped[str] = mapped_column(
+        String(511),
+        Computed("first_name || COALESCE(' ' || last_name, '')", persisted=True),
+        nullable=False,
+    )
     role: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)

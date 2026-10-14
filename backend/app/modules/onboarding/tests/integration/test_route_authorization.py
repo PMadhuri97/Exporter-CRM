@@ -112,7 +112,7 @@ GATED_ROUTES = [
         {"marker": "PAUSED", "reason": "Seasonal"},
         STAFF,
     ),
-    ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
+    ("POST", f"{BASE}/exporters/{_ID}/contacts", {"first_name": "Jane"}, STAFF),
     ("POST", f"{BASE}/exporters/{_ID}/contacts/{_ID}/status", {"status": "INACTIVE", "reason": "Left"}, STAFF),
     ("POST", f"{BASE}/exporters/{_ID}/contacts/{_ID}/verification", None, STAFF),
     # Trade history. Writes are STAFF; the reads are in
@@ -587,7 +587,7 @@ async def test_operations_can_perform_routine_crm_writes(
     customer_id = await _create_exporter(client, token)
 
     contact = await client.post(
-        f"{BASE}/exporters/{customer_id}/contacts", json={"name": "Jane"}, headers=auth_header(token)
+        f"{BASE}/exporters/{customer_id}/contacts", json={"first_name": "Jane"}, headers=auth_header(token)
     )
     assert contact.status_code == 201, contact.text
     activity = await client.post(
@@ -922,7 +922,7 @@ async def _contacts_as(client: AsyncClient, token: str, customer_id: str) -> lis
 async def _add_contact(client: AsyncClient, token: str, customer_id: str) -> dict:
     resp = await client.post(
         f"{BASE}/exporters/{customer_id}/contacts",
-        json={"name": "Jane Doe", "email": EMAIL, "phone": PHONE},
+        json={"first_name": "Jane", "last_name": "Doe", "email": EMAIL, "phone": PHONE},
         headers=auth_header(token),
     )
     assert resp.status_code == 201, resp.text
@@ -1137,7 +1137,7 @@ async def test_masked_contact_email_is_rejected_on_write(
     customer_id = await _create_exporter(client, token)
     resp = await client.post(
         f"{BASE}/exporters/{customer_id}/contacts",
-        json={"name": "Jane", "email": MASKED_EMAIL},
+        json={"first_name": "Jane", "email": MASKED_EMAIL},
         headers=auth_header(token),
     )
     assert resp.status_code == 422, resp.text

@@ -185,7 +185,7 @@ async def test_the_database_is_at_the_head():
 
 _CHILD_INSERTS = {
     "exporter_contact": (
-        "INSERT INTO onboarding.exporter_contact (id, customer_id, name, is_primary_contact) "
+        "INSERT INTO onboarding.exporter_contact (id, customer_id, first_name, is_primary_contact) "
         "VALUES (%s, %s, 'Ghost', false)"
     ),
     "exporter_activity": (

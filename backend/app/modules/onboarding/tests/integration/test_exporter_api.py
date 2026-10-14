@@ -50,7 +50,7 @@ async def test_search_exporter_profiles_requires_auth(client: AsyncClient):
 
 async def test_add_contact_requires_auth(client: AsyncClient):
     resp = await client.post(
-        f"/api/v1/onboarding/exporters/{uuid.uuid4()}/contacts", json={"name": "Jane"}
+        f"/api/v1/onboarding/exporters/{uuid.uuid4()}/contacts", json={"first_name": "Jane"}
     )
     assert resp.status_code == 401
 
@@ -93,7 +93,7 @@ async def test_full_exporter_profile_flow(client: AsyncClient):
     # Add a primary contact.
     contact_resp = await client.post(
         f"/api/v1/onboarding/exporters/{customer_id}/contacts",
-        json={"name": "Jane Doe", "role": "CFO", "is_primary": True},
+        json={"first_name": "Jane", "last_name": "Doe", "role": "CFO", "is_primary": True},
         headers=_auth(token),
     )
     assert contact_resp.status_code == 201
@@ -102,7 +102,7 @@ async def test_full_exporter_profile_flow(client: AsyncClient):
     # A second primary demotes the first.
     contact2_resp = await client.post(
         f"/api/v1/onboarding/exporters/{customer_id}/contacts",
-        json={"name": "John Smith", "is_primary": True},
+        json={"first_name": "John", "last_name": "Smith", "is_primary": True},
         headers=_auth(token),
     )
     assert contact2_resp.status_code == 201

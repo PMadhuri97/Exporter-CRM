@@ -54,12 +54,39 @@ async def test_add_contact_creates_record():
     customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         contact = await ExporterContactActivityService(db).add_contact(
-            customer_id, name="Jane Doe", role="CFO", email="jane@example.com"
+            customer_id, first_name="Jane", last_name="Doe", role="CFO", email="jane@example.com"
         )
 
     assert contact.customer_id == customer_id
+    assert (contact.first_name, contact.last_name) == ("Jane", "Doe")
     assert contact.name == "Jane Doe"
     assert contact.is_primary_contact is False
+
+
+async def test_a_contact_may_have_no_last_name():
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        contact = await ExporterContactActivityService(db).add_contact(
+            customer_id, first_name="Madhuri"
+        )
+
+    assert contact.last_name is None
+    assert contact.name == "Madhuri"
+
+
+async def test_the_full_name_follows_an_edit_of_either_part():
+    """`name` is computed by the database, so renaming one part renames the whole —
+    there is no write path that could leave the two disagreeing."""
+    customer_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        svc = ExporterContactActivityService(db)
+        contact = await svc.add_contact(customer_id, first_name="Jane", last_name="Doe")
+        contact = await svc.update_contact(
+            customer_id, contact.id, changes={"last_name": "Smith"}
+        )
+        assert contact.name == "Jane Smith"
+        contact = await svc.update_contact(customer_id, contact.id, changes={"last_name": None})
+        assert contact.name == "Jane"
 
 
 async def test_add_contact_second_primary_demotes_first():
@@ -69,8 +96,8 @@ async def test_add_contact_second_primary_demotes_first():
     customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         svc = ExporterContactActivityService(db)
-        first = await svc.add_contact(customer_id, name="Jane Doe", is_primary=True)
-        second = await svc.add_contact(customer_id, name="John Smith", is_primary=True)
+        first = await svc.add_contact(customer_id, first_name="Jane", last_name="Doe", is_primary=True)
+        second = await svc.add_contact(customer_id, first_name="John", last_name="Smith", is_primary=True)
 
     async with db_services.AsyncSessionLocal() as db:
         contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
@@ -129,7 +156,7 @@ async def test_update_contact_changes_only_the_fields_sent():
     async with db_services.AsyncSessionLocal() as db:
         contact = await ExporterContactActivityService(db).add_contact(
             customer_id,
-            name="Jane Doe",
+            first_name="Jane", last_name="Doe",
             role="CFO",
             email="jane@example.com",
             phone="+91 99999 11111",
@@ -154,8 +181,8 @@ async def test_update_contact_promoting_demotes_the_other_primary():
     customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         svc = ExporterContactActivityService(db)
-        first = await svc.add_contact(customer_id, name="Jane Doe", is_primary=True)
-        second = await svc.add_contact(customer_id, name="John Smith")
+        first = await svc.add_contact(customer_id, first_name="Jane", last_name="Doe", is_primary=True)
+        second = await svc.add_contact(customer_id, first_name="John", last_name="Smith")
 
     async with db_services.AsyncSessionLocal() as db:
         await ExporterContactActivityService(db).update_contact(
@@ -178,7 +205,7 @@ async def test_update_contact_may_leave_the_company_with_no_primary():
     customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         contact = await ExporterContactActivityService(db).add_contact(
-            customer_id, name="Jane Doe", is_primary=True
+            customer_id, first_name="Jane", last_name="Doe", is_primary=True
         )
 
     async with db_services.AsyncSessionLocal() as db:
@@ -202,8 +229,8 @@ async def test_a_lost_race_for_primary_is_a_conflict_not_a_500(monkeypatch):
     customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         svc = ExporterContactActivityService(db)
-        first = await svc.add_contact(customer_id, name="Jane Doe", is_primary=True)
-        second = await svc.add_contact(customer_id, name="John Smith")
+        first = await svc.add_contact(customer_id, first_name="Jane", last_name="Doe", is_primary=True)
+        second = await svc.add_contact(customer_id, first_name="John", last_name="Smith")
 
     async def sees_nothing(self, customer_id, *, except_id=None):
         return None
@@ -218,7 +245,7 @@ async def test_a_lost_race_for_primary_is_a_conflict_not_a_500(monkeypatch):
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ExporterContactPrimaryConflictError):
             await ExporterContactActivityService(db).add_contact(
-                customer_id, name="Third Person", is_primary=True
+                customer_id, first_name="Third", last_name="Person", is_primary=True
             )
 
     # Refused whole: the first is still the only primary, and the role change that
@@ -239,13 +266,13 @@ async def test_update_contact_refuses_another_companys_contact():
     other_customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         theirs = await ExporterContactActivityService(db).add_contact(
-            other_customer_id, name="Not Yours"
+            other_customer_id, first_name="Not", last_name="Yours"
         )
 
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ExporterContactNotFoundError):
             await ExporterContactActivityService(db).update_contact(
-                customer_id, theirs.id, changes={"name": "Renamed"}
+                customer_id, theirs.id, changes={"first_name": "Renamed"}
             )
 
     # And it is untouched.
@@ -261,9 +288,9 @@ async def test_list_contacts_returns_all_for_customer():
     other_customer_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         svc = ExporterContactActivityService(db)
-        await svc.add_contact(customer_id, name="Contact A")
-        await svc.add_contact(customer_id, name="Contact B")
-        await svc.add_contact(other_customer_id, name="Unrelated Contact")
+        await svc.add_contact(customer_id, first_name="Contact", last_name="A")
+        await svc.add_contact(customer_id, first_name="Contact", last_name="B")
+        await svc.add_contact(other_customer_id, first_name="Unrelated", last_name="Contact")
 
     async with db_services.AsyncSessionLocal() as db:
         contacts = await ExporterContactActivityService(db).list_contacts(customer_id)

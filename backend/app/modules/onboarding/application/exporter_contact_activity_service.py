@@ -74,7 +74,8 @@ class ExporterContactActivityService:
         self,
         customer_id: uuid.UUID,
         *,
-        name: str,
+        first_name: str,
+        last_name: str | None = None,
         role: str | None = None,
         email: str | None = None,
         phone: str | None = None,
@@ -99,7 +100,8 @@ class ExporterContactActivityService:
 
         contact = ExporterContact(
             customer_id=customer_id,
-            name=name,
+            first_name=first_name,
+            last_name=last_name,
             role=role,
             email=email,
             phone=phone,

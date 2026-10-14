@@ -871,7 +871,7 @@ export interface paths {
         head?: never;
         /**
          * Change a contact on an exporter relationship
-         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `name` and `is_primary` may be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary.
+         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `first_name` and `is_primary` may be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary.
          */
         patch: operations["update_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts__contact_id__patch"];
         trace?: never;
@@ -3234,10 +3234,17 @@ export interface components {
             /** Gst Registration Id */
             gst_registration_id?: string | null;
         };
-        /** AddExporterContactRequest */
+        /**
+         * AddExporterContactRequest
+         * @description A new contact. The first name is required; the last name is optional, because
+         *     plenty of people go by one name. The full ``name`` is never sent: the database
+         *     computes it from the two.
+         */
         AddExporterContactRequest: {
-            /** Name */
-            name: string;
+            /** First Name */
+            first_name: string;
+            /** Last Name */
+            last_name?: string | null;
             /** Role */
             role?: string | null;
             /** Email */
@@ -5987,6 +5994,10 @@ export interface components {
              * Format: uuid
              */
             customer_id: string;
+            /** First Name */
+            first_name: string;
+            /** Last Name */
+            last_name: string | null;
             /** Name */
             name: string;
             /** Role */
@@ -8842,14 +8853,17 @@ export interface components {
          *     were really in the body — a field left out is untouched, a field sent as ``null`` is
          *     cleared.
          *
-         *     ``name`` is the exception: it may be changed but not removed, because a contact with
-         *     no name is a row nobody can act on. ``ContactName`` refuses "" and a name of spaces;
-         *     ``_not_null`` refuses an explicit ``null``, which the type alone would
-         *     let through as "leave it alone" and so drop silently.
+         *     ``first_name`` is the exception: it may be changed but not removed, because a contact
+         *     with no name is a row nobody can act on. ``ContactName`` refuses "" and a name of
+         *     spaces; ``_not_null`` refuses an explicit ``null``, which the type alone would let
+         *     through as "leave it alone" and so drop silently. ``last_name`` may be cleared, with
+         *     ``null`` or an empty string.
          */
         UpdateExporterContactRequest: {
-            /** Name */
-            name?: string | null;
+            /** First Name */
+            first_name?: string | null;
+            /** Last Name */
+            last_name?: string | null;
             /** Role */
             role?: string | null;
             /** Email */
