@@ -75,13 +75,13 @@ architecture.
 | `conversation` | `NOT_CONTACTED` … `READY_NOW` | Dev 3 |
 | `deal` | `OPEN` / `GATHERING_PAPERWORK` / `HANDED_OVER` / `WITHDRAWN` | Dev 3 |
 | `background_check` | `NOT_STARTED` / `IN_REVIEW` / `MORE_INFO` / `CLEAR` / `FLAGGED` / `ON_HOLD` | Dev 4A |
-| `verification` | A verification result's status or review changing. On the timeline of the company the result is **about** (plan P4-5): its own company, or — for a legacy deal-buyer result — the seller's with the deal as context, until the deal-buyer migration maps that buyer to a company; later rows then go to the buyer company, still with the deal | Dev 4B → Dev 1 |
+| `verification` | A verification result's status or review changing. On the timeline of the company the result is **about**: its own company, or — for a legacy deal-buyer result — the seller's with the deal as context, until the deal-buyer migration maps that buyer to a company; later rows then go to the buyer company, still with the deal | Dev 4B → Dev 1 |
 | `screening` | A screening checklist item's decision (`screening_initial` / `screening_transition`; decision D9) | Dev 4B → Dev 1 |
-| `check_cycle` | A new background-check cycle started — a Re-KYC or Re-KYB (plan P2-3c). `from_status` / `to_status` are the previous and new cycle **numbers** (`"1"` → `"2"`); `event_type = "check_cycle_started"` | Dev 1 |
-| `background_check_approval` | A maker-checker proposal proposed, approved, rejected or withdrawn (plan P3-1b). `from_status` / `to_status` are the **proposal's** status: `null` → `OPEN` (`event_type = "background_check_proposed"`), then `OPEN` → `APPROVED` / `REJECTED` / `WITHDRAWN` (`background_check_approved` / `_rejected` / `_withdrawn`). `actor_id` is the proposer, then the resolver; `reason` the proposal's reason, then the rejection's or withdrawal's. An approval also writes the usual `background_check` row for the decision, whose actor is the decider (the proposer) | Dev 1 |
-| `gst_registration` | A GST registration added, reactivated, deactivated, flagged or unflagged (plan P6-2, P6-5). **Written** by `GstRegistrationService` (tasks 3.13, 3.14). `to_value` is the branch's state name; `details` carries the registration id, the **masked** GSTIN, the state and the row's `active`/`flag_status`. A flag and an unflag both carry their `reason` | Dev 3 |
-| `trade` | An invoice or a payment outcome recorded (plan P5-3, P5-4). **Written** by `TradeHistoryService` (task 3.19), on the **seller's** timeline, carrying `deal_id` when the invoice came from a deal. Read on the **buyer company's** timeline too, by the same read-side union as its deals (R-23); past trade with no deal stays the seller's. `to_value` is the invoice's currency for `trade_invoice_recorded` and the payment status for `trade_outcome_recorded`; an outcome's `reason` is its evidence note. A relationship's own creation writes no row — it is a consequence of recording a deal's buyer, which already has one | Dev 3 |
-| `pipeline` | A company entering or leaving the sales pipeline — created as a buyer-only company, or brought in (plan P4-6, P4-9). **Written** by `CompanyDirectoryService.create_buyer_company` (`NULL` → `NOT_IN_PIPELINE`, with the deal it came from) and by `ExporterProfileService.bring_into_pipeline` (`NOT_IN_PIPELINE` → `IN_PIPELINE`, task 3.11). A buyer-only company's **first** row is on this dimension, not `journey`: it has no journey until it enters the pipeline | Dev 3 |
+| `check_cycle` | A new background-check cycle started — a Re-KYC or Re-KYB. `from_status` / `to_status` are the previous and new cycle **numbers** (`"1"` → `"2"`); `event_type = "check_cycle_started"` | Dev 1 |
+| `background_check_approval` | A maker-checker proposal proposed, approved, rejected or withdrawn. `from_status` / `to_status` are the **proposal's** status: `null` → `OPEN` (`event_type = "background_check_proposed"`), then `OPEN` → `APPROVED` / `REJECTED` / `WITHDRAWN` (`background_check_approved` / `_rejected` / `_withdrawn`). `actor_id` is the proposer, then the resolver; `reason` the proposal's reason, then the rejection's or withdrawal's. An approval also writes the usual `background_check` row for the decision, whose actor is the decider (the proposer) | Dev 1 |
+| `gst_registration` | A GST registration added, reactivated, deactivated, flagged or unflagged. **Written** by `GstRegistrationService`. `to_value` is the branch's state name; `details` carries the registration id, the **masked** GSTIN, the state and the row's `active`/`flag_status`. A flag and an unflag both carry their `reason` | Dev 3 |
+| `trade` | An invoice or a payment outcome recorded. **Written** by `TradeHistoryService`, on the **seller's** timeline, carrying `deal_id` when the invoice came from a deal. Read on the **buyer company's** timeline too, by the same read-side union as its deals; past trade with no deal stays the seller's. `to_value` is the invoice's currency for `trade_invoice_recorded` and the payment status for `trade_outcome_recorded`; an outcome's `reason` is its evidence note. A relationship's own creation writes no row — it is a consequence of recording a deal's buyer, which already has one | Dev 3 |
+| `pipeline` | A company entering or leaving the sales pipeline — created as a buyer-only company, or brought in. **Written** by `CompanyDirectoryService.create_buyer_company` (`NULL` → `NOT_IN_PIPELINE`, with the deal it came from) and by `ExporterProfileService.bring_into_pipeline` (`NOT_IN_PIPELINE` → `IN_PIPELINE`). A buyer-only company's **first** row is on this dimension, not `journey`: it has no journey until it enters the pipeline | Dev 3 |
 | `relationship_manager` | A company's relationship manager assigned, reassigned or cleared. **Written** only by `ExporterProfileService.set_relationship_manager` (the RM route, bulk reassignment, the RM set when a check is started or QUALIFIED is recorded, and the legacy-owner backfill). `from_status` / `to_status` are the user ids, or `UNASSIGNED`; `event_type` is `relationship_manager_assigned` / `_reassigned` / `_cleared`; `reason` is required on a change or clear | — |
 | `background_check_assignment` | A background-check review claimed, assigned, reassigned, released or ended. **Written** only by `BackgroundCheckService._set_reviewer`. `from_status` / `to_status` are the reviewer ids, or `UNASSIGNED`; `event_type` is `review_claimed` / `review_assigned` / `review_reassigned` / `review_released` / `review_ended`; `reason` is required when a review is taken from someone, optional on a release | — |
 | `contact` | A contact's status changed (`contact_status_changed`: `from_status` / `to_status` are ACTIVE, INACTIVE or LEFT_COMPANY; `reason` required to leave ACTIVE) or its details verified (`contact_verified`). **Written** by `ExporterContactActivityService` | — |
@@ -91,7 +91,7 @@ architecture.
 | `group` | A company linked under a parent or taken out of its group — on the company (`group_parent_set` / `group_parent_cleared`) and on each parent involved (`group_member_added` / `group_member_removed`). **Written** by `CompanyGroupService` | — |
 | `sanctions` | A sanctions screening recorded (`sanctions_run_recorded`, `to_status` the run's outcome) or a decision on one of its matches (`sanctions_hit_decided`, `sanctions_true_match_confirmed`, `sanctions_true_match_rejected`; `to_status` the disposition, `reason` required). **Written** by `SanctionsScreeningService` | — |
 
-The last five were added together in F1 (allocation §2.2, 1 October 2026) so that no
+The last five were added together (1 October 2026) so that no
 lane edits this list again. In code the list is
 `app/modules/onboarding/domain/history_dimensions.py`; a writer imports its constant
 from there rather than typing the string, and the frontend's `HistoryDimension` type
@@ -117,11 +117,10 @@ reasons, review notes and screening comments on those gauges' own routes
 `gst_registration`, `trade` and `pipeline` rows are served to DEVELOPER, so their
 writers store identifiers already masked (as `profile` rows do) — except a branch's
 `gst_registration_flagged` and `gst_registration_unflagged` rows, and the `flag_status`
-detail on the others, which DEVELOPER does not receive (R-47, decision D-05;
-`_EVENTS_HIDDEN_FROM_DEVELOPER` in `api/history_router.py`). `trade` rows carry
+detail on the others, which DEVELOPER does not receive (`_EVENTS_HIDDEN_FROM_DEVELOPER` in `api/history_router.py`). `trade` rows carry
 none at all — an invoice number, a currency and a payment status say nothing about a
 company's identity, which is the same reason the trade routes serve no identifiers to
-any role (`trade-history.md` §4, IQ-19).
+any role (`trade-history.md` §4).
 
 `deal_id` is set exactly when `dimension = "deal"`, or when another dimension's
 change is about a specific deal. It is `NULL` otherwise.
@@ -160,10 +159,10 @@ it reached):
 | Rows | Keys | Defined in |
 |---|---|---|
 | `qualification`, `event_type = "qualification_result"` | `criterion_key` (with `result_id`, `criterion_version`) | `criterion-result.md` §6.1 |
-| `deal`, `event_type = "deal_buyer_changed"` | `changed`, `buyer_name`, `created` | `deal-and-buyer.md` §7 |
-| `screening` | `item_key`, `screening_review_item_id`; since 1 October 2026 also `cycle_id` and `evidence_count` | D9 (`verification-and-screening.md` §5, §11); P2-1b, P2-3a |
-| `verification` | `verification_type`, `verification_result_id`; `entity_type` on a result's own rows; `review_id` on `verification_reviewed`; `cycle_id` on a company-subject result recorded since 1 October 2026 | `verification-and-screening.md` §1; P2-3a |
-| `background_check` | `decision_id`, `supersedes_decision_id`, `risk_rating`, `evidence_count`; since 1 October 2026 also `cycle_id` and `rules_version`, and (tranche 2) `proposal_id`, `approved_by` (an approved move) and `expires_at` (a `CLEAR`) | `background-check.md` §8 |
+| `deal`, `event_type = "deal_buyer_changed"` | `changed`, `buyer_name`, `created` — on rows written until 14 October 2026; the legacy buyer form that wrote them is gone | `deal-and-buyer.md` §7 |
+| `screening` | `item_key`, `screening_review_item_id`; since 1 October 2026 also `cycle_id` and `evidence_count` | D9 (`verification-and-screening.md` §5, §11) |
+| `verification` | `verification_type`, `verification_result_id`; `entity_type` on a result's own rows; `review_id` on `verification_reviewed`; `cycle_id` on a company-subject result recorded since 1 October 2026 | `verification-and-screening.md` §1 |
+| `background_check` | `decision_id`, `supersedes_decision_id`, `risk_rating`, `evidence_count`; since 1 October 2026 also `cycle_id` and `rules_version`, and `proposal_id`, `approved_by` (an approved move) and `expires_at` (a `CLEAR`) | `background-check.md` §8 |
 | `check_cycle` | `cycle_id`, `kind`, `previous_cycle_id`, `reopen_decision_id` (set when the start reopened a `CLEAR` company) | `background-check.md` §12.3 |
 | `background_check_approval` | `proposal_id`, `from_value`, `to_value` (the proposed move); on proposing also `risk_rating`, `based_on_decision_id`, `evidence_count`, `cycle_id`, `rules_version`; on resolving also `proposed_by` and `decision_id` (set on approval) | `background-check.md` §12.5 |
 | `relationship_manager` | `from_user_id`, `to_user_id`, `from_user_name`, `to_user_name` (the names as they were), `bulk_run_id` (a bulk reassignment or backfill run; otherwise `null`) | `company-record.md` §2.5 |
@@ -239,9 +238,8 @@ Two consequences worth stating, because both have bitten this repository:
   covers this for the journey.
 - **A cross-service hand-off is not yet one transaction.** Services in this
   repository call `self._db.commit()` themselves, so "Dev 4 records `CLEAR`" and
-  "Dev 2 moves the company to `CUSTOMER`" are two commits today. Dev 1 is not
-  introducing a unit-of-work primitive — it is not among tasks L1-01..L1-15 —
-  so the two developers sharing a hand-off must either pass one session between
+  "Dev 2 moves the company to `CUSTOMER`" are two commits today. There is no
+  unit-of-work primitive, so the two developers sharing a hand-off must either pass one session between
   the two service calls or accept that the second can fail after the first
   committed. **Raise this before building the hand-off, not after.**
 
@@ -252,7 +250,7 @@ Two consequences worth stating, because both have bitten this repository:
 `customer_id` references `exporter_profile.customer_id` (`ON DELETE RESTRICT`):
 `fk_exporter_lifecycle_history_customer_id`, added by migration **0014 (Dev 2)**
 together with the links from contacts, activities and screening items, and
-declared on the model. Migration 0013 deliberately left it bare (decision U3):
+declared on the model. Migration 0013 deliberately left it bare:
 adding it there would have forced 0014 to drop and re-add it around recreating
 `exporter_profile`.
 
@@ -296,12 +294,12 @@ Stated separately so nobody reads this contract as a description of the code.
 |---|---|
 | The table, its columns and its indexes | **implemented** (0013) |
 | Append-only trigger and repository | **implemented** (0011) |
-| The shared writer, `HistoryService.record` (flushes, never commits) | **implemented** (L1-11) |
-| The read routes, `GET /exporters/{id}/history` and `GET /deals/{id}/history` | **implemented** (L1-11); DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details — the `CUSTOMER` journey row carries both (D8) |
-| The five F1 dimensions (§2) | **all written** (3 October 2026): `check_cycle` (P2-3c) and `background_check_approval` (P3-1b) by Developer 1; `pipeline` (F3, task 3.11), `gst_registration` (tasks 3.13, 3.14) and `trade` (task 3.19) by Developer 3 |
+| The shared writer, `HistoryService.record` (flushes, never commits) | **implemented** |
+| The read routes, `GET /exporters/{id}/history` and `GET /deals/{id}/history` | **implemented**; DEVELOPER does not receive `background_check`, `verification`, `screening`, `check_cycle` or `background_check_approval` rows, nor a row's `risk_rating` or `clearing_decision_id` details — the `CUSTOMER` journey row carries both (D8) |
+| The five dimensions added on 1 October 2026 (§2) | **all written** (3 October 2026): `check_cycle` and `background_check_approval` by Developer 1; `pipeline`, `gst_registration` and `trade` by Developer 3 |
 | `actor_name` on every row read (§3.1) | **implemented** (29 September 2026) |
 | Every dimension in §2 | **implemented** by its owner's service |
-| The move to `CUSTOMER`, with `terminal: true` | **implemented** (L2-11) |
+| The move to `CUSTOMER`, with `terminal: true` | **implemented** |
 | The company foreign key | **implemented** (0014), declared on the model |
 
 Rows written in one transaction share `created_at` (§8), so the read routes do not

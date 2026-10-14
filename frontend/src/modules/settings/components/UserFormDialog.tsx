@@ -20,7 +20,7 @@ interface UserFormDialogProps {
 
 const FIELDS = ['email', 'full_name', 'role', 'role_id', 'password'] as const;
 
-/** Add a user, or edit one — a composer (frontend-plan §6.9), not a box mid-page. */
+/** Add a user, or edit one — a composer, not a box mid-page. */
 export function UserFormDialog({ user, onClose }: UserFormDialogProps) {
   const isEdit = user !== undefined;
   const currentUser = useCurrentUser();

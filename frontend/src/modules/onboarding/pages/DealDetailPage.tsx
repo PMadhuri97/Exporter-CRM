@@ -125,7 +125,7 @@ function HandoverSnapshot({ snapshot }: { snapshot: Record<string, unknown> }) {
 }
 
 /**
- * The deal's stage moves as header actions (frontend-plan §8.6), exactly the server's
+ * The deal's stage moves as header actions, exactly the server's
  * `allowed_stage_moves`. *Hand over* is the primary action and keeps its confirmation
  * (it is terminal and announces the deal to the lending team); *Withdraw* asks for
  * its reason in a side panel before anything is sent.
@@ -300,7 +300,7 @@ export function DealDetailPage() {
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_22.5rem]">
         <div className="flex min-w-0 flex-col gap-4">
-          {/* The guard's verdict (frontend-plan §6.11): the server's sentence verbatim,
+          {/* The guard's verdict: the server's sentence verbatim,
               a checklist once structured conditions are served. Staff only: Developer
               is sent no reason. */}
           {isStaff && deal.handover_blocked_reason && (

@@ -1,5 +1,5 @@
 /**
- * The Activity tab (frontend-plan §8.5): the conversation path, then the activity
+ * The Activity tab: the conversation path, then the activity
  * timeline with its composer (§6.8), as in the Salesforce activity timeline and the
  * Dynamics timeline. Contacts are in the record's right column
  * (`CompanyRelatedCards`).
@@ -74,7 +74,7 @@ const ACTIVITY_LABEL: Record<ExporterActivityType, string> = {
   FOLLOW_UP: 'Follow-up',
 };
 
-/** The composer's button, a verb and an object (frontend-plan §5.7). */
+/** The composer's button, a verb and an object. */
 const ACTIVITY_VERB: Record<ExporterActivityType, string> = {
   CALL: 'Log call',
   MEETING: 'Log meeting',
@@ -94,7 +94,7 @@ const ACTIVITY_ICON: Record<ExporterActivityType, IconComponent> = {
 };
 
 /**
- * The activity composer (frontend-plan §6.8), as in the Salesforce activity
+ * The activity composer, as in the Salesforce activity
  * composer: a tab per kind, a subject, an optional body, and a due date for a task
  * or a follow-up. Staff only. The server decides what is valid; a refusal is a toast
  * in its words and the draft stays.
@@ -342,7 +342,7 @@ function ConversationSection({
           )}
 
           {/* The track always shows where the conversation stands; only the moves the
-              server listed are buttons on it (frontend-plan §6.5). */}
+              server listed are buttons on it. */}
           <ConversationPath
             customerId={customerId}
             value={conversation.data.conversation}

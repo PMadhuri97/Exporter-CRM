@@ -9,7 +9,7 @@ Run it with ``LOG_LEVEL=WARNING DEBUG=false``: with the development settings the
 engine echoes every statement and the report is lost in it (``command_console``).
 
 ``--rollback`` **writes nothing**: it reports what a run did and what undoing it
-takes. §17.2's logical rollback turns out not to be available in the shipped schema —
+takes. The logical rollback first designed turns out not to be available in the shipped schema —
 both ``deal.buyer_company_id`` and ``verification_result.subject_company_id`` are
 set-once and frozen by triggers, so neither can be set back to ``NULL``. Restoring the
 ``pg_dump`` is the only route back, which is why taking one is step zero and not a
@@ -20,11 +20,11 @@ reading and writing: name-only duplicates are reported and confirmed by hand,
 and a revision has nowhere to pause for that.
 
 **Never run on a live database before its dry-run report has been read.** It is
-tested against seeded databases covering §17.2's edge cases. The intended sequence
+tested against seeded databases covering its edge cases. The intended sequence
 is: ``pg_dump``, ``--dry-run``, read the report, confirm what needs a person,
 ``--apply``, ``--validate``, and a second ``--apply`` that must create nothing.
 
-How a buyer's identity is resolved (§17.2, in order of confidence)
+How a buyer's identity is resolved (in order of confidence)
 ------------------------------------------------------------------
 #. **The row is already linked to a company**: its deal names a buyer company,
    or its BUYER results already have a ``subject_company_id``.
@@ -61,7 +61,7 @@ A person resolves a refusal with ``--confirm-name``, naming one of the candidate
 report prints. Every confirmation is checked **before anything is written**
 (``check_confirmations``), so a bad one stops the run instead of half of it.
 
-What ``--apply`` writes, per §17.2
+What ``--apply`` writes
 ----------------------------------
 The mapping on each ``deal_buyer`` row (``mapped_company_id``, ``match_rule``,
 ``matched_by``, ``matched_at``, ``mapping_run_id``: set once, so a re-run skips the row
@@ -122,7 +122,7 @@ from app.platform.database import services as db_services
 
 logger = structlog.get_logger(__name__)
 
-#: The event of the one history row a created company starts with (§17.2, "Creation").
+#: The event of the one history row a created company starts with.
 CREATION_EVENT = "company_created_from_deal_buyer"
 
 #: How many rows the report prints in full before summarising. The first run of this
@@ -151,7 +151,7 @@ MIN_REGISTRATION_KEY_LENGTH = 2
 
 @dataclass(eq=False)
 class _Group:
-    """Deal buyers that share an identifier, and so are one company (§17.2 steps 2-3).
+    """Deal buyers that share an identifier, and so are one company.
 
     ``claims`` are the existing companies something has said the group is: a company
     holding one of its identifiers, or a deal that already names its buyer company.
@@ -421,7 +421,7 @@ class Report:
 
 
 def _buyer_pan(buyer: DealBuyer) -> str | None:
-    """The PAN a buyer's ``tax_id`` carries, if any (§17.2 step 2).
+    """The PAN a buyer's ``tax_id`` carries, if any.
 
     ``tax_id`` is free text on a legacy row, so it may hold a PAN, a GSTIN, or
     something else entirely. A GSTIN carries its company's PAN in characters 3-12,
@@ -573,7 +573,7 @@ async def resolve(db: AsyncSession) -> Report:
             )
 
     # A group may learn its company from a later member, so the seller check runs once
-    # every row has been placed (§17.2 step 5).
+    # every row has been placed.
     for r in report.ready:
         if r.target is not None and r.target == r.seller_company_id:
             r.problems.append(
@@ -896,7 +896,7 @@ async def apply(
     actor_id: str | None,
     confirmed: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> dict[str, int]:
-    """Write everything §17.2 asks for, for the rows that are ready.
+    """Write everything the migration specifies, for the rows that are ready.
 
     ``confirmed`` carries a person's decisions: ``{deal_buyer_id: company_id}``, each
     naming one of the candidates the report offered. Those rows are mapped with
@@ -999,8 +999,8 @@ async def apply(
 
         # The deal's BUYER results become the buyer company's — the company the deal
         # names, which `_deal_still_agrees` has just confirmed. `entity_type`,
-        # `entity_reference` and `subject_snapshot` are left exactly as they are
-        # (§17.2): every read already prefers `subject_company_id` when it is set.
+        # `entity_reference` and `subject_snapshot` are left exactly as they are:
+        # every read already prefers `subject_company_id` when it is set.
         results = await db.execute(
             update(VerificationResult)
             .where(
@@ -1039,9 +1039,9 @@ async def _create_company(
     run_id: str,
     actor_id: str | None,
 ) -> uuid.UUID:
-    """Create the company ``r``'s group becomes, with §17.2's creation history row.
+    """Create the company ``r``'s group becomes, with its creation history row.
 
-    ``created_via_deal_id`` is the earliest of the members' deals (§17.2), and the row
+    ``created_via_deal_id`` is the earliest of the members' deals, and the row
     names every member this run maps to it.
     """
     # `deal.created_at` is NOT NULL and read from one database, so every value carries
@@ -1104,7 +1104,7 @@ async def _add_member_contacts(
     return len({key for key in wanted if any(key)})
 
 
-# ── Validation (§17.2) ────────────────────────────────────────────────────────
+# ── Validation ────────────────────────────────────────────────────────
 
 #: Every query must return 0. The names are what the operator reads, so they say
 #: what is wrong rather than what was counted.
@@ -1198,7 +1198,7 @@ VALIDATION_QUERIES: tuple[tuple[str, str], ...] = (
 
 
 async def validate(db: AsyncSession) -> list[tuple[str, int]]:
-    """Run §17.2's validation queries. Every count must be 0."""
+    """Run the validation queries. Every count must be 0."""
     results: list[tuple[str, int]] = []
     for label, sql in VALIDATION_QUERIES:
         results.append((label, int(await db.scalar(text(sql)) or 0)))
@@ -1208,7 +1208,7 @@ async def validate(db: AsyncSession) -> list[tuple[str, int]]:
 async def rollback(db: AsyncSession, *, run_id: str) -> dict[str, int]:
     """Report what a run did and what it would take to undo it. **Writes nothing.**
 
-    §17.2 describes a logical rollback — ``UPDATE deal SET buyer_company_id = NULL``
+    The first design described a logical rollback — ``UPDATE deal SET buyer_company_id = NULL``
     and ``UPDATE verification_result SET subject_company_id = NULL`` — with the
     caveat that it *"needs the freeze trigger to allow NULL->value only, so do the
     rollback before enabling it, or restore"*.
@@ -1315,7 +1315,7 @@ async def _main(args: argparse.Namespace) -> int:
         if args.validate:
             results = await validate(db)
             failures = 0
-            print("\nBuyer migration validation (plan section 17.2)")
+            print("\nBuyer migration validation")
             print("=" * 60)
             for label, count in results:
                 status = "OK  " if count == 0 else "FAIL"
@@ -1344,7 +1344,7 @@ async def _main(args: argparse.Namespace) -> int:
             print(f"  deals linked:          {counts['deals_linked']}")
             print(f"  results re-subjected:  {counts['results_linked']}")
             print(
-                "\nThis command wrote nothing. The logical rollback in plan section 17.2 "
+                "\nThis command wrote nothing. The logical rollback first designed "
                 "is NOT available:\nboth `deal.buyer_company_id` and "
                 "`verification_result.subject_company_id` are set-once and\nfrozen by "
                 "triggers, so neither can be set back to NULL.\n\n"
@@ -1410,7 +1410,7 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="report, write nothing")
     mode.add_argument("--apply", action="store_true", help="write the migration")
-    mode.add_argument("--validate", action="store_true", help="run plan section 17.2's checks")
+    mode.add_argument("--validate", action="store_true", help="run the validation checks")
     mode.add_argument(
         "--rollback",
         action="store_true",

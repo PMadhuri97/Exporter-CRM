@@ -278,7 +278,7 @@ describe('DealDetailPage — documents', () => {
     await waitFor(() => expect(listDealDocuments).toHaveBeenCalled());
     expect(await screen.findByText('bill-of-lading.pdf')).toBeInTheDocument();
     expect(screen.getByText('Available')).toBeInTheDocument();
-    // Said once above the list (frontend-plan §8.5), not repeated beside each row.
+    // Said once above the list, not repeated beside each row.
     expect(screen.getByText('Prototype: pass-through scanner')).toBeInTheDocument();
     expect(screen.queryByText('pass-through', { exact: true })).not.toBeInTheDocument();
   });

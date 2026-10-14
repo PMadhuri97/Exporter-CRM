@@ -1,5 +1,5 @@
 /**
- * The manifest against `docs/frontend-plan.md` §4.1 and the server's route groups —
+ * The manifest against the server's route groups —
  * written out by hand, so a wrong edit to `capabilities.ts` fails here.
  */
 

@@ -1,5 +1,5 @@
 /**
- * The tokens meet WCAG AA in both themes (frontend-plan §5.2, §11).
+ * The tokens meet WCAG AA in both themes.
  *
  * jsdom does not compute colours, so axe cannot check contrast in a unit test; this
  * reads `tokens.css` itself and does the arithmetic. Text pairs need 4.5:1; the

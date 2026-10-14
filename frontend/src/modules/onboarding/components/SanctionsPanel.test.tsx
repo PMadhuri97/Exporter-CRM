@@ -116,6 +116,30 @@ beforeEach(() => {
 });
 
 describe('SanctionsPanel', () => {
+  it('offers a director who is also an owner under A director too', async () => {
+    vi.mocked(getCompanySanctions).mockResolvedValue(
+      standing({
+        subjects: [
+          standing().subjects[0]!,
+          {
+            subject_type: 'UBO',
+            subject_name: 'Dual Role',
+            subject_reference: 'person-3',
+            latest: null,
+            rescreen_reasons: ['never screened'],
+            roles: ['DIRECTOR', 'UBO'],
+          },
+        ],
+      }),
+    );
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: /Record screening/ }));
+    await screen.findByText('UN Security Council Consolidated List');
+    fireEvent.change(screen.getByLabelText(/Who was screened/), { target: { value: 'DIRECTOR' } });
+    const picker = screen.getByLabelText(/^Director/) as HTMLSelectElement;
+    expect([...picker.options].map((option) => option.text)).toContain('Dual Role');
+  });
+
   it('screens a director on record by reference, or someone else by name', async () => {
     vi.mocked(getCompanySanctions).mockResolvedValue(
       standing({

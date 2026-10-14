@@ -1,5 +1,5 @@
 /**
- * Documents grouped by category (frontend-plan §8.5, §8.6): each file a row with its
+ * Documents grouped by category: each file a row with its
  * name, type, size, source, when, and its scan status as a badge. A quarantined or
  * failed scan is **never** downloadable (the server says so with `is_downloadable`,
  * and the button is absent, not disabled). The "pass-through scanner" prototype label

@@ -38,7 +38,7 @@ const ICON_BUTTON =
   'rounded-md p-1.5 text-ink-3 transition-colors duration-quick hover:bg-sunken hover:text-ink';
 
 /**
- * Roles (frontend-plan §8.9): one tile per role — what it reaches, how many hold
+ * Roles: one tile per role — what it reaches, how many hold
  * it — and the permission grid behind Edit. Built-in roles say so and offer no
  * delete; the server refuses it, so no control that always fails is shown.
  */

@@ -1,5 +1,5 @@
 /**
- * The record header (frontend-plan §6.3): what the record is, its key fields, and
+ * The record header: what the record is, its key fields, and
  * its actions — the Salesforce highlights panel, the Dynamics form header, the Fiori
  * dynamic page header.
  *

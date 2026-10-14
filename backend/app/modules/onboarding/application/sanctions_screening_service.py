@@ -126,6 +126,10 @@ class SubjectCoverage:
     latest: RunView | None
     #: Why this subject needs screening again (empty when it does not).
     rescreen_reasons: list[str] = field(default_factory=list)
+    #: A person on record: the roles they hold (DIRECTOR, UBO), so a director who is
+    #: also an owner can be screened under either. Empty for the company and for anyone
+    #: screened by name.
+    roles: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -183,6 +187,11 @@ def _subject_key(subject_type: str, reference: uuid.UUID | None, name: str) -> t
     if reference is not None:
         return ("PERSON", str(reference))
     return (subject_type, " ".join(name.lower().split()))
+
+
+def _person_roles(person: ExporterContact) -> list[str]:
+    """The screening roles a person on record holds."""
+    return [role for role, held in (("DIRECTOR", person.is_director), ("UBO", person.is_ubo)) if held]
 
 
 def _person_subject(person: ExporterContact) -> str:
@@ -511,6 +520,7 @@ class SanctionsScreeningService:
                     person.id,
                     view,
                     self._reasons(view, current_lists),
+                    roles=_person_roles(person),
                 )
             )
         for key, view in views.items():

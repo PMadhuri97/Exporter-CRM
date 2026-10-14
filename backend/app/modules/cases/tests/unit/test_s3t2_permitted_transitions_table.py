@@ -1,5 +1,5 @@
 """ANER-4.3-S3T2: pins `PERMITTED_TRANSITIONS` to the exact 10-edge subset of
-the Jira doc's "Permitted transitions" table this build implements — see
+the specification's "Permitted transitions" table this build implements — see
 `case_lifecycle_service.py`'s module docstring for which 5 rows of the doc's
 full 15-row table were deliberately left out and why. Pure/unit: checking a
 plain data structure, not exercising the database.
@@ -36,7 +36,7 @@ def test_no_outbound_edge_exists_from_either_terminal_status():
 
 
 def test_out_of_scope_edges_from_the_docs_full_table_are_absent():
-    """These 5 rows exist in the Jira doc's table but belong to other,
+    """These 5 rows exist in the specification's table but belong to other,
     not-yet-built stories — see the module docstring."""
     out_of_scope = {
         (CaseStatus.UNDER_INVESTIGATION, CaseStatus.RESOLVED),  # S4T1/T3/T4 direct resolve

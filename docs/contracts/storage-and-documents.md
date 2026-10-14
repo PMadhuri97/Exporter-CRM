@@ -30,7 +30,7 @@
 
 **Owner:** Developer 3B · **Port:** `onboarding/domain/storage.py` · **Implementations:** `onboarding/infrastructure/storage/` · **Table:** `onboarding.crm_document` · **Migration:** `onboarding_0019_documents`
 
-**Used by:** Developer 4 (evidence at decision time, plan §8.2), Developer 3A (nothing
+**Used by:** Developer 4 (evidence at decision time, design §8.2), Developer 3A (nothing
 — documents are not part of the conversation gauge), Developer 2 (nothing).
 
 **State.** All of it is built: §1–§4 (the port, local disk, the key shape, the scan

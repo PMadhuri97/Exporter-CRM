@@ -136,6 +136,17 @@ def _as_uuid(value: uuid.UUID | str) -> uuid.UUID:
     return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
 
 
+#: Who opened a cycle when the platform recorded the result itself (sample data, an
+#: internal sync): ``check_cycle.created_by`` must name someone.
+_PLATFORM_ACTOR = "platform"
+
+
+def _actor_text(actor_id: uuid.UUID | str | None) -> str | None:
+    """The actor as history stores it. ``None`` stays ``None`` (shown as "the
+    platform"); ``str(None)`` would store the word "None" as if it were a user id."""
+    return None if actor_id is None else str(actor_id)
+
+
 def _company_subjects(
     subjects: Iterable[tuple[VerificationEntityType, uuid.UUID]],
 ) -> list[uuid.UUID]:
@@ -525,14 +536,16 @@ class VerificationService:
             event_type=event_type,
         )
 
-    async def _stamp_cycle(self, result: VerificationResult, *, actor_id: str, source: str) -> None:
+    async def _stamp_cycle(
+        self, result: VerificationResult, *, actor_id: str | None, source: str
+    ) -> None:
         """Put a new company-subject result in its company's current cycle. Call with
         the company row already share-locked (the cycle cannot change under it)."""
         company = result.subject_company
         if company is None:
             return
         cycle = await CheckCycleRepository(self._db).current_or_initial(
-            company, actor_id=actor_id, source_ref=source, at=clock.now()
+            company, actor_id=actor_id or _PLATFORM_ACTOR, source_ref=source, at=clock.now()
         )
         result.cycle_id = cycle.id
 
@@ -549,7 +562,7 @@ class VerificationService:
         *,
         provider: str = "manual",
         payload: dict[str, Any] | None = None,
-        actor_id: uuid.UUID | str,
+        actor_id: uuid.UUID | str | None,
         evidence: VerificationEvidence | None = None,
     ) -> VerificationResult:
         """Run one verification check and persist its outcome.
@@ -618,7 +631,7 @@ class VerificationService:
         # After the provider call, so no lock is held while a provider works.
         await share_lock_companies(self._db, _company_subjects([(entity_type, reference)]))
         await self._stamp_cycle(
-            result, actor_id=str(actor_id), source="verification_service.trigger_verification"
+            result, actor_id=_actor_text(actor_id), source="verification_service.trigger_verification"
         )
         self._db.add(result)
         await self._db.flush()
@@ -626,7 +639,7 @@ class VerificationService:
             subject,
             to_value=outcome.status.value,
             from_value=None,
-            actor_id=str(actor_id),
+            actor_id=_actor_text(actor_id),
             source="verification_service.trigger_verification",
             details=_result_details(result),
         )
@@ -655,7 +668,7 @@ class VerificationService:
             entity_reference=str(reference),
             provider=outcome.provider,
             status=outcome.status.value,
-            actor_id=str(actor_id),
+            actor_id=_actor_text(actor_id),
         )
         return result
 
@@ -666,7 +679,7 @@ class VerificationService:
         requests: list[VerificationRequest],
         *,
         provider: str,
-        actor_id: uuid.UUID | str,
+        actor_id: uuid.UUID | str | None,
     ) -> list[VerificationResult]:
         """Run a batch of checks submitted together as one payload and
         persist one `VerificationResult` per check, all in a single
@@ -747,7 +760,7 @@ class VerificationService:
             )
             await self._stamp_cycle(
                 result,
-                actor_id=str(actor_id),
+                actor_id=_actor_text(actor_id),
                 source="verification_service.trigger_verification_batch",
             )
             self._db.add(result)
@@ -756,7 +769,7 @@ class VerificationService:
                 subject,
                 to_value=outcome.status.value,
                 from_value=None,
-                actor_id=str(actor_id),
+                actor_id=_actor_text(actor_id),
                 source="verification_service.trigger_verification_batch",
                 details=_result_details(result),
             )
@@ -771,7 +784,7 @@ class VerificationService:
             provider=provider,
             count=len(results),
             verification_result_ids=[str(r.id) for r in results],
-            actor_id=str(actor_id),
+            actor_id=_actor_text(actor_id),
         )
         return results
 

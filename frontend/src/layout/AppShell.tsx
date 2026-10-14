@@ -1,5 +1,5 @@
 /**
- * The shell (frontend-plan §7.1): the app header across the top, the side navigation
+ * The shell: the app header across the top, the side navigation
  * on the left, and the page. Under 1024px the navigation is a drawer. The page's
  * breadcrumbs (`useCrumbs`) sit at the top of the page, where enterprise apps put
  * them. The header, the navigation, search's *Pages* and the router all read the

@@ -1,6 +1,6 @@
 import type { Config } from 'tailwindcss';
 
-// Design tokens — a standard enterprise palette (docs/frontend-plan.md §5): neutral
+// Design tokens — a standard enterprise palette: neutral
 // greys, one brand blue for what can be acted on, and colour otherwise spent only on
 // state. Consumed by name (`bg-positive-tint`, `text-ink-3`, `bg-accent-solid`)
 // rather than as ad hoc values,

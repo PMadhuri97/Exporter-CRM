@@ -289,7 +289,7 @@ describe('ExporterDetailPage — screening review', () => {
     expect(row).toHaveTextContent('“Seasonal break”');
     expect(row).toHaveTextContent('By user-7');
 
-    // The lane chips are the lanes present (frontend-plan §6.5); choosing one asks
+    // The lane chips are the lanes present; choosing one asks
     // the server for that dimension.
     expect(screen.queryByRole('button', { name: 'Journey' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Relationship' }));
@@ -499,7 +499,7 @@ describe('ExporterDetailPage — screening review', () => {
     expect(screen.queryByRole('button', { name: /^Record:/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
     expect(await screen.findByRole('heading', { name: 'Company profile' })).toBeInTheDocument();
-    // Facts are inline edits for staff (frontend-plan §8.5); a read-only role gets text.
+    // Facts are inline edits for staff; a read-only role gets text.
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
   });
 

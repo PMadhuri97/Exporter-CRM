@@ -235,6 +235,36 @@ async def test_manual_entry_adapter_round_trips_trigger_to_list():
     assert listed[0].id == result.id
 
 
+async def test_a_result_the_platform_records_names_no_actor():
+    """Sample data and internal syncs record with no actor. History stores none (shown
+    as "the platform"), not the word "None" as if it were a user id, and the cycle the
+    result opens is created by the platform."""
+    from app.modules.onboarding.tests.integration._verification_support import pg
+
+    company_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        result = await VerificationService(db).trigger_verification(
+            VerificationType.AML,
+            VerificationEntityType.EXPORTER,
+            company_id,
+            provider="manual",
+            payload={"status": "PASSED"},
+            actor_id=None,
+            evidence=_NOTE,
+        )
+    with pg() as cur:
+        cur.execute(
+            "SELECT actor_id FROM onboarding.exporter_lifecycle_history "
+            "WHERE customer_id = %s AND dimension = 'verification'",
+            (str(company_id),),
+        )
+        assert cur.fetchall() == [(None,)]
+        cur.execute(
+            "SELECT created_by FROM onboarding.check_cycle WHERE id = %s", (str(result.cycle_id),)
+        )
+        assert cur.fetchone() == ("platform",)
+
+
 async def test_manual_entry_adapter_rejects_missing_status_before_persisting():
     from app.modules.onboarding.exceptions import InvalidProviderPayloadError
 

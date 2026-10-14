@@ -45,8 +45,7 @@
 > director not on record is still screened by name, with no reference. A hand-entered
 > SANCTIONS verification result remains allowed.
 
-**Owner:** Developer 1 — the compliance engine (`docs/developer-allocation.md` §2.1, from
-1 October 2026); built by Developer 4B (L4-02, L4-04 review half, L4-07, L4-09, L4-11) ·
+**Owner:** the compliance engine (Developer 1 from 1 October 2026; built by Developer 4B) ·
 **Migrations:** `onboarding_0021_verif_review`; since then `onboarding_0023_compliance_core`
 (`subject_company_id`), `onboarding_0024_screen_evidence` (screening evidence),
 `onboarding_0025_check_cycle` (`cycle_id`, the seven-item checklist) · **Status:** built
@@ -111,7 +110,7 @@ of the **same** result), `ck_verification_review_not_self`, and
 once a result has any review — a `verification_review` row or a legacy `review_status` —
 `UPDATE` of `status`, `risk_level`, `normalized_result` or `valid_until` is refused.
 `get_verification_status` asks the provider first, then re-reads the row `FOR UPDATE` and, if
-it has been reviewed, **logs and ignores** the provider's new answer (L4-02). Reviews take the
+it has been reviewed, **logs and ignores** the provider's new answer. Reviews take the
 same row lock, which closes the race the trigger alone cannot (a raw `UPDATE` racing a raw
 review `INSERT`). Polling has no production caller; no scheduler exists.
 
@@ -141,13 +140,13 @@ review `INSERT`). Polling has no production caller; no scheduler exists.
   `"rxil"` is refused there (422) and reserved for RXIL's own intake (D12, blocked). The RXIL
   stub stores `rxil_stub` and refuses `PENDING`.
 - No Middesk, Trulioo or Sumsub: `VerificationProvider` is not widened (providers stay manual
-  this quarter, BQ-8; plan P7-1..3 deferred).
+  this quarter).
 
 ## 5. The screening checklist
 
 - **One catalogue, on the server**, served with the list response (key, label, section, in
   order); the screen never hand-copies it. **Seven items since 1 October 2026**
-  (`rules_version`, plan P2-4a): `website-reviewed` is retired — kept and readable, so an
+  (`rules_version`): `website-reviewed` is retired — kept and readable, so an
   eight-item decision still reads, but refused on write (`background-check.md` §16).
 - Status is `NEEDS_REVIEW`, `PASSED`, `FAILED` or `EXEMPT`, in the API **and** the database
   (`ck_screening_review_item_status`). An unknown key is 422; an unknown company 404.
@@ -176,11 +175,11 @@ review `INSERT`). Polling has no production caller; no scheduler exists.
 - **D17:** a new check on the buyer of a `HANDED_OVER` or `WITHDRAWN` deal is refused, **409
   `DEAL_CLOSED`**; existing checks stay readable and reviewable.
 - A failed buyer check never touches the seller company or its background check.
-- **Buyer companies** (plan P4-4/P4-5): a deal that names `buyer_company_id` has its buyer's
+- **Buyer companies**: a deal that names `buyer_company_id` has its buyer's
   checks recorded on that company like any company's (`subject_company_id`), read through
-  `company_inputs`. Developer 2's buyer migration (P4-6) maps legacy `BUYER` results onto their
+  `company_inputs`. Developer 2's buyer migration maps legacy `BUYER` results onto their
   new companies by setting `subject_company_id` once. `BuyerChecks.tsx` stays for legacy buyers
-  until P4-10 (`remaining-work.md`, R-26).
+  until the buyer migration has run everywhere (`remaining-work.md`).
 
 ## 7. Routes
 
@@ -236,7 +235,7 @@ All decided by the programme lead on 28 September 2026 unless stated. Shared num
 | D7 | Manual route is `manual` only; `rxil` refused there | `api/schemas/verification.py` |
 | D8 | DEVELOPER refused; `normalized_result` not masked | routers; `history_router.py` |
 | D9 | Screening decisions also go to the shared history log (`screening` dimension) | `screening_review_service.upsert_review_item` |
-| D12 | RXIL's package and results contract — **blocked** (RXIL); blocks RXIL results intake (former task 4B-8) | `remaining-work.md` §5 (P7-6) |
+| D12 | RXIL's package and results contract — **blocked** (RXIL); blocks RXIL results intake | `remaining-work.md` §5 |
 | D15 | Checks on DIRECTOR / INVOICE / VESSEL / SHIPMENT write no history row (skipped and logged) | `verification_service._record_history` |
 | D16 | Manual `PASSED` needs a note or a reference; `FAILED` / `REVIEW` need none | `domain/verification_evidence.py` |
 | D17 | No new buyer check on a `HANDED_OVER` / `WITHDRAWN` deal (409 `DEAL_CLOSED`) | `verification_service._resolve_subject` |

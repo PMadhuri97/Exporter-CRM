@@ -549,6 +549,7 @@ async def set_deal_required_document(
         401: {"description": "Unauthorized"},
         403: {"description": "`deals:edit` permission required"},
         404: {"description": "No such deal, or no such payment term"},
+        409: {"description": "The deal is handed over or withdrawn (`DEAL_TERMINAL`)"},
         422: {"description": "No reason for a different term, or nothing changes"},
     },
 )

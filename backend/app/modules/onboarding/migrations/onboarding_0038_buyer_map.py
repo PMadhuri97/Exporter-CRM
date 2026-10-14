@@ -13,7 +13,7 @@ rows were one company. Those are different claims, and the one people will quest
 six months from now is the second.
 
 It is also what makes the migration re-runnable. ``deal_buyer_id`` is the primary
-key, so a second run finds the mapping already there and creates nothing — §17.2's
+key, so a second run finds the mapping already there and creates nothing — the migration's
 idempotency requirement, enforced by the schema rather than by the command
 remembering.
 
@@ -27,13 +27,13 @@ Append-only
 ``trg_deal_buyer_company_map_append_only`` refuses ``UPDATE`` and ``DELETE`` through
 ``public.prevent_mutation()``, the function this schema's other append-only tables
 use. A mapping that turns out to be wrong is corrected by rolling the run back
-(§17.2) and running again, not by editing the record of what the last run decided.
+and running again, not by editing the record of what the last run decided.
 
 Rollback
 --------
 The downgrade drops the table and the enum. Doing so loses the record of how every
 mapping was decided while leaving ``deal.buyer_company_id`` populated — so if a run
-has been applied, roll **that** back first (§17.2's logical rollback), or the deals
+has been applied, roll **that** back first (the logical rollback), or the deals
 will point at companies with nothing explaining why.
 """
 

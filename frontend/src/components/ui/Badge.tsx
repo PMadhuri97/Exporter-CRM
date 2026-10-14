@@ -20,7 +20,7 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 /**
- * A status in words (frontend-plan §6.4): 20px tall, 4px corners, never a pill.
+ * A status in words: 20px tall, 4px corners, never a pill.
  * The label always says the state; the colour and the dot only repeat it.
  */
 export function Badge({

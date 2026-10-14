@@ -1,5 +1,5 @@
 /**
- * The colour theme: light or dark (frontend-plan §5.2).
+ * The colour theme: light or dark.
  *
  * Light is the default, and the operating system's preference does not switch it:
  * a demo laptop set to dark mode still shows the CRM in light. Dark is a choice in

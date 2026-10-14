@@ -8447,6 +8447,8 @@ export interface components {
             latest: components["schemas"]["RunResponse"] | null;
             /** Rescreen Reasons */
             rescreen_reasons: string[];
+            /** Roles */
+            roles?: ("DIRECTOR" | "UBO")[];
         };
         /**
          * SubjectType
@@ -15847,6 +15849,13 @@ export interface operations {
             };
             /** @description No such deal, or no such payment term */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The deal is handed over or withdrawn (`DEAL_TERMINAL`) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

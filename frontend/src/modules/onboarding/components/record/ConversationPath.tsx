@@ -1,5 +1,5 @@
 /**
- * The conversation path (frontend-plan §6.5), as in Salesforce Path:
+ * The conversation path, as in Salesforce Path:
  *
  *   [ Not contacted > Reaching out > Spoke to them > Interested > Ready now ]   [Not now]
  *

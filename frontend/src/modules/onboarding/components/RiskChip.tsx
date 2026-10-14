@@ -3,7 +3,7 @@
  *
  * Four values (decision 6), and `CRITICAL` must look different from the rest
  * (architecture §3.3): it is the one a compliance officer must not skim past.
- * Drawn as frontend-plan §5.2 sets it out, never by colour alone: the words say the
+ * Never drawn by colour alone: the words say the
  * level, High adds a negative outline, and Critical is the only solid badge on the
  * screen — white on the negative solid, with a warning icon.
  *

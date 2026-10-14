@@ -85,7 +85,7 @@ interface DocumentUploadProps {
    * which owner it is serving beyond the categories it asks for. */
   onUpload: (input: UploadDocumentInput) => Promise<unknown>;
   onDone?: () => void;
-  /** Files already chosen — dropped on the document list (frontend-plan §8.5). */
+  /** Files already chosen — dropped on the document list. */
   initialFiles?: File[];
 }
 

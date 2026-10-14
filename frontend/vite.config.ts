@@ -4,7 +4,7 @@ import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-// Backend runs on :8000 (see ../backend/RUNNING.md); the dev server proxies
+// Backend runs on :8000 (see ../docs/development.md §3); the dev server proxies
 // /api so the browser only ever talks to one origin and cookies/CORS never
 // become a dev-only problem that doesn't reproduce against the real deploy.
 export default defineConfig({

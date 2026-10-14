@@ -147,9 +147,6 @@ from app.modules.onboarding.exceptions import (
 from app.modules.onboarding.infrastructure.repositories.crm_document_repository import (
     CrmDocumentRepository,
 )
-from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository import (
-    DealBuyerRepository,
-)
 from app.modules.onboarding.infrastructure.repositories.deal_repository import DealRepository
 from app.shared import clock
 from app.shared.exceptions import ValidationError
@@ -283,7 +280,6 @@ class DealService:
     def __init__(self, db: AsyncSession, *, providers: HandoverProviders | None = None) -> None:
         self._db = db
         self._deals = DealRepository(db)
-        self._buyers = DealBuyerRepository(db)
         self._history = HistoryService(db)
         self._conversation = ConversationService(db)
         # Best effort by construction: `deal_handed_over` logs and swallows its
@@ -1038,8 +1034,9 @@ class DealService:
         ``deal_terms_changed`` history row. A closed deal's terms do not change
         (``prevent_terminal_deal_change``)."""
         deal = await self._lock_deal(deal_id)
-        if deal.stage in (DealStage.HANDED_OVER, DealStage.WITHDRAWN):
-            raise ValidationError("A closed deal's value and terms do not change")
+        if deal.stage.is_terminal:
+            # The same answer as every other edit of a closed deal: 409 DEAL_TERMINAL.
+            raise DealTerminalError(deal_id, deal.stage.value)
         before = self._terms_details(deal)
         await self._apply_terms(deal, terms, await self._company_default_term(deal.company_id))
         after = self._terms_details(deal)

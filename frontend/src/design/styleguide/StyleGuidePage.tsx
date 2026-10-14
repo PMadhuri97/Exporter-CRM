@@ -1,5 +1,5 @@
 /**
- * The style guide (frontend-plan §12.4) — the page the TL reviews: every token and
+ * The style guide — the page the TL reviews: every token and
  * primitive in its states, then the CRM's own parts seen as each role. Mounted at
  * `/__design` only when `import.meta.env.DEV` (see `routes/AppRouter.tsx`), so the
  * production build never contains it.

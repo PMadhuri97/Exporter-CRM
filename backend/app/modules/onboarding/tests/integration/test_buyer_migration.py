@@ -106,7 +106,7 @@ async def _deal(deal_id: uuid.UUID) -> Deal:
         return await db.scalar(select(Deal).where(Deal.id == deal_id))
 
 
-# ── A new company, and what it looks like (§17.2 "Creation") ──────────────────
+# ── A new company, and what it looks like ──────────────────
 
 
 async def test_a_buyer_with_no_match_becomes_a_not_in_pipeline_company():
@@ -134,7 +134,7 @@ async def test_a_buyer_with_no_match_becomes_a_not_in_pipeline_company():
                 ExporterProfile.customer_id == mapping.mapped_company_id
             )
         )
-    # §17.2's creation rules, every one of them.
+    # The creation rules, every one of them.
     assert company.pipeline_status is CompanyPipelineStatus.NOT_IN_PIPELINE
     assert company.source is ExporterSource.DEAL_BUYER
     assert company.created_via == "DEAL_BUYER"
@@ -196,7 +196,7 @@ async def test_a_gstin_in_tax_id_resolves_through_its_embedded_pan():
 
 
 async def test_several_deal_buyers_with_one_registration_number_become_one_company():
-    """§17.2's "logical merge": the rows stay, and the map records that they were the
+    """The "logical merge": the rows stay, and the map records that they were the
     same company all along. No company-to-company merge is performed."""
     seller = await _seller()
     registration = f"KVK-{uuid.uuid4().hex[:8].upper()}"
@@ -220,7 +220,7 @@ async def test_several_deal_buyers_with_one_registration_number_become_one_compa
     assert len(companies) == 1
 
 
-# ── The two refusals (§17.2 steps 4 and 5) ────────────────────────────────────
+# ── The two refusals ────────────────────────────────────
 
 
 async def test_a_name_only_match_is_reported_and_never_merged_automatically():
@@ -283,7 +283,7 @@ async def test_a_confirmed_name_match_is_mapped_and_marked_as_a_persons_decision
 
 
 async def test_a_buyer_resolving_to_its_own_deals_seller_is_refused():
-    """§17.2 step 5. ``ck_deal_buyer_is_not_the_seller`` would refuse the write; this
+    """Step 5 of the matching. ``ck_deal_buyer_is_not_the_seller`` would refuse the write; this
     catches it in the report, where a person can correct the row."""
     pan = _pan()
     seller = await make_prospect()
@@ -306,11 +306,11 @@ async def test_a_buyer_resolving_to_its_own_deals_seller_is_refused():
     assert counts["mapped"] == 0
 
 
-# ── Buyer checks and terminal deals (§17.2) ───────────────────────────────────
+# ── Buyer checks and terminal deals ───────────────────────────────────
 
 
 async def test_a_buyers_checks_become_the_companys_without_touching_the_row():
-    """§17.2's "Buyer checks": set ``subject_company_id``, leave ``entity_type``,
+    """Buyer checks: set ``subject_company_id``, leave ``entity_type``,
     ``entity_reference`` and ``subject_snapshot`` exactly as they are. Every read
     already prefers ``subject_company_id`` when it is set."""
     from app.modules.onboarding.application.verification_service import VerificationService
@@ -350,7 +350,7 @@ async def test_a_buyers_checks_become_the_companys_without_touching_the_row():
             )
         )
     assert result.subject_company_id == company_id
-    # Untouched, exactly as §17.2 requires.
+    # Untouched, exactly as required.
     assert result.entity_type is VerificationEntityType.BUYER
     assert result.entity_reference == buyer_id
 
@@ -383,7 +383,7 @@ async def test_a_terminal_deal_is_linked_without_its_snapshot_changing():
     after = await _deal(deal_id)
     # Migration 0039: the terminal freeze refuses a *change* to this column but allows
     # NULL -> a value once, the same rule 0029 gave `handover_snapshot`. Without it the
-    # migration could not link a closed deal at all, and §17.2's first validation query
+    # migration could not link a closed deal at all, and the first validation query
     # could never reach 0 — which is how this was found.
     assert after.buyer_company_id is not None
     assert after.handover_snapshot == before.handover_snapshot
@@ -410,11 +410,11 @@ async def test_a_terminal_deal_is_linked_without_its_snapshot_changing():
         connection.close()
 
 
-# ── Idempotency and rollback (§17.2) ──────────────────────────────────────────
+# ── Idempotency and rollback ──────────────────────────────────────────
 
 
 async def test_re_running_creates_nothing():
-    """§17.2's own acceptance criterion, and the reason ``deal_buyer_id`` is the
+    """The migration's own acceptance criterion, and the reason ``deal_buyer_id`` is the
     mapping table's primary key rather than a plain column."""
     seller = await _seller()
     _deal_id, buyer_id = await _deal_with_legacy_buyer(
@@ -441,7 +441,7 @@ async def test_re_running_creates_nothing():
 
 
 async def test_rollback_reports_what_a_run_did_and_writes_nothing():
-    """§17.2's logical rollback is **not available**, and this is the test that found it.
+    """The logical rollback first designed is **not available**, and this is the test that found it.
 
     The plan allowed for it — "needs the freeze trigger to allow NULL→value only, so
     do the rollback before enabling it, or restore" — and in the shipped schema both
@@ -510,7 +510,7 @@ async def test_rollback_reports_what_a_run_did_and_writes_nothing():
 
 
 async def test_the_validation_queries_run_and_report_counts():
-    """§17.2's checks. They are asserted to **run and return numbers** rather than to
+    """The validation checks. They are asserted to **run and return numbers** rather than to
     be zero: this shared database holds a thousand unmigrated legacy buyers from other
     suites, so "every count is 0" is a claim about a migrated environment, not about
     this one. Running them is what this test protects — a query that no longer parses

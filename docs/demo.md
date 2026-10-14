@@ -1,10 +1,10 @@
 # Demonstrating the Exporter CRM
 
 A walk-through of the CRM on sample data, then the main path live on a new company,
-then the other paths. Every step below was walked in the redesigned UI on 5 October
-2026, on a copy of the clean demo database, as the role named
-([`remaining-work.md`](remaining-work.md) §13). [`architecture.md`](architecture.md)
-explains the rules behind each step.
+then the other paths. Every step below was walked on 5 October 2026 as the role named,
+and the whole CRM again, through the API and in the browser for every role, on
+14 October 2026. [`architecture.md`](architecture.md) explains the rules behind each
+step.
 
 ---
 
@@ -40,7 +40,7 @@ files when it starts, so a preview left running across a rebuild serves an
 **Run the production build**, which proxies `/api` to the backend exactly as the dev
 server does. Opening several tabs at once is safe; reloading several times within a
 second can still sign you out (a reload that lands while a token refresh is answering
-— R-49 in `remaining-work.md`), so reload once and let the page settle.
+— open work in `remaining-work.md` §3), so reload once and let the page settle.
 
 **Logins.** One per role you will show. `aner_settlement` has one per role and two
 COMPLIANCE (maker-checker needs the second), each with a full name (history, decisions
@@ -102,12 +102,11 @@ may not use shows the same **"Page not found"** as an address that does not exis
    `sample-data` and `sample-data-checker`. Everything done live in §4 shows the
    signed-in person's name.
 
-   The sample deals record their buyer the **legacy** way, as details on the deal rather
-   than as a company record. Their deal pages show a *Legacy buyer record — kept until
-   this deal's buyer is a company (P4-10)* panel with **Buyer checks**, and no *Trade
-   between these two*. That is the honest state of a database the buyer migration has
-   not run on; say it out loud. The live path in §4 records a buyer **company** and the
-   trade panel appears there.
+   The sample deals name their buyers as **companies** (created outside the pipeline,
+   like a buyer created on a deal page), so their deal pages show the buyer company card;
+   the handed-over deal's buyer company carries its passed sanctions and AML checks. No
+   new deal records its buyer the old way: that form is gone, and deals written before
+   keep their legacy buyer read-only.
 2. **Company C — Coastal Seafood Exports Pvt Ltd.** A **prospect** whose check is
    **`FLAGGED`** (a failed screening item for suspicious bank indicators). Its Dubai
    deal is gathering paperwork with its buyer recorded, but is **not ready to hand
@@ -164,7 +163,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    For a buyer that is **genuinely new**, the answer is "No company on file matches"
    and the picker offers **Create buyer company**. Pick the buyer's *Country* (for
    example **Germany**): a foreign buyer needs its **Registration
-   number**, and the button stays unavailable until it is filled (IQ-7); an Indian
+   number**, and the button stays unavailable until it is filled; an Indian
    buyer is asked for a PAN or GSTIN instead. **Create buyer company** creates the
    company and names it as this deal's buyer **in one step**, and records the **trade
    relationship** between the two companies (*Trade between these two* appears). Show
@@ -174,7 +173,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
 
    Show the refusals too. A name that only *looks like* one on file gives **Check these
    first** with the look-alikes and nothing preselected; "None of these is the buyer?"
-   still lets you create it, because a name is never an identity (IQ-8). An identifier
+   still lets you create it, because a name is never an identity. An identifier
    that already belongs to a company is refused in the server's words, and the form
    offers **Use the company on file** rather than a second record.
 
@@ -184,7 +183,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
    **Proforma invoice**, the sample file → **Upload**. It is scanned before it can be
    opened; the scanner is labelled **pass-through** because it is a placeholder. Before
    the upload the deal says `missing required documents: PRE_SHIPMENT`: a handover
-   needs a scanned-clean pre-shipment document (IQ-10, IQ-11), and the administrator changes which
+   needs a scanned-clean pre-shipment document, and the administrator changes which
    categories are required under **Settings → Required documents**.
 7. **Record the invoicing branch** in the deal's *Parties* panel, under **Invoiced
    from**. Until a branch is chosen the panel says **Not recorded** — the seller has an
@@ -221,7 +220,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
     *Sanctions: Not checked · AML: Not checked* and **Open the background check**. On
     the buyer company's *Background check*, **Record a result** for **Sanctions** and
     **AML**, both **Passed**. A buyer's checks attach to the buyer and never change the
-    seller's check (decision 9); the handover needs both `PASSED` (BQ-4), so a buyer
+    seller's check (decision 9); the handover needs both `PASSED`, so a buyer
     nobody screened reads `MISSING` and blocks — show that refusal first if you want.
 12. **Hand over** (back as OPERATIONS). The deal now offers **Hand over to lending** →
     **Hand over**. The deal is **`HANDED_OVER`**, "deal handed over" is announced for the
@@ -238,7 +237,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
     - **`Not known` is an answer and "no outcome recorded" is not.** A **Claimed** chip
       says nobody has shown proof yet, which is deliberately not the same as `Paid`.
     - **Nothing is totalled.** Each row carries its own amount *and* currency, and there
-      is no total anywhere (IQ-4). A *past* invoice — trade from before either company
+      is no total anywhere. A *past* invoice — trade from before either company
       came to us — is recorded on the seller's *Deals* tab under *Trade —
       sold to*.
 
@@ -262,7 +261,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
   **Flag** → a reason → **Flag branch**. It blocks only the deals invoiced through
   *that* branch — open the Rotterdam shipment: the refusal names the flagged state and
   the picker marks it "— flagged"; choosing B's other branch removes that reason.
-- **A deactivated branch blocks too** (R-19, decided 4 October). Record a branch on a
+- **A deactivated branch blocks too** (decided 4 October). Record a branch on a
   deal, then **Deactivate** that registration on the seller's *Details*: the deal says
   "the invoicing branch … is deactivated", the picker shows it as "— deactivated", and
   choosing an active branch clears it.
@@ -278,7 +277,7 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
 - **Roles and masking:** open the same company as OPERATIONS and then COMPLIANCE —
   PAN and GSTIN are masked for OPERATIONS and shown in full (with reveal and copy) to
   COMPLIANCE. As DEVELOPER the CRM is read-only, identifiers are masked, and the
-  background check is not shown at all; **branch flags are not shown either** (R-47):
+  background check is not shown at all; **branch flags are not shown either**:
   no flag badge, no flag count, no flag rows in the History. Companies has no **New
   company** or **Import companies**, there is no **+ New** in the header, and typing
   `/companies/new` gives the same "Page not found"
@@ -308,9 +307,16 @@ As **OPERATIONS** (`rm@aner.com`) unless noted.
   after a year the contact shows **Verification due**.
 - **Addresses** (*Details* → *Addresses*): add a registered and a shipping address; the
   first of each type is its default. A foreign buyer with no GSTIN can hold one. A GST
-  branch with a portal address offers **Create address**. The registered address shows
+  branch with no address yet offers **Create address**, filled with its state. The
+  registered address shows
   beside "Is the registered address a physical business address?" on the background
   check, with **Changed since last Clear** if it was edited after the Clear.
+- **Directors and owners** (company → the *Directors and owners* card → **Add**): add a
+  director with a DIN and an owner with an ownership share. As OPERATIONS the DIN, date of
+  birth and ID number show masked; COMPLIANCE sees them in full. On *Background check* →
+  **Record screening**, *A director* and *A beneficial owner* offer the people on record
+  (a director who is also an owner appears under both); a director not on record is still
+  screened by name.
 - **Bank accounts** (*Details* → *Bank accounts*): as OPERATIONS, **Propose account**
   (an EEFC account in USD) → *Pending approval*, number shown as `••••5678`. A second
   RM or COMPLIANCE **Approve**s it (the proposer is never offered it) → *Pending
@@ -360,13 +366,10 @@ Everything below is labelled on screen or in the data; say it anyway.
   connected.
 - **"Became customer" and "deal handed over" are announced, but no other team receives
   them yet.**
-- **The sample deals' buyers are legacy records** until the buyer migration (P4-6) runs.
 
 Avoid:
 
 - uploading real exporter documents;
-- presenting role and permission editing in Settings as controlling CRM access — the CRM
-  still checks the five built-in roles;
 - relying on the order of two history rows made in the same step — both are there,
   grouped as "Same moment", but not ordered between themselves;
-- reloading repeatedly in quick succession (R-49).
+- reloading repeatedly in quick succession.

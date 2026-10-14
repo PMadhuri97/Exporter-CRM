@@ -666,7 +666,7 @@ async def test_confirmation_lines_must_name_one_company_per_buyer():
 
 
 async def test_a_created_company_gets_one_creation_row_saying_where_it_came_from():
-    """§17.2: one history row on the new company, ``company_created_from_deal_buyer``,
+    """One history row on the new company, ``company_created_from_deal_buyer``,
     with ``{run_id, deal_buyer_ids, deal_ids, match_rule}``, on the earliest deal."""
     registration = _registration()
     first_deal, first = await _deal_with_legacy_buyer(
@@ -699,7 +699,7 @@ async def test_a_created_company_gets_one_creation_row_saying_where_it_came_from
 
 
 async def test_the_buyers_email_and_phone_become_contact_records():
-    """§17.2: "contacts from buyer email/phone (as a contact record)". One per distinct
+    """Contacts from the buyer's email and phone, as contact records. One per distinct
     pair across the rows that became the company; never the primary contact."""
     registration = _registration()
     _d1, first = await _deal_with_legacy_buyer(
@@ -765,7 +765,7 @@ async def test_a_one_character_registration_number_is_not_an_identity():
 
 async def test_rows_sharing_either_identifier_are_one_company():
     """A buyer with a PAN and a registration number, and another with only that
-    registration number, are one company (§17.2 steps 2-3). Treated as two, the second
+    registration number, are one company. Treated as two, the second
     company would be refused by the ``(country, registration number)`` unique index
     halfway through ``--apply``."""
     pan, registration = _pan(), _registration()

@@ -297,6 +297,23 @@ async def test_a_director_on_record_is_screened_by_reference(client: AsyncClient
     assert by_name.status_code == 201, by_name.text
 
 
+async def test_a_director_who_is_also_an_owner_can_be_screened_as_either(client: AsyncClient):
+    """The coverage lists the person once, with both roles, so the picker can offer them
+    under "A director" as well as "A beneficial owner"; both screenings are allowed."""
+    _, officer = await user_with_role(client, UserRole.COMPLIANCE)
+    company_id = await make_company()
+    person = await _person(client, officer, company_id, name="Dual Role", is_director=True, is_ubo=True)
+
+    coverage = (await client.get(f"{BASE}/exporters/{company_id}/sanctions", headers=auth_header(officer))).json()
+    [subject] = [s for s in coverage["subjects"] if s["subject_reference"] == person]
+    assert sorted(subject["roles"]) == ["DIRECTOR", "UBO"]
+    for subject_type in ("DIRECTOR", "UBO"):
+        screened = await _record(
+            client, officer, company_id, subject_type=subject_type, subject_reference=person
+        )
+        assert screened.status_code == 201, screened.text
+
+
 async def test_a_person_of_another_company_cannot_be_screened_here(client: AsyncClient):
     _, officer = await user_with_role(client, UserRole.COMPLIANCE)
     company_id, other = await make_company(), await make_company()

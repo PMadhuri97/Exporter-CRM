@@ -6,7 +6,7 @@ Revises: onboarding_0053_auto_criteria
 Why
 ---
 Each rule below was already kept by the service that writes the row; none was refused
-by the database. The schema audit (``docs/database-audit/audit.md`` §4.5, O7 and O8)
+by the database. A schema audit (12 October 2026)
 found them by comparing every link with its siblings:
 
 * ``background_check_evidence.verification_review_id`` — the one evidence reference

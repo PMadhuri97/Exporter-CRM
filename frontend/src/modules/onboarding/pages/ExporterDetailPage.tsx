@@ -1,5 +1,5 @@
 /**
- * The company record (frontend-plan §8.5): the record header (§6.3) with the key
+ * The company record: the record header (§6.3) with the key
  * fields, the actions the server serves for this company and user, and the journey
  * path; tabs under it; and the related records in a right-hand column (§6.6). The
  * `?tab=` keys are unchanged, so every old link lands where it did.
@@ -211,7 +211,7 @@ export function ExporterDetailPage() {
       ? standing.compliance.clear_expires_at
       : null;
 
-  // The header's actions (frontend-plan §8.5), built only from what the server served
+  // The header's actions, built only from what the server served
   // for this company and this user. Each opens the tab where the work is done.
   const actions: RecordAction[] = [];
   if (standing?.open_proposal?.allowed_actions?.some((action) => action !== 'WITHDRAW')) {

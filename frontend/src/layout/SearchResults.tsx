@@ -1,5 +1,5 @@
 /**
- * The header search's field and results (frontend-plan §7.5), loaded the first time
+ * The header search's field and results, loaded the first time
  * the search is focused (`HeaderSearch.tsx`), so cmdk and the company search stay
  * out of the first download. Nothing is requested until someone types.
  *

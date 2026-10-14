@@ -1,5 +1,5 @@
 /**
- * A deal's stage (frontend-plan §6.5): the path Open > Gathering paperwork > Handed
+ * A deal's stage: the path Open > Gathering paperwork > Handed
  * over, with the current step solid blue. Never clickable — moves are the server's
  * `allowed_stage_moves`, offered as buttons in the deal header. A withdrawn deal
  * shows a "Withdrawn" badge instead of the path. `compact` (a deal in a list) is the

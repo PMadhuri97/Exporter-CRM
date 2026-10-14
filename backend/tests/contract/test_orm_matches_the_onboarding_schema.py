@@ -18,7 +18,7 @@ fails here instead of in someone's generated file.
 Alembic's comparison does not look at primary keys, ``CHECK`` constraints or server
 defaults, so three more tests compare those directly with ``pg_catalog``. Before them,
 12 ``CHECK`` constraints (PAN, CIN, GSTIN formats among them), a primary key and a
-dozen defaults existed only in the database (``docs/database-audit/inventory.md`` §7.2).
+dozen defaults existed only in the database.
 
 The other module schemas are out of scope on purpose: several belong to modules the
 CRM may not edit (architecture §2.5), and their own drift is theirs to fix.

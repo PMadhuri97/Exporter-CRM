@@ -87,8 +87,12 @@ function RecordForm({
   people: SanctionsSubject[];
   onDone: () => void;
 }) {
-  const owners = people.filter((person) => person.subject_type === 'UBO');
-  const directors = people.filter((person) => person.subject_type === 'DIRECTOR');
+  // By the roles each person holds, so a director who is also an owner is offered
+  // under both.
+  const holds = (person: SanctionsSubject, role: 'DIRECTOR' | 'UBO') =>
+    (person.roles ?? []).includes(role) || person.subject_type === role;
+  const owners = people.filter((person) => holds(person, 'UBO'));
+  const directors = people.filter((person) => holds(person, 'DIRECTOR'));
   const lists = useSanctionsLists();
   const record = useRecordSanctionsRun(customerId);
   const active = (lists.data?.lists ?? []).filter((list) => list.active);

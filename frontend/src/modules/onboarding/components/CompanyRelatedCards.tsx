@@ -1,5 +1,5 @@
 /**
- * The company record's right column (frontend-plan §6.6, §8.5): related records as
+ * The company record's right column: related records as
  * cards, three items each, as Salesforce shows related lists in a narrow column —
  * open follow-ups, deals, contacts, directors and owners, and documents. *View all*
  * opens the matching tab; *+ Add* on Contacts and on Directors and owners is offered
