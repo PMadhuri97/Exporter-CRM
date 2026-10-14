@@ -126,11 +126,9 @@ class ScreeningReviewItem(AnerModel):
 
 
 class BankActivityFinding(AnerModel):
-    """Provider-originated bank/activity signal. The CRM only exposes read APIs.
-
-    Real Surepass/Finpass ingestion can write these rows later without changing
-    the CRM contract or UI. No fake findings are generated.
-    """
+    """Retired: a bank-monitoring feed is not planned, nothing ever wrote this table and
+    nothing reads it now. Kept only so the ORM describes the table until a later
+    migration drops it."""
 
     __tablename__ = "bank_activity_finding"
     __table_args__ = (

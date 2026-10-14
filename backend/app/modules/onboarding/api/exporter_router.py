@@ -19,8 +19,8 @@ the `/exporters` prefix, matching the documented `/onboarding/exporters...`
 paths once combined.
 
 **Split by area.** This file now carries only the company routes. The contact and
-activity routes moved to `engagement_router.py` and the screening-review and
-bank-activity routes to `screening_router.py`. All three share the `/exporters` prefix
+activity routes moved to `engagement_router.py` and the screening-review routes to
+`screening_router.py`. All three share the `/exporters` prefix
 and the `Exporter CRM` tag and are mounted side by side in `router.py`, so no
 path, operation or schema changed.
 """

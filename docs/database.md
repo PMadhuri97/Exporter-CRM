@@ -288,6 +288,11 @@ Four tables. `qualification_criterion` (versioned, append-only,
 `UNIQUE (key, version)`), `qualification_reason_code`, `qualification_result` (one per
 criterion per company, append-only), `qualification_outcome` (the decision).
 
+`qualification_reason_code` is **retired**: the reason codes are a catalogue in code
+(`domain/qualification_reason_codes.py`, the same nine rows), nothing reads the table,
+and a later migration drops it. An outcome cites its codes as strings with no FK, so the
+catalogue must keep every code ever cited (a test checks it).
+
 `qualification_outcome` is a **superseding chain**: `supersedes_outcome_id` is `UNIQUE`
 (one superseder per row) and `uq_qualification_outcome_first_per_company` is a partial
 unique index on `(customer_id) WHERE supersedes_outcome_id IS NULL` (one head per
@@ -356,7 +361,7 @@ Four triggers, which between them make a reviewed result unfalsifiable:
 | Trigger | What it refuses |
 |---|---|
 | `trg_verification_result_no_delete` | any `DELETE` |
-| `trg_verification_result_field_immutability` | changing `reviewed_by` or `review_status` once set |
+| `trg_verification_result_field_immutability` | changing `reviewed_by` or `review_status` once set — **retired columns**: nothing writes or reads them, or `evidence_reference`; the ORM maps all three `deferred`, and a later migration drops them with this trigger |
 | `trg_verification_result_input_immutability` | changing `evidence_note`, `evidence_refs`, `subject_snapshot`, `subject_company_id`, `cycle_id` once set |
 | `trg_verification_result_outcome_freeze` | changing the outcome of a result that has been reviewed |
 
@@ -383,9 +388,10 @@ under another company's cycle.
 
 ### `bank_activity_finding`
 
-Read by the screening router. **It has no foreign key to `exporter_profile`** —
-`customer_id` is a bare uuid, unlike every other CRM child table. Nothing in this
-checkout writes it.
+**Retired.** No bank-monitoring feed is planned, nothing ever wrote it, and since the
+`GET /exporters/{id}/bank-activity` route was removed nothing reads it; the panel states
+"not connected" without a request. A later migration drops it. It has no foreign key to
+`exporter_profile` (`customer_id` is a bare uuid).
 
 ---
 
@@ -789,5 +795,6 @@ To rehearse a migration safely, copy the database first (`createdb -T <source>
     `NOT VALID`, enforced on every new or changed row. `SELECT conname FROM pg_constraint
     WHERE NOT convalidated` lists any still waiting.
 13. **Known gaps, if you are looking for one:** `deal.reference` has no unique
-    constraint; `bank_activity_finding.customer_id` has no foreign key;
+    constraint; `bank_activity_finding.customer_id` has no foreign key (the table is
+    retired);
     `verification_result.entity_reference` is polymorphic and unconstrained by design.

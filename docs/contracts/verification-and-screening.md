@@ -93,12 +93,11 @@ of the **same** result), `ck_verification_review_not_self`, and
   A `PENDING` result is not reviewable: **422 `VERIFICATION_RESULT_NOT_REVIEWABLE`**.
 - **Legacy verdicts.** 0021 copied every legacy `reviewed_by` / `review_status` into the table
   as that result's first review (its `reviewed_at` is the result's `updated_at`, the closest
-  stored fact, and its note says so). The legacy columns and
-  `trg_verification_result_field_immutability` are kept; nothing writes them after 0021. A
-  result whose legacy columns are set but which has no review row (only possible by writing
-  them outside the service after 0021) is refused with **409
-  `VERIFICATION_LEGACY_REVIEW_UNCHAINED`** rather than given a "first" review that would
-  overrule the legacy verdict with no link and no reason.
+  stored fact, and its note says so). Nothing has written the legacy columns since, and
+  since 14 October 2026 nothing reads them either: the review chain is the only reading,
+  the `VERIFICATION_LEGACY_REVIEW_UNCHAINED` refusal is gone, and the response no longer
+  carries the never-written `evidence_reference`. The three columns and
+  `trg_verification_result_field_immutability` stay until a later migration drops them.
 - **History:** each review writes a `verification` row (`history-row.md` §2): `from_value` the
   previous review status or `None`, `to_value` the new one, `reason` the note, `details` with
   `verification_result_id`, `review_id`, `supersedes_review_id`, `verification_type`. Company:
@@ -192,7 +191,6 @@ review `INSERT`). Polling has no production caller; no scheduler exists.
 | `POST /verifications/{id}/review` | COMPLIANCE, ADMIN | §1 |
 | `GET /exporters/{id}/screening-review` (+ `/{item_key}/history`) | OPERATIONS, COMPLIANCE, ADMIN | catalogue, capabilities |
 | `PUT /exporters/{id}/screening-review/{item_key}` | COMPLIANCE, ADMIN | §5 |
-| `GET /exporters/{id}/bank-activity` | OPERATIONS, COMPLIANCE, ADMIN | states that **no provider feed is connected** — no fake findings |
 
 - **D8:** DEVELOPER is refused on all of them, reads included; `normalized_result` is not
   masked for the staff roles that may read it. The history routes serve DEVELOPER no

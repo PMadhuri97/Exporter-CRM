@@ -318,7 +318,9 @@ Any of these being false is a bug:
 ## 9a. As built (L2-09, L2-10)
 
 **Storage** (migration 0017): `qualification_criterion` (one immutable row per
-version), `qualification_reason_code`, `qualification_result` and
+version), `qualification_reason_code` (retired 14 October 2026: the codes are a
+catalogue in code, `domain/qualification_reason_codes.py`, served unchanged by `GET
+/qualification/reason-codes`), `qualification_result` and
 `qualification_outcome`, plus `exporter_profile.qualification` and
 `exporter_profile.journey`. The criterion, result and outcome tables are
 append-only through `public.prevent_mutation()`. The database also enforces:

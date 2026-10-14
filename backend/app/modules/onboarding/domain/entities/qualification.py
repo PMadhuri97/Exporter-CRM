@@ -6,8 +6,9 @@ Four tables, from migration 0017:
   row is never changed: editing a criterion adds the next version, so a result
   recorded against version 2 keeps pointing at exactly the rule it was judged
   by. Append-only in the database (``prevent_mutation()``).
-* ``qualification_reason_code`` — the settings list a ``NOT_QUALIFIED``
-  outcome's reason codes are checked against.
+* ``qualification_reason_code`` — **retired**: the reason codes now live in code
+  (``domain/qualification_reason_codes.py``) and nothing reads this table. The model
+  stays only so the ORM still describes the schema until the table is dropped.
 * ``qualification_result`` — one criterion checked against one company,
   once. Append-only: checking again adds a row.
 * ``qualification_outcome`` — a person's overall decision. Append-only; a
@@ -111,7 +112,8 @@ class QualificationCriterion(AppendOnlyModel):
 
 
 class QualificationReasonCode(AnerModel):
-    """A code a `NOT_QUALIFIED` outcome may give (contract §5.2)."""
+    """Retired: the reason codes are ``domain/qualification_reason_codes.py``. Kept so the
+    ORM describes the table until a later migration drops it; nothing reads it."""
 
     __tablename__ = "qualification_reason_code"
     __table_args__ = (

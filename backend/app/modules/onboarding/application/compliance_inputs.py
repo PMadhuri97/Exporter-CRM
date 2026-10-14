@@ -112,7 +112,6 @@ _VERIFICATION_COLUMNS = (
     VerificationResult.risk_level,
     VerificationResult.performed_at,
     VerificationResult.normalized_result,
-    VerificationResult.review_status,
     VerificationResult.evidence_refs,
     VerificationResult.cycle_id,
 )
@@ -135,8 +134,7 @@ def _verification_input(
     if head is not None:
         latest_id, latest_status, latest_at = head.id, head.review_status.value, head.reviewed_at
     else:
-        latest_id, latest_at = None, None
-        latest_status = row.review_status.value if row.review_status is not None else None
+        latest_id, latest_status, latest_at = None, None, None
     return VerificationInput(
         verification_result_id=row.id,
         verification_type=row.verification_type.value,

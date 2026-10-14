@@ -1067,26 +1067,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/onboarding/exporters/{customer_id}/bank-activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List bank-linked suspicious-activity findings
-         * @description No bank-monitoring provider feed is connected: the response says so (`provider_feed_connected: false`, `provider_feed_status: NOT_CONNECTED`) and never carries fabricated findings.
-         */
-        get: operations["get_bank_activity_api_v1_onboarding_exporters__customer_id__bank_activity_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/onboarding/qualification/criteria": {
         parameters: {
             query?: never;
@@ -4054,84 +4034,6 @@ export interface components {
          * @enum {string}
          */
         BankAccountType: "CURRENT" | "EEFC" | "SAVINGS" | "OTHER";
-        /** BankActivityFindingResponse */
-        BankActivityFindingResponse: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Customer Id
-             * Format: uuid
-             */
-            customer_id: string;
-            /** Provider */
-            provider: string;
-            /** Finding Type */
-            finding_type: string;
-            /** Title */
-            title: string;
-            /** Description */
-            description: string | null;
-            /** Risk Level */
-            risk_level: string;
-            /** Status */
-            status: string;
-            /** Provider Reference */
-            provider_reference: string | null;
-            /**
-             * Detected At
-             * Format: date-time
-             */
-            detected_at: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-        };
-        /**
-         * BankActivityResponse
-         * @description The bank panel, stated honestly (verification-and-screening.md §8): no bank-monitoring
-         *     provider feed is connected, so `provider_feed_connected` is `false` and
-         *     `connected_accounts` is `0` because nothing is connected — not because
-         *     accounts were checked and none found. No finding is ever fabricated.
-         */
-        BankActivityResponse: {
-            /**
-             * Customer Id
-             * Format: uuid
-             */
-            customer_id: string;
-            /**
-             * Provider Feed Connected
-             * @default false
-             */
-            provider_feed_connected: boolean;
-            /**
-             * Provider Feed Status
-             * @default NOT_CONNECTED
-             * @constant
-             */
-            provider_feed_status: "NOT_CONNECTED";
-            /**
-             * Provider Feed Message
-             * @default No bank-monitoring provider feed is connected. Bank activity is not being monitored for this company.
-             */
-            provider_feed_message: string;
-            /**
-             * Connected Accounts
-             * @default 0
-             */
-            connected_accounts: number;
-            /** Last Synced At */
-            last_synced_at?: string | null;
-            /** Open Findings */
-            open_findings: number;
-            /** Findings */
-            findings: components["schemas"]["BankActivityFindingResponse"][];
-        };
         /**
          * BankVerificationMethod
          * @enum {string}
@@ -9197,8 +9099,6 @@ export interface components {
             valid_until: string | null;
             /** Normalized Result */
             normalized_result: Record<string, never>;
-            /** Evidence Reference */
-            evidence_reference: string | null;
             /** Evidence Note */
             evidence_note: string | null;
             /** Evidence Refs */
@@ -12438,51 +12338,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    get_bank_activity_api_v1_onboarding_exporters__customer_id__bank_activity_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                customer_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BankActivityResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `screening:view` permission required */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
             };
         };
     };

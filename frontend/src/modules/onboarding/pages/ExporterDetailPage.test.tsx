@@ -12,7 +12,6 @@ import {
   listExporterContacts,
   listVerificationResults,
   getScreeningReview,
-  getBankActivity,
   getQualification,
   listReasonCodes,
   recordQualificationOutcome,
@@ -50,7 +49,6 @@ vi.mock('../api', () => ({
   reviewVerification: vi.fn(),
   getScreeningReview: vi.fn(),
   updateScreeningReviewItem: vi.fn(),
-  getBankActivity: vi.fn(),
   // `ConversationPanel` calls these itself rather than
   // taking them as props — the shell was never given the gauge to hold.
   // The factory has to list them, because
@@ -201,16 +199,6 @@ describe('ExporterDetailPage — screening review', () => {
         { code: 'low_turnover', label: 'Turnover too low', requires_note: false, active: true },
         { code: 'retired', label: 'Retired code', requires_note: false, active: false },
       ],
-    });
-    vi.mocked(getBankActivity).mockResolvedValue({
-      customer_id: DETAIL.customer_id,
-      provider_feed_connected: false,
-      provider_feed_status: 'NOT_CONNECTED',
-      provider_feed_message: 'No bank-monitoring provider feed is connected.',
-      connected_accounts: 0,
-      last_synced_at: null,
-      open_findings: 0,
-      findings: [],
     });
     // The gauge as a LEAD has it: the default value and no moves, because the
     // conversation gauge applies from PROSPECT onward. `DETAIL.journey` is 'LEAD',

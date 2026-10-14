@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   getBackgroundCheck,
-  getBankActivity,
   listCheckCycles,
   getScreeningReview,
   listCompanyDocuments,
@@ -14,7 +13,6 @@ import {
 } from '../api';
 
 import {
-  bankActivity,
   CATALOGUE,
   COMPANY_ID,
   renderWithClient,
@@ -28,7 +26,6 @@ import { VerificationSection } from './VerificationSection';
 vi.mock('../api', () => ({
   getBackgroundCheck: vi.fn(),
   listCheckCycles: vi.fn(),
-  getBankActivity: vi.fn(),
   getScreeningItemHistory: vi.fn(),
   getScreeningReview: vi.fn(),
   listCompanyDocuments: vi.fn(),
@@ -48,7 +45,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(listVerificationResults).mockResolvedValue(resultList([verificationResult()]));
   vi.mocked(getScreeningReview).mockResolvedValue(screeningList());
-  vi.mocked(getBankActivity).mockResolvedValue(bankActivity());
   vi.mocked(listCompanyDocuments).mockResolvedValue({
     documents: [],
     total: 0,

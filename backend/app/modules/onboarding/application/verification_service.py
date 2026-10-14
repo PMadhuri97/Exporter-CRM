@@ -107,7 +107,6 @@ from app.modules.onboarding.exceptions import (
     ExporterProfileNotFoundError,
     ProviderCapabilityError,
     VerificationBuyerDealClosedError,
-    VerificationLegacyReviewUnchainedError,
     VerificationResultNotReviewableError,
     VerificationReviewStaleError,
 )
@@ -538,8 +537,6 @@ class VerificationService:
         result.cycle_id = cycle.id
 
     async def _is_reviewed(self, result: VerificationResult) -> bool:
-        if result.review_status is not None:  # legacy column, pre-0021 or raw SQL
-            return True
         return bool(await self._reviews.chain_for(result.id))
 
     # ── Trigger ──────────────────────────────────────────────────────────────
@@ -991,8 +988,8 @@ class VerificationService:
         that loses the race gets the same 409.
 
         The result row is taken `FOR UPDATE` first (the lock polling takes too), so
-        reviews of one result are judged one at a time. The legacy
-        `reviewed_by`/`review_status` columns are not written.
+        reviews of one result are judged one at a time. The retired
+        `reviewed_by`/`review_status` columns are neither written nor read.
 
         Writes one `verification` history row: `from_value` the previous review's
         status (or `None`), `to_value` the new one, `reason` the note.
@@ -1000,9 +997,6 @@ class VerificationService:
         Raises:
             NotFoundError: no such `VerificationResult`.
             VerificationResultNotReviewableError: still `PENDING` (422).
-            VerificationLegacyReviewUnchainedError: the result has a legacy
-                `review_status` but no review record to supersede (409; only
-                reachable if the legacy columns were written outside the service).
             VerificationReviewStaleError: `supersedes_review_id` is not the current
                 review (409).
             ValidationError: a superseding review without a note (422).
@@ -1023,14 +1017,6 @@ class VerificationService:
             raise VerificationResultNotReviewableError(verification_result_id=result_id)
 
         chain = await self._reviews.chain_for(result_id)
-        if not chain and result.review_status is not None:
-            # A legacy verdict with no review record (set outside the service after
-            # migration 0021, which copied every earlier one). A "first" review here
-            # would overrule it with no supersede link and no reason — refused.
-            raise VerificationLegacyReviewUnchainedError(
-                verification_result_id=result_id,
-                legacy_review_status=result.review_status.value,
-            )
         head = chain[-1] if chain else None
         current_head_id = head.id if head is not None else None
         if supersedes_review_id != current_head_id:
