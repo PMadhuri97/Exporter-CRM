@@ -6,6 +6,10 @@
  * for a time, a number of days. **Editing writes a new version**: a deal agreed on the
  * old wording keeps it. **Retiring** a term stops offering it; old deals still show it.
  * Only a reader who may manage settings is offered the controls (`can_edit`).
+ *
+ * **No change without a reason.** Adding, changing, retiring and offering a term again
+ * each ask for a ticket number or an explanation, kept on the version it writes; the
+ * one-click Retire and Offer again open a confirmation that asks for it first.
  */
 
 import { useState } from 'react';
@@ -26,6 +30,8 @@ import {
 } from '@/components';
 import { Icon } from '@/design/icons';
 
+import { changeReasonProblem } from '../components/change-reason';
+import { ChangeReasonDialog, ChangeReasonField } from '../components/ChangeReasonField';
 import { PAYMENT_KIND_LABEL, PAYMENT_KINDS_WITH_DAYS } from '../components/payment-term-labels';
 import { useAddPaymentTerm, usePaymentTerms, useRevisePaymentTerm } from '../hooks';
 import type { PaymentTerm } from '../types';
@@ -39,8 +45,10 @@ function TermForm({ editing, onDone }: { editing?: PaymentTerm; onDone: () => vo
   const [label, setLabel] = useState(editing?.label ?? '');
   const [kind, setKind] = useState(editing?.kind ?? 'ADVANCE');
   const [days, setDays] = useState(editing?.days ? String(editing.days) : '');
+  const [reason, setReason] = useState('');
   const needsDays = PAYMENT_KINDS_WITH_DAYS.has(kind);
-  const ready = label.trim() && code.trim() && (!needsDays || Number(days) > 0);
+  const ready =
+    label.trim() && code.trim() && (!needsDays || Number(days) > 0) && changeReasonProblem(reason) === null;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -50,11 +58,17 @@ function TermForm({ editing, onDone }: { editing?: PaymentTerm; onDone: () => vo
       if (editing) {
         await revise.mutateAsync({
           code: editing.code,
-          body: { label: label.trim(), kind, days: dayCount },
+          body: { label: label.trim(), kind, days: dayCount, change_reason: reason.trim() },
         });
         toast.success('Payment term changed — deals keep the wording they were agreed on');
       } else {
-        await add.mutateAsync({ code: code.trim().toUpperCase(), label: label.trim(), kind, days: dayCount });
+        await add.mutateAsync({
+          code: code.trim().toUpperCase(),
+          label: label.trim(),
+          kind,
+          days: dayCount,
+          change_reason: reason.trim(),
+        });
         toast.success('Payment term added');
       }
       onDone();
@@ -86,6 +100,12 @@ function TermForm({ editing, onDone }: { editing?: PaymentTerm; onDone: () => vo
           <Input id="term-days" type="number" min={1} value={days} onChange={(e) => setDays(e.target.value)} />
         </Field>
       )}
+      <ChangeReasonField
+        id="term-reason"
+        value={reason}
+        onChange={setReason}
+        serverError={editing ? revise.error : add.error}
+      />
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <Button onClick={onDone}>Cancel</Button>
         <Button type="submit" variant="primary" disabled={!ready} loading={add.isPending || revise.isPending}>
@@ -100,15 +120,18 @@ export function PaymentTermsPage() {
   const query = usePaymentTerms();
   const revise = useRevisePaymentTerm();
   const [form, setForm] = useState<{ editing?: PaymentTerm } | null>(null);
+  // Retire or offer again: confirmed, with a reason, before anything is sent.
+  const [toggling, setToggling] = useState<PaymentTerm | null>(null);
   const terms = query.data?.terms ?? [];
   const canEdit = query.data?.can_edit ?? false;
 
-  async function setActive(term: PaymentTerm, active: boolean) {
+  async function setActive(term: PaymentTerm, active: boolean, reason: string) {
     try {
-      await revise.mutateAsync({ code: term.code, body: { active } });
+      await revise.mutateAsync({ code: term.code, body: { active, change_reason: reason } });
       toast.success(active ? 'Payment term offered again' : 'Payment term retired');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not change the term');
+      setToggling(null);
+    } catch {
+      // The refusal stays in the dialog, in the server's words.
     }
   }
 
@@ -152,6 +175,9 @@ export function PaymentTermsPage() {
                     {PAYMENT_KIND_LABEL[term.kind] ?? term.kind}
                     {term.days ? ` · ${term.days} days` : ''} · {term.code} · version {term.version}
                   </p>
+                  {term.change_reason && (
+                    <p className="text-caption text-ink-3">Last change: {term.change_reason}</p>
+                  )}
                 </div>
                 {canEdit && (
                   <div className="flex gap-2">
@@ -160,7 +186,14 @@ export function PaymentTermsPage() {
                         <Icon.edit size={14} /> Change
                       </Button>
                     )}
-                    <Button size="sm" variant="subtle" disabled={revise.isPending} onClick={() => void setActive(term, !term.active)}>
+                    <Button
+                      size="sm"
+                      variant="subtle"
+                      onClick={() => {
+                        revise.reset();
+                        setToggling(term);
+                      }}
+                    >
                       {term.active ? 'Retire' : 'Offer again'}
                     </Button>
                   </div>
@@ -170,6 +203,24 @@ export function PaymentTermsPage() {
           </ul>
         </Card>
       )}
+      <ChangeReasonDialog
+        open={toggling !== null}
+        onOpenChange={(open) => {
+          if (!open) setToggling(null);
+        }}
+        title={toggling?.active ? `Retire ${toggling.label}?` : `Offer ${toggling?.label ?? ''} again?`}
+        consequence={
+          toggling?.active
+            ? 'New deals and company defaults can no longer choose it. Deals already agreed on it keep it.'
+            : 'New deals and company defaults can choose it again.'
+        }
+        confirmLabel={toggling?.active ? 'Retire term' : 'Offer again'}
+        pending={revise.isPending}
+        error={revise.error}
+        onConfirm={(reason) => {
+          if (toggling) void setActive(toggling, !toggling.active, reason);
+        }}
+      />
     </div>
   );
 }

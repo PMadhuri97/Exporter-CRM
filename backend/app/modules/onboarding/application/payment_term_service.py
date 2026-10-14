@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions
+from app.modules.onboarding.domain.change_reason import require_change_reason
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.payment_term import DAYS_KINDS, KINDS, PaymentTerm
 from app.modules.onboarding.exceptions import (
@@ -95,14 +96,28 @@ class PaymentTermService:
     # ── Settings ─────────────────────────────────────────────────────────────
 
     async def add(
-        self, *, code: str, label: str, kind: str, days: int | None, actor_id: str
+        self,
+        *,
+        code: str,
+        label: str,
+        kind: str,
+        days: int | None,
+        actor_id: str,
+        change_reason: str,
     ) -> PaymentTerm:
+        reason = require_change_reason(change_reason)
         code = code.strip().upper()
         _check(kind, days)
         if await self._db.scalar(select(PaymentTerm.id).where(PaymentTerm.code == code)):
             raise ValidationError(f"A payment term with the code {code} already exists")
         term = PaymentTerm(
-            code=code, version=1, label=label.strip(), kind=kind, days=days, created_by=actor_id
+            code=code,
+            version=1,
+            label=label.strip(),
+            kind=kind,
+            days=days,
+            created_by=actor_id,
+            change_reason=reason,
         )
         self._db.add(term)
         await self._db.commit()
@@ -120,9 +135,12 @@ class PaymentTermService:
         days_sent: bool,
         active: bool | None,
         actor_id: str,
+        change_reason: str,
     ) -> PaymentTerm:
         """Write the next version of ``code`` with the changes given; the old version
-        stays, superseded. A change that changes nothing is refused."""
+        stays, superseded. A change that changes nothing is refused, and so is one with
+        no ``change_reason``."""
+        reason = require_change_reason(change_reason)
         old = await self._db.scalar(
             select(PaymentTerm)
             .where(PaymentTerm.code == code, PaymentTerm.is_current.is_(True))
@@ -147,6 +165,7 @@ class PaymentTermService:
             days=new_days,
             active=new_active,
             created_by=actor_id,
+            change_reason=reason,
         )
         self._db.add(term)
         await self._db.commit()

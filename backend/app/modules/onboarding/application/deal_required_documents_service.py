@@ -29,6 +29,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.change_reason import require_change_reason
 from app.modules.onboarding.domain.entities.crm_document import CrmDocument
 from app.modules.onboarding.domain.entities.deal_required_document import (
     ANY_DOCUMENT_TYPE,
@@ -119,12 +120,15 @@ class DealRequiredDocumentsService:
         document_type: str | None,
         active: bool,
         actor_id: str | None,
+        change_reason: str,
     ) -> DealRequiredDocument:
         """Add a requirement (``active=True``) or stop requiring it
-        (``active=False``), as a new version of its key.
+        (``active=False``), as a new version of its key, carrying ``change_reason``.
 
         Refused, before anything is written:
 
+        * no ``change_reason``, or one too vague to tell a reviewer anything (422,
+          ``domain/change_reason.py``);
         * a category a deal cannot hold (422) — ``ENTITY_KYC`` belongs to a
           company, so requiring it of a deal would be a rule no deal could ever
           satisfy;
@@ -143,6 +147,7 @@ class DealRequiredDocumentsService:
         other gets 409 ``DEAL_REQUIRED_DOCUMENT_CHANGED`` with nothing saved, the
         way a qualification criterion's version race is answered.
         """
+        reason = require_change_reason(change_reason)
         cleaned_type = (document_type or "").strip() or ANY_DOCUMENT_TYPE
         if not category.allows(DocumentOwnerKind.DEAL):
             raise ValidationError(
@@ -178,6 +183,7 @@ class DealRequiredDocumentsService:
             version=version,
             active=active,
             created_by=actor_id,
+            change_reason=reason,
             source="settings_api",
         )
         self._db.add(row)

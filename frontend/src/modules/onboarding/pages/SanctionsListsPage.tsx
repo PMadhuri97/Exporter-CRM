@@ -6,6 +6,10 @@
  * published version screenings use. **Recording a newer version date** puts every
  * company screened against an older one on *Re-screen due*. Every change writes a new
  * version, so a past screening keeps the list version it used.
+ *
+ * **No change without a reason.** Every change asks for a ticket number or an
+ * explanation, kept on the version it writes; the one-click Stop using and Use again
+ * open a confirmation that asks for it first.
  */
 
 import { useState } from 'react';
@@ -26,6 +30,8 @@ import {
 import { Icon } from '@/design/icons';
 import { formatDate } from '@/lib/format';
 
+import { changeReasonProblem } from '../components/change-reason';
+import { ChangeReasonDialog, ChangeReasonField } from '../components/ChangeReasonField';
 import { useAddSanctionsList, useReviseSanctionsList, useSanctionsLists } from '../hooks';
 import type { SanctionsList } from '../types';
 
@@ -37,7 +43,8 @@ function ListForm({ editing, onDone }: { editing?: SanctionsList; onDone: () => 
   const [authority, setAuthority] = useState(editing?.authority ?? '');
   const [mandatory, setMandatory] = useState(editing?.mandatory ?? false);
   const [versionDate, setVersionDate] = useState(editing?.list_version_date ?? '');
-  const ready = code.trim() && name.trim() && versionDate;
+  const [reason, setReason] = useState('');
+  const ready = code.trim() && name.trim() && versionDate && changeReasonProblem(reason) === null;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -51,6 +58,7 @@ function ListForm({ editing, onDone }: { editing?: SanctionsList; onDone: () => 
             authority: authority.trim() || null,
             mandatory,
             list_version_date: versionDate,
+            change_reason: reason.trim(),
           },
         });
         toast.success(
@@ -65,6 +73,7 @@ function ListForm({ editing, onDone }: { editing?: SanctionsList; onDone: () => 
           authority: authority.trim() || null,
           mandatory,
           list_version_date: versionDate,
+          change_reason: reason.trim(),
         });
         toast.success('Sanctions list added');
       }
@@ -103,6 +112,12 @@ function ListForm({ editing, onDone }: { editing?: SanctionsList; onDone: () => 
         />
         Mandatory — every screening must cover it
       </label>
+      <ChangeReasonField
+        id="list-reason"
+        value={reason}
+        onChange={setReason}
+        serverError={editing ? revise.error : add.error}
+      />
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <Button onClick={onDone}>Cancel</Button>
         <Button type="submit" variant="primary" disabled={!ready} loading={add.isPending || revise.isPending}>
@@ -117,15 +132,18 @@ export function SanctionsListsPage() {
   const query = useSanctionsLists();
   const revise = useReviseSanctionsList();
   const [form, setForm] = useState<{ editing?: SanctionsList } | null>(null);
+  // Stop using or use again: confirmed, with a reason, before anything is sent.
+  const [toggling, setToggling] = useState<SanctionsList | null>(null);
   const lists = query.data?.lists ?? [];
   const canEdit = query.data?.can_edit ?? false;
 
-  async function setActive(list: SanctionsList, active: boolean) {
+  async function setActive(list: SanctionsList, active: boolean, reason: string) {
     try {
-      await revise.mutateAsync({ code: list.code, body: { active } });
+      await revise.mutateAsync({ code: list.code, body: { active, change_reason: reason } });
       toast.success(active ? 'List in use again' : 'List no longer in use');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not change the list');
+      setToggling(null);
+    } catch {
+      // The refusal stays in the dialog, in the server's words.
     }
   }
 
@@ -170,13 +188,23 @@ export function SanctionsListsPage() {
                     {list.authority ? `${list.authority} · ` : ''}version {formatDate(list.list_version_date)} ·{' '}
                     {list.code}
                   </p>
+                  {list.change_reason && (
+                    <p className="text-caption text-ink-3">Last change: {list.change_reason}</p>
+                  )}
                 </div>
                 {canEdit && (
                   <div className="flex gap-2">
                     <Button size="sm" variant="subtle" onClick={() => setForm({ editing: list })}>
                       <Icon.edit size={14} /> Change
                     </Button>
-                    <Button size="sm" variant="subtle" disabled={revise.isPending} onClick={() => void setActive(list, !list.active)}>
+                    <Button
+                      size="sm"
+                      variant="subtle"
+                      onClick={() => {
+                        revise.reset();
+                        setToggling(list);
+                      }}
+                    >
                       {list.active ? 'Stop using' : 'Use again'}
                     </Button>
                   </div>
@@ -186,6 +214,26 @@ export function SanctionsListsPage() {
           </ul>
         </Card>
       )}
+      <ChangeReasonDialog
+        open={toggling !== null}
+        onOpenChange={(open) => {
+          if (!open) setToggling(null);
+        }}
+        title={toggling?.active ? `Stop using ${toggling.name}?` : `Use ${toggling?.name ?? ''} again?`}
+        consequence={
+          toggling?.active
+            ? 'New screenings will no longer cover this list. Past screenings keep the version they used.'
+            : toggling?.mandatory
+              ? 'Every new screening must cover this list again.'
+              : 'New screenings can cover this list again.'
+        }
+        confirmLabel={toggling?.active ? 'Stop using list' : 'Use again'}
+        pending={revise.isPending}
+        error={revise.error}
+        onConfirm={(reason) => {
+          if (toggling) void setActive(toggling, !toggling.active, reason);
+        }}
+      />
     </div>
   );
 }

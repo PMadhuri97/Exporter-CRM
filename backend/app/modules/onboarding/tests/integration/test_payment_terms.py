@@ -21,6 +21,8 @@ pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
 
+CHANGE_REASON = "CHG-1042: test change"
+
 
 def _connect():
     url = get_settings().DATABASE_SYNC_URL.replace("postgresql+psycopg2://", "postgresql://")
@@ -128,7 +130,7 @@ async def test_a_retired_term_stays_on_old_deals_but_is_no_longer_offered(client
     added = await client.post(
         f"{BASE}/settings/payment-terms",
         headers=auth_header(admin),
-        json={"code": code, "label": "DA 120 days", "kind": "DA", "days": 120},
+        json={"change_reason": CHANGE_REASON, "code": code, "label": "DA 120 days", "kind": "DA", "days": 120},
     )
     assert added.status_code == 201, added.text
     company_id = await make_prospect()
@@ -139,7 +141,7 @@ async def test_a_retired_term_stays_on_old_deals_but_is_no_longer_offered(client
     assert deal["payment_term"]["label"] == "DA 120 days"
 
     retired = await client.patch(
-        f"{BASE}/settings/payment-terms/{code}", headers=auth_header(admin), json={"active": False}
+        f"{BASE}/settings/payment-terms/{code}", headers=auth_header(admin), json={"active": False, "change_reason": CHANGE_REASON}
     )
     assert retired.status_code == 200, retired.text
     assert retired.json()["version"] == 2
@@ -160,18 +162,18 @@ async def test_an_edit_writes_a_new_version_and_days_must_fit_the_kind(client: A
     bad = await client.post(
         f"{BASE}/settings/payment-terms",
         headers=auth_header(admin),
-        json={"code": code, "label": "DA", "kind": "DA"},
+        json={"change_reason": CHANGE_REASON, "code": code, "label": "DA", "kind": "DA"},
     )
     assert bad.status_code == 422, bad.text
     await client.post(
         f"{BASE}/settings/payment-terms",
         headers=auth_header(admin),
-        json={"code": code, "label": "Advance 50%", "kind": "ADVANCE"},
+        json={"change_reason": CHANGE_REASON, "code": code, "label": "Advance 50%", "kind": "ADVANCE"},
     )
     revised = await client.patch(
         f"{BASE}/settings/payment-terms/{code}",
         headers=auth_header(admin),
-        json={"label": "Advance (half up front)"},
+        json={"label": "Advance (half up front)", "change_reason": CHANGE_REASON},
     )
     assert revised.json()["version"] == 2
     listing = await client.get(f"{BASE}/settings/payment-terms", headers=auth_header(admin))
@@ -185,7 +187,7 @@ async def test_only_settings_managers_change_terms(client: AsyncClient):
     refused = await client.post(
         f"{BASE}/settings/payment-terms",
         headers=auth_header(ops),
-        json={"code": "X1", "label": "x", "kind": "ADVANCE"},
+        json={"code": "X1", "label": "x", "kind": "ADVANCE", "change_reason": CHANGE_REASON},
     )
     assert refused.status_code == 403
     assert (await client.get(f"{BASE}/settings/payment-terms", headers=auth_header(ops))).json()[

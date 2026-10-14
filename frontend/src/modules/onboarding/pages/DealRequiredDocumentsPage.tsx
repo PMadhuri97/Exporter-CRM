@@ -22,6 +22,10 @@
  * must actually change something. A refusal is shown as the server worded it; two
  * administrators changing the same requirement at once is caught by the server
  * (409 `DEAL_REQUIRED_DOCUMENT_CHANGED`), and the second is told someone changed it.
+ *
+ * **No change without a reason.** Requiring a category and stopping requiring one both
+ * ask for a ticket number or an explanation, kept on the version and shown in the
+ * history; "Stop requiring" confirms first instead of acting on one click.
  */
 
 import { useState } from 'react';
@@ -46,6 +50,8 @@ import { ApiError } from '@/lib/api/errors';
 import { cn } from '@/lib/cn';
 import { formatDateTime } from '@/lib/format';
 
+import { changeReasonProblem } from '../components/change-reason';
+import { ChangeReasonDialog, ChangeReasonField } from '../components/ChangeReasonField';
 import {
   useDealRequiredDocuments,
   useDocumentCategories,
@@ -97,6 +103,7 @@ function RequireComposer({ initialCategory, onClose }: { initialCategory: string
   const catalogue = useDocumentCategories('DEAL');
   const [category, setCategory] = useState(initialCategory);
   const [documentType, setDocumentType] = useState('');
+  const [reason, setReason] = useState('');
   const types =
     catalogue.data?.categories.find((option) => option.category === category)?.types ?? [];
   const error = isStale(mutation.error) ? new Error(SOMEONE_CHANGED) : mutation.error;
@@ -108,6 +115,7 @@ function RequireComposer({ initialCategory, onClose }: { initialCategory: string
         category: category as any,
         document_type: documentType || null,
         active: true,
+        change_reason: reason.trim(),
       });
       toast.success('Requirement added');
       onClose();
@@ -126,7 +134,8 @@ function RequireComposer({ initialCategory, onClose }: { initialCategory: string
       submitLabel="Add requirement"
       pending={mutation.isPending}
       error={error}
-      submitDisabled={category === ''}
+      submitDisabled={category === '' || changeReasonProblem(reason) !== null}
+      fields={['change_reason']}
       onSubmit={() => void submit()}
     >
       <RequiredNote />
@@ -175,6 +184,8 @@ function RequireComposer({ initialCategory, onClose }: { initialCategory: string
         in this category will be refused, naming it. Deals already handed over are
         unaffected.
       </p>
+
+      <ChangeReasonField id="required-reason" value={reason} onChange={setReason} serverError={mutation.error} />
     </SidePanel>
   );
 }
@@ -222,6 +233,9 @@ function History({ rows }: { rows: DealRequiredDocument[] }) {
                   ' · seeded'
                 )}
               </span>
+              {row.change_reason && (
+                <span className="block text-caption text-ink-2">Reason: {row.change_reason}</span>
+              )}
             </span>
           </li>
         ))}
@@ -240,6 +254,8 @@ export function DealRequiredDocumentsPage() {
   const mutation = useSetDealRequiredDocument();
   // `''` opens the composer with no category chosen; a value opens it on that one.
   const [requiring, setRequiring] = useState<string | null>(null);
+  // "Stop requiring" confirms, with a reason, before anything is sent.
+  const [stopping, setStopping] = useState<DealRequiredDocument | null>(null);
 
   const requirements = rule.data?.requirements ?? [];
   const history = rule.data?.history ?? [];
@@ -251,21 +267,23 @@ export function DealRequiredDocumentsPage() {
       .map((row) => ({ value: row.category, label: row.category })),
   ];
 
-  async function stopRequiring(row: DealRequiredDocument) {
+  async function stopRequiring(row: DealRequiredDocument, reason: string) {
     try {
       await mutation.mutateAsync({
         category: row.category,
         document_type: row.document_type,
         active: false,
+        change_reason: reason,
       });
       toast.success('Requirement removed');
+      setStopping(null);
     } catch (caught) {
       if (isStale(caught)) {
         void rule.refetch();
+        setStopping(null);
         toast.error(SOMEONE_CHANGED);
-        return;
       }
-      toast.error(caught instanceof Error ? caught.message : 'Could not remove the requirement');
+      // Anything else stays in the dialog, in the server's words.
     }
   }
 
@@ -331,8 +349,10 @@ export function DealRequiredDocumentsPage() {
                                   size="sm"
                                   variant="subtle"
                                   className="ml-auto"
-                                  disabled={mutation.isPending}
-                                  onClick={() => void stopRequiring(row)}
+                                  onClick={() => {
+                                    mutation.reset();
+                                    setStopping(row);
+                                  }}
                                 >
                                   Stop requiring
                                 </Button>
@@ -366,6 +386,21 @@ export function DealRequiredDocumentsPage() {
       {requiring !== null && (
         <RequireComposer initialCategory={requiring} onClose={() => setRequiring(null)} />
       )}
+
+      <ChangeReasonDialog
+        open={stopping !== null}
+        onOpenChange={(open) => {
+          if (!open) setStopping(null);
+        }}
+        title={stopping ? `Stop requiring ${describe(stopping)}?` : ''}
+        consequence="Deals can then be handed over without this document. Deals already handed over are unaffected."
+        confirmLabel="Stop requiring"
+        pending={mutation.isPending}
+        error={mutation.error}
+        onConfirm={(reason) => {
+          if (stopping) void stopRequiring(stopping, reason);
+        }}
+      />
     </div>
   );
 }

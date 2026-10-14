@@ -37,18 +37,24 @@ from app.shared.exceptions import ValidationError
 
 pytestmark = pytest.mark.asyncio
 
+CHANGE_REASON = "CHG-1042: test change"
+
 
 @asynccontextmanager
 async def criterion(definition: CriterionDefinition):
     key = f"auto_{uuid.uuid4().hex[:10]}"
     async with db_services.AsyncSessionLocal() as db:
-        await QualificationService(db).create_criterion(key, definition, actor_id="test")
+        await QualificationService(db).create_criterion(
+            key, definition, actor_id="test", change_reason=CHANGE_REASON
+        )
     try:
         yield key
     finally:
         retired = CriterionDefinition(**{**definition.__dict__, "active": False})
         async with db_services.AsyncSessionLocal() as db:
-            await QualificationService(db).add_version(key, retired, actor_id="test")
+            await QualificationService(db).add_version(
+                key, retired, actor_id="test", change_reason=CHANGE_REASON
+            )
 
 
 async def latest(company_id, key):
@@ -156,6 +162,7 @@ async def test_an_auto_source_must_fit_the_kind_of_criterion():
                     auto_source="IEC_VERIFICATION",
                 ),
                 actor_id="test",
+                change_reason=CHANGE_REASON,
             )
 
 

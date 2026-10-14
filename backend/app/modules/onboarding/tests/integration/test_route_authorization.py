@@ -36,6 +36,8 @@ pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
 
+CHANGE_REASON = "CHG-1042: test change"
+
 # Who works the business: relationship managers and compliance.
 STAFF = {UserRole.OPERATIONS, UserRole.COMPLIANCE}
 # Compliance's own decisions.
@@ -207,13 +209,13 @@ GATED_ROUTES = [
     (
         "POST",
         f"{BASE}/qualification/criteria",
-        {"key": "x", "label": "X", "kind": "YES_NO", "required": False},
+        {"key": "x", "label": "X", "kind": "YES_NO", "required": False, "change_reason": CHANGE_REASON},
         ADMIN_ONLY,
     ),
     (
         "POST",
         f"{BASE}/qualification/criteria/revenue/versions",
-        {"label": "X", "kind": "YES_NO", "required": False},
+        {"label": "X", "kind": "YES_NO", "required": False, "change_reason": CHANGE_REASON},
         ADMIN_ONLY,
     ),
     (
@@ -328,16 +330,21 @@ GATED_ROUTES = [
     (
         "POST",
         f"{BASE}/settings/payment-terms",
-        {"code": "X", "label": "x", "kind": "ADVANCE"},
+        {"code": "X", "label": "x", "kind": "ADVANCE", "change_reason": CHANGE_REASON},
         ADMIN_ONLY,
     ),
-    ("PATCH", f"{BASE}/settings/payment-terms/X", {"label": "y"}, ADMIN_ONLY),
+    (
+        "PATCH",
+        f"{BASE}/settings/payment-terms/X",
+        {"label": "y", "change_reason": CHANGE_REASON},
+        ADMIN_ONLY,
+    ),
     ("PATCH", f"{BASE}/deals/{_ID}/terms", {"currency": "INR"}, STAFF),
     ("PUT", f"{BASE}/exporters/{_ID}/default-payment-term", {"payment_term_id": None}, STAFF),
     (
         "POST",
         f"{BASE}/settings/deal-required-documents",
-        {"category": "BUYER"},
+        {"category": "BUYER", "change_reason": CHANGE_REASON},
         ADMIN_ONLY,
     ),
     # Documents. The two uploads are multipart, so they are covered by their
@@ -463,10 +470,15 @@ GATED_ROUTES = [
     (
         "POST",
         f"{BASE}/settings/sanctions-lists",
-        {"code": "X", "name": "x", "list_version_date": "2026-10-09"},
+        {"code": "X", "name": "x", "list_version_date": "2026-10-09", "change_reason": CHANGE_REASON},
         ADMIN_ONLY,
     ),
-    ("PATCH", f"{BASE}/settings/sanctions-lists/X", {"name": "y"}, ADMIN_ONLY),
+    (
+        "PATCH",
+        f"{BASE}/settings/sanctions-lists/X",
+        {"name": "y", "change_reason": CHANGE_REASON},
+        ADMIN_ONLY,
+    ),
     ("GET", f"{BASE}/exporters/{_ID}/sanctions", None, STAFF_READERS),
     ("GET", f"{BASE}/exporters/{_ID}/sanctions/runs", None, STAFF_READERS),
     ("POST", f"{BASE}/exporters/{_ID}/sanctions/runs", {"list_codes": ["UN_SC"]}, COMPLIANCE_ONLY),

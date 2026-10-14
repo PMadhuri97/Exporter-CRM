@@ -60,6 +60,8 @@ from app.shared.exceptions import ValidationError
 pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
+
+CHANGE_REASON = "CHG-1042: test change"
 #: The criteria that are **required** after `onboarding_0031_domestic_first`.
 #: `export_history` and `export_licence` still exist and are still active — they are
 #: simply no longer required, because the first phase of the product is domestic
@@ -157,6 +159,7 @@ async def test_a_new_version_leaves_the_old_one_exactly_as_it_was():
             key,
             CriterionDefinition(label="Throwaway", kind=CriterionKind.YES_NO, required=False),
             actor_id="admin-1",
+            change_reason=CHANGE_REASON,
         )
     v1_snapshot = (v1.id, v1.label, v1.kind, v1.required, v1.active, v1.created_at)
 
@@ -168,6 +171,7 @@ async def test_a_new_version_leaves_the_old_one_exactly_as_it_was():
                 active=False,
             ),
             actor_id="admin-2",
+            change_reason=CHANGE_REASON,
         )
     assert (v2.version, v2.active, v2.created_by) == (2, False, "admin-2")
 
@@ -194,7 +198,8 @@ async def test_two_admins_creating_one_key_get_a_409_not_a_500(monkeypatch):
     key = _throwaway_key()
     async with db_services.AsyncSessionLocal() as db:
         await QualificationService(db).create_criterion(
-            key, _inactive_yes_no("First"), actor_id="admin-1"
+            key, _inactive_yes_no("First"), actor_id="admin-1",
+            change_reason=CHANGE_REASON,
         )
 
     async def not_there_yet(self, key):  # the second ADMIN's stale read
@@ -204,7 +209,8 @@ async def test_two_admins_creating_one_key_get_a_409_not_a_500(monkeypatch):
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(QualificationCriterionExistsError):
             await QualificationService(db).create_criterion(
-                key, _inactive_yes_no("Second"), actor_id="admin-2"
+                key, _inactive_yes_no("Second"), actor_id="admin-2",
+                change_reason=CHANGE_REASON,
             )
 
 
@@ -215,11 +221,13 @@ async def test_two_admins_versioning_at_once_get_a_409_and_nothing_is_saved(monk
     key = _throwaway_key()
     async with db_services.AsyncSessionLocal() as db:
         v1 = await QualificationService(db).create_criterion(
-            key, _inactive_yes_no("Original"), actor_id="admin-1"
+            key, _inactive_yes_no("Original"), actor_id="admin-1",
+            change_reason=CHANGE_REASON,
         )
     async with db_services.AsyncSessionLocal() as db:
         await QualificationService(db).add_version(
-            key, _inactive_yes_no("First change"), actor_id="admin-1"
+            key, _inactive_yes_no("First change"), actor_id="admin-1",
+            change_reason=CHANGE_REASON,
         )
 
     async def still_version_one(self, key):  # the second ADMIN's stale read
@@ -229,7 +237,8 @@ async def test_two_admins_versioning_at_once_get_a_409_and_nothing_is_saved(monk
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(QualificationCriterionChangedError):
             await QualificationService(db).add_version(
-                key, _inactive_yes_no("Second change"), actor_id="admin-2"
+                key, _inactive_yes_no("Second change"), actor_id="admin-2",
+                change_reason=CHANGE_REASON,
             )
     monkeypatch.undo()
 
@@ -269,7 +278,7 @@ async def test_a_criterion_of_the_wrong_shape_is_refused(
     _, token = users[UserRole.ADMIN]
     resp = await client.post(
         f"{BASE}/qualification/criteria",
-        json={"key": _throwaway_key(), **definition},
+        json={"change_reason": CHANGE_REASON, "key": _throwaway_key(), **definition},
         headers=auth_header(token),
     )
     assert resp.status_code == 422, resp.text
@@ -282,12 +291,12 @@ async def test_only_admin_manages_criteria(client: AsyncClient, users, role: Use
     _, token = users[role]
     created = await client.post(
         f"{BASE}/qualification/criteria",
-        json={"key": _throwaway_key(), "label": "X", "kind": "YES_NO", "required": False},
+        json={"change_reason": CHANGE_REASON, "key": _throwaway_key(), "label": "X", "kind": "YES_NO", "required": False},
         headers=auth_header(token),
     )
     versioned = await client.post(
         f"{BASE}/qualification/criteria/revenue/versions",
-        json={"label": "X", "kind": "YES_NO", "required": False},
+        json={"change_reason": CHANGE_REASON, "label": "X", "kind": "YES_NO", "required": False},
         headers=auth_header(token),
     )
     assert (created.status_code, versioned.status_code) == (403, 403)
@@ -298,7 +307,7 @@ async def test_admin_creates_and_versions_through_the_api(client: AsyncClient, u
     key = _throwaway_key()
     created = await client.post(
         f"{BASE}/qualification/criteria",
-        json={"key": key, "label": "Throwaway", "kind": "NUMBER_THRESHOLD", "required": False,
+        json={"change_reason": CHANGE_REASON, "key": key, "label": "Throwaway", "kind": "NUMBER_THRESHOLD", "required": False,
               "comparison": "AT_LEAST", "threshold": 10, "unit": "USD"},
         headers=auth_header(token),
     )
@@ -307,14 +316,14 @@ async def test_admin_creates_and_versions_through_the_api(client: AsyncClient, u
 
     again = await client.post(
         f"{BASE}/qualification/criteria",
-        json={"key": key, "label": "Dup", "kind": "YES_NO", "required": False},
+        json={"change_reason": CHANGE_REASON, "key": key, "label": "Dup", "kind": "YES_NO", "required": False},
         headers=auth_header(token),
     )
     assert again.status_code == 409
 
     versioned = await client.post(
         f"{BASE}/qualification/criteria/{key}/versions",
-        json={"label": "Throwaway", "kind": "NUMBER_THRESHOLD", "required": False,
+        json={"change_reason": CHANGE_REASON, "label": "Throwaway", "kind": "NUMBER_THRESHOLD", "required": False,
               "comparison": "AT_LEAST", "threshold": 20, "unit": "USD", "active": False},
         headers=auth_header(token),
     )

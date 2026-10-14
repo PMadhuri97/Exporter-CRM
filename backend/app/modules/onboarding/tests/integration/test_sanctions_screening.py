@@ -30,6 +30,8 @@ from app.platform.database import services as db_services
 pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
+
+CHANGE_REASON = "CHG-1042: test change"
 LISTS = ["UN_SC", "IN_MHA_UAPA"]
 
 
@@ -102,7 +104,7 @@ async def test_a_new_list_version_puts_the_company_on_rescreen_due(client: Async
     revised = await client.patch(
         f"{BASE}/settings/sanctions-lists/IN_MHA_UAPA",
         headers=auth_header(admin),
-        json={"list_version_date": newer},
+        json={"list_version_date": newer, "change_reason": CHANGE_REASON},
     )
     assert revised.status_code == 200, revised.text
     assert revised.json()["version"] == mha["version"] + 1

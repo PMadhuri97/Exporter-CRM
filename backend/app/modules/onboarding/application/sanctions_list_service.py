@@ -15,6 +15,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.change_reason import require_change_reason
 from app.modules.onboarding.domain.entities.sanctions import SanctionsList
 from app.modules.onboarding.exceptions import SanctionsListNotFoundError
 from app.shared.exceptions import ValidationError
@@ -52,7 +53,9 @@ class SanctionsListService:
         mandatory: bool,
         list_version_date: date,
         actor_id: str,
+        change_reason: str,
     ) -> SanctionsList:
+        reason = require_change_reason(change_reason)
         code = code.strip().upper()
         if await self._db.scalar(select(SanctionsList.id).where(SanctionsList.code == code)):
             raise ValidationError(f"A sanctions list with the code {code} already exists")
@@ -64,6 +67,7 @@ class SanctionsListService:
             mandatory=mandatory,
             list_version_date=list_version_date,
             created_by=actor_id,
+            change_reason=reason,
         )
         self._db.add(row)
         await self._db.commit()
@@ -82,7 +86,9 @@ class SanctionsListService:
         mandatory: bool | None,
         list_version_date: date | None,
         actor_id: str,
+        change_reason: str,
     ) -> SanctionsList:
+        reason = require_change_reason(change_reason)
         old = await self._db.scalar(
             select(SanctionsList)
             .where(SanctionsList.code == code, SanctionsList.is_current.is_(True))
@@ -104,7 +110,11 @@ class SanctionsListService:
         old.is_current = False
         await self._db.flush()
         row = SanctionsList(
-            code=old.code, version=old.version + 1, created_by=actor_id, **new
+            code=old.code,
+            version=old.version + 1,
+            created_by=actor_id,
+            change_reason=reason,
+            **new,
         )
         self._db.add(row)
         await self._db.commit()

@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.api.schemas.change_reason import ChangeReason
 from app.modules.onboarding.application.compliance_settings import true_match_approval
 from app.modules.onboarding.application.sanctions_list_service import SanctionsListService
 from app.modules.onboarding.application.sanctions_screening_service import (
@@ -71,6 +72,11 @@ class SanctionsListResponse(BaseModel):
     mandatory: bool
     list_version_date: date
     is_current: bool
+    created_by: str | None = None
+    created_at: datetime | None = None
+    #: Why this version was written. `null` for seeded versions and those before it
+    #: was asked for.
+    change_reason: str | None = None
 
 
 class SanctionsListsResponse(BaseModel):
@@ -87,6 +93,8 @@ class AddSanctionsListRequest(BaseModel):
     authority: str | None = Field(default=None, max_length=200)
     mandatory: bool = False
     list_version_date: date
+    #: Why: a ticket number or an explanation. Required, and kept on the version.
+    change_reason: ChangeReason
 
 
 class ReviseSanctionsListRequest(BaseModel):
@@ -100,6 +108,8 @@ class ReviseSanctionsListRequest(BaseModel):
     active: bool | None = None
     mandatory: bool | None = None
     list_version_date: date | None = None
+    #: Why: a ticket number or an explanation. Required, and kept on the version.
+    change_reason: ChangeReason
 
 
 class HitRequest(BaseModel):
@@ -356,6 +366,7 @@ async def add_sanctions_list(
         mandatory=body.mandatory,
         list_version_date=body.list_version_date,
         actor_id=str(current_user.id),
+        change_reason=body.change_reason,
     )
     return SanctionsListResponse.model_validate(row)
 
@@ -386,6 +397,7 @@ async def revise_sanctions_list(
         mandatory=body.mandatory,
         list_version_date=body.list_version_date,
         actor_id=str(current_user.id),
+        change_reason=body.change_reason,
     )
     return SanctionsListResponse.model_validate(row)
 

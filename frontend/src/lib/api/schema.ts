@@ -3292,6 +3292,12 @@ export interface components {
             kind: string;
             /** Days */
             days?: number | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /** AddSanctionsListRequest */
         AddSanctionsListRequest: {
@@ -3311,6 +3317,12 @@ export interface components {
              * Format: date
              */
             list_version_date: string;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /**
          * AdminCreateUserRequest
@@ -5020,6 +5032,12 @@ export interface components {
             allowed_values?: string[] | null;
             /** Auto Source */
             auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
             /** Key */
             key: string;
         };
@@ -5117,6 +5135,12 @@ export interface components {
             allowed_values?: string[] | null;
             /** Auto Source */
             auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /**
          * CriterionKind
@@ -5162,6 +5186,8 @@ export interface components {
             created_at: string;
             /** Auto Source */
             auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
+            /** Change Reason */
+            change_reason?: string | null;
         };
         /**
          * CriterionResultValue
@@ -5322,6 +5348,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Change Reason */
+            change_reason?: string | null;
         };
         /**
          * DealRequiredDocumentsResponse
@@ -7197,6 +7225,12 @@ export interface components {
             active: boolean;
             /** Is Current */
             is_current: boolean;
+            /** Created By */
+            created_by?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Change Reason */
+            change_reason?: string | null;
         };
         /** PendingActivityListResponse */
         PendingActivityListResponse: {
@@ -7964,6 +7998,12 @@ export interface components {
             days?: number | null;
             /** Active */
             active?: boolean | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /**
          * ReviseSanctionsListRequest
@@ -7981,6 +8021,12 @@ export interface components {
             mandatory?: boolean | null;
             /** List Version Date */
             list_version_date?: string | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /** RoleListResponse */
         RoleListResponse: {
@@ -8106,6 +8152,12 @@ export interface components {
             list_version_date: string;
             /** Is Current */
             is_current: boolean;
+            /** Created By */
+            created_by?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Change Reason */
+            change_reason?: string | null;
         };
         /** SanctionsListsResponse */
         SanctionsListsResponse: {
@@ -8414,6 +8466,12 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /**
          * SetDealTermsRequest
