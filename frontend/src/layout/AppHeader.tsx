@@ -12,7 +12,6 @@ import { Icon } from '@/design/icons';
 import type { UserRole } from '@/lib/api/types';
 
 import { HeaderSearch } from './HeaderSearch';
-import { NewMenu } from './NewMenu';
 import { UserMenu } from './UserMenu';
 
 export function AppHeader({
@@ -47,8 +46,10 @@ export function AppHeader({
       <div className="flex min-w-0 flex-1 justify-center px-1 md:px-4">
         <HeaderSearch role={role} open={searchOpen} onOpenChange={onSearchOpenChange} />
       </div>
+      {/* No quick-create menu here. Every entry it held — New company, Import
+          companies, RXIL intake, New deal — is on the page that owns the thing being
+          created, so the menu was a second door to the same four screens. */}
       <div className="flex shrink-0 items-center gap-2">
-        <NewMenu />
         <UserMenu />
       </div>
     </header>
