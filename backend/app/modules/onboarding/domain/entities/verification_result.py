@@ -43,6 +43,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     String,
     Text,
@@ -195,6 +196,15 @@ class VerificationResult(AnerModel):
             "ix_verification_result_cycle_id",
             "cycle_id",
             postgresql_where=text("cycle_id IS NOT NULL"),
+        ),
+        # The cycle must be the subject company's own (0054). Beside the plain
+        # `fk_verification_result_cycle_id`, which still covers a row with a cycle
+        # but no subject company.
+        ForeignKeyConstraint(
+            ["cycle_id", "subject_company_id"],
+            [f"{SCHEMA}.check_cycle.id", f"{SCHEMA}.check_cycle.company_id"],
+            name="fk_verification_result_cycle_company",
+            ondelete="RESTRICT",
         ),
         {"schema": SCHEMA},
     )

@@ -49,6 +49,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.modules.onboarding.domain.entities.database_generated_id import DatabaseGeneratedId
 from app.modules.onboarding.domain.entities.trade_enums import (
     TradePaymentStatus,
     TradeProofStatus,
@@ -62,7 +63,7 @@ SCHEMA = "onboarding"
 CURRENCY_LENGTH = 3
 
 
-class TradeInvoice(AnerModel):
+class TradeInvoice(DatabaseGeneratedId, AnerModel):
     __tablename__ = "trade_invoice"
     __table_args__ = (
         # One invoice number per relationship. Not globally unique: two different
@@ -127,7 +128,7 @@ class TradeInvoice(AnerModel):
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
-class TradeInvoiceOutcome(AppendOnlyModel):
+class TradeInvoiceOutcome(DatabaseGeneratedId, AppendOnlyModel):
     """One thing we learned about an invoice. Append-only, superseding chain.
 
     The same shape as ``verification_review``, and for the same reason: a correction

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import uuid
 
+from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterSource
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.platform.authentication.models import UserRole
@@ -60,6 +61,20 @@ async def make_company(
         )
         await db.commit()
     return customer_id
+
+
+async def make_bare_deal(customer_id: uuid.UUID, reference: str = "Fixture deal") -> uuid.UUID:
+    """Insert a bare ``OPEN`` deal for ``customer_id`` through the ORM and return its id.
+
+    For a test that needs a real deal for a history row to name (``deal_id`` has a
+    foreign key since migration 0054) without the history row ``DealService`` would
+    also write, or the prospect the service requires.
+    """
+    async with db_services.AsyncSessionLocal() as db:
+        deal = Deal(company_id=customer_id, reference=reference)
+        db.add(deal)
+        await db.commit()
+    return deal.id
 
 
 async def ensure_relationship_manager(customer_id: uuid.UUID) -> uuid.UUID:
@@ -147,6 +162,7 @@ __all__ = [
     "ensure_relationship_manager",
     "fixture_relationship_manager",
     "insert_company",
+    "make_bare_deal",
     "make_company",
     "make_prospect",
 ]

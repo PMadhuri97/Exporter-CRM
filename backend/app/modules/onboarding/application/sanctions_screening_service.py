@@ -288,6 +288,9 @@ class SanctionsScreeningService:
                     list_version_date=listed.list_version_date,
                 )
             )
+        # Written before the hits: a hit names its run's list (`fk_sanctions_hit_run_list`),
+        # and with no relationship between the two the session would not order them.
+        await self._db.flush()
         mode = true_match_approval()
         for hit_input in hit_inputs:
             hit = SanctionsHit(

@@ -247,8 +247,9 @@ lands was a valid enum member at the time.
 > `(customer_id, created_at DESC, id DESC)`. Order by `created_at` alone and the result
 > is non-deterministic.
 
-> `contracts/history-row.md` §1 still says `customer_id` has "no foreign key yet". That
-> is **stale** — `fk_exporter_lifecycle_history_customer_id` exists, added by 0014.
+> Both links are real foreign keys: `customer_id` since 0014
+> (`fk_exporter_lifecycle_history_customer_id`) and `deal_id` since 0054
+> (`fk_exporter_lifecycle_history_deal_id`).
 
 ### `exporter_activity` and `follow_up_completion`
 
@@ -556,6 +557,9 @@ crm_document        company_id, deal_id, category, document_type, source, file_n
                     content_type, size_bytes, uploaded_by, uploaded_at, storage_key
 deal                buyer_company_id                                    (set-once)
 exporter_profile    source
+payment_term        code, version, label, kind, days, active, created_by, created_at  (0055)
+sanctions_list      code, version, name, authority, active, mandatory, list_version_date,
+                    created_by, created_at                              (0055)
 trade_invoice       relationship_id, invoice_number, invoice_date, amount, currency, deal_id
 verification_result reviewed_by, review_status                           (field immutability)
 verification_result evidence_note, evidence_refs, subject_snapshot,
@@ -751,7 +755,10 @@ To rehearse a migration safely, copy the database first (`createdb -T <source>
 10. **`DELETE` on an append-only table is refused, so a migration that must clear one
     needs `TRUNCATE`** — row triggers do not fire on truncate. (§9)
 11. **Tests run against your development database and leave rows behind.** (§12)
-12. **`contracts/history-row.md` §1 is stale** on the history foreign key — it exists.
+12. **A rule left `NOT VALID` is still a rule.** 0042 and 0054 validate a new constraint
+    only when no existing row breaks it; otherwise they print the rows and leave it
+    `NOT VALID`, enforced on every new or changed row. `SELECT conname FROM pg_constraint
+    WHERE NOT convalidated` lists any still waiting.
 13. **Known gaps, if you are looking for one:** `deal.reference` has no unique
     constraint; `bank_activity_finding.customer_id` has no foreign key;
     `verification_result.entity_reference` is polymorphic and unconstrained by design.

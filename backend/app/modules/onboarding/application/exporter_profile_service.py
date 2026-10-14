@@ -623,9 +623,19 @@ class ExporterProfileService:
                     continue
             edits[field] = (old_value, wanted[field])
 
+        for field, (_old_value, new_value) in edits.items():
+            setattr(profile, field, new_value)
+        # Derived from what the company holds, so it moves with the PAN and the
+        # registration number. Set before the history rows below: each one flushes,
+        # and the database refuses a row whose `identity_type` disagrees with its
+        # identifiers (`ck_exporter_profile_identity_type_derived`, 0054).
+        if {"pan", "registration_number"} & set(edits):
+            profile.identity_type = decide_identity_type(
+                pan=profile.pan, registration_number=profile.registration_number
+            )
+
         edit_id = str(uuid.uuid4())
         for field, (old_value, new_value) in edits.items():
-            setattr(profile, field, new_value)
             await self._history.record(
                 customer_id,
                 dimension=HISTORY_DIMENSION_PROFILE,
@@ -639,13 +649,6 @@ class ExporterProfileService:
                     "to": _history_value(field, new_value),
                     "edit_id": edit_id,
                 },
-            )
-        # Derived from what the company holds, so it moves with the PAN and the
-        # registration number. It was set on create only, and went stale on
-        # exactly the edit the identity completion flow makes.
-        if {"pan", "registration_number"} & set(edits):
-            profile.identity_type = decide_identity_type(
-                pan=profile.pan, registration_number=profile.registration_number
             )
 
         try:

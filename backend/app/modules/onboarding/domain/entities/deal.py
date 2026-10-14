@@ -43,6 +43,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.modules.onboarding.domain.entities.database_generated_id import DatabaseGeneratedId
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.platform.database.models import AnerModel
 
@@ -52,7 +53,7 @@ if TYPE_CHECKING:
 SCHEMA = "onboarding"
 
 
-class Deal(AnerModel):
+class Deal(DatabaseGeneratedId, AnerModel):
     __tablename__ = "deal"
     __table_args__ = (
         # A withdrawal carries its reason, and nothing else does.
@@ -113,6 +114,7 @@ class Deal(AnerModel):
         Enum(DealStage, name="deal_stage_enum", schema=SCHEMA, create_type=False),
         nullable=False,
         default=DealStage.OPEN,
+        server_default=DealStage.OPEN.value,
     )
     #: Required exactly when `stage` is `WITHDRAWN`, enforced by
     #: `ck_deal_withdrawal_reason` as well as by the service.

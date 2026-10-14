@@ -31,7 +31,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -76,6 +76,15 @@ class DealBuyerCompanyMap(AppendOnlyModel):
         # Everything one run did, for §17.2's logical rollback.
         Index("ix_deal_buyer_company_map_run", "run_id"),
         {"schema": SCHEMA},
+    )
+
+    #: Not part of the primary key: migration 0038 keyed the table on
+    #: ``deal_buyer_id`` alone, and this column only carries a generated uuid.
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
     )
 
     #: The legacy row this mapping is about. **The primary key**: one mapping per deal

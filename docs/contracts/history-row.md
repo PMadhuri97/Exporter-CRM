@@ -30,8 +30,8 @@ agreement of all four.
 | Column | Type | Null | Meaning |
 |---|---|---|---|
 | `id` | `uuid` | no | Primary key, `uuid4`. |
-| `customer_id` | `uuid` | no | **The company.** Indexed, no foreign key yet — see §6. |
-| `deal_id` | `uuid` | yes | **The deal**, when the change is about one. `NULL` for everything company-level. |
+| `customer_id` | `uuid` | no | **The company.** Indexed; FK → `exporter_profile.customer_id` since 0014 — see §6. |
+| `deal_id` | `uuid` | yes | **The deal**, when the change is about one. `NULL` for everything company-level. FK → `deal.id`, `RESTRICT`, since 0054. |
 | `dimension` | `varchar(32)` | no | **Which row of the model changed.** Values in §2. |
 | `event_type` | `varchar(100)` | no | Why the row was written — see §3. |
 | `from_status` | `varchar(64)` | yes | **From value.** `NULL` means "entered at creation". |

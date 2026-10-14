@@ -78,6 +78,17 @@ class ExporterGstin(AnerModel):
         UniqueConstraint("id", "customer_id", name="uq_exporter_gstin_id_customer_id"),
         # Migration 0014: the duplicate-GSTIN warning looks a GSTIN up across companies.
         Index("ix_exporter_gstin_gstin", "gstin"),
+        # The GSTIN's shape (0014): a two-digit state code, the holder's PAN, an entity
+        # number, `Z`, and a check character.
+        CheckConstraint(
+            "gstin ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'",
+            name="ck_exporter_gstin_format",
+        ),
+        # `state_code` is derived from the GSTIN, so it may not contradict it (0054).
+        CheckConstraint(
+            "state_code IS NULL OR state_code = left(gstin, 2)",
+            name="ck_exporter_gstin_state_code",
+        ),
         # A flag must say why. Enforced here and not only in the service
         # because the reason is the whole value of the flag to whoever reads the block
         # it causes.

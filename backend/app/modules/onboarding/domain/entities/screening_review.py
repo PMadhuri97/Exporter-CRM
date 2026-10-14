@@ -111,7 +111,9 @@ class ScreeningReviewItem(AnerModel):
         nullable=False,
     )
     item_key: Mapped[str] = mapped_column(String(100), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="NEEDS_REVIEW")
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="NEEDS_REVIEW", server_default="NEEDS_REVIEW"
+    )
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -142,8 +144,12 @@ class BankActivityFinding(AnerModel):
     finding_type: Mapped[str] = mapped_column(String(100), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    risk_level: Mapped[str] = mapped_column(String(32), nullable=False, default="REVIEW")
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="OPEN")
+    risk_level: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="REVIEW", server_default="REVIEW"
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="OPEN", server_default="OPEN"
+    )
     provider_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

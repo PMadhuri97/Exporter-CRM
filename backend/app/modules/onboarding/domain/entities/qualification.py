@@ -65,6 +65,19 @@ class QualificationCriterion(AppendOnlyModel):
     __tablename__ = "qualification_criterion"
     __table_args__ = (
         UniqueConstraint("key", "version", name="uq_qualification_criterion_key_version"),
+        # Migration 0017's checks: a snake_case key, versions from 1, and the columns a
+        # kind needs — present for it and absent otherwise.
+        CheckConstraint("key ~ '^[a-z][a-z0-9_]*$'", name="ck_qualification_criterion_key"),
+        CheckConstraint("version >= 1", name="ck_qualification_criterion_version"),
+        CheckConstraint(
+            "(kind = 'NUMBER_THRESHOLD' AND comparison IS NOT NULL AND threshold IS NOT NULL"
+            " AND allowed_values IS NULL)"
+            " OR (kind = 'YES_NO' AND comparison IS NULL AND threshold IS NULL"
+            " AND allowed_values IS NULL)"
+            " OR (kind = 'ALLOWED_VALUES' AND comparison IS NULL AND threshold IS NULL"
+            " AND jsonb_typeof(allowed_values) = 'array' AND jsonb_array_length(allowed_values) > 0)",
+            name="ck_qualification_criterion_kind_shape",
+        ),
         CheckConstraint(
             "auto_source IS NULL OR auto_source IN ('IEC_VERIFICATION', 'YEARS_ESTABLISHED', "
             "'INDUSTRY', 'EXPORT_MARKETS', 'TRADE_HISTORY', 'DEAL_VALUE')",
@@ -109,8 +122,12 @@ class QualificationReasonCode(AnerModel):
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     #: `other` needs a note alongside it.
-    requires_note: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    requires_note: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
 
 
 class QualificationResult(AppendOnlyModel):
@@ -124,6 +141,18 @@ class QualificationResult(AppendOnlyModel):
             "customer_id",
             text("recorded_at DESC"),
             text("id DESC"),
+        ),
+        # Migration 0017: anything but UNKNOWN shows its evidence, and only an
+        # automated result carries a confidence, between 0 and 1.
+        CheckConstraint(
+            "result = 'UNKNOWN' OR btrim(COALESCE(evidence_note, '')) <> ''"
+            " OR jsonb_array_length(evidence_refs) > 0",
+            name="ck_qualification_result_evidence",
+        ),
+        CheckConstraint(
+            "confidence IS NULL OR (decided_by_kind = 'AUTOMATED'"
+            " AND confidence >= 0 AND confidence <= 1)",
+            name="ck_qualification_result_confidence",
         ),
         {"schema": SCHEMA},
     )
@@ -150,7 +179,9 @@ class QualificationResult(AppendOnlyModel):
     )
     evidence_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: `[{"type": "document" | "verification_result" | "url", "ref": str}]`.
-    evidence_refs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    evidence_refs: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
     #: The signed-in user; `NULL` only when the platform recorded it.
@@ -185,6 +216,11 @@ class QualificationOutcome(AppendOnlyModel):
             text("decided_at DESC"),
             text("id DESC"),
         ),
+        # Migration 0017: every outcome but QUALIFIED gives at least one reason code.
+        CheckConstraint(
+            "outcome = 'QUALIFIED' OR jsonb_array_length(reason_codes) >= 1",
+            name="ck_qualification_outcome_reason_codes",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -196,7 +232,9 @@ class QualificationOutcome(AppendOnlyModel):
     outcome: Mapped[QualificationOutcomeValue] = mapped_column(
         _enum(QualificationOutcomeValue, "qualification_outcome_value_enum"), nullable=False
     )
-    reason_codes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    reason_codes: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: What the server suggested at the moment of decision — kept apart from
     #: `outcome`, which is the person's call.
@@ -205,7 +243,9 @@ class QualificationOutcome(AppendOnlyModel):
     )
     #: The results the decision rested on: the current result for every
     #: active criterion when it was made. Later results do not change it.
-    result_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    result_ids: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     source: Mapped[QualificationSource] = mapped_column(
         _enum(QualificationSource, "qualification_source_enum"), nullable=False
     )

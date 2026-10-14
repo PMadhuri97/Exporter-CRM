@@ -53,8 +53,14 @@ def _insert_row(*, dimension: str, deal_id: str | None = None, reason: str | Non
     conn = _connect()
     cur = conn.cursor()
     try:
-        # Since 0014 a history row must name a company that exists.
+        # Since 0014 a history row must name a company that exists, and since 0054
+        # a deal that exists.
         company_id = insert_company(cur)
+        if deal_id is not None:
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.deal (id, company_id, reference) VALUES (%s, %s, 'test')",
+                (deal_id, str(company_id)),
+            )
         cur.execute(
             f"INSERT INTO {SCHEMA}.{TABLE} "
             "(id, customer_id, dimension, deal_id, event_type, from_status, "

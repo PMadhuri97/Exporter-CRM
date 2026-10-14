@@ -236,7 +236,7 @@ item, written in the decision's transaction.
 | `kind` | `background_check_evidence_kind_enum` | no | `DOCUMENT`, `VERIFICATION_RESULT` or `SCREENING_ITEM`. |
 | `crm_document_id` | `uuid` | yes | FK → `crm_document.id`, `RESTRICT`. Set exactly when `kind = DOCUMENT`. |
 | `verification_result_id` | `uuid` | yes | FK → `verification_result.id`, `RESTRICT`. Set exactly when `kind = VERIFICATION_RESULT`. |
-| `verification_review_id` | `uuid` | yes | The review the result's standing rested on. **A bare uuid, no foreign key** (§6.1). Allowed only when `kind = VERIFICATION_RESULT`. |
+| `verification_review_id` | `uuid` | yes | The review the result's standing rested on. FK → `verification_review.id`, `RESTRICT`, since 0054 (§6.1). Allowed only when `kind = VERIFICATION_RESULT`. |
 | `screening_review_item_id` | `uuid` | yes | FK → `screening_review_item.id`, `RESTRICT` — the exact checklist row, since screening rows keep being added after a decision. Set exactly when `kind = SCREENING_ITEM`. |
 
 Rules:
@@ -262,13 +262,15 @@ Rules:
   above holds whatever D4 decides.
 - Since seam v2 the snapshot pins the **current cycle's** inputs only (§12).
 
-### 6.1 Why the review id has no foreign key
+### 6.1 Why the review id started without a foreign key
 
 The superseding-review table (`verification_review`) arrived in `onboarding_0021_verif_review`,
 written in parallel with this contract's `onboarding_0015_bg_check`; a foreign key would have made
 one migration depend on the other, and they were kept independent on purpose. Snapshots taken
 before 0021 merged hold `NULL` here even for a reviewed result, because the seam reported
-`latest_review_id = None` until then. A foreign key could be added now; nobody has needed it.
+`latest_review_id = None` until then. `onboarding_0054_integrity_fks` added the foreign key
+(`fk_background_check_evidence_verification_review_id`, `RESTRICT`), so a decision can no longer
+cite a review that does not exist.
 
 ### 6.2 Reading a decision's evidence (plan P2-1a)
 

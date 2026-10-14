@@ -29,6 +29,7 @@ from sqlalchemy import CheckConstraint, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.modules.onboarding.domain.entities.database_generated_id import DatabaseGeneratedId
 from app.platform.database.models import AnerModel
 
 if TYPE_CHECKING:
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
 SCHEMA = "onboarding"
 
 
-class DealBuyer(AnerModel):
+class DealBuyer(DatabaseGeneratedId, AnerModel):
     __tablename__ = "deal_buyer"
     __table_args__ = (
         UniqueConstraint("deal_id", name="uq_deal_buyer_deal_id"),
