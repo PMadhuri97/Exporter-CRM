@@ -34,7 +34,7 @@ import { Editable, EditableRefusal } from '@/components';
 import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
 import { formatDate, formatDateTime, humanize } from '@/lib/format';
-import { useCan } from '@/platform/access';
+import { useCanRevealIdentifiers } from '@/platform/access';
 import { Identifier } from '@/platform/mask';
 
 import {
@@ -146,7 +146,7 @@ export function CompanyPanel({
 }) {
   const mutation = useUpdateExporterProfile(profile.customer_id);
   const detail = useExporterProfileDetail(profile.customer_id);
-  const reveal = useCan('identifiers.reveal');
+  const reveal = useCanRevealIdentifiers();
   // The company already holding a PAN just typed, shown as a link under the PAN.
   const [panHolder, setPanHolder] = useState<string | null>(null);
 

@@ -62,7 +62,6 @@ export type Capability =
   /** Flag or unflag a GST branch — it stops trade through it. COMPLIANCE. */
   | 'gst.flag'
   /** See full tax identifiers; everyone else is served them masked. COMPLIANCE. */
-  | 'identifiers.reveal'
   /**
    * Whose queue the unjudged leads are. **Not a permission**, and the one entry here
    * that mirrors no route group: COMPLIANCE may record a qualification decision too —
@@ -105,7 +104,6 @@ const COMPLIANCE: readonly Capability[] = [
   'compliance.decide',
   'compliance.queue',
   'gst.flag',
-  'identifiers.reveal',
 ];
 
 const ROLE_CAPABILITIES: Readonly<Record<UserRole, readonly Capability[]>> = {

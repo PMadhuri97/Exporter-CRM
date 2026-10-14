@@ -36,7 +36,7 @@ import {
 } from '@/components';
 import { Icon } from '@/design/icons';
 import { formatDateTime, humanize } from '@/lib/format';
-import { useCan } from '@/platform/access';
+import { useCan, useCanRevealIdentifiers } from '@/platform/access';
 
 import {
   BuyerChecks,
@@ -342,7 +342,7 @@ function useStageMoves({
 export function DealDetailPage() {
   const { dealId } = useParams<{ dealId: string }>();
   const isStaff = useCan('crm.write');
-  const canReveal = useCan('identifiers.reveal');
+  const canReveal = useCanRevealIdentifiers();
   const canSetRequiredDocuments = useCan('settings.requiredDocuments');
 
   const { data: deal, isLoading, isError, refetch } = useDeal(dealId);

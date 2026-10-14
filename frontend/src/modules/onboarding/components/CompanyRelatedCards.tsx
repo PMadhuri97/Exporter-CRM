@@ -30,7 +30,7 @@ import {
 import { Icon } from '@/design/icons';
 import { ApiError } from '@/lib/api/errors';
 import { formatDate, formatDateTime } from '@/lib/format';
-import { useCan } from '@/platform/access';
+import { useCanRevealIdentifiers } from '@/platform/access';
 
 import {
   useAddExporterContact,
@@ -278,7 +278,7 @@ function EditContactForm({
   const mutation = useUpdateExporterContact(customerId);
   const statusMutation = useSetExporterContactStatus(customerId);
   const verify = useVerifyExporterContact(customerId);
-  const mayReveal = useCan('identifiers.reveal');
+  const mayReveal = useCanRevealIdentifiers();
   /** Why the last save was refused, shown under the fields it is about. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const [form, setForm] = useState({

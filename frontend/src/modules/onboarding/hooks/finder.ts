@@ -1,16 +1,16 @@
 /**
  * Finding a company from the command bar (frontend-plan §7.5).
  *
- * By name for every reader. By a **full** PAN, GSTIN or IEC only for a role that
- * may see identifiers (`identifiers.reveal`): the API refuses an identifier search
- * from a masked role (decision 12), so for those roles an identifier-shaped query
+ * By name for every reader. By a **full** PAN, GSTIN or IEC only for a viewer holding
+ * `exporters:view_full_tax_id`: the API refuses an identifier search from anyone
+ * without it, so for them an identifier-shaped query
  * sends nothing at all and the bar shows a hint towards the match flow instead
  * (Add company / Choose buyer). Reads only — the list is `GET /exporters`.
  */
 
 import { useQuery } from '@tanstack/react-query';
 
-import { useCan } from '@/platform/access';
+import { useCanRevealIdentifiers } from '@/platform/access';
 
 import { searchExporterProfiles } from '../api';
 import type { ExporterSearchParams } from '../types';
@@ -33,7 +33,7 @@ export function identifierKind(text: string): IdentifierKind | null {
 const LIMIT = 8;
 
 export function useCompanyFinder(query: string) {
-  const canReveal = useCan('identifiers.reveal');
+  const canReveal = useCanRevealIdentifiers();
   const text = query.trim();
   const kind = identifierKind(text);
   // A masked role never sends an identifier: the bar explains instead.

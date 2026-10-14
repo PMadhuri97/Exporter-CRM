@@ -14,7 +14,7 @@
  *   pencil; a smaller size buys that room back without a second line of controls or a
  *   narrower label column. It applies to every identifier, not just the long one, so a
  *   column of them stays one size.
- * - The eye exists **only** for a role that may reveal (`identifiers.reveal`). A
+ * - The eye exists **only** for a viewer holding `exporters:view_full_tax_id`. A
  *   masked role gets no eye at all — "a disabled eye icon would still leak 'this
  *   data exists, you're just not allowed'" (architecture §9). The server already
  *   sends masked roles masked values; the bullets here repeat that.
@@ -41,9 +41,9 @@ import { toast } from 'sonner';
 
 import { Icon } from '@/design/icons';
 import { cn } from '@/lib/cn';
-import { useCurrentUser } from '@/platform/auth';
+import { useCanRevealIdentifiers } from '@/platform/access';
 
-import { canReveal, maskTail } from './maskIdentifier';
+import { maskTail } from './maskIdentifier';
 
 const CONTROL =
   'rounded p-0.5 text-ink-3 transition-colors duration-quick hover:bg-sunken hover:text-ink';
@@ -58,14 +58,13 @@ export function Identifier({
   kind?: string;
   className?: string;
 }) {
-  const { role } = useCurrentUser();
+  const mayReveal = useCanRevealIdentifiers();
   const [revealed, setRevealed] = useState(false);
 
   if (value === null || value === undefined) {
     return <span className={cn('text-ink-3', className)}>—</span>;
   }
 
-  const mayReveal = canReveal(role);
   const shown = mayReveal && revealed;
 
   // Masked unless this very screen is showing it: `maskTail` rather than

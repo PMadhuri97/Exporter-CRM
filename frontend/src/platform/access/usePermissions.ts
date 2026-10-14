@@ -51,9 +51,11 @@ function usePermissions() {
 
 /** The permissions a screen reads from the server rather than from the role: the
  * senior-work ones (held through the Sales lead and Compliance lead roles, or any role an
- * administrator grants them to) and saving a copy of a document. */
+ * administrator grants them to), saving a copy of a document, and reading a tax
+ * identifier in full. */
 export type AssignmentPermission =
   | 'exporters:assign_rm'
+  | 'exporters:view_full_tax_id'
   | 'compliance:assign'
   | 'compliance:approve_high_risk'
   | 'documents:download'
@@ -69,4 +71,22 @@ export type AssignmentPermission =
 export function useHasPermission(permission: AssignmentPermission): boolean {
   const { granted } = usePermissions();
   return granted.has(permission);
+}
+
+/**
+ * Whether this viewer may read a tax identifier in full — the eye beside a PAN, GSTIN,
+ * IEC, CIN or registration number, and the identifier searches the API only answers
+ * for a holder.
+ *
+ * Asked as a permission, because that is what the server decides it by
+ * (`exporters:view_full_tax_id`). It was a role list on this side until the two could
+ * disagree, and they did: granting the permission to the relationship manager unmasked
+ * the values on the way out while the screen went on covering them with no eye to open
+ * — the full value crossing the network and no way to read it.
+ *
+ * Granting it stays a deliberate act in Settings. Compliance holds it by default; the
+ * administrator does not.
+ */
+export function useCanRevealIdentifiers(): boolean {
+  return useHasPermission('exporters:view_full_tax_id');
 }

@@ -6,7 +6,6 @@
 import { describe, expect, it } from 'vitest';
 
 import type { UserRole } from '@/lib/api/types';
-import { canReveal } from '@/platform/mask';
 
 import { can, capabilitiesFor, type Capability } from './capabilities';
 
@@ -21,7 +20,6 @@ const EXPECTED: Record<Capability, UserRole[]> = {
   'compliance.decide': ['COMPLIANCE'],
   'compliance.queue': ['COMPLIANCE'],
   'gst.flag': ['COMPLIANCE'],
-  'identifiers.reveal': ['COMPLIANCE'],
   // The one entry a wider role does not inherit: it marks whose work the leads are, not
   // who may record a decision on one (all three staff roles may).
   'queue.qualification': ['OPERATIONS'],
@@ -60,11 +58,5 @@ describe('the capability manifest', () => {
     expect(can('OPERATIONS', ['crm.read', 'crm.write'])).toBe(true);
     expect(can('OPERATIONS', ['crm.read', 'gst.flag'])).toBe(false);
     expect(can('API_USER', [])).toBe(true);
-  });
-
-  it('is the one list the masking reveal reads', () => {
-    for (const role of ROLES) {
-      expect(canReveal(role)).toBe(can(role, 'identifiers.reveal'));
-    }
   });
 });
