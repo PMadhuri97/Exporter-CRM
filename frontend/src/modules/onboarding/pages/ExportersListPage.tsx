@@ -193,14 +193,19 @@ export function ExportersListPage() {
   /** The panel's own filters, which is what `filteringOtherThanOwner` may count. */
   const panelFilterCount = Object.keys(filters).length;
   /**
-   * What the Filters badge shows: the panel's filters and the lenses it now holds.
-   * The owner is one of them, so this must not be used where the owner is deliberately
-   * excluded — see `filteringOtherThanOwner`, which is what decides whether *My
-   * companies* says "you hold none yet" or "nothing matches this filter".
+   * The lenses the panel offers and *Clear* clears — `me` is not one of them.
+   *
+   * `?owner=me` is the My companies page, not a filter on it: counting it would badge
+   * that page as narrowed on every visit, and clearing it would move the viewer to a
+   * different page than the one they were reading.
    */
-  const filterCount =
-    panelFilterCount +
-    [owner, contactFilter, collectionsFilter].filter((lens) => lens !== 'ANY').length;
+  const clearableLenses: ('owner' | 'contacts' | 'collections')[] = [
+    ...(owner === 'ANY' || owner === 'me' ? [] : (['owner'] as const)),
+    ...(contactFilter === 'ANY' ? [] : (['contacts'] as const)),
+    ...(collectionsFilter === 'ANY' ? [] : (['collections'] as const)),
+  ];
+  /** What the Filters badge shows, and what *Clear* has to be able to undo. */
+  const filterCount = panelFilterCount + clearableLenses.length;
 
   /**
    * One of the URL-backed lenses, set from the panel. They keep their own state rather
@@ -417,7 +422,10 @@ export function ExportersListPage() {
               <Button
                 variant="subtle"
                 onClick={() => {
+                  // Everything the badge counted. Clearing only the panel's own
+                  // filters left the button showing with nothing left to do.
                   setFilters({});
+                  for (const key of clearableLenses) changeLens(key, 'ANY');
                   setPages(1);
                 }}
               >

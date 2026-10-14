@@ -473,7 +473,7 @@ async def test_the_total_normalises_a_tax_id_the_way_the_search_does():
 
 
 async def test_a_developer_is_refused_the_background_check_filter(client: AsyncClient):
-    """Decision D8 keeps background checks from DEVELOPER. The company list carries the
+    """Background checks are not shown to DEVELOPER. The company list carries the
     state and can be filtered by it, so it has to answer the same way the
     background-check routes do — a 403, not a list naming the flagged companies."""
     _user_id, developer = await user_with_role(client, UserRole.DEVELOPER)
@@ -518,3 +518,39 @@ async def test_a_developer_does_not_see_the_background_check_state_on_the_list(
     # "all None" can only mean it was withheld, and "all set" that it was carried.
     assert all(row["background_check"] is not None for row in operations_rows)
     assert all(row["background_check"] is None for row in developer_rows)
+
+
+async def test_the_total_counts_the_same_filters_the_page_does(client: AsyncClient):
+    """Every filter the route accepts must reach the count as well as the rows.
+
+    Three did not: `missing_primary_contact` and the two collections-owner filters were
+    passed to the search and left out of the count, so the list came back empty while
+    the total said 48 — and those filters sit in the Filters panel beside that number.
+    The route now builds one set of keywords for both calls; this fails if a filter is
+    ever passed to one of them alone.
+    """
+    _user_id, token = await user_with_role(client, UserRole.OPERATIONS)
+
+    # Each filter on its own, so a failure names the one that drifted.
+    for name, params in (
+        ("missing_primary_contact", {"missing_primary_contact": "true"}),
+        ("collections_owner=me", {"collections_owner": "me"}),
+        ("collections_owner=none", {"collections_owner": "none"}),
+    ):
+        response = await client.get(
+            f"{BASE}/exporters",
+            params={**params, "limit": 200},
+            headers=auth_header(token),
+        )
+        assert response.status_code == 200, name
+        body = response.json()
+        rows = len(body["profiles"])
+        # The page is capped at `limit`; below it the rows are the whole answer, so the
+        # total has to agree with them exactly.
+        if rows < 200:
+            assert body["total"] == rows, (
+                f"{name}: the list shows {rows} companies and the total says "
+                f"{body['total']} — the filter reached one call and not the other"
+            )
+        else:
+            assert body["total"] >= rows, name

@@ -80,8 +80,8 @@ export function ExportColumnsPanel({
   const [writing, setWriting] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
-  // The background-check state is blanked for a role that may not read it (decision
-  // D8), so offering the column would write an empty one and look like a bug.
+  // The background-check state is blanked for a role that may not read it — they are
+  // not shown to DEVELOPER — so offering the column would write an empty one.
   const canReadChecks = useCan('compliance.read');
   const offered = EXPORT_COLUMNS.filter(
     (column) => canReadChecks || column.id !== 'background_check',

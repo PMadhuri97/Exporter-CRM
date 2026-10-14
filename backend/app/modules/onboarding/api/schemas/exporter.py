@@ -79,11 +79,24 @@ class _IdentifierMasking:
     `masked_for(current_user)` before returning it."""
 
     def masked_for(self, viewer: User) -> Self:
+        update: dict[str, object] = {}
+        fields = type(self).model_fields
+
+        # First, and never behind the identifier check below. The two are separate
+        # permissions — `exporters:view_full_tax_id` and `compliance:view` — so a role
+        # holding one and not the other is an ordinary case, not a contradiction. While
+        # this sat after the early return, such a role read the background-check state
+        # the compliance routes refuse it.
+        if "background_check" in fields and not can_read_background_check(viewer):
+            # Not masked — blanked. A partly-shown compliance state is no safer than
+            # the whole of it, and `None` already means "not carried" to the reader.
+            update["background_check"] = None
+
         if can_reveal_identifiers(viewer):
-            # COMPLIANCE and ADMIN: nothing on these shapes is withheld from them,
-            # the background-check state included.
-            return self
-        update: dict[str, object] = {
+            # A holder of `exporters:view_full_tax_id` — COMPLIANCE by default, not the
+            # administrator. Nothing below is withheld from them.
+            return self.model_copy(update=update) if update else self
+        update |= {
             "gstins": [mask_identifier(g) for g in self.gstins],
             "pan": mask_identifier(self.pan),
             "iec": mask_identifier(self.iec),
@@ -92,11 +105,6 @@ class _IdentifierMasking:
             # in its own registrar's public index, so it carries the same risk.
             "registration_number": mask_identifier(self.registration_number),
         }
-        fields = type(self).model_fields
-        if "background_check" in fields and not can_read_background_check(viewer):
-            # Not masked — blanked. A partly-shown compliance state is no safer than
-            # the whole of it, and `None` already means "not carried" to the reader.
-            update["background_check"] = None
         if "contacts" in fields:
             update["contacts"] = [contact.masked() for contact in self.contacts]
         if "gstin_warnings" in fields:

@@ -93,7 +93,8 @@ def can_read_background_check(viewer: User) -> bool:
     The company list row carries it so a screen can show the check beside the company.
     That makes the list a second way to read compliance work, and it has to answer the
     same way the first one does: the background-check routes require `compliance:view`
-    and DEVELOPER does not hold it (decision D8), so the state is blanked for anyone
+    and DEVELOPER does not hold it — background checks are not shown to that role
+    (architecture.md, “Roles and masking”) — so the state is blanked for anyone
     without it and the matching filter is refused outright
     (`BackgroundCheckFilterNotPermittedError`) — a filtered list names the flagged
     companies whether or not the column is rendered.

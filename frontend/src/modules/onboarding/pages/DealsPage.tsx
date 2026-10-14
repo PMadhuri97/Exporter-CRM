@@ -73,11 +73,16 @@ function useDealFilters() {
     return value && (!valid || valid.test(value)) ? value : null;
   };
   const stage = read('stage');
+  // `?company=` was the old either-side filter, replaced by the seller and buyer pair.
+  // A bookmark holding one is read as the seller rather than ignored: silently showing
+  // every deal is the one answer a saved filter must not give. It names a company on
+  // one side or the other, and the seller is the side this list is built around.
+  const legacyCompany = read('company');
   const filters = {
     corridor: read('corridor', CORRIDOR),
     stage: stage && (DEAL_STAGES as readonly string[]).includes(stage) ? (stage as DealStage) : null,
     q: read('q'),
-    seller: read('seller'),
+    seller: read('seller') ?? legacyCompany,
     buyer: read('buyer'),
     from: read('from', DAY),
     to: read('to', DAY),

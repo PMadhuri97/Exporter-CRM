@@ -599,8 +599,9 @@ class BackgroundCheckFilterNotPermittedError(AnerBaseException):
     """The company list filtered by background-check state, by a role that may
     not read background checks.
 
-    Decision D8 keeps the background-check routes to OPERATIONS, COMPLIANCE and
-    ADMIN; DEVELOPER is refused on all of them. ``GET /exporters?background_check=
+    The background-check routes are kept to the roles that hold `compliance:view`;
+    background checks are not shown to DEVELOPER, which is refused on all of them
+    (architecture.md, “Roles and masking”). ``GET /exporters?background_check=
     FLAGGED`` would answer the same question from the side door — it names exactly
     which companies are flagged — so the filter follows the same rule as the routes
     it draws from. Blanking the column in the rows is not enough on its own, for

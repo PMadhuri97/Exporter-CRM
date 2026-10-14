@@ -121,7 +121,8 @@ export function CompanyFilterPanel({
 }) {
   const [industry, setIndustry] = useState(applied.industry ?? '');
   // The server refuses `?background_check=` from a role that may not read a
-  // background check (decision D8), so offering the filter would only produce a 403.
+  // background check — they are not shown to DEVELOPER — so offering the filter here
+  // would only produce a 403.
   const canReadChecks = useCan('compliance.read');
 
   // Sent once typing stops, not per keystroke. Cleared on the next change, so only the
@@ -165,8 +166,11 @@ export function CompanyFilterPanel({
     </label>
   );
 
+  // `owner: 'me'` is My companies, the page itself — not a filter on it. Counting it
+  // would badge that page as narrowed on arrival, and clearing it would move the
+  // viewer to a different page rather than widening the one they are reading.
   const setLenses = (Object.keys(LENS_LABEL) as (keyof CompanyLenses)[]).filter(
-    (key) => lenses[key] !== 'ANY',
+    (key) => lenses[key] !== 'ANY' && !(key === 'owner' && lenses.owner === 'me'),
   );
   const count = Object.keys(applied).length + setLenses.length;
 
@@ -232,7 +236,7 @@ export function CompanyFilterPanel({
             <option value="">Any</option>
             {/* The condition joins the deal's selling company, so this reads by the
                 company's own deals. Whether it should count the buying side too is
-                open (reviewer item 9) and is the lead's to settle. */}
+                still open. */}
             <option value="true">Has an open deal</option>
             <option value="false">No open deal</option>
           </Select>

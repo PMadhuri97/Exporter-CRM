@@ -236,6 +236,20 @@ describe('DealsPage — filters', () => {
     );
   });
 
+  it('reads an old ?company= bookmark as the seller rather than ignoring it', async () => {
+    // The either-side filter is gone. A saved link holding one must not quietly widen
+    // to every deal — that is the one answer a filter should never give.
+    renderAt('/deals?company=acme');
+    await screen.findAllByTestId('deal-row');
+    expect(lastRequest()).toMatchObject({ sellerCompanyId: 'acme' });
+  });
+
+  it('prefers an explicit seller over the old parameter', async () => {
+    renderAt('/deals?company=acme&seller=north');
+    await screen.findAllByTestId('deal-row');
+    expect(lastRequest()).toMatchObject({ sellerCompanyId: 'north' });
+  });
+
   it('ignores a malformed filter in the URL instead of failing', async () => {
     renderAt('/deals?corridor=india&stage=SIDEWAYS&from=yesterday');
     await screen.findAllByTestId('deal-row');

@@ -13,8 +13,9 @@
  * reads past columns it does not want.
  *
  * **Identifiers are written exactly as the server sent them.** PAN, GSTIN, IEC, CIN and
- * the registration number reach the browser masked for every role but COMPLIANCE and
- * ADMIN. So the same export run by two people holds different values — bullets for one,
+ * the registration number reach the browser masked unless the viewer may see full tax
+ * identifiers — Compliance by default, and not the administrator. So the same export
+ * run by two people holds different values — bullets for one,
  * real tax numbers for the other. That is the masking rule working, not a leak: nothing
  * here can reveal what the server withheld. It does mean an export is as sensitive as
  * whoever produced it.

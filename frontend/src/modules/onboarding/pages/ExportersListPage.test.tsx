@@ -408,6 +408,40 @@ describe('ExportersListPage — whose companies', () => {
     );
   });
 
+  it('Clear clears the lenses it counted, not just the panel’s own filters', async () => {
+    // The badge counted Owner, Contacts and Collections, so Clear has to undo them.
+    // Clearing only the panel's filters left the button on screen doing nothing.
+    renderPage('/companies?owner=none');
+    await screen.findByRole('heading', { name: 'Companies' });
+    expect(await screen.findByRole('button', { name: /Filters 1/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.not.objectContaining({ relationship_manager: 'none' }),
+      ),
+    );
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+  });
+
+  it('does not count My companies as a filter, nor offer to clear it', async () => {
+    // `?owner=me` is the page, not a filter on it. Counted, it badged the page as
+    // narrowed on arrival; cleared, it moved the viewer somewhere else entirely.
+    renderPage('/companies?owner=me');
+    await screen.findByRole('heading', { name: 'My companies' });
+
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Filters' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear all' }));
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ relationship_manager: 'me' }),
+      ),
+    );
+  });
+
   it('keeps the three lenses off the bar, where only the everyday ones belong', async () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Companies' });
@@ -510,7 +544,7 @@ describe('ExportersListPage — exporting', () => {
 });
 
 describe('ExportersListPage — what a Developer may not read', () => {
-  // Decision D8: the background-check routes refuse DEVELOPER, so the company list
+  // Background checks are not shown to DEVELOPER, so the company list
   // must not become a second way to read the same thing. The server blanks the column
   // and refuses the filter; these keep the screen from offering either.
   beforeEach(() => {

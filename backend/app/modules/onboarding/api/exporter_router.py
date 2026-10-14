@@ -28,7 +28,7 @@ path, operation or schema changed.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Depends, Header, Query, Response
@@ -131,7 +131,8 @@ def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
 
 def _reject_background_check_filter(viewer: User, state: object) -> None:
     """Refuse `?background_check=` from a caller who may not read a background
-    check (decision D8 — DEVELOPER is refused on every background-check route).
+    check: background checks are not shown to DEVELOPER, which is refused on every
+    background-check route (architecture.md, “Roles and masking”).
 
     Asked through `can_read_background_check`, the same permission check that decides
     whether the column is carried, so the filter and the column cannot disagree.
@@ -430,30 +431,35 @@ async def search_exporter_profiles(
                 "relationship_manager must be `me`, `none`, `inactive` or a user id"
             ) from exc
 
-    items = await ExporterProfileService(db).search_profiles(
-        gstin=gstin,
-        pan=pan,
-        iec=iec,
-        name_contains=name,
-        source=source,
-        journey=journey,
-        qualification=qualification,
-        marker=marker,
-        pipeline_status=pipeline_status,
-        country=country,
-        industry=industry,
-        background_check=background_check,
-        trade_role=trade_role,
-        has_open_deals=has_open_deals,
-        relationship_manager_user_id=rm_user_id,
-        relationship_manager_unassigned=rm_filter == "none",
-        relationship_manager_inactive=rm_filter == "inactive",
-        missing_primary_contact=missing_primary_contact,
-        collections_owner_user_id=_collector_filter(collections_owner, current_user),
-        collections_owner_unassigned=(collections_owner or "").strip().lower() == "none",
-        limit=limit,
-        offset=offset,
-    )
+    # One set of keywords for both calls. They must select the same companies — the
+    # count sits beside the rows and in the Filters panel, so a filter applied to one
+    # and not the other puts a wrong number on screen. Passing them twice is how three
+    # filters were once counted out of the total but kept in the list.
+    selection: dict[str, Any] = {
+        "gstin": gstin,
+        "pan": pan,
+        "iec": iec,
+        "name_contains": name,
+        "source": source,
+        "journey": journey,
+        "qualification": qualification,
+        "marker": marker,
+        "pipeline_status": pipeline_status,
+        "country": country,
+        "industry": industry,
+        "background_check": background_check,
+        "trade_role": trade_role,
+        "has_open_deals": has_open_deals,
+        "relationship_manager_user_id": rm_user_id,
+        "relationship_manager_unassigned": rm_filter == "none",
+        "relationship_manager_inactive": rm_filter == "inactive",
+        "missing_primary_contact": missing_primary_contact,
+        "collections_owner_user_id": _collector_filter(collections_owner, current_user),
+        "collections_owner_unassigned": (collections_owner or "").strip().lower() == "none",
+    }
+
+    service = ExporterProfileService(db)
+    items = await service.search_profiles(**selection, limit=limit, offset=offset)
     profiles = [
         ExporterProfileListItemResponse.model_validate(item).masked_for(current_user)
         for item in items
@@ -461,25 +467,7 @@ async def search_exporter_profiles(
     await _name_relationship_managers(db, current_user, profiles)
     # The number behind the page, so a screen can say "185" rather than counting the
     # rows it happens to hold.
-    total = await ExporterProfileService(db).count_profiles(
-        gstin=gstin,
-        pan=pan,
-        iec=iec,
-        name_contains=name,
-        source=source,
-        journey=journey,
-        qualification=qualification,
-        marker=marker,
-        pipeline_status=pipeline_status,
-        country=country,
-        industry=industry,
-        background_check=background_check,
-        trade_role=trade_role,
-        has_open_deals=has_open_deals,
-        relationship_manager_user_id=rm_user_id,
-        relationship_manager_unassigned=rm_filter == "none",
-        relationship_manager_inactive=rm_filter == "inactive",
-    )
+    total = await service.count_profiles(**selection)
     return ExporterProfileSearchResponse(
         profiles=profiles, limit=limit, offset=offset, total=total
     )

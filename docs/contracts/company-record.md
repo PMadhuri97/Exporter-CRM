@@ -319,16 +319,25 @@ filtered list is the server's answer and any count beside it stays true.
 | `trade_role` | Which side the company has traded on, by participation. `BOTH` means both sides, not either. Asking for `BUYER` lifts the buyer-only exclusion |
 | `has_open_deals` | Whether the company has a deal that is neither handed over nor withdrawn, **as the selling company** |
 | `relationship_manager` | `me`, `none`, `inactive` or a user id. Ownership narrows; it never changes what a reader may see |
+| `missing_primary_contact` | Companies with no active primary contact |
+| `collections_owner` | `me`, `none` or a user id |
 
 A blank value is not a filter: `?country=` and `?industry=` are the same as not
 asking, which is what a cleared control sends.
 
 **`total`** is the number of companies the filters match, behind the page — a
-`count(*)` over the same conditions the page is drawn from. One function builds the
-filters for both (`_repository_filters`), including the identifier clean-up and the
-two default exclusions, so the count and the rows cannot be drawn differently. They
-were once: the count skipped the clean-up, and a lower-case PAN found one company and
-counted none.
+`count(*)` over the same conditions the page is drawn from. **Every filter in this
+table applies to both**, and two things keep that true: the route builds one set of
+keywords and passes it to the search and the count alike, and `_repository_filters`
+turns that set into conditions once, including the identifier clean-up and the two
+default exclusions.
+
+Both halves have failed before, which is why both are stated. First the clean-up ran
+only on the search, so a lower-case PAN found one company and counted none. Then three
+filters — `missing_primary_contact` and the two collections-owner filters — were passed
+to the search and left out of the count, so an empty list sat under a total of 48.
+Adding a filter means adding it to the one keyword set; passing it to either call on
+its own is the mistake both failures were.
 
 ---
 
