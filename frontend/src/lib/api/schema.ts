@@ -15304,6 +15304,8 @@ export interface operations {
                 include_check_backs?: boolean;
                 /** @description Only the check-backs that are due — on or before today (UTC). For an overdue view, so a company parked until next quarter is not listed beside work that is late. `check_backs_total` counts the same set. */
                 check_backs_due_only?: boolean;
+                /** @description Widen `check_backs_due_only` to take in the ones falling due within this many days as well, so a check-back can be seen coming rather than only on the morning it is due. Ignored unless `check_backs_due_only` is true. It changes which companies are listed, never whether one reads as overdue. */
+                check_backs_due_within_days?: number;
                 limit?: number;
                 offset?: number;
             };
