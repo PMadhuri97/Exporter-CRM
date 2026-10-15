@@ -372,9 +372,8 @@ def _result_from_outcome(
     choosing; nothing here prevents that. A judgment call.
 
     `evidence` and `subject_snapshot` are facts about the moment of
-    recording and are frozen once written. The legacy `evidence_reference`,
-    `reviewed_by` and `review_status` are never written. `subject_company_id`
-    is the company the result is about, frozen once set.
+    recording and are frozen once written. `subject_company_id` is the company
+    the result is about, frozen once set.
     """
     return VerificationResult(
         verification_type=verification_type,

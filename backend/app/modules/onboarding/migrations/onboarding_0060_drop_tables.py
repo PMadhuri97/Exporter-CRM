@@ -17,8 +17,8 @@ these two go now and the retired **columns** do not: the release before still ma
 ``reviewed_by`` / ``review_status`` / ``evidence_reference`` — ``deferred``, which keeps
 them out of reads but not out of inserts — so dropping them under it would fail every
 company creation and every recorded check until it stopped. This release declares them
-on their tables without mapping them; a later migration drops them
-(``remaining-work.md`` §2).
+on their tables without mapping them; ``onboarding_0061_drop_columns`` drops
+them.
 
 Guard
 -----

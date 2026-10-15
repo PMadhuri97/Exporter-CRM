@@ -1,6 +1,6 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0060_drop_tables`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0061_drop_columns`
 
 The prototype's migrations, from four developers and one platform change, in one
 chain. This is the running order and the rules. Dev 1 keeps it current.
@@ -70,8 +70,9 @@ merged.
 | 0058 | Schema audit | `onboarding_0058_buyer_freeze`: `deal_buyer` is frozen — `trg_deal_buyer_frozen` with the new `onboarding.prevent_deal_buyer_change()` refuses an `INSERT` and any `UPDATE` of the row's own columns; the buyer migration's mapping columns and `updated_at` stay writable. No data. Downgrade drops the trigger and the function | `onboarding_0057_people` |
 | 0059 | Schema audit | `onboarding_0059_deal_reference`: `uq_deal_company_reference` — `UNIQUE (company_id, reference)` on `deal`. No data: **refuses** while any seller has two deals with one reference, and lists them. Downgrade drops it | `onboarding_0058_buyer_freeze` |
 | 0060 | Schema audit | `onboarding_0060_drop_tables`: drops `qualification_reason_code` (the codes are served from code) and `bank_activity_finding` (never written). **Refuses** while `bank_activity_finding` holds a row. The retired columns stay, unmapped, for 0061: the release before still inserts NULL into them. Downgrade recreates both tables, the reason codes re-seeded | `onboarding_0059_deal_reference` |
+| 0061 | Schema audit | `onboarding_0061_drop_columns`: drops the columns 0060's release stopped mapping — `exporter_profile.relationship_manager`, `exporter_gstin.address`, `verification_result.reviewed_by`, `review_status` and `evidence_reference` with `trg_verification_result_field_immutability`; `prevent_reviewed_verification_outcome_change()` now reads the review chain alone. **Refuses**, changing nothing, while a GST branch has text and no address, RM text still names exactly one active RM account, a legacy verdict has no review in the chain or `evidence_reference` is set; prints how many unmatched RM names it discards. Downgrade re-adds the columns **empty** and restores the trigger and the old function | `onboarding_0060_drop_tables` |
 
-**Next free onboarding number: 0061.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
+**Next free onboarding number: 0062.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
 32 characters at most (§2 below).
 
 `auth_0003` and `auth_0004` belong to the platform's user-management work, not to the
