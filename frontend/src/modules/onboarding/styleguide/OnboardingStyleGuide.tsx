@@ -1,5 +1,5 @@
 /**
- * The domain half of the style guide (frontend-plan §12.4): the CRM's own parts in
+ * The domain half of the style guide: the CRM's own parts in
  * their states, as each role sees them — every badge for every gauge (§18.2), the
  * path in its three uses (§6.5), a record header (§6.3), record list items (§6.7),
  * related-list cards (§6.6), the background check's status card (§8.5.1) and the

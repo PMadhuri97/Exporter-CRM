@@ -24,7 +24,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,6 +45,9 @@ class ExporterActivity(AppendOnlyModel):
             "due_at",
             postgresql_where=text("due_at IS NOT NULL"),
         ),
+        # Exists to be referenced: a follow-up's completion names the activity *and*
+        # its company, so the two cannot disagree (0054).
+        UniqueConstraint("id", "customer_id", name="uq_exporter_activity_id_customer"),
         {"schema": SCHEMA},
     )
 

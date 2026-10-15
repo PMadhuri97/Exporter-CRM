@@ -12,6 +12,7 @@ everything else through the service or the API, as a person would.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from decimal import Decimal
 
 import psycopg2
@@ -34,6 +35,7 @@ from app.modules.onboarding.domain.entities.qualification_enums import (
     QualificationSource,
     QualificationState,
 )
+from app.modules.onboarding.domain.qualification_reason_codes import REASON_CODES
 from app.modules.onboarding.domain.qualification_views import (
     CriterionDefinition,
     EvidenceRef,
@@ -497,21 +499,10 @@ async def test_results_never_move_the_gauge():
 # ── Domestic-first qualification (onboarding_0031_domestic_first) ─────────────
 
 
-def _set_reason_code_active(code: str, active: bool) -> None:
-    """Flip a reason code directly, to stage a company that was decided before the
-    migration retired the code. `qualification_reason_code` has no append-only
-    trigger, which is what makes this a plain UPDATE."""
-    conn = _connect()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE onboarding.qualification_reason_code SET active = %s "
-                "WHERE code = %s",
-                (active, code),
-            )
-        conn.commit()
-    finally:
-        conn.close()
+def _set_reason_code_active(monkeypatch, code: str, active: bool) -> None:
+    """Flip a reason code in the catalogue, to stage a company that was decided before
+    the code was retired. Undone by `monkeypatch` when the test ends."""
+    monkeypatch.setitem(REASON_CODES, code, replace(REASON_CODES[code], active=active))
 
 
 async def test_a_domestic_company_qualifies_without_export_evidence():
@@ -570,7 +561,7 @@ async def test_a_retired_export_reason_code_is_refused_on_a_new_outcome():
         )
 
 
-async def test_a_past_outcome_keeps_rendering_its_retired_reason_code():
+async def test_a_past_outcome_keeps_rendering_its_retired_reason_code(monkeypatch):
     """The other half of retiring export reasons, and why deactivation beats deletion.
 
     An outcome stores its codes as JSONB **strings**, not foreign keys, so one
@@ -581,21 +572,33 @@ async def test_a_past_outcome_keeps_rendering_its_retired_reason_code():
     customer_id = await make_company()
     await _results(customer_id, [_fail("revenue")])
 
-    _set_reason_code_active("no_export_history", True)
-    try:
-        await _outcome(
-            customer_id,
-            Q.NOT_QUALIFIED,
-            reason_codes=["no_export_history"],
-            note="decided before the code was retired",
-        )
-    finally:
-        # Restored even if the outcome fails, so one bad run cannot leave the code
-        # active and quietly weaken every later test in this file.
-        _set_reason_code_active("no_export_history", False)
+    _set_reason_code_active(monkeypatch, "no_export_history", True)
+    await _outcome(
+        customer_id,
+        Q.NOT_QUALIFIED,
+        reason_codes=["no_export_history"],
+        note="decided before the code was retired",
+    )
+    _set_reason_code_active(monkeypatch, "no_export_history", False)
 
     view = await _view(customer_id)
     assert "no_export_history" in view.outcomes[0].reason_codes
+
+
+async def test_every_cited_reason_code_is_in_the_catalogue():
+    """An outcome cites its codes as strings, with no foreign key, so the catalogue in
+    code must keep every code any outcome has ever given — retired, never removed."""
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT jsonb_array_elements_text(reason_codes) "
+                "FROM onboarding.qualification_outcome"
+            )
+            cited = {row[0] for row in cur.fetchall()}
+    finally:
+        conn.close()
+    assert cited <= set(REASON_CODES)
 
 
 async def test_the_migration_builds_on_whatever_version_an_admin_left():

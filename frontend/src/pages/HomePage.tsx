@@ -1,5 +1,5 @@
 /**
- * Home (frontend-plan §8.2) — one per role, answering "what is mine to do now?" as a
+ * Home — one per role, answering "what is mine to do now?" as a
  * grid of work cards, two columns from 1280px.
  *
  * - **RM**: my follow-ups (with *Mark done*), check-backs due, information a reviewer

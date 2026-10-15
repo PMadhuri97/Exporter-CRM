@@ -1,5 +1,5 @@
 /**
- * Identifier (frontend-plan §6.6): no reveal or copy control at all for a masked role;
+ * Identifier: no reveal or copy control at all for a masked role;
  * compliance and admin get an eye that starts closed, and read the value once they ask.
  */
 

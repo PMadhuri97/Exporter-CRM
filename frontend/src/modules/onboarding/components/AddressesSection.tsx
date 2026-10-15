@@ -7,9 +7,8 @@
  *   moves it. The server demotes the old default in the same write.
  * * **Deactivate, never delete.** A GST branch or an old document may name the
  *   address, so a deactivated one stays, greyed, behind *Show deactivated*.
- * * **From a GST registration.** A branch's portal address is free text; *Create
- *   address* fills the form from it (line, state, India) and links the new address to
- *   that branch.
+ * * **For a GST branch.** A branch with no address yet is listed; *Create address*
+ *   fills the form with its state and India and links the new address to that branch.
  */
 
 import { useState } from 'react';
@@ -221,9 +220,9 @@ export function AddressesSection({ customerId, canEdit }: AddressesSectionProps)
   const addresses = query.data?.addresses ?? [];
   const inactive = addresses.filter((address) => !address.is_active);
   const shown = showInactive ? addresses : addresses.filter((address) => address.is_active);
-  // A branch with a portal address that no company address stands for yet.
+  // An active branch that no company address stands for yet.
   const unlinkedBranches = (branches.data?.registrations ?? []).filter(
-    (branch) => branch.active && branch.address && !branch.address_id,
+    (branch) => branch.active && !branch.address_id,
   );
 
   return (
@@ -267,7 +266,7 @@ export function AddressesSection({ customerId, canEdit }: AddressesSectionProps)
           {unlinkedBranches.map((branch) => (
             <li key={branch.id} className="flex flex-wrap items-center gap-2 text-secondary text-ink-2">
               <span>
-                GST branch {branch.state_name ?? branch.state_code}: {branch.address}
+                GST branch {branch.state_name ?? branch.state_code} has no address yet
               </span>
               <Button
                 size="sm"
@@ -279,7 +278,6 @@ export function AddressesSection({ customerId, canEdit }: AddressesSectionProps)
                       address_type: addresses.some((a) => a.is_active && a.address_type === 'REGISTERED')
                         ? 'BILLING'
                         : 'REGISTERED',
-                      line1: (branch.address ?? '').slice(0, 255),
                       state: branch.state_name ?? '',
                     },
                     gstRegistrationId: branch.id,

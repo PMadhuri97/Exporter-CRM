@@ -62,13 +62,13 @@ announcement).
 from __future__ import annotations
 
 import uuid
-from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
 import structlog
 from sqlalchemy import exists, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.background_check_reader import current_background_check
@@ -107,7 +107,6 @@ from app.modules.onboarding.domain.deal_views import (
     PaymentTermView,
 )
 from app.modules.onboarding.domain.entities.deal import Deal
-from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.modules.onboarding.domain.entities.engagement_enums import ContactStatus
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
@@ -137,6 +136,7 @@ from app.modules.onboarding.exceptions import (
     DealCompanyNotReadyError,
     DealHandoverBlockedError,
     DealNotFoundError,
+    DealReferenceTakenError,
     DealTerminalError,
     DealTransitionNotAllowedError,
     DealWithdrawalReasonRequiredError,
@@ -146,9 +146,6 @@ from app.modules.onboarding.exceptions import (
 )
 from app.modules.onboarding.infrastructure.repositories.crm_document_repository import (
     CrmDocumentRepository,
-)
-from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository import (
-    DealBuyerRepository,
 )
 from app.modules.onboarding.infrastructure.repositories.deal_repository import DealRepository
 from app.shared import clock
@@ -283,7 +280,6 @@ class DealService:
     def __init__(self, db: AsyncSession, *, providers: HandoverProviders | None = None) -> None:
         self._db = db
         self._deals = DealRepository(db)
-        self._buyers = DealBuyerRepository(db)
         self._history = HistoryService(db)
         self._conversation = ConversationService(db)
         # Best effort by construction: `deal_handed_over` logs and swallows its
@@ -472,6 +468,9 @@ class DealService:
         written, because seam S1 would otherwise give a lead a conversation value it
         may not hold. Reading without a lock is enough: the journey only moves
         forward, so a company that passes this check cannot fall back behind it.
+
+        The reference must be new **for this seller** (``uq_deal_company_reference``):
+        ``DealReferenceTakenError`` (409) otherwise, also when two requests race for it.
         """
         cleaned_reference = (reference or "").strip()
         if not cleaned_reference:
@@ -482,6 +481,12 @@ class DealService:
             raise DealCompanyNotFoundError(company_id)
         if journey not in _OPENABLE_JOURNEYS:
             raise DealCompanyNotReadyError(company_id, journey)
+        if await self._db.scalar(
+            select(
+                exists().where(Deal.company_id == company_id, Deal.reference == cleaned_reference)
+            )
+        ):
+            raise DealReferenceTakenError(company_id, cleaned_reference)
 
         deal = Deal(
             company_id=company_id,
@@ -494,8 +499,15 @@ class DealService:
             await self._apply_terms(deal, terms, default)
         self._db.add(deal)
         # Flushed so the deal has its id before the history row and the gauge call, both
-        # of which carry `deal_id`.
-        await self._db.flush()
+        # of which carry `deal_id`. A request that took the reference since the check
+        # above meets the unique constraint here.
+        try:
+            await self._db.flush()
+        except IntegrityError as exc:
+            await self._db.rollback()
+            if "uq_deal_company_reference" in str(exc.orig):
+                raise DealReferenceTakenError(company_id, cleaned_reference) from None
+            raise
 
         await self._history.record(
             company_id,
@@ -638,105 +650,6 @@ class DealService:
         )
         return await self._to_view(deal)
 
-    async def set_buyer(
-        self,
-        deal_id: uuid.UUID,
-        *,
-        name: str,
-        country: str,
-        registration_number: str | None = None,
-        tax_id: str | None = None,
-        contact_email: str | None = None,
-        contact_phone: str | None = None,
-        keep: Collection[str] = (),
-        actor_id: str | None,
-    ) -> DealView:
-        """Record or replace the deal's buyer.
-
-        ``keep`` names optional fields to leave exactly as stored, whatever was
-        passed for them. The API uses it for the fields a masked role never sees
-        in full (``registration_number``, ``tax_id``, ``contact_email``,
-        ``contact_phone``): such a caller leaves them out of its request, and they
-        must survive the replace rather than be cleared by it. On a new buyer
-        there is nothing stored, so a kept field starts empty.
-
-        One buyer per deal (contract §3), so setting it twice **updates the same
-        row** rather than adding a second — which is what
-        ``uq_deal_buyer_deal_id`` enforces and what keeps "the buyer" on the
-        handover payload unambiguous.
-
-        Writes a ``deal`` history row with ``event_type="deal_buyer_changed"`` and,
-        in ``details``, the changed field names (``changed``), the buyer's name
-        (``buyer_name``) and whether this recorded the deal's first buyer
-        (``created``): a buyer's details are part of a deal's story, and a separate
-        ``buyer`` dimension would need a change to ``history-row.md`` §2.
-        """
-        deal = await self._lock_deal(deal_id)
-        if deal.stage.is_terminal:
-            # A handed-over deal's buyer is what the lending team was given, and a
-            # withdrawn deal's is history. Editing either would rewrite a record.
-            raise DealTerminalError(deal_id, deal.stage.value)
-
-        cleaned_name = (name or "").strip()
-        if not cleaned_name:
-            raise ValidationError("a buyer needs a name")
-        cleaned_country = (country or "").strip().upper()
-        if len(cleaned_country) != 2 or not cleaned_country.isalpha():
-            raise ValidationError(
-                "a buyer's country must be a two-letter ISO-3166-1 alpha-2 code"
-            )
-
-        fields = {
-            "name": cleaned_name,
-            "country": cleaned_country,
-            "registration_number": _clean(registration_number),
-            "tax_id": _clean(tax_id),
-            "contact_email": _clean(contact_email),
-            "contact_phone": _clean(contact_phone),
-        }
-
-        unknown = set(keep) - _BUYER_OPTIONAL_FIELDS
-        if unknown:
-            raise ValueError(f"not an optional buyer field: {sorted(unknown)}")
-
-        buyer = await self._buyers.get_for_deal(deal_id)
-        created = buyer is None
-        for key in keep:
-            fields[key] = getattr(buyer, key) if buyer is not None else None
-        if buyer is None:
-            buyer = DealBuyer(deal_id=deal_id, **fields)
-            self._db.add(buyer)
-            changed = sorted(key for key, value in fields.items() if value is not None)
-        else:
-            changed = sorted(
-                key for key, value in fields.items() if getattr(buyer, key) != value
-            )
-            for key, value in fields.items():
-                setattr(buyer, key, value)
-
-        await self._db.flush()
-        await self._history.record(
-            deal.company_id,
-            dimension="deal",
-            from_value=deal.stage.value,
-            to_value=deal.stage.value,
-            actor_id=actor_id,
-            source="deal_service.set_buyer",
-            deal_id=deal.id,
-            event_type="deal_buyer_changed",
-            details={"buyer_name": cleaned_name, "changed": changed, "created": created},
-        )
-        await self._db.commit()
-        await self._db.refresh(deal)
-
-        logger.info(
-            "deal.buyer.set.ok",
-            deal_id=str(deal.id),
-            changed=changed,
-            actor_id=actor_id,
-        )
-        return await self._to_view(deal)
-
     async def create_buyer_company(
         self,
         deal_id: uuid.UUID,
@@ -851,8 +764,8 @@ class DealService:
     ) -> DealView:
         """Name the company this deal's buyer **is**.
 
-        The successor to `set_buyer`, which records a `deal_buyer` row — a set of
-        details with no record of its own. A buyer company is a full company record:
+        The successor to the old `set_buyer`, which recorded a `deal_buyer` row — a set
+        of details with no record of its own; that table is frozen now (0058). A buyer company is a full company record:
         it can be screened, its sanctions and AML live on its own timeline, and the
         same company can be the buyer on one deal and the seller on another. That is
         the point of making the buyer a company.
@@ -879,7 +792,7 @@ class DealService:
         """
         deal = await self._lock_deal(deal_id)
         if deal.stage.is_terminal:
-            # The same rule as `set_buyer`: a handed-over deal's buyer is what the
+            # A handed-over deal's buyer is what the
             # lending team was given, and a withdrawn deal's is history.
             raise DealTerminalError(deal_id, deal.stage.value)
 
@@ -1121,8 +1034,9 @@ class DealService:
         ``deal_terms_changed`` history row. A closed deal's terms do not change
         (``prevent_terminal_deal_change``)."""
         deal = await self._lock_deal(deal_id)
-        if deal.stage in (DealStage.HANDED_OVER, DealStage.WITHDRAWN):
-            raise ValidationError("A closed deal's value and terms do not change")
+        if deal.stage.is_terminal:
+            # The same answer as every other edit of a closed deal: 409 DEAL_TERMINAL.
+            raise DealTerminalError(deal_id, deal.stage.value)
         before = self._terms_details(deal)
         await self._apply_terms(deal, terms, await self._company_default_term(deal.company_id))
         after = self._terms_details(deal)
@@ -1424,14 +1338,3 @@ class DealService:
         )
         return None if journey is None else journey.value
 
-
-#: The buyer fields ``set_buyer(keep=...)`` may leave as stored.
-_BUYER_OPTIONAL_FIELDS = frozenset(
-    {"registration_number", "tax_id", "contact_email", "contact_phone"}
-)
-
-
-def _clean(value: str | None) -> str | None:
-    """Empty and whitespace-only become ``NULL``, so "not given" is one value in
-    the database rather than three."""
-    return (value or "").strip() or None

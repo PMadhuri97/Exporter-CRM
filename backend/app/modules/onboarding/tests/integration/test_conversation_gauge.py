@@ -44,7 +44,11 @@ from app.modules.onboarding.exceptions import (
     InvalidConversationTransitionError,
 )
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
-from app.modules.onboarding.tests.fixtures.companies import insert_company, make_company
+from app.modules.onboarding.tests.fixtures.companies import (
+    insert_company,
+    make_bare_deal,
+    make_company,
+)
 from app.platform.authentication.models import UserRole
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
@@ -355,20 +359,15 @@ async def test_next_due_at_belongs_to_rescheduled_and_nothing_else(outcome, next
         conn.close()
 
 
-async def test_only_0016_ever_touches_follow_up_completion():
+async def test_only_the_known_migrations_touch_follow_up_completion():
     """The table's boundary, as a test rather than a promise in a document.
 
-    0016 creates ``follow_up_completion`` and writes no code against it; the
-    follow-ups code writes the entity, repository, service and routes and **no
-    migration at all**. The half of that which stays true forever, and is worth a
-    test, is the second half: exactly one migration in this repository may mention
-    the table.
-
-    Why it matters beyond tidiness: 0018 declares
-    ``down_revision = "onboarding_0016_engagement"``. A second engagement migration
-    landing after 0018 would have to parent onto 0019 or force a re-parent, for a
-    reason purely internal to engagement — which is the chain damage keeping the
-    table in one migration avoids.
+    0016 creates ``follow_up_completion``; the follow-ups code writes the entity,
+    repository, service and routes and no migration of its own. Since then exactly
+    one other migration has changed the table: 0054, which made the activity's
+    foreign key composite so the denormalised ``customer_id`` always matches the
+    activity's. Any further one has to be added here on purpose — the table is
+    append-only, so a migration touching it is never routine.
     """
     migrations = sorted(
         (BACKEND / "app" / "modules" / "onboarding" / "migrations").glob("*.py")
@@ -378,7 +377,10 @@ async def test_only_0016_ever_touches_follow_up_completion():
         for path in migrations
         if "follow_up_completion" in path.read_text(encoding="utf-8")
     }
-    assert mentioning == {"onboarding_0016_engagement.py"}, mentioning
+    assert mentioning == {
+        "onboarding_0016_engagement.py",
+        "onboarding_0054_integrity_fks.py",
+    }, mentioning
 
 
 # ── The service: the rules ───────────────────────────────────────────────────
@@ -591,7 +593,7 @@ async def test_seam_s1_sets_ready_now_and_carries_the_deal_id():
     carries `deal_id`, per history contract §2, so the log says which deal did
     it."""
     company_id = await _company()
-    deal_id = uuid.uuid4()
+    deal_id = await make_bare_deal(company_id)
     async with db_services.AsyncSessionLocal() as db:
         await ConversationService(db).mark_ready_now_for_opened_deal(
             company_id, deal_id=deal_id, actor_id="user-7"
@@ -619,12 +621,12 @@ async def test_seam_s1_is_idempotent():
     async with db_services.AsyncSessionLocal() as db:
         service = ConversationService(db)
         await service.mark_ready_now_for_opened_deal(
-            company_id, deal_id=uuid.uuid4(), actor_id="user-7"
+            company_id, deal_id=await make_bare_deal(company_id), actor_id="user-7"
         )
         await db.commit()
     async with db_services.AsyncSessionLocal() as db:
         await ConversationService(db).mark_ready_now_for_opened_deal(
-            company_id, deal_id=uuid.uuid4(), actor_id="user-7"
+            company_id, deal_id=await make_bare_deal(company_id), actor_id="user-7"
         )
         await db.commit()
 
@@ -639,7 +641,7 @@ async def test_seam_s1_does_not_commit_so_the_caller_can_roll_it_back():
     company_id = await _company()
     async with db_services.AsyncSessionLocal() as db:
         await ConversationService(db).mark_ready_now_for_opened_deal(
-            company_id, deal_id=uuid.uuid4(), actor_id="user-7"
+            company_id, deal_id=await make_bare_deal(company_id), actor_id="user-7"
         )
         await db.rollback()
 
@@ -656,7 +658,7 @@ async def test_seam_s1_works_on_a_lead_and_clears_a_check_back_date():
     lead_id = await _company(ExporterJourney.LEAD)
     async with db_services.AsyncSessionLocal() as db:
         await ConversationService(db).mark_ready_now_for_opened_deal(
-            lead_id, deal_id=uuid.uuid4(), actor_id="user-7"
+            lead_id, deal_id=await make_bare_deal(lead_id), actor_id="user-7"
         )
         await db.commit()
     assert (await _read(lead_id)).conversation is ExporterConversation.READY_NOW
@@ -670,7 +672,7 @@ async def test_seam_s1_works_on_a_lead_and_clears_a_check_back_date():
     )
     async with db_services.AsyncSessionLocal() as db:
         await ConversationService(db).mark_ready_now_for_opened_deal(
-            parked_id, deal_id=uuid.uuid4(), actor_id="user-7"
+            parked_id, deal_id=await make_bare_deal(parked_id), actor_id="user-7"
         )
         await db.commit()
     profile = await _read(parked_id)

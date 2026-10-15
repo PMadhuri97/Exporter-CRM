@@ -1,5 +1,5 @@
 /**
- * Every deal, across companies: record list items, not a table (frontend-plan §6.7).
+ * Every deal, across companies: record list items, not a table.
  * Each deal is its reference as a link, the seller and the buyer with the date it
  * was opened, and on the right its corridor and its stage.
  *

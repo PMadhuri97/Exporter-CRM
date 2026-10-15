@@ -12,7 +12,6 @@ import {
   listExporterContacts,
   listVerificationResults,
   getScreeningReview,
-  getBankActivity,
   getQualification,
   listReasonCodes,
   recordQualificationOutcome,
@@ -50,7 +49,6 @@ vi.mock('../api', () => ({
   reviewVerification: vi.fn(),
   getScreeningReview: vi.fn(),
   updateScreeningReviewItem: vi.fn(),
-  getBankActivity: vi.fn(),
   // `ConversationPanel` calls these itself rather than
   // taking them as props — the shell was never given the gauge to hold.
   // The factory has to list them, because
@@ -85,7 +83,6 @@ const DETAIL: ExporterProfileDetail = {
   pan: 'ABCDE1234F',
   iec: '1234567890',
   source: 'MANUAL',
-  relationship_manager: 'Jane RM',
   relationship_manager_user_id: '22222222-2222-4222-8222-222222222222',
   industry: 'Textiles',
   export_markets: ['US', 'GB'],
@@ -202,16 +199,6 @@ describe('ExporterDetailPage — screening review', () => {
         { code: 'retired', label: 'Retired code', requires_note: false, active: false },
       ],
     });
-    vi.mocked(getBankActivity).mockResolvedValue({
-      customer_id: DETAIL.customer_id,
-      provider_feed_connected: false,
-      provider_feed_status: 'NOT_CONNECTED',
-      provider_feed_message: 'No bank-monitoring provider feed is connected.',
-      connected_accounts: 0,
-      last_synced_at: null,
-      open_findings: 0,
-      findings: [],
-    });
     // The gauge as a LEAD has it: the default value and no moves, because the
     // conversation gauge applies from PROSPECT onward. `DETAIL.journey` is 'LEAD',
     // so this is the consistent answer for this fixture.
@@ -302,7 +289,7 @@ describe('ExporterDetailPage — screening review', () => {
     expect(row).toHaveTextContent('“Seasonal break”');
     expect(row).toHaveTextContent('By user-7');
 
-    // The lane chips are the lanes present (frontend-plan §6.5); choosing one asks
+    // The lane chips are the lanes present; choosing one asks
     // the server for that dimension.
     expect(screen.queryByRole('button', { name: 'Journey' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Relationship' }));
@@ -416,6 +403,9 @@ describe('ExporterDetailPage — screening review', () => {
           last_verified_by: null,
           created_at: null,
           verification_due: false,
+          is_contact: true,
+          is_director: false,
+          is_ubo: false,
         },
       ],
     });
@@ -509,7 +499,7 @@ describe('ExporterDetailPage — screening review', () => {
     expect(screen.queryByRole('button', { name: /^Record:/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
     expect(await screen.findByRole('heading', { name: 'Company profile' })).toBeInTheDocument();
-    // Facts are inline edits for staff (frontend-plan §8.5); a read-only role gets text.
+    // Facts are inline edits for staff; a read-only role gets text.
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
   });
 

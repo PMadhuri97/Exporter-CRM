@@ -210,7 +210,7 @@ class Report:
                 "is wrong, or two",
                 "  records of one company were merged into one. The buyer migration "
                 "reports the same",
-                "  rows (plan section 17.2's 'deals whose buyer company is their own "
+                "  rows (as 'deals whose buyer company is their own "
                 "seller'), so "
                 "this is the second",
                 "  time they have been named.",
@@ -446,7 +446,7 @@ async def _main(args: argparse.Namespace) -> int:
     async with db_services.AsyncSessionLocal() as db:
         if args.validate:
             failures = 0
-            print("\nP5-5 validation")
+            print("\nTrade relationship validation")
             print("=" * 60)
             for label, count in await validate(db):
                 if count:

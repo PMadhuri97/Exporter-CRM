@@ -1,5 +1,5 @@
 /**
- * The generated shapes cover the names (frontend-plan §5.8): every glyph in
+ * The generated shapes cover the names: every glyph in
  * `icon-names.ts` has its regular paths in `icon-paths.ts`, and every glyph in
  * `FILLED` its filled ones. Fails after an edit to the names until
  * `pnpm icons` (scripts/build-icons.mjs) is run again.

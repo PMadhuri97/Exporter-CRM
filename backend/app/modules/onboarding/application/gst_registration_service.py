@@ -1,6 +1,6 @@
 """``GstRegistrationService`` — a company's GST branches.
 
-A GST registration is a **branch**: a state, an address, a portal status, and
+A GST registration is a **branch**: a state, a linked company address, a portal status, and
 possibly a compliance flag (``domain/entities/exporter_gstin.py``). Before branches
 it was a string in a list that a company edit replaced wholesale; this service is
 what replaced that.
@@ -107,7 +107,6 @@ class GstRegistrationService:
         customer_id: uuid.UUID,
         *,
         gstin: str,
-        address: str | None = None,
         status: GstRegistrationStatus = GstRegistrationStatus.UNVERIFIED,
         actor_id: str | None,
     ) -> tuple[ExporterGstin, list[uuid.UUID]]:
@@ -160,13 +159,9 @@ class GstRegistrationService:
                 state_code=state_code_of(normalised),
                 state_name=state_name_of(normalised),
                 status=status,
-                address=(address or "").strip() or None,
             )
             self._db.add(registration)
             event = "gst_registration_added"
-
-        if existing is not None and address is not None:
-            registration.address = (address or "").strip() or None
 
         await self._db.flush()
         await self._record(

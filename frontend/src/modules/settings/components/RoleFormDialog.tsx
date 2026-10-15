@@ -36,8 +36,8 @@ function slugify(name: string): string {
 }
 
 /**
- * Create or edit a role — a composer holding the permission grid (frontend-plan
- * §8.9): a row per module, its actions as switches, and the catalogue's own word on
+ * Create or edit a role — a composer holding the permission grid: a row per module,
+ * its actions as switches, and the catalogue's own word on
  * which modules are not enforced yet.
  */
 export function RoleFormDialog({ role, onClose }: RoleFormDialogProps) {

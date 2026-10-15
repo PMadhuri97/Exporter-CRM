@@ -1,5 +1,5 @@
 /**
- * *+ New* in the app header (frontend-plan §6.1): the quick-create entries the role
+ * *+ New* in the app header: the quick-create entries the role
  * has — New company, New deal, Import companies, and RXIL intake for Admin. Absent when the
  * role may create nothing (§4.1), never a disabled button.
  */

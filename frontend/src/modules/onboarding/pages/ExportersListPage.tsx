@@ -1,5 +1,5 @@
 /**
- * The Companies list (frontend-plan §8.3): record list items, not a table (§6.7).
+ * The Companies list: record list items, not a table (§6.7).
  * Each company is its name as a link, one line of key facts (industry, country, its
  * identifiers as the role may see them, the RM), and its status badges on the right.
  *

@@ -332,7 +332,7 @@ class CompanyDirectoryService:
         record carries only what the deal's buyer details held (``BUYER_CONTACT_ROLE``).
 
         ``history_event_type`` and ``history_details`` name the creation row for a
-        caller with more to say than "created" — the buyer migration writes §17.2's
+        caller with more to say than "created" — the buyer migration writes
         ``company_created_from_deal_buyer`` with its run, its rows and its rule.
         Without them the row is the plain ``pipeline_initial`` it always was.
         """

@@ -459,6 +459,17 @@ async def test_the_catalogue_offers_only_the_categories_valid_here(client: Async
     assert {"BANKING", "INSURANCE", "OTHER"} <= company_categories & deal_categories
 
 
+async def test_a_bank_accounts_proof_can_be_filed_as_what_it_is(client: AsyncClient):
+    """Verifying a bank account by hand rests on a cancelled cheque or a bank letter, so
+    BANKING offers both types (the evidence used to have to be filed as a statement)."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    resp = await client.get(
+        f"{BASE}/documents/categories?owner=COMPANY", headers=auth_header(token)
+    )
+    banking = next(c for c in resp.json()["categories"] if c["category"] == "BANKING")
+    assert {"cancelled_cheque", "bank_letter"} <= {t["key"] for t in banking["types"]}
+
+
 async def test_the_api_uploads_lists_and_downloads(client: AsyncClient):
     token = await token_with_role(client, UserRole.OPERATIONS)
     company_id = await _company()

@@ -6,7 +6,7 @@ worktree/branch (feature/epic4.4-customer-api) that has never been merged
 into feature/epic4-onboarding-orchestration — the branch this reference
 checkout's other migrations were taken from. Both branches added a migration
 directly on top of 0a772fd562e8, so pulling gateway's module code into this
-reference repo (see RUNNING.md) left two real, divergent Alembic heads.
+reference repo (see docs/development.md §12) left two real, divergent Alembic heads.
 
 This is a plain no-op merge revision — the standard Alembic pattern already
 used throughout this codebase's own history for exactly this situation

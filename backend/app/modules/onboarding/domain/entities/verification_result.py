@@ -43,6 +43,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     String,
     Text,
@@ -56,7 +57,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
     VerificationResultStatus,
-    VerificationReviewStatus,
     VerificationRiskLevel,
     VerificationType,
 )
@@ -117,14 +117,9 @@ class VerificationResult(AnerModel):
     Reviews
     -------
     Reviews live in ``verification_review`` (``verification_review.py``), as
-    superseding records. **The legacy ``reviewed_by`` / ``review_status``
-    columns here are no longer written** by any code path: migration
-    ``onboarding_0021_verif_review`` copied each one into the review table as
-    that result's first review, so the review table is the one source of "the
-    current review". The columns and their immutability trigger
-    (``trg_verification_result_field_immutability``, migration 0006) are kept
-    — protection is never dropped — and read only as a fallback for a row
-    written outside the service.
+    superseding records, and the review table is the one source of "the current
+    review". (The result's own ``reviewed_by`` / ``review_status`` columns, copied into
+    it by migration 0021, were dropped by 0061 with ``evidence_reference``.)
 
     Frozen once reviewed
     --------------------
@@ -138,9 +133,7 @@ class VerificationResult(AnerModel):
     -----------------------------
     ``evidence_note`` / ``evidence_refs`` hold what a result rests on, in the
     qualification contract's shape (``{type, ref}``, ``type`` ``document`` —
-    a ``crm_document.id`` — or ``url``). ``evidence_reference`` is **retired**:
-    no code path ever wrote it and none does now; it stays only so the column
-    is not dropped under existing rows. ``subject_snapshot`` is a BUYER's
+    a ``crm_document.id`` — or ``url``). ``subject_snapshot`` is a BUYER's
     identity at record time. Evidence and snapshot are frozen once set
     (``trg_verification_result_input_immutability``).
 
@@ -196,6 +189,15 @@ class VerificationResult(AnerModel):
             "cycle_id",
             postgresql_where=text("cycle_id IS NOT NULL"),
         ),
+        # The cycle must be the subject company's own (0054). Beside the plain
+        # `fk_verification_result_cycle_id`, which still covers a row with a cycle
+        # but no subject company.
+        ForeignKeyConstraint(
+            ["cycle_id", "subject_company_id"],
+            [f"{SCHEMA}.check_cycle.id", f"{SCHEMA}.check_cycle.company_id"],
+            name="fk_verification_result_cycle_company",
+            ondelete="RESTRICT",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -240,8 +242,6 @@ class VerificationResult(AnerModel):
     raw_result: Mapped[dict] = mapped_column(JSONB, nullable=False)
     normalized_result: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
-    #: Retired — never written. See the class docstring.
-    evidence_reference: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     evidence_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: ``[{"type": "document" | "url", "ref": str}, ...]``
     evidence_refs: Mapped[list[dict[str, str]]] = mapped_column(
@@ -270,13 +270,6 @@ class VerificationResult(AnerModel):
             name="fk_verification_result_cycle_id",
             ondelete="RESTRICT",
         ),
-        nullable=True,
-    )
-
-    # Legacy, no longer written — see class docstring. Immutable once set.
-    reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    review_status: Mapped[VerificationReviewStatus | None] = mapped_column(
-        Enum(VerificationReviewStatus, name="verification_review_status_enum", schema=SCHEMA),
         nullable=True,
     )
 

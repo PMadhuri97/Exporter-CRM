@@ -1,8 +1,7 @@
 /**
  * What a verification result rests on (verification-and-screening.md §3, §9).
  *
- * Shows `evidence_note` and `evidence_refs` exactly as the server stored them. The
- * retired `evidence_reference` column is never shown: nothing writes it.
+ * Shows `evidence_note` and `evidence_refs` exactly as the server stored them.
  *
  * A `document` reference is read on screen, in the CRM's own viewer, by everyone who
  * may see it (the preview route) — and saved only by a holder of `documents:download`

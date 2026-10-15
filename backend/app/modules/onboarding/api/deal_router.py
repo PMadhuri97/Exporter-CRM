@@ -90,7 +90,12 @@ _COMPANY_EDIT = require_permission("exporters", "edit")
         401: {"description": "Unauthorized"},
         403: {"description": "`deals:create` permission required"},
         404: {"description": "Company not found"},
-        409: {"description": "The company is still a LEAD (`DEAL_COMPANY_NOT_READY`)"},
+        409: {
+            "description": (
+                "The company is still a LEAD (`DEAL_COMPANY_NOT_READY`), or already has a "
+                "deal with this reference (`DEAL_REFERENCE_TAKEN`)"
+            )
+        },
         422: {"description": "Missing or empty reference"},
     },
 )
@@ -344,19 +349,12 @@ async def transition_deal_stage(
         "`BUYER_COMPANY_ALREADY_KNOWN` naming that company, rather than duplicated. A "
         "name that only resembles one does not stop it. A company outside India "
         "needs its registration number unless it has a PAN.\n\n"
-        "**`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer "
-        "per deal, so it replaces that row rather than adding another (deal "
-        "contract §3); `PUT` rather than `POST` for the same reason. Still accepted "
-        "because deals written before the buyer migration have one, and because a "
-        "`deal_buyer`'s own sanctions and AML are the only thing the buyer-compliance "
-        "rule can read for such a deal. These writes will retire.\n\n"
+        "The old third form, the buyer's own details as a legacy `deal_buyer` row, is "
+        "gone: no new legacy buyer is recorded (`trg_deal_buyer_frozen`). Deals written "
+        "before keep theirs, read-only.\n\n"
         "A buyer's problems stay on the buyer: a failed buyer check is recorded "
         "against the buyer and never against the selling company "
-        "(architecture §3.5).\n\n"
-        "In the legacy form the registration number, tax ID, contact email and "
-        "contact phone are masked for OPERATIONS and DEVELOPER. Leave any of them "
-        "out to keep its stored value — so a role that only sees the masked form "
-        "can edit the rest — or send null to clear it. A masked value is refused."
+        "(architecture §3.5)."
     ),
     responses={
         401: {"description": "Unauthorized"},
@@ -371,10 +369,9 @@ async def transition_deal_stage(
         },
         422: {
             "description": (
-                "More than one form, no form complete, a country that is not "
-                "ISO-3166-1 alpha-2, a buyer company that is the seller, a foreign "
-                "buyer company with no registration number and no PAN, or a masked "
-                "value sent back"
+                "Both forms or neither (the old buyer-details fields included), a "
+                "buyer company that is the seller, or a foreign buyer company with no "
+                "registration number and no PAN"
             )
         },
     },
@@ -399,24 +396,11 @@ async def set_deal_buyer(
             actor_id=str(current_user.id),
             actor_role=current_user.role.value,
         )
-    elif body.is_company_form:
-        # `SetDealBuyerRequest` has already refused a body carrying both forms, so
-        # this branch cannot also write a `deal_buyer` row.
+    else:
+        assert body.buyer_company_id is not None
         view = await service.set_buyer_company(
             deal_id,
             buyer_company_id=body.buyer_company_id,
-            actor_id=str(current_user.id),
-        )
-    else:
-        view = await service.set_buyer(
-            deal_id,
-            name=body.name,
-            country=body.country,
-            registration_number=body.registration_number,
-            tax_id=body.tax_id,
-            contact_email=body.contact_email,
-            contact_phone=body.contact_phone,
-            keep=body.fields_to_keep(),
             actor_id=str(current_user.id),
         )
     return DealResponse.from_view(view, current_user)
@@ -582,6 +566,7 @@ async def set_deal_required_document(
         401: {"description": "Unauthorized"},
         403: {"description": "`deals:edit` permission required"},
         404: {"description": "No such deal, or no such payment term"},
+        409: {"description": "The deal is handed over or withdrawn (`DEAL_TERMINAL`)"},
         422: {"description": "No reason for a different term, or nothing changes"},
     },
 )

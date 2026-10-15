@@ -42,6 +42,7 @@ from app.modules.onboarding.exceptions import (
 )
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import make_prospect
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.authentication.models import UserRole
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
@@ -281,9 +282,8 @@ async def _ready_to_hand_over(seller: uuid.UUID) -> uuid.UUID:
 
     await cleared_company(seller)
     deal_id = await _deal(seller)
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(
-            deal_id, name="Rotterdam Trading BV", country="NL", actor_id="rm-1"
+    await record_legacy_buyer(
+        deal_id, name="Rotterdam Trading BV", country="NL"
         )
     async with db_services.AsyncSessionLocal() as db:
         await DealService(db).transition_stage(

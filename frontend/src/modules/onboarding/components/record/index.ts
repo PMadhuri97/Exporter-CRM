@@ -1,4 +1,4 @@
-// The CRM's own parts (frontend-plan §6): how a company, its gauges, its paperwork
+// The CRM's own parts: how a company, its gauges, its paperwork
 // and its history are drawn wherever they appear.
 export { categoryLabel } from './categoryLabel';
 export { CheckStatus } from './CheckStatus';

@@ -1,5 +1,5 @@
 /**
- * The app header (frontend-plan §6.1, §7.2), 48px: the wordmark (to Home), search,
+ * The app header, 48px: the wordmark (to Home), search,
  * *+ New* when the role may create, and the user menu. Under 1024px a menu button
  * opens the navigation drawer. Breadcrumbs are not here: each page carries its own,
  * as enterprise apps do.

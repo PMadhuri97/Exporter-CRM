@@ -1,6 +1,6 @@
 /**
  * The style guide renders every primitive in both themes, so an axe pass over it is
- * the accessibility check for the design system (frontend-plan §11, §15).
+ * the accessibility check for the design system.
  *
  * `color-contrast` is off here only because jsdom computes no colours: contrast is
  * proven separately, from the tokens themselves, in `tokens.contrast.test.ts`.

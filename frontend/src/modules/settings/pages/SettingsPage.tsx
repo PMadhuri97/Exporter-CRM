@@ -1,5 +1,5 @@
 /**
- * Settings (frontend-plan §8.9): one frame, a section per address — `/settings/profile`
+ * Settings: one frame, a section per address — `/settings/profile`
  * (where `/settings` lands), `/settings/users`, `/settings/roles`. The frame lists only
  * the sections this person may open, and an address they may not open shows the same
  * NotFound as an address that does not exist.

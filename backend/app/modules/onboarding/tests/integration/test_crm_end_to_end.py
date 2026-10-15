@@ -108,27 +108,6 @@ class _Crm:
                                 "payload": {"status": "PASSED"},
                                 "evidence_note": f"{check} checked manually."})
 
-    async def screen_the_buyer(self, deal_id: str) -> None:
-        """PASSED sanctions and AML on a deal's **legacy** buyer row.
-
-        Live since the guard reads `ComplianceFactsReader`: the handover
-        requires the buyer's sanctions and AML to be `PASSED`, and a buyer nobody has
-        screened reads `MISSING` — "we have not checked" is not "clean".
-
-        Keyed to the `deal_buyer` row, where `for_legacy_buyer` reads them. The §4.2
-        path still walks this way on purpose, so the suite covers both kinds of buyer
-        end to end until these writes retire; the main path uses a buyer
-        **company** and `screen_the_buyer_company` below.
-        """
-        deal = await self.deal(deal_id)
-        buyer_id = deal["buyer"]["id"]
-        for check in ("SANCTIONS", "AML"):
-            await self.ok("POST", "/verifications", self.compliance,
-                          json={"verification_type": check, "entity_type": "BUYER",
-                                "entity_reference": buyer_id,
-                                "payload": {"status": "PASSED"},
-                                "evidence_note": f"Buyer {check} checked manually."})
-
     async def screen_the_buyer_company(self, buyer_company_id: str) -> None:
         """The same buyer rule, against a buyer that is a **company record**.
 
@@ -152,8 +131,9 @@ class _Crm:
                       json={"outcome": "QUALIFIED", "note": "Meets our requirements."})
         deal = await self.ok("POST", f"/exporters/{company_id}/deals", self.ops,
                              json={"reference": "Rotterdam shipment"})
-        await self.ok("PUT", f"/deals/{deal['id']}/buyer", self.ops,
-                      json={"name": "Rotterdam Trading BV", "country": "NL"})
+        named = await self.ok("PUT", f"/deals/{deal['id']}/buyer", self.ops,
+                              json={"create": {"name": "Rotterdam Trading BV", "country": "NL",
+                                               "registration_number": f"NL-{uuid.uuid4().hex[:10]}"}})
         await self.ok("POST", f"/deals/{deal['id']}/transitions", self.ops,
                       json={"to_stage": "GATHERING_PAPERWORK"})
         # PRE_SHIPMENT, not SHIPPING: migration 0030 requires a pre-shipment
@@ -165,7 +145,7 @@ class _Crm:
                             "source": "EXPORTER_UPLOAD"},
                       files={"file": ("proforma_invoice.pdf", PDF, "application/pdf")})
         await self.record_the_invoicing_branch(company_id, deal["id"])
-        await self.screen_the_buyer(deal["id"])
+        await self.screen_the_buyer_company(named["buyer_company"]["company_id"])
         await self.ok("POST", f"/exporters/{company_id}/contacts", self.ops,
                       json={"name": "Priya Shah", "role": "Export manager", "is_primary": True})
         return company_id, deal["id"]

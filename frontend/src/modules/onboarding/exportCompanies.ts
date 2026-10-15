@@ -62,7 +62,10 @@ export const EXPORT_COLUMNS: readonly ExportColumn[] = [
     id: 'owner',
     heading: 'Owner',
     group: 'Company',
-    read: (p) => p.relationship_manager_name ?? p.relationship_manager,
+    // The name only. The free-text `relationship_manager` it used to fall back to was
+    // dropped with migration 0061: a company's RM is a user, and the names that could
+    // not be matched to one were discarded rather than carried.
+    read: (p) => p.relationship_manager_name ?? null,
   },
   { id: 'source', heading: 'Source', group: 'Company', read: (p) => p.source },
 

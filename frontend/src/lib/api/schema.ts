@@ -842,12 +842,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List an exporter's contacts */
+        /**
+         * List a company's contacts, or its directors and beneficial owners
+         * @description `role` picks who: `CONTACT` (the default: who we talk to), `DIRECTOR`, `UBO`, or `ALL` for every person at the company.
+         */
         get: operations["list_exporter_contacts_api_v1_onboarding_exporters__customer_id__contacts_get"];
         put?: never;
         /**
-         * Add a contact to an exporter relationship
-         * @description Setting is_primary=true demotes any existing primary contact for this customer in the same transaction — never two primaries at once.
+         * Add a contact, director or beneficial owner to a company
+         * @description A person with roles: `is_contact` (the default), `is_director`, `is_ubo`. Only the name and a role are required; a DIN needs the director role, an ownership share and control type the beneficial-owner role. The identification number is stored encrypted. Adding a director or beneficial owner writes a `contact` history row. Setting is_primary=true demotes any existing primary contact for this customer in the same transaction — never two primaries at once; only a contact can be primary.
          */
         post: operations["add_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts_post"];
         delete?: never;
@@ -871,7 +874,7 @@ export interface paths {
         head?: never;
         /**
          * Change a contact on an exporter relationship
-         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `name` and `is_primary` may be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary.
+         * @description A partial edit: only the fields present in the body change. A field sent as null is cleared; a field left out is untouched. `name` and `is_primary` may be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this customer in the same transaction — never two primaries at once; setting it false is allowed and leaves the company with no primary. Roles change the same way: taking one away clears the fields that belong only to it, and taking away `is_contact` stops the person being the primary contact.
          */
         patch: operations["update_exporter_contact_api_v1_onboarding_exporters__customer_id__contacts__contact_id__patch"];
         trace?: never;
@@ -1057,26 +1060,6 @@ export interface paths {
          * @description Appends a new answer to the item in the company's current check cycle; every earlier answer stays in the item's history. `evidence_refs` is optional: a `document` must be one of the company's own `AVAILABLE` documents, a `url` an http(s) link. A retired item (`website-reviewed`) takes no new answer.
          */
         put: operations["update_screening_review_api_v1_onboarding_exporters__customer_id__screening_review__item_key__put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/onboarding/exporters/{customer_id}/bank-activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List bank-linked suspicious-activity findings
-         * @description No bank-monitoring provider feed is connected: the response says so (`provider_feed_connected: false`, `provider_feed_status: NOT_CONNECTED`) and never carries fabricated findings.
-         */
-        get: operations["get_bank_activity_api_v1_onboarding_exporters__customer_id__bank_activity_get"];
-        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2242,11 +2225,9 @@ export interface paths {
          *
          *     **`{create: {name, country, pan?, gstin?, registration_number?}}`** creates the buyer as a company that is **not in the pipeline** (not a lead) and names it, in one step. The server matches first, as `POST /companies/match` does, and audits every identifier lookup: an identifier a company on file holds is refused with 409 `BUYER_COMPANY_ALREADY_KNOWN` naming that company, rather than duplicated. A name that only resembles one does not stop it. A company outside India needs its registration number unless it has a PAN.
          *
-         *     **`{name, country, ...}`** records a legacy `deal_buyer` row — one buyer per deal, so it replaces that row rather than adding another (deal contract §3); `PUT` rather than `POST` for the same reason. Still accepted because deals written before the buyer migration have one, and because a `deal_buyer`'s own sanctions and AML are the only thing the buyer-compliance rule can read for such a deal. These writes will retire.
+         *     The old third form, the buyer's own details as a legacy `deal_buyer` row, is gone: no new legacy buyer is recorded (`trg_deal_buyer_frozen`). Deals written before keep theirs, read-only.
          *
          *     A buyer's problems stay on the buyer: a failed buyer check is recorded against the buyer and never against the selling company (architecture §3.5).
-         *
-         *     In the legacy form the registration number, tax ID, contact email and contact phone are masked for OPERATIONS and DEVELOPER. Leave any of them out to keep its stored value — so a role that only sees the masked form can edit the rest — or send null to clear it. A masked value is refused.
          */
         put: operations["set_deal_buyer_api_v1_onboarding_deals__deal_id__buyer_put"];
         post?: never;
@@ -3234,7 +3215,12 @@ export interface components {
             /** Gst Registration Id */
             gst_registration_id?: string | null;
         };
-        /** AddExporterContactRequest */
+        /**
+         * AddExporterContactRequest
+         * @description A person at the company: a contact (the default), a director, a beneficial owner,
+         *     or several at once. Only the name and a role are required; the person fields are
+         *     optional, and the director-only and owner-only ones need that role.
+         */
         AddExporterContactRequest: {
             /** Name */
             name: string;
@@ -3251,6 +3237,37 @@ export interface components {
              * @default false
              */
             is_primary: boolean;
+            /**
+             * Is Contact
+             * @default true
+             */
+            is_contact: boolean;
+            /**
+             * Is Director
+             * @default false
+             */
+            is_director: boolean;
+            /**
+             * Is Ubo
+             * @default false
+             */
+            is_ubo: boolean;
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Nationality */
+            nationality?: string | null;
+            /** Residence Country */
+            residence_country?: string | null;
+            /** Din */
+            din?: string | null;
+            /** Ownership Pct */
+            ownership_pct?: number | string | null;
+            /** Control Type */
+            control_type?: ("DIRECT_OWNERSHIP" | "INDIRECT_OWNERSHIP" | "VOTING_RIGHTS" | "OTHER_CONTROL") | null;
+            /** Identification Type */
+            identification_type?: ("PASSPORT" | "NATIONAL_ID" | "DRIVING_LICENCE") | null;
+            /** Identification Number */
+            identification_number?: string | null;
         };
         /**
          * AddGstRegistrationRequest
@@ -3267,8 +3284,6 @@ export interface components {
         AddGstRegistrationRequest: {
             /** Gstin */
             gstin: string;
-            /** Address */
-            address?: string | null;
             /** @default UNVERIFIED */
             status: components["schemas"]["GstRegistrationStatus"];
         };
@@ -4015,84 +4030,6 @@ export interface components {
          * @enum {string}
          */
         BankAccountType: "CURRENT" | "EEFC" | "SAVINGS" | "OTHER";
-        /** BankActivityFindingResponse */
-        BankActivityFindingResponse: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Customer Id
-             * Format: uuid
-             */
-            customer_id: string;
-            /** Provider */
-            provider: string;
-            /** Finding Type */
-            finding_type: string;
-            /** Title */
-            title: string;
-            /** Description */
-            description: string | null;
-            /** Risk Level */
-            risk_level: string;
-            /** Status */
-            status: string;
-            /** Provider Reference */
-            provider_reference: string | null;
-            /**
-             * Detected At
-             * Format: date-time
-             */
-            detected_at: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-        };
-        /**
-         * BankActivityResponse
-         * @description The bank panel, stated honestly (verification-and-screening.md §8): no bank-monitoring
-         *     provider feed is connected, so `provider_feed_connected` is `false` and
-         *     `connected_accounts` is `0` because nothing is connected — not because
-         *     accounts were checked and none found. No finding is ever fabricated.
-         */
-        BankActivityResponse: {
-            /**
-             * Customer Id
-             * Format: uuid
-             */
-            customer_id: string;
-            /**
-             * Provider Feed Connected
-             * @default false
-             */
-            provider_feed_connected: boolean;
-            /**
-             * Provider Feed Status
-             * @default NOT_CONNECTED
-             * @constant
-             */
-            provider_feed_status: "NOT_CONNECTED";
-            /**
-             * Provider Feed Message
-             * @default No bank-monitoring provider feed is connected. Bank activity is not being monitored for this company.
-             */
-            provider_feed_message: string;
-            /**
-             * Connected Accounts
-             * @default 0
-             */
-            connected_accounts: number;
-            /** Last Synced At */
-            last_synced_at?: string | null;
-            /** Open Findings */
-            open_findings: number;
-            /** Findings */
-            findings: components["schemas"]["BankActivityFindingResponse"][];
-        };
         /**
          * BankVerificationMethod
          * @enum {string}
@@ -6036,6 +5973,39 @@ export interface components {
             /** Created At */
             created_at?: string | null;
             /**
+             * Is Contact
+             * @default true
+             */
+            is_contact: boolean;
+            /**
+             * Is Director
+             * @default false
+             */
+            is_director: boolean;
+            /**
+             * Is Ubo
+             * @default false
+             */
+            is_ubo: boolean;
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Nationality */
+            nationality?: string | null;
+            /** Residence Country */
+            residence_country?: string | null;
+            /** Din */
+            din?: string | null;
+            /** Ownership Pct */
+            ownership_pct?: string | null;
+            /** Control Type */
+            control_type?: string | null;
+            /** Identification Type */
+            identification_type?: string | null;
+            /** Identification Number */
+            identification_number?: string | null;
+            /** Source */
+            source?: string | null;
+            /**
              * Verification Due
              * @description An active contact whose details were last verified — or, never verified, were
              *     added — more than ``CRM_CONTACT_REVERIFY_MONTHS`` ago. Computed on read.
@@ -6126,8 +6096,6 @@ export interface components {
             /** Iec */
             iec: string | null;
             source: components["schemas"]["ExporterSource"];
-            /** Relationship Manager */
-            relationship_manager: string | null;
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
             journey: components["schemas"]["ExporterJourney"];
@@ -6209,8 +6177,6 @@ export interface components {
             /** Iec */
             iec: string | null;
             source: components["schemas"]["ExporterSource"];
-            /** Relationship Manager */
-            relationship_manager: string | null;
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
             journey: components["schemas"]["ExporterJourney"];
@@ -6286,8 +6252,6 @@ export interface components {
             /** Iec */
             iec: string | null;
             source: components["schemas"]["ExporterSource"];
-            /** Relationship Manager */
-            relationship_manager: string | null;
             /** Relationship Manager User Id */
             relationship_manager_user_id: string | null;
             journey: components["schemas"]["ExporterJourney"];
@@ -6667,8 +6631,6 @@ export interface components {
             /** State Name */
             state_name: string | null;
             status: components["schemas"]["GstRegistrationStatus"];
-            /** Address */
-            address: string | null;
             /** Address Id */
             address_id?: string | null;
             flag_status: components["schemas"]["GstRegistrationFlag"] | null;
@@ -8364,47 +8326,25 @@ export interface components {
         };
         /**
          * SetDealBuyerRequest
-         * @description Record the deal's buyer, in **one of two forms**.
+         * @description Name the deal's buyer company, in **one of two forms**.
          *
          *     *The company form* — ``{"buyer_company_id": "..."}`` — names the company the
-         *     buyer **is**. This is the form to use. The buyer is then a full company record:
-         *     it can be screened on its own timeline, the handover guard asks about it,
-         *     and the same company can be a seller on another deal. It is **set
-         *     once**; see ``DealBuyerCompanyAlreadySetError``.
+         *     buyer **is**. The buyer is then a full company record: it can be screened on its
+         *     own timeline, the handover guard asks about it, and the same company can be a
+         *     seller on another deal. It is **set once**; see ``DealBuyerCompanyAlreadySetError``.
          *
-         *     *The legacy form* — ``{"name": ..., "country": ..., ...}`` — records a
-         *     ``deal_buyer`` row: a set of details with no record of its own. It is still
-         *     accepted because deals written before the buyer migration have one, and
-         *     because a ``deal_buyer``'s sanctions and AML are the only place the buyer-compliance
-         *     rule can read for such a deal (``background-check.md`` §12.2). These writes will
-         *     retire, and the table is kept.
+         *     *The create form* — ``{"create": {...}}`` — creates that company first, outside
+         *     the pipeline, and names it.
          *
-         *     **Exactly one form per request.** Mixing them is refused rather than merged:
-         *     the two disagree about what a buyer *is*, and silently writing both would leave
-         *     a deal whose company says one thing and whose row says another, with no way to
-         *     tell which the person meant.
-         *
-         *     In the legacy form, ``registration_number``, ``tax_id``, ``contact_email`` and
-         *     ``contact_phone`` are masked for OPERATIONS and DEVELOPER. Leave one out to
-         *     keep its stored value; send ``null`` or an empty string to clear it; a masked
-         *     value is refused (422).
+         *     **Exactly one form per request.** The old third form — the buyer's own details,
+         *     recorded as a ``deal_buyer`` row — is gone: no new legacy buyer is recorded, and
+         *     ``trg_deal_buyer_frozen`` refuses one. Its fields are refused (422) like any other
+         *     unknown field.
          */
         SetDealBuyerRequest: {
             /** Buyer Company Id */
             buyer_company_id?: string | null;
             create?: components["schemas"]["CreateBuyerCompanyRequest"] | null;
-            /** Name */
-            name?: string | null;
-            /** Country */
-            country?: string | null;
-            /** Registration Number */
-            registration_number?: string | null;
-            /** Tax Id */
-            tax_id?: string | null;
-            /** Contact Email */
-            contact_email?: string | null;
-            /** Contact Phone */
-            contact_phone?: string | null;
         };
         /**
          * SetDealInvoicingBranchRequest
@@ -8543,6 +8483,8 @@ export interface components {
             latest: components["schemas"]["RunResponse"] | null;
             /** Rescreen Reasons */
             rescreen_reasons: string[];
+            /** Roles */
+            roles?: ("DIRECTOR" | "UBO")[];
         };
         /**
          * SubjectType
@@ -8896,6 +8838,28 @@ export interface components {
             department?: string | null;
             /** Is Primary */
             is_primary?: boolean | null;
+            /** Is Contact */
+            is_contact?: boolean | null;
+            /** Is Director */
+            is_director?: boolean | null;
+            /** Is Ubo */
+            is_ubo?: boolean | null;
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Nationality */
+            nationality?: string | null;
+            /** Residence Country */
+            residence_country?: string | null;
+            /** Din */
+            din?: string | null;
+            /** Ownership Pct */
+            ownership_pct?: number | string | null;
+            /** Control Type */
+            control_type?: ("DIRECT_OWNERSHIP" | "INDIRECT_OWNERSHIP" | "VOTING_RIGHTS" | "OTHER_CONTROL") | null;
+            /** Identification Type */
+            identification_type?: ("PASSPORT" | "NATIONAL_ID" | "DRIVING_LICENCE") | null;
+            /** Identification Number */
+            identification_number?: string | null;
         };
         /**
          * UpdateExporterProfileRequest
@@ -9139,8 +9103,6 @@ export interface components {
             valid_until: string | null;
             /** Normalized Result */
             normalized_result: Record<string, never>;
-            /** Evidence Reference */
-            evidence_reference: string | null;
             /** Evidence Note */
             evidence_note: string | null;
             /** Evidence Refs */
@@ -11641,7 +11603,9 @@ export interface operations {
     };
     list_exporter_contacts_api_v1_onboarding_exporters__customer_id__contacts_get: {
         parameters: {
-            query?: never;
+            query?: {
+                role?: "CONTACT" | "DIRECTOR" | "UBO" | "ALL";
+            };
             header?: never;
             path: {
                 customer_id: string;
@@ -11729,7 +11693,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Invalid request body */
+            /** @description Invalid request body, or a person that breaks a role rule */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -12387,51 +12351,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    get_bank_activity_api_v1_onboarding_exporters__customer_id__bank_activity_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                customer_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BankActivityResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `screening:view` permission required */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
             };
         };
     };
@@ -15546,7 +15465,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The company is still a LEAD (`DEAL_COMPANY_NOT_READY`) */
+            /** @description The company is still a LEAD (`DEAL_COMPANY_NOT_READY`), or already has a deal with this reference (`DEAL_REFERENCE_TAKEN`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -15783,7 +15702,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description More than one form, no form complete, a country that is not ISO-3166-1 alpha-2, a buyer company that is the seller, a foreign buyer company with no registration number and no PAN, or a masked value sent back */
+            /** @description Both forms or neither (the old buyer-details fields included), a buyer company that is the seller, or a foreign buyer company with no registration number and no PAN */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -15979,6 +15898,13 @@ export interface operations {
             };
             /** @description No such deal, or no such payment term */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The deal is handed over or withdrawn (`DEAL_TERMINAL`) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

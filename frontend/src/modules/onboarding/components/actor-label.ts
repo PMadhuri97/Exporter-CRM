@@ -13,6 +13,8 @@ import { formatReviewer } from './verification-labels';
 
 export function actorLabel(name: string | null | undefined, id: string | null | undefined): string {
   if (name) return name;
-  if (!id) return 'the platform';
+  // "None" is what a platform action stored before 14 October 2026 (the server wrote
+  // `str(None)`); the history log keeps those rows, so read them as the platform too.
+  if (!id || id === 'None') return 'the platform';
   return formatReviewer(id);
 }

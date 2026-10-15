@@ -10,7 +10,7 @@ export interface Crumb {
 }
 
 /**
- * Where a page sits (frontend-plan §6.3, §7.2): each page header carries its own,
+ * Where a page sits: each page header carries its own,
  * as enterprise apps do. Every crumb but the last is a link.
  */
 export function Breadcrumbs({ items, className }: { items: readonly Crumb[]; className?: string }) {

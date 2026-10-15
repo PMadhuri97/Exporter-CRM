@@ -10,7 +10,7 @@ a closed deal's buyer company could not change. That is right, and it was one
 condition too strong: it refused **any** difference, including ``NULL`` → a value,
 which is the write the buyer migration has to make.
 
-§17.2 requires every deal with a ``deal_buyer`` row to end up with a
+The buyer migration requires every deal with a ``deal_buyer`` row to end up with a
 ``buyer_company_id``, terminal deals included — a deal handed over last year still
 has a buyer, and leaving it unlinked would make its buyer's trade history and
 compliance results unreachable from the deal that produced them. 0029 had already
@@ -62,8 +62,8 @@ def _freeze_function(*, buyer_company_set_once: bool) -> str:
     if buyer_company_set_once:
         buyer_in_list = ""
         buyer_clause = """
-    -- The buyer company may be **filled in** on a closed deal and never changed
-    -- (§17.2): a deal handed over before the buyer migration still has a buyer, and
+    -- The buyer company may be **filled in** on a closed deal and never changed:
+    -- a deal handed over before the buyer migration still has a buyer, and
     -- the migration is what links it. The same shape as the snapshot rule below.
     IF OLD.stage IN ('HANDED_OVER', 'WITHDRAWN')
        AND OLD.buyer_company_id IS NOT NULL

@@ -1,7 +1,7 @@
 """Case assignment, status lifecycle, and onboarding-review resolution
 (ANER-4.3-S3T1, S3T2, S4T2).
 
-**Transition source.** The Epic 4.3 Jira doc (`4.3 Case Management
+**Transition source.** The Epic 4.3 specification (`4.3 Case Management
 Console.docx`) turns out to contain an explicit "Permitted transitions" table
 in its ANER-4.3-S3T2 section, immediately preceded by: "Implement the case
 status lifecycle transition service that manages the permitted status
@@ -142,7 +142,7 @@ from app.modules.cases.exceptions import (
 )
 from app.shared.exceptions import ValidationError
 
-#: The Jira doc's "Permitted transitions" table (ANER-4.3-S3T2), narrowed to
+#: The specification's "Permitted transitions" table (ANER-4.3-S3T2), narrowed to
 #: the 10 rows this build's stories (S3T1/S3T2/S3T3/S4T2) actually implement
 #: — see the module docstring for exactly which 5 rows were left out and why.
 PERMITTED_TRANSITIONS: frozenset[tuple[CaseStatus, CaseStatus]] = frozenset(
@@ -160,7 +160,7 @@ PERMITTED_TRANSITIONS: frozenset[tuple[CaseStatus, CaseStatus]] = frozenset(
     }
 )
 
-#: Jira doc, S3T2: "The resolution_note must be at least 50 characters...
+#: Specification, S3T2: "The resolution_note must be at least 50 characters...
 #: The closed_without_action terminal state... Same minimum length
 #: requirement." Applied to `propose_resolution`'s `resolution_note` and
 #: `close_case_without_action`'s `reason`. Distinct from, and stricter than,

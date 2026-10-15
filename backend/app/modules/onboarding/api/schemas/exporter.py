@@ -397,8 +397,6 @@ class ExporterProfileResponse(_IdentifierMasking, _RelationshipManagerFields, Ba
     pan: str | None
     iec: str | None
     source: ExporterSource
-    #: The legacy free-text owner label, read-only.
-    relationship_manager: str | None
     #: The company's relationship manager (an OPERATIONS user), or `null`. Ownership
     #: grants nothing: it never unmasks an identifier.
     relationship_manager_user_id: uuid.UUID | None
@@ -440,7 +438,6 @@ class ExporterProfileDetailResponse(_IdentifierMasking, _RelationshipManagerFiel
     pan: str | None
     iec: str | None
     source: ExporterSource
-    relationship_manager: str | None
     relationship_manager_user_id: uuid.UUID | None
     journey: ExporterJourney
     qualification: QualificationState
@@ -485,7 +482,6 @@ class ExporterProfileDetailResponse(_IdentifierMasking, _RelationshipManagerFiel
             pan=detail.pan,
             iec=detail.iec,
             source=detail.source,
-            relationship_manager=detail.relationship_manager,
             relationship_manager_user_id=detail.relationship_manager_user_id,
             journey=detail.journey,
             qualification=detail.qualification,
@@ -529,7 +525,6 @@ class ExporterProfileListItemResponse(_IdentifierMasking, _RelationshipManagerFi
     pan: str | None
     iec: str | None
     source: ExporterSource
-    relationship_manager: str | None
     relationship_manager_user_id: uuid.UUID | None
     journey: ExporterJourney
     qualification: QualificationState

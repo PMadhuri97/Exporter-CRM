@@ -15,7 +15,8 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated
+from decimal import Decimal
+from typing import Annotated, Literal
 
 from pydantic import (
     AwareDatetime,
@@ -26,12 +27,14 @@ from pydantic import (
     ValidationInfo,
     computed_field,
     field_validator,
+    model_validator,
 )
 
 from app.modules.onboarding.api.schemas.masking import (
     NotMasked,
     can_reveal_identifiers,
     mask_email,
+    mask_identifier,
     mask_phone,
 )
 from app.modules.onboarding.domain.engagement_views import ConversationView
@@ -41,17 +44,39 @@ from app.modules.onboarding.domain.entities.engagement_enums import (
     ExporterConversation,
 )
 from app.modules.onboarding.domain.entities.exporter_enums import ExporterJourney
+from app.modules.onboarding.domain.people import IDENTIFICATION_PURPOSE
 from app.platform.authentication.models import User
 from app.platform.configuration.config import settings
+from app.platform.security.field_cipher import decrypt_field
 
 #: A contact's name, trimmed before it is measured: "   " is not a name, and without the
 #: trim it would pass ``min_length=1`` and save a contact nobody can find or act on.
 ContactName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
 ]
+ControlType = Literal["DIRECT_OWNERSHIP", "INDIRECT_OWNERSHIP", "VOTING_RIGHTS", "OTHER_CONTROL"]
+IdentificationType = Literal["PASSPORT", "NATIONAL_ID", "DRIVING_LICENCE"]
+#: How a date of birth reads to a viewer who may not see it: present, but not when.
+MASKED_DATE = "••••-••-••"
+
+#: The person fields a request may carry besides the roles; ``details()`` hands these on.
+_PERSON_KEYS = (
+    "date_of_birth",
+    "nationality",
+    "residence_country",
+    "din",
+    "ownership_pct",
+    "control_type",
+    "identification_type",
+    "identification_number",
+)
 
 
 class AddExporterContactRequest(BaseModel):
+    """A person at the company: a contact (the default), a director, a beneficial owner,
+    or several at once. Only the name and a role are required; the person fields are
+    optional, and the director-only and owner-only ones need that role."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: ContactName
@@ -60,6 +85,22 @@ class AddExporterContactRequest(BaseModel):
     phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
     department: str | None = Field(default=None, max_length=255)
     is_primary: bool = False
+    is_contact: bool = True
+    is_director: bool = False
+    is_ubo: bool = False
+    date_of_birth: date | None = None
+    nationality: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
+    residence_country: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
+    #: Director Identification Number: eight digits.
+    din: Annotated[str | None, NotMasked] = Field(default=None, pattern=r"^[0-9]{8}$")
+    ownership_pct: Decimal | None = Field(default=None, ge=0, le=100, decimal_places=2)
+    control_type: ControlType | None = None
+    identification_type: IdentificationType | None = None
+    #: Stored encrypted; only its last four characters are kept in clear.
+    identification_number: Annotated[str | None, NotMasked] = Field(default=None, max_length=64)
+
+    def details(self) -> dict[str, object]:
+        return {key: getattr(self, key) for key in _PERSON_KEYS}
 
 
 class UpdateExporterContactRequest(BaseModel):
@@ -85,13 +126,25 @@ class UpdateExporterContactRequest(BaseModel):
     phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
     department: str | None = Field(default=None, max_length=255)
     is_primary: bool | None = None
+    is_contact: bool | None = None
+    is_director: bool | None = None
+    is_ubo: bool | None = None
+    date_of_birth: date | None = None
+    nationality: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
+    residence_country: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
+    din: Annotated[str | None, NotMasked] = Field(default=None, pattern=r"^[0-9]{8}$")
+    ownership_pct: Decimal | None = Field(default=None, ge=0, le=100, decimal_places=2)
+    control_type: ControlType | None = None
+    identification_type: IdentificationType | None = None
+    #: Sent as ``null``, clears the number and its type.
+    identification_number: Annotated[str | None, NotMasked] = Field(default=None, max_length=64)
 
-    @field_validator("name", "is_primary", mode="before")
+    @field_validator("name", "is_primary", "is_contact", "is_director", "is_ubo", mode="before")
     @classmethod
     def _not_null(cls, value: object, info: ValidationInfo) -> object:
         # Runs only for a key that was sent, so a body without `name` is untouched.
-        # `is_primary` is a yes/no: null is neither, and reading it as "leave it" would
-        # hide a client bug the same way.
+        # `is_primary` and the roles are yes/no: null is neither, and reading it as
+        # "leave it" would hide a client bug the same way.
         if value is None:
             raise ValueError(
                 f"{info.field_name} cannot be null; leave it out to keep it unchanged"
@@ -135,6 +188,37 @@ class ExporterContactResponse(BaseModel):
     last_verified_at: datetime | None = None
     last_verified_by: str | None = None
     created_at: datetime | None = None
+    #: The person's roles: someone we talk to, a director, a beneficial owner.
+    is_contact: bool = True
+    is_director: bool = False
+    is_ubo: bool = False
+    #: ISO date; masked (``MASKED_DATE``) for a viewer who may not see it.
+    date_of_birth: str | None = None
+    nationality: str | None = None
+    residence_country: str | None = None
+    din: str | None = None
+    ownership_pct: Decimal | None = None
+    control_type: str | None = None
+    identification_type: str | None = None
+    #: Masked to its last four characters unless the viewer may see it in full.
+    identification_number: str | None = None
+    #: Where the row came from when not typed in (``LEGACY_UBO_RECORD``).
+    source: str | None = None
+    identification_encrypted: str | None = Field(default=None, exclude=True)
+    identification_last4: str | None = Field(default=None, exclude=True)
+
+    @field_validator("date_of_birth", mode="before")
+    @classmethod
+    def _iso_date(cls, value: object) -> object:
+        return value.isoformat() if isinstance(value, date) else value
+
+    @model_validator(mode="after")
+    def _identification_masked(self) -> ExporterContactResponse:
+        # Fail closed: the number is masked from the moment the response exists, and
+        # only `masked_for` a viewer who may see it decrypts it.
+        if self.identification_number is None and self.identification_last4:
+            self.identification_number = f"••••{self.identification_last4}"
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -151,15 +235,28 @@ class ExporterContactResponse(BaseModel):
 
     def masked(self) -> ExporterContactResponse:
         return self.model_copy(
-            update={"email": mask_email(self.email), "phone": mask_phone(self.phone)}
+            update={
+                "email": mask_email(self.email),
+                "phone": mask_phone(self.phone),
+                "din": mask_identifier(self.din),
+                "date_of_birth": MASKED_DATE if self.date_of_birth else None,
+            }
         )
 
     def masked_for(self, viewer: User) -> ExporterContactResponse:
         """Same reveal rule as the exporter's identifiers: COMPLIANCE (a holder of
-        ``exporters:view_full_tax_id``) sees the contact's real email and phone, everyone else sees them
-        masked."""
+        ``exporters:view_full_tax_id``) sees the person's real email, phone, date of
+        birth, DIN and identification number; everyone else sees them masked."""
         if can_reveal_identifiers(viewer):
-            return self
+            if self.identification_encrypted is None:
+                return self
+            return self.model_copy(
+                update={
+                    "identification_number": decrypt_field(
+                        self.identification_encrypted, purpose=IDENTIFICATION_PURPOSE
+                    )
+                }
+            )
         return self.masked()
 
 

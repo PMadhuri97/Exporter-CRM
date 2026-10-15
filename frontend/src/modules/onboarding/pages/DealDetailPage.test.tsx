@@ -278,7 +278,7 @@ describe('DealDetailPage — documents', () => {
     await waitFor(() => expect(listDealDocuments).toHaveBeenCalled());
     expect(await screen.findByText('bill-of-lading.pdf')).toBeInTheDocument();
     expect(screen.getByText('Available')).toBeInTheDocument();
-    // Said once above the list (frontend-plan §8.5), not repeated beside each row.
+    // Said once above the list, not repeated beside each row.
     expect(screen.getByText('Prototype: pass-through scanner')).toBeInTheDocument();
     expect(screen.queryByText('pass-through', { exact: true })).not.toBeInTheDocument();
   });
@@ -437,70 +437,15 @@ describe("DealDetailPage — the review's findings", () => {
   });
 });
 
-describe('DealDetailPage — editing a buyer whose details are masked', () => {
-  // What OPERATIONS receives: the server masks the identifiers and contacts.
-  const MASKED = deal({
-    buyer: {
-      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      deal_id: DEAL_ID,
-      name: 'Rotterdam Trading BV',
-      country: 'NL',
-      registration_number: '•••8899',
-      tax_id: '••••••••••9B01',
-      contact_email: 'a•••@rotterdamtrading.example',
-      contact_phone: '•••••••••••0101',
-    },
-  });
-
-  beforeEach(() => {
-    vi.mocked(setDealBuyer).mockResolvedValue(MASKED);
-  });
-
-  it('starts the masked fields empty and leaves them out, so the stored values are kept', async () => {
-    vi.mocked(getDeal).mockResolvedValue(MASKED);
+describe('DealDetailPage — a legacy buyer', () => {
+  it('shows a legacy buyer read-only and offers only to choose the buyer company', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer details' }));
 
-    const taxId = screen.getByLabelText('Tax identifier');
-    expect(taxId).toHaveValue('');
-    expect(taxId).toHaveAttribute('placeholder', 'Hidden — type to replace');
-    expect(screen.getByLabelText(/Buyer name/)).toHaveValue('Rotterdam Trading BV');
-
-    fireEvent.change(screen.getByLabelText(/Buyer name/), {
-      target: { value: 'Rotterdam Trading B.V.' },
-    });
-    fireEvent.change(screen.getByLabelText('Contact phone'), {
-      target: { value: '+31 10 555 0199' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save buyer' }));
-
-    await waitFor(() => expect(setDealBuyer).toHaveBeenCalled());
-    const [, body] = vi.mocked(setDealBuyer).mock.calls[0] ?? [];
-    // Typed: sent. Untouched and hidden: left out (kept). Never the bullets.
-    expect(body).toEqual({
-      name: 'Rotterdam Trading B.V.',
-      country: 'NL',
-      contact_phone: '+31 10 555 0199',
-    });
-  });
-
-  it('prefills and sends every field for COMPLIANCE, who sees them in full', async () => {
-    signedInAs('COMPLIANCE');
-    renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit buyer details' }));
-    expect(screen.getByLabelText('Registration number')).toHaveValue('NL-8899');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save buyer' }));
-    await waitFor(() => expect(setDealBuyer).toHaveBeenCalled());
-    const [, body] = vi.mocked(setDealBuyer).mock.calls[0] ?? [];
-    expect(body).toEqual({
-      name: 'Rotterdam Trading BV',
-      country: 'NL',
-      registration_number: 'NL-8899',
-      tax_id: null,
-      contact_email: null,
-      contact_phone: null,
-    });
+    expect(await screen.findByRole('button', { name: 'Choose buyer company' })).toBeInTheDocument();
+    // No new legacy buyer is recorded and none is edited (`trg_deal_buyer_frozen`).
+    expect(screen.queryByRole('button', { name: 'Edit buyer details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Record details instead' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Rotterdam Trading BV').length).toBeGreaterThan(0);
   });
 });
 
@@ -709,7 +654,6 @@ describe('the invoicing branch', () => {
       state_code: '27',
       state_name: 'Maharashtra',
       status: 'ACTIVE',
-      address: null,
       flag_status: 'NONE',
       flag_reason: null,
       active: true,

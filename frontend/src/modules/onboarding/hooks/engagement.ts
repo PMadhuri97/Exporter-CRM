@@ -42,6 +42,18 @@ export function useExporterContacts(customerId: string | undefined) {
   });
 }
 
+/**
+ * Every person at the company — contacts, directors, owners — under the contacts key, so
+ * adding or editing anyone refreshes it with the contact list.
+ */
+export function useCompanyPeople(customerId: string | undefined) {
+  return useQuery({
+    queryKey: ['exporterContacts', customerId, 'ALL'],
+    queryFn: () => listExporterContacts(customerId!, 'ALL'),
+    enabled: Boolean(customerId),
+  });
+}
+
 export function useAddExporterContact(customerId: string) {
   const queryClient = useQueryClient();
   return useMutation({

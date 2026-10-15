@@ -156,7 +156,7 @@ describe('BackgroundCheckPanel — risk', () => {
     const chip = await screen.findByTestId('risk-chip');
     expect(chip).toHaveAttribute('data-risk', 'CRITICAL');
     // The one solid badge: white on the negative solid, with a warning icon —
-    // LOW/MEDIUM/HIGH are tinted only (frontend-plan §5.2).
+    // LOW/MEDIUM/HIGH are tinted only.
     expect(chip.className).toContain('bg-negative-solid');
     expect(chip.className).toContain('text-white');
     expect(chip.querySelector('svg')).not.toBeNull();

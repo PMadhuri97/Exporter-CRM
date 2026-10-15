@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { cn } from '@/lib/cn';
 
 /**
- * One record in a list, without a table (frontend-plan §6.7): the title as a link
+ * One record in a list, without a table: the title as a link
  * on the first line, one line of key facts under it, and the badges on the right.
  * No column headers and no sortable grid; the list's own controls filter it, on
  * the server. The same item serves companies, deals, users, follow-ups and

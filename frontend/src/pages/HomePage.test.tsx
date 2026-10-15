@@ -73,7 +73,7 @@ describe('HomePage — compliance cards by role', () => {
   });
 });
 
-describe('HomePage — one home per role (frontend-plan §8.2)', () => {
+describe('HomePage — one home per role', () => {
   it('gives the administrator the setup section, and nobody else', () => {
     renderAs('ADMIN');
     expect(screen.getByTestId('card-setup')).toBeInTheDocument();

@@ -54,10 +54,25 @@
 >   `trg_exporter_profile_no_group_cycle`. `GET /exporters/{id}/group` is the tree from
 >   the ultimate parent (worked out on read), with each member's stage, check and risk
 >   (for `compliance:view`), open deals and their value. `GET .../group/suggestions`
->   (`compliance:view`) lists companies sharing a beneficial owner; nothing is linked
->   automatically.
+>   (`compliance:view`) lists companies sharing a director or beneficial owner; nothing
+>   is linked automatically.
+>
+> **Amendment, 14 October 2026 — people (migration 0057).** A company's directors and
+> beneficial owners are **people** on `exporter_contact`, beside its contacts: one row
+> per person with roles `is_contact`, `is_director`, `is_ubo`, so a director who is also
+> the main contact is one row. `POST /exporters/{id}/contacts` and `PATCH .../{contact_id}`
+> take the roles and the optional person fields — date of birth, nationality, residence
+> country, DIN (a director's), ownership % and control type (an owner's), identification
+> type and number (stored encrypted). Only the name and a role are required; a rule
+> broken is a 422. `GET .../contacts?role=CONTACT|DIRECTOR|UBO|ALL` (default `CONTACT`)
+> lists them; the company detail embeds contacts only. Date of birth, DIN and the
+> identification number are masked unless the viewer holds `exporters:view_full_tax_id`.
+> A person is never deleted; adding a director or owner, or changing those roles, writes
+> a `contact` history row (`person_added`, `person_roles_changed`). The sanctions
+> screening and group suggestions read these people; the CRM no longer reads the old
+> onboarding system's `ubo_record`, whose owners 0057 copied across with their ids.
 
-**Owner:** Developer 2 · **Implemented by:** L2-03 (identity), L2-04 (journey), L2-05 (migration 0014), L2-06 (tax IDs), L2-08 (marker), L2-11 (the move to `CUSTOMER`) · **Status:** implemented — §10 lists what is still open
+**Owner:** Developer 2 · **Status:** implemented — §10 lists what is still open
 
 Every gauge, deal, document and check in the CRM hangs off one company record.
 This is what Developers 1, 3 and 4 build against: what a company is called,
@@ -65,8 +80,8 @@ which values its journey and marker take, which fields sit on it, and who may
 write each one.
 
 It fixes **vocabulary and rules**, not storage. Column types, whether GSTINs
-are a child table or an array, and index names are migration 0014's to decide
-(L2-05), as long as they honour what is written here.
+are a child table or an array, and index names are migration 0014's to decide,
+as long as they honour what is written here.
 
 Changing this contract needs the agreement of Developer 2 and every developer
 who writes or reads a field on it (architecture §7.5).
@@ -117,21 +132,18 @@ writer of that field; everyone else reads it.
 | `gstins` | GST registrations | no (empty list) | Several per company, one per state. A duplicate across companies warns, never blocks — §4 |
 | `iec` | Importer-exporter code | no | §4 |
 | `cin` | Company registration number | no | §4 |
-| `source` | How the company reached us | **yes** | The existing `ExporterSource` values. **Immutable once set**, enforced by the service and by `trg_exporter_profile_source_immutability`. `RXIL` for RXIL intake. `DEAL_BUYER` only for a company created as a deal's buyer, outside the pipeline: `POST /exporters` and the CSV import refuse it (R-21) |
+| `source` | How the company reached us | **yes** | The existing `ExporterSource` values. **Immutable once set**, enforced by the service and by `trg_exporter_profile_source_immutability`. `RXIL` for RXIL intake. `DEAL_BUYER` only for a company created as a deal's buyer, outside the pipeline: `POST /exporters` and the CSV import refuse it |
 | `date_added` | When the record was created | server-set | Immutable |
 
 `legal_name` / `incorporation_country` on `onboarding_request`, and the
 `legal_name` the list response currently derives from it, are the legacy
-source this replaces. After L2-03 no CRM query reads `onboarding_request`.
+source this replaces. No CRM query reads `onboarding_request`.
 
-Today's single `gstin` field becomes `gstins`. Until L2-03/0014 land the API
-still exposes `gstin`; how the response carries the transition is L2-03's call,
-announced to Developer 1 so the generated types are regenerated once.
+The single `gstin` field became `gstins` with migration 0014.
 
 ### 2.2 Descriptive fields (Developer 2)
 
-Kept as they are today, editable by staff, each edit recorded (L2-07,
-dimension `profile`): `industry`, `export_markets`, `products`,
+Kept as they are today, editable by staff, each edit recorded (dimension `profile`): `industry`, `export_markets`, `products`,
 `year_established`, `website`. (`website` is retired, §10; the legacy free-text
 `relationship_manager` is read-only since 7 October 2026.)
 
@@ -157,12 +169,12 @@ only fixes the field name, the owner, and the default.
 | Field | Owner | Default | Values defined in |
 |---|---|---|---|
 | `qualification` | Developer 2 | `NOT_YET_REVIEWED` | `criterion-result.md` §4 |
-| `conversation` | Developer 3 | Developer 3's engagement contract (architecture: `NOT_CONTACTED`, tracked from `PROSPECT`) | engagement contract (L3-01) |
-| `background_check` | Developer 4 | `NOT_STARTED` | background-check contract (L4-01) |
+| `conversation` | Developer 3 | Developer 3's engagement contract (architecture: `NOT_CONTACTED`, tracked from `PROSPECT`) | engagement contract |
+| `background_check` | Developer 4 | `NOT_STARTED` | background-check contract |
 
 **None of these three columns exists yet.** Migration 0014 did not add them:
 the conversation and background-check values are defined by contracts not yet
-published (L3-01, L4-01), and qualification's lands with its tables (0017).
+published, and qualification's lands with its tables (0017).
 Each owner adds its own column in its own migration, with the default above.
 
 **Only the owner writes its field**, through its own service, and writes the
@@ -198,12 +210,11 @@ row with both ids, both names and the reason (`history-row.md` §2).
   background check on an in-pipeline company, and a person's `QUALIFIED`, need one in the same
   request (409 `RELATIONSHIP_MANAGER_REQUIRED`); imports, the RXIL intake, the platform's own
   loaders and buyer-only companies are exempt.
-- **The legacy `relationship_manager` text** is read-only: no route writes it, and
-  `POST /exporters` and `PATCH /exporters/{id}` refuse the field (422, the schemas forbid unknown
-  fields) — a caller that still sends it must stop, and set the RM through
-  `POST /exporters/{id}/relationship-manager` instead. The command
-  `python -m app.modules.onboarding.backfill_relationship_managers` matches it, exactly apart
-  from case and spacing, to one active RM account (dry run first) and reports the rest.
+- **There is no free-text RM.** The old `relationship_manager` text was matched to RM
+  accounts by a one-off command and dropped by migration 0061 (names no account matched
+  were discarded, as decided on 14 October 2026). `POST /exporters` and
+  `PATCH /exporters/{id}` refuse the field (422, the schemas forbid unknown fields); the RM
+  is set through `POST /exporters/{id}/relationship-manager`.
 
 ---
 
@@ -214,9 +225,9 @@ row with both ids, both names and the reason (`history-row.md` §2).
 | Move | Caused by | Written by |
 |---|---|---|
 | created at `LEAD` | Manual entry, bulk import | Developer 2's create path |
-| arrives as `PROSPECT` | RXIL intake (decision 7) | Developer 2's RXIL intake (L2-12). As built: created as a `LEAD` and moved to `PROSPECT` by RXIL's own `QUALIFIED` outcome, so every commit satisfies invariant 1; a delivery interrupted in between is finished by the next one |
+| arrives as `PROSPECT` | RXIL intake (decision 7) | Developer 2's RXIL intake. As built: created as a `LEAD` and moved to `PROSPECT` by RXIL's own `QUALIFIED` outcome, so every commit satisfies invariant 1; a delivery interrupted in between is finished by the next one |
 | `LEAD` → `PROSPECT` | A qualification outcome of `QUALIFIED` is recorded | Developer 2, in the same transaction as the outcome |
-| `PROSPECT` → `CUSTOMER` | The company is `PROSPECT` **and** its background check is `CLEAR` — whichever becomes true second (assumption A1) | Developer 2 (L2-11) |
+| `PROSPECT` → `CUSTOMER` | The company is `PROSPECT` **and** its background check is `CLEAR` — whichever becomes true second (assumption A1) | Developer 2 |
 
 Nothing else. In particular:
 
@@ -224,7 +235,7 @@ Nothing else. In particular:
   action in the target model; each move is the consequence of a qualification
   outcome or a background-check decision. Today's
   `POST /onboarding/exporters/{customer_id}/transition` belongs to the old ten
-  statuses and goes with them (L2-04).
+  statuses and goes with them.
 - **Never backwards.** A `CUSTOMER` whose check later becomes `FLAGGED` or
   `ON_HOLD` stays a `CUSTOMER`; the flag is visible and blocks deal handovers
   (assumption A5). A `NOT_QUALIFIED` lead stays `LEAD`, is never deleted, and
@@ -233,7 +244,7 @@ Nothing else. In particular:
   already `CLEAR` becomes `PROSPECT` and then `CUSTOMER` in the same
   transaction, as two moves with two history rows.
 
-Consequence for the allowed-moves endpoint (decision U1, still unowned): for the
+Consequence for the allowed-moves endpoint (still unowned): for the
 journey dimension, the set of moves a person may request is **empty**. The
 journey still belongs in that endpoint's response (current value, and why the
 next move has not happened), but it contributes no buttons.
@@ -244,7 +255,7 @@ Developer 4 decides `CLEAR`; Developer 2 moves the journey (architecture §8.2).
 Both orders must work:
 
 - **Qualified first, cleared second.** Developer 4's `CLEAR` decision is what
-  completes the condition; the move follows from Developer 4's signal (L4-05).
+  completes the condition; the move follows from Developer 4's signal.
 - **Cleared first, qualified second.** Developer 2's `QUALIFIED` outcome sees
   `background_check = CLEAR` on the record and moves straight through to
   `CUSTOMER`.
@@ -254,9 +265,8 @@ The move writes a `journey` history row and then announces
 `name`, `country`, `pan` and `gstins` come from §2.1 of this contract;
 `risk_rating` and `clearing_decision_id` come from Developer 4's decision.
 
-**They commit together — one transaction** (decision U4, implemented 29 September
-2026 on the audit's recommendation; **awaiting the programme lead's written
-confirmation**). Developer 2's `ExporterProfileService.promote_to_customer_if_ready`
+**They commit together — one transaction** (implemented 29 September 2026 on the
+audit's recommendation and confirmed by the lead on 4 October 2026). Developer 2's `ExporterProfileService.promote_to_customer_if_ready`
 flushes and never commits, like seam S1, and is called by whichever move completes
 the condition, before that move's single commit:
 
@@ -292,7 +302,7 @@ already has is refused, not silently accepted.
 findable by search and by an explicit marker filter (assumption A11). `PAUSED`
 companies stay in default lists, visibly marked.
 
-As built (L2-08), on `GET /onboarding/exporters`: with no `marker` filter and no
+As built, on `GET /onboarding/exporters`: with no `marker` filter and no
 search term — `name`, `pan`, `gstin`, `iec` — `ENDED` companies are excluded;
 any search term includes them; `marker=ENDED` lists only them. `source` and
 `status` are list filters, not search terms, and do not bring them back. The
@@ -363,18 +373,23 @@ are by import and RXIL intake. That embedded PAN is used for duplicate
 
 **Warnings are part of the response, not an error.** A save that raises a
 GSTIN warning succeeds, and the response says which GSTIN is also held by which
-other company (subject to §5's masking). As built (L2-06): create, edit and
+other company (subject to §5's masking). As built: create, edit and
 detail responses carry `gstin_warnings: [{gstin, other_customer_ids}]`, empty
 when there is nothing to warn about; the GSTIN in a warning is masked like
 every other identifier. Only the database's per-company uniqueness
 (`uq_exporter_gstin_customer_gstin`) exists — never a global one.
 
-### 4.1 A GST registration is a branch (task 3.12, plan P6-1)
+### 4.1 A GST registration is a branch
 
 `exporter_gstin` grew in place rather than being copied into a `gst_registration`
 table. A row is now a **branch**: a GSTIN plus the state it was issued in, the GST
-portal's status, the registered address, a compliance flag, and whether the company
-still uses it.
+portal's status, its address, a compliance flag, and whether the company still uses it.
+
+> **Amendment, 14 October 2026.** A branch's address is its linked company address
+> (`address_id`) only. `POST /exporters/{id}/gst-registrations` refuses a free-text
+> `address` (422). The text stored before was turned into `CORRESPONDENCE` company
+> addresses linked to their branches (city "Not recorded", for a person to correct) by a
+> one-off command, and migration 0061 dropped the column.
 
 Three facts that are easy to confuse, kept apart:
 
@@ -382,7 +397,7 @@ Three facts that are easy to confuse, kept apart:
 |---|---|
 | `status` (`UNVERIFIED` / `ACTIVE` / `CANCELLED` / `SUSPENDED`) | the **GST portal's**. `UNVERIFIED` is the default and means "nobody has checked", deliberately not `ACTIVE`, which would be a claim |
 | `active` | **ours** — whether we still use this branch |
-| `flag_status` (`NONE` / `FLAGGED`) | **compliance's** (task 3.14) |
+| `flag_status` (`NONE` / `FLAGGED`) | **compliance's** |
 
 `state_code` and `state_name` are **derived** from the GSTIN's first two characters
 (`domain/gst_states.py`) and never entered: a typed state could contradict the GSTIN
@@ -391,14 +406,14 @@ recorded as unknown rather than guessed, because the format check accepts any tw
 digits.
 
 **A registration is never deleted.** `trg_exporter_gstin_no_delete` refuses it, and
-`gstin_rows` no longer cascades `delete-orphan`. Before task 3.12 a company edit that
+`gstin_rows` no longer cascades `delete-orphan`. Before 0035 a company edit that
 dropped a GSTIN deleted its row; once a deal records its invoicing branch that delete
 hits `fk_deal_seller_gst_registration_id`'s `RESTRICT`, and where it succeeded it
 destroyed the record of a branch the company really traded through. Dropping one is a
 **deactivation**, and re-adding the same GSTIN reactivates that row rather than
 inserting a second — so there is one row per `(company, GSTIN)` forever.
 
-`PATCH /exporters/{id}` **no longer accepts `gstins`** (422, task 3.13). Adding,
+`PATCH /exporters/{id}` **no longer accepts `gstins`** (422). Adding,
 deactivating and flagging a branch are three decisions with three routes under
 `/exporters/{id}/gst-registrations` and `/gst-registrations/{id}`, each leaving its
 own `gst_registration` history row with the GSTIN masked. `company.gstins` means the
@@ -406,14 +421,14 @@ own `gst_registration` history row with the GSTIN masked. `company.gstins` means
 
 **Flagging is per branch and per company.** A company trading through five states may
 have a problem in one of them, so a flag blocks handovers only for deals invoiced
-through *that* branch (decision BQ-6, task 2.9). A reason is required to flag **and**
+through *that* branch. A reason is required to flag **and**
 to unflag — the first is what the block will say, the second is why we decided the
 problem was resolved — and `ck_exporter_gstin_flag_reason` holds the first at the
-database. Because a GSTIN may legitimately sit on two companies (IQ-9), flagging one
+database. Because a GSTIN may legitimately sit on two companies, flagging one
 company's row does **not** touch the other's; the flag response names the other
-holders so nobody believes they have stopped trade that is still running (task 3.15).
+holders so nobody believes they have stopped trade that is still running.
 
-**DEVELOPER is not served flags** (R-47, decision D-05 of 4 October 2026): a flag is a
+**DEVELOPER is not served flags** (decided 4 October 2026): a flag is a
 compliance judgement, withheld for D8's reason. On `GET …/gst-registrations` its
 `flag_status` and `flag_reason` are `null` and `flagged_count` is `null`; its history
 omits the flag and unflag rows and the `flag_status` detail. OPERATIONS keeps them —
@@ -423,15 +438,15 @@ Flag and unflag are **COMPLIANCE and ADMIN only**. Recording and deactivating a
 branch stay with STAFF: which branches a company trades through is a record a
 relationship manager keeps.
 
-A "verify on the GST portal" link is served only to a role that sees the full GSTIN
-(task 3.17), because the link contains it.
+A "verify on the GST portal" link is served only to a role that sees the full GSTIN,
+because the link contains it.
 
-**Bulk import matching** (L2-13, assumption A14) matches an incoming row to an
+**Bulk import matching** (assumption A14) matches an incoming row to an
 existing company on PAN, then GSTIN via its embedded PAN, then IEC, then CIN,
 and reports every row as accepted, rejected, or possible duplicate. It never
 merges two companies on its own.
 
-**As built** (L2-12, L2-13) — one algorithm, `CompanyMatcher`, for bulk import
+**As built** — one algorithm, `CompanyMatcher`, for bulk import
 and RXIL intake alike, over identities checked by the same normalisers as
 manual creation (`check_identity`):
 
@@ -469,7 +484,7 @@ a file it cannot read at all is the same 422 the import gives.
 
 ## 5. Who may see and do what
 
-Unchanged from what Developer 1 built (L1-10, architecture §3.7, decision 12):
+Unchanged from what Developer 1 built (architecture §3.7, decision 12):
 
 - **Read** a company: OPERATIONS, COMPLIANCE, ADMIN, DEVELOPER. API_USER: nothing.
 - **Create and edit** a company, **set and clear the marker**: OPERATIONS,
@@ -481,7 +496,7 @@ Unchanged from what Developer 1 built (L1-10, architecture §3.7, decision 12):
   anyone else gets 403 naming the parameter, because an exact match is itself
   an answer (`_reject_identifier_search`).
 - **CIN** is masked like the other three (the recommended default for open
-  item O4, applied in L2-05 until the programme lead decides otherwise). There
+  item O4, confirmed by the lead on 4 October 2026). There
   is no CIN search filter yet.
 - **Name search** (case-insensitive, partial) is open to every reader.
 - **Being a company's relationship manager changes none of this**: an RM sees their own
@@ -512,18 +527,18 @@ dimensions:
 |---|---|---|---|
 | `journey` | creation, and each move in §3.1 | `NULL` → `LEAD`/`PROSPECT` at creation; then the move | — |
 | `marker` | each move in §3.3 | `NONE`/`PAUSED`/`ENDED` | required on setting, optional on clearing |
-| `profile` | each edit of an identity or descriptive field (L2-07) | old value → new value | — |
+| `profile` | each edit of an identity or descriptive field | old value → new value | — |
 | `qualification` | see `criterion-result.md` §6 | | |
 
 **Event types.** The journey keeps the names its rows have always had —
 `lifecycle_initial` / `lifecycle_transition` — because a downstream consumer
 (ANER-4.2-S1T2) polls for them (history contract §3). Every other Developer 2
 dimension uses the contract's derived names (`marker_transition`,
-`profile_transition`, ...). Since L2-04 every journey row — the `LEAD` row at
+`profile_transition`, ...). Since migration 0020 every journey row — the `LEAD` row at
 creation, the `LEAD` -> `PROSPECT` move a `QUALIFIED` outcome makes, and an
 RXIL intake's rows — uses these two names, and carries `terminal` in its
 details: `false` for `LEAD` and `PROSPECT`; `true` for the move to `CUSTOMER`
-(L2-11, §3.2). Rows written before L2-04 for the ten old
+(§3.2). Rows written before 0020 for the ten old
 statuses are kept as they were.
 
 **Allowed moves are served, not copied.** Each company response carries
@@ -533,7 +548,7 @@ with `reason_required` — and the qualification response carries
 and holds no transition table. The journey has no allowed moves: it is never
 moved by hand. The cross-gauge allowed-moves endpoint remains open item O6.
 
-**How a `profile` row is written** (L2-07, built). One row per field whose
+**How a `profile` row is written** (built). One row per field whose
 value actually changes; an edit that changes nothing writes nothing.
 
 | Column | Value |
@@ -552,24 +567,24 @@ explicitly because the shared writer would otherwise derive `profile_initial`
 from the `NULL` `from_status`. This settles open item O7.
 
 **Identifiers are masked in these rows**, for every reader: `pan`, `gstins`, `iec`,
-`cin` and `registration_number` are written masked (`registration_number` since R-15;
+`cin` and `registration_number` are written masked (`registration_number` since 4 October 2026;
 before it the full value was written), and the history route masks them again when it
-serves a row, so a row written before R-15 is served masked too without being rewritten
+serves a row, so a row written before then is served masked too without being rewritten
 (the log is append-only).
 
-**`identity_type` follows the edit** (R-16): it is recomputed whenever `pan` or
+**`identity_type` follows the edit**: it is recomputed whenever `pan` or
 `registration_number` changes, by the same rule as on create. An edit that touches
-`country`, `pan` or `registration_number` must leave the company identifiable (IQ-7):
+`country`, `pan` or `registration_number` must leave the company identifiable:
 moving a PAN-less company abroad without a number, or clearing a foreign company's
-number, is refused (422). A buyer the P4-6 migration created with no number keeps IQ-7's
-exception until one is added. Migration 0043 corrected the rows edited before this.
+number, is refused (422). A buyer the buyer migration created with no number keeps its
+exemption from the identity rule until one is added. Migration 0043 corrected the rows edited before this.
 
-**The completion list** (R-28, plan §17.2: unidentified buyers go "to the completion
+**The completion list** (unidentified buyers go "to the completion
 list"). `GET /companies/identity-completion?limit=&offset=` (every CRM reader, DEVELOPER
 included; API_USER 403) lists the companies with `identity_type` NULL — neither a PAN
 nor a registration number — that are not `ENDED`. Each item says what the company lacks,
 `missing`: `COUNTRY` when it has none, `REGISTRATION_NUMBER` outside India, `PAN` in
-India; and `required`, which is true for the first two (IQ-7) and false for a PAN, which
+India; and `required`, which is true for the first two and false for a PAN, which
 is only worth having. Required ones come first, then oldest first. An item carries
 `company_id`, `name`, `country`, `pipeline_status`, `created_via` and `created_at`, and
 **no identifier** (the companies have none), so nothing in it is masked. It is a work
@@ -624,11 +639,11 @@ Recorded, not decided here. Each names who decides.
 | # | Question | Decides |
 |---|---|---|
 | O1 | Does 0014 rename `customer_id` to `company_id` in the CRM's own tables and routes? Recommendation: **no** in the prototype — all four developers' code and the generated types would move at once for no behavioural gain | Dev 2 with Dev 1 (types) |
-| O2 | The ANER-4.2-S1T2 consumer watches `lifecycle_transition` rows for `ONBOARDED` (the `terminal` flag). That status is gone (L2-04, migration 0020). Journey rows keep the `lifecycle_*` event types and the `terminal` flag, which only `CUSTOMER` will set (L2-11) — confirm that `CUSTOMER` is the replacement | Programme lead, with whoever owns that consumer |
-| O3 | ~~Decision U4: do Developer 4's `CLEAR` and Developer 2's `CUSTOMER` move commit in one transaction?~~ **Implemented as one transaction** (§3.2, 29 September 2026) — the programme lead to confirm in writing | Programme lead, Dev 2, Dev 4 |
+| O2 | The ANER-4.2-S1T2 consumer watches `lifecycle_transition` rows for `ONBOARDED` (the `terminal` flag). That status is gone (migration 0020). Journey rows keep the `lifecycle_*` event types and the `terminal` flag, which only `CUSTOMER` will set — confirm that `CUSTOMER` is the replacement | Programme lead, with whoever owns that consumer |
+| O3 | ~~Do Developer 4's `CLEAR` and Developer 2's `CUSTOMER` move commit in one transaction?~~ **Implemented as one transaction** (§3.2, 29 September 2026) — confirmed by the lead on 4 October 2026 | Programme lead, Dev 2, Dev 4 |
 | O4 | Is CIN masked like PAN/GSTIN/IEC? Recommendation: **yes** until decided — widening later is safe, narrowing later is not | Programme lead (decision 12's scope) |
 | O5 | ~~Profile-history rows for tax identifiers: masked in the row, or stored in full and masked on read?~~ **Settled for the prototype: masked in the row** (§6). Revisit only if the history read route gains role-based masking | Dev 2 with Dev 1 — Dev 1 to acknowledge |
-| O6 | ~~Decision U1: who owns the allowed-moves endpoint~~ **Resolved in practice:** there is no single endpoint — each gauge's owner serves its own allowed moves (`allowed_marker_moves`, qualification's `allowed_outcomes`, the conversation's and background check's `allowed_moves`, the deal's `allowed_stage_moves`, `can_open_deal`), and the frontend keeps no copy | Programme lead |
+| O6 | ~~Who owns the allowed-moves endpoint~~ **Resolved in practice:** there is no single endpoint — each gauge's owner serves its own allowed moves (`allowed_marker_moves`, qualification's `allowed_outcomes`, the conversation's and background check's `allowed_moves`, the deal's `allowed_stage_moves`, `can_open_deal`), and the frontend keeps no copy | Programme lead |
 | O7 | ~~How a `profile` history row records an empty value.~~ **Settled: values in `event_metadata`, `to_status` names the field** (§6) | Dev 2 with Dev 1 — Dev 1 to acknowledge |
 
 ---
@@ -641,21 +656,21 @@ Stated separately so nobody reads this contract as a description of the code.
 |---|---|
 | Company id (as `customer_id`), `source` immutability, descriptive fields | **implemented** |
 | IEC column | **implemented**, format not yet checked |
-| Server-side masking and identifier-search refusal | **implemented** (Dev 1, L1-10) |
-| `journey` history rows (`lifecycle_*`, with `terminal`) | **implemented** — for the three journey stages (L2-04); older rows for the ten statuses are kept |
+| Server-side masking and identifier-search refusal | **implemented** (Dev 1) |
+| `journey` history rows (`lifecycle_*`, with `terminal`) | **implemented** — for the three journey stages; older rows for the ten statuses are kept |
 | `name` / `country` / `cin` as columns on the company record | **implemented** (0014). The transitional identity store is deleted; no CRM code reads a company's identity from `onboarding_request` |
-| `onboarding_history` on the company detail | **removed** (L2-03) |
-| Retiring the ten old statuses | **implemented** (L2-04, migration 0020): `lifecycle_status`, its enum, the transition route and the frontend's copy of the graph are gone |
-| The move to `CUSTOMER` | **implemented** (L2-11) — both orders, in the completing move's transaction, announced after the commit (§3.2) |
-| `allowed_marker_moves` on company responses; `allowed_outcomes` / `can_record_results` on qualification | **implemented** (L2-04, L2-14) |
-| `gstins` (several, `exporter_gstin`), PAN format and uniqueness, GSTIN format and PAN cross-check, duplicate-GSTIN warnings | **implemented** (0014, L2-06) |
-| `marker` and `marker_reason`, the marker route, ENDED off the default list | **implemented** (0014, L2-08) |
-| List filters (`country`, `industry`, `background_check`, `trade_role`, `has_open_deals`) and `total` on the search response | **implemented** (§3.4). `background_check` is blanked and its filter refused for a role that may not read checks (D8); `has_open_deals` reads the selling side |
+| `onboarding_history` on the company detail | **removed** |
+| Retiring the ten old statuses | **implemented** (migration 0020): `lifecycle_status`, its enum, the transition route and the frontend's copy of the graph are gone |
+| The move to `CUSTOMER` | **implemented** — both orders, in the completing move's transaction, announced after the commit (§3.2) |
+| `allowed_marker_moves` on company responses; `allowed_outcomes` / `can_record_results` on qualification | **implemented** |
+| `gstins` (several, `exporter_gstin`), PAN format and uniqueness, GSTIN format and PAN cross-check, duplicate-GSTIN warnings | **implemented** (0014) |
+| `marker` and `marker_reason`, the marker route, ENDED off the default list | **implemented** (0014) |
+| List filters (`country`, `industry`, `background_check`, `trade_role`, `has_open_deals`) and `total` on the search response | **implemented** (§3.4). The background-check state is blanked, and its filter refused, for a role that may not read background checks; `has_open_deals` reads the selling side |
 | `journey` (`LEAD`/`PROSPECT`/`CUSTOMER`) and `qualification` columns | **implemented** (0017); the old `lifecycle_status` beside it was dropped in 0020. Qualification moves it `LEAD` -> `PROSPECT` |
 | `conversation`, `background_check` fields | **implemented** — Dev 3A's 0016 and Dev 4A's 0015 (see §2.4) |
 | The ORM declares every index and constraint 0014/0017 created (PAN unique, the outcome chain) | **implemented** — checked by `test_orm_matches_the_onboarding_schema.py` |
-| `website` | **retired** (R11, decision IQ-16, task 3.7). No write path accepts one — the request schemas refuse the field (422) and the CSV importer reads the old `website` column and ignores it — and no response carries one. The column and every stored value are kept: nothing is destroyed, nothing is shown |
-| `registration_number` | whatever the company's own registrar issued, for a company not identified by a PAN. **Required for a company outside India** that holds no PAN (decision IQ-7); stored as the registrar writes it and compared with everything but the ASCII letters and digits removed, upper-cased — exactly the unique index's expression, so a lookup and an insert can never disagree (R-20) — so one number cannot be entered twice per country (`uq_exporter_profile_country_registration_number`). A number with no ASCII letter or digit is refused (422). A duplicate is refused with 409 `DUPLICATE_REGISTRATION_NUMBER` naming the holder, like a PAN — unlike a GSTIN, which stays warn-only (IQ-9). Masked like CIN |
-| `profile` history on edits; clearing a field | **implemented** (L2-07) |
+| `website` | **retired**. No write path accepts one — the request schemas refuse the field (422) and the CSV importer reads the old `website` column and ignores it — and no response carries one. The column and every stored value are kept: nothing is destroyed, nothing is shown |
+| `registration_number` | whatever the company's own registrar issued, for a company not identified by a PAN. **Required for a company outside India** that holds no PAN; stored as the registrar writes it and compared with everything but the ASCII letters and digits removed, upper-cased — exactly the unique index's expression, so a lookup and an insert can never disagree — so one number cannot be entered twice per country (`uq_exporter_profile_country_registration_number`). A number with no ASCII letter or digit is refused (422). A duplicate is refused with 409 `DUPLICATE_REGISTRATION_NUMBER` naming the holder, like a PAN — unlike a GSTIN, which stays warn-only. Masked like CIN |
+| `profile` history on edits; clearing a field | **implemented** |
 | Real links from contacts, activities, screening items, GSTINs and history | **implemented** (0014, `ON DELETE RESTRICT`); `verification_result.entity_reference` deliberately has none |
 | `name` required by the database | **not built** — waits for the unnamed create path to go |

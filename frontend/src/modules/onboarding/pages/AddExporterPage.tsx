@@ -1,5 +1,5 @@
 /**
- * New company, in a side panel over the Companies list (frontend-plan §8.4, §6.9) —
+ * New company, in a side panel over the Companies list —
  * Dynamics quick create with duplicate detection. `/companies/new` opens the list
  * with the panel open; closing it goes back to the list.
  *

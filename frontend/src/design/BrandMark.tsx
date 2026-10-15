@@ -1,7 +1,7 @@
 import { cn } from '@/lib/cn';
 
 /**
- * The brand (frontend-plan §5.8): the "Aner Labs" wordmark at 16/600 with the
+ * The brand: the "Aner Labs" wordmark at 16/600 with the
  * product, "Exporter CRM", in grey beside it — the way Salesforce and Dynamics name
  * the app in their header. A placeholder until a logo exists. The favicon
  * (`public/favicon.svg`) is a white "A" on the brand blue, the same as `mark`.

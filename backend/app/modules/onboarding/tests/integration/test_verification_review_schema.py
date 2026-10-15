@@ -173,20 +173,43 @@ async def test_an_unreviewed_result_outcome_can_still_change():
         assert cur.fetchone() == ("PASSED", "LOW")
 
 
-async def test_the_legacy_review_trigger_is_still_in_place():
-    """trg_verification_result_field_immutability (0006) is kept, never dropped."""
+async def test_a_reviewed_result_keeps_its_other_columns_editable():
+    """The freeze covers the outcome only: `provider_reference` still changes."""
     with pg() as cur:
         result_id = insert_result(cur)
+        insert_review(cur, result_id)
         cur.execute(
-            "UPDATE onboarding.verification_result SET review_status = 'ACCEPTED' WHERE id = %s",
+            "UPDATE onboarding.verification_result SET provider_reference = 'ref-2' WHERE id = %s",
             (str(result_id),),
         )
-        with pytest.raises(psycopg2.errors.RaiseException, match="review_status is immutable"):
-            cur.execute(
-                "UPDATE onboarding.verification_result SET review_status = 'REJECTED' "
-                "WHERE id = %s",
-                (str(result_id),),
-            )
+        cur.execute(
+            "SELECT provider_reference FROM onboarding.verification_result WHERE id = %s",
+            (str(result_id),),
+        )
+        assert cur.fetchone() == ("ref-2",)
+
+
+async def test_the_retired_review_columns_and_their_trigger_are_gone():
+    """0061 dropped the result's own review columns, `evidence_reference` and the
+    trigger that guarded the first two: the review chain is the one record of a review,
+    and the outcome freeze reads only that."""
+    with pg() as cur:
+        cur.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'onboarding' AND table_name = 'verification_result' "
+            "AND column_name IN ('reviewed_by', 'review_status', 'evidence_reference')"
+        )
+        assert cur.fetchall() == []
+        cur.execute(
+            "SELECT tgname FROM pg_trigger "
+            "WHERE tgname = 'trg_verification_result_field_immutability'"
+        )
+        assert cur.fetchall() == []
+        cur.execute(
+            "SELECT prosrc FROM pg_proc "
+            "WHERE proname = 'prevent_reviewed_verification_outcome_change'"
+        )
+        assert "review_status" not in cur.fetchone()[0]
 
 
 # ── verification_result: evidence and snapshot (contract §3, §6) ─────────────────

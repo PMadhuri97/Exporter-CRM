@@ -17,10 +17,10 @@ data.
 |---|---|
 | Understand the CRM — its model, state machines, roles and ownership | [`docs/architecture.md`](docs/architecture.md) |
 | Run it, test it, change its schema or API | [`docs/development.md`](docs/development.md) |
-| Demonstrate it | [`docs/demo.md`](docs/demo.md) |
-| Know what is done, what is left, and what needs a decision | [`docs/remaining-work.md`](docs/remaining-work.md) |
+| Know what is left and what needs a decision | [`docs/remaining-work.md`](docs/remaining-work.md) |
+| Know the database as built | [`docs/database.md`](docs/database.md) |
 | Know exactly what one part promises the others | [`docs/contracts/`](docs/contracts/) |
-| Know why this checkout contains more than the CRM | [`RUNNING.md`](RUNNING.md) |
+| Know why this checkout contains more than the CRM | [`docs/development.md`](docs/development.md) §12 |
 
 ## Quick start
 
@@ -50,8 +50,7 @@ pnpm install && pnpm dev                          # http://localhost:5173
 | `frontend/src/modules/onboarding` | The CRM screens |
 | `frontend/openapi.json`, `frontend/src/lib/api/schema.ts` | The generated API contract, committed and checked for drift |
 | `deployments/gitops/reference-data` | Reference data loaded as settings (document types, compliance rules, …) |
-| `docs/` | Architecture, development and demo guides, the post-demo plan, remaining work, open items and the contracts |
-| `Jira/` | The Epic 4 specifications (4.1–4.4 and 4.6) the platform's onboarding, lifecycle, case, customer-API and notification modules were built from — not CRM requirements |
+| `docs/` | Architecture, database, development and demo guides, the open-items list and the contracts |
 
 ## Where it came from
 
@@ -59,7 +58,7 @@ This repository started from a pruned copy of ANER's platform monorepo (the Epic
 client and operations modules, plus `compliance`), and the Exporter CRM has been built
 in it directly since. Modules unrelated to the CRM — ledger, settlement, rails, FX,
 reconciliation, payments — are present as schema only, so the one migration chain
-still applies; [`RUNNING.md`](RUNNING.md) records what was kept, what was removed and
-why. The CRM's design is described as built in
+still applies; [`docs/development.md`](docs/development.md) §12 records what was kept,
+what was removed and why. The CRM's design is described as built in
 [`docs/architecture.md`](docs/architecture.md); what is still pending is
 [`docs/remaining-work.md`](docs/remaining-work.md).

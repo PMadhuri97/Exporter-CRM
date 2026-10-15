@@ -34,9 +34,18 @@
 > coverage; `GET /sanctions/true-matches` and `GET /sanctions/rescreen-due` are the
 > Compliance work lists (a newer list version, a company renamed since, an unscreened
 > beneficial owner). History dimension `sanctions`.
+>
+> **Amendment, 14 October 2026 — people as subjects (migration 0057).** The directors and
+> beneficial owners on record are the company's people (`exporter_contact`, see
+> `company-record.md`). Every active one is a subject of the coverage and of Re-screen
+> due ("never screened" until screened). A run on one names it by `subject_reference`
+> (subject type UBO or DIRECTOR, matching the person's role), and
+> `fk_sanctions_run_subject_person` ties that reference to a person of the run's own
+> company; a person's runs are one subject whichever role they were screened under. A
+> director not on record is still screened by name, with no reference. A hand-entered
+> SANCTIONS verification result remains allowed.
 
-**Owner:** Developer 1 — the compliance engine (`docs/developer-allocation.md` §2.1, from
-1 October 2026); built by Developer 4B (L4-02, L4-04 review half, L4-07, L4-09, L4-11) ·
+**Owner:** the compliance engine (Developer 1 from 1 October 2026; built by Developer 4B) ·
 **Migrations:** `onboarding_0021_verif_review`; since then `onboarding_0023_compliance_core`
 (`subject_company_id`), `onboarding_0024_screen_evidence` (screening evidence),
 `onboarding_0025_check_cycle` (`cycle_id`, the seven-item checklist) · **Status:** built
@@ -83,12 +92,10 @@ of the **same** result), `ck_verification_review_not_self`, and
   A `PENDING` result is not reviewable: **422 `VERIFICATION_RESULT_NOT_REVIEWABLE`**.
 - **Legacy verdicts.** 0021 copied every legacy `reviewed_by` / `review_status` into the table
   as that result's first review (its `reviewed_at` is the result's `updated_at`, the closest
-  stored fact, and its note says so). The legacy columns and
-  `trg_verification_result_field_immutability` are kept; nothing writes them after 0021. A
-  result whose legacy columns are set but which has no review row (only possible by writing
-  them outside the service after 0021) is refused with **409
-  `VERIFICATION_LEGACY_REVIEW_UNCHAINED`** rather than given a "first" review that would
-  overrule the legacy verdict with no link and no reason.
+  stored fact, and its note says so). The review chain is the only reading. Migration 0061
+  dropped the legacy columns, the never-written `evidence_reference` and
+  `trg_verification_result_field_immutability`, refusing while any legacy verdict had no
+  review in the chain.
 - **History:** each review writes a `verification` row (`history-row.md` §2): `from_value` the
   previous review status or `None`, `to_value` the new one, `reason` the note, `details` with
   `verification_result_id`, `review_id`, `supersedes_review_id`, `verification_type`. Company:
@@ -99,10 +106,10 @@ of the **same** result), `ck_verification_review_not_self`, and
 ## 2. A reviewed result never changes
 
 `trg_verification_result_outcome_freeze` (`prevent_reviewed_verification_outcome_change()`):
-once a result has any review — a `verification_review` row or a legacy `review_status` —
+once a result has any review (a `verification_review` row),
 `UPDATE` of `status`, `risk_level`, `normalized_result` or `valid_until` is refused.
 `get_verification_status` asks the provider first, then re-reads the row `FOR UPDATE` and, if
-it has been reviewed, **logs and ignores** the provider's new answer (L4-02). Reviews take the
+it has been reviewed, **logs and ignores** the provider's new answer. Reviews take the
 same row lock, which closes the race the trigger alone cannot (a raw `UPDATE` racing a raw
 review `INSERT`). Polling has no production caller; no scheduler exists.
 
@@ -132,13 +139,13 @@ review `INSERT`). Polling has no production caller; no scheduler exists.
   `"rxil"` is refused there (422) and reserved for RXIL's own intake (D12, blocked). The RXIL
   stub stores `rxil_stub` and refuses `PENDING`.
 - No Middesk, Trulioo or Sumsub: `VerificationProvider` is not widened (providers stay manual
-  this quarter, BQ-8; plan P7-1..3 deferred).
+  this quarter).
 
 ## 5. The screening checklist
 
 - **One catalogue, on the server**, served with the list response (key, label, section, in
   order); the screen never hand-copies it. **Seven items since 1 October 2026**
-  (`rules_version`, plan P2-4a): `website-reviewed` is retired — kept and readable, so an
+  (`rules_version`): `website-reviewed` is retired — kept and readable, so an
   eight-item decision still reads, but refused on write (`background-check.md` §16).
 - Status is `NEEDS_REVIEW`, `PASSED`, `FAILED` or `EXEMPT`, in the API **and** the database
   (`ck_screening_review_item_status`). An unknown key is 422; an unknown company 404.
@@ -167,11 +174,11 @@ review `INSERT`). Polling has no production caller; no scheduler exists.
 - **D17:** a new check on the buyer of a `HANDED_OVER` or `WITHDRAWN` deal is refused, **409
   `DEAL_CLOSED`**; existing checks stay readable and reviewable.
 - A failed buyer check never touches the seller company or its background check.
-- **Buyer companies** (plan P4-4/P4-5): a deal that names `buyer_company_id` has its buyer's
+- **Buyer companies**: a deal that names `buyer_company_id` has its buyer's
   checks recorded on that company like any company's (`subject_company_id`), read through
-  `company_inputs`. Developer 2's buyer migration (P4-6) maps legacy `BUYER` results onto their
+  `company_inputs`. Developer 2's buyer migration maps legacy `BUYER` results onto their
   new companies by setting `subject_company_id` once. `BuyerChecks.tsx` stays for legacy buyers
-  until P4-10 (`remaining-work.md`, R-26).
+  until the buyer migration has run everywhere (`remaining-work.md`).
 
 ## 7. Routes
 
@@ -182,7 +189,6 @@ review `INSERT`). Polling has no production caller; no scheduler exists.
 | `POST /verifications/{id}/review` | COMPLIANCE, ADMIN | §1 |
 | `GET /exporters/{id}/screening-review` (+ `/{item_key}/history`) | OPERATIONS, COMPLIANCE, ADMIN | catalogue, capabilities |
 | `PUT /exporters/{id}/screening-review/{item_key}` | COMPLIANCE, ADMIN | §5 |
-| `GET /exporters/{id}/bank-activity` | OPERATIONS, COMPLIANCE, ADMIN | states that **no provider feed is connected** — no fake findings |
 
 - **D8:** DEVELOPER is refused on all of them, reads included; `normalized_result` is not
   masked for the staff roles that may read it. The history routes serve DEVELOPER no
@@ -228,7 +234,7 @@ All decided by the programme lead on 28 September 2026 unless stated. Shared num
 | D7 | Manual route is `manual` only; `rxil` refused there | `api/schemas/verification.py` |
 | D8 | DEVELOPER refused; `normalized_result` not masked | routers; `history_router.py` |
 | D9 | Screening decisions also go to the shared history log (`screening` dimension) | `screening_review_service.upsert_review_item` |
-| D12 | RXIL's package and results contract — **blocked** (RXIL); blocks RXIL results intake (former task 4B-8) | `remaining-work.md` §5 (P7-6) |
+| D12 | RXIL's package and results contract — **blocked** (RXIL); blocks RXIL results intake | `remaining-work.md` §4 |
 | D15 | Checks on DIRECTOR / INVOICE / VESSEL / SHIPMENT write no history row (skipped and logged) | `verification_service._record_history` |
 | D16 | Manual `PASSED` needs a note or a reference; `FAILED` / `REVIEW` need none | `domain/verification_evidence.py` |
 | D17 | No new buyer check on a `HANDED_OVER` / `WITHDRAWN` deal (409 `DEAL_CLOSED`) | `verification_service._resolve_subject` |

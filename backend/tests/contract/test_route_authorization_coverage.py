@@ -253,7 +253,6 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
         "PUT",
         f"{CRM}/exporters/{{customer_id}}/screening-review/{{item_key}}",
     ): COMPLIANCE_ONLY,
-    ("GET", f"{CRM}/exporters/{{customer_id}}/bank-activity"): CRM_STAFF_READERS,
     # ── Exporter CRM: verification results ───────────────────────────────────
     ("POST", f"{CRM}/verifications"): COMPLIANCE_ONLY,
     ("GET", f"{CRM}/verifications"): CRM_STAFF_READERS,

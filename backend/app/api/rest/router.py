@@ -13,7 +13,7 @@ from app.modules.onboarding.api import router as onboarding_router
 # settlement (including the settlement rail-webhook router) are removed here.
 # Those modules are out of scope for this checkout — only their migrations
 # (and, where another in-scope module's ORM relationships need them, their
-# entities) are present, not their api/ layer. See RUNNING.md.
+# entities) are present, not their api/ layer. See docs/development.md §12.
 #
 # app.api.rest.idempotency_audit is also dropped: its router imports
 # LedgerTransactionKeyResolver (app.modules.ledger) and

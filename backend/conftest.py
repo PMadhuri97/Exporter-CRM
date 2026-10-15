@@ -39,7 +39,7 @@ from app.platform.database.read_only import READ_ONLY_CONNECT_ARGS  # noqa: E402
 # ── Known failures: tests that need routes this checkout does not mount ──────
 #
 # Each of these creates a payment or an FX quote first, and the payments and FX
-# routers are deliberately not mounted here (RUNNING.md), so the request 404s.
+# routers are deliberately not mounted here (docs/development.md §12), so the request 404s.
 # They are marked here rather than in their own files because the module rule
 # forbids editing `compliance` (docs/module-rule-exceptions.md). `strict=True`: if
 # one starts passing — the routers were mounted — the run fails until it is
@@ -88,7 +88,7 @@ _KNOWN_FAILURE_NODEIDS = frozenset(
 
 # ── The CRM suite: `pytest --crm` ─────────────────────────────────────────────
 #
-# This checkout is a pruned copy of a wider platform (RUNNING.md), and the CRM is
+# This checkout is a pruned copy of a wider platform (docs/development.md §12), and the CRM is
 # only the `exporter_profile` side of `onboarding` (docs/architecture.md §2).
 # `--crm` collects what a CRM change can break: the CRM's own tests and the
 # repository guards in tests/contract. It leaves out
@@ -182,7 +182,7 @@ def pytest_ignore_collect(collection_path, config):
 def pytest_collection_modifyitems(config, items):
     marker = pytest.mark.xfail(
         strict=True,
-        reason="needs the payments/FX routers this checkout does not mount (RUNNING.md)",
+        reason="needs the payments/FX routers this checkout does not mount (docs/development.md §12)",
     )
     for item in items:
         if item.nodeid.replace("\\", "/") in _KNOWN_FAILURE_NODEIDS:
