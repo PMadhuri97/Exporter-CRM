@@ -210,11 +210,14 @@ row with both ids, both names and the reason (`history-row.md` §2).
   background check on an in-pipeline company, and a person's `QUALIFIED`, need one in the same
   request (409 `RELATIONSHIP_MANAGER_REQUIRED`); imports, the RXIL intake, the platform's own
   loaders and buyer-only companies are exempt.
-- **There is no free-text RM.** The old `relationship_manager` text was matched to RM
-  accounts by a one-off command and dropped by migration 0060 (names no account matched
-  were discarded, as decided on 14 October 2026). `POST /exporters` and
-  `PATCH /exporters/{id}` refuse the field (422, the schemas forbid unknown fields); the RM
-  is set through `POST /exporters/{id}/relationship-manager`.
+- **The legacy `relationship_manager` text** is retired (14 October 2026): no response
+  carries it either, and a later migration drops it; names the backfill cannot match are
+  discarded. Until then no route writes it, and
+  `POST /exporters` and `PATCH /exporters/{id}` refuse the field (422, the schemas forbid unknown
+  fields) — a caller that still sends it must stop, and set the RM through
+  `POST /exporters/{id}/relationship-manager` instead. The command
+  `python -m app.modules.onboarding.backfill_relationship_managers` matches it, exactly apart
+  from case and spacing, to one active RM account (dry run first) and reports the rest.
 
 ---
 
@@ -350,10 +353,12 @@ table. A row is now a **branch**: a GSTIN plus the state it was issued in, the G
 portal's status, its address, a compliance flag, and whether the company still uses it.
 
 > **Amendment, 14 October 2026.** A branch's address is its linked company address
-> (`address_id`) only. `POST /exporters/{id}/gst-registrations` refuses a free-text
-> `address` (422). The text stored before was turned into `CORRESPONDENCE` company
-> addresses linked to their branches (city "Not recorded", for a person to correct) by a
-> one-off command, and migration 0060 dropped the column.
+> (`address_id`) only. The free-text `address` is retired: `POST
+> /exporters/{id}/gst-registrations` refuses it (422) and no response carries it;
+> `python -m app.modules.onboarding.convert_gst_addresses` turns the text already stored
+> into `CORRESPONDENCE` company addresses (line 1 and 2 from the text, the GSTIN's state,
+> India, city "Not recorded" for a person to correct) linked to their branches, and a
+> later migration drops the column.
 
 Three facts that are easy to confuse, kept apart:
 

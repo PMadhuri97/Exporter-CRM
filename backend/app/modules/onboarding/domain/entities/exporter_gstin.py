@@ -45,6 +45,7 @@ from datetime import datetime
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Column,
     DateTime,
     Enum,
     ForeignKey,
@@ -112,8 +113,17 @@ class ExporterGstin(AnerModel):
             ondelete="RESTRICT",
             use_alter=True,
         ),
+        # Retired, and deliberately **not mapped** (`__mapper_args__` below): declared so the
+        # table still matches the database, while the ORM never names it in an INSERT,
+        # UPDATE or SELECT. `deferred` is not enough — the ORM still inserts an explicit
+        # NULL into every mapped nullable column with no default — and an instance of this
+        # release must keep working once a later migration drops the column.
+        # The branch's old free-text address: `convert_gst_addresses` reads it through
+        # `__table__.c` and turns it into a linked company address.
+        Column("address", Text, nullable=True),
         {"schema": SCHEMA},
     )
+    __mapper_args__ = {"exclude_properties": ["address"]}
 
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

@@ -113,6 +113,14 @@ def test_invalid_risk_level_enum_rejected(verification_result_id):
         )
 
 
+def test_invalid_review_status_enum_rejected(verification_result_id):
+    with pytest.raises(psycopg2.errors.InvalidTextRepresentation):
+        _execute(
+            "UPDATE onboarding.verification_result SET review_status = 'BOGUS_REVIEW' WHERE id = %s",
+            (verification_result_id,),
+        )
+
+
 # ── Valid enum values round-trip (boundary check: the constraint isn't
 # accidentally rejecting everything, only what's outside the defined set) ─────
 
@@ -130,3 +138,94 @@ def test_every_verification_type_value_is_accepted():
 def test_every_entity_type_value_is_accepted():
     for value in ("EXPORTER", "BUYER", "DIRECTOR", "INVOICE", "VESSEL", "SHIPMENT"):
         _execute(_BASE_INSERT, (str(uuid.uuid4()), "KYC", value, str(uuid.uuid4())))
+
+
+# ── Immutability trigger: reviewed_by / review_status ────────────────────────
+
+
+def test_reviewed_by_and_review_status_are_immutable_once_set(verification_result_id):
+    """trg_verification_result_field_immutability (reusing onboarding.
+    prevent_field_mutation_when_set) rejects a second write to either column
+    once it holds a non-null value — the DB-level half of the decision
+    to make these write-once, mirroring resolved_by elsewhere in this
+    codebase. Kept: the service no longer writes these columns
+    (reviews live in verification_review), but the protection is never
+    dropped."""
+    _execute(
+        "UPDATE onboarding.verification_result "
+        "SET reviewed_by = 'officer_1', review_status = 'ACCEPTED' WHERE id = %s",
+        (verification_result_id,),
+    )
+
+    with pytest.raises(psycopg2.errors.RaiseException) as exc:
+        _execute(
+            "UPDATE onboarding.verification_result "
+            "SET reviewed_by = 'officer_2' WHERE id = %s",
+            (verification_result_id,),
+        )
+    assert "reviewed_by is immutable once set" in str(exc.value)
+
+    with pytest.raises(psycopg2.errors.RaiseException) as exc:
+        _execute(
+            "UPDATE onboarding.verification_result "
+            "SET review_status = 'REJECTED' WHERE id = %s",
+            (verification_result_id,),
+        )
+    assert "review_status is immutable once set" in str(exc.value)
+
+
+def test_a_legacy_review_freezes_the_outcome_but_not_other_columns(verification_result_id):
+    """The reviewed-outcome freeze (verification-and-screening.md §2). This used to prove the
+    opposite — that polling could still rewrite a reviewed result's outcome.
+    Now `trg_verification_result_outcome_freeze` refuses status, risk_level,
+    normalized_result and valid_until once a result is reviewed, including a
+    review held only in the legacy column. Columns outside the outcome (here
+    provider_reference) stay updatable."""
+    _execute(
+        "UPDATE onboarding.verification_result "
+        "SET reviewed_by = 'officer_1', review_status = 'ACCEPTED' WHERE id = %s",
+        (verification_result_id,),
+    )
+
+    with pytest.raises(psycopg2.errors.RaiseException) as exc:
+        _execute(
+            "UPDATE onboarding.verification_result "
+            "SET status = 'PASSED', normalized_result = '{\"x\": 1}'::jsonb WHERE id = %s",
+            (verification_result_id,),
+        )
+    assert "has been reviewed" in str(exc.value)
+
+    _execute(
+        "UPDATE onboarding.verification_result SET provider_reference = 'ref-2' WHERE id = %s",
+        (verification_result_id,),
+    )
+    row = _fetch_one(
+        "SELECT status, provider_reference FROM onboarding.verification_result WHERE id = %s",
+        (verification_result_id,),
+    )
+    assert row == ("PENDING", "ref-2")
+
+
+def test_reviewed_by_alone_can_be_set_without_review_status_yet():
+    """The columns are independently nullable — setting one doesn't force the
+    other, only the immutability guard applies once each individually holds
+    a value."""
+    result_id = str(uuid.uuid4())
+    _execute(_BASE_INSERT, (result_id, "KYC", "DIRECTOR", str(uuid.uuid4())))
+
+    # Not yet reviewed: both mutable.
+    _execute(
+        "UPDATE onboarding.verification_result SET reviewed_by = 'officer_1' WHERE id = %s",
+        (result_id,),
+    )
+    # review_status is still NULL, so this is still the *first* write to it.
+    _execute(
+        "UPDATE onboarding.verification_result SET review_status = 'ESCALATED' WHERE id = %s",
+        (result_id,),
+    )
+
+    with pytest.raises(psycopg2.errors.RaiseException):
+        _execute(
+            "UPDATE onboarding.verification_result SET reviewed_by = 'officer_2' WHERE id = %s",
+            (result_id,),
+        )

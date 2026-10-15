@@ -61,7 +61,7 @@ on screen; the backend image installs it) and `CRM_DOCUMENT_CONVERTER_TIMEOUT_SE
 unavailable"; PDFs, images and text files are unaffected, and downloads work as before.
 A document that links outside itself (a linked image, an INCLUDETEXT field, an external
 workbook) is never converted, and the converter runs with an empty environment; outside
-local development, run it where the server's secrets are not ([`remaining-work.md`](remaining-work.md) §2).
+local development, run it where the server's secrets are not ([`remaining-work.md`](remaining-work.md) §3).
 
 Bank accounts: `FIELD_ENCRYPTION_KEYS` (see `.env.example`) encrypts account numbers
 and IBANs; without it, saving bank details answers 503 unless `ENVIRONMENT` is `local` or
@@ -131,7 +131,7 @@ pnpm dev            # http://localhost:5173 — /api is proxied to http://localh
 ## 7. Tests and gates
 
 Run from `backend/` and `frontend/` respectively. **Every one of these must be at the
-baseline (§9) before a merge.** There is no CI yet ([`remaining-work.md`](remaining-work.md) §2), so run them
+baseline (§9) before a merge.** There is no CI yet ([`remaining-work.md`](remaining-work.md) §3), so run them
 by hand.
 
 ```bash
@@ -236,7 +236,7 @@ checkout (§12), so the request gets 404. They are strict
 expected failures in `backend/conftest.py` (§7); one that starts passing fails the run.
 Any failure is new.
 
-Three tests can still fail intermittently ([`remaining-work.md`](remaining-work.md) §2 lists them):
+Three tests can still fail intermittently ([`remaining-work.md`](remaining-work.md) §3 lists them):
 `platform/idempotency/tests/test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index`
 asserts a query plan, which depends on the size and statistics of the database; and
 `test_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle`
@@ -273,6 +273,17 @@ Rules (details in [`../backend/migrations/README.md`](../backend/migrations/READ
 - **Declare every index and constraint on the model too**; otherwise
   `alembic revision --autogenerate` proposes dropping it, and
   `test_orm_matches_the_onboarding_schema.py` fails.
+- **Drop a column one release after the code stops naming it.** A deploy replaces the
+  running instances one by one, so the old release keeps serving against the new schema
+  for a while. First release: declare the column in `__table_args__` as a `Column` and
+  list it in `__mapper_args__["exclude_properties"]` — the table still matches the
+  database and the ORM never names it. `deferred=True` is **not** enough: the ORM still
+  inserts an explicit `NULL` into every mapped nullable column with no default. The next
+  release's migration drops it (`test_retired_columns_are_never_written.py` pins the
+  first step). A table nothing reads or writes can go at once.
+- **Merging into `main` deploys.** `.github/workflows/deploy-backend.yml` builds and
+  rolls out the backend on every merged pull request that touches `backend/`, and the
+  container runs `alembic upgrade head` before it serves.
 - **Round-trip it** before merging: `alembic upgrade head`, `alembic downgrade -1`,
   `alembic upgrade head`. A lossy downgrade says so in its docstring.
 - **Add the row to the migration register.** The next free onboarding number is there.
@@ -281,7 +292,9 @@ Rules (details in [`../backend/migrations/README.md`](../backend/migrations/READ
 
 The buyer migration (`migrate_deal_buyers`) and the trade relationship backfill
 (`backfill_trade_relationships`) are commands, not revisions, because a person reads
-a report between reading and writing. Their order on a live database, and what must hold
+a report between reading and writing. `backfill_relationship_managers` and
+`convert_gst_addresses` take the same flags (`--dry-run`, `--apply --run-id`,
+`--validate`) and run before them. Their order on a live database, and what must hold
 before each, is [`remaining-work.md`](remaining-work.md) §1. This section is how to run
 them without hurting anything.
 
@@ -355,7 +368,7 @@ python -m app.modules.onboarding.backfill_trade_relationships --validate
 | [`contracts/`](contracts/) | What each part promises the others |
 | [`module-rule-exceptions.md`](module-rule-exceptions.md) | The one recorded exception to the module rule |
 | [`database.md`](database.md) | The database as built: schemas, tables, constraints, triggers and traps |
-| [`remaining-work.md`](remaining-work.md) | The one open list: the live-database steps, open work, decisions awaited and what is deferred |
+| [`remaining-work.md`](remaining-work.md) | The one open list: the live-database steps, the follow-up drop, open work, decisions awaited and what is deferred |
 | [`../backend/migrations/README.md`](../backend/migrations/README.md) | How the migration chain is laid out |
 
 ## 12. What this checkout contains besides the CRM

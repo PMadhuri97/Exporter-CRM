@@ -55,7 +55,8 @@ What each field means today
   pending is the Clear policy's question.
 * **Evidence** — ``evidence_document_ids`` are the ``document`` references in the
   result's ``evidence_refs``, in the order recorded. ``url`` references are
-  not documents and are not reported.
+  not documents and are not reported. The retired ``evidence_reference`` column is
+  not read.
 * **Cycles (seam v2)** — ``company_inputs`` is scoped to the company's
   **current** check cycle (its highest ``check_cycle.number``): the results and the
   latest answer per item *of that cycle*. A row with ``cycle_id IS NULL`` belongs to

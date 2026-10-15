@@ -92,10 +92,11 @@ of the **same** result), `ck_verification_review_not_self`, and
   A `PENDING` result is not reviewable: **422 `VERIFICATION_RESULT_NOT_REVIEWABLE`**.
 - **Legacy verdicts.** 0021 copied every legacy `reviewed_by` / `review_status` into the table
   as that result's first review (its `reviewed_at` is the result's `updated_at`, the closest
-  stored fact, and its note says so). The review chain is the only reading. Migration 0060
-  dropped the legacy columns, the never-written `evidence_reference` and
-  `trg_verification_result_field_immutability`, refusing while any legacy verdict had no
-  review in the chain.
+  stored fact, and its note says so). Nothing has written the legacy columns since, and
+  since 14 October 2026 nothing reads them either: the review chain is the only reading,
+  the `VERIFICATION_LEGACY_REVIEW_UNCHAINED` refusal is gone, and the response no longer
+  carries the never-written `evidence_reference`. The three columns and
+  `trg_verification_result_field_immutability` stay until a later migration drops them.
 - **History:** each review writes a `verification` row (`history-row.md` §2): `from_value` the
   previous review status or `None`, `to_value` the new one, `reason` the note, `details` with
   `verification_result_id`, `review_id`, `supersedes_review_id`, `verification_type`. Company:
@@ -106,7 +107,7 @@ of the **same** result), `ck_verification_review_not_self`, and
 ## 2. A reviewed result never changes
 
 `trg_verification_result_outcome_freeze` (`prevent_reviewed_verification_outcome_change()`):
-once a result has any review (a `verification_review` row),
+once a result has any review — a `verification_review` row or a legacy `review_status` —
 `UPDATE` of `status`, `risk_level`, `normalized_result` or `valid_until` is refused.
 `get_verification_status` asks the provider first, then re-reads the row `FOR UPDATE` and, if
 it has been reviewed, **logs and ignores** the provider's new answer. Reviews take the
@@ -234,7 +235,7 @@ All decided by the programme lead on 28 September 2026 unless stated. Shared num
 | D7 | Manual route is `manual` only; `rxil` refused there | `api/schemas/verification.py` |
 | D8 | DEVELOPER refused; `normalized_result` not masked | routers; `history_router.py` |
 | D9 | Screening decisions also go to the shared history log (`screening` dimension) | `screening_review_service.upsert_review_item` |
-| D12 | RXIL's package and results contract — **blocked** (RXIL); blocks RXIL results intake | `remaining-work.md` §4 |
+| D12 | RXIL's package and results contract — **blocked** (RXIL); blocks RXIL results intake | `remaining-work.md` §5 |
 | D15 | Checks on DIRECTOR / INVOICE / VESSEL / SHIPMENT write no history row (skipped and logged) | `verification_service._record_history` |
 | D16 | Manual `PASSED` needs a note or a reference; `FAILED` / `REVIEW` need none | `domain/verification_evidence.py` |
 | D17 | No new buyer check on a `HANDED_OVER` / `WITHDRAWN` deal (409 `DEAL_CLOSED`) | `verification_service._resolve_subject` |

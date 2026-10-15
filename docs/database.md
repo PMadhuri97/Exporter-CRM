@@ -161,6 +161,7 @@ The enduring company record. A company may exist before any onboarding journey s
 | `registration_number` | `varchar(100)` | unique **per country, normalised** — see the index below |
 | `source` | `exporter_source_enum` | **immutable once set** (trigger) |
 | `relationship_manager_user_id` | `uuid` | the relationship manager, a user |
+| `relationship_manager` | `varchar(255)` | **retired** free-text owner: served and written by nothing; only `backfill_relationship_managers` reads it. Declared on the table but **not mapped** (`exclude_properties`), so the ORM never names it; 0061 drops it (unmatched names are discarded) |
 | `journey` | `exporter_journey_enum` | `LEAD` → `PROSPECT` → `CUSTOMER`, forward only |
 | `marker` | `exporter_marker_enum` | `NONE` \| `PAUSED` \| `ENDED`; `marker_reason` required when set |
 | `qualification` | `qualification_state_enum` | current value of the qualification gauge |
@@ -203,8 +204,9 @@ duplicate must normalise the same way or it will miss one.
 
 Several per company; `UNIQUE (customer_id, gstin)`. Since 0035 each row is a **branch
 record**: `state_code`, `state_name`, `status`, `address_id` (its company address),
-`flag_status`, `flag_reason`, `active`, `deactivated_at/by`. There is no free-text
-address: 0060 dropped it once its text had become linked `CORRESPONDENCE` addresses.
+`flag_status`, `flag_reason`, `active`, `deactivated_at/by`. The old free-text `address`
+is **retired**: the API neither takes nor serves it, `convert_gst_addresses` turns what
+is there into linked `CORRESPONDENCE` addresses; it is declared on the table but **not mapped** (`exclude_properties`), so the ORM never names it; 0061 drops it.
 
 - **`DELETE` is refused by a trigger** (`trg_exporter_gstin_no_delete`), with a message
   saying to deactivate instead. A branch a company traded through is not removable.
@@ -356,13 +358,14 @@ matching reference column to be non-null and the others to be null. Each
 
 ### `verification_result`
 
-Three triggers, which between them make a reviewed result unfalsifiable:
+Four triggers, which between them make a reviewed result unfalsifiable:
 
 | Trigger | What it refuses |
 |---|---|
 | `trg_verification_result_no_delete` | any `DELETE` |
+| `trg_verification_result_field_immutability` | changing `reviewed_by` or `review_status` once set — **retired columns**: nothing writes or reads them, or `evidence_reference`; all three are declared on the table but not mapped (`exclude_properties`), and 0061 drops them with this trigger |
 | `trg_verification_result_input_immutability` | changing `evidence_note`, `evidence_refs`, `subject_snapshot`, `subject_company_id`, `cycle_id` once set |
-| `trg_verification_result_outcome_freeze` | changing the outcome of a result that has a review in `verification_review` |
+| `trg_verification_result_outcome_freeze` | changing the outcome of a result that has been reviewed |
 
 `entity_reference` is a **bare uuid with no foreign key** — it is polymorphic over
 `entity_type` (`EXPORTER`, `BUYER`, `DIRECTOR`, `INVOICE`, `VESSEL`, `SHIPMENT`).
@@ -592,6 +595,7 @@ payment_term        code, version, label, kind, days, active, created_by, create
 sanctions_list      code, version, name, authority, active, mandatory, list_version_date,
                     created_by, created_at                              (0055)
 trade_invoice       relationship_id, invoice_number, invoice_date, amount, currency, deal_id
+verification_result reviewed_by, review_status                           (field immutability)
 verification_result evidence_note, evidence_refs, subject_snapshot,
                     subject_company_id, cycle_id                        (input immutability)
 
@@ -628,10 +632,10 @@ rolls back. The facts that belong here:
 | | |
 |---|---|
 | Tool | Alembic, one chain for the whole platform |
-| Revisions | 105 |
-| Head | **one**: `onboarding_0043_identity_type` |
-| CRM migration directory | `backend/app/modules/onboarding/migrations/`, revisions `onboarding_0001_baseline` … `onboarding_0043_identity_type` |
-| Next free CRM number | **0044** |
+| Revisions | 127 |
+| Head | **one**: `onboarding_0060_drop_tables` |
+| CRM migration directory | `backend/app/modules/onboarding/migrations/`, revisions `onboarding_0001_baseline` … `onboarding_0060_drop_tables` |
+| Next free CRM number | **0061** |
 | Naming | `onboarding_00NN_<lane>_<topic>` |
 | Root revision | `a0b1c2d3e4f5_shared_immutability_function` — creates `public.prevent_mutation()`, which every other module's triggers need |
 

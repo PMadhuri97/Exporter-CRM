@@ -3,7 +3,8 @@
 Changes since the first version are additive: `VerificationResultResponse` keeps
 every field it had and gains evidence, the buyer snapshot, provenance, the
 placeholder flag and the review chain. `reviewed_by` / `review_status` report the
-**current** review (the chain head).
+**current** review (the chain head). The retired `evidence_reference` field is gone:
+nothing ever wrote it.
 
 What a request can never say: who recorded or reviewed (always the signed-in user),
 the provider's provenance, or anything about the subject beyond its id.

@@ -39,6 +39,7 @@ from typing import Any, Literal
 
 from sqlalchemy import (
     CheckConstraint,
+    Column,
     ColumnElement,
     DateTime,
     Enum,
@@ -57,6 +58,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
     VerificationResultStatus,
+    VerificationReviewStatus,
     VerificationRiskLevel,
     VerificationType,
 )
@@ -118,8 +120,11 @@ class VerificationResult(AnerModel):
     -------
     Reviews live in ``verification_review`` (``verification_review.py``), as
     superseding records, and the review table is the one source of "the current
-    review". (The result's own ``reviewed_by`` / ``review_status`` columns, copied into
-    it by migration 0021, were dropped by 0060.)
+    review". The result's own ``reviewed_by`` / ``review_status`` columns are
+    **retired**: migration 0021 copied each one into the review table, and nothing has
+    written or read them since. They and ``evidence_reference`` are declared on the
+    table but not mapped, so the ORM never names them; a later migration drops them
+    with their immutability trigger (``trg_verification_result_field_immutability``).
 
     Frozen once reviewed
     --------------------
@@ -198,8 +203,23 @@ class VerificationResult(AnerModel):
             name="fk_verification_result_cycle_company",
             ondelete="RESTRICT",
         ),
+        # Retired, and deliberately **not mapped** (`__mapper_args__` below): declared so the
+        # table still matches the database, while the ORM never names it in an INSERT,
+        # UPDATE or SELECT. `deferred` is not enough — the ORM still inserts an explicit
+        # NULL into every mapped nullable column with no default — and an instance of this
+        # release must keep working once a later migration drops the column.
+        Column("evidence_reference", String(1024), nullable=True),
+        Column("reviewed_by", String(255), nullable=True),
+        Column(
+            "review_status",
+            Enum(VerificationReviewStatus, name="verification_review_status_enum", schema=SCHEMA),
+            nullable=True,
+        ),
         {"schema": SCHEMA},
     )
+    __mapper_args__ = {
+        "exclude_properties": ["evidence_reference", "reviewed_by", "review_status"]
+    }
 
     verification_type: Mapped[VerificationType] = mapped_column(
         Enum(VerificationType, name="verification_type_enum", schema=SCHEMA), nullable=False

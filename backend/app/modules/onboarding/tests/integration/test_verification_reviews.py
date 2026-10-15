@@ -124,6 +124,17 @@ async def test_a_pending_result_is_unreviewable():
     assert await _chain(result_id) == ()
 
 
+async def test_the_legacy_columns_are_not_written():
+    result = await exporter_result(await make_company())
+    await _review(result.id)
+    with pg() as cur:
+        cur.execute(
+            "SELECT reviewed_by, review_status FROM onboarding.verification_result WHERE id = %s",
+            (str(result.id),),
+        )
+        assert cur.fetchone() == (None, None)
+
+
 # ── Concurrency ──────────────────────────────────────────────────────────────
 
 
