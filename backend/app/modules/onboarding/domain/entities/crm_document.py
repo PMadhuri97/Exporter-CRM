@@ -42,6 +42,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.modules.onboarding.domain.entities.database_generated_id import DatabaseGeneratedId
 from app.modules.onboarding.domain.entities.document_enums import (
     DocumentCategory,
     DocumentSource,
@@ -52,7 +53,7 @@ from app.platform.database.models import AnerModel
 SCHEMA = "onboarding"
 
 
-class CrmDocument(AnerModel):
+class CrmDocument(DatabaseGeneratedId, AnerModel):
     __tablename__ = "crm_document"
     __table_args__ = (
         # Exactly one owner — architecture §3.4. `num_nonnulls` rather than a
@@ -140,6 +141,7 @@ class CrmDocument(AnerModel):
         ),
         nullable=False,
         default=DocumentScanStatus.PENDING_SCAN,
+        server_default=DocumentScanStatus.PENDING_SCAN.value,
     )
     #: Which scanner reached the verdict — ``"pass-through"`` in the prototype,
     #: stored lowercase exactly as a provider is stored ``"manual"``. A reader can

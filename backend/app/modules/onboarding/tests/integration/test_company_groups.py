@@ -115,34 +115,26 @@ async def test_companies_sharing_a_beneficial_owner_are_suggested(client: AsyncC
     token = await token_with_role(client, UserRole.COMPLIANCE)
     first, second, unrelated = [await make_company() for _ in range(3)]
     surname = f"Owner{uuid.uuid4().hex[:6]}"
-    conn = _connect()
-    try:
-        with conn.cursor() as cursor:
-            for company, last in ((first, surname), (second, surname), (unrelated, "Nobody")):
-                request_id = uuid.uuid4()
-                cursor.execute(
-                    "INSERT INTO onboarding.onboarding_request (id, tenant_id, idempotency_key, "
-                    "customer_id, status, entity_type, legal_name, incorporation_country, "
-                    "initial_user_id) VALUES (%s, %s, %s, %s, 'DRAFT', 'CORPORATION', "
-                    "'Group test', 'IN', 'test')",
-                    (str(request_id), str(uuid.uuid4()), uuid.uuid4().hex, str(company)),
-                )
-                cursor.execute(
-                    "INSERT INTO onboarding.ubo_record (id, onboarding_request_id, first_name, "
-                    "last_name, control_type, kyc_result) "
-                    "VALUES (%s, %s, 'Priya', %s, 'DIRECT_OWNERSHIP', 'VERIFIED')",
-                    (str(uuid.uuid4()), str(request_id), last),
-                )
-        conn.commit()
-    finally:
-        conn.close()
+    # The same owner on two companies, and a director on the second; someone else on
+    # the third.
+    for company, name, role in (
+        (first, f"Priya {surname}", "is_ubo"),
+        (second, f"priya  {surname}", "is_director"),
+        (unrelated, "Priya Nobody", "is_ubo"),
+    ):
+        resp = await client.post(
+            f"{BASE}/{company}/contacts",
+            headers=auth_header(token),
+            json={"name": name, "is_contact": False, role: True},
+        )
+        assert resp.status_code == 201, resp.text
 
     resp = await client.get(f"{BASE}/{first}/group/suggestions", headers=auth_header(token))
 
     assert resp.status_code == 200, resp.text
     suggested = {s["company_id"]: s for s in resp.json()["suggestions"]}
     assert str(second) in suggested
-    assert suggested[str(second)]["shared_people"] == [f"Priya {surname}"]
+    assert suggested[str(second)]["shared_people"] == [f"priya  {surname}"]
     assert str(unrelated) not in suggested
     # Never linked automatically.
     group = (await client.get(f"{BASE}/{first}/group", headers=auth_header(token))).json()

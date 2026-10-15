@@ -78,7 +78,7 @@ const OUTCOMES: { value: FollowUpOutcome; label: string }[] = [
 ];
 
 /**
- * "Done" on a follow-up (frontend-plan §8.2, §8.7): a popover holding the outcome,
+ * "Done" on a follow-up: a popover holding the outcome,
  * an optional note and — for a reschedule only — the new date. The server records
  * the completion; a reschedule logs a new follow-up rather than moving this one.
  */
@@ -151,7 +151,7 @@ export function CompleteFollowUp({ followUp }: { followUp: FollowUp }) {
 }
 
 /**
- * My follow-ups (frontend-plan §8.2): what is still open, overdue first then soonest
+ * My follow-ups: what is still open, overdue first then soonest
  * (the server's order). *Mark done* records the outcome in a popover (staff); Mine
  * shows only what this user logged, Team everyone's. `is_overdue` is the server's,
  * never worked out here.
@@ -226,7 +226,7 @@ export function MyFollowUpsCard({ userId, canComplete = false }: { userId: strin
 }
 
 /**
- * Check back on (frontend-plan §8.2): companies parked at "Not now" whose date has
+ * Check back on: companies parked at "Not now" whose date has
  * come. Its own card, never mixed with follow-ups: a check-back cannot be marked
  * done — it clears when the conversation moves, so each one opens the company's
  * Activity tab instead.

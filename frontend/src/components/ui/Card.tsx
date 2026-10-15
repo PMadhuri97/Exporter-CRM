@@ -27,7 +27,7 @@ function isLink(footer: CardProps['footer']): footer is { label: string; to: str
 }
 
 /**
- * The one container (frontend-plan §5.4, §6.6): white, a 1px border, 4px corners and
+ * The one container: white, a 1px border, 4px corners and
  * no shadow, on the grey page. A 48px header row holds the title, an optional count
  * and the card's actions on the right. A card never holds another card; inside one,
  * headings and dividers give the structure (§5.1).

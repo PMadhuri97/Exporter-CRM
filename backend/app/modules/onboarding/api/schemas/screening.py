@@ -1,5 +1,5 @@
-"""Request/response schemas for the screening-review checklist and the
-bank-activity panel (architecture §8.1, §9.4).
+"""Request/response schemas for the screening-review checklist (architecture §8.1,
+§9.4).
 
 Split out of `exporter.py` so the company shapes and the
 background-check shapes stop sharing one file. The class names are what the
@@ -138,44 +138,7 @@ class ScreeningItemHistoryResponse(BaseModel):
     offset: int
 
 
-class BankActivityFindingResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    customer_id: uuid.UUID
-    provider: str
-    finding_type: str
-    title: str
-    description: str | None
-    risk_level: str
-    status: str
-    provider_reference: str | None
-    detected_at: datetime
-    created_at: datetime
-
-
-class BankActivityResponse(BaseModel):
-    """The bank panel, stated honestly (verification-and-screening.md §8): no bank-monitoring
-    provider feed is connected, so `provider_feed_connected` is `false` and
-    `connected_accounts` is `0` because nothing is connected — not because
-    accounts were checked and none found. No finding is ever fabricated."""
-
-    customer_id: uuid.UUID
-    provider_feed_connected: bool = False
-    provider_feed_status: Literal["NOT_CONNECTED"] = "NOT_CONNECTED"
-    provider_feed_message: str = (
-        "No bank-monitoring provider feed is connected. Bank activity is not being "
-        "monitored for this company."
-    )
-    connected_accounts: int = 0
-    last_synced_at: datetime | None = None
-    open_findings: int
-    findings: list[BankActivityFindingResponse]
-
-
 __all__ = [
-    "BankActivityFindingResponse",
-    "BankActivityResponse",
     "ScreeningCapabilities",
     "ScreeningCatalogueItemResponse",
     "ScreeningChecklistStatus",

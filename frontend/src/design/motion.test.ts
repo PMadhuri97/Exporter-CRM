@@ -1,5 +1,5 @@
 /**
- * Motion switches off for a viewer who asked for less (frontend-plan §5.6, §11):
+ * Motion switches off for a viewer who asked for less:
  * every transition and animation, and the token durations the components use.
  *
  * Read from disk, like the contrast test: Vitest serves CSS imports empty.

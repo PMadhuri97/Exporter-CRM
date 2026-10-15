@@ -154,6 +154,25 @@ describe('rows about one thing of several', () => {
   });
 });
 
+describe('a buyer check named by an acronym', () => {
+  it('keeps the acronym in capitals', async () => {
+    vi.mocked(listCompanyHistory).mockResolvedValue(
+      page([
+        entry({
+          dimension: 'verification',
+          event_type: 'verification_initial',
+          to_value: 'PASSED',
+          details: { verification_type: 'AML', entity_type: 'BUYER' },
+        }),
+      ]),
+    );
+    renderWith(<CompanyHistory customerId={COMPANY_ID} />);
+    const [check] = await rows();
+    expect(check).toHaveTextContent('Buyer AML check: Passed');
+    expect(check).not.toHaveTextContent('aML');
+  });
+});
+
 describe('background-check approvals and cycles', () => {
   it('names the proposed move and the cycle kind', async () => {
     vi.mocked(listCompanyHistory).mockResolvedValue(
@@ -198,10 +217,13 @@ describe('who acted', () => {
         entry({ to_value: 'LEAD' }),
         entry({ to_value: 'PROSPECT', actor_id: null, actor_name: null }),
         entry({ to_value: 'CUSTOMER', actor_name: null }),
+        // What a platform action stored before 14 October 2026.
+        entry({ to_value: 'PAUSED', actor_id: 'None', actor_name: null }),
       ]),
     );
     renderWith(<CompanyHistory customerId={COMPANY_ID} />);
-    const [named, platform, unnamed] = await rows();
+    const [named, platform, unnamed, legacyPlatform] = await rows();
+    expect(legacyPlatform).toHaveTextContent('By the platform');
     expect(named).toHaveTextContent('By Priya Ops');
     expect(platform).toHaveTextContent('By the platform');
     expect(unnamed).toHaveTextContent('By User cc56991e…');
@@ -209,7 +231,7 @@ describe('who acted', () => {
   });
 });
 
-describe('the history timeline (frontend-plan §8.5)', () => {
+describe('the history timeline', () => {
   it('bundles rows written together into one "same moment" event, and keeps others apart', async () => {
     vi.mocked(listCompanyHistory).mockResolvedValue(
       page([

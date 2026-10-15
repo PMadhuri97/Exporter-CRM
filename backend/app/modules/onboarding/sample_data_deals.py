@@ -16,6 +16,11 @@ announcement like any other. C's deal stays ``OPEN``; the guard would refuse it.
 Converges like every other seeder: it looks at what is there, adds only what is
 missing, moves a deal forward only when it is behind its target, and reports zero on
 a repeat run.
+
+**Buyers are companies**, as on a real deal: each sample buyer is created outside the
+pipeline and named on its deal (``DealService.create_buyer_company``), or, when a
+company on file already holds its registration number, that one is named. No legacy
+``deal_buyer`` row is written; that table is frozen.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ from app.modules.onboarding.domain.entities.document_enums import (
     DocumentSource,
 )
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
+from app.modules.onboarding.exceptions import BuyerCompanyAlreadyKnownError
 from app.platform.database import services as db_services
 
 logger = structlog.get_logger(__name__)
@@ -96,6 +102,8 @@ SAMPLE_DEALS: dict[str, tuple[_SampleDeal, ...]] = {
             reference="Dubai seafood order",
             buyer_name="Gulf Fresh Foods LLC",
             buyer_country="AE",
+            # A buyer company outside India needs its registration number.
+            buyer_registration_number="DED-1102847",
             stage=DealStage.GATHERING_PAPERWORK,
         ),
     ),
@@ -191,14 +199,7 @@ async def _ensure_deal(company_id: uuid.UUID, sample: _SampleDeal) -> bool:
         view = await DealService(db).open_deal(
             company_id, reference=sample.reference, actor_id=None
         )
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(
-            view.id,
-            name=sample.buyer_name,
-            country=sample.buyer_country,
-            registration_number=sample.buyer_registration_number,
-            actor_id=None,
-        )
+    await _name_buyer_company(view.id, sample)
     await _ensure_invoicing_branch(company_id, view.id)
 
     # One stage at a time, as a person would: a deal bound for HANDED_OVER stops at
@@ -296,6 +297,27 @@ async def _ensure_required_document(deal_id: uuid.UUID) -> None:
     logger.info("sample_deals.required_document_added", deal_id=str(deal_id))
 
 
+async def _name_buyer_company(deal_id: uuid.UUID, sample: _SampleDeal) -> None:
+    """Create the sample buyer as a company and name it, or name the company on file
+    that already holds its registration number."""
+    try:
+        async with db_services.AsyncSessionLocal() as db:
+            await DealService(db).create_buyer_company(
+                deal_id,
+                name=sample.buyer_name,
+                country=sample.buyer_country,
+                registration_number=sample.buyer_registration_number,
+                actor_id=None,
+                actor_role=None,
+            )
+    except BuyerCompanyAlreadyKnownError as known:
+        [company_id] = known.extensions["company_ids"]
+        async with db_services.AsyncSessionLocal() as db:
+            await DealService(db).set_buyer_company(
+                deal_id, buyer_company_id=uuid.UUID(company_id), actor_id=None
+            )
+
+
 async def _ensure_buyer_screened(deal_id: uuid.UUID) -> None:
     """PASSED sanctions and AML on the deal's buyer, if they are not there already.
 
@@ -313,21 +335,18 @@ async def _ensure_buyer_screened(deal_id: uuid.UUID) -> None:
         VerificationType,
     )
     from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
-    from app.modules.onboarding.infrastructure.repositories.deal_buyer_repository import (
-        DealBuyerRepository,
-    )
 
+    # The buyer is a company, so its checks are the company's own (company-keyed).
     async with db_services.AsyncSessionLocal() as db:
-        buyer = await DealBuyerRepository(db).get_for_deal(deal_id)
-        if buyer is None:  # pragma: no cover - every sample deal has a buyer
-            return
-        buyer_id = buyer.id
+        buyer_id = await db.scalar(select(Deal.buyer_company_id).where(Deal.id == deal_id))
+    if buyer_id is None:  # pragma: no cover - every sample deal names a buyer company
+        return
 
     for verification_type in (VerificationType.SANCTIONS, VerificationType.AML):
         async with db_services.AsyncSessionLocal() as db:
             service = VerificationService(db)
             existing = await service.list_verification_results(
-                VerificationEntityType.BUYER, buyer_id
+                VerificationEntityType.EXPORTER, buyer_id
             )
             if any(
                 result.verification_type is verification_type
@@ -338,7 +357,7 @@ async def _ensure_buyer_screened(deal_id: uuid.UUID) -> None:
         async with db_services.AsyncSessionLocal() as db:
             await VerificationService(db).trigger_verification(
                 verification_type,
-                VerificationEntityType.BUYER,
+                VerificationEntityType.EXPORTER,
                 buyer_id,
                 provider="manual",
                 payload={"status": "PASSED"},

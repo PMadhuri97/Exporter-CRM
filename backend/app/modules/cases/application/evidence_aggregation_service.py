@@ -1,6 +1,6 @@
 """Evidence aggregation for compliance cases — Epic-4-only slice (ANER-4.3-S2T2).
 
-The Jira ticket this implements (ANER-4.3-S2T2) describes a much larger
+The ticket this implements (ANER-4.3-S2T2) describes a much larger
 cross-epic aggregator that pulls evidence from Epics 2.2/2.5/2.6/2.7/2.8/
 3.1/3.2/3.3/3.4/4.1/5.3. None of that exists yet — the platform's only real
 data source today is RXIL (an Indian invoice/receivables marketplace where

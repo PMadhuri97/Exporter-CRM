@@ -56,6 +56,10 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# The onboarding package's API and application layers import each other, so whichever
+# is imported first decides whether that resolves; a command is the first thing Python
+# loads, so it settles it here (as `migrate_deal_buyers` does).
+import app.modules.onboarding.api  # noqa: F401  (import order, not an unused import)
 from app.modules.onboarding.application.exporter_profile_service import ExporterProfileService
 from app.modules.onboarding.command_console import prepare_console
 from app.modules.onboarding.domain.assignment import RM_ROLES

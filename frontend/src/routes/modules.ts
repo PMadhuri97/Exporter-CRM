@@ -1,6 +1,5 @@
 /**
- * The module table: every top-level screen, declared once (`docs/frontend-plan.md`
- * §4.2).
+ * The module table: every top-level screen, declared once.
  *
  * The router (`AppRouter`), the side navigation, search's *Pages* group and the
  * shortcut list are all generated from this, so none of them can offer what another
@@ -12,7 +11,7 @@
  * The modules' own sub-routes gate their write screens the same way
  * (`modules/onboarding/routes.tsx`: add company, import, RXIL intake).
  *
- * Nav names are the standard CRM ones (frontend-plan §18.1): Home, Companies, My
+ * Nav names are the standard CRM ones: Home, Companies, My
  * companies (an RM's own, `/my-companies` redirecting to the list filtered by owner),
  * Pipeline, Deals, Follow-ups, Compliance work (once "Approvals"), Settings. Pipeline is the Companies board
  * (`/pipeline` redirects to it), and `/review` redirects to `/approvals`, so old
@@ -167,7 +166,7 @@ export const APP_MODULES: readonly AppModule[] = [
     Screen: FollowUpsPage,
     nav: { label: 'Follow-ups', to: '/follow-ups', icon: 'followUps', group: 'main' },
   },
-  // Compliance work: reviews, items to approve and Re-KYC due (frontend-plan §8.8).
+  // Compliance work: reviews, items to approve and Re-KYC due.
   // Absent for every other role. The address stays `/approvals`.
   {
     id: 'approvals',

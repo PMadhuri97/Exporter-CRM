@@ -396,7 +396,6 @@ EXPECTED_REFUSALS: dict[str, frozenset[UserRole]] = {
     f"{BASE}/verifications/{{verification_result_id}}": frozenset({DEV}),
     f"{BASE}/exporters/{{customer_id}}/screening-review": frozenset({DEV}),
     f"{BASE}/exporters/{{customer_id}}/screening-review/{{item_key}}/history": frozenset({DEV}),
-    f"{BASE}/exporters/{{customer_id}}/bank-activity": frozenset({DEV}),
     f"{BASE}/exporters/{{company_id}}/background-check": frozenset({DEV}),
     f"{BASE}/exporters/{{company_id}}/background-check/cycles": frozenset({DEV}),
     f"{BASE}/exporters/{{company_id}}/background-check/decisions": frozenset({DEV}),

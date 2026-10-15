@@ -58,9 +58,6 @@ class AddGstRegistrationRequest(BaseModel):
     #: The complete GSTIN. It must carry the company's PAN in characters 3–12, the
     #: same rule every other write path applies.
     gstin: Annotated[str, NotMasked] = Field(min_length=15, max_length=15)
-    #: The branch's registered address, as the portal prints it. Free text: it is
-    #: shown and printed, never parsed.
-    address: str | None = Field(default=None, max_length=2000)
     status: GstRegistrationStatus = GstRegistrationStatus.UNVERIFIED
 
 
@@ -106,8 +103,8 @@ class GstRegistrationResponse(BaseModel):
     state_code: str | None
     state_name: str | None
     status: GstRegistrationStatus
-    address: str | None
-    #: The company address this branch trades from, once one is linked.
+    #: The company address this branch trades from, once one is linked. A branch's
+    #: address is this link only; the old free-text address is no longer served.
     address_id: uuid.UUID | None = None
     #: `null` for DEVELOPER: a flag is a compliance judgement, withheld from that role
     #: like the background check itself (decided 4 October 2026).

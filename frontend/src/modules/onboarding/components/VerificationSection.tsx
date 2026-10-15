@@ -262,7 +262,7 @@ export function VerificationSection({ customerId }: { customerId: string }) {
 
         <div className="mt-4">
           {tab === 'BANK' ? (
-            <BankActivityPanel customerId={customerId} />
+            <BankActivityPanel />
           ) : query.isLoading ? (
             <div data-testid="verification-loading" className="space-y-3">
               <div className="h-20 animate-pulse rounded bg-sunken" />

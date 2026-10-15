@@ -1,6 +1,5 @@
 /**
- * History — the company's story, from the shared history log (architecture §3.1;
- * drawn as frontend-plan §8.5 lays out).
+ * History — the company's story, from the shared history log (architecture §3.1).
  *
  * Days are separated by a dated rule; each event has its time, its lane (the row's
  * dimension) and one line saying what changed. **Rows the server wrote together —
@@ -334,7 +333,9 @@ function subjectOf(entry: HistoryEntry, labels: HistoryLabels): string | null {
     const type = details.verification_type;
     const check = type === 'BUYER' ? 'Buyer check' : `${verificationTypeLabel(type)} check`;
     const onBuyer = details.entity_type === 'BUYER' && type !== 'BUYER';
-    const subject = onBuyer ? `Buyer ${check.charAt(0).toLowerCase()}${check.slice(1)}` : check;
+    // "Buyer sanctions check", but "Buyer AML check": an acronym keeps its capitals.
+    const lowered = /^[A-Z]{2}/.test(check) ? check : `${check.charAt(0).toLowerCase()}${check.slice(1)}`;
+    const subject = onBuyer ? `Buyer ${lowered}` : check;
     return entry.event_type === 'verification_reviewed' ? `${subject} reviewed` : subject;
   }
   // The compliance engine's dimensions: a proposal's status means nothing without the move it

@@ -1,5 +1,5 @@
 /**
- * The role matrix (`docs/frontend-plan.md` §4.1, §4.3, §4.4).
+ * The role matrix.
  *
  * Every role × every screen, through the real router and shell: whether the side
  * navigation offers it, and whether its URL renders it or the generic `NotFound`. Each screen is a

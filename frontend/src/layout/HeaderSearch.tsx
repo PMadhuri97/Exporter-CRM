@@ -1,5 +1,5 @@
 /**
- * Search in the app header (frontend-plan §7.5): companies and pages, never actions.
+ * Search in the app header: companies and pages, never actions.
  * `/` or Ctrl+K focuses it from anywhere (`useGlobalShortcuts`).
  *
  * At rest it is a plain field-shaped button, so the first download carries no search

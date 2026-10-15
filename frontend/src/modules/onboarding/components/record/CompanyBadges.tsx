@@ -1,5 +1,5 @@
 /**
- * A company's status badges (frontend-plan §6.4): the PDF's "same dashboard, three
+ * A company's status badges: the PDF's "same dashboard, three
  * companies", drawn the same wherever a company appears in a list, on a board card
  * or on a seller or buyer card. The journey, the qualification, the conversation and
  * the background check are separate worded badges side by side, never merged into

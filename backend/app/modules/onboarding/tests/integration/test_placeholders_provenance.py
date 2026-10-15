@@ -1,7 +1,7 @@
 """Honest placeholders and provenance
 (``docs/contracts/verification-and-screening.md`` §4, §8, architecture §7.6's gate).
 
-* the bank response says no provider feed is connected, and carries no findings;
+* there is no bank route: no feed is connected, so the panel asks the server nothing;
 * existing placeholder rows are flagged (``is_placeholder``), never deleted;
 * no route creates a PENDING result nothing could resolve — manual or stub;
 * provenance is labelled: manual is a person, the RXIL stub is a STUB;
@@ -50,21 +50,14 @@ async def _list(client, token, entity_type: str, reference: uuid.UUID) -> list[d
 # ── Bank activity ────────────────────────────────────────────────────────────
 
 
-async def test_the_bank_panel_says_no_provider_feed_is_connected(client, token):
+async def test_there_is_no_bank_activity_route(client, token):
+    """No bank-monitoring feed is planned, so the placeholder route that only ever said
+    "not connected" is gone; the panel says it without a request."""
     company_id = await make_company()
     resp = await client.get(
         f"{BASE}/exporters/{company_id}/bank-activity", headers=auth_header(token)
     )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["provider_feed_connected"] is False
-    assert body["provider_feed_status"] == "NOT_CONNECTED"
-    assert "not connected" in body["provider_feed_message"].lower() or (
-        "no bank-monitoring provider feed" in body["provider_feed_message"].lower()
-    )
-    assert body["findings"] == []
-    assert body["open_findings"] == 0
-    assert body["connected_accounts"] == 0
+    assert resp.status_code == 404, resp.text
 
 
 # ── Placeholders ─────────────────────────────────────────────────────────────

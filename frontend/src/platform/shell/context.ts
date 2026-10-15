@@ -1,5 +1,5 @@
 /**
- * What a page tells the shell about itself (frontend-plan §7): its breadcrumb
+ * What a page tells the shell about itself: its breadcrumb
  * trail. Pages call the hook; `layout/` reads the state. Kept in `platform/` so a
  * module never imports the layout to feed it.
  *

@@ -174,7 +174,6 @@ async def test_adding_a_registration_derives_its_state_and_records_history():
         registration, others = await GstRegistrationService(db).add(
             customer_id,
             gstin=_gstin(pan, "29"),
-            address="12 Industrial Layout, Bengaluru",
             actor_id="rm-1",
         )
     assert registration.state_code == "29"
@@ -513,17 +512,30 @@ async def test_a_deactivated_copy_is_not_reported_as_another_holder():
 # ── The routes, masking and the portal link ──────────
 
 
+async def test_a_free_text_address_is_no_longer_accepted(client: AsyncClient):
+    _admin, token = await user_with_role(client, UserRole.COMPLIANCE)
+    customer_id, pan = await _company_with_pan()
+    resp = await client.post(
+        f"{BASE}/exporters/{customer_id}/gst-registrations",
+        json={"gstin": _gstin(pan), "address": "5 Dockyard Road, Mumbai"},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 422, resp.text
+
+
 async def test_the_routes_add_list_and_flag(client: AsyncClient):
     _admin, admin_token = await user_with_role(client, UserRole.COMPLIANCE)
     customer_id, pan = await _company_with_pan()
 
     added = await client.post(
         f"{BASE}/exporters/{customer_id}/gst-registrations",
-        json={"gstin": _gstin(pan), "address": "5 Dockyard Road, Mumbai"},
+        json={"gstin": _gstin(pan)},
         headers=auth_header(admin_token),
     )
     assert added.status_code == 201, added.text
     body = added.json()
+    # The free-text address is retired: a branch's address is its linked one.
+    assert "address" not in body
     assert body["state_name"] == "Maharashtra"
     assert body["active"] is True
     assert body["flag_status"] == "NONE"

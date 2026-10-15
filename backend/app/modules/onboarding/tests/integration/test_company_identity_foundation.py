@@ -157,14 +157,16 @@ async def test_one_company_per_country_and_normalised_registration_number():
         with connection.cursor() as cursor:
             cursor.execute(
                 "UPDATE onboarding.exporter_profile"
-                " SET country = 'NL', registration_number = 'KVK 1234-56'"
+                " SET country = 'NL', registration_number = 'KVK 1234-56',"
+                " identity_type = 'FOREIGN_REG'"
                 " WHERE customer_id = %s",
                 (str(first),),
             )
             with pytest.raises(psycopg2.errors.UniqueViolation):
                 cursor.execute(
                     "UPDATE onboarding.exporter_profile"
-                    " SET country = 'NL', registration_number = 'kvk123456'"
+                    " SET country = 'NL', registration_number = 'kvk123456',"
+                    " identity_type = 'FOREIGN_REG'"
                     " WHERE customer_id = %s",
                     (str(second),),
                 )
@@ -173,13 +175,15 @@ async def test_one_company_per_country_and_normalised_registration_number():
             # A different country is a different company, not a duplicate.
             cursor.execute(
                 "UPDATE onboarding.exporter_profile"
-                " SET country = 'NL', registration_number = 'KVK 1234-56'"
+                " SET country = 'NL', registration_number = 'KVK 1234-56',"
+                " identity_type = 'FOREIGN_REG'"
                 " WHERE customer_id = %s",
                 (str(first),),
             )
             cursor.execute(
                 "UPDATE onboarding.exporter_profile"
-                " SET country = 'DE', registration_number = 'kvk123456'"
+                " SET country = 'DE', registration_number = 'kvk123456',"
+                " identity_type = 'FOREIGN_REG'"
                 " WHERE customer_id = %s",
                 (str(second),),
             )

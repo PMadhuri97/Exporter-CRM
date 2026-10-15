@@ -85,7 +85,7 @@ class InvalidCaseStatusTransitionError(AnerBaseException):
     nonsensical message for a column it was never about. Raised by
     `application/case_lifecycle_service.py`'s `CaseLifecycleService._transition`
     for any `(from_status, to_status)` pair not in `PERMITTED_TRANSITIONS` —
-    that set is the "Permitted transitions" table from the Epic 4.3 Jira doc's
+    that set is the "Permitted transitions" table from the Epic 4.3 specification's
     ANER-4.3-S3T2 section, reproduced verbatim (see that module's docstring),
     including the doc's own words: "Transitions not in this table are
     rejected with a structured error identifying the invalid transition."
@@ -116,7 +116,7 @@ class CaseIsTerminalError(AnerBaseException):
     a *transition* (a change of `case_status`) is attempted and rejected.
     This one is raised by `CaseNoteService.add_case_note` (ANER-4.3-S3T3),
     which never attempts a transition at all (`case_status` is untouched) but
-    is still barred by the Jira doc's own text: "Officers can add notes to a
+    is still barred by the specification's own text: "Officers can add notes to a
     case at any point in its lifecycle (except terminal states)."
     """
 

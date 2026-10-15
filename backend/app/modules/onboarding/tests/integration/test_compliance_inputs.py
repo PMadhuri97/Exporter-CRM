@@ -52,6 +52,7 @@ from app.modules.onboarding.exceptions import (
     ExporterProfileNotFoundError,
 )
 from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
 
@@ -144,11 +145,10 @@ async def _deal_buyer(company_id: uuid.UUID) -> uuid.UUID:
         deal = await DealService(db).open_deal(
             company_id, reference="Rotterdam shipment", actor_id="tester"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        view = await DealService(db).set_buyer(
-            deal.id, actor_id="tester", name="Rotterdam Trading BV", country="NL"
+    buyer_id = await record_legacy_buyer(
+        deal.id, name="Rotterdam Trading BV", country="NL"
         )
-    return view.buyer.id
+    return buyer_id
 
 
 # ── Empty and shape ──────────────────────────────────────────────────────────
@@ -361,9 +361,10 @@ async def test_the_latest_review_is_the_chain_head_and_is_stable():
     assert latest.latest_reviewed_at == second.reviewed_at
 
 
-async def test_a_legacy_review_column_without_a_review_row_is_still_reported():
-    """A review written straight into the legacy column (never by the service since
-    0021) keeps the original reading: the status, and no invented id or time."""
+async def test_the_retired_review_columns_are_not_read():
+    """The legacy review columns are retired: the review chain is the only reading.
+    Nothing has written them since 0021 (which copied every earlier one into the
+    chain), so a value there now is noise, not a review."""
     company_id = await make_company()
     with _connect() as conn, conn.cursor() as cur:
         result_id = _insert_result(cur, entity_type="EXPORTER", entity_reference=company_id)
@@ -374,7 +375,7 @@ async def test_a_legacy_review_column_without_a_review_row_is_still_reported():
         )
 
     read = (await _company_inputs(company_id)).verifications[0]
-    assert read.latest_review_status == "REJECTED"
+    assert read.latest_review_status is None
     assert read.latest_review_id is None
     assert read.latest_reviewed_at is None
 

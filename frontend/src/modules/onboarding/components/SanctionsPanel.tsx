@@ -1,8 +1,9 @@
 /**
  * Sanctions screening on the Background check tab.
  *
- * * **Coverage.** Every subject — the company, each beneficial owner on record, anyone
- *   else screened — with its latest screening in this check cycle: when, against which
+ * * **Coverage.** Every subject — the company, each director and beneficial owner on
+ *   record (the company's People), anyone else screened — with its latest screening in
+ *   this check cycle: when, against which
  *   lists (and their version dates), and the outcome. A subject never screened, or due a
  *   re-screen (a newer list version, a name change), is highlighted with why.
  * * **The flag.** A proposed or confirmed true match flags the company; its deals
@@ -61,6 +62,9 @@ import {
 type Decision = Exclude<SanctionsDisposition, 'TRUE_MATCH_PROPOSED'>;
 const DECISIONS: Decision[] = ['OPEN', 'FALSE_POSITIVE', 'TRUE_MATCH', 'ESCALATED'];
 
+/** The director picker's "not on record" choice: screened by name only. */
+const BY_NAME = '__by_name__';
+
 const EMPTY_HIT: SanctionsHitRequest = {
   list_code: '',
   matched_name: '',
@@ -73,21 +77,38 @@ const EMPTY_HIT: SanctionsHitRequest = {
 function RecordForm({
   customerId,
   subject,
-  ubos,
+  people,
   onDone,
 }: {
   customerId: string;
   /** The subject to screen; absent for "the company". */
   subject?: SanctionsSubject;
-  ubos: SanctionsSubject[];
+  /** The directors and beneficial owners on record. */
+  people: SanctionsSubject[];
   onDone: () => void;
 }) {
+  // By the roles each person holds, so a director who is also an owner is offered
+  // under both.
+  const holds = (person: SanctionsSubject, role: 'DIRECTOR' | 'UBO') =>
+    (person.roles ?? []).includes(role) || person.subject_type === role;
+  const owners = people.filter((person) => holds(person, 'UBO'));
+  const directors = people.filter((person) => holds(person, 'DIRECTOR'));
   const lists = useSanctionsLists();
   const record = useRecordSanctionsRun(customerId);
   const active = (lists.data?.lists ?? []).filter((list) => list.active);
   const [subjectType, setSubjectType] = useState<SanctionsSubject['subject_type']>(subject?.subject_type ?? 'COMPANY');
   const [uboId, setUboId] = useState(subject?.subject_reference ?? '');
-  const [director, setDirector] = useState(subject?.subject_type === 'DIRECTOR' ? subject.subject_name : '');
+  const [directorId, setDirectorId] = useState(
+    subject?.subject_type === 'DIRECTOR'
+      ? (subject.subject_reference ?? BY_NAME)
+      : directors.length > 0
+        ? ''
+        : BY_NAME,
+  );
+  const [director, setDirector] = useState(
+    subject?.subject_type === 'DIRECTOR' && !subject.subject_reference ? subject.subject_name : '',
+  );
+  const directorByName = directorId === BY_NAME;
   const [chosen, setChosen] = useState<Set<string> | null>(null);
   const [hits, setHits] = useState<SanctionsHitRequest[]>([]);
   const [note, setNote] = useState('');
@@ -97,7 +118,12 @@ function RecordForm({
     (hit) => hit.list_code && hit.matched_name.trim() && (hit.disposition === 'OPEN' || (hit.reason ?? '').trim()),
   );
   const subjectReady =
-    subjectType === 'COMPANY' || (subjectType === 'UBO' ? Boolean(uboId) : Boolean(director.trim()));
+    subjectType === 'COMPANY' ||
+    (subjectType === 'UBO'
+      ? Boolean(uboId)
+      : directorByName
+        ? Boolean(director.trim())
+        : Boolean(directorId));
   const ready = ticked.size > 0 && hitsReady && subjectReady;
 
   const setHit = (index: number, change: Partial<SanctionsHitRequest>) =>
@@ -108,8 +134,13 @@ function RecordForm({
     if (!ready) return;
     const body: RecordSanctionsRunRequest = {
       subject_type: subjectType,
-      subject_name: subjectType === 'DIRECTOR' ? director.trim() : null,
-      subject_reference: subjectType === 'UBO' ? uboId : null,
+      subject_name: subjectType === 'DIRECTOR' && directorByName ? director.trim() : null,
+      subject_reference:
+        subjectType === 'UBO'
+          ? uboId
+          : subjectType === 'DIRECTOR' && !directorByName
+            ? directorId
+            : null,
       list_codes: [...ticked],
       aliases: [],
       country: null,
@@ -141,7 +172,7 @@ function RecordForm({
           onChange={(event) => setSubjectType(event.target.value as SanctionsSubject['subject_type'])}
         >
           <option value="COMPANY">The company</option>
-          {ubos.length > 0 && <option value="UBO">A beneficial owner</option>}
+          {owners.length > 0 && <option value="UBO">A beneficial owner</option>}
           <option value="DIRECTOR">A director</option>
         </Select>
       </Field>
@@ -149,15 +180,32 @@ function RecordForm({
         <Field label="Beneficial owner" htmlFor="sanctions-ubo" required>
           <Select id="sanctions-ubo" value={uboId} onChange={(event) => setUboId(event.target.value)}>
             <option value="">Choose</option>
-            {ubos.map((ubo) => (
-              <option key={ubo.subject_reference} value={ubo.subject_reference ?? ''}>
-                {ubo.subject_name}
+            {owners.map((owner) => (
+              <option key={owner.subject_reference} value={owner.subject_reference ?? ''}>
+                {owner.subject_name}
               </option>
             ))}
           </Select>
         </Field>
       )}
-      {subjectType === 'DIRECTOR' && (
+      {subjectType === 'DIRECTOR' && directors.length > 0 && (
+        <Field label="Director" htmlFor="sanctions-director-id" required>
+          <Select
+            id="sanctions-director-id"
+            value={directorId}
+            onChange={(event) => setDirectorId(event.target.value)}
+          >
+            <option value="">Choose</option>
+            {directors.map((person) => (
+              <option key={person.subject_reference} value={person.subject_reference ?? ''}>
+                {person.subject_name}
+              </option>
+            ))}
+            <option value={BY_NAME}>Someone not on record</option>
+          </Select>
+        </Field>
+      )}
+      {subjectType === 'DIRECTOR' && directorByName && (
         <Field label="Director's name" htmlFor="sanctions-director" required>
           <Input id="sanctions-director" value={director} onChange={(e) => setDirector(e.target.value)} />
         </Field>
@@ -398,7 +446,9 @@ export function SanctionsPanel({ customerId }: { customerId: string }) {
   const [recording, setRecording] = useState<{ subject?: SanctionsSubject } | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const data = query.data;
-  const ubos = (data?.subjects ?? []).filter((subject) => subject.subject_type === 'UBO');
+  const people = (data?.subjects ?? []).filter(
+    (subject) => subject.subject_type !== 'COMPANY' && Boolean(subject.subject_reference),
+  );
 
   return (
     <Card
@@ -414,7 +464,7 @@ export function SanctionsPanel({ customerId }: { customerId: string }) {
     >
       {recording && (
         <FormPanel title="Record a sanctions screening" onClose={() => setRecording(null)}>
-          <RecordForm customerId={customerId} subject={recording.subject} ubos={ubos} onDone={() => setRecording(null)} />
+          <RecordForm customerId={customerId} subject={recording.subject} people={people} onDone={() => setRecording(null)} />
         </FormPanel>
       )}
       {query.isLoading ? (

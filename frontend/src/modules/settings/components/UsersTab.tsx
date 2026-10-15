@@ -41,7 +41,7 @@ const ICON_BUTTON =
   'rounded-md p-1.5 text-ink-3 transition-colors duration-quick hover:bg-sunken hover:text-ink';
 
 /**
- * Users (frontend-plan §8.9): the accounts that can sign in, as people tiles — a
+ * Users: the accounts that can sign in, as people tiles — a
  * search, a role lens and a status filter above them. Write controls follow the
  * server's permissions, so a role granted only `users:view` sees the people without
  * edit affordances it would get a 403 from.

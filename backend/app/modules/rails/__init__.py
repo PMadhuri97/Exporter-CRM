@@ -8,7 +8,7 @@ What IS present:
   - migrations/   so `alembic upgrade head` reproduces the same schema as
     the real platform (this codebase uses a single, interlinked Alembic
     chain across all modules; splitting it cleanly is not possible without
-    surgery on migration history — see RUNNING.md).
+    surgery on migration history — see docs/development.md §12).
   - domain/entities/  ONLY where another in-scope module's SQLAlchemy
     relationships resolve against one of this module's ORM classes, or
     where migrations/env.py imports it for Base.metadata population. These

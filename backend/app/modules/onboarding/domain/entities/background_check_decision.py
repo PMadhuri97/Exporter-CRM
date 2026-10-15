@@ -264,8 +264,8 @@ class BackgroundCheckEvidence(AppendOnlyModel):
     """One id a decision relied on, pinned when the decision was made. Locked.
 
     IDs only, never content (contract §6). Exactly the column for ``kind`` is set
-    (``ck_background_check_evidence_kind``). ``verification_review_id`` is a bare uuid
-    with no foreign key on purpose: the review table belongs to verification (contract §6.1).
+    (``ck_background_check_evidence_kind``). ``verification_review_id`` gained its
+    foreign key in migration 0054 (contract §6.1 explains why it started without one).
     """
 
     __tablename__ = "background_check_evidence"
@@ -308,6 +308,11 @@ class BackgroundCheckEvidence(AppendOnlyModel):
             "screening_review_item_id",
             postgresql_where=text("screening_review_item_id IS NOT NULL"),
         ),
+        Index(
+            "ix_background_check_evidence_verification_review_id",
+            "verification_review_id",
+            postgresql_where=text("verification_review_id IS NOT NULL"),
+        ),
         {"schema": SCHEMA},
     )
 
@@ -347,9 +352,15 @@ class BackgroundCheckEvidence(AppendOnlyModel):
         ),
         nullable=True,
     )
-    #: The review the result's standing rested on. Bare uuid (contract §6.1).
+    #: The review the result's standing rested on.
     verification_review_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.verification_review.id",
+            name="fk_background_check_evidence_verification_review_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
     )
     #: The exact checklist row, since screening rows keep being added after a decision.
     screening_review_item_id: Mapped[uuid.UUID | None] = mapped_column(

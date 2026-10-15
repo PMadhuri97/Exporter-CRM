@@ -44,6 +44,7 @@ from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.migrations import onboarding_0029_deal_snapshot as snapshot_migration
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import ensure_primary_contact, make_company
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.modules.onboarding.tests.integration.test_handover import (
     record_legacy_buyer_checks,
 )
@@ -96,16 +97,14 @@ async def _deal_ready_to_hand_over(company_id: uuid.UUID) -> uuid.UUID:
         view = await DealService(db).open_deal(
             company_id, reference=f"Snapshot {uuid.uuid4().hex[:8]}", actor_id="tester"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(
-            view.id,
-            name="Rotterdam Trading BV",
-            country="NL",
-            registration_number="NL-8899",
-            tax_id="NL123456789B01",
-            contact_email="ops@rotterdamtrading.example",
-            contact_phone="+31201234567",
-            actor_id="tester",
+    await record_legacy_buyer(
+        view.id,
+        name="Rotterdam Trading BV",
+        country="NL",
+        registration_number="NL-8899",
+        tax_id="NL123456789B01",
+        contact_email="ops@rotterdamtrading.example",
+        contact_phone="+31201234567",
         )
     async with db_services.AsyncSessionLocal() as db:
         await DealService(db).transition_stage(
@@ -218,10 +217,11 @@ async def test_editing_the_buyer_afterwards_cannot_change_the_snapshot(
     await _hand_over(deal_id)
     before = await _stored_snapshot(deal_id)
 
+    other_buyer = await make_company()
     with pytest.raises(Exception) as caught:
         async with db_services.AsyncSessionLocal() as db:
-            await DealService(db).set_buyer(
-                deal_id, name="Someone Else BV", country="DE", actor_id="tester"
+            await DealService(db).set_buyer_company(
+                deal_id, buyer_company_id=other_buyer, actor_id="tester"
             )
     assert getattr(caught.value, "error_code", None) == "DEAL_TERMINAL"
     assert await _stored_snapshot(deal_id) == before
@@ -344,7 +344,12 @@ async def test_the_migration_backfill_rebuilds_what_the_handover_wrote(
     # missing `terms` as "not recorded".
     assert set(again) == set(taken) - {"terms"}
     assert again["snapshot_source"] == "backfilled_from_deal_buyer"
-    assert again["buyer"] == taken["buyer"]
+    # 0029's statement copies every `deal_buyer` column, so replayed against today's
+    # schema it also carries the buyer migration's mapping columns (0056) — empty here.
+    # When 0029 ran for real they did not exist yet.
+    mapping = {"mapped_company_id", "match_rule", "matched_by", "matched_at", "mapping_run_id"}
+    assert {k: v for k, v in again["buyer"].items() if k not in mapping} == taken["buyer"]
+    assert {k: again["buyer"][k] for k in mapping} == dict.fromkeys(mapping)
     assert again["document_ids"] == taken["document_ids"]
     assert again["buyer_company_id"] is None
     assert datetime.fromisoformat(again["snapshot_at"]) == datetime.fromisoformat(

@@ -1,5 +1,5 @@
 /**
- * Every onboarding screen, loaded on first use (`docs/frontend-plan.md` §4.3).
+ * Every onboarding screen, loaded on first use.
  *
  * Each page is its own chunk, imported from its own file — never through
  * `./pages/index.ts`, which would pull every page into whichever chunk reached it
@@ -67,7 +67,7 @@ export const QualificationCriteriaPage = lazy(() =>
 export const RxilIntakePage = lazy(() =>
   import('./pages/RxilIntakePage').then((m) => ({ default: m.RxilIntakePage })),
 );
-// The compliance queue (frontend-plan §8.8): COMPLIANCE and ADMIN only.
+// The compliance queue: COMPLIANCE and ADMIN only.
 export const ApprovalsPage = lazy(() =>
   import('./pages/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
 );

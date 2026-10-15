@@ -25,7 +25,7 @@
 > only when every valued deal is in one currency — amounts in different currencies are
 > never compared.
 
-**Owner:** Developer 2 · **Implemented by:** L2-09 (criteria), L2-10 (results and outcomes), migration 0017 · **Status:** implemented — §9a records the as-built detail and §10 what is still open
+**Owner:** Developer 2 · **Implemented by:** migration 0017 · **Status:** implemented — §9a records the as-built detail and §10 what is still open
 
 Qualification answers one question: *did this company meet our requirements?*
 (architecture §3.3, gauge 1). This contract fixes the shape of the three
@@ -89,9 +89,9 @@ same key at once get 409 `QUALIFICATION_CRITERION_EXISTS`.
 **Initial set** (seeded, then managed by ADMIN): `revenue`,
 `years_in_business`, `export_history`, `export_licence`, `industry`,
 `geography` (trade corridor), `deal_size`. Their kinds and thresholds are seed
-data chosen at L2-09, not part of this contract.
+data, not part of this contract.
 
-**Domestic first (P1-1, `onboarding_0031_domestic_first`):** `export_history` and
+**Domestic first (`onboarding_0031_domestic_first`):** `export_history` and
 `export_licence` have a later version with `required = false` — still active and
 recordable, no longer counted towards the suggestion. `revenue` and
 `years_in_business` are the required set.
@@ -205,7 +205,7 @@ initial criterion (`revenue_below_threshold`, `years_in_business_below_threshold
 `insufficient_information` and `other`. An unknown code is refused.
 
 `no_export_history`, `no_export_licence` and `geography_not_supported` are
-**inactive** since `onboarding_0031_domestic_first` (IQ-12): a new outcome citing
+**inactive** since `onboarding_0031_domestic_first`: a new outcome citing
 one is refused like an unknown code, and an outcome recorded before still shows it —
 outcomes store codes as strings, not references.
 
@@ -215,8 +215,8 @@ outcomes store codes as strings, not references.
 
 ## 6. What recording an outcome does
 
-In **one transaction**, all written by Developer 2's service (so decision U4
-does not apply — nothing crosses a service boundary):
+In **one transaction**, all written by Developer 2's service (so the cross-service
+transaction rule does not apply — nothing crosses a service boundary):
 
 1. Write the outcome.
 2. Set the company's `qualification` field to the outcome.
@@ -238,7 +238,7 @@ behind.
 
 ### 6.1 Results in the history log
 
-Architecture L2-10 requires the history to show every result. Each recorded
+The architecture requires the history to show every result. Each recorded
 result also writes a `qualification` history row with
 `event_type = "qualification_result"`, `to` = `PASS`/`FAIL`/`UNKNOWN`,
 `from` = `NULL`, and `event_metadata` carrying `result_id`, `criterion_key`,
@@ -247,24 +247,23 @@ separates gauge moves from results by `event_type`.
 
 This is the one addition this contract makes to how the history log is used:
 a third `event_type` on a dimension, which the history contract permits (§3)
-but does not list. It needs Developer 1's acknowledgement, recorded against
-L1-02, before L2-10 writes the first row.
+but does not list. Developer 1 acknowledged it before the first row was written.
 
 ---
 
 ## 7. RXIL and bulk import
 
-- **RXIL intake** (L2-12, decision 7): the company arrives as `PROSPECT` with
+- **RXIL intake** (decision 7): the company arrives as `PROSPECT` with
   an outcome of `QUALIFIED`, `source = RXIL`, `decided_by = NULL`, and
   `decided_by_kind` as the package states it (open item Q4 — the format does
   not yet say whether RXIL's filtering is a person's or a computer's). No per-criterion
   results are required, and none are recomputed: we store what RXIL says and
   never recompute its work. RXIL's background-check results are
-  Developer 4's (L4-10), not criterion results.
-- **Bulk import** (L2-13): a row may carry values for criteria; each becomes a
+  Developer 4's, not criterion results.
+- **Bulk import**: a row may carry values for criteria; each becomes a
   result with `source = IMPORT`. Import never records an outcome. *As built,
   the template carries no criterion columns yet — rows are identity only.*
-- **As built for RXIL** (L2-12): `QualificationService.record_partner_decision`
+- **As built for RXIL**: `QualificationService.record_partner_decision`
   records the partner's results and outcome in one transaction, in the same
   tables and history as a local review. Nothing is recomputed: each result
   keeps RXIL's result, value, evidence, reason, confidence and per-result
@@ -307,7 +306,7 @@ Any of these being false is a bug:
 
 | # | Question | Decides |
 |---|---|---|
-| Q1 | Do `NUMBER_THRESHOLD` criteria need a range (both a minimum and a maximum) — `deal_size` may? Recommendation: add `BETWEEN` only if a seeded criterion needs it | Dev 2 at L2-09 |
+| Q1 | Do `NUMBER_THRESHOLD` criteria need a range (both a minimum and a maximum) — `deal_size` may? Recommendation: add `BETWEEN` only if a seeded criterion needs it | Dev 2 |
 | Q2 | Is `NOT_YET_REVIEWED` written as a `qualification_initial` history row at company creation? Recommendation: **yes**, so every dimension's timeline starts at creation, the way the journey's does | Dev 2 with Dev 1 |
 | Q3 | Developer 1's acknowledgement of `event_type = "qualification_result"` (§6.1) | Dev 1 |
 | Q4 | RXIL package shape (architecture §11) — how its qualification part is expressed | RXIL; parser shared with Dev 4 |
@@ -315,10 +314,12 @@ Any of these being false is a bug:
 
 ---
 
-## 9a. As built (L2-09, L2-10)
+## 9a. As built
 
 **Storage** (migration 0017): `qualification_criterion` (one immutable row per
-version), `qualification_reason_code`, `qualification_result` and
+version), `qualification_reason_code` (retired 14 October 2026: the codes are a
+catalogue in code, `domain/qualification_reason_codes.py`, served unchanged by `GET
+/qualification/reason-codes`), `qualification_result` and
 `qualification_outcome`, plus `exporter_profile.qualification` and
 `exporter_profile.journey`. The criterion, result and outcome tables are
 append-only through `public.prevent_mutation()`. The database also enforces:
@@ -353,7 +354,7 @@ derived `qualification_transition`, with `outcome_id`, `reason_codes`,
 `suggested_outcome` and `re_review` in the details and the note as the reason.
 The journey move a `QUALIFIED` outcome causes: dimension `journey`, event type
 `lifecycle_transition` with `terminal: false` — the journey's own event names
-(`company-record.md` §6). It was `journey_transition` until L2-04 retired the
+(`company-record.md` §6). It was `journey_transition` until migration 0020 retired the
 ten-status rows that owned the `lifecycle_*` names.
 
 **What a viewer may do is served.** The qualification response carries
@@ -370,11 +371,11 @@ it asks for the note alone (the API still accepts codes there, as §5 says).
 
 | Item | State |
 |---|---|
-| Criteria (versioned, ADMIN-managed, seven seeded), results, outcomes, re-review, suggestion | **implemented** (L2-09, L2-10, migration 0017) |
+| Criteria (versioned, ADMIN-managed, seven seeded), results, outcomes, re-review, suggestion | **implemented** (migration 0017) |
 | The `qualification` gauge on the company, and the `LEAD` -> `PROSPECT` move it drives | **implemented** (0017) |
 | `qualification` history rows (results and outcomes) | **implemented** |
 | A `qualification_initial` row at company creation (Q2) | **not built** — the column default stands for it |
 | Managing reason codes through the API | **not built** — Q5 |
-| RXIL and import callers | **implemented** — L2-12, L2-13 |
-| Qualification display and review screens | **implemented** — L2-14 |
+| RXIL and import callers | **implemented** |
+| Qualification display and review screens | **implemented** |
 | Anything reused from the screening checklist | **none, by design** (§1) |

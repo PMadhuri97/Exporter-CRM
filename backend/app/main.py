@@ -107,7 +107,7 @@ async def lifespan(app: FastAPI):
     # settings.TEMPORAL_ENABLED is true. run_worker() was removed from
     # bootstrap.py (it wires onboarding together with orchestration/
     # settlement/rails, which are out of scope), so that branch is dropped.
-    # TEMPORAL_ENABLED defaults to false — see RUNNING.md if you need it.
+    # TEMPORAL_ENABLED defaults to false — see docs/development.md §12.
 
     # Start the background audit event dispatcher
     from app.platform.audit_framework import start_audit_dispatcher, stop_audit_dispatcher
@@ -126,7 +126,7 @@ async def lifespan(app: FastAPI):
     #   - the rail performance aggregation job (app.modules.rails.application
     #     .tasks.run_rail_performance_aggregation_task)
     #   - the rail health monitor (app.modules.rails.run_rail_health_monitor_task)
-    # See RUNNING.md. Their config flags (RAIL_POLLING_ENABLED, etc.) still
+    # See docs/development.md §12. Their config flags (RAIL_POLLING_ENABLED, etc.) still
     # exist in Settings but are now unread dead config.
     from app.platform.idempotency import get_sweep_interval
     from app.platform.idempotency.tasks import (

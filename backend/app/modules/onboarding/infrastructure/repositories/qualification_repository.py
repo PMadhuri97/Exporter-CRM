@@ -19,7 +19,6 @@ from app.modules.onboarding.domain.entities.exporter_lifecycle_history import (
 from app.modules.onboarding.domain.entities.qualification import (
     QualificationCriterion,
     QualificationOutcome,
-    QualificationReasonCode,
     QualificationResult,
 )
 
@@ -73,14 +72,6 @@ class QualificationRepository:
             .limit(1)
         )
         return result.scalar_one_or_none()
-
-    # ── Reason codes ─────────────────────────────────────────────────────────
-
-    async def reason_codes(self) -> list[QualificationReasonCode]:
-        result = await self.session.execute(
-            select(QualificationReasonCode).order_by(QualificationReasonCode.code)
-        )
-        return list(result.scalars().all())
 
     # ── Results and outcomes ─────────────────────────────────────────────────
 

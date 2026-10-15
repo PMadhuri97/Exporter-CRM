@@ -87,7 +87,6 @@ function profile(overrides: Partial<ExporterProfileDetail> = {}): ExporterProfil
     pan: null,
     iec: null,
     source: 'SALES',
-    relationship_manager: null,
     relationship_manager_user_id: null,
     relationship_manager_name: null,
     relationship_manager_inactive: false,

@@ -1,5 +1,5 @@
 /**
- * The user menu at the right of the app header (frontend-plan §6.1): who is signed in
+ * The user menu at the right of the app header: who is signed in
  * and as what role, the theme (Light / Dark), My profile, and Sign out.
  */
 

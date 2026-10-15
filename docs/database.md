@@ -71,7 +71,7 @@ and `alembic_version`.
 
 | Schema | Owner module | The CRM's relationship to it |
 |---|---|---|
-| `onboarding` | `app/modules/onboarding` | **The CRM lives here.** 41 tables: the CRM's own (§4–§6) plus the legacy onboarding path (§7). |
+| `onboarding` | `app/modules/onboarding` | **The CRM lives here.** 48 tables: the CRM's own 34 (§4–§6) plus the legacy onboarding path's 14 (§7). |
 | `auth` | `app/platform/authentication` + `authorization` | Read. Actor ids stored in CRM tables are `auth.users.id` as text; names are resolved through the auth facade when a row is read. RBAC lives in `auth.role` / `auth.role_permission`. |
 | `audit` | `app/modules/audit` | Write, through the `AuditService` facade only. |
 | `customers` | `app/modules/customers` | **Not touched.** See the warning in §3. |
@@ -160,7 +160,8 @@ The enduring company record. A company may exist before any onboarding journey s
 | `identity_type` | `company_identity_type_enum` | `IN_PAN` \| `FOREIGN_REG`, derived from `pan` / `registration_number` |
 | `registration_number` | `varchar(100)` | unique **per country, normalised** — see the index below |
 | `source` | `exporter_source_enum` | **immutable once set** (trigger) |
-| `relationship_manager`, `relationship_manager_user_id` | `varchar(255)`, `uuid` | |
+| `relationship_manager_user_id` | `uuid` | the relationship manager, a user |
+| `relationship_manager` | `varchar(255)` | **retired** free-text owner: served and written by nothing; only `backfill_relationship_managers` reads it. A later migration drops it (unmatched names are discarded) |
 | `journey` | `exporter_journey_enum` | `LEAD` → `PROSPECT` → `CUSTOMER`, forward only |
 | `marker` | `exporter_marker_enum` | `NONE` \| `PAUSED` \| `ENDED`; `marker_reason` required when set |
 | `qualification` | `qualification_state_enum` | current value of the qualification gauge |
@@ -202,8 +203,10 @@ duplicate must normalise the same way or it will miss one.
 ### `exporter_gstin` — a company's branches
 
 Several per company; `UNIQUE (customer_id, gstin)`. Since 0035 each row is a **branch
-record**: `state_code`, `state_name`, `status`, `address`, `flag_status`, `flag_reason`,
-`active`, `deactivated_at/by`.
+record**: `state_code`, `state_name`, `status`, `address_id` (its company address),
+`flag_status`, `flag_reason`, `active`, `deactivated_at/by`. The old free-text `address`
+is **retired**: the API neither takes nor serves it, `convert_gst_addresses` turns what
+is there into linked `CORRESPONDENCE` addresses, and a later migration drops it.
 
 - **`DELETE` is refused by a trigger** (`trg_exporter_gstin_no_delete`), with a message
   saying to deactivate instead. A branch a company traded through is not removable.
@@ -214,11 +217,32 @@ record**: `state_code`, `state_name`, `status`, `address`, `flag_status`, `flag_
 - A GSTIN held by another company is a **warning in the UI, not a database refusal**
   (`ix_exporter_gstin_gstin` is non-unique, deliberately).
 
-### `exporter_contact`
+### `exporter_contact` — a company's people
 
-`uq_exporter_contact_primary_per_customer` is a **partial unique index** on
-`(customer_id) WHERE is_primary_contact = true` — at most one primary contact per
-company, enforced by the database.
+One row per **person** at a company, with roles (0057): `is_contact` (someone we talk to;
+the default), `is_director`, `is_ubo`. A director who is also the main contact is one
+row. Readers that mean "contacts" filter on `is_contact` (`GET …/contacts` defaults to
+`role=CONTACT`); the sanctions screening and group suggestions read directors and
+owners.
+
+- `uq_exporter_contact_primary_per_customer` is a **partial unique index** on
+  `(customer_id) WHERE is_primary_contact = true` — at most one primary contact per
+  company, enforced by the database.
+- `CHECK`s: a person has a role; only a contact can be primary, and only an active one;
+  `din` (eight digits) belongs to a director; `ownership_pct` (0–100) and
+  `control_type` to an owner; `nationality` and `residence_country` are ISO alpha-2;
+  the identification number, its type and its last four are set together.
+- The identification number is stored **encrypted** (`identification_encrypted`, the
+  field cipher bank accounts use) with `identification_last4` in clear. Date of birth,
+  DIN and the number are masked in responses unless the viewer holds
+  `exporters:view_full_tax_id`.
+- `trg_exporter_contact_no_delete` refuses any `DELETE` (`onboarding.prevent_delete()`):
+  a person leaves by status, and screening runs point at the row.
+- `uq_exporter_contact_id_customer` exists only to be referenced:
+  `fk_sanctions_run_subject_person` makes a run's `(subject_reference, company_id)` a
+  person of the run's own company. A free-text director run has no reference.
+- `source = 'LEGACY_UBO_RECORD'` marks owners 0057 copied from the old system's
+  `ubo_record`, with the same ids.
 
 ### `exporter_lifecycle_history` — the one shared history log
 
@@ -247,8 +271,9 @@ lands was a valid enum member at the time.
 > `(customer_id, created_at DESC, id DESC)`. Order by `created_at` alone and the result
 > is non-deterministic.
 
-> `contracts/history-row.md` §1 still says `customer_id` has "no foreign key yet". That
-> is **stale** — `fk_exporter_lifecycle_history_customer_id` exists, added by 0014.
+> Both links are real foreign keys: `customer_id` since 0014
+> (`fk_exporter_lifecycle_history_customer_id`) and `deal_id` since 0054
+> (`fk_exporter_lifecycle_history_deal_id`).
 
 ### `exporter_activity` and `follow_up_completion`
 
@@ -265,6 +290,11 @@ and is what makes the "my follow-ups" query cheap.
 Four tables. `qualification_criterion` (versioned, append-only,
 `UNIQUE (key, version)`), `qualification_reason_code`, `qualification_result` (one per
 criterion per company, append-only), `qualification_outcome` (the decision).
+
+`qualification_reason_code` is **retired**: the reason codes are a catalogue in code
+(`domain/qualification_reason_codes.py`, the same nine rows), nothing reads the table,
+and a later migration drops it. An outcome cites its codes as strings with no FK, so the
+catalogue must keep every code ever cited (a test checks it).
 
 `qualification_outcome` is a **superseding chain**: `supersedes_outcome_id` is `UNIQUE`
 (one superseder per row) and `uq_qualification_outcome_first_per_company` is a partial
@@ -334,7 +364,7 @@ Four triggers, which between them make a reviewed result unfalsifiable:
 | Trigger | What it refuses |
 |---|---|
 | `trg_verification_result_no_delete` | any `DELETE` |
-| `trg_verification_result_field_immutability` | changing `reviewed_by` or `review_status` once set |
+| `trg_verification_result_field_immutability` | changing `reviewed_by` or `review_status` once set — **retired columns**: nothing writes or reads them, or `evidence_reference`; the ORM maps all three `deferred`, and a later migration drops them with this trigger |
 | `trg_verification_result_input_immutability` | changing `evidence_note`, `evidence_refs`, `subject_snapshot`, `subject_company_id`, `cycle_id` once set |
 | `trg_verification_result_outcome_freeze` | changing the outcome of a result that has been reviewed |
 
@@ -361,9 +391,10 @@ under another company's cycle.
 
 ### `bank_activity_finding`
 
-Read by the screening router. **It has no foreign key to `exporter_profile`** —
-`customer_id` is a bare uuid, unlike every other CRM child table. Nothing in this
-checkout writes it.
+**Retired.** No bank-monitoring feed is planned, nothing ever wrote it, and since the
+`GET /exporters/{id}/bank-activity` route was removed nothing reads it; the panel states
+"not connected" without a request. A later migration drops it. It has no foreign key to
+`exporter_profile` (`customer_id` is a bare uuid).
 
 ---
 
@@ -394,20 +425,27 @@ body (0039) refuses, once `stage IN ('HANDED_OVER', 'WITHDRAWN')`:
 > Editing this function means restating all of it. Reading only the newest migration
 > tells you the whole rule; reading only an older one does not.
 
-> **`deal.reference` has no unique constraint or index.** Uniqueness, if it is intended,
-> is service-side only.
+> **`deal.reference` is unique per seller** (`uq_deal_company_reference`, 0059):
+> `open_deal` answers 409 `DEAL_REFERENCE_TAKEN`. Another seller may use the same words.
 
-### `deal_buyer` and `deal_buyer_company_map`
+### `deal_buyer`
 
-`deal_buyer` is the typed-in buyer, one per deal (`uq_deal_buyer_deal_id`), and the one
-CRM table with `ON DELETE CASCADE` — it is the deal's own detail, not an independent
-record. `CHECK country ~ '^[A-Z]{2}$'`.
+`deal_buyer` is the typed-in buyer of deals written before buyers were companies, one
+per deal (`uq_deal_buyer_deal_id`), and the one CRM table with `ON DELETE CASCADE` — it
+is the deal's own detail, not an independent record. `CHECK country ~ '^[A-Z]{2}$'`.
 
-`deal_buyer_company_map` links a legacy `deal_buyer` to a real company. Append-only,
-and its **primary key is `(deal_buyer_id, id)`** — `deal_buyer_id` leading is what makes
-re-running the buyer migration a no-op. `match_rule` records *how* the link was decided
-(`PAN`, `REGISTRATION_NUMBER`, `NEW`, `NAME_CONFIRMED` — a person decided —
-`ALREADY_LINKED`).
+**Frozen** (0058, `trg_deal_buyer_frozen`, `onboarding.prevent_deal_buyer_change()`): an
+`INSERT` is refused, and so is any `UPDATE` of the row's own columns. A deal names its
+buyer as a company now; nothing in the CRM writes this table.
+
+The buyer migration's answer is on the row itself (0056, which folded in and dropped the
+one-to-one `deal_buyer_company_map`): `mapped_company_id` (FK to the company),
+`match_rule` (*how* it was decided: `PAN`, `REGISTRATION_NUMBER`, `NEW`,
+`NAME_CONFIRMED` — a person decided — `ALREADY_LINKED`), `matched_by`, `matched_at` and
+`mapping_run_id`. They are written together (`ck_deal_buyer_mapping_complete`; only
+`matched_by` may stay empty) and **set once** (`trg_deal_buyer_mapping_set_once`), which
+is what makes re-running the migration a no-op. `ix_deal_buyer_mapped_company` reads the
+merge by company; `ix_deal_buyer_mapping_run` reads one run.
 
 ### `crm_document`
 
@@ -449,8 +487,10 @@ when `payment_status = 'PARTIAL'`.
 
 The `onboarding` schema holds a second, older system: the `onboarding_request` path, an
 18-state machine, a 12-state case machine, a Temporal workflow and an
-identity-provider framework. **No CRM code reads or writes any of it.** It is kept, not
-deleted (migration-register §3).
+identity-provider framework. **No CRM code reads or writes any of it.** (Until 0057 the
+sanctions screening and group suggestions read beneficial owners from `ubo_record`; they
+read the company's people in `exporter_contact` now, and 0057 copied the owners across
+with their ids.) It is kept, not deleted (migration-register §3).
 
 | Table | Belongs to |
 |---|---|
@@ -535,14 +575,15 @@ SQL through `psycopg2`, bypassing the ORM, so the test proves the *database* ref
 | `onboarding.prevent_terminal_deal_change()` | §6. |
 | `onboarding.prevent_reviewed_verification_outcome_change()` | Refuses an outcome change on a verification result that has been reviewed. |
 | `onboarding.prevent_gst_registration_delete()` | Refuses any `DELETE` on `exporter_gstin`, telling the caller to deactivate. |
+| `onboarding.prevent_deal_buyer_change()` | Refuses an `INSERT` on `deal_buyer`, and an `UPDATE` of anything but the buyer migration's mapping columns and `updated_at` (0058). |
+| `onboarding.prevent_delete()` | Refuses any `DELETE` on the table it guards (`exporter_contact`), telling the caller to change the status instead. |
 
-### The 35 triggers on the `onboarding` schema
+### The 45 triggers on the `onboarding` schema
 
 Fully append-only — `UPDATE` and `DELETE` both refused:
 
 `background_check_decision`, `background_check_evidence`, `background_check_proposal`,
-`background_check_proposal_resolution`, `check_cycle`, `deal_buyer_company_map`,
-`deal_required_document`, `exporter_activity`, `exporter_lifecycle_history`,
+`background_check_proposal_resolution`, `check_cycle`, `deal_required_document`, `exporter_activity`, `exporter_lifecycle_history`,
 `follow_up_completion`, `qualification_criterion`, `qualification_outcome`,
 `qualification_result`, `screening_review_item`, `trade_invoice_outcome`,
 `verification_review`, plus legacy `case_state_transition`, `onboarding_event` and
@@ -555,7 +596,12 @@ live database has them:
 crm_document        company_id, deal_id, category, document_type, source, file_name,
                     content_type, size_bytes, uploaded_by, uploaded_at, storage_key
 deal                buyer_company_id                                    (set-once)
+deal_buyer          mapped_company_id, match_rule, matched_by, matched_at,
+                    mapping_run_id                                      (set-once, 0056)
 exporter_profile    source
+payment_term        code, version, label, kind, days, active, created_by, created_at  (0055)
+sanctions_list      code, version, name, authority, active, mandatory, list_version_date,
+                    created_by, created_at                              (0055)
 trade_invoice       relationship_id, invoice_number, invoice_date, amount, currency, deal_id
 verification_result reviewed_by, review_status                           (field immutability)
 verification_result evidence_note, evidence_refs, subject_snapshot,
@@ -569,11 +615,12 @@ ubo_record               created_at                                     ┘
 ```
 
 Delete-only refusals: `crm_document`, `verification_result` (both via
-`prevent_mutation` on `BEFORE DELETE … FOR EACH STATEMENT`) and `exporter_gstin` (via
-its own function, `FOR EACH ROW`).
+`prevent_mutation` on `BEFORE DELETE … FOR EACH STATEMENT`), `exporter_contact` (via
+`prevent_delete`, `FOR EACH STATEMENT`) and `exporter_gstin` (via its own function,
+`FOR EACH ROW`).
 
 **No table in the `onboarding` schema has a `NOT VALID` constraint, an exclusion
-constraint or a sequence.** 153 indexes, all validated.
+constraint or a sequence.** 183 indexes, all validated.
 
 ### Writing a new rule
 
@@ -751,7 +798,10 @@ To rehearse a migration safely, copy the database first (`createdb -T <source>
 10. **`DELETE` on an append-only table is refused, so a migration that must clear one
     needs `TRUNCATE`** — row triggers do not fire on truncate. (§9)
 11. **Tests run against your development database and leave rows behind.** (§12)
-12. **`contracts/history-row.md` §1 is stale** on the history foreign key — it exists.
-13. **Known gaps, if you are looking for one:** `deal.reference` has no unique
-    constraint; `bank_activity_finding.customer_id` has no foreign key;
+12. **A rule left `NOT VALID` is still a rule.** 0042 and 0054 validate a new constraint
+    only when no existing row breaks it; otherwise they print the rows and leave it
+    `NOT VALID`, enforced on every new or changed row. `SELECT conname FROM pg_constraint
+    WHERE NOT convalidated` lists any still waiting.
+13. **Known gaps, if you are looking for one:** `bank_activity_finding.customer_id` has
+    no foreign key (the table is retired);
     `verification_result.entity_reference` is polymorphic and unconstrained by design.

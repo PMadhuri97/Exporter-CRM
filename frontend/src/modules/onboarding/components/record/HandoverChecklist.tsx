@@ -1,5 +1,5 @@
 /**
- * Handover readiness: the handover guard as a checklist (frontend-plan §6.11).
+ * Handover readiness: the handover guard as a checklist.
  *
  * **Today (fallback):** the server sends the guard's verdict as one sentence,
  * `handover_blocked_reason`, and this shows it verbatim in one attention callout —

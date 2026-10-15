@@ -24,6 +24,7 @@ from app.modules.onboarding.domain.entities.orchestration_enums import (
 from app.modules.onboarding.domain.entities.verification_result import VerificationResult
 from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
 from app.modules.onboarding.tests.fixtures.companies import make_prospect
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.configuration.config import get_settings
 from app.platform.database import services as db_services
 
@@ -51,10 +52,10 @@ async def open_deal(company_id: uuid.UUID, reference: str = "Rotterdam shipment"
 
 
 async def set_buyer(deal_id: uuid.UUID, **fields: Any) -> uuid.UUID:
+    """A legacy buyer row on the deal (``fixtures/legacy_buyers.py``): BUYER checks are
+    recorded against one."""
     values = {"name": "Rotterdam Trading BV", "country": "NL", **fields}
-    async with db_services.AsyncSessionLocal() as db:
-        view = await DealService(db).set_buyer(deal_id, actor_id="tester", **values)
-    return view.buyer.id
+    return await record_legacy_buyer(deal_id, **values)
 
 
 async def deal_buyer(**fields: Any) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:

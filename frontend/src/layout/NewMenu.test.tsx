@@ -1,5 +1,5 @@
 /**
- * *+ New* in the app header (frontend-plan §6.1, §4.1): only the quick-create entries
+ * *+ New* in the app header: only the quick-create entries
  * the role has, and no menu at all for a role that may create nothing.
  */
 

@@ -34,6 +34,7 @@ from app.modules.onboarding.domain.entities.exporter_profile import ExporterProf
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationOutcomeValue
 from app.modules.onboarding.tests.fixtures.companies import (
     ensure_relationship_manager,
+    make_bare_deal,
     make_company,
 )
 from app.platform.database import services as db_services
@@ -62,7 +63,7 @@ async def _rows_for(company_id: uuid.UUID) -> list[ExporterLifecycleHistory]:
 
 async def test_record_writes_one_row_with_every_contracted_field():
     company_id = await make_company()
-    deal_id = uuid.uuid4()
+    deal_id = await make_bare_deal(company_id)
 
     async with db_services.AsyncSessionLocal() as db:
         await HistoryService(db).record(
@@ -369,7 +370,8 @@ async def _seed_mixed(company_id: uuid.UUID, deal_id: uuid.UUID) -> None:
 
 
 async def test_an_unfiltered_read_returns_every_dimension():
-    company_id, deal_id = await make_company(), uuid.uuid4()
+    company_id = await make_company()
+    deal_id = await make_bare_deal(company_id)
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
@@ -380,7 +382,8 @@ async def test_an_unfiltered_read_returns_every_dimension():
 
 
 async def test_a_dimension_filter_narrows_the_read_and_the_total():
-    company_id, deal_id = await make_company(), uuid.uuid4()
+    company_id = await make_company()
+    deal_id = await make_bare_deal(company_id)
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
@@ -393,7 +396,8 @@ async def test_a_dimension_filter_narrows_the_read_and_the_total():
 
 
 async def test_a_deal_read_returns_only_that_deals_rows():
-    company_id, deal_id = await make_company(), uuid.uuid4()
+    company_id = await make_company()
+    deal_id = await make_bare_deal(company_id)
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
@@ -414,7 +418,8 @@ async def test_an_unknown_deal_reads_empty_rather_than_raising():
 
 
 async def test_paging_is_newest_first_and_does_not_repeat_a_row():
-    company_id, deal_id = await make_company(), uuid.uuid4()
+    company_id = await make_company()
+    deal_id = await make_bare_deal(company_id)
     await _seed_mixed(company_id, deal_id)
 
     async with db_services.AsyncSessionLocal() as db:
