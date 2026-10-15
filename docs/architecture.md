@@ -394,7 +394,7 @@ stored token is still the one refused; if another tab has stored a newer one, it
 once with that. On the server, a refresh whose caller has already disconnected when it
 is about to commit is rolled back (`499`), so a page reloaded mid-refresh keeps a token
 that still works. The window this leaves — several reloads within a second can still sign a user out —
-is open work in [`remaining-work.md`](remaining-work.md) §3.
+is open work in [`remaining-work.md`](remaining-work.md) §2.
 
 ## 10. Ownership
 
@@ -438,7 +438,7 @@ Developer 2's promotion (`promote_to_customer_if_ready`).
   open a deal, and the D2 clarification and D5 amendment made in the Developer 4A review.
   Developer 4B's side of D4 and Developer 1's compliance details were confirmed on
   2 October 2026 (`contracts/background-check.md` §14.2). Every decision still open is in
-  [`remaining-work.md`](remaining-work.md) §4.
+  [`remaining-work.md`](remaining-work.md) §3.
 
 ## 12. Known, intentional limitations
 

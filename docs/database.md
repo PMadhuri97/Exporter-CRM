@@ -71,7 +71,7 @@ and `alembic_version`.
 
 | Schema | Owner module | The CRM's relationship to it |
 |---|---|---|
-| `onboarding` | `app/modules/onboarding` | **The CRM lives here.** 48 tables: the CRM's own 34 (§4–§6) plus the legacy onboarding path's 14 (§7). |
+| `onboarding` | `app/modules/onboarding` | **The CRM lives here.** 46 tables: the CRM's own 32 (§4–§6) plus the legacy onboarding path's 14 (§7). |
 | `auth` | `app/platform/authentication` + `authorization` | Read. Actor ids stored in CRM tables are `auth.users.id` as text; names are resolved through the auth facade when a row is read. RBAC lives in `auth.role` / `auth.role_permission`. |
 | `audit` | `app/modules/audit` | Write, through the `AuditService` facade only. |
 | `customers` | `app/modules/customers` | **Not touched.** See the warning in §3. |
@@ -161,7 +161,6 @@ The enduring company record. A company may exist before any onboarding journey s
 | `registration_number` | `varchar(100)` | unique **per country, normalised** — see the index below |
 | `source` | `exporter_source_enum` | **immutable once set** (trigger) |
 | `relationship_manager_user_id` | `uuid` | the relationship manager, a user |
-| `relationship_manager` | `varchar(255)` | **retired** free-text owner: served and written by nothing; only `backfill_relationship_managers` reads it. A later migration drops it (unmatched names are discarded) |
 | `journey` | `exporter_journey_enum` | `LEAD` → `PROSPECT` → `CUSTOMER`, forward only |
 | `marker` | `exporter_marker_enum` | `NONE` \| `PAUSED` \| `ENDED`; `marker_reason` required when set |
 | `qualification` | `qualification_state_enum` | current value of the qualification gauge |
@@ -204,9 +203,8 @@ duplicate must normalise the same way or it will miss one.
 
 Several per company; `UNIQUE (customer_id, gstin)`. Since 0035 each row is a **branch
 record**: `state_code`, `state_name`, `status`, `address_id` (its company address),
-`flag_status`, `flag_reason`, `active`, `deactivated_at/by`. The old free-text `address`
-is **retired**: the API neither takes nor serves it, `convert_gst_addresses` turns what
-is there into linked `CORRESPONDENCE` addresses, and a later migration drops it.
+`flag_status`, `flag_reason`, `active`, `deactivated_at/by`. There is no free-text
+address: 0060 dropped it once its text had become linked `CORRESPONDENCE` addresses.
 
 - **`DELETE` is refused by a trigger** (`trg_exporter_gstin_no_delete`), with a message
   saying to deactivate instead. A branch a company traded through is not removable.
@@ -287,14 +285,13 @@ and is what makes the "my follow-ups" query cheap.
 
 ### Qualification
 
-Four tables. `qualification_criterion` (versioned, append-only,
-`UNIQUE (key, version)`), `qualification_reason_code`, `qualification_result` (one per
-criterion per company, append-only), `qualification_outcome` (the decision).
+Three tables. `qualification_criterion` (versioned, append-only,
+`UNIQUE (key, version)`), `qualification_result` (one per criterion per company,
+append-only), `qualification_outcome` (the decision).
 
-`qualification_reason_code` is **retired**: the reason codes are a catalogue in code
-(`domain/qualification_reason_codes.py`, the same nine rows), nothing reads the table,
-and a later migration drops it. An outcome cites its codes as strings with no FK, so the
-catalogue must keep every code ever cited (a test checks it).
+The reason codes are a catalogue in code (`domain/qualification_reason_codes.py`); their
+table, `qualification_reason_code`, was dropped by 0060. An outcome cites its codes as
+strings with no FK, so the catalogue must keep every code ever cited (a test checks it).
 
 `qualification_outcome` is a **superseding chain**: `supersedes_outcome_id` is `UNIQUE`
 (one superseder per row) and `uq_qualification_outcome_first_per_company` is a partial
@@ -359,14 +356,13 @@ matching reference column to be non-null and the others to be null. Each
 
 ### `verification_result`
 
-Four triggers, which between them make a reviewed result unfalsifiable:
+Three triggers, which between them make a reviewed result unfalsifiable:
 
 | Trigger | What it refuses |
 |---|---|
 | `trg_verification_result_no_delete` | any `DELETE` |
-| `trg_verification_result_field_immutability` | changing `reviewed_by` or `review_status` once set — **retired columns**: nothing writes or reads them, or `evidence_reference`; the ORM maps all three `deferred`, and a later migration drops them with this trigger |
 | `trg_verification_result_input_immutability` | changing `evidence_note`, `evidence_refs`, `subject_snapshot`, `subject_company_id`, `cycle_id` once set |
-| `trg_verification_result_outcome_freeze` | changing the outcome of a result that has been reviewed |
+| `trg_verification_result_outcome_freeze` | changing the outcome of a result that has a review in `verification_review` |
 
 `entity_reference` is a **bare uuid with no foreign key** — it is polymorphic over
 `entity_type` (`EXPORTER`, `BUYER`, `DIRECTOR`, `INVOICE`, `VESSEL`, `SHIPMENT`).
@@ -388,13 +384,6 @@ item key. `status` is a `varchar` with a `CHECK` list (`NEEDS_REVIEW`, `PASSED`,
 `CHECK jsonb_typeof(evidence_refs) = 'array'`. `cycle_id` carries a **composite FK**
 `(cycle_id, customer_id)` → `check_cycle (id, company_id)`, so an answer cannot be filed
 under another company's cycle.
-
-### `bank_activity_finding`
-
-**Retired.** No bank-monitoring feed is planned, nothing ever wrote it, and since the
-`GET /exporters/{id}/bank-activity` route was removed nothing reads it; the panel states
-"not connected" without a request. A later migration drops it. It has no foreign key to
-`exporter_profile` (`customer_id` is a bare uuid).
 
 ---
 
@@ -603,7 +592,6 @@ payment_term        code, version, label, kind, days, active, created_by, create
 sanctions_list      code, version, name, authority, active, mandatory, list_version_date,
                     created_by, created_at                              (0055)
 trade_invoice       relationship_id, invoice_number, invoice_date, amount, currency, deal_id
-verification_result reviewed_by, review_status                           (field immutability)
 verification_result evidence_note, evidence_refs, subject_snapshot,
                     subject_company_id, cycle_id                        (input immutability)
 
@@ -802,6 +790,5 @@ To rehearse a migration safely, copy the database first (`createdb -T <source>
     only when no existing row breaks it; otherwise they print the rows and leave it
     `NOT VALID`, enforced on every new or changed row. `SELECT conname FROM pg_constraint
     WHERE NOT convalidated` lists any still waiting.
-13. **Known gaps, if you are looking for one:** `bank_activity_finding.customer_id` has
-    no foreign key (the table is retired);
+13. **Known gaps, if you are looking for one:**
     `verification_result.entity_reference` is polymorphic and unconstrained by design.

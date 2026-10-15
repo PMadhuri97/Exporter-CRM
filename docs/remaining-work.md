@@ -2,8 +2,8 @@
 
 What is still to do, what waits on whom, and what needs a decision. Only open items are
 listed; what was built, and why, is in git history and in the contracts. Last reviewed
-14 October 2026, on `fix/migration-crm` (migration head `onboarding_0059_deal_reference`;
-next free onboarding number **0060**).
+15 October 2026, on `fix/crm-drop-retired` (migration head `onboarding_0060_drop_retired`;
+next free onboarding number **0061**).
 
 ---
 
@@ -20,11 +20,13 @@ nothing.
    dump is the way back. Keep users out until step 5 has validated.
 2. **Settings.** `FIELD_ENCRYPTION_KEYS` set in the environment's secret store and backed
    up (without it, bank details answer 503; losing it loses every stored account number).
-3. **`alembic upgrade head`**, then deploy. Read what each migration prints: 0054 and 0057
-   leave a rule `NOT VALID` and print the query listing the rows that break it; 0057
-   refuses while a linked owner in the old onboarding tables carries a date of birth or
-   identification number; 0059 refuses while one seller has two deals with the same
-   reference, and lists them.
+3. **`alembic upgrade onboarding_0059_deal_reference`**, then deploy **the release that ends
+   at 0059**, not a later one: 0060 drops the RM and GST text step 5 converts, and the
+   commands that convert it are not in the release that carries 0060. Read what each
+   migration prints: 0054 and 0057 leave a rule `NOT VALID` and print the query listing
+   the rows that break it; 0057 refuses while a linked owner in the old onboarding tables
+   carries a date of birth or identification number; 0059 refuses while one seller has
+   two deals with the same reference, and lists them.
 4. **Lead roles.** Someone must hold *Compliance lead* (assigns reviews, approves a
    high-risk Clear, confirms a true sanctions match when
    `CRM_SANCTIONS_TRUE_MATCH_APPROVAL=HEAD`) and someone *Sales lead* (assigns RMs and
@@ -33,7 +35,8 @@ nothing.
    `--validate` (every count 0, else stop), in this order — the procedure, quiet settings
    and Windows console notes are [`development.md`](development.md) §10.1:
    1. `python -m app.modules.onboarding.backfill_relationship_managers` — names each
-      company's RM as a user from the retired free text (an unmatched name is discarded).
+      company's RM as a user from the old free text (an unmatched name is discarded by
+      0060).
    2. `python -m app.modules.onboarding.convert_gst_addresses` — turns each GST branch's
       text address into a linked correspondence address.
    3. `python -m app.modules.onboarding.migrate_deal_buyers` — maps every legacy deal buyer
@@ -42,7 +45,15 @@ nothing.
       and the rows that need a person; confirm those with `--confirm-name`.
    4. `python -m app.modules.onboarding.backfill_trade_relationships` — only after 3 has
       validated.
-6. **Tell the users what changed:** a deal's buyer is always a company (the old buyer form
+6. **Then deploy the release with 0060** (`alembic upgrade head`), after another
+   `pg_dump -Fc` — the RM names no account matched exist only in that dump afterwards.
+   0060 drops `qualification_reason_code`, `bank_activity_finding`, the old RM and GST
+   address text and the result's legacy review columns. It refuses, listing why and
+   changing nothing, while a GST branch still has text and no address, a company's RM
+   text still names exactly one active RM account, a legacy verdict has no review in the
+   chain, `evidence_reference` is set or `bank_activity_finding` has a row; and prints how
+   many unmatched RM names it discards.
+7. **Tell the users what changed:** a deal's buyer is always a company (the old buyer form
    is gone; deals that had one keep it, read-only); a seller's deals need different
    references; a company's RM is a user, never free text; a GST branch's address is an
    address record.
@@ -58,31 +69,7 @@ branch when the seller has an active GST registration. Below `onboarding_0040`, 
 check `SELECT count(*) FROM onboarding.exporter_profile WHERE iec IS NOT NULL AND iec !~
 '^[A-Z0-9]{10}$'` is 0.
 
-## 2. Follow-up pull request: drop what was retired (migration 0060)
-
-Built only after §1 has run everywhere, so no running instance still reads what it
-drops. A `pg_dump -Fc` first.
-
-| Drop | Guard in the migration |
-|---|---|
-| `qualification_reason_code` (the codes are served from code) | none; re-seeded from the code catalogue on downgrade |
-| `bank_activity_finding` (no bank feed is planned) | refuse if it holds rows |
-| `trg_verification_result_field_immutability`, then `verification_result.evidence_reference`, `reviewed_by`, `review_status` | refuse while a legacy review has no review row, or any `evidence_reference` is set |
-| `exporter_profile.relationship_manager` | none; unmatched names were discarded by decision |
-| `exporter_gstin.address` | refuse while a branch has text and no `address_id` |
-
-`verification_review_status_enum` stays; `verification_review` uses it.
-
-In the same pull request: delete the `QualificationReasonCode` and `BankActivityFinding`
-entities and the `deferred` columns on `ExporterProfile`, `ExporterGstin` and
-`VerificationResult`; delete `backfill_relationship_managers` and `convert_gst_addresses`
-with their tests; delete the tests that pin the dropped trigger and table
-(`test_the_catalogue_is_the_table_it_replaced`); update `database.md` and the migration
-register. **Done when** `alembic check` is clean, the CRM has 32 tables and the CRM suite
-passes. **Rollback:** the downgrade recreates both tables, re-adds the columns empty and
-restores the trigger; the RM text comes back only from the dump.
-
-## 3. Open work
+## 2. Open work
 
 | Item | What is left | Waits on |
 |---|---|---|
@@ -103,7 +90,7 @@ restores the trigger; the RM text comes back only from the dump.
 | Run the suite in the `aner-app` container | `test_openapi_artifact_is_current.py` needs `./frontend`; mount it read-only in compose | — |
 | Isolate the document converter | LibreOffice runs as the backend's user beside its secrets. Run it in a separate container or job with no database credentials, no `FIELD_ENCRYPTION_KEYS` and no network | Infrastructure |
 
-## 4. Decisions awaited
+## 3. Decisions awaited
 
 | Question | Options | Blocks |
 |---|---|---|
@@ -111,9 +98,9 @@ restores the trigger; the RM text comes back only from the dump.
 | Should a required-document setting apply to deals already in progress? Today a requirement switched on blocks a handover that was ready | As built; or only deals opened after the change | Nothing |
 | The deal-value qualification criterion never fires: a deal is opened only for a qualified company, and `QUALIFIED` is final | Drop it as an automatic source; or answer it from an expected deal size recorded on the lead | Nothing |
 | DEVELOPER reads a company's bank accounts (masked to the last four, with bank, IFSC and SWIFT) and their history | As built (consistent with masked tax identifiers); or withhold them | Nothing |
-| A company can be cleared with no document (screening answers and passed KYB, AML and sanctions suffice) | Accepted for now; revisit before real documents are stored | Real data (§5) |
+| A company can be cleared with no document (screening answers and passed KYB, AML and sanctions suffice) | Accepted for now; revisit before real documents are stored | Real data (§4) |
 
-## 5. Deferred
+## 4. Deferred
 
 Not current work; each starts only when its trigger happens.
 
@@ -133,7 +120,7 @@ Not current work; each starts only when its trigger happens.
 | The "Verify GSTIN" link (`services.gst.gov.in/services/searchtp?tin=`): the portal's deep-link format was never confirmed; if it ignores the parameter, it opens the search page | Confirmation from the portal |
 | Worklists and the approvals badge are computed on every read (the badge refetches every 60 seconds per tab) | A few thousand companies under review at once: store the deadlines or cache the counts |
 
-## 6. Later, optional
+## 5. Later, optional
 
 **Retire `deal_buyer` entirely.** After the buyer migration has run everywhere and the
 deal response's `buyer` field has been gone for one release: read the seller timeline

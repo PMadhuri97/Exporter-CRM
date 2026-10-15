@@ -601,23 +601,6 @@ async def test_every_cited_reason_code_is_in_the_catalogue():
     assert cited <= set(REASON_CODES)
 
 
-async def test_the_catalogue_is_the_table_it_replaced():
-    """Until the table is dropped, its rows and the catalogue are the same list."""
-    conn = _connect()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT code, label, requires_note, active "
-                "FROM onboarding.qualification_reason_code"
-            )
-            table = {row[0]: tuple(row[1:]) for row in cur.fetchall()}
-    finally:
-        conn.close()
-    assert table == {
-        code.code: (code.label, code.requires_note, code.active) for code in REASON_CODES.values()
-    }
-
-
 async def test_the_migration_builds_on_whatever_version_an_admin_left():
     """Migration 0031's own insert, run for real inside a transaction that is rolled
     back. On a live database an ADMIN may already have versioned `export_history`

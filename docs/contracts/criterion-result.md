@@ -317,11 +317,12 @@ Any of these being false is a bug:
 ## 9a. As built
 
 **Storage** (migration 0017): `qualification_criterion` (one immutable row per
-version), `qualification_reason_code` (retired 14 October 2026: the codes are a
-catalogue in code, `domain/qualification_reason_codes.py`, served unchanged by `GET
-/qualification/reason-codes`), `qualification_result` and
+version), `qualification_result` and
 `qualification_outcome`, plus `exporter_profile.qualification` and
-`exporter_profile.journey`. The criterion, result and outcome tables are
+`exporter_profile.journey`. The reason codes are a catalogue in code,
+`domain/qualification_reason_codes.py`, served by `GET /qualification/reason-codes`
+(their table, `qualification_reason_code`, was dropped by migration 0060). The criterion,
+result and outcome tables are
 append-only through `public.prevent_mutation()`. The database also enforces:
 the kind-dependent shape of a criterion; evidence on every `PASS`/`FAIL`
 result; a confidence only on an automated result, between 0 and 1; at least one
