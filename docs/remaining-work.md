@@ -2,19 +2,22 @@
 
 What is still to do, what waits on whom, and what needs a decision. Only open items are
 listed; what was built, and why, is in git history and in the contracts. Last reviewed
-14 October 2026, on `fix/migration-crm` (migration head `onboarding_0059_deal_reference`;
-next free onboarding number **0060**).
+15 October 2026, on `fix/crm-drop-retired` (migration head `onboarding_0060_drop_tables`;
+next free onboarding number **0061**).
 
 ---
 
 ## 1. Before the next release: on live databases, in this order
 
-**Where.** `aner_settlement` (the only CRM database on the development server, at
-`onboarding_0053_auto_criteria`), and any other environment that holds data someone
-needs; the lead runs the steps there. Development and test databases are rebuilt from
-empty plus the sample data instead. Every step was rehearsed on a copy of
-`aner_settlement` on 14 October 2026: every validation 0, every second `--apply` wrote
-nothing.
+**Where.** Every database that holds data someone needs; development and test databases
+are rebuilt from empty plus the sample data instead. **Merging into `main` deploys**: the
+backend workflow rolls the ECS service out on every merged pull request that touches
+`backend/`, and the container runs `alembic upgrade head` first.
+
+| Database | Done | Left |
+|---|---|---|
+| `aner_settlement` (local) | 15 October 2026: steps 1, 3 and 5 — dump in `db-backups-2026-10-15`, at `onboarding_0059_deal_reference`, all four commands validated (100 RMs set, 6 addresses, 4 buyers, 4 relationships) | step 2 (`FIELD_ENCRYPTION_KEYS` is unset; the local development key stands in), step 4 (nobody holds Compliance lead or Sales lead), upgrade to 0060, step 6 |
+| The ECS service's database | `main` deployed, so at 0059 | step 5 — run the four commands against it (a one-off ECS task, or a session with its `DATABASE_URL`), then steps 2, 4 and 6 |
 
 1. **`pg_dump -Fc`** of the database. The data commands below do not undo in place; the
    dump is the way back. Keep users out until step 5 has validated.
@@ -58,29 +61,42 @@ branch when the seller has an active GST registration. Below `onboarding_0040`, 
 check `SELECT count(*) FROM onboarding.exporter_profile WHERE iec IS NOT NULL AND iec !~
 '^[A-Z0-9]{10}$'` is 0.
 
-## 2. Follow-up pull request: drop what was retired (migration 0060)
+## 2. Follow-up pull request: drop the retired columns (migration 0061)
 
-Built only after §1 has run everywhere, so no running instance still reads what it
-drops. A `pg_dump -Fc` first.
+Merged only when **both** hold, or an instance still serving fails:
+
+* the release with 0060 is the one running everywhere — it is the first that does not map
+  these columns (`exclude_properties`); the release before inserts `NULL` into them, so
+  dropping them under it fails every company creation and every recorded check;
+* §1 step 5 has validated in **every** database, the ECS one included.
+
+`pg_dump -Fc` first. A draft with every guard below was built and rehearsed on a copy of
+`aner_settlement` on 15 October 2026 (refused before the data commands, applied after;
+downgrade identical to the schema before): `git show
+21c5851:backend/app/modules/onboarding/migrations/onboarding_0060_drop_retired.py`. Renumber
+it 0061, take the two table drops out (0060 has them) and keep the rest.
 
 | Drop | Guard in the migration |
 |---|---|
-| `qualification_reason_code` (the codes are served from code) | none; re-seeded from the code catalogue on downgrade |
-| `bank_activity_finding` (no bank feed is planned) | refuse if it holds rows |
 | `trg_verification_result_field_immutability`, then `verification_result.evidence_reference`, `reviewed_by`, `review_status` | refuse while a legacy review has no review row, or any `evidence_reference` is set |
-| `exporter_profile.relationship_manager` | none; unmatched names were discarded by decision |
+| `exporter_profile.relationship_manager` | refuse while a company with no RM has text naming exactly one active RM account (`backfill_relationship_managers` not run); print how many unmatched names are discarded, by decision |
 | `exporter_gstin.address` | refuse while a branch has text and no `address_id` |
 
+**First**, `CREATE OR REPLACE` `onboarding.prevent_reviewed_verification_outcome_change()`
+without `OLD.review_status`: it reads that column, and once it is gone every update of a
+verification result would fail. The downgrade restores the old body.
 `verification_review_status_enum` stays; `verification_review` uses it.
 
-In the same pull request: delete the `QualificationReasonCode` and `BankActivityFinding`
-entities and the `deferred` columns on `ExporterProfile`, `ExporterGstin` and
-`VerificationResult`; delete `backfill_relationship_managers` and `convert_gst_addresses`
-with their tests; delete the tests that pin the dropped trigger and table
-(`test_the_catalogue_is_the_table_it_replaced`); update `database.md` and the migration
-register. **Done when** `alembic check` is clean, the CRM has 32 tables and the CRM suite
-passes. **Rollback:** the downgrade recreates both tables, re-adds the columns empty and
-restores the trigger; the RM text comes back only from the dump.
+In the same pull request: remove the three `exclude_properties` declarations and their
+`Column`s on `ExporterProfile`, `ExporterGstin` and `VerificationResult`, with
+`test_retired_columns_are_never_written.py`; delete `backfill_relationship_managers` and
+`convert_gst_addresses` with their tests; delete the tests that pin the legacy columns
+(`test_verification_schema.py`'s review-column tests,
+`test_the_retired_review_columns_are_not_read`, `test_the_legacy_columns_are_not_written`,
+`test_the_legacy_review_trigger_is_still_in_place`); update `database.md`, the contracts
+that say "a later migration drops it" and the register. **Done when** `alembic check` is
+clean and the CRM suite passes. **Rollback:** the downgrade re-adds the columns empty and
+restores the trigger and the function; the RM text comes back only from the dump.
 
 ## 3. Open work
 

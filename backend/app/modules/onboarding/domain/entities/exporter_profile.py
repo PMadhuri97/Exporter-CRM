@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     CheckConstraint,
+    Column,
     Date,
     DateTime,
     Enum,
@@ -228,8 +229,17 @@ class ExporterProfile(AnerModel):
             "OR background_check IN ('IN_REVIEW', 'MORE_INFO')",
             name="ck_exporter_profile_reviewer_under_review",
         ),
+        # Retired, and deliberately **not mapped** (`__mapper_args__` below): declared so the
+        # table still matches the database, while the ORM never names it in an INSERT,
+        # UPDATE or SELECT. `deferred` is not enough — the ORM still inserts an explicit
+        # NULL into every mapped nullable column with no default — and an instance of this
+        # release must keep working once a later migration drops the column.
+        # The old free-text owner: `backfill_relationship_managers` reads it through
+        # `__table__.c`, to match a name to an RM user; names it cannot match are discarded.
+        Column("relationship_manager", String(255), nullable=True),
         {"schema": SCHEMA},
     )
+    __mapper_args__ = {"exclude_properties": ["relationship_manager"]}
 
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
@@ -240,15 +250,6 @@ class ExporterProfile(AnerModel):
     # ── Origin (immutable once set — see class docstring) ────────────────────
     source: Mapped[ExporterSource] = mapped_column(
         Enum(ExporterSource, name="exporter_source_enum", schema=SCHEMA), nullable=False
-    )
-
-    #: The legacy free-text owner label. **Retired**: no route writes or serves it; only
-    #: the `backfill_relationship_managers` command reads it, to match a name to a user.
-    #: The relationship manager is `relationship_manager_user_id`. Mapped `deferred` so
-    #: no ordinary query loads it; a later migration drops it (the names the backfill
-    #: cannot match are discarded).
-    relationship_manager: Mapped[str | None] = mapped_column(
-        String(255), nullable=True, deferred=True
     )
 
     #: The company's relationship manager: an active OPERATIONS user when written,

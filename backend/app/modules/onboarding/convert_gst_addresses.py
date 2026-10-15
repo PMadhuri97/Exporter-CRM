@@ -123,15 +123,20 @@ class Report:
         return "\n".join(lines)
 
 
+#: The branch's old text. Not mapped by the ORM (``ExporterGstin``'s ``__mapper_args__``),
+#: so it is read from the table.
+ADDRESS_TEXT = ExporterGstin.__table__.c.address
+
+
 def _unconverted():
     return select(
         ExporterGstin.id,
         ExporterGstin.customer_id,
-        ExporterGstin.address,
+        ADDRESS_TEXT,
         ExporterGstin.state_name,
     ).where(
-        ExporterGstin.address.isnot(None),
-        func.btrim(ExporterGstin.address) != "",
+        ADDRESS_TEXT.isnot(None),
+        func.btrim(ADDRESS_TEXT) != "",
         ExporterGstin.address_id.is_(None),
     )
 

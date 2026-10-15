@@ -105,14 +105,19 @@ class Report:
         return "\n".join(lines)
 
 
+#: The legacy text. Not mapped by the ORM (``ExporterProfile``'s ``__mapper_args__``), so
+#: it is read from the table.
+LEGACY_TEXT = ExporterProfile.__table__.c.relationship_manager
+
+
 async def resolve(db: AsyncSession) -> Report:
     """What a run would do, writing nothing."""
     companies = (
         await db.execute(
-            select(ExporterProfile.customer_id, ExporterProfile.relationship_manager)
+            select(ExporterProfile.customer_id, LEGACY_TEXT)
             .where(
-                ExporterProfile.relationship_manager.isnot(None),
-                func.btrim(ExporterProfile.relationship_manager) != "",
+                LEGACY_TEXT.isnot(None),
+                func.btrim(LEGACY_TEXT) != "",
                 ExporterProfile.relationship_manager_user_id.is_(None),
             )
             .order_by(ExporterProfile.customer_id)

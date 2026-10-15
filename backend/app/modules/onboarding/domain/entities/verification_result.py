@@ -39,6 +39,7 @@ from typing import Any, Literal
 
 from sqlalchemy import (
     CheckConstraint,
+    Column,
     ColumnElement,
     DateTime,
     Enum,
@@ -118,13 +119,12 @@ class VerificationResult(AnerModel):
     Reviews
     -------
     Reviews live in ``verification_review`` (``verification_review.py``), as
-    superseding records. **The legacy ``reviewed_by`` / ``review_status``
-    columns here are retired**: migration ``onboarding_0021_verif_review`` copied
-    each one into the review table as that result's first review, no code path has
-    written them since, and none reads them now. The review table is the one source
-    of "the current review". They are mapped ``deferred`` so no query loads them,
-    and a later migration drops them with their immutability trigger
-    (``trg_verification_result_field_immutability``, migration 0006).
+    superseding records, and the review table is the one source of "the current
+    review". The result's own ``reviewed_by`` / ``review_status`` columns are
+    **retired**: migration 0021 copied each one into the review table, and nothing has
+    written or read them since. They and ``evidence_reference`` are declared on the
+    table but not mapped, so the ORM never names them; a later migration drops them
+    with their immutability trigger (``trg_verification_result_field_immutability``).
 
     Frozen once reviewed
     --------------------
@@ -138,9 +138,7 @@ class VerificationResult(AnerModel):
     -----------------------------
     ``evidence_note`` / ``evidence_refs`` hold what a result rests on, in the
     qualification contract's shape (``{type, ref}``, ``type`` ``document`` —
-    a ``crm_document.id`` — or ``url``). ``evidence_reference`` is **retired**:
-    no code path ever wrote or reads it; it is mapped ``deferred`` until a later
-    migration drops it. ``subject_snapshot`` is a BUYER's
+    a ``crm_document.id`` — or ``url``). ``subject_snapshot`` is a BUYER's
     identity at record time. Evidence and snapshot are frozen once set
     (``trg_verification_result_input_immutability``).
 
@@ -205,8 +203,23 @@ class VerificationResult(AnerModel):
             name="fk_verification_result_cycle_company",
             ondelete="RESTRICT",
         ),
+        # Retired, and deliberately **not mapped** (`__mapper_args__` below): declared so the
+        # table still matches the database, while the ORM never names it in an INSERT,
+        # UPDATE or SELECT. `deferred` is not enough — the ORM still inserts an explicit
+        # NULL into every mapped nullable column with no default — and an instance of this
+        # release must keep working once a later migration drops the column.
+        Column("evidence_reference", String(1024), nullable=True),
+        Column("reviewed_by", String(255), nullable=True),
+        Column(
+            "review_status",
+            Enum(VerificationReviewStatus, name="verification_review_status_enum", schema=SCHEMA),
+            nullable=True,
+        ),
         {"schema": SCHEMA},
     )
+    __mapper_args__ = {
+        "exclude_properties": ["evidence_reference", "reviewed_by", "review_status"]
+    }
 
     verification_type: Mapped[VerificationType] = mapped_column(
         Enum(VerificationType, name="verification_type_enum", schema=SCHEMA), nullable=False
@@ -249,11 +262,6 @@ class VerificationResult(AnerModel):
     raw_result: Mapped[dict] = mapped_column(JSONB, nullable=False)
     normalized_result: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
-    #: Retired — never written or read; ``deferred`` so no query loads it. See the
-    #: class docstring.
-    evidence_reference: Mapped[str | None] = mapped_column(
-        String(1024), nullable=True, deferred=True
-    )
     evidence_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: ``[{"type": "document" | "url", "ref": str}, ...]``
     evidence_refs: Mapped[list[dict[str, str]]] = mapped_column(
@@ -283,15 +291,6 @@ class VerificationResult(AnerModel):
             ondelete="RESTRICT",
         ),
         nullable=True,
-    )
-
-    # Retired — never written or read; `deferred` so no query loads them. See the
-    # class docstring.
-    reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True, deferred=True)
-    review_status: Mapped[VerificationReviewStatus | None] = mapped_column(
-        Enum(VerificationReviewStatus, name="verification_review_status_enum", schema=SCHEMA),
-        nullable=True,
-        deferred=True,
     )
 
     @property

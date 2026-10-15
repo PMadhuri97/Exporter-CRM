@@ -125,31 +125,4 @@ class ScreeningReviewItem(AnerModel):
     cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
-class BankActivityFinding(AnerModel):
-    """Retired: a bank-monitoring feed is not planned, nothing ever wrote this table and
-    nothing reads it now. Kept only so the ORM describes the table until a later
-    migration drops it."""
-
-    __tablename__ = "bank_activity_finding"
-    __table_args__ = (
-        Index("ix_bank_activity_finding_customer_id", "customer_id"),
-        Index("ix_bank_activity_finding_customer_status", "customer_id", "status"),
-        {"schema": SCHEMA},
-    )
-
-    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    provider: Mapped[str] = mapped_column(String(100), nullable=False)
-    finding_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    risk_level: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="REVIEW", server_default="REVIEW"
-    )
-    status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="OPEN", server_default="OPEN"
-    )
-    provider_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-__all__ = ["SCREENING_STATUSES", "ScreeningReviewItem", "BankActivityFinding"]
+__all__ = ["SCREENING_STATUSES", "ScreeningReviewItem"]

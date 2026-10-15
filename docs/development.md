@@ -273,6 +273,17 @@ Rules (details in [`../backend/migrations/README.md`](../backend/migrations/READ
 - **Declare every index and constraint on the model too**; otherwise
   `alembic revision --autogenerate` proposes dropping it, and
   `test_orm_matches_the_onboarding_schema.py` fails.
+- **Drop a column one release after the code stops naming it.** A deploy replaces the
+  running instances one by one, so the old release keeps serving against the new schema
+  for a while. First release: declare the column in `__table_args__` as a `Column` and
+  list it in `__mapper_args__["exclude_properties"]` — the table still matches the
+  database and the ORM never names it. `deferred=True` is **not** enough: the ORM still
+  inserts an explicit `NULL` into every mapped nullable column with no default. The next
+  release's migration drops it (`test_retired_columns_are_never_written.py` pins the
+  first step). A table nothing reads or writes can go at once.
+- **Merging into `main` deploys.** `.github/workflows/deploy-backend.yml` builds and
+  rolls out the backend on every merged pull request that touches `backend/`, and the
+  container runs `alembic upgrade head` before it serves.
 - **Round-trip it** before merging: `alembic upgrade head`, `alembic downgrade -1`,
   `alembic upgrade head`. A lossy downgrade says so in its docstring.
 - **Add the row to the migration register.** The next free onboarding number is there.

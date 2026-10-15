@@ -33,10 +33,10 @@ def _user(role: UserRole, name: str) -> str:
 async def _company_owned_by(text: str) -> uuid.UUID:
     company_id = await make_company(relationship_manager=False)
     async with db_services.AsyncSessionLocal() as db:
+        # The legacy column is not mapped: written through the table.
+        table = ExporterProfile.__table__
         await db.execute(
-            update(ExporterProfile)
-            .where(ExporterProfile.customer_id == company_id)
-            .values(relationship_manager=text)
+            update(table).where(table.c.customer_id == company_id).values(relationship_manager=text)
         )
         await db.commit()
     return company_id

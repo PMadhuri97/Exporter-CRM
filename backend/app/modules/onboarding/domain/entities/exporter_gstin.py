@@ -45,6 +45,7 @@ from datetime import datetime
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Column,
     DateTime,
     Enum,
     ForeignKey,
@@ -112,8 +113,17 @@ class ExporterGstin(AnerModel):
             ondelete="RESTRICT",
             use_alter=True,
         ),
+        # Retired, and deliberately **not mapped** (`__mapper_args__` below): declared so the
+        # table still matches the database, while the ORM never names it in an INSERT,
+        # UPDATE or SELECT. `deferred` is not enough — the ORM still inserts an explicit
+        # NULL into every mapped nullable column with no default — and an instance of this
+        # release must keep working once a later migration drops the column.
+        # The branch's old free-text address: `convert_gst_addresses` reads it through
+        # `__table__.c` and turns it into a linked company address.
+        Column("address", Text, nullable=True),
         {"schema": SCHEMA},
     )
+    __mapper_args__ = {"exclude_properties": ["address"]}
 
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -145,10 +155,6 @@ class ExporterGstin(AnerModel):
         server_default=GstRegistrationStatus.UNVERIFIED.value,
         default=GstRegistrationStatus.UNVERIFIED,
     )
-    #: The branch's old free-text address. **Retired**: the API no longer takes or
-    #: serves it; `convert_gst_addresses` turns it into a linked company address, and a
-    #: later migration drops it. Mapped `deferred` so no ordinary query loads it.
-    address: Mapped[str | None] = mapped_column(Text, nullable=True, deferred=True)
     #: The company address this branch trades from, when one has been linked — the
     #: branch's only address.
     address_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
