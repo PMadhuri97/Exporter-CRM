@@ -28,7 +28,7 @@ is needed: with `TEMPORAL_ENABLED`, `KAFKA_ENABLED`, `EVENT_CONSUMERS_ENABLED` a
 **The test suite writes to the database your `.env` names.** A database you run the
 suite against fills up with test companies, users and deals — some in states the
 product cannot produce, because tests set them up directly. Use a **separate database
-for anything you show people** (see [`demo.md`](demo.md)).
+for anything you show people**, loaded with the sample data (§5).
 
 ## 3. Backend
 
@@ -354,7 +354,6 @@ python -m app.modules.onboarding.backfill_trade_relationships --validate
 | Document | What it is |
 |---|---|
 | [`architecture.md`](architecture.md) | The CRM: model, state machines, roles, ownership, decisions, limitations |
-| [`demo.md`](demo.md) | How to demonstrate it |
 | [`contracts/`](contracts/) | What each part promises the others |
 | [`module-rule-exceptions.md`](module-rule-exceptions.md) | The one recorded exception to the module rule |
 | [`database.md`](database.md) | The database as built: schemas, tables, constraints, triggers and traps |

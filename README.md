@@ -17,7 +17,6 @@ data.
 |---|---|
 | Understand the CRM — its model, state machines, roles and ownership | [`docs/architecture.md`](docs/architecture.md) |
 | Run it, test it, change its schema or API | [`docs/development.md`](docs/development.md) |
-| Demonstrate it | [`docs/demo.md`](docs/demo.md) |
 | Know what is left and what needs a decision | [`docs/remaining-work.md`](docs/remaining-work.md) |
 | Know the database as built | [`docs/database.md`](docs/database.md) |
 | Know exactly what one part promises the others | [`docs/contracts/`](docs/contracts/) |

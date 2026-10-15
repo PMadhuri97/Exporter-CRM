@@ -13,7 +13,7 @@ one is refused with a sentence (422) instead of reaching the database as a 500:
 
 Taking a role away clears the fields that belong only to it (``ROLE_FIELDS``), so a
 former director keeps no DIN and a former owner no share; the history row names the
-role change.
+role change. A field sent for a role the person does not hold is refused, not dropped.
 """
 
 from __future__ import annotations
@@ -70,9 +70,14 @@ def is_person_of_interest(person: ExporterContact) -> bool:
     return bool(person.is_director or person.is_ubo)
 
 
-def clear_fields_of_removed_roles(person: ExporterContact) -> None:
+def clear_fields_of_removed_roles(person: ExporterContact, *, before: list[str]) -> None:
+    """Clear the fields of each role ``person`` held ``before`` and holds no longer.
+
+    Only a role taken away: a DIN sent for someone who never was a director is not
+    cleared here but refused by ``check_person``, as it is when the person is added.
+    """
     for role, fields in ROLE_FIELDS.items():
-        if not getattr(person, ROLE_COLUMNS[role]):
+        if role in before and not getattr(person, ROLE_COLUMNS[role]):
             for name in fields:
                 setattr(person, name, None)
 

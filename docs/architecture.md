@@ -477,5 +477,4 @@ The prototype is built to be honest about what is not real yet.
 - What is left and what needs a decision, in one list:
   [`remaining-work.md`](remaining-work.md).
 - The database as built: [`database.md`](database.md).
-- Running, testing and migrating: [`development.md`](development.md). The demo walk-through:
-  [`demo.md`](demo.md).
+- Running, testing and migrating: [`development.md`](development.md).

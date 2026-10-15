@@ -181,6 +181,64 @@ async def test_a_person_breaking_a_role_rule_is_refused(client: AsyncClient, bod
     assert await _list(client, token, customer_id, "ALL") == []
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"din": "01234567"},
+        {"ownership_pct": 25},
+        {"control_type": "VOTING_RIGHTS"},
+        {"din": "01234567", "is_primary": True},
+        {"is_contact": False, "is_director": True, "is_primary": True},
+    ],
+    ids=[
+        "din-without-director",
+        "share-without-owner",
+        "control-without-owner",
+        "din-while-promoting",
+        "primary-not-a-contact",
+    ],
+)
+async def test_an_edit_breaking_a_role_rule_is_refused_and_changes_nothing(
+    client: AsyncClient, body
+):
+    # Refused as the same person is when added, never silently dropped (200 with the
+    # field empty) and never reaching the database's CHECK as a 500.
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    customer_id = await make_company()
+    first_id = (await _add(client, token, customer_id, name="First Primary", is_primary=True)).json()["id"]
+    person_id = (await _add(client, token, customer_id, name="Plain Contact")).json()["id"]
+    target = first_id if body.get("is_contact") is False else person_id
+
+    resp = await client.patch(
+        f"{BASE}/{customer_id}/contacts/{target}", headers=auth_header(token), json=body
+    )
+
+    assert resp.status_code == 422, resp.text
+    people = {p["id"]: p for p in await _list(client, token, customer_id, "ALL")}
+    assert people[first_id]["is_primary_contact"] is True
+    assert people[first_id]["is_contact"] is True
+    assert people[person_id]["is_primary_contact"] is False
+    assert people[person_id]["din"] is None and people[person_id]["ownership_pct"] is None
+
+
+async def test_promoting_a_person_demotes_the_previous_primary(client: AsyncClient):
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    customer_id = await make_company()
+    first_id = (await _add(client, token, customer_id, name="First Primary", is_primary=True)).json()["id"]
+    person_id = (await _add(client, token, customer_id, name="Director And Contact", is_director=True)).json()["id"]
+
+    resp = await client.patch(
+        f"{BASE}/{customer_id}/contacts/{person_id}",
+        headers=auth_header(token),
+        json={"is_primary": True, "din": "01234567"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["is_primary_contact"] is True
+    people = {p["id"]: p for p in await _list(client, token, customer_id, "ALL")}
+    assert people[first_id]["is_primary_contact"] is False
+
+
 async def test_adding_an_owner_writes_a_history_row(client: AsyncClient):
     token = await token_with_role(client, UserRole.OPERATIONS)
     customer_id = await make_company()

@@ -212,25 +212,30 @@ class ExporterContactActivityService:
             setattr(contact, name, value)
         if number_sent:
             set_identification_number(contact, number)
-        people.clear_fields_of_removed_roles(contact)
+        people.clear_fields_of_removed_roles(contact, before=before)
         if not contact.is_contact and promote is None:
             contact.is_primary_contact = False
 
         if promote is not None:
             if promote and contact.status != ContactStatus.ACTIVE.value:
                 raise ContactNotActiveError(contact_id, contact.status)
-            if promote:
-                # Everyone else, so this row's own flag is not cleared and re-set.
+            contact.is_primary_contact = bool(promote)
+        # Before the demotion below: its statement would otherwise flush this row first,
+        # and a broken rule would reach the database as a 500 rather than a 422.
+        people.check_person(contact)
+        if promote:
+            # Everyone else, so this row's own flag is not cleared and re-set. Not
+            # autoflushed: this row, now primary, is written after the others are
+            # demoted, or it would meet the one-primary index while they still hold it.
+            with self._db.no_autoflush:
                 await self._contacts.demote_existing_primary(
                     customer_id, except_id=contact_id
                 )
-            contact.is_primary_contact = bool(promote)
-        people.check_person(contact)
 
         after = people.roles_of(contact)
-        if after != before and {people.DIRECTOR, people.UBO} & {*before, *after}:
-            await self._record_roles(contact, before=before, actor_id=actor_id)
         async with self._primary_conflict_as_409(customer_id):
+            if after != before and {people.DIRECTOR, people.UBO} & {*before, *after}:
+                await self._record_roles(contact, before=before, actor_id=actor_id)
             await self._db.commit()
         await self._db.refresh(contact)
 
