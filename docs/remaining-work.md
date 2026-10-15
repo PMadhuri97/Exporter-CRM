@@ -2,8 +2,8 @@
 
 What is still to do, what waits on whom, and what needs a decision. Only open items are
 listed; what was built, and why, is in git history and in the contracts. Last reviewed
-15 October 2026, on `fix/crm-drop-retired` (migration head `onboarding_0060_drop_tables`;
-next free onboarding number **0061**).
+15 October 2026, on `fix/crm-drop-columns` (migration head `onboarding_0061_drop_columns`;
+next free onboarding number **0062**).
 
 ---
 
@@ -16,8 +16,13 @@ backend workflow rolls the ECS service out on every merged pull request that tou
 
 | Database | Done | Left |
 |---|---|---|
-| `aner_settlement` (local) | 15 October 2026: steps 1, 3 and 5 — dump in `db-backups-2026-10-15`, at `onboarding_0059_deal_reference`, all four commands validated (100 RMs set, 6 addresses, 4 buyers, 4 relationships) | step 2 (`FIELD_ENCRYPTION_KEYS` is unset; the local development key stands in), step 4 (nobody holds Compliance lead or Sales lead), upgrade to 0060, step 6 |
-| The ECS service's database | `main` deployed, so at 0059 | step 5 — run the four commands against it (a one-off ECS task, or a session with its `DATABASE_URL`), then steps 2, 4 and 6 |
+| `aner_settlement` (local) | 15 October 2026: steps 1, 3 and 5 — dumps in `db-backups-2026-10-15`, all four commands validated (100 RMs set, 6 addresses, 4 buyers, 4 relationships); upgraded to `onboarding_0060_drop_tables` | upgrade to 0061; step 2 (`FIELD_ENCRYPTION_KEYS` is unset; the local development key stands in), step 4 (nobody holds Compliance lead or Sales lead), step 6 |
+| The ECS service's database | the release with 0060 deployed | step 5 — run the four commands against it **before this release deploys** (a one-off ECS task with the deployed image, or a session with its `DATABASE_URL`); then steps 2, 4 and 6 |
+
+**This release drops what step 5.1 and 5.2 convert, and no longer carries those two
+commands.** Run them from the release with 0060 (`main` at `c2c1ad4`). Until they have
+validated, 0061 refuses on start-up — listing why, changing nothing — and the new task
+does not come up.
 
 1. **`pg_dump -Fc`** of the database. The data commands below do not undo in place; the
    dump is the way back. Keep users out until step 5 has validated.
@@ -61,44 +66,7 @@ branch when the seller has an active GST registration. Below `onboarding_0040`, 
 check `SELECT count(*) FROM onboarding.exporter_profile WHERE iec IS NOT NULL AND iec !~
 '^[A-Z0-9]{10}$'` is 0.
 
-## 2. Follow-up pull request: drop the retired columns (migration 0061)
-
-Merged only when **both** hold, or an instance still serving fails:
-
-* the release with 0060 is the one running everywhere — it is the first that does not map
-  these columns (`exclude_properties`); the release before inserts `NULL` into them, so
-  dropping them under it fails every company creation and every recorded check;
-* §1 step 5 has validated in **every** database, the ECS one included.
-
-`pg_dump -Fc` first. A draft with every guard below was built and rehearsed on a copy of
-`aner_settlement` on 15 October 2026 (refused before the data commands, applied after;
-downgrade identical to the schema before): `git show
-21c5851:backend/app/modules/onboarding/migrations/onboarding_0060_drop_retired.py`. Renumber
-it 0061, take the two table drops out (0060 has them) and keep the rest.
-
-| Drop | Guard in the migration |
-|---|---|
-| `trg_verification_result_field_immutability`, then `verification_result.evidence_reference`, `reviewed_by`, `review_status` | refuse while a legacy review has no review row, or any `evidence_reference` is set |
-| `exporter_profile.relationship_manager` | refuse while a company with no RM has text naming exactly one active RM account (`backfill_relationship_managers` not run); print how many unmatched names are discarded, by decision |
-| `exporter_gstin.address` | refuse while a branch has text and no `address_id` |
-
-**First**, `CREATE OR REPLACE` `onboarding.prevent_reviewed_verification_outcome_change()`
-without `OLD.review_status`: it reads that column, and once it is gone every update of a
-verification result would fail. The downgrade restores the old body.
-`verification_review_status_enum` stays; `verification_review` uses it.
-
-In the same pull request: remove the three `exclude_properties` declarations and their
-`Column`s on `ExporterProfile`, `ExporterGstin` and `VerificationResult`, with
-`test_retired_columns_are_never_written.py`; delete `backfill_relationship_managers` and
-`convert_gst_addresses` with their tests; delete the tests that pin the legacy columns
-(`test_verification_schema.py`'s review-column tests,
-`test_the_retired_review_columns_are_not_read`, `test_the_legacy_columns_are_not_written`,
-`test_the_legacy_review_trigger_is_still_in_place`); update `database.md`, the contracts
-that say "a later migration drops it" and the register. **Done when** `alembic check` is
-clean and the CRM suite passes. **Rollback:** the downgrade re-adds the columns empty and
-restores the trigger and the function; the RM text comes back only from the dump.
-
-## 3. Open work
+## 2. Open work
 
 | Item | What is left | Waits on |
 |---|---|---|
@@ -119,7 +87,7 @@ restores the trigger and the function; the RM text comes back only from the dump
 | Run the suite in the `aner-app` container | `test_openapi_artifact_is_current.py` needs `./frontend`; mount it read-only in compose | — |
 | Isolate the document converter | LibreOffice runs as the backend's user beside its secrets. Run it in a separate container or job with no database credentials, no `FIELD_ENCRYPTION_KEYS` and no network | Infrastructure |
 
-## 4. Decisions awaited
+## 3. Decisions awaited
 
 | Question | Options | Blocks |
 |---|---|---|
@@ -127,9 +95,9 @@ restores the trigger and the function; the RM text comes back only from the dump
 | Should a required-document setting apply to deals already in progress? Today a requirement switched on blocks a handover that was ready | As built; or only deals opened after the change | Nothing |
 | The deal-value qualification criterion never fires: a deal is opened only for a qualified company, and `QUALIFIED` is final | Drop it as an automatic source; or answer it from an expected deal size recorded on the lead | Nothing |
 | DEVELOPER reads a company's bank accounts (masked to the last four, with bank, IFSC and SWIFT) and their history | As built (consistent with masked tax identifiers); or withhold them | Nothing |
-| A company can be cleared with no document (screening answers and passed KYB, AML and sanctions suffice) | Accepted for now; revisit before real documents are stored | Real data (§5) |
+| A company can be cleared with no document (screening answers and passed KYB, AML and sanctions suffice) | Accepted for now; revisit before real documents are stored | Real data (§4) |
 
-## 5. Deferred
+## 4. Deferred
 
 Not current work; each starts only when its trigger happens.
 
@@ -149,7 +117,7 @@ Not current work; each starts only when its trigger happens.
 | The "Verify GSTIN" link (`services.gst.gov.in/services/searchtp?tin=`): the portal's deep-link format was never confirmed; if it ignores the parameter, it opens the search page | Confirmation from the portal |
 | Worklists and the approvals badge are computed on every read (the badge refetches every 60 seconds per tab) | A few thousand companies under review at once: store the deadlines or cache the counts |
 
-## 6. Later, optional
+## 5. Later, optional
 
 **Retire `deal_buyer` entirely.** After the buyer migration has run everywhere and the
 deal response's `buyer` field has been gone for one release: read the seller timeline

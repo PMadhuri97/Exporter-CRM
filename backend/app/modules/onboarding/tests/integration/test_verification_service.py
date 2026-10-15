@@ -470,8 +470,6 @@ async def test_record_review_adds_the_first_review():
     async with db_services.AsyncSessionLocal() as db:
         view = await VerificationService(db).get_result_view(triggered.id)
     assert [r.id for r in view.reviews] == [review.id]
-    # The retired legacy columns are not mapped, so neither loaded nor written;
-    # `test_verification_reviews.py` checks the stored values in SQL.
 
 
 async def test_record_review_supersedes_the_current_review_instead_of_overwriting_it():
