@@ -257,7 +257,7 @@ async def load_case_sla_config_seed_data() -> None:
 # app.modules.rails.infrastructure.dev_rail_seed_loader, but rails is out of
 # scope for this checkout (only its schema — migrations + the entities other
 # modules' relationships resolve against — is present; infrastructure/ is
-# not). main.py no longer calls this function. See RUNNING.md.
+# not). main.py no longer calls this function. See docs/development.md §12.
 
 
 async def load_stub_rail_registry_seed_data() -> None:
@@ -346,5 +346,5 @@ async def stop_event_tier() -> None:
 # true, which is false by default (see .env.example), so removing this has no
 # effect on normal boot, `alembic upgrade head`, or the test suite. Setting
 # TEMPORAL_ENABLED=true against this checkout is not supported — see
-# RUNNING.md.
+# docs/development.md §12.
 # ============================================================================

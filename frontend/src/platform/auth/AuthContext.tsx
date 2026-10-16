@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
 }
 
 /**
- * A fixed, signed-in user for the dev-only style guide (frontend-plan §12.4), so its
+ * A fixed, signed-in user for the dev-only style guide, so its
  * role-aware components can be shown as each role sees them. Signing in and out do
  * nothing. Never used by the app's own routes.
  */

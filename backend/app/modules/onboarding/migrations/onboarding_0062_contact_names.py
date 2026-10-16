@@ -11,8 +11,8 @@ Existing rows are split at the first run of whitespace: "Priya Ramesh Iyer" beco
 contact made from a deal's buyer details is named after the buyer company, not a person,
 so its whole name goes into ``first_name``.
 
-Revision ID: onboarding_0054_contact_names
-Revises: onboarding_0053_auto_criteria
+Revision ID: onboarding_0062_contact_names
+Revises: onboarding_0061_drop_columns
 Create Date: 2026-10-14
 """
 from collections.abc import Sequence
@@ -20,8 +20,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "onboarding_0054_contact_names"
-down_revision: str | None = "onboarding_0053_auto_criteria"
+revision: str = "onboarding_0062_contact_names"
+down_revision: str | None = "onboarding_0061_drop_columns"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

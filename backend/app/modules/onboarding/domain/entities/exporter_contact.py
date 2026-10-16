@@ -1,4 +1,23 @@
-"""``ExporterContact`` — a contact person for an exporter relationship.
+"""``ExporterContact`` — a person at a company: a contact, a director, a beneficial owner.
+
+A person is one row with roles (migration 0057): ``is_contact`` (someone we talk to),
+``is_director`` and ``is_ubo``. A director who is also the main contact is one row, not
+two. Every row has at least one role (``ck_exporter_contact_has_role``), and only a
+contact can be the primary contact (``ck_exporter_contact_primary_is_contact``). Readers
+that mean "contacts" filter on ``is_contact``; the sanctions screening and group
+suggestions read directors and beneficial owners.
+
+The person fields are optional, and each belongs to its role: ``din`` to a director,
+``ownership_pct`` and ``control_type`` to a beneficial owner. The identification number
+is stored **encrypted** (``identification_encrypted``, the field cipher bank accounts
+use) with its last four characters for the masked view. Date of birth, DIN and the
+identification number are shown in full only to a holder of
+``exporters:view_full_tax_id``, like a PAN (``api/schemas/engagement.py``).
+
+A person is **never deleted** (``trg_exporter_contact_no_delete``): leaving is a status,
+and screening runs point at the row. ``uq_exporter_contact_id_customer`` exists so a
+screening run's person must be a person of the run's own company
+(``fk_sanctions_run_subject_person``).
 
 ``customer_id`` points at a company that exists: migration 0014 added
 ``fk_exporter_contact_customer_id`` (its ``_LINKED`` tuple, step 4), a real
@@ -25,17 +44,21 @@ reached in normal operation.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Computed,
+    Date,
     DateTime,
     ForeignKey,
     Index,
+    Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -44,6 +67,17 @@ from sqlalchemy.sql import text
 from app.platform.database.models import AnerModel
 
 SCHEMA = "onboarding"
+
+#: How a beneficial owner holds control (the old system's ``ubo_control_type_enum``).
+CONTROL_TYPES = ("DIRECT_OWNERSHIP", "INDIRECT_OWNERSHIP", "VOTING_RIGHTS", "OTHER_CONTROL")
+#: The document an identification number comes from.
+IDENTIFICATION_TYPES = ("PASSPORT", "NATIONAL_ID", "DRIVING_LICENCE")
+#: Where a row came from when it was not typed in: a copy of an old-system owner.
+LEGACY_UBO_SOURCE = "LEGACY_UBO_RECORD"
+
+
+def _in(column: str, values: tuple[str, ...]) -> str:
+    return f"{column} IN ({', '.join(repr(value) for value in values)})"
 
 
 class ExporterContact(AnerModel):
@@ -69,8 +103,45 @@ class ExporterContact(AnerModel):
             "status = 'ACTIVE' OR is_primary_contact = false",
             name="ck_exporter_contact_primary_is_active",
         ),
+        # ── People (0057) ────────────────────────────────────────────────────
+        CheckConstraint("is_contact OR is_director OR is_ubo", name="ck_exporter_contact_has_role"),
+        CheckConstraint(
+            "NOT is_primary_contact OR is_contact", name="ck_exporter_contact_primary_is_contact"
+        ),
+        CheckConstraint(
+            "din IS NULL OR (is_director AND din ~ '^[0-9]{8}$')", name="ck_exporter_contact_din"
+        ),
+        CheckConstraint(
+            "ownership_pct IS NULL OR (is_ubo AND ownership_pct >= 0 AND ownership_pct <= 100)",
+            name="ck_exporter_contact_ownership",
+        ),
+        CheckConstraint(
+            f"control_type IS NULL OR (is_ubo AND {_in('control_type', CONTROL_TYPES)})",
+            name="ck_exporter_contact_control_type",
+        ),
+        CheckConstraint(
+            "nationality IS NULL OR nationality ~ '^[A-Z]{2}$'",
+            name="ck_exporter_contact_nationality",
+        ),
+        CheckConstraint(
+            "residence_country IS NULL OR residence_country ~ '^[A-Z]{2}$'",
+            name="ck_exporter_contact_residence",
+        ),
+        CheckConstraint(
+            "(identification_encrypted IS NULL) = (identification_type IS NULL) "
+            "AND (identification_encrypted IS NULL) = (identification_last4 IS NULL) "
+            "AND (identification_type IS NULL OR "
+            f"{_in('identification_type', IDENTIFICATION_TYPES)})",
+            name="ck_exporter_contact_identification",
+        ),
+        # The target of a screening run's person: same person, same company.
+        UniqueConstraint("id", "customer_id", name="uq_exporter_contact_id_customer"),
         {"schema": SCHEMA},
     )
+    #: ``name`` is computed by the database, so an INSERT or UPDATE must read it back
+    #: (``RETURNING``): left expired, the next read of it is a lazy load, which an async
+    #: session refuses (``MissingGreenlet``) — the history row for a role change reads it.
+    __mapper_args__ = {"eager_defaults": True}
 
     #: The company. `ON DELETE RESTRICT`, so a company with contacts cannot be
     #: deleted out from under them — the same rule every other child of
@@ -84,7 +155,7 @@ class ExporterContact(AnerModel):
         ),
         nullable=False,
     )
-    #: A person's first and last name, kept apart (migration 0054). The last name is
+    #: A person's first and last name, kept apart (migration 0062). The last name is
     #: optional: plenty of people go by one name.
     first_name: Mapped[str] = mapped_column(String(255), nullable=False)
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -114,5 +185,30 @@ class ExporterContact(AnerModel):
     )
     last_verified_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # ── Roles ────────────────────────────────────────────────────────────────
+    is_contact: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    is_director: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    is_ubo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 
-__all__ = ["ExporterContact"]
+    # ── Person fields; all optional ──────────────────────────────────────────
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: ISO-3166-1 alpha-2.
+    nationality: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    residence_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    #: Director Identification Number (India): eight digits. A director's only.
+    din: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    #: A beneficial owner's only.
+    ownership_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    control_type: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    identification_type: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    #: The number, sealed by ``platform/security/field_cipher``; never stored in clear.
+    identification_encrypted: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    identification_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    #: Where the row came from when not typed in (``LEGACY_UBO_SOURCE``), and its id there.
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+__all__ = ["CONTROL_TYPES", "IDENTIFICATION_TYPES", "LEGACY_UBO_SOURCE", "ExporterContact"]

@@ -50,7 +50,7 @@ export const RISK_LEVELS: VerificationRiskLevel[] = ['LOW', 'MEDIUM', 'HIGH', 'C
 export const REVIEW_OUTCOMES: VerificationReviewStatus[] = ['ACCEPTED', 'REJECTED', 'ESCALATED'];
 
 export function chipClasses(value: string): string {
-  // CRITICAL is the one solid badge (frontend-plan §5.2): it has to read as a
+  // CRITICAL is the one solid badge: it has to read as a
   // different *class* of signal at a glance, not as a slightly darker HIGH.
   if (value === 'CRITICAL') return 'bg-negative-solid font-bold text-white';
   if (['PASSED', 'LOW', 'ACCEPTED', 'CLOSED'].includes(value)) return 'bg-positive-tint text-positive';

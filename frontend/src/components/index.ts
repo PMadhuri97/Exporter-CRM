@@ -11,7 +11,7 @@
  * panel, dialogs, inline edits and form fields —
  * so a screen composes them rather than repeating long class strings that
  * drift apart one edit at a time. The tokens they draw with, the icon map and
- * the brand mark live in `src/design/` (frontend-plan §5).
+ * the brand mark live in `src/design/`.
  */
 
 export { DetailRow } from './DetailRow';

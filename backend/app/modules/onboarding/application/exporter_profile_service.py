@@ -43,7 +43,7 @@ from app.modules.onboarding.api.schemas.masking import mask_identifier
 from app.modules.onboarding.application.background_check_reader import BackgroundCheckReader
 from app.modules.onboarding.application.compliance_facts import ComplianceFactsService
 from app.modules.onboarding.application.history_service import HistoryService
-from app.modules.onboarding.domain import history_dimensions
+from app.modules.onboarding.domain import history_dimensions, people
 from app.modules.onboarding.domain.assignment import (
     ASSIGN_RM,
     RM_ASSIGNED,
@@ -255,7 +255,6 @@ class ExporterProfileService:
         pan: str | None = None,
         gstins: list[str] | None = None,
         iec: str | None = None,
-        relationship_manager: str | None = None,
         industry: str | None = None,
         export_markets: list[str] | None = None,
         products: list[str] | None = None,
@@ -281,7 +280,6 @@ class ExporterProfileService:
             pan=pan,
             gstins=gstins,
             iec=iec,
-            relationship_manager=relationship_manager,
             industry=industry,
             export_markets=export_markets,
             products=products,
@@ -306,7 +304,6 @@ class ExporterProfileService:
         pan: str | None = None,
         gstins: list[str] | None = None,
         iec: str | None = None,
-        relationship_manager: str | None = None,
         industry: str | None = None,
         export_markets: list[str] | None = None,
         products: list[str] | None = None,
@@ -404,7 +401,6 @@ class ExporterProfileService:
             cin=cin,
             pan=pan,
             iec=iec,
-            relationship_manager=relationship_manager,
             industry=industry,
             export_markets=export_markets,
             products=products,
@@ -624,9 +620,19 @@ class ExporterProfileService:
                     continue
             edits[field] = (old_value, wanted[field])
 
+        for field, (_old_value, new_value) in edits.items():
+            setattr(profile, field, new_value)
+        # Derived from what the company holds, so it moves with the PAN and the
+        # registration number. Set before the history rows below: each one flushes,
+        # and the database refuses a row whose `identity_type` disagrees with its
+        # identifiers (`ck_exporter_profile_identity_type_derived`, 0054).
+        if {"pan", "registration_number"} & set(edits):
+            profile.identity_type = decide_identity_type(
+                pan=profile.pan, registration_number=profile.registration_number
+            )
+
         edit_id = str(uuid.uuid4())
         for field, (old_value, new_value) in edits.items():
-            setattr(profile, field, new_value)
             await self._history.record(
                 customer_id,
                 dimension=HISTORY_DIMENSION_PROFILE,
@@ -640,13 +646,6 @@ class ExporterProfileService:
                     "to": _history_value(field, new_value),
                     "edit_id": edit_id,
                 },
-            )
-        # Derived from what the company holds, so it moves with the PAN and the
-        # registration number. It was set on create only, and went stale on
-        # exactly the edit the identity completion flow makes.
-        if {"pan", "registration_number"} & set(edits):
-            profile.identity_type = decide_identity_type(
-                pan=profile.pan, registration_number=profile.registration_number
             )
 
         try:
@@ -1159,7 +1158,6 @@ class ExporterProfileService:
                 pan=profile.pan,
                 iec=profile.iec,
                 source=profile.source,
-                relationship_manager=profile.relationship_manager,
                 relationship_manager_user_id=profile.relationship_manager_user_id,
                 journey=profile.journey,
                 qualification=profile.qualification,
@@ -1386,7 +1384,8 @@ class ExporterProfileService:
         warning for each of its GSTINs another company also holds — all
         queried by `customer_id` alone."""
         profile = await self._require_profile(customer_id)
-        contacts = await self._contacts.list_by_customer(customer_id)
+        # Contacts only: the company's directors and owners are its People, not who to call.
+        contacts = await self._contacts.list_by_customer(customer_id, role=people.CONTACT)
         activities = await self._activities.list_by_customer(
             customer_id, limit=recent_activities_limit
         )
@@ -1403,7 +1402,6 @@ class ExporterProfileService:
             pan=profile.pan,
             iec=profile.iec,
             source=profile.source,
-            relationship_manager=profile.relationship_manager,
             relationship_manager_user_id=profile.relationship_manager_user_id,
             journey=profile.journey,
             qualification=profile.qualification,

@@ -1,5 +1,5 @@
 /**
- * The CRM's own parts (frontend-plan §6): each state they draw,
+ * The CRM's own parts: each state they draw,
  * and above all what they never draw — the background-check badge for Developer, a
  * button for a move the server did not list, a download for a quarantined file, an
  * identifier lookup for a role that may not create.

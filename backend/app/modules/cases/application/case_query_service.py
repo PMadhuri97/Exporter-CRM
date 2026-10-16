@@ -1,6 +1,6 @@
 """Case query interface — ANER-4.3-S6T1, scoped.
 
-**What the doc actually says (S6T1).** The Jira doc's ANER-4.3-S6T1 section
+**What the doc actually says (S6T1).** The specification's ANER-4.3-S6T1 section
 ("Build the case query interface") describes the read interface "used by all
 consuming Epics and the compliance team", as operations *beyond* the ones in
 its own Story S5T1 (queue management: "get my queue", "get team queue", "get
@@ -107,7 +107,7 @@ from app.modules.cases.domain.entities.enums import (
 from app.modules.cases.exceptions import CaseNotFoundError
 from app.shared.exceptions import ValidationError
 
-#: Jira doc, S6T1 acceptance criteria: "Get cases requiring SAR consideration
+#: Specification, S6T1 acceptance criteria: "Get cases requiring SAR consideration
 #: returns only cases with the SAR flag in the resolution note." The doc never
 #: defines a structured field or exact literal for that flag anywhere in Epic
 #: 4.3 (S7T4's documentation task lists "SAR flagging — when and how to flag a

@@ -12,8 +12,8 @@ the rows it returns.
 Sorting by stage needs none: there are three stages, and each is already indexed
 (``ix_exporter_profile_journey``).
 
-Revision ID: onboarding_0056_company_sort
-Revises: onboarding_0055_change_reason
+Revision ID: onboarding_0064_company_sort
+Revises: onboarding_0063_change_reason
 Create Date: 2026-10-14
 """
 from collections.abc import Sequence
@@ -21,8 +21,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "onboarding_0056_company_sort"
-down_revision: str | None = "onboarding_0055_change_reason"
+revision: str = "onboarding_0064_company_sort"
+down_revision: str | None = "onboarding_0063_change_reason"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -261,7 +261,6 @@ GATED_ROUTES = [
     ("GET", f"{BASE}/exporters/{_ID}/activities", None, READERS),
     ("GET", f"{BASE}/exporters/activities/pending", None, READERS),
     ("GET", f"{BASE}/exporters/{_ID}/screening-review", None, STAFF_READERS),
-    ("GET", f"{BASE}/exporters/{_ID}/bank-activity", None, STAFF_READERS),
     ("GET", f"{BASE}/qualification/criteria", None, READERS),
     ("GET", f"{BASE}/qualification/criteria/revenue/versions", None, READERS),
     ("GET", f"{BASE}/qualification/reason-codes", None, READERS),
@@ -319,7 +318,7 @@ GATED_ROUTES = [
     (
         "PUT",
         f"{BASE}/deals/{_ID}/buyer",
-        {"name": "Rotterdam Trading BV", "country": "NL"},
+        {"buyer_company_id": _ID},
         STAFF,
     ),
     # Required document categories. A settings

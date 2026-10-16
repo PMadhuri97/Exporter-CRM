@@ -10,7 +10,7 @@ whoever owns the platform's other topics.
 
 ---
 
-## 1. Decision U2 — the envelope carries the actor and the deal
+## 1. The envelope carries the actor and the deal
 
 The architecture says the envelope carries the event name, its id, the time, the
 company, the deal when there is one, who caused it, and a small payload. The
@@ -115,10 +115,11 @@ payload       : {
 }
 ```
 
-`buyer` is the handover snapshot's buyer (P2-7): from the buyer company when the deal
+`buyer` is the handover snapshot's buyer: from the buyer company when the deal
 names one — `tax_id` is then its PAN and the contact fields are null — otherwise from the
-legacy `deal_buyer` row. The snapshot's `buyer_company_id` is not in this payload yet;
-P4-10 (`remaining-work.md` R-25) revisits the payload.
+legacy `deal_buyer` row, which only deals written before 14 October 2026 can have (no new
+one is recorded, migration 0058). The snapshot's `buyer_company_id` is not in this
+payload yet.
 
 Consumer: the lending team, later.
 
@@ -170,10 +171,10 @@ apart.
 | `EventBus`, in-memory and Kafka backends, topic routing | **implemented** |
 | `actor_id` / `deal_id` on the envelope and `build_envelope` | **implemented** (this contract) |
 | Best-effort publish that never raises to the caller | **implemented** |
-| `EventType.COMPANY_BECAME_CUSTOMER` / `DEAL_HANDED_OVER` | **implemented** (L1-12) |
-| A CRM event helper any service can call | **implemented** — `OnboardingEventPublisher.company_became_customer` / `.deal_handed_over` (L1-12) |
-| `company.became_customer` published | **implemented** — after the commit of the `CLEAR` or `QUALIFIED` that made the company a `CUSTOMER` (`exporter_profile_service.announce_became_customer`, L2-11) |
-| `deal.handed_over` published | **implemented** — after the handover commits (`DealService.transition_stage`, L3-10) |
+| `EventType.COMPANY_BECAME_CUSTOMER` / `DEAL_HANDED_OVER` | **implemented** |
+| A CRM event helper any service can call | **implemented** — `OnboardingEventPublisher.company_became_customer` / `.deal_handed_over` |
+| `company.became_customer` published | **implemented** — after the commit of the `CLEAR` or `QUALIFIED` that made the company a `CUSTOMER` (`exporter_profile_service.announce_became_customer`) |
+| `deal.handed_over` published | **implemented** — after the handover commits (`DealService.transition_stage`) |
 | A receiver for either event | **not built** — other teams, later (decision 10) |
 
 Both are best effort: the history row is the source of truth, a publish failure is

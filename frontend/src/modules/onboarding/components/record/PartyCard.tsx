@@ -1,6 +1,6 @@
 /**
- * A party card — a short company record for any place a second company appears
- * (frontend-plan §8.6): the deal room's seller and buyer, a trade relationship, a
+ * A party card — a short company record for any place a second company appears:
+ * the deal room's seller and buyer, a trade relationship, a
  * match result. Its name, its country, its status badges, and — for a role that
  * may read compliance — the compliance summary the server serves for it. The name
  * links to the company record.

@@ -46,6 +46,7 @@ from app.modules.onboarding.tests.fixtures.companies import (
     make_company,
     make_prospect,
 )
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 from app.platform.messaging.ports import InMemoryEventBus
@@ -123,13 +124,11 @@ async def _deal_ready_to_hand_over(company_id: uuid.UUID) -> uuid.UUID:
         view = await DealService(db).open_deal(
             company_id, reference="Rotterdam shipment", actor_id="tester"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(
-            view.id,
-            name="Rotterdam Trading BV",
-            country="NL",
-            registration_number="NL-8899",
-            actor_id="tester",
+    await record_legacy_buyer(
+        view.id,
+        name="Rotterdam Trading BV",
+        country="NL",
+        registration_number="NL-8899",
         )
     async with db_services.AsyncSessionLocal() as db:
         await DealService(db).transition_stage(
@@ -195,13 +194,11 @@ async def _deal_with_a_buyer_but_no_paperwork(company_id: uuid.UUID) -> uuid.UUI
         view = await DealService(db).open_deal(
             company_id, reference="Rotterdam shipment, no paperwork", actor_id="tester"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(
-            view.id,
-            name="Rotterdam Trading BV",
-            country="NL",
-            registration_number="NL-8899",
-            actor_id="tester",
+    await record_legacy_buyer(
+        view.id,
+        name="Rotterdam Trading BV",
+        country="NL",
+        registration_number="NL-8899",
         )
     async with db_services.AsyncSessionLocal() as db:
         await DealService(db).transition_stage(
@@ -471,10 +468,11 @@ async def test_a_handed_over_deals_buyer_is_frozen(clear_background_check, bus):
     deal_id = await _deal_ready_to_hand_over(company_id)
     await _hand_over(deal_id)
 
+    other_buyer = await make_company()
     with pytest.raises(Exception) as caught:
         async with db_services.AsyncSessionLocal() as db:
-            await DealService(db).set_buyer(
-                deal_id, name="Someone Else BV", country="DE", actor_id="tester"
+            await DealService(db).set_buyer_company(
+                deal_id, buyer_company_id=other_buyer, actor_id="tester"
             )
     assert getattr(caught.value, "error_code", None) == "DEAL_TERMINAL"
 

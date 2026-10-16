@@ -1,4 +1,4 @@
-/** The identifier lookup's detection (frontend-plan §8.4): what a typed value looks like. */
+/** The identifier lookup's detection: what a typed value looks like. */
 
 export type EntryKind = 'PAN' | 'GSTIN' | 'IEC' | 'CIN' | 'name';
 

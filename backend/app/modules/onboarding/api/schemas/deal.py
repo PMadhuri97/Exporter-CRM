@@ -61,16 +61,6 @@ from app.platform.authorization import has_permission
 #: and the reason names the company's background check, which is kept from DEVELOPER.
 _MOVE_DEAL = ("deals", "edit")
 
-#: The buyer fields a masked role never sees in full, and which a buyer request
-#: may therefore leave out to mean "keep what is stored".
-BUYER_MASKED_FIELDS: tuple[str, ...] = (
-    "registration_number",
-    "tax_id",
-    "contact_email",
-    "contact_phone",
-)
-
-
 class OpenDealRequest(BaseModel):
     """Open a deal on a company.
 
@@ -201,81 +191,35 @@ class CreateBuyerCompanyRequest(BaseModel):
 
 
 class SetDealBuyerRequest(BaseModel):
-    """Record the deal's buyer, in **one of two forms**.
+    """Name the deal's buyer company, in **one of two forms**.
 
     *The company form* — ``{"buyer_company_id": "..."}`` — names the company the
-    buyer **is**. This is the form to use. The buyer is then a full company record:
-    it can be screened on its own timeline, the handover guard asks about it,
-    and the same company can be a seller on another deal. It is **set
-    once**; see ``DealBuyerCompanyAlreadySetError``.
+    buyer **is**. The buyer is then a full company record: it can be screened on its
+    own timeline, the handover guard asks about it, and the same company can be a
+    seller on another deal. It is **set once**; see ``DealBuyerCompanyAlreadySetError``.
 
-    *The legacy form* — ``{"name": ..., "country": ..., ...}`` — records a
-    ``deal_buyer`` row: a set of details with no record of its own. It is still
-    accepted because deals written before the buyer migration have one, and
-    because a ``deal_buyer``'s sanctions and AML are the only place the buyer-compliance
-    rule can read for such a deal (``background-check.md`` §12.2). These writes will
-    retire, and the table is kept.
+    *The create form* — ``{"create": {...}}`` — creates that company first, outside
+    the pipeline, and names it.
 
-    **Exactly one form per request.** Mixing them is refused rather than merged:
-    the two disagree about what a buyer *is*, and silently writing both would leave
-    a deal whose company says one thing and whose row says another, with no way to
-    tell which the person meant.
-
-    In the legacy form, ``registration_number``, ``tax_id``, ``contact_email`` and
-    ``contact_phone`` are masked for OPERATIONS and DEVELOPER. Leave one out to
-    keep its stored value; send ``null`` or an empty string to clear it; a masked
-    value is refused (422)."""
+    **Exactly one form per request.** The old third form — the buyer's own details,
+    recorded as a ``deal_buyer`` row — is gone: no new legacy buyer is recorded, and
+    ``trg_deal_buyer_frozen`` refuses one. Its fields are refused (422) like any other
+    unknown field."""
 
     model_config = ConfigDict(extra="forbid")
 
-    #: The company form. When given, every other field must be absent.
+    #: The company form. When given, `create` must be absent.
     buyer_company_id: uuid.UUID | None = None
     #: The create form: a buyer company that does not exist yet, created and
-    #: named as the buyer in one step. When given, every other field must be absent.
+    #: named as the buyer in one step. When given, `buyer_company_id` must be absent.
     create: CreateBuyerCompanyRequest | None = None
-
-    #: The legacy form. Required together, and only for that form.
-    name: str | None = Field(default=None, min_length=1, max_length=500)
-    #: Two letters; the service upper-cases and the database re-checks
-    #: (``ck_deal_buyer_country_iso``).
-    country: str | None = Field(default=None, min_length=2, max_length=2)
-    registration_number: Annotated[str | None, NotMasked] = Field(default=None, max_length=100)
-    tax_id: Annotated[str | None, NotMasked] = Field(default=None, max_length=100)
-    contact_email: Annotated[str | None, NotMasked] = Field(default=None, max_length=255)
-    contact_phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
-
-    #: Every field that belongs to the legacy form alone.
-    _LEGACY_FIELDS = (
-        "name",
-        "country",
-        "registration_number",
-        "tax_id",
-        "contact_email",
-        "contact_phone",
-    )
 
     @model_validator(mode="after")
     def _exactly_one_form(self) -> SetDealBuyerRequest:
-        legacy_given = sorted(set(self._LEGACY_FIELDS) & self.model_fields_set)
-        if self.create is not None:
-            if self.buyer_company_id is not None or legacy_given:
-                raise ValueError(
-                    "send create (a new buyer company) on its own: buyer_company_id "
-                    "and the buyer's own details are the other two forms"
-                )
-            return self
-        if self.buyer_company_id is not None:
-            if legacy_given:
-                raise ValueError(
-                    "send either buyer_company_id (the company this buyer is) or the "
-                    "buyer's own details, not both: "
-                    + ", ".join(legacy_given)
-                    + " belong to the legacy form"
-                )
-            return self
-        if not self.name or not self.country:
+        if (self.create is None) == (self.buyer_company_id is None):
             raise ValueError(
-                "a buyer needs either buyer_company_id, or both name and country"
+                "send either buyer_company_id (the company this buyer is) or create "
+                "(a new buyer company), exactly one"
             )
         return self
 
@@ -286,10 +230,6 @@ class SetDealBuyerRequest(BaseModel):
     @property
     def is_create_form(self) -> bool:
         return self.create is not None
-
-    def fields_to_keep(self) -> frozenset[str]:
-        """The masked fields the caller left out — their stored values stay."""
-        return frozenset(BUYER_MASKED_FIELDS) - self.model_fields_set
 
 
 class DealBuyerResponse(BaseModel):

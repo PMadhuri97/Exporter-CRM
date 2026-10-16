@@ -16,7 +16,7 @@ import { Panel } from '@/components';
 import { DocumentsByCategory } from '../../components';
 import { useCompanyDocuments, useUploadCompanyDocument } from '../../hooks';
 
-/** The Documents tab: the company's documents by category (frontend-plan §8.5), upload for staff. */
+/** The Documents tab: the company's documents by category, upload for staff. */
 export function DocumentsPanel({
   customerId,
   isStaff,

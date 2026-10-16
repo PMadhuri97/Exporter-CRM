@@ -9,7 +9,7 @@
 import { cn } from '@/lib/cn';
 
 /**
- * The four buttons of an enterprise app (frontend-plan §6.15). `primary` is the
+ * The four buttons of an enterprise app. `primary` is the
  * brand blue — one per view. `secondary` is white with a grey border, `subtle`
  * text only, and `destructive` a solid negative fill for what cannot be undone.
  */
@@ -43,7 +43,7 @@ export function buttonClasses({
 }
 
 /**
- * A status badge's tone: one per meaning (frontend-plan §5.2, §6.4). `neutral` is a
+ * A status badge's tone: one per meaning. `neutral` is a
  * state with nothing to say yet ("Not started"); the old `idle` name is kept as an
  * alias, and `ink` is an emphasis that is not a state (a primary contact,
  * "Required"), drawn as an outline.

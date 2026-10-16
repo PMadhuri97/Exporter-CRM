@@ -49,6 +49,7 @@ from app.modules.onboarding.exceptions import (
     VerificationReviewStaleError,
 )
 from app.modules.onboarding.tests.fixtures.companies import make_company, make_prospect
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.database import services as db_services
 from app.shared.contracts.kyb import VendorHealthStatus
 from app.shared.enums.kyb import KYBVendorProcessingMode, VendorHealthStatusEnum
@@ -66,9 +67,8 @@ async def _deal_buyer() -> uuid.UUID:
     company_id = await make_prospect()  # a deal needs a prospect
     async with db_services.AsyncSessionLocal() as db:
         deal = await DealService(db).open_deal(company_id, reference="Verification", actor_id="t")
-    async with db_services.AsyncSessionLocal() as db:
-        view = await DealService(db).set_buyer(deal.id, actor_id="t", name="Buyer BV", country="NL")
-    return view.buyer.id
+    buyer_id = await record_legacy_buyer(deal.id, name="Buyer BV", country="NL")
+    return buyer_id
 
 
 class _FakeAlwaysPassAdapter:
@@ -233,6 +233,36 @@ async def test_manual_entry_adapter_round_trips_trigger_to_list():
 
     assert len(listed) == 1
     assert listed[0].id == result.id
+
+
+async def test_a_result_the_platform_records_names_no_actor():
+    """Sample data and internal syncs record with no actor. History stores none (shown
+    as "the platform"), not the word "None" as if it were a user id, and the cycle the
+    result opens is created by the platform."""
+    from app.modules.onboarding.tests.integration._verification_support import pg
+
+    company_id = await make_company()
+    async with db_services.AsyncSessionLocal() as db:
+        result = await VerificationService(db).trigger_verification(
+            VerificationType.AML,
+            VerificationEntityType.EXPORTER,
+            company_id,
+            provider="manual",
+            payload={"status": "PASSED"},
+            actor_id=None,
+            evidence=_NOTE,
+        )
+    with pg() as cur:
+        cur.execute(
+            "SELECT actor_id FROM onboarding.exporter_lifecycle_history "
+            "WHERE customer_id = %s AND dimension = 'verification'",
+            (str(company_id),),
+        )
+        assert cur.fetchall() == [(None,)]
+        cur.execute(
+            "SELECT created_by FROM onboarding.check_cycle WHERE id = %s", (str(result.cycle_id),)
+        )
+        assert cur.fetchone() == ("platform",)
 
 
 async def test_manual_entry_adapter_rejects_missing_status_before_persisting():
@@ -440,9 +470,6 @@ async def test_record_review_adds_the_first_review():
     async with db_services.AsyncSessionLocal() as db:
         view = await VerificationService(db).get_result_view(triggered.id)
     assert [r.id for r in view.reviews] == [review.id]
-    # The legacy columns are no longer written.
-    assert view.result.reviewed_by is None
-    assert view.result.review_status is None
 
 
 async def test_record_review_supersedes_the_current_review_instead_of_overwriting_it():

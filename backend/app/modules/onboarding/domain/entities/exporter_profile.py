@@ -104,6 +104,38 @@ class ExporterProfile(AnerModel):
         # these, `alembic revision --autogenerate` proposes dropping them — decision
         # 4's PAN rule above all (`test_orm_matches_the_onboarding_schema.py`).
         UniqueConstraint("pan", name="uq_exporter_profile_pan"),  # 0014, decision 4
+        # The identity checks 0014 created: each value optional, but well formed when
+        # given, and a PAUSED or ENDED marker always says why.
+        CheckConstraint(
+            "name IS NULL OR btrim(name) <> ''", name="ck_exporter_profile_name_not_blank"
+        ),
+        CheckConstraint(
+            "country IS NULL OR country ~ '^[A-Z]{2}$'",
+            name="ck_exporter_profile_country_format",
+        ),
+        CheckConstraint(
+            "pan IS NULL OR pan ~ '^[A-Z]{5}[0-9]{4}[A-Z]$'",
+            name="ck_exporter_profile_pan_format",
+        ),
+        CheckConstraint(
+            "cin IS NULL OR cin ~ '^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$'",
+            name="ck_exporter_profile_cin_format",
+        ),
+        CheckConstraint(
+            "marker = 'NONE' OR (marker_reason IS NOT NULL AND btrim(marker_reason) <> '')",
+            name="ck_exporter_profile_marker_reason",
+        ),
+        # `identity_type` is derived from what the company holds (`decide_identity_type`:
+        # a PAN wins over a registration number, and neither means no type; an empty
+        # string counts as neither, as it does in Python). Checked by the database
+        # since 0054, so it cannot drift again as it did before 0043.
+        CheckConstraint(
+            "identity_type IS NOT DISTINCT FROM (CASE"
+            " WHEN NULLIF(pan, '') IS NOT NULL THEN 'IN_PAN'"
+            " WHEN NULLIF(registration_number, '') IS NOT NULL THEN 'FOREIGN_REG'"
+            " END)::onboarding.company_identity_type_enum",
+            name="ck_exporter_profile_identity_type_derived",
+        ),
         Index("ix_exporter_profile_marker", "marker"),  # 0014
         Index("ix_exporter_profile_journey", "journey"),  # 0017
         Index("ix_exporter_profile_qualification", "qualification"),  # 0017
@@ -215,11 +247,6 @@ class ExporterProfile(AnerModel):
     source: Mapped[ExporterSource] = mapped_column(
         Enum(ExporterSource, name="exporter_source_enum", schema=SCHEMA), nullable=False
     )
-
-    #: The legacy free-text owner label. **Read-only**: no route writes it any more;
-    #: the backfill command matches it to a user, and the relationship manager is
-    #: `relationship_manager_user_id`.
-    relationship_manager: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     #: The company's relationship manager: an active OPERATIONS user when written,
     #: and written only by `ExporterProfileService.assign_relationship_manager`, with a

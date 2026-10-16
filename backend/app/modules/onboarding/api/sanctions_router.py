@@ -212,6 +212,9 @@ class SubjectCoverageResponse(BaseModel):
     latest: RunResponse | None
     #: Why the subject needs screening again; empty when it does not.
     rescreen_reasons: list[str]
+    #: A person on record: the roles they hold (DIRECTOR, UBO), so one who is both can
+    #: be screened under either. Empty for the company and for anyone screened by name.
+    roles: list[Literal["DIRECTOR", "UBO"]] = Field(default_factory=list)
 
 
 class CompanySanctionsResponse(BaseModel):
@@ -441,6 +444,7 @@ async def get_company_sanctions(
                 subject_reference=s.subject_reference,
                 latest=responses.get(s.latest.run.id) if s.latest else None,
                 rescreen_reasons=s.rescreen_reasons,
+                roles=s.roles,  # type: ignore[arg-type]
             )
             for s in standing.subjects
         ],

@@ -1,5 +1,5 @@
 /**
- * Every icon the app draws, named by what it means (frontend-plan §5.8).
+ * Every icon the app draws, named by what it means.
  *
  * Screens say `<Icon.followUp />`, never a glyph's own name, so the set can change
  * in one place: `icon-names.ts`. The shapes are Fluent UI System Icons' (20 px,

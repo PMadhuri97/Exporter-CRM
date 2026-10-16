@@ -1,5 +1,5 @@
 /**
- * Every icon the app draws, named by what it means (frontend-plan §5.8) — the one
+ * Every icon the app draws, named by what it means — the one
  * list to edit. Screens say `<Icon.followUp />` (`./icons.ts`), never a glyph's
  * own name, so the set can change here.
  *

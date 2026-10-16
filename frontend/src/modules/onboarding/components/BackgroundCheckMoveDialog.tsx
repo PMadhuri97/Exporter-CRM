@@ -71,7 +71,7 @@ export function BackgroundCheckMoveDialog({
     relationship_manager_user_id: string | null;
   }) => void;
   onCancel: () => void;
-  /** The move chosen in the status card (frontend-plan §8.5.1), already selected. */
+  /** The move chosen in the status card, already selected. */
   initialMove?: BackgroundCheckState | null;
   /** The start needs an RM named in the same request (the server says so). */
   relationshipManagerRequired?: boolean;

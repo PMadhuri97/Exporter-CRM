@@ -1,5 +1,5 @@
 /**
- * Keyboard helpers for the shell (frontend-plan §7.5). Shortcuts never fire while
+ * Keyboard helpers for the shell. Shortcuts never fire while
  * someone is typing.
  */
 

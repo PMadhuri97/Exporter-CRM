@@ -14,7 +14,7 @@
  * earlier version, but has no edit or delete anywhere. The same shape as
  * `QualificationCriteriaPage`, for the same reason.
  *
- * Laid out as the deal's categories, one row each (frontend-plan §8.9): a mark
+ * Laid out as the deal's categories, one row each: a mark
  * says whether the category is required, the requirements recorded for it sit in
  * its row, and the change history runs underneath.
  *

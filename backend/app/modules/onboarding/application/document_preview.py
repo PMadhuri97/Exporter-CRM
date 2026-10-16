@@ -18,7 +18,7 @@ external workbook can pull a local file — the server's configuration, a secret
 the PDF everyone may read. So a document is converted only when it links to nothing
 but web pages (:func:`external_reference` says what it found otherwise), and the
 converter runs with an empty environment in a private directory. The converter should
-still run where the server's secrets are not (``docs/remaining-work.md``).
+still run where the server's secrets are not (``docs/remaining-work.md`` §3).
 
 A conversion never touches the original. A failure — no converter installed, a
 timeout, a file LibreOffice cannot read, a document that links outside itself — is

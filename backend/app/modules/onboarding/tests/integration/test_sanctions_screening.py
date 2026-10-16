@@ -12,7 +12,6 @@ when the screening resolves, so it never holds a Clear back.
 
 from __future__ import annotations
 
-import uuid
 from datetime import date, timedelta
 
 import psycopg2
@@ -266,31 +265,22 @@ async def test_a_flagged_seller_cannot_hand_over(client: AsyncClient):
     assert "flagged by a sanctions match" in moved.json()["handover_blocked_reason"]
 
 
+async def _person(client, token, company_id, **body) -> str:
+    resp = await client.post(
+        f"{BASE}/exporters/{company_id}/contacts",
+        headers=auth_header(token),
+        json={"is_contact": False, **body},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
 async def test_a_beneficial_owner_on_record_is_a_subject_and_unscreened_until_screened(
     client: AsyncClient,
 ):
     _, officer = await user_with_role(client, UserRole.COMPLIANCE)
     company_id = await make_company()
-    ubo_id = uuid.uuid4()
-    conn = _connect()
-    try:
-        with conn.cursor() as cursor:
-            request_id = uuid.uuid4()
-            cursor.execute(
-                "INSERT INTO onboarding.onboarding_request (id, tenant_id, idempotency_key, "
-                "customer_id, status, entity_type, legal_name, incorporation_country, "
-                "initial_user_id) VALUES (%s, %s, %s, %s, 'DRAFT', 'CORPORATION', 'x', 'IN', 't')",
-                (str(request_id), str(uuid.uuid4()), uuid.uuid4().hex, str(company_id)),
-            )
-            cursor.execute(
-                "INSERT INTO onboarding.ubo_record (id, onboarding_request_id, first_name, "
-                "last_name, control_type, kyc_result) "
-                "VALUES (%s, %s, 'Priya', 'Shah', 'DIRECT_OWNERSHIP', 'VERIFIED')",
-                (str(ubo_id), str(request_id)),
-            )
-        conn.commit()
-    finally:
-        conn.close()
+    ubo_id = await _person(client, officer, company_id, first_name="Priya", last_name="Shah", is_ubo=True)
     await _record(client, officer, company_id)
 
     coverage = (await client.get(f"{BASE}/exporters/{company_id}/sanctions", headers=auth_header(officer))).json()
@@ -305,6 +295,64 @@ async def test_a_beneficial_owner_on_record_is_a_subject_and_unscreened_until_sc
     coverage = (await client.get(f"{BASE}/exporters/{company_id}/sanctions", headers=auth_header(officer))).json()
     ubo = next(s for s in coverage["subjects"] if s["subject_type"] == "UBO")
     assert ubo["latest"]["outcome"] == "PASSED"
+
+
+async def test_a_director_on_record_is_screened_by_reference(client: AsyncClient):
+    _, officer = await user_with_role(client, UserRole.COMPLIANCE)
+    company_id = await make_company()
+    director_id = await _person(client, officer, company_id, first_name="Ravi", last_name="Kumar", is_director=True)
+    owner_id = await _person(client, officer, company_id, first_name="Anita", last_name="Rao", is_ubo=True)
+    await _record(client, officer, company_id)
+
+    coverage = (await client.get(f"{BASE}/exporters/{company_id}/sanctions", headers=auth_header(officer))).json()
+    director = next(s for s in coverage["subjects"] if s["subject_reference"] == director_id)
+    assert (director["subject_type"], director["subject_name"]) == ("DIRECTOR", "Ravi Kumar")
+    assert director["rescreen_reasons"] == ["never screened"]
+
+    screened = await _record(
+        client, officer, company_id, subject_type="DIRECTOR", subject_reference=director_id
+    )
+    assert screened.status_code == 201, screened.text
+    assert screened.json()["subject_name"] == "Ravi Kumar"
+    # An owner is not a director, and a director is not an owner.
+    assert (
+        await _record(client, officer, company_id, subject_type="DIRECTOR", subject_reference=owner_id)
+    ).status_code == 422
+    assert (
+        await _record(client, officer, company_id, subject_type="UBO", subject_reference=director_id)
+    ).status_code == 422
+    # A director not on record is still screened by name.
+    by_name = await _record(
+        client, officer, company_id, subject_type="DIRECTOR", subject_name="Someone Unrecorded"
+    )
+    assert by_name.status_code == 201, by_name.text
+
+
+async def test_a_director_who_is_also_an_owner_can_be_screened_as_either(client: AsyncClient):
+    """The coverage lists the person once, with both roles, so the picker can offer them
+    under "A director" as well as "A beneficial owner"; both screenings are allowed."""
+    _, officer = await user_with_role(client, UserRole.COMPLIANCE)
+    company_id = await make_company()
+    person = await _person(client, officer, company_id, first_name="Dual", last_name="Role", is_director=True, is_ubo=True)
+
+    coverage = (await client.get(f"{BASE}/exporters/{company_id}/sanctions", headers=auth_header(officer))).json()
+    [subject] = [s for s in coverage["subjects"] if s["subject_reference"] == person]
+    assert sorted(subject["roles"]) == ["DIRECTOR", "UBO"]
+    for subject_type in ("DIRECTOR", "UBO"):
+        screened = await _record(
+            client, officer, company_id, subject_type=subject_type, subject_reference=person
+        )
+        assert screened.status_code == 201, screened.text
+
+
+async def test_a_person_of_another_company_cannot_be_screened_here(client: AsyncClient):
+    _, officer = await user_with_role(client, UserRole.COMPLIANCE)
+    company_id, other = await make_company(), await make_company()
+    stranger = await _person(client, officer, other, first_name="Elsewhere", is_ubo=True)
+
+    resp = await _record(client, officer, company_id, subject_type="UBO", subject_reference=stranger)
+
+    assert resp.status_code == 422, resp.text
 
 
 async def test_an_rm_reads_screenings_but_may_not_record_them_and_developer_reads_nothing(

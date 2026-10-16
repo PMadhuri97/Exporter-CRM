@@ -74,7 +74,6 @@ export function GstRegistrationsSection({
   const query = useGstRegistrations(customerId);
   const [adding, setAdding] = useState(false);
   const [gstin, setGstin] = useState('');
-  const [address, setAddress] = useState('');
 
   const add = useAddGstRegistration(customerId);
   const deactivate = useDeactivateGstRegistration(customerId);
@@ -90,12 +89,11 @@ export function GstRegistrationsSection({
       // `UNVERIFIED` is the server's default, sent because the generated request type
       // requires every defaulted field: nobody has checked this GSTIN at the portal
       // yet, and recording it as `ACTIVE` would be a claim.
-      { gstin: value, address: address.trim() || null, status: 'UNVERIFIED' },
+      { gstin: value, status: 'UNVERIFIED' },
       {
         onSuccess: (created) => {
           setAdding(false);
           setGstin('');
-          setAddress('');
           toast.success(
             created.state_name
               ? `GST registration added for ${created.state_name}`
@@ -154,13 +152,9 @@ export function GstRegistrationsSection({
               onChange={(event) => setGstin(event.target.value)}
             />
           </label>
-          <label className="flex flex-col gap-1 text-body">
-            <span className="font-medium text-ink">Registered address</span>
-            <Input value={address} onChange={(event) => setAddress(event.target.value)} />
-          </label>
           <p className="text-caption text-ink-3">
             The state comes from the GSTIN, so there is nothing to choose. It must carry
-            this company&apos;s PAN.
+            this company&apos;s PAN. The branch&apos;s address is added under Addresses.
           </p>
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="subtle" onClick={() => setAdding(false)}>
@@ -269,7 +263,6 @@ function Row({
           </p>
           <p className="mt-0.5 text-caption text-ink-3">
             {STATUS_LABEL[registration.status]}
-            {registration.address ? ` · ${registration.address}` : ''}
           </p>
           {flagged && registration.flag_reason && (
             <p className="mt-1 text-caption text-ink">

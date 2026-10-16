@@ -2,9 +2,8 @@
 
 Changes since the first version are additive: `VerificationResultResponse` keeps
 every field it had and gains evidence, the buyer snapshot, provenance, the
-placeholder flag and the review chain. `reviewed_by` / `review_status` now report the
-**current** review (the chain head) rather than the legacy columns, which are no
-longer written.
+placeholder flag and the review chain. `reviewed_by` / `review_status` report the
+**current** review (the chain head).
 
 What a request can never say: who recorded or reviewed (always the signed-in user),
 the provider's provenance, or anything about the subject beyond its id.
@@ -184,8 +183,6 @@ class VerificationResultResponse(BaseModel):
     # Decided 28 Sep 2026: no change — returned as stored to the roles that
     # may read it; DEVELOPER stays refused.
     normalized_result: dict[str, Any]
-    #: Retired: never written. Kept so the response shape does not shrink.
-    evidence_reference: str | None
     evidence_note: str | None
     evidence_refs: list[VerificationEvidenceRefOut]
     subject_snapshot: BuyerSnapshotResponse | None
@@ -226,11 +223,8 @@ class VerificationResultResponse(BaseModel):
         names = names or {}
         result = view.result
         latest: VerificationReview | None = view.latest_review
-        if latest is not None:
-            reviewed_by, review_status = latest.reviewed_by, latest.review_status
-        else:
-            # A legacy column written outside the service after migration 0021.
-            reviewed_by, review_status = result.reviewed_by, result.review_status
+        reviewed_by = latest.reviewed_by if latest is not None else None
+        review_status = latest.review_status if latest is not None else None
         return cls(
             id=result.id,
             verification_type=result.verification_type,
@@ -245,7 +239,6 @@ class VerificationResultResponse(BaseModel):
             performed_at=result.performed_at,
             valid_until=result.valid_until,
             normalized_result=result.normalized_result,
-            evidence_reference=result.evidence_reference,
             evidence_note=result.evidence_note,
             evidence_refs=[
                 VerificationEvidenceRefOut(**ref) for ref in (result.evidence_refs or [])
@@ -273,7 +266,6 @@ def reviewer_ids(views: Iterable[VerificationResultView]) -> list[str | None]:
     """Every reviewer id the responses for `views` will carry, to resolve to names."""
     ids: list[str | None] = []
     for view in views:
-        ids.append(view.result.reviewed_by)
         ids.extend(review.reviewed_by for review in view.reviews)
     return ids
 

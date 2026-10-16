@@ -111,7 +111,9 @@ class ScreeningReviewItem(AnerModel):
         nullable=False,
     )
     item_key: Mapped[str] = mapped_column(String(100), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="NEEDS_REVIEW")
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="NEEDS_REVIEW", server_default="NEEDS_REVIEW"
+    )
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -123,29 +125,4 @@ class ScreeningReviewItem(AnerModel):
     cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
-class BankActivityFinding(AnerModel):
-    """Provider-originated bank/activity signal. The CRM only exposes read APIs.
-
-    Real Surepass/Finpass ingestion can write these rows later without changing
-    the CRM contract or UI. No fake findings are generated.
-    """
-
-    __tablename__ = "bank_activity_finding"
-    __table_args__ = (
-        Index("ix_bank_activity_finding_customer_id", "customer_id"),
-        Index("ix_bank_activity_finding_customer_status", "customer_id", "status"),
-        {"schema": SCHEMA},
-    )
-
-    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    provider: Mapped[str] = mapped_column(String(100), nullable=False)
-    finding_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    risk_level: Mapped[str] = mapped_column(String(32), nullable=False, default="REVIEW")
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="OPEN")
-    provider_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
-__all__ = ["SCREENING_STATUSES", "ScreeningReviewItem", "BankActivityFinding"]
+__all__ = ["SCREENING_STATUSES", "ScreeningReviewItem"]

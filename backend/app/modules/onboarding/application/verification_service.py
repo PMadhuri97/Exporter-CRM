@@ -107,7 +107,6 @@ from app.modules.onboarding.exceptions import (
     ExporterProfileNotFoundError,
     ProviderCapabilityError,
     VerificationBuyerDealClosedError,
-    VerificationLegacyReviewUnchainedError,
     VerificationResultNotReviewableError,
     VerificationReviewStaleError,
 )
@@ -135,6 +134,17 @@ REVIEW_EVENT = "verification_reviewed"
 
 def _as_uuid(value: uuid.UUID | str) -> uuid.UUID:
     return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+
+
+#: Who opened a cycle when the platform recorded the result itself (sample data, an
+#: internal sync): ``check_cycle.created_by`` must name someone.
+_PLATFORM_ACTOR = "platform"
+
+
+def _actor_text(actor_id: uuid.UUID | str | None) -> str | None:
+    """The actor as history stores it. ``None`` stays ``None`` (shown as "the
+    platform"); ``str(None)`` would store the word "None" as if it were a user id."""
+    return None if actor_id is None else str(actor_id)
 
 
 def _company_subjects(
@@ -362,9 +372,8 @@ def _result_from_outcome(
     choosing; nothing here prevents that. A judgment call.
 
     `evidence` and `subject_snapshot` are facts about the moment of
-    recording and are frozen once written. The legacy `evidence_reference`,
-    `reviewed_by` and `review_status` are never written. `subject_company_id`
-    is the company the result is about, frozen once set.
+    recording and are frozen once written. `subject_company_id` is the company
+    the result is about, frozen once set.
     """
     return VerificationResult(
         verification_type=verification_type,
@@ -526,20 +535,20 @@ class VerificationService:
             event_type=event_type,
         )
 
-    async def _stamp_cycle(self, result: VerificationResult, *, actor_id: str, source: str) -> None:
+    async def _stamp_cycle(
+        self, result: VerificationResult, *, actor_id: str | None, source: str
+    ) -> None:
         """Put a new company-subject result in its company's current cycle. Call with
         the company row already share-locked (the cycle cannot change under it)."""
         company = result.subject_company
         if company is None:
             return
         cycle = await CheckCycleRepository(self._db).current_or_initial(
-            company, actor_id=actor_id, source_ref=source, at=clock.now()
+            company, actor_id=actor_id or _PLATFORM_ACTOR, source_ref=source, at=clock.now()
         )
         result.cycle_id = cycle.id
 
     async def _is_reviewed(self, result: VerificationResult) -> bool:
-        if result.review_status is not None:  # legacy column, pre-0021 or raw SQL
-            return True
         return bool(await self._reviews.chain_for(result.id))
 
     # ── Trigger ──────────────────────────────────────────────────────────────
@@ -552,7 +561,7 @@ class VerificationService:
         *,
         provider: str = "manual",
         payload: dict[str, Any] | None = None,
-        actor_id: uuid.UUID | str,
+        actor_id: uuid.UUID | str | None,
         evidence: VerificationEvidence | None = None,
     ) -> VerificationResult:
         """Run one verification check and persist its outcome.
@@ -621,7 +630,7 @@ class VerificationService:
         # After the provider call, so no lock is held while a provider works.
         await share_lock_companies(self._db, _company_subjects([(entity_type, reference)]))
         await self._stamp_cycle(
-            result, actor_id=str(actor_id), source="verification_service.trigger_verification"
+            result, actor_id=_actor_text(actor_id), source="verification_service.trigger_verification"
         )
         self._db.add(result)
         await self._db.flush()
@@ -629,7 +638,7 @@ class VerificationService:
             subject,
             to_value=outcome.status.value,
             from_value=None,
-            actor_id=str(actor_id),
+            actor_id=_actor_text(actor_id),
             source="verification_service.trigger_verification",
             details=_result_details(result),
         )
@@ -658,7 +667,7 @@ class VerificationService:
             entity_reference=str(reference),
             provider=outcome.provider,
             status=outcome.status.value,
-            actor_id=str(actor_id),
+            actor_id=_actor_text(actor_id),
         )
         return result
 
@@ -669,7 +678,7 @@ class VerificationService:
         requests: list[VerificationRequest],
         *,
         provider: str,
-        actor_id: uuid.UUID | str,
+        actor_id: uuid.UUID | str | None,
     ) -> list[VerificationResult]:
         """Run a batch of checks submitted together as one payload and
         persist one `VerificationResult` per check, all in a single
@@ -750,7 +759,7 @@ class VerificationService:
             )
             await self._stamp_cycle(
                 result,
-                actor_id=str(actor_id),
+                actor_id=_actor_text(actor_id),
                 source="verification_service.trigger_verification_batch",
             )
             self._db.add(result)
@@ -759,7 +768,7 @@ class VerificationService:
                 subject,
                 to_value=outcome.status.value,
                 from_value=None,
-                actor_id=str(actor_id),
+                actor_id=_actor_text(actor_id),
                 source="verification_service.trigger_verification_batch",
                 details=_result_details(result),
             )
@@ -774,7 +783,7 @@ class VerificationService:
             provider=provider,
             count=len(results),
             verification_result_ids=[str(r.id) for r in results],
-            actor_id=str(actor_id),
+            actor_id=_actor_text(actor_id),
         )
         return results
 
@@ -991,8 +1000,8 @@ class VerificationService:
         that loses the race gets the same 409.
 
         The result row is taken `FOR UPDATE` first (the lock polling takes too), so
-        reviews of one result are judged one at a time. The legacy
-        `reviewed_by`/`review_status` columns are not written.
+        reviews of one result are judged one at a time. The retired
+        `reviewed_by`/`review_status` columns are neither written nor read.
 
         Writes one `verification` history row: `from_value` the previous review's
         status (or `None`), `to_value` the new one, `reason` the note.
@@ -1000,9 +1009,6 @@ class VerificationService:
         Raises:
             NotFoundError: no such `VerificationResult`.
             VerificationResultNotReviewableError: still `PENDING` (422).
-            VerificationLegacyReviewUnchainedError: the result has a legacy
-                `review_status` but no review record to supersede (409; only
-                reachable if the legacy columns were written outside the service).
             VerificationReviewStaleError: `supersedes_review_id` is not the current
                 review (409).
             ValidationError: a superseding review without a note (422).
@@ -1023,14 +1029,6 @@ class VerificationService:
             raise VerificationResultNotReviewableError(verification_result_id=result_id)
 
         chain = await self._reviews.chain_for(result_id)
-        if not chain and result.review_status is not None:
-            # A legacy verdict with no review record (set outside the service after
-            # migration 0021, which copied every earlier one). A "first" review here
-            # would overrule it with no supersede link and no reason — refused.
-            raise VerificationLegacyReviewUnchainedError(
-                verification_result_id=result_id,
-                legacy_review_status=result.review_status.value,
-            )
         head = chain[-1] if chain else None
         current_head_id = head.id if head is not None else None
         if supersedes_review_id != current_head_id:

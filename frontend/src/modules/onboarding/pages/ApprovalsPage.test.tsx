@@ -1,5 +1,5 @@
 /**
- * Compliance work (frontend-plan §8.8): the rail lists the worklists the server
+ * Compliance work: the rail lists the worklists the server
  * computes — reviews awaiting a reviewer, this officer's reviews, what awaits their
  * signature, what is due for Re-KYC, and, for a compliance lead, everyone's reviews,
  * the overdue and what needs attention. Choosing a case opens that company's

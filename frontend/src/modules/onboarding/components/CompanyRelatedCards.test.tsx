@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -29,13 +29,14 @@ vi.mock('../api', async (importOriginal) => ({
   updateExporterContact: vi.fn(),
   setExporterContactStatus: vi.fn(),
 }));
-// The other three cards fetch their own lists; they are not under test here.
+// The other cards fetch their own lists; they are not under test here.
 vi.mock('../hooks', async (importOriginal) => {
   const idle = () => ({ data: undefined, isLoading: false, isError: false });
   return {
     ...(await importOriginal<typeof import('../hooks')>()),
     useFollowUps: idle,
     useCompanyDeals: idle,
+    useCompanyPeople: idle,
     useCompanyDocuments: idle,
   };
 });
@@ -60,6 +61,9 @@ const JANE: ExporterContact = {
   last_verified_by: null,
   created_at: '2026-09-01T10:00:00Z',
   verification_due: false,
+  is_contact: true,
+  is_director: false,
+  is_ubo: false,
 };
 
 const RAVI: ExporterContact = {
@@ -111,12 +115,18 @@ beforeEach(() => {
   }) as ExporterContact);
 });
 
+/** The Contacts card's own Add: the Directors and owners card beside it has one too. */
+function openAddContact() {
+  const card = document.querySelector<HTMLElement>('[data-extension="contacts"]')!;
+  fireEvent.click(within(card).getByRole('button', { name: /Add/ }));
+}
+
 describe('Adding a contact', () => {
   it('asks for the first and last name separately', async () => {
     as('OPERATIONS');
     vi.mocked(addExporterContact).mockResolvedValue(JANE);
     renderCards([]);
-    fireEvent.click(screen.getByRole('button', { name: /Add/ }));
+    openAddContact();
 
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
     change(/^First name/, ' Priya ');
@@ -135,7 +145,7 @@ describe('Adding a contact', () => {
     as('OPERATIONS');
     vi.mocked(addExporterContact).mockResolvedValue(JANE);
     renderCards([]);
-    fireEvent.click(screen.getByRole('button', { name: /Add/ }));
+    openAddContact();
 
     expect(screen.getByRole('button', { name: 'Add contact' })).toBeDisabled();
     change(/^First name/, 'Madhuri');

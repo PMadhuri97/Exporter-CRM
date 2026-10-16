@@ -1,5 +1,5 @@
 /**
- * Import companies (frontend-plan §8.4): a drop zone, the server's reading of the file
+ * Import companies: a drop zone, the server's reading of the file
  * before anything is sent for import, then the server's report as rows grouped by
  * outcome — failed, possible duplicates, created or matched — each in the server's
  * words. The client re-checks nothing.
@@ -41,7 +41,7 @@ const STATUS_LABEL: Record<string, string> = {
   possible_duplicate: 'Possible duplicate',
 };
 
-/** How the report groups its rows (frontend-plan §8.4): failures first, they need a person. */
+/** How the report groups its rows: failures first, they need a person. */
 const GROUPS: { status: string; title: string; glyph: 'error' | 'warning' | 'passed' }[] = [
   { status: 'rejected', title: 'Failed rows', glyph: 'error' },
   { status: 'possible_duplicate', title: 'Possible duplicates — a person should choose', glyph: 'warning' },

@@ -18,7 +18,7 @@ import { Badge, type BadgeTone } from '@/components';
 
 import type { BackgroundCheckState } from '../types';
 
-// One meaning per value (frontend-plan §5.2, §18.2): not started is neutral, in review
+// One meaning per value: not started is neutral, in review
 // is progress, more info is attention, clear is positive, flagged and on hold are
 // negative. The words always say the state.
 const TONE: Record<BackgroundCheckState, BadgeTone> = {

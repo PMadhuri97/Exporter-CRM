@@ -9,8 +9,8 @@ export interface PathStep<K extends string = string> {
 }
 
 /**
- * Chevron steps, as in Salesforce Path and the Dynamics business process flow
- * (frontend-plan §6.5). Completed steps are a blue tint with a check, the current
+ * Chevron steps, as in Salesforce Path and the Dynamics business process flow.
+ * Completed steps are a blue tint with a check, the current
  * step solid blue, upcoming steps grey. One guidance line sits beside it.
  *
  * Read-only unless the caller passes `selectable`: the keys of the steps the

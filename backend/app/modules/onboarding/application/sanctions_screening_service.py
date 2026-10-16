@@ -50,8 +50,9 @@ from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions
 from app.modules.onboarding.domain import sanctions as rules
 from app.modules.onboarding.domain.entities.check_cycle import CheckCycle
+from app.modules.onboarding.domain.entities.engagement_enums import ContactStatus
+from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
-from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     VerificationEntityType,
     VerificationResultStatus,
@@ -65,7 +66,6 @@ from app.modules.onboarding.domain.entities.sanctions import (
     SanctionsRun,
     SanctionsRunList,
 )
-from app.modules.onboarding.domain.entities.ubo_record import UboRecord
 from app.modules.onboarding.domain.entities.verification_result import (
     VerificationResult,
     about_company,
@@ -128,6 +128,10 @@ class SubjectCoverage:
     latest: RunView | None
     #: Why this subject needs screening again (empty when it does not).
     rescreen_reasons: list[str] = field(default_factory=list)
+    #: A person on record: the roles they hold (DIRECTOR, UBO), so a director who is
+    #: also an owner can be screened under either. Empty for the company and for anyone
+    #: screened by name.
+    roles: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -162,6 +166,20 @@ class PendingTrueMatch:
     proposal: SanctionsDisposition
 
 
+def _people_query(company_ids: Iterable[uuid.UUID]):
+    """Active directors and beneficial owners of these companies, by name. Someone who
+    has left is no longer screened; their past runs still show."""
+    return (
+        select(ExporterContact)
+        .where(
+            ExporterContact.customer_id.in_(list(company_ids)),
+            ExporterContact.is_director.is_(True) | ExporterContact.is_ubo.is_(True),
+            ExporterContact.status == ContactStatus.ACTIVE.value,
+        )
+        .order_by(ExporterContact.name, ExporterContact.id)
+    )
+
+
 def actor_from(user: object, permissions: Collection[tuple[str, str]]) -> Actor:
     return Actor(
         id=str(user.id),  # type: ignore[attr-defined]
@@ -171,11 +189,24 @@ def actor_from(user: object, permissions: Collection[tuple[str, str]]) -> Actor:
 
 
 def _subject_key(subject_type: str, reference: uuid.UUID | None, name: str) -> tuple:
-    """One subject: the company (whatever it was called when screened), a beneficial
-    owner by record, or a director by name."""
+    """One subject: the company (whatever it was called when screened), a person on
+    record (whichever of their roles they were screened as), or a director by name."""
     if subject_type == "COMPANY":
         return ("COMPANY",)
-    return (subject_type, str(reference) if reference else " ".join(name.lower().split()))
+    if reference is not None:
+        return ("PERSON", str(reference))
+    return (subject_type, " ".join(name.lower().split()))
+
+
+def _person_roles(person: ExporterContact) -> list[str]:
+    """The screening roles a person on record holds."""
+    return [role for role, held in (("DIRECTOR", person.is_director), ("UBO", person.is_ubo)) if held]
+
+
+def _person_subject(person: ExporterContact) -> str:
+    """The subject type a person on record is listed under: an owner's screening and a
+    director's are the same screening of one person."""
+    return "UBO" if person.is_ubo else "DIRECTOR"
 
 
 def _run_in_cycle(run: SanctionsRun, cycle: CheckCycle | None) -> bool:
@@ -297,6 +328,9 @@ class SanctionsScreeningService:
                     list_version_date=listed.list_version_date,
                 )
             )
+        # Written before the hits: a hit names its run's list (`fk_sanctions_hit_run_list`),
+        # and with no relationship between the two the session would not order them.
+        await self._db.flush()
         mode = true_match_approval()
         for hit_input in hit_inputs:
             hit = SanctionsHit(
@@ -484,17 +518,18 @@ class SanctionsScreeningService:
             )
         )
         seen = {company_key}
-        for ubo in await self._ubos_of(company_id):
-            key = _subject_key("UBO", ubo.id, "")
+        for person in await self._people_of(company_id):
+            key = _subject_key(_person_subject(person), person.id, "")
             seen.add(key)
             view = views.get(key)
             subjects.append(
                 SubjectCoverage(
-                    "UBO",
-                    f"{ubo.first_name} {ubo.last_name}".strip(),
-                    ubo.id,
+                    _person_subject(person),
+                    person.name,
+                    person.id,
                     view,
                     self._reasons(view, current_lists),
+                    roles=_person_roles(person),
                 )
             )
         for key, view in views.items():
@@ -528,14 +563,14 @@ class SanctionsScreeningService:
     ) -> list[RescreenDue]:
         """Companies screened before whose latest screening is now out of date: a list
         has a newer version or became mandatory, the company's name changed, or a
-        beneficial owner has never been screened.
+        director or beneficial owner on record has never been screened.
 
         By company name (``order="name"``, the default), or by when each company was
         last screened: ``newest`` or ``oldest`` first.
 
         A fixed number of reads, whatever the number of companies: every run, cycle,
-        list version and beneficial owner is read once, and the same subjects and
-        reasons as :meth:`company` are worked out from them."""
+        list version and person is read once, and the same subjects and reasons as
+        :meth:`company` are worked out from them."""
         runs = list(
             await self._db.scalars(
                 select(SanctionsRun).order_by(
@@ -576,14 +611,9 @@ class SanctionsScreeningService:
                 )
             ).all()
         )
-        ubos: dict[uuid.UUID, list[UboRecord]] = defaultdict(list)
-        for ubo, owner in await self._db.execute(
-            select(UboRecord, OnboardingRequest.customer_id)
-            .join(OnboardingRequest, OnboardingRequest.id == UboRecord.onboarding_request_id)
-            .where(OnboardingRequest.customer_id.in_(company_ids))
-            .order_by(UboRecord.last_name, UboRecord.first_name)
-        ):
-            ubos[owner].append(ubo)
+        persons: dict[uuid.UUID, list[ExporterContact]] = defaultdict(list)
+        for person in await self._db.scalars(_people_query(company_ids)):
+            persons[person.customer_id].append(person)
         current_lists = [row for row in await self._current_lists() if row.active]
 
         def reasons_for(run: SanctionsRun | None, *, current_name: str | None = None):
@@ -602,12 +632,10 @@ class SanctionsScreeningService:
                 (name or "", reasons_for(subjects.get(company_key), current_name=name))
             ]
             seen = {company_key}
-            for ubo in ubos[company_id]:
-                key = _subject_key("UBO", ubo.id, "")
+            for person in persons[company_id]:
+                key = _subject_key(_person_subject(person), person.id, "")
                 seen.add(key)
-                found.append(
-                    (f"{ubo.first_name} {ubo.last_name}".strip(), reasons_for(subjects.get(key)))
-                )
+                found.append((person.name, reasons_for(subjects.get(key))))
             for key, run in subjects.items():
                 if key not in seen:
                     found.append((run.subject_name, reasons_for(run)))
@@ -788,31 +816,40 @@ class SanctionsScreeningService:
         subject_name: str | None,
         subject_reference: uuid.UUID | None,
     ) -> str:
+        """The name a run records. A beneficial owner is always a person on record; a
+        director is one too when ``subject_reference`` names them, or else is given by
+        name (someone not, or not yet, on record)."""
         name = (subject_name or "").strip()
         if subject_type == "COMPANY":
+            if subject_reference is not None:
+                raise ValidationError("A screening of the company names no person")
             return name or (company.name or "")
-        if subject_type == "UBO":
-            if subject_reference is None:
+        if subject_type not in ("UBO", "DIRECTOR"):
+            raise ValidationError(f"Unknown subject {subject_type!r}")
+        if subject_reference is None:
+            if subject_type == "UBO":
                 raise ValidationError("Choose which beneficial owner was screened")
-            ubo = next((u for u in await self._ubos_of(company.customer_id) if u.id == subject_reference), None)
-            if ubo is None:
-                raise ValidationError("That beneficial owner is not recorded for this company")
-            return name or f"{ubo.first_name} {ubo.last_name}".strip()
-        if subject_type == "DIRECTOR":
             if not name:
                 raise ValidationError("Give the director's name")
             return name
-        raise ValidationError(f"Unknown subject {subject_type!r}")
-
-    async def _ubos_of(self, company_id: uuid.UUID) -> list[UboRecord]:
-        return list(
-            await self._db.scalars(
-                select(UboRecord)
-                .join(OnboardingRequest, OnboardingRequest.id == UboRecord.onboarding_request_id)
-                .where(OnboardingRequest.customer_id == company_id)
-                .order_by(UboRecord.last_name, UboRecord.first_name)
+        person = await self._db.scalar(
+            select(ExporterContact).where(
+                ExporterContact.id == subject_reference,
+                ExporterContact.customer_id == company.customer_id,
             )
         )
+        role = person is not None and (person.is_ubo if subject_type == "UBO" else person.is_director)
+        if not role:
+            raise ValidationError(
+                "That beneficial owner is not recorded for this company"
+                if subject_type == "UBO"
+                else "That director is not recorded for this company"
+            )
+        return name or person.name
+
+    async def _people_of(self, company_id: uuid.UUID) -> list[ExporterContact]:
+        """The company's active directors and beneficial owners: who must be screened."""
+        return list(await self._db.scalars(_people_query([company_id])))
 
     async def _current_lists(self) -> list[SanctionsList]:
         return list(

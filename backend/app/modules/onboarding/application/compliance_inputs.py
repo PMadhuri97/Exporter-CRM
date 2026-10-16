@@ -55,8 +55,7 @@ What each field means today
   pending is the Clear policy's question.
 * **Evidence** — ``evidence_document_ids`` are the ``document`` references in the
   result's ``evidence_refs``, in the order recorded. ``url`` references are
-  not documents and are not reported. The retired ``evidence_reference`` column is
-  not read.
+  not documents and are not reported.
 * **Cycles (seam v2)** — ``company_inputs`` is scoped to the company's
   **current** check cycle (its highest ``check_cycle.number``): the results and the
   latest answer per item *of that cycle*. A row with ``cycle_id IS NULL`` belongs to
@@ -112,7 +111,6 @@ _VERIFICATION_COLUMNS = (
     VerificationResult.risk_level,
     VerificationResult.performed_at,
     VerificationResult.normalized_result,
-    VerificationResult.review_status,
     VerificationResult.evidence_refs,
     VerificationResult.cycle_id,
 )
@@ -135,8 +133,7 @@ def _verification_input(
     if head is not None:
         latest_id, latest_status, latest_at = head.id, head.review_status.value, head.reviewed_at
     else:
-        latest_id, latest_at = None, None
-        latest_status = row.review_status.value if row.review_status is not None else None
+        latest_id, latest_status, latest_at = None, None, None
     return VerificationInput(
         verification_result_id=row.id,
         verification_type=row.verification_type.value,

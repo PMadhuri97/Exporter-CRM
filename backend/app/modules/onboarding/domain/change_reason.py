@@ -2,7 +2,7 @@
 
 Qualification criteria, deal required documents, payment terms and sanctions lists are
 live rules — a change applies to the next lead qualified, deal handed over or company
-screened. Every change writes a new version, and since migration 0055 that version also
+screened. Every change writes a new version, and since migration 0063 that version also
 carries ``change_reason``: the ticket number or explanation an administrator gave for
 it. Without one a change is refused, so no rule moves on a single click.
 

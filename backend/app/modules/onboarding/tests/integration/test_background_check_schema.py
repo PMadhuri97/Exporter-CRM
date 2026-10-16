@@ -123,6 +123,16 @@ def _screening_row(cursor, company_id: uuid.UUID) -> uuid.UUID:
     return row_id
 
 
+def _review(cursor, result_id: uuid.UUID) -> uuid.UUID:
+    review_id = uuid.uuid4()
+    cursor.execute(
+        f"INSERT INTO {SCHEMA}.verification_review (id, verification_result_id, review_status,"
+        " reviewed_by) VALUES (%s, %s, 'ACCEPTED', 'sql')",
+        (str(review_id), str(result_id)),
+    )
+    return review_id
+
+
 def _pin(cursor, decision_id: uuid.UUID, kind: str, **ids: uuid.UUID | None) -> uuid.UUID:
     evidence_id = uuid.uuid4()
     columns = [
@@ -587,11 +597,11 @@ def test_each_kind_pins_its_own_row():
     with _connect() as conn, conn.cursor() as cur:
         company_id, start = _started(cur)
         _pin(cur, start, "DOCUMENT", crm_document_id=_document(cur, company_id))
+        result_id = _verification_result(cur, company_id)
         _pin(
             cur, start, "VERIFICATION_RESULT",
-            verification_result_id=_verification_result(cur, company_id),
-            # Bare uuid: verification's review table is not referenced (contract §6.1).
-            verification_review_id=uuid.uuid4(),
+            verification_result_id=result_id,
+            verification_review_id=_review(cur, result_id),
         )
         _pin(cur, start, "SCREENING_ITEM", screening_review_item_id=_screening_row(cur, company_id))
         cur.execute(
@@ -606,8 +616,8 @@ def test_each_kind_pins_its_own_row():
         ]
 
 
-def test_the_review_id_has_no_foreign_key():
-    """Contract §6.1: nothing in 0015 references verification's review schema."""
+def test_every_evidence_reference_is_a_foreign_key():
+    """Contract §6.1: the review id started bare, and 0054 gave it its foreign key."""
     with _connect() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT kcu.column_name FROM information_schema.table_constraints tc"
@@ -622,6 +632,7 @@ def test_the_review_id_has_no_foreign_key():
             "decision_id",
             "crm_document_id",
             "verification_result_id",
+            "verification_review_id",
             "screening_review_item_id",
         }
 

@@ -45,6 +45,7 @@ from app.modules.onboarding.exceptions import DealRequiredDocumentChangedError
 from app.modules.onboarding.infrastructure.storage import LocalDiskStorage
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
 from app.modules.onboarding.tests.fixtures.companies import ensure_primary_contact, make_company
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.modules.onboarding.tests.integration.test_handover import (
     record_legacy_buyer_checks,
 )
@@ -151,9 +152,8 @@ async def _deal_with_a_buyer(
         view = await DealService(db).open_deal(
             company_id, reference=f"Required docs {uuid.uuid4().hex[:8]}", actor_id="t"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(
-            view.id, name="Rotterdam Trading BV", country="NL", actor_id="t"
+    await record_legacy_buyer(
+        view.id, name="Rotterdam Trading BV", country="NL"
         )
     async with db_services.AsyncSessionLocal() as db:
         await DealService(db).transition_stage(

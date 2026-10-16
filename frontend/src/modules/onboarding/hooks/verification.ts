@@ -13,7 +13,6 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  getBankActivity,
   getScreeningItemHistory,
   getScreeningReview,
   listVerificationResults,
@@ -160,13 +159,5 @@ export function useScreeningItemHistory(
     queryKey: ['screeningItemHistory', customerId, itemKey, limit, offset],
     queryFn: () => getScreeningItemHistory(customerId, itemKey, { limit, offset }),
     enabled,
-  });
-}
-
-export function useBankActivity(customerId: string | undefined) {
-  return useQuery({
-    queryKey: ['bankActivity', customerId],
-    queryFn: () => getBankActivity(customerId!),
-    enabled: Boolean(customerId),
   });
 }

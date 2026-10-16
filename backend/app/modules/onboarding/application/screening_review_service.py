@@ -1,4 +1,4 @@
-"""Persistence service for screening review state and bank findings.
+"""Persistence service for screening review state.
 
 **The checklist is a log, not a set of toggles.** ``screening_review_item`` has
 no unique constraint on ``(customer_id, item_key)`` and rejects ``UPDATE`` and
@@ -49,7 +49,6 @@ from app.modules.onboarding.domain.entities.check_cycle import CheckCycle
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.screening_review import (
     SCREENING_STATUSES,
-    BankActivityFinding,
     ScreeningReviewItem,
 )
 from app.modules.onboarding.domain.verification_evidence import VerificationEvidence
@@ -389,16 +388,6 @@ class ScreeningReviewService:
         await self._db.commit()
         await self._db.refresh(item)
         return item
-
-    async def list_bank_findings(self, customer_id: uuid.UUID) -> list[BankActivityFinding]:
-        """Stored findings, newest first. Nothing writes this table today: no
-        bank-monitoring provider feed is connected, and none is faked (verification-and-screening.md §8)."""
-        result = await self._db.execute(
-            select(BankActivityFinding)
-            .where(BankActivityFinding.customer_id == customer_id)
-            .order_by(BankActivityFinding.detected_at.desc())
-        )
-        return list(result.scalars().all())
 
     async def _require_company(self, customer_id: uuid.UUID) -> None:
         exists = await self._db.scalar(

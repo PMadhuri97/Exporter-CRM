@@ -11,7 +11,6 @@ import { render } from '@testing-library/react';
 import { createElement, type ReactElement } from 'react';
 
 import type {
-  BankActivityResponse,
   CrmDocument,
   ScreeningCatalogueItem,
   ScreeningItemHistory,
@@ -62,7 +61,6 @@ export function verificationResult(
     performed_at: '2026-09-28T09:00:00Z',
     valid_until: null,
     normalized_result: {},
-    evidence_reference: null,
     evidence_note: null,
     evidence_refs: [],
     subject_snapshot: null,
@@ -155,21 +153,4 @@ export function historyPage(
   { total = items.length, limit = 5, offset = 0 } = {},
 ): ScreeningItemHistory {
   return { customer_id: COMPANY_ID, item_key: 'address-physical', items, total, limit, offset };
-}
-
-export function bankActivity(
-  overrides: Partial<BankActivityResponse> = {},
-): BankActivityResponse {
-  return {
-    customer_id: COMPANY_ID,
-    provider_feed_connected: false,
-    provider_feed_status: 'NOT_CONNECTED',
-    provider_feed_message:
-      'No bank-monitoring provider feed is connected. Bank activity is not being monitored for this company.',
-    connected_accounts: 0,
-    last_synced_at: null,
-    open_findings: 0,
-    findings: [],
-    ...overrides,
-  };
 }

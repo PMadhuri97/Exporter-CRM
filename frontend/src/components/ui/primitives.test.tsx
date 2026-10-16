@@ -1,5 +1,5 @@
 /**
- * The design primitives (frontend-plan §6): each behaves as the screens will
+ * The design primitives: each behaves as the screens will
  * rely on it — tones that carry a meaning, one choice always held, an edit that
  * saves on Enter and survives a refusal, an honest cap on a count.
  */

@@ -1,5 +1,5 @@
 /**
- * The company's gauges as worded status badges (frontend-plan §6.4, §18.2): one
+ * The company's gauges as worded status badges: one
  * badge per gauge, side by side, never merged into one label. The words are the
  * label maps' (`record/status.ts`, `constants.ts`), so every screen and test reads
  * the same strings; the tone repeats the meaning and never replaces the words.

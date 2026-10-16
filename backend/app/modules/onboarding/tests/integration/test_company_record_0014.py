@@ -254,9 +254,10 @@ async def test_verification_results_deliberately_have_no_company_link():
     """`entity_reference` names several kinds of subject (company, person,
     buyer), so it cannot point at one table.
 
-    Since 0023 and 0025 the table has two foreign keys of its own — the
-    set-once `subject_company_id` and `cycle_id` — and neither is on
-    `entity_reference`, which still has none."""
+    Since 0023 and 0025 the table has foreign keys of its own — the set-once
+    `subject_company_id` and `cycle_id`, and since 0054 the pair of them, so a
+    result's cycle is its own company's — and none is on `entity_reference`,
+    which still has none."""
     conn = _connect()
     try:
         with conn.cursor() as cur:
@@ -268,6 +269,7 @@ async def test_verification_results_deliberately_have_no_company_link():
             assert set(foreign_keys) == {
                 "fk_verification_result_subject_company_id",
                 "fk_verification_result_cycle_id",
+                "fk_verification_result_cycle_company",
             }
             assert not any("entity_reference" in d for d in foreign_keys.values())
     finally:
@@ -303,13 +305,15 @@ async def test_the_database_refuses_a_second_company_with_the_same_pan():
         with conn.cursor() as cur:
             first = insert_company(cur)
             cur.execute(
-                "UPDATE onboarding.exporter_profile SET pan = %s WHERE customer_id = %s",
+                "UPDATE onboarding.exporter_profile SET pan = %s, identity_type = 'IN_PAN'"
+                " WHERE customer_id = %s",
                 (pan, str(first)),
             )
             second = insert_company(cur)
             with pytest.raises(psycopg2.errors.UniqueViolation):
                 cur.execute(
-                    "UPDATE onboarding.exporter_profile SET pan = %s WHERE customer_id = %s",
+                    "UPDATE onboarding.exporter_profile SET pan = %s, identity_type = 'IN_PAN'"
+                    " WHERE customer_id = %s",
                     (pan, str(second)),
                 )
     finally:

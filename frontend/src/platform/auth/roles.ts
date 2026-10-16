@@ -2,7 +2,7 @@
  * Role names, as people read them.
  *
  * What a role may *do* is not here: that is `@/platform/access` (`useCan`, `Gate`),
- * the one client-side copy of the server's role groups (frontend plan §4.2).
+ * the one client-side copy of the server's role groups.
  * The `isStaffRole` / `isAdminRole` / `isComplianceRole` helpers that used to live in
  * this file were replaced by its capabilities.
  */

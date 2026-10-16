@@ -159,7 +159,7 @@ function definitionOf(draft: Draft, changeReason: string): CriterionDefinitionRe
   };
 }
 
-/** Add a criterion, or the next version of one — a composer (frontend-plan §6.9). */
+/** Add a criterion, or the next version of one — a composer. */
 function CriterionComposer({
   onClose,
   base,

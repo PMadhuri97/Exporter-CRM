@@ -11,7 +11,7 @@ aggregate the S1 schema defines.
 
 **No Temporal workflow exists yet.** S3 (the Temporal workflow skeleton) is a
 later Story and is not present in this codebase. Per the spec
-(``Jira/4.1 B2B Onboarding Orchestration.docx``, S7T1), several of these
+(the Epic 4.1 specification, S7T1), several of these
 operations are documented as "sends a signal to the Temporal workflow" — this
 class performs the equivalent direct, real data operation against the S1
 schema instead, and each such method's docstring notes where a Temporal signal

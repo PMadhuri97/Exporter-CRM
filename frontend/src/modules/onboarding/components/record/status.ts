@@ -1,5 +1,5 @@
 /**
- * The status wording (frontend-plan §18.2): every gauge value as the screen's words
+ * The status wording: every gauge value as the screen's words
  * and a **meaning**. One table, read by the status badges, the record header, the
  * conversation path and the background check's status card, so every screen and
  * test reads the same strings. The meaning picks the badge's tone (§5.2, §6.4); the

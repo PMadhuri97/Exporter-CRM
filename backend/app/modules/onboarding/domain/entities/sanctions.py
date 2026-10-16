@@ -17,6 +17,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -75,6 +76,22 @@ class SanctionsRun(AnerModel):
     __table_args__ = (
         Index("ix_sanctions_run_company", "company_id", "performed_at"),
         CheckConstraint(_in("subject_type", SUBJECT_TYPES), name="ck_sanctions_run_subject_type"),
+        # The run's cycle must be its own company's (0054), as for decisions,
+        # proposals and checklist answers.
+        ForeignKeyConstraint(
+            ["cycle_id", "company_id"],
+            [f"{SCHEMA}.check_cycle.id", f"{SCHEMA}.check_cycle.company_id"],
+            name="fk_sanctions_run_cycle",
+            ondelete="RESTRICT",
+        ),
+        # A director or beneficial owner screened by record is one of the company's own
+        # people (0057). A free-text director has no reference and is not checked.
+        ForeignKeyConstraint(
+            ["subject_reference", "company_id"],
+            [f"{SCHEMA}.exporter_contact.id", f"{SCHEMA}.exporter_contact.customer_id"],
+            name="fk_sanctions_run_subject_person",
+            ondelete="RESTRICT",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -90,11 +107,7 @@ class SanctionsRun(AnerModel):
     subject_type: Mapped[str] = mapped_column(String(16), nullable=False)
     subject_name: Mapped[str] = mapped_column(String(255), nullable=False)
     subject_reference: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    cycle_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey(f"{SCHEMA}.check_cycle.id", name="fk_sanctions_run_cycle"),
-        nullable=True,
-    )
+    cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     performed_by: Mapped[str] = mapped_column(String(255), nullable=False)
     performed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     provider: Mapped[str] = mapped_column(String(100), nullable=False, server_default="MANUAL")
@@ -132,6 +145,13 @@ class SanctionsHit(AnerModel):
     __table_args__ = (
         Index("ix_sanctions_hit_run", "run_id"),
         CheckConstraint("score IS NULL OR (score >= 0 AND score <= 100)", name="ck_sanctions_hit_score"),
+        # A hit is on a list its run screened (0054).
+        ForeignKeyConstraint(
+            ["run_id", "list_code"],
+            [f"{SCHEMA}.sanctions_run_list.run_id", f"{SCHEMA}.sanctions_run_list.code"],
+            name="fk_sanctions_hit_run_list",
+            ondelete="RESTRICT",
+        ),
         {"schema": SCHEMA},
     )
 

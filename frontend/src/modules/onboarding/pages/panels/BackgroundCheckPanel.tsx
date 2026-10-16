@@ -69,7 +69,7 @@ import type { BackgroundCheckState } from '../../types';
 
 function GaugeSection({ customerId }: { customerId: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
-  // The move chosen in the status card, opened already selected (frontend-plan §8.5.1).
+  // The move chosen in the status card, opened already selected.
   const [initialMove, setInitialMove] = useState<BackgroundCheckState | null>(null);
   const check = useBackgroundCheck(customerId);
   const decisions = useBackgroundCheckDecisions(customerId);

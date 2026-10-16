@@ -127,7 +127,7 @@ describe('AddressesSection', () => {
     await waitFor(() => expect(deactivateCompanyAddress).toHaveBeenCalledWith('a1', null));
   });
 
-  it('offers to create an address from a GST branch and links it', async () => {
+  it('offers to create an address for a GST branch that has none, and links it', async () => {
     list([]);
     vi.mocked(listGstRegistrations).mockResolvedValue({
       registrations: [
@@ -138,7 +138,6 @@ describe('AddressesSection', () => {
           state_code: '27',
           state_name: 'Maharashtra',
           status: 'UNVERIFIED',
-          address: '5th floor, Nariman Point, Mumbai',
           address_id: null,
           flag_status: 'NONE',
           flag_reason: null,
@@ -155,7 +154,10 @@ describe('AddressesSection', () => {
     renderSection();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Create address' }));
-    expect(screen.getByLabelText(/^Address line 1/)).toHaveValue('5th floor, Nariman Point, Mumbai');
+    expect(screen.getByLabelText(/^Address line 1/)).toHaveValue('');
+    fireEvent.change(screen.getByLabelText(/^Address line 1/), {
+      target: { value: '5th floor, Nariman Point' },
+    });
     fireEvent.change(screen.getByLabelText(/^City/), { target: { value: 'Mumbai' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save address' }));
 

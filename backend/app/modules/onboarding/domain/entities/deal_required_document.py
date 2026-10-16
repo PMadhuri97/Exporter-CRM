@@ -36,6 +36,7 @@ from __future__ import annotations
 from sqlalchemy import Boolean, CheckConstraint, Enum, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.modules.onboarding.domain.entities.database_generated_id import DatabaseGeneratedId
 from app.modules.onboarding.domain.entities.document_enums import DocumentCategory
 from app.platform.database.models import AppendOnlyModel
 
@@ -45,7 +46,7 @@ SCHEMA = "onboarding"
 ANY_DOCUMENT_TYPE = ""
 
 
-class DealRequiredDocument(AppendOnlyModel):
+class DealRequiredDocument(DatabaseGeneratedId, AppendOnlyModel):
     """One version of one requirement. Immutable once written."""
 
     __tablename__ = "deal_required_document"
