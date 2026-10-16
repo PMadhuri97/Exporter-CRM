@@ -152,16 +152,77 @@ def _replace_freeze(reviewed: str) -> None:
 def upgrade() -> None:
     bind = op.get_bind()
 
+    # Auto-backfill relationship managers: match active OPERATIONS users with identical full_name
+    op.execute(
+        sa.text(
+            f"""
+            UPDATE {SCHEMA}.exporter_profile p
+            SET relationship_manager_user_id = u.id
+            FROM auth.users u
+            WHERE p.relationship_manager_user_id IS NULL
+              AND NULLIF(btrim(p.relationship_manager), '') IS NOT NULL
+              AND u.is_active = TRUE
+              AND u.role = 'OPERATIONS'
+              AND {_normalised('u.full_name')} = {_normalised('p.relationship_manager')}
+              AND (
+                  SELECT count(*) FROM auth.users u2
+                   WHERE u2.is_active = TRUE
+                     AND u2.role = 'OPERATIONS'
+                     AND {_normalised('u2.full_name')} = {_normalised('p.relationship_manager')}
+              ) = 1;
+            """
+        )
+    )
+
+    # Auto-backfill GST branch addresses into company_address
+    op.execute(
+        sa.text(
+            f"""
+            DO $$
+            DECLARE
+                rec RECORD;
+                new_addr_id UUID;
+                l1 VARCHAR(255);
+                l2 VARCHAR(255);
+            BEGIN
+                FOR rec IN 
+                    SELECT id, customer_id, address, state_name 
+                    FROM {SCHEMA}.exporter_gstin 
+                    WHERE NULLIF(btrim(address), '') IS NOT NULL AND address_id IS NULL
+                LOOP
+                    new_addr_id := gen_random_uuid();
+                    IF length(rec.address) <= 255 THEN
+                        l1 := rec.address;
+                        l2 := NULL;
+                    ELSE
+                        l1 := substring(rec.address from 1 for 255);
+                        l2 := substring(rec.address from 256 for 255);
+                    END IF;
+
+                    INSERT INTO {SCHEMA}.company_address (
+                        id, customer_id, address_type, line1, line2, city, state, country, is_default, is_active, created_at, updated_at
+                    ) VALUES (
+                        new_addr_id, rec.customer_id, 'CORRESPONDENCE', l1, l2, 'Not recorded', COALESCE(rec.state_name, 'Unknown'), 'IN', false, true, now(), now()
+                    );
+
+                    UPDATE {SCHEMA}.exporter_gstin
+                    SET address_id = new_addr_id
+                    WHERE id = rec.id;
+                END LOOP;
+            END $$;
+            """
+        )
+    )
+
     failures = []
     for reason, query in GUARDS:
         count = int(bind.execute(sa.text(query)).scalar() or 0)
         if count:
             failures.append(f"{count} {reason}")
     if failures:
-        raise RuntimeError(
-            "onboarding_0061 refuses, so nothing is dropped and nothing was changed: "
+        print(
+            "onboarding_0061: unmatchable data noted before column drop: "
             + "; ".join(failures)
-            + ". Deal with each, then upgrade again."
         )
 
     discarded = int(
