@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Collection
+from datetime import datetime
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.entities.background_check_proposal import (
@@ -112,25 +113,51 @@ class BackgroundCheckProposalRepository(AppendOnlyRepository[BackgroundCheckProp
     async def list_across_companies(
         self,
         *,
-        status: str,
+        status: str | None,
         exclude_proposer: str | None = None,
+        reviewed_by: str | None = None,
+        since: datetime | None = None,
         proposal_ids: Collection[uuid.UUID] | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[QueueRow], int]:
-        """Proposals of every company in ``status`` (``OPEN`` or an outcome), oldest
-        first for the open queue — the longest-waiting at the top — newest first
-        otherwise; each with its company's name. ``exclude_proposer`` drops one user's
-        own proposals; ``proposal_ids`` keeps only those (a page already chosen)."""
+        """Proposals of every company, each with its company's name.
+
+        ``status`` is ``OPEN`` or an outcome; ``None`` is every status, which only the
+        reviewed-by listing wants — one person's own work reads as a sequence, and
+        splitting it by outcome would hide the proposal they are still waiting on.
+
+        Ordered oldest first for the open queue — the longest-waiting at the top —
+        and newest first otherwise, which is also what a history reads as.
+
+        ``exclude_proposer`` drops one user's own proposals; ``reviewed_by`` keeps only
+        the proposals that user had a hand in, as either the proposer or the one who
+        resolved it; ``since`` bounds how far back it reaches; ``proposal_ids`` keeps
+        only those (a page already chosen).
+        """
         conditions = []
         if proposal_ids is not None:
             conditions.append(BackgroundCheckProposal.id.in_(list(proposal_ids)))
         if status == STATUS_OPEN:
             conditions.append(BackgroundCheckProposalResolution.id.is_(None))
-        else:
+        elif status is not None:
             conditions.append(BackgroundCheckProposalResolution.outcome == status)
         if exclude_proposer is not None:
             conditions.append(BackgroundCheckProposal.created_by != exclude_proposer)
+        if reviewed_by is not None:
+            # Both sides of maker-checker. A proposal this person proposed is their
+            # work whatever became of it, and one they approved or rejected is their
+            # work even though somebody else wrote it.
+            conditions.append(
+                or_(
+                    BackgroundCheckProposal.created_by == reviewed_by,
+                    BackgroundCheckProposalResolution.created_by == reviewed_by,
+                )
+            )
+        if since is not None:
+            # On the proposal's own date, not the resolution's, so a row keeps its place
+            # in the list when it is approved rather than jumping to the top.
+            conditions.append(BackgroundCheckProposal.created_at >= since)
 
         newest_first = status != STATUS_OPEN
         order = (

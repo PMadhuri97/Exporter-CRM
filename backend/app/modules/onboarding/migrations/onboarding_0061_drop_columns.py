@@ -185,9 +185,9 @@ def upgrade() -> None:
                 l1 VARCHAR(255);
                 l2 VARCHAR(255);
             BEGIN
-                FOR rec IN 
-                    SELECT id, customer_id, address, state_name 
-                    FROM {SCHEMA}.exporter_gstin 
+                FOR rec IN
+                    SELECT id, customer_id, address, state_name
+                    FROM {SCHEMA}.exporter_gstin
                     WHERE NULLIF(btrim(address), '') IS NOT NULL AND address_id IS NULL
                 LOOP
                     new_addr_id := gen_random_uuid();

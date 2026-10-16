@@ -261,15 +261,10 @@ export function CompanyImportPage() {
       <PageHeader
         title="Import companies"
         actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="subtle" onClick={() => void downloadTemplate('csv')}>
-              CSV template
-            </Button>
-            <Button onClick={() => void downloadTemplate('xlsx')}>
-              <Icon.download size={16} aria-hidden />
-              Download template
-            </Button>
-          </div>
+          <Button onClick={() => void downloadTemplate('csv')}>
+            <Icon.download size={16} aria-hidden />
+            CSV template
+          </Button>
         }
       />
 
@@ -304,7 +299,7 @@ export function CompanyImportPage() {
           <span className="text-secondary text-ink-3">
             {file
               ? `${Math.max(1, Math.round(file.size / 1024))} KB — choose another to replace it`
-              : 'Use the template: its Instructions sheet explains every column.'}
+              : 'Use the template: its header row names every column, in order.'}
           </span>
           <input
             type="file"

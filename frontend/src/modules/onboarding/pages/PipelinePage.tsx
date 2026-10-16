@@ -121,9 +121,12 @@ function PipelineCard({
       data-testid="pipeline-card"
       onMouseEnter={() => onIntent(profile.customer_id)}
       onFocus={() => onIntent(profile.customer_id)}
-      className="block rounded border border-line bg-surface p-3 transition-colors duration-quick hover:border-line-strong hover:bg-sunken"
+      className="group block rounded border border-line bg-surface p-3 transition-colors duration-quick hover:border-line-strong hover:bg-sunken"
     >
-      <span className="block text-body font-semibold leading-snug text-accent">
+      {/* Underlined on hover, including the unnamed ones: the whole card is the link,
+          but a named company reads as one and an italic grey "Unnamed lead" does not.
+          The underline is what says both open something. */}
+      <span className="block text-body font-semibold leading-snug text-accent underline-offset-2 group-hover:underline">
         {profile.name ?? <span className="italic text-ink-3">Unnamed lead</span>}
       </span>
 

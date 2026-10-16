@@ -244,6 +244,12 @@ export interface FollowUpListParams {
   includeCheckBacks?: boolean;
   /** Only the check-backs due on or before today — the Overdue tab's view. */
   checkBacksDueOnly?: boolean;
+  /**
+   * Widen that window to take in the ones falling due within this many days, so a
+   * check-back can be seen coming rather than only on the morning it is due. Needs
+   * `checkBacksDueOnly`; on its own there is no window to widen.
+   */
+  checkBacksDueWithinDays?: number;
   limit?: number;
   offset?: number;
 }

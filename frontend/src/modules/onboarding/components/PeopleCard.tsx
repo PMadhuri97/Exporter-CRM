@@ -28,7 +28,7 @@ import {
   Skeleton,
 } from '@/components';
 import { Icon } from '@/design/icons';
-import { useCan } from '@/platform/access';
+import { useCanRevealIdentifiers } from '@/platform/access';
 
 import { countryLabel } from '../countries';
 import { useAddExporterContact, useCompanyPeople, useUpdateExporterContact } from '../hooks';
@@ -299,7 +299,7 @@ function EditPersonForm({
   onDone: () => void;
 }) {
   const mutation = useUpdateExporterContact(customerId);
-  const mayReveal = useCan('identifiers.reveal');
+  const mayReveal = useCanRevealIdentifiers();
   const masked = (value: string | null | undefined) => (mayReveal ? (value ?? '') : '');
   const [form, setForm] = useState<PersonForm>({
     name: person.name,

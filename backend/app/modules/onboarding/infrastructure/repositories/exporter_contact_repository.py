@@ -4,12 +4,27 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.onboarding.domain.entities.engagement_enums import ContactStatus
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.people import ROLE_COLUMNS
 from app.platform.database.adapters.repository import BaseRepository
+
+#: Everything but the digits, stripped before one phone number is compared with
+#: another: the same line reaches the CRM as `+91 98765 43210`, `098765 43210` and
+#: `9876543210`.
+_NOT_A_DIGIT = r'[^0-9]'
+
+#: How many trailing digits decide whether two numbers are the same line.
+#:
+#: Not the whole string. Those three spellings hold 12, 11 and 10 digits, and comparing
+#: them whole calls one person three people — a country code or a trunk `0` in front is
+#: exactly what varies between one entry and the next. The last eight are the part that
+#: does not: two different lines sharing them is rare enough to accept, and the result
+#: is a warning somebody reads, not a refusal.
+SIGNIFICANT_PHONE_DIGITS = 8
 
 
 class ExporterContactRepository(BaseRepository[ExporterContact]):
@@ -25,6 +40,61 @@ class ExporterContactRepository(BaseRepository[ExporterContact]):
         if role is not None:
             statement = statement.where(getattr(ExporterContact, ROLE_COLUMNS[role]).is_(True))
         result = await self.session.execute(statement.order_by(ExporterContact.created_at.asc()))
+        return list(result.scalars().all())
+
+    async def others_sharing_details(
+        self,
+        customer_id: uuid.UUID,
+        *,
+        email: str | None,
+        phone: str | None,
+        exclude_id: uuid.UUID | None = None,
+    ) -> list[ExporterContact]:
+        """This company's other **active** contacts reachable at the same email or
+        phone number.
+
+        For a warning, never a refusal: one person is legitimately listed twice at some
+        companies — a founder who is both the commercial and the finance contact — and
+        one switchboard number serves a whole office. What this catches is the
+        accidental second entry, the same details typed twice.
+
+        Compared on the stored values, which only this side holds. Contact details
+        reach most roles masked, so a browser comparing what it was shown would match
+        two different people at one domain and miss two spellings of one number. Email
+        is compared without case; a phone by its last `SIGNIFICANT_PHONE_DIGITS` digits.
+
+        `INACTIVE` and `LEFT_COMPANY` contacts are left out. Their details are kept as a
+        record of who was once there, and warning that a new contact matches someone who
+        has left would put a warning on exactly the entry that replaces them.
+        """
+        matches = []
+        if email and email.strip():
+            matches.append(func.lower(ExporterContact.email) == email.strip().lower())
+        digits = "".join(character for character in (phone or "") if character.isdigit())
+        if len(digits) >= SIGNIFICANT_PHONE_DIGITS:
+            stored = func.regexp_replace(ExporterContact.phone, _NOT_A_DIGIT, "", "g")
+            matches.append(
+                func.right(stored, SIGNIFICANT_PHONE_DIGITS) == digits[-SIGNIFICANT_PHONE_DIGITS:]
+            )
+        elif digits:
+            # Too short to compare by its ending — an extension, or half a number.
+            # Matched whole, so it still catches the same thing typed twice.
+            matches.append(
+                func.regexp_replace(ExporterContact.phone, _NOT_A_DIGIT, "", "g") == digits
+            )
+        if not matches:
+            return []
+
+        conditions = [
+            ExporterContact.customer_id == customer_id,
+            ExporterContact.status == ContactStatus.ACTIVE.value,
+            or_(*matches),
+        ]
+        if exclude_id is not None:
+            conditions.append(ExporterContact.id != exclude_id)
+        result = await self.session.execute(
+            select(ExporterContact).where(*conditions).order_by(ExporterContact.created_at.asc())
+        )
         return list(result.scalars().all())
 
     async def get_for_customer(
@@ -73,4 +143,4 @@ class ExporterContactRepository(BaseRepository[ExporterContact]):
         await self.session.flush()
 
 
-__all__ = ["ExporterContactRepository"]
+__all__ = ["SIGNIFICANT_PHONE_DIGITS", "ExporterContactRepository"]

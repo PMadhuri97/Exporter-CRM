@@ -120,6 +120,17 @@ async def list_follow_ups(
             "beside work that is late. `check_backs_total` counts the same set."
         ),
     ),
+    check_backs_due_within_days: int = Query(
+        default=0,
+        ge=0,
+        le=30,
+        description=(
+            "Widen `check_backs_due_only` to take in the ones falling due within this "
+            "many days as well, so a check-back can be seen coming rather than only on "
+            "the morning it is due. Ignored unless `check_backs_due_only` is true. It "
+            "changes which companies are listed, never whether one reads as overdue."
+        ),
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> FollowUpListResponse:
@@ -132,6 +143,7 @@ async def list_follow_ups(
         due_after=due_after,
         include_check_backs=include_check_backs,
         check_backs_due_only=check_backs_due_only,
+        check_backs_due_within_days=check_backs_due_within_days,
         limit=limit,
         offset=offset,
     )

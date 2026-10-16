@@ -27,6 +27,7 @@ import {
   listBackgroundCheckProposals,
   listCheckCycles,
   listOpenProposals,
+  listProposalsIReviewed,
   listReKycDue,
   recordBackgroundCheckDecision,
   rejectBackgroundCheckProposal,
@@ -167,6 +168,16 @@ export function useProposalsAwaitingMe(params: { limit?: number; enabled?: boole
 }
 
 /** Companies whose Clear has expired or soon will — the Home card "Re-KYC due". */
+export function useProposalsIReviewed(
+  params: { days?: number; limit?: number; enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: [...PROPOSAL_QUEUE_KEY, 'reviewed-by-me', params.days ?? null, params.limit ?? null],
+    queryFn: () => listProposalsIReviewed({ days: params.days, limit: params.limit }),
+    enabled: params.enabled ?? true,
+  });
+}
+
 export function useReKycDue(params: { limit?: number; enabled?: boolean } = {}) {
   return useQuery({
     queryKey: [...REKYC_DUE_KEY, params.limit ?? null],
