@@ -28,7 +28,7 @@ path, operation or schema changed.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Depends, Header, Query, Response
@@ -49,7 +49,10 @@ from app.modules.onboarding.api.schemas.exporter import (
     SetMarkerRequest,
     UpdateExporterProfileRequest,
 )
-from app.modules.onboarding.api.schemas.masking import can_reveal_identifiers
+from app.modules.onboarding.api.schemas.masking import (
+    can_read_background_check,
+    can_reveal_identifiers,
+)
 from app.modules.onboarding.application import ExporterProfileService
 from app.modules.onboarding.application.collections_owner_service import (
     CollectionsOwnerService,
@@ -61,8 +64,10 @@ from app.modules.onboarding.domain.assignment import (
     holds,
     may_set_relationship_manager,
 )
+from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
+    CompanyTradeRole,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -70,6 +75,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
 from app.modules.onboarding.exceptions import (
+    BackgroundCheckFilterNotPermittedError,
     IdentifierSearchNotPermittedError,
     RelationshipManagerAssignNotAllowedError,
 )
@@ -121,6 +127,22 @@ def _reject_identifier_search(viewer: User, **filters: str | None) -> None:
     used = sorted(name for name, value in filters.items() if value is not None)
     if used:
         raise IdentifierSearchNotPermittedError(role=viewer.role.value, parameters=used)
+
+
+def _reject_background_check_filter(viewer: User, state: object) -> None:
+    """Refuse `?background_check=` from a caller who may not read a background
+    check: background checks are not shown to DEVELOPER, which is refused on every
+    background-check route (architecture.md, “Roles and masking”).
+
+    Asked through `can_read_background_check`, the same permission check that decides
+    whether the column is carried, so the filter and the column cannot disagree.
+
+    Blanking the column is not enough on its own: the filtered list is the answer.
+    Asking for `FLAGGED` and getting four rows names those four companies however the
+    rows are rendered.
+    """
+    if state is not None and not can_read_background_check(viewer):
+        raise BackgroundCheckFilterNotPermittedError(role=viewer.role.value)
 
 
 # ── Profile ───────────────────────────────────────────────────────────────
@@ -345,7 +367,9 @@ async def update_exporter_profile(
         403: {
             "description": (
                 "`exporters:view` permission required; or the "
-                "caller used a gstin/pan/iec filter and may not see raw identifiers"
+                "caller used a gstin/pan/iec filter and may not see raw identifiers; "
+                "or used the background_check filter and may not read background "
+                "checks"
             )
         },
     },
@@ -362,6 +386,25 @@ async def search_exporter_profiles(
     qualification: QualificationState | None = Query(default=None),
     marker: ExporterMarker | None = Query(default=None),
     pipeline_status: CompanyPipelineStatus | None = Query(default=None),
+    country: str | None = Query(
+        default=None, description="ISO country code; matched whole, case-insensitively."
+    ),
+    industry: str | None = Query(
+        default=None, description="Matched as a partial, case-insensitive substring."
+    ),
+    background_check: BackgroundCheckState | None = Query(default=None),
+    trade_role: CompanyTradeRole | None = Query(
+        default=None,
+        description=(
+            "Which side of a trade the company has been on, by participation rather than "
+            "by how the record was created. BOTH means it has been on both sides. Asking "
+            "for BUYER includes buyer-only companies, which the default list hides."
+        ),
+    ),
+    has_open_deals: bool | None = Query(
+        default=None,
+        description="Whether the company has a deal that is neither handed over nor withdrawn.",
+    ),
     relationship_manager: str | None = Query(
         default=None, description="`me`, `none`, `inactive` or a user id"
     ),
@@ -375,6 +418,7 @@ async def search_exporter_profiles(
     offset: int = Query(default=0, ge=0),
 ) -> ExporterProfileSearchResponse:
     _reject_identifier_search(current_user, gstin=gstin, pan=pan, iec=iec)
+    _reject_background_check_filter(current_user, background_check)
     rm_user_id: uuid.UUID | None = None
     rm_filter = (relationship_manager or "").strip().lower() or None
     if rm_filter == "me":
@@ -387,31 +431,46 @@ async def search_exporter_profiles(
                 "relationship_manager must be `me`, `none`, `inactive` or a user id"
             ) from exc
 
-    items = await ExporterProfileService(db).search_profiles(
-        gstin=gstin,
-        pan=pan,
-        iec=iec,
-        name_contains=name,
-        source=source,
-        journey=journey,
-        qualification=qualification,
-        marker=marker,
-        pipeline_status=pipeline_status,
-        relationship_manager_user_id=rm_user_id,
-        relationship_manager_unassigned=rm_filter == "none",
-        relationship_manager_inactive=rm_filter == "inactive",
-        missing_primary_contact=missing_primary_contact,
-        collections_owner_user_id=_collector_filter(collections_owner, current_user),
-        collections_owner_unassigned=(collections_owner or "").strip().lower() == "none",
-        limit=limit,
-        offset=offset,
-    )
+    # One set of keywords for both calls. They must select the same companies — the
+    # count sits beside the rows and in the Filters panel, so a filter applied to one
+    # and not the other puts a wrong number on screen. Passing them twice is how three
+    # filters were once counted out of the total but kept in the list.
+    selection: dict[str, Any] = {
+        "gstin": gstin,
+        "pan": pan,
+        "iec": iec,
+        "name_contains": name,
+        "source": source,
+        "journey": journey,
+        "qualification": qualification,
+        "marker": marker,
+        "pipeline_status": pipeline_status,
+        "country": country,
+        "industry": industry,
+        "background_check": background_check,
+        "trade_role": trade_role,
+        "has_open_deals": has_open_deals,
+        "relationship_manager_user_id": rm_user_id,
+        "relationship_manager_unassigned": rm_filter == "none",
+        "relationship_manager_inactive": rm_filter == "inactive",
+        "missing_primary_contact": missing_primary_contact,
+        "collections_owner_user_id": _collector_filter(collections_owner, current_user),
+        "collections_owner_unassigned": (collections_owner or "").strip().lower() == "none",
+    }
+
+    service = ExporterProfileService(db)
+    items = await service.search_profiles(**selection, limit=limit, offset=offset)
     profiles = [
         ExporterProfileListItemResponse.model_validate(item).masked_for(current_user)
         for item in items
     ]
     await _name_relationship_managers(db, current_user, profiles)
-    return ExporterProfileSearchResponse(profiles=profiles, limit=limit, offset=offset)
+    # The number behind the page, so a screen can say "185" rather than counting the
+    # rows it happens to hold.
+    total = await service.count_profiles(**selection)
+    return ExporterProfileSearchResponse(
+        profiles=profiles, limit=limit, offset=offset, total=total
+    )
 
 
 # ── Marker (PAUSED / ENDED) ──────────────────────────────────────────────

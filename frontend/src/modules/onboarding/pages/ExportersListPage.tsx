@@ -11,18 +11,22 @@
  * counts link straight into one.
  *
  * **Whose companies.** `?owner=me` is *My companies*, reached from its own row in the
- * side navigation (the page is titled so). The owner filter narrows to *Unassigned*
- * (with the journey lens, *Unassigned prospects*) or companies whose RM has been
- * deactivated. Both are filters only: every reader sees every company. ADMIN and
- * holders of `exporters:assign_rm` get **Reassign companies**.
+ * side navigation (the page is titled so). `?owner=none` and `?owner=inactive` narrow
+ * to unassigned companies and to those whose RM has been deactivated; both still work,
+ * but the bar no longer offers them as a dropdown, so they are URL lenses now. Every one
+ * of them is a filter only: every reader sees every company. ADMIN and holders of
+ * `exporters:assign_rm` get **Reassign companies**.
  *
- * The list route has no total: journey counts are capped ("200+"), and the
- * footer says how many are shown rather than guessing how many exist. Hovering or
- * focusing a row loads its record ahead of the click.
+ * **How many.** The list route now returns `total` — the count behind the page — so
+ * the Filters panel says how many companies match rather than how many are loaded.
+ * The journey counts above the list are a separate query and still cap at "200+";
+ * moving them onto `total` would change numbers on Home too, so it is its own change.
+ * Hovering or focusing a row loads its record ahead of the click.
  */
 
-import { useState } from 'react';
+import { useCallback, useState, type SetStateAction } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import {
   Badge,
@@ -42,6 +46,12 @@ import { Icon } from '@/design/icons';
 import { useCan, useHasPermission } from '@/platform/access';
 
 import { BulkReassignPanel, CompanyBadges } from '../components';
+import { CompanyFilterPanel } from '../components/CompanyFilterPanel';
+import { describeFilters, type CompanyFilters } from '../companyFilters';
+import { saveObjectUrl } from '../components/useOpenDocument';
+import { searchExporterProfiles } from '../api';
+import { ExportColumnsPanel } from '../components/ExportColumnsPanel';
+import { companiesToCsv, csvBlob, csvFileName, gatherForExport } from '../exportCompanies';
 import { JOURNEY_LABEL, JOURNEY_STAGES, MARKER_LABEL, QUALIFICATION_LABEL } from '../constants';
 import { COUNT_CAP, useExporterProfiles, useJourneyCount, usePrefetchCompany } from '../hooks';
 import { preloadExporterDetailPage } from '../lazyPages';
@@ -59,13 +69,15 @@ type Lens = 'ALL' | ExporterJourney;
 const LENSES: readonly Lens[] = ['ALL', ...JOURNEY_STAGES];
 const QUALIFICATIONS: readonly string[] = ['ANY', ...Object.keys(QUALIFICATION_LABEL)];
 const RELATIONSHIPS: readonly string[] = ['ANY', ...Object.keys(MARKER_LABEL)];
-/** The owner filter's choices. *My companies* (`me`) is not one: it has its own row
- * in the side navigation. */
-const OWNER_LABEL = {
-  none: 'Unassigned',
-  inactive: 'RM deactivated',
-} as const;
-type Owner = 'ANY' | 'me' | keyof typeof OWNER_LABEL;
+/**
+ * Who a company belongs to.
+ *
+ * `me` is *My companies*, which has its own row in the side navigation — the page is
+ * titled for it, so the panel hides the control there. `none` (unassigned) and
+ * `inactive` (the RM's account is deactivated) are offered in the Filters panel, with
+ * the labels the panel holds. Each stays a URL lens, so a link to one can be shared.
+ */
+type Owner = 'ANY' | 'me' | 'none' | 'inactive';
 const OWNERS: readonly Owner[] = ['ANY', 'me', 'none', 'inactive'];
 type ContactFilter = 'ANY' | 'missing';
 type CollectionsFilter = 'ANY' | 'me' | 'none';
@@ -165,6 +177,47 @@ export function ExportersListPage() {
   const [pages, setPages] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [name, setName] = useState('');
+  // The panel's filters, applied only when it says so. Held here rather than in the
+  // URL: two of them are free text, which `useSearchParamState` cannot express — a
+  // shareable filtered link is worth having and is a separate change.
+  const [filters, setFilters] = useState<CompanyFilters>({});
+  // Referentially stable, which the panel's typing timer relies on. It also resets the
+  // paging: the old offset belongs to the old filter.
+  const changeFilters = useCallback((next: SetStateAction<CompanyFilters>) => {
+    setFilters(next);
+    setPages(1);
+  }, []);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  // The panel stores only filters that are actually set, so the key count is the badge.
+  /** The panel's own filters, which is what `filteringOtherThanOwner` may count. */
+  const panelFilterCount = Object.keys(filters).length;
+  /**
+   * The lenses the panel offers and *Clear* clears — `me` is not one of them.
+   *
+   * `?owner=me` is the My companies page, not a filter on it: counting it would badge
+   * that page as narrowed on every visit, and clearing it would move the viewer to a
+   * different page than the one they were reading.
+   */
+  const clearableLenses: ('owner' | 'contacts' | 'collections')[] = [
+    ...(owner === 'ANY' || owner === 'me' ? [] : (['owner'] as const)),
+    ...(contactFilter === 'ANY' ? [] : (['contacts'] as const)),
+    ...(collectionsFilter === 'ANY' ? [] : (['collections'] as const)),
+  ];
+  /** What the Filters badge shows, and what *Clear* has to be able to undo. */
+  const filterCount = panelFilterCount + clearableLenses.length;
+
+  /**
+   * One of the URL-backed lenses, set from the panel. They keep their own state rather
+   * than joining `filters`: each is a shareable link (`?owner=none`), and *My
+   * companies* is `?owner=me` with its own navigation row.
+   */
+  function changeLens(key: 'owner' | 'contacts' | 'collections', value: string) {
+    setPages(1);
+    if (key === 'owner') setOwner(value as Owner);
+    else if (key === 'contacts') setContactFilter(value as ContactFilter);
+    else setCollectionsFilter(value as CollectionsFilter);
+  }
   const prefetch = usePrefetchCompany();
   // The company record, ready to draw: its code and the company's data.
   const prepare = (customerId: string) =>
@@ -173,17 +226,27 @@ export function ExportersListPage() {
     );
 
   const limit = Math.min(PAGE_SIZE * pages, COUNT_CAP);
-  const { data, isLoading, isError, isFetching, refetch } = useExporterProfiles({
+  // Named once: the list reads a page of this, and the export gathers all of it. Two
+  // copies would drift, and an export of different filters than the screen shows is the
+  // kind of wrong nobody notices.
+  const search = {
     name: name || undefined,
     journey: lens === 'ALL' ? undefined : lens,
     qualification: qualification === 'ANY' ? undefined : (qualification as QualificationState),
     marker: relationship === 'ANY' ? undefined : (relationship as ExporterMarker),
+    ...filters,
     relationship_manager: owner === 'ANY' ? undefined : (owner as RelationshipManagerFilter),
     missing_primary_contact: contactFilter === 'missing' || undefined,
     collections_owner: collectionsFilter === 'ANY' ? undefined : collectionsFilter,
+  };
+  const { data, isLoading, isError, isFetching, refetch } = useExporterProfiles({
+    ...search,
     limit,
   });
   const profiles = data?.profiles ?? [];
+  // What the filters match, not what this page holds: a page of 50 said "50" for a
+  // filter matching 185.
+  const matching = data?.total ?? profiles.length;
   const filtering = Boolean(
     name ||
       qualification !== 'ANY' ||
@@ -191,15 +254,19 @@ export function ExportersListPage() {
       lens !== 'ALL' ||
       owner !== 'ANY' ||
       contactFilter !== 'ANY' ||
-      collectionsFilter !== 'ANY',
+      collectionsFilter !== 'ANY' ||
+      Boolean(filterCount),
   );
+  // The panel's filters count here too — but not the owner lens, which is the whole
+  // distinction this second flag draws, so `panelFilterCount` rather than `filterCount`.
   const filteringOtherThanOwner = Boolean(
     name ||
       qualification !== 'ANY' ||
       relationship !== 'ANY' ||
       lens !== 'ALL' ||
       contactFilter !== 'ANY' ||
-      collectionsFilter !== 'ANY',
+      collectionsFilter !== 'ANY' ||
+      Boolean(panelFilterCount),
   );
   const mayHaveMore = profiles.length === limit && limit < COUNT_CAP;
 
@@ -308,25 +375,6 @@ export function ExportersListPage() {
                 </option>
               ))}
             </Select>
-            {/* On My companies the owner is the page itself. */}
-            {owner !== 'me' && (
-              <Select
-                aria-label="Owner"
-                className="sm:w-auto"
-                value={owner === 'ANY' ? '' : owner}
-                onChange={(event) => {
-                  setOwner((event.target.value || 'ANY') as Owner);
-                  setPages(1);
-                }}
-              >
-                <option value="">Any owner</option>
-                {(Object.keys(OWNER_LABEL) as (keyof typeof OWNER_LABEL)[]).map((value) => (
-                  <option key={value} value={value}>
-                    {OWNER_LABEL[value]}
-                  </option>
-                ))}
-              </Select>
-            )}
             <Select
               aria-label="Relationship"
               className="sm:w-auto"
@@ -336,38 +384,54 @@ export function ExportersListPage() {
                 setPages(1);
               }}
             >
-              <option value="">Any relationship (ended hidden)</option>
+              <option value="">Any relationship</option>
               {(Object.keys(MARKER_LABEL) as ExporterMarker[]).map((value) => (
                 <option key={value} value={value}>
                   {MARKER_LABEL[value]}
                 </option>
               ))}
             </Select>
-            <Select
-              aria-label="Contacts"
-              className="sm:w-auto"
-              value={contactFilter === 'ANY' ? '' : contactFilter}
-              onChange={(event) => {
-                setContactFilter((event.target.value || 'ANY') as ContactFilter);
-                setPages(1);
-              }}
+            {/* Owner, Contacts and Collections owner are behind *Filters* with the
+                rest: the bar keeps the lenses used on almost every visit, and five
+                dropdowns on one line read as a form rather than a list. */}
+
+            {/* Every company the filters match, as a file — gathered a page at a time,
+                not the page on screen. */}
+            <Button
+              variant="subtle"
+              disabled={profiles.length === 0}
+              onClick={() => setExporting(true)}
             >
-              <option value="">Any contacts</option>
-              <option value="missing">No primary contact</option>
-            </Select>
-            <Select
-              aria-label="Collections"
-              className="sm:w-auto"
-              value={collectionsFilter === 'ANY' ? '' : collectionsFilter}
-              onChange={(event) => {
-                setCollectionsFilter((event.target.value || 'ANY') as CollectionsFilter);
-                setPages(1);
-              }}
-            >
-              <option value="">Any collections owner</option>
-              <option value="me">My collections</option>
-              <option value="none">No collections owner</option>
-            </Select>
+              <Icon.download size={16} aria-hidden />
+              Export
+            </Button>
+
+            {/* The rest of the filters, behind one button. The count is what tells
+                somebody the list is narrowed — without it a filtered list looks like an
+                empty one. */}
+            <Button variant="subtle" onClick={() => setFiltersOpen(true)}>
+              <Icon.filter size={16} aria-hidden />
+              Filters
+              {filterCount > 0 && (
+                <span className="ml-1 rounded-full bg-accent-tint px-1.5 text-caption font-semibold text-accent tabular-nums">
+                  {filterCount}
+                </span>
+              )}
+            </Button>
+            {filterCount > 0 && (
+              <Button
+                variant="subtle"
+                onClick={() => {
+                  // Everything the badge counted. Clearing only the panel's own
+                  // filters left the button showing with nothing left to do.
+                  setFilters({});
+                  for (const key of clearableLenses) changeLens(key, 'ANY');
+                  setPages(1);
+                }}
+              >
+                Clear
+              </Button>
+            )}
           </div>
         </div>
 
@@ -435,6 +499,47 @@ export function ExportersListPage() {
           </>
         )}
       </section>
+
+      {exporting && (
+        <ExportColumnsPanel
+          appliedFilters={describeFilters(filters)}
+          onClose={() => setExporting(false)}
+          onExport={async (columnIds) => {
+            // Every row the filters match, not the page on screen: the list loads 50 at
+            // a time, and exporting those 50 is how a file of 208 companies becomes 50.
+            const { rows, capped } = await gatherForExport(
+              (pageLimit, offset) =>
+                searchExporterProfiles({ ...search, limit: pageLimit, offset }).then(
+                  (result) => result.profiles,
+                ),
+              { keyOf: (profile) => profile.customer_id },
+            );
+            const url = URL.createObjectURL(csvBlob(companiesToCsv(rows, columnIds)));
+            saveObjectUrl(url, csvFileName());
+            // On a later tick: revoking at once cancels the save in some browsers.
+            window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+            setExporting(false);
+            if (capped) {
+              toast.warning(
+                `Exported the first ${rows.length} companies. Narrow the filters to export the rest.`,
+              );
+            }
+          }}
+        />
+      )}
+
+      {/* Mounted only while open, so every opening starts from the filters in force. */}
+      {filtersOpen && (
+        <CompanyFilterPanel
+          applied={filters}
+          lenses={{ owner, contacts: contactFilter, collections: collectionsFilter }}
+          shown={matching}
+          loading={isLoading || isFetching}
+          onChange={changeFilters}
+          onLensChange={changeLens}
+          onClose={() => setFiltersOpen(false)}
+        />
+      )}
     </div>
   );
 }

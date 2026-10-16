@@ -71,6 +71,7 @@ beforeEach(() => {
     profiles: [{ customer_id: COMPANY, name: 'Bharat Precision Metals', country: 'IN', journey: 'CUSTOMER' }],
     limit: 8,
     offset: 0,
+    total: 1,
   });
 });
 
