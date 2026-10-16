@@ -4,7 +4,7 @@
 `case_timeline_event` (`NOTE_ADDED`) and bumps `compliance_case.
 last_updated_at` — it never changes `case_status`, so it does not go through
 `CaseLifecycleService._transition`. It is still barred on a terminal case:
-the Jira doc's S3T3 section states "Officers can add notes to a case at any
+the specification's S3T3 section states "Officers can add notes to a case at any
 point in its lifecycle (except terminal states)", enforced here via
 `CaseIsTerminalError`.
 
@@ -33,7 +33,7 @@ from app.modules.cases.domain.entities.enums import (
 from app.modules.cases.exceptions import CaseIsTerminalError, CaseNotFoundError
 from app.shared.exceptions import ValidationError
 
-#: Jira doc, S3T3: "Notes support plain-text content with a maximum length
+#: Specification, S3T3: "Notes support plain-text content with a maximum length
 #: of 10,000 characters."
 MAX_NOTE_LENGTH = 10_000
 

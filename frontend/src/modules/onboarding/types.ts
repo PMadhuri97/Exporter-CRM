@@ -139,7 +139,7 @@ export type TriggerVerificationRequest = Omit<
 export type RecordVerificationReviewRequest =
   components['schemas']['RecordReviewRequest'];
 
-// The five types below were hand-written copies of shapes the backend already
+// The types below were hand-written copies of shapes the backend already
 // describes. Every one of them has a generated counterpart — they predate the
 // screening/bank-activity responses landing in the OpenAPI document — and a
 // hand-maintained copy of a generated type drifts silently: the backend
@@ -149,10 +149,6 @@ export type ScreeningReviewItem =
   components['schemas']['ScreeningReviewItemResponse'];
 export type ScreeningReviewList =
   components['schemas']['ScreeningReviewListResponse'];
-export type BankActivityFinding =
-  components['schemas']['BankActivityFindingResponse'];
-export type BankActivityResponse =
-  components['schemas']['BankActivityResponse'];
 
 /** The four checklist states, taken from the response rather than restated.
  *

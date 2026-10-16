@@ -1,6 +1,5 @@
 /**
- * What each role may use — the one client-side copy of the server's role groups
- * (`docs/frontend-plan.md` §4.1–4.2).
+ * What each role may use — the one client-side copy of the server's role groups.
  *
  * The server is the authority: it refuses what a role may not do whatever the screen
  * shows. This exists so the screen never **offers**, **mentions**, **fetches** or

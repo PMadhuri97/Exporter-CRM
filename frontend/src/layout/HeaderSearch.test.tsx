@@ -1,5 +1,5 @@
 /**
- * The header search (frontend-plan §7.5). What matters most is what it never does: a
+ * The header search. What matters most is what it never does: a
  * masked role never sends an identifier search (decision 12) — it gets a hint
  * instead — nothing is requested until someone types, and it offers no actions.
  */

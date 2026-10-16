@@ -48,7 +48,6 @@ function registration(overrides: Partial<GstRegistration> = {}): GstRegistration
     state_code: '27',
     state_name: 'Maharashtra',
     status: 'UNVERIFIED',
-    address: null,
     flag_status: 'NONE',
     flag_reason: null,
     active: true,

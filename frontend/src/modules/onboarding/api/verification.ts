@@ -88,11 +88,3 @@ export function updateScreeningReviewItem(
     { method: 'PUT', body: payload },
   );
 }
-
-export function getBankActivity(
-  customerId: string,
-): Promise<import('../types').BankActivityResponse> {
-  return apiRequest<import('../types').BankActivityResponse>(
-    `/onboarding/exporters/${customerId}/bank-activity`,
-  );
-}

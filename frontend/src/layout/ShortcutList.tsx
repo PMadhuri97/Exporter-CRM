@@ -1,5 +1,5 @@
 /**
- * The shortcut list, opened with Ctrl+/ as in Salesforce (frontend-plan §7.5). The
+ * The shortcut list, opened with Ctrl+/ as in Salesforce. The
  * whole keyboard is these few keys, bound in `useGlobalShortcuts.ts`; Tab order does
  * the rest. Nothing fires while someone is typing.
  */

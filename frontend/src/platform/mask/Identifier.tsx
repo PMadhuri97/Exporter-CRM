@@ -1,5 +1,5 @@
 /**
- * An identifier — PAN, GSTIN, IEC, CIN, a registration number (frontend-plan §6.14).
+ * An identifier — PAN, GSTIN, IEC, CIN, a registration number.
  * Replaces `MaskedValue` everywhere; the one component that owns the masking rule
  * on screen.
  *
@@ -21,9 +21,8 @@
  * - Copy is offered **only** where the full value is on screen — never beside
  *   bullets: copying them is useless, and the button would invite the question.
  *
- * **The eye starts closed.** This settles the open question frontend-plan §6.14 left
- * (either the eye goes, or a privileged role reads masked until it reveals) the second
- * way. Until then a role that may reveal was shown the full value *and* an eye, so the
+ * **The eye starts closed.** Of the two ways to make the eye mean something for a role
+ * that may reveal (drop it, or read masked until revealed), this is the second. Until then a role that may reveal was shown the full value *and* an eye, so the
  * button toggled between full and full and appeared broken — which is how a reviewer
  * found it.
  *

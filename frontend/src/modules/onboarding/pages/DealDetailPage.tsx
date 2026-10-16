@@ -22,26 +22,22 @@ import {
   DetailRow,
   EmptyLine,
   ErrorState,
-  Field,
   FormPanel,
-  Input,
   Panel,
   type RecordAction,
   type RecordField,
   RecordHeader,
-  RequiredNote,
   SidePanel,
   Skeleton,
   Textarea,
 } from '@/components';
 import { Icon } from '@/design/icons';
 import { formatDateTime, humanize } from '@/lib/format';
-import { useCan, useCanRevealIdentifiers } from '@/platform/access';
+import { useCan } from '@/platform/access';
 
 import {
   BuyerChecks,
   CompanyPicker,
-  CountrySelect,
   DealHistory,
   DealStageChip,
   InvoicingBranchPicker,
@@ -65,7 +61,7 @@ import { DealTermsPanel } from '../components/DealTermsPanel';
 import { moneyLabel, termLabel } from '../components/payment-term-labels';
 import { countryLabel } from '../countries';
 import { paths } from '../paths';
-import type { DealStage, SetDealBuyerRequest } from '../types';
+import type { DealStage } from '../types';
 
 const STAGE_ACTION_LABEL: Record<DealStage, string> = {
   OPEN: 'Reopen',
@@ -73,122 +69,6 @@ const STAGE_ACTION_LABEL: Record<DealStage, string> = {
   HANDED_OVER: 'Hand over to lending',
   WITHDRAWN: 'Withdraw',
 };
-
-/**
- * `SetDealBuyerRequest`'s legacy form. The generated type is one shape for both forms,
- * so every field in it is optional; in this form `name` and `country` are required
- * together, and `buyer_company_id` belongs to the other form.
- */
-type LegacyBuyerRequest = Omit<SetDealBuyerRequest, 'buyer_company_id' | 'name' | 'country'> & {
-  name: string;
-  country: string;
-};
-
-/** The buyer fields the server masks for OPERATIONS and DEVELOPER. */
-const MASKED_BUYER_FIELDS = ['registration_number', 'tax_id', 'contact_email', 'contact_phone'] as const;
-type MaskedBuyerField = (typeof MASKED_BUYER_FIELDS)[number];
-
-function BuyerForm({
-  dealId,
-  customerId,
-  initial,
-  revealIdentifiers,
-  onClose,
-}: {
-  dealId: string;
-  customerId?: string;
-  initial: LegacyBuyerRequest | null;
-  /** COMPLIANCE and ADMIN receive the buyer in full; every other role receives
-   * the masked fields masked. */
-  revealIdentifiers: boolean;
-  onClose: () => void;
-}) {
-  const mutation = useSetDealBuyer(dealId, customerId);
-  // A role that sees masked values starts those fields empty rather than holding
-  // bullets it could send back (the server refuses them). Left empty they are
-  // left out of the request, which keeps the stored value; typed, they replace it.
-  const [form, setForm] = useState<LegacyBuyerRequest>(() => {
-    const start = initial ?? { name: '', country: '' };
-    if (revealIdentifiers || initial === null) return start;
-    const cleared = { ...start };
-    for (const key of MASKED_BUYER_FIELDS) cleared[key] = null;
-    return cleared;
-  });
-  const hidden = (key: keyof LegacyBuyerRequest): key is MaskedBuyerField =>
-    !revealIdentifiers && initial !== null && (MASKED_BUYER_FIELDS as readonly string[]).includes(key);
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!form.country.trim()) {
-      toast.error("Choose the buyer's country");
-      return;
-    }
-    const request: SetDealBuyerRequest = {
-      ...form,
-      name: form.name.trim(),
-      country: form.country.trim().toUpperCase(),
-    };
-    for (const key of MASKED_BUYER_FIELDS) {
-      if (hidden(key) && !form[key]?.trim()) delete request[key];
-    }
-    try {
-      await mutation.mutateAsync(request);
-      toast.success('Buyer saved');
-      onClose();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not save the buyer');
-    }
-  }
-
-  const field = (key: keyof LegacyBuyerRequest, label: string, required = false) => (
-    <Field label={label} htmlFor={`buyer-${key}`} required={required}>
-      <Input
-        id={`buyer-${key}`}
-        type="text"
-        required={required}
-        placeholder={hidden(key) ? 'Hidden — type to replace' : undefined}
-        value={(form[key] as string | null) ?? ''}
-        onChange={(event) => setForm({ ...form, [key]: event.target.value })}
-      />
-    </Field>
-  );
-
-  return (
-    <FormPanel title={initial ? 'Edit buyer' : 'Add buyer'} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <RequiredNote />
-        <div className="grid gap-3 sm:grid-cols-2">
-          {field('name', 'Buyer name', true)}
-          <Field label="Country" htmlFor="buyer-country" required>
-            <CountrySelect
-              id="buyer-country"
-              value={form.country}
-              onChange={(code) => setForm({ ...form, country: code })}
-            />
-          </Field>
-          {field('registration_number', 'Registration number')}
-          {field('tax_id', 'Tax identifier')}
-          {field('contact_email', 'Contact email')}
-          {field('contact_phone', 'Contact phone')}
-        </div>
-        <p className="text-caption text-ink-3">
-          One buyer per deal. Saving replaces the details rather than adding a second
-          buyer — a handover names one buyer, so two would be ambiguous.
-        </p>
-        <div className="flex justify-end">
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={form.name.trim() === '' || form.country.trim().length !== 2}
-            loading={mutation.isPending}
-          >
-            Save buyer
-          </Button>
-        </div>
-      </form>
-    </FormPanel>
-  );
-}
 
 /** What the handover snapshot's `snapshot_source` means, in words. */
 const SNAPSHOT_SOURCE_LABEL: Record<string, string> = {
@@ -245,7 +125,7 @@ function HandoverSnapshot({ snapshot }: { snapshot: Record<string, unknown> }) {
 }
 
 /**
- * The deal's stage moves as header actions (frontend-plan §8.6), exactly the server's
+ * The deal's stage moves as header actions, exactly the server's
  * `allowed_stage_moves`. *Hand over* is the primary action and keeps its confirmation
  * (it is terminal and announces the deal to the lending team); *Withdraw* asks for
  * its reason in a side panel before anything is sent.
@@ -342,7 +222,6 @@ function useStageMoves({
 export function DealDetailPage() {
   const { dealId } = useParams<{ dealId: string }>();
   const isStaff = useCan('crm.write');
-  const canReveal = useCanRevealIdentifiers();
   const canSetRequiredDocuments = useCan('settings.requiredDocuments');
 
   const { data: deal, isLoading, isError, refetch } = useDeal(dealId);
@@ -355,7 +234,6 @@ export function DealDetailPage() {
   // Which paperwork a handover needs, marked on the document list (readable by every reader).
   const requiredDocuments = useDealRequiredDocuments();
   const upload = useUploadDealDocument(dealId ?? '');
-  const [editingBuyer, setEditingBuyer] = useState(false);
   const [pickingCompany, setPickingCompany] = useState(false);
   // Task 2.4's write: the same `PUT /deals/{id}/buyer` route, in its company form.
   const setBuyerCompany = useSetDealBuyer(dealId ?? '', deal?.company_id);
@@ -422,7 +300,7 @@ export function DealDetailPage() {
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_22.5rem]">
         <div className="flex min-w-0 flex-col gap-4">
-          {/* The guard's verdict (frontend-plan §6.11): the server's sentence verbatim,
+          {/* The guard's verdict: the server's sentence verbatim,
               a checklist once structured conditions are served. Staff only: Developer
               is sent no reason. */}
           {isStaff && deal.handover_blocked_reason && (
@@ -506,12 +384,6 @@ export function DealDetailPage() {
                       <Button size="sm" variant="primary" onClick={() => setPickingCompany(true)}>
                         Choose buyer company
                       </Button>
-                      {/* The legacy `deal_buyer` form: kept while deals written before the
-                          buyer migration still have one (it is where such a deal's
-                          sanctions and AML are recorded). Retires with the legacy buyer. */}
-                      <Button size="sm" variant="subtle" onClick={() => setEditingBuyer(true)}>
-                        {deal.buyer ? 'Edit buyer details' : 'Record details instead'}
-                      </Button>
                     </div>
                   )}
                 </div>
@@ -547,26 +419,6 @@ export function DealDetailPage() {
                   }}
                 />
               </FormPanel>
-            )}
-            {editingBuyer && (
-              <BuyerForm
-                dealId={deal.id}
-                customerId={deal.company_id}
-                initial={
-                  deal.buyer
-                    ? {
-                        name: deal.buyer.name,
-                        country: deal.buyer.country,
-                        registration_number: deal.buyer.registration_number,
-                        tax_id: deal.buyer.tax_id,
-                        contact_email: deal.buyer.contact_email,
-                        contact_phone: deal.buyer.contact_phone,
-                      }
-                    : null
-                }
-                revealIdentifiers={canReveal}
-                onClose={() => setEditingBuyer(false)}
-              />
             )}
           </section>
 

@@ -85,7 +85,6 @@ function company(overrides: Partial<ExporterProfileListItem>): ExporterProfileLi
     identity_type: 'IN_PAN',
     pipeline_status: 'IN_PIPELINE',
     source: 'MANUAL',
-    relationship_manager: null,
     relationship_manager_user_id: null,
     industry: null,
     year_established: null,

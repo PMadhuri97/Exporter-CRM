@@ -82,7 +82,7 @@ export type { InvoicingBranchPickerProps } from './InvoicingBranchPicker';
 export { CompanyComplianceSummary } from './CompanyComplianceSummary';
 export * from './record';
 
-// The gauges as worded status badges (frontend-plan §6.4), one per gauge.
+// The gauges as worded status badges, one per gauge.
 export {
   BackgroundCheckBadge,
   ConversationBadge,
@@ -93,7 +93,7 @@ export {
   RiskBadge,
 } from './StatusBadge';
 
-// The company record's right column: related records as cards (frontend-plan §6.6).
+// The company record's right column: related records as cards.
 export { CompanyRelatedCards } from './CompanyRelatedCards';
 export { RelationshipManagerField, RelationshipManagerName } from './RelationshipManagerField';
 export { BulkReassignPanel } from './BulkReassignPanel';

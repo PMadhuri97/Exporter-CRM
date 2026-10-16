@@ -36,7 +36,6 @@ function company(journey: ExporterJourney, name: string): ExporterProfileListIte
     pipeline_status: 'IN_PIPELINE',
   has_active_primary_contact: true,
     source: 'MANUAL',
-    relationship_manager: null,
     relationship_manager_user_id: null,
     industry: null,
     year_established: null,
@@ -176,7 +175,6 @@ describe('PipelinePage — the three-column journey', () => {
                 {
                   ...company('CUSTOMER', 'Kaveri Spice Traders'),
                   industry: 'Spices',
-                  relationship_manager: 'Srikar',
                   relationship_manager_name: 'Srikar',
                 },
               ]

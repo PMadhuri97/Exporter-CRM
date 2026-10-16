@@ -49,7 +49,7 @@ export const paths = {
    */
   newDeal: '/deals?new=1',
   deal: (dealId: string) => `/deals/${dealId}`,
-  /** Companies as a board of three journey columns (frontend-plan §8.3). */
+  /** Companies as a board of three journey columns. */
   board: '/companies?view=board',
   /** The companies this user is relationship manager of: the list, filtered by owner. */
   myCompanies: '/companies?owner=me',

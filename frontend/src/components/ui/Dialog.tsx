@@ -108,8 +108,8 @@ export function ConfirmDialog({
 }
 
 /**
- * A surface sliding in from an edge. `right` is the side panel (frontend-plan
- * §6.9): 480px wide, the full width under 768px, with a header, a scrolling body
+ * A surface sliding in from an edge. `right` is the side panel: 480px wide, the full
+ * width under 768px, with a header, a scrolling body
  * and a footer. `left` is the navigation drawer on a narrow screen (§6.2). It
  * floats, so it carries the one shadow; the page behind stays put.
  */

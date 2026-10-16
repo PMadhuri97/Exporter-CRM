@@ -24,14 +24,22 @@ import type {
   SetConversationRequest,
 } from '../types';
 
-export function listExporterContacts(customerId: string): Promise<{
+/**
+ * The company's people holding `role`: `CONTACT` (the default — who we talk to),
+ * `DIRECTOR`, `UBO`, or `ALL`.
+ */
+export function listExporterContacts(
+  customerId: string,
+  role: 'CONTACT' | 'DIRECTOR' | 'UBO' | 'ALL' = 'CONTACT',
+): Promise<{
   customer_id: string;
   contacts: import('../types').ExporterContact[];
 }> {
+  const query = role === 'CONTACT' ? '' : `?role=${role}`;
   return apiRequest<{
     customer_id: string;
     contacts: import('../types').ExporterContact[];
-  }>(`/onboarding/exporters/${customerId}/contacts`);
+  }>(`/onboarding/exporters/${customerId}/contacts${query}`);
 }
 
 export function addExporterContact(

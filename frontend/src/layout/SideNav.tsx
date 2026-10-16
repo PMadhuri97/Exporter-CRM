@@ -1,5 +1,5 @@
 /**
- * The side navigation (frontend-plan §6.2, §7.3): the role's modules as labelled
+ * The side navigation: the role's modules as labelled
  * rows with an icon, Settings at the foot, then *Collapse*. 224px wide; the button
  * collapses it to 56px of icons with tooltips, and the choice is remembered per
  * viewer. Under 1024px it is hidden, and the same rows open as a drawer from the

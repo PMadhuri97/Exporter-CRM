@@ -1,5 +1,5 @@
 /**
- * A form opened from a page, in the side panel (frontend-plan §6.9) instead of a box
+ * A form opened from a page, in the side panel instead of a box
  * in the middle of the page. The form inside keeps its own fields and buttons;
  * Escape or the close button calls `onClose`, and focus returns to what opened it.
  *

@@ -14,7 +14,7 @@ const LoginPage = lazy(() =>
 );
 
 /**
- * The style guide (frontend-plan §12.4), in development only. `import.meta.env.DEV` is
+ * The style guide, in development only. `import.meta.env.DEV` is
  * the literal `false` in a production build, so this branch — and the dynamic import
  * inside it — is removed and the guide never reaches the bundle (checked on `dist/`).
  */

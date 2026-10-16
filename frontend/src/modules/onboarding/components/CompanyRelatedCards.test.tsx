@@ -33,13 +33,14 @@ vi.mock('../api', async (importOriginal) => ({
   updateExporterContact: vi.fn(),
   setExporterContactStatus: vi.fn(),
 }));
-// The other three cards fetch their own lists; they are not under test here.
+// The other cards fetch their own lists; they are not under test here.
 vi.mock('../hooks', async (importOriginal) => {
   const idle = () => ({ data: undefined, isLoading: false, isError: false });
   return {
     ...(await importOriginal<typeof import('../hooks')>()),
     useFollowUps: idle,
     useCompanyDeals: idle,
+    useCompanyPeople: idle,
     useCompanyDocuments: idle,
   };
 });
@@ -62,6 +63,9 @@ const JANE: ExporterContact = {
   last_verified_by: null,
   created_at: '2026-09-01T10:00:00Z',
   verification_due: false,
+  is_contact: true,
+  is_director: false,
+  is_ubo: false,
 };
 
 const RAVI: ExporterContact = {

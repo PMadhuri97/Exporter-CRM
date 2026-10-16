@@ -1,5 +1,5 @@
 /**
- * Compliance work — the compliance working day (frontend-plan §8.8), for COMPLIANCE
+ * Compliance work — the compliance working day, for COMPLIANCE
  * and ADMIN only (`compliance.queue`; the module does not exist for anyone else).
  *
  * **One list at a time.** Tabs across the top, each with its count:

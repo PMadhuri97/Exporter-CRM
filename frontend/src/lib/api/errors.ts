@@ -32,8 +32,8 @@ export class ApiError extends Error {
   readonly context: Record<string, unknown> | null;
   /**
    * A 422's per-field messages, keyed by the field's path without `body`
-   * (`check_back_on`, `buyer.name`), so a form can place each one against its field
-   * (frontend-plan §9). `message` still carries them all joined. `null` when the
+   * (`check_back_on`, `buyer.name`), so a form can place each one against its field.
+   * `message` still carries them all joined. `null` when the
    * refusal named no field. Additive.
    */
   readonly fieldErrors: Record<string, string> | null;

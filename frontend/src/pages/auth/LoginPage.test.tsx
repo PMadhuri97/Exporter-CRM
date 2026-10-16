@@ -1,5 +1,5 @@
 /**
- * Sign-in (frontend-plan §8.1). It had no test before the redesign, which changed
+ * Sign-in. It had no test before the redesign, which changed
  * its look, so this pins its behaviour: the server's refusal in its words, the
  * client's checks before any request, and the redirect once signed in. The moving
  * picture is stubbed: jsdom can't draw it, and it is decorative.

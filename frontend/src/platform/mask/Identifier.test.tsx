@@ -1,7 +1,7 @@
 /**
- * Identifier (frontend-plan §6.6): no reveal or copy control at all for a viewer who
- * may not read a tax identifier in full; a holder of `exporters:view_full_tax_id` gets
- * an eye that starts closed, and reads the value once they ask.
+ * Identifier: no reveal or copy control at all for a viewer who may not read a tax
+ * identifier in full; a holder of `exporters:view_full_tax_id` gets an eye that starts
+ * closed, and reads the value once they ask.
  *
  * Driven by the permission, which is what decides it — grant it to the relationship
  * manager and the eye appears for them too, with nothing to change here.

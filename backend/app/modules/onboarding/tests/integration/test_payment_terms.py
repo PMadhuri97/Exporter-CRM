@@ -112,6 +112,26 @@ async def test_going_back_to_the_default_needs_no_reason_and_clears_it(client: A
     assert back.json()["payment_term_override_reason"] is None
 
 
+async def test_a_closed_deals_terms_are_refused_like_any_closed_deal_edit(client: AsyncClient):
+    """409 DEAL_TERMINAL, the answer every other edit of a handed-over or withdrawn deal
+    gives; it used to be a 422 VALIDATION_ERROR."""
+    token = await token_with_role(client, UserRole.OPERATIONS)
+    deal = await _open(client, token, await make_prospect())
+    withdrawn = await client.post(
+        f"{BASE}/deals/{deal['id']}/transitions",
+        headers=auth_header(token),
+        json={"to_stage": "WITHDRAWN", "reason": "Buyer cancelled"},
+    )
+    assert withdrawn.status_code == 200, withdrawn.text
+    refused = await client.patch(
+        f"{BASE}/deals/{deal['id']}/terms",
+        headers=auth_header(token),
+        json={"value_amount": "10", "currency": "USD"},
+    )
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error_code"] == "DEAL_TERMINAL"
+
+
 async def test_a_value_needs_its_currency(client: AsyncClient):
     token = await token_with_role(client, UserRole.OPERATIONS)
     deal = await _open(client, token, await make_prospect())

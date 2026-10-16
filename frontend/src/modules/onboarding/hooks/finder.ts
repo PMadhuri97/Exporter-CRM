@@ -1,5 +1,5 @@
 /**
- * Finding a company from the command bar (frontend-plan §7.5).
+ * Finding a company from the command bar.
  *
  * By name for every reader. By a **full** PAN, GSTIN or IEC only for a viewer holding
  * `exporters:view_full_tax_id`: the API refuses an identifier search from anyone

@@ -59,7 +59,6 @@ from app.modules.onboarding.domain.entities.exporter_profile import ExporterProf
 from app.modules.onboarding.domain.entities.qualification import (
     QualificationCriterion,
     QualificationOutcome,
-    QualificationReasonCode,
     QualificationResult,
 )
 from app.modules.onboarding.domain.entities.qualification_enums import (
@@ -75,6 +74,11 @@ from app.modules.onboarding.domain.qualification_auto import (
     SOURCE_KIND,
     SOURCE_LABEL,
     AutoSource,
+)
+from app.modules.onboarding.domain.qualification_reason_codes import (
+    REASON_CODES,
+    ReasonCode,
+    active_reason_codes,
 )
 from app.modules.onboarding.domain.qualification_views import (
     CriterionDefinition,
@@ -178,8 +182,9 @@ class QualificationService:
         )
         return criterion
 
-    async def list_reason_codes(self) -> list[QualificationReasonCode]:
-        return await self._repo.reason_codes()
+    async def list_reason_codes(self) -> list[ReasonCode]:
+        """Every reason code, retired ones included, so a past outcome's codes resolve."""
+        return list(REASON_CODES.values())
 
     # ── Results ─────────────────────────────────────────────────────────────
 
@@ -605,7 +610,7 @@ class QualificationService:
             raise ValidationError("NOT_QUALIFIED needs at least one reason code")
         if not codes:
             return
-        known = {code.code: code for code in await self._repo.reason_codes() if code.active}
+        known = active_reason_codes()
         unknown = sorted(set(codes) - set(known))
         if unknown:
             raise ValidationError(f"unknown reason codes: {unknown}")

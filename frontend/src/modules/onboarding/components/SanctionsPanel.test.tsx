@@ -116,6 +116,64 @@ beforeEach(() => {
 });
 
 describe('SanctionsPanel', () => {
+  it('offers a director who is also an owner under A director too', async () => {
+    vi.mocked(getCompanySanctions).mockResolvedValue(
+      standing({
+        subjects: [
+          standing().subjects[0]!,
+          {
+            subject_type: 'UBO',
+            subject_name: 'Dual Role',
+            subject_reference: 'person-3',
+            latest: null,
+            rescreen_reasons: ['never screened'],
+            roles: ['DIRECTOR', 'UBO'],
+          },
+        ],
+      }),
+    );
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: /Record screening/ }));
+    await screen.findByText('UN Security Council Consolidated List');
+    fireEvent.change(screen.getByLabelText(/Who was screened/), { target: { value: 'DIRECTOR' } });
+    const picker = screen.getByLabelText(/^Director/) as HTMLSelectElement;
+    expect([...picker.options].map((option) => option.text)).toContain('Dual Role');
+  });
+
+  it('screens a director on record by reference, or someone else by name', async () => {
+    vi.mocked(getCompanySanctions).mockResolvedValue(
+      standing({
+        subjects: [
+          ...standing().subjects,
+          {
+            subject_type: 'DIRECTOR',
+            subject_name: 'Ravi Kumar',
+            subject_reference: 'person-2',
+            latest: null,
+            rescreen_reasons: ['never screened'],
+          },
+        ],
+      }),
+    );
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: /Record screening/ }));
+    await screen.findByText('UN Security Council Consolidated List');
+    fireEvent.change(screen.getByLabelText(/Who was screened/), { target: { value: 'DIRECTOR' } });
+    fireEvent.change(screen.getByLabelText(/^Director/), { target: { value: 'person-2' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Record screening' }).at(-1)!);
+
+    await waitFor(() =>
+      expect(recordSanctionsRun).toHaveBeenCalledWith(
+        COMPANY,
+        expect.objectContaining({
+          subject_type: 'DIRECTOR',
+          subject_reference: 'person-2',
+          subject_name: null,
+        }),
+      ),
+    );
+  });
+
   it('shows each subject, its latest screening and who has never been screened', async () => {
     renderPanel();
     const subjects = await screen.findAllByTestId('sanctions-subject');

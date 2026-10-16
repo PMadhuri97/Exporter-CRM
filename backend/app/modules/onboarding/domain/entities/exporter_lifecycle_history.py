@@ -123,8 +123,16 @@ class ExporterLifecycleHistory(AppendOnlyModel):
     dimension: Mapped[str] = mapped_column(String(32), nullable=False)
 
     #: The deal this row is about, when it is about one. ``NULL`` for every
-    #: company-level change. Bare uuid with no FK, like ``customer_id``.
-    deal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: company-level change. A real foreign key since migration 0054.
+    deal_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{SCHEMA}.deal.id",
+            name="fk_exporter_lifecycle_history_deal_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
 
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
     from_status: Mapped[str | None] = mapped_column(String(64), nullable=True)

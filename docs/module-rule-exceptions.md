@@ -20,7 +20,7 @@ architecture permits no exception at all without it.
 | **Date** | 2026-09-25 |
 | **Module** | `compliance` |
 | **File** | `backend/app/modules/compliance/api/router.py` |
-| **Decision reference** | Architecture decision 11 (§6.1), implemented as Dev1 task L1-08 |
+| **Decision reference** | Architecture decision 11 (§6.1) |
 | **Scope** | Authorization only. No business logic, schema, service or response shape was touched. |
 
 ### Routes

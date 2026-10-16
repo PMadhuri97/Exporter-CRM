@@ -141,7 +141,6 @@ async def add_gst_registration(
     registration, others = await GstRegistrationService(db).add(
         customer_id,
         gstin=body.gstin,
-        address=body.address,
         status=body.status,
         actor_id=str(current_user.id),
     )

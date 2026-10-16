@@ -1,5 +1,5 @@
 /**
- * The identifier lookup (frontend-plan §8.4): one field that understands what was typed — a
+ * The identifier lookup: one field that understands what was typed — a
  * PAN, a GSTIN (with the PAN inside it), an IEC, a CIN, or a name — shows the kind it
  * detected, and asks the server whether that company is already in Aner.
  *

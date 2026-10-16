@@ -6,7 +6,7 @@ import { Badge } from './Badge';
 import type { BadgeTone, TagTone } from './styles';
 
 export interface TagProps extends HTMLAttributes<HTMLSpanElement> {
-  /** A meaning from the status language (frontend-plan §5.2). `ink` is an
+  /** A meaning from the status language. `ink` is an
    * emphasis that is not a state ("Primary", "Required"), drawn as an outline. */
   tone?: TagTone;
   /** A leading dot in the meaning's solid colour. */

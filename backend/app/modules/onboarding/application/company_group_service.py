@@ -10,9 +10,9 @@ The group view is the whole tree from the ultimate parent down, each member with
 stage, background check, risk, open deals and their value by currency. There are no
 group-level limits or decisions.
 
-**Possible members** are companies that share a beneficial owner with this one, matched
-on the person's name (and date of birth where both records hold it). They are only ever
-suggestions: a person links a company.
+**Possible members** are companies that share a director or beneficial owner with this
+one (``exporter_contact`` people), matched on the person's name (and date of birth where
+both records hold it). They are only ever suggestions: a person links a company.
 
 Every link and unlink writes a ``group`` history row on **both** companies.
 """
@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.background_check_reader import BackgroundCheckReader
@@ -33,9 +33,8 @@ from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain import history_dimensions
 from app.modules.onboarding.domain.entities.deal import Deal
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
+from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
-from app.modules.onboarding.domain.entities.onboarding_request import OnboardingRequest
-from app.modules.onboarding.domain.entities.ubo_record import UboRecord
 from app.modules.onboarding.exceptions import ExporterProfileNotFoundError
 from app.shared.exceptions import ValidationError
 
@@ -233,7 +232,8 @@ class CompanyGroupService:
         return CompanyGroup(company_id=company_id, ultimate_parent_id=root, members=members)
 
     async def suggestions(self, company_id: uuid.UUID, *, limit: int = 20) -> list[GroupSuggestion]:
-        """Companies outside this one's group that share a beneficial owner with it."""
+        """Companies outside this one's group that share a director or beneficial owner
+        with it."""
         mine = await self._people_of([company_id])
         if not mine:
             return []
@@ -300,30 +300,33 @@ class CompanyGroupService:
         return {row.customer_id: row for row in rows}
 
     @staticmethod
-    def _person_key(record: UboRecord) -> str:
-        name = f"{record.first_name} {record.last_name}".strip().lower()
-        return f"{' '.join(name.split())}|{(record.date_of_birth or '').strip()}"
+    def _person_key(person: ExporterContact) -> str:
+        name = " ".join(person.name.lower().split())
+        birth = person.date_of_birth.isoformat() if person.date_of_birth else ""
+        return f"{name}|{birth}"
+
+    @staticmethod
+    def _people() -> Select[tuple[ExporterContact]]:
+        """Directors and beneficial owners, past or present: a person who sat on both
+        boards is a reason to look, even after leaving one."""
+        return select(ExporterContact).where(
+            or_(ExporterContact.is_director.is_(True), ExporterContact.is_ubo.is_(True))
+        )
 
     async def _people_of(self, company_ids: list[uuid.UUID]) -> list[tuple[str, str, uuid.UUID]]:
-        rows = await self._db.execute(
-            select(UboRecord, OnboardingRequest.customer_id)
-            .join(OnboardingRequest, OnboardingRequest.id == UboRecord.onboarding_request_id)
-            .where(OnboardingRequest.customer_id.in_(company_ids))
+        rows = await self._db.scalars(
+            self._people().where(ExporterContact.customer_id.in_(company_ids))
         )
-        return [
-            (self._person_key(ubo), f"{ubo.first_name} {ubo.last_name}".strip(), cid)
-            for ubo, cid in rows
-        ]
+        return [(self._person_key(person), person.name, person.customer_id) for person in rows]
 
     async def _people_with(self, keys: set[str]) -> list[tuple[str, str, uuid.UUID]]:
-        """Every recorded beneficial owner whose name (and birth date) matches a key."""
+        """Every recorded director or beneficial owner whose name (and birth date)
+        matches a key."""
         names = {key.split("|", 1)[0] for key in keys}
-        rows = await self._db.execute(
-            select(UboRecord, OnboardingRequest.customer_id)
-            .join(OnboardingRequest, OnboardingRequest.id == UboRecord.onboarding_request_id)
-            .where(
-                func.lower(
-                    func.concat(func.trim(UboRecord.first_name), " ", func.trim(UboRecord.last_name))
+        rows = await self._db.scalars(
+            self._people().where(
+                func.regexp_replace(
+                    func.lower(func.btrim(ExporterContact.name)), r"\s+", " ", "g"
                 ).in_(names)
             )
         )
@@ -333,12 +336,12 @@ class CompanyGroupService:
             name, _, birth = key.partition("|")
             births[name].add(birth)
         out = []
-        for ubo, cid in rows:
-            key = self._person_key(ubo)
+        for person in rows:
+            key = self._person_key(person)
             name, _, birth = key.partition("|")
             known = births.get(name, set())
             if birth in known or "" in known or (not birth and known):
-                out.append((key, f"{ubo.first_name} {ubo.last_name}".strip(), cid))
+                out.append((key, person.name, person.customer_id))
         return out
 
 

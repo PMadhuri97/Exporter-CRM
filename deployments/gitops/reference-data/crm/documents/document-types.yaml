@@ -84,6 +84,12 @@ categories:
       label: Foreign inward remittance certificate
     - key: e_brc
       label: Electronic bank realisation certificate
+    # The two proofs a bank account is verified on by hand (company bank accounts,
+    # `CANCELLED_CHEQUE` / `BANK_LETTER`), so the evidence can be filed as what it is.
+    - key: cancelled_cheque
+      label: Cancelled cheque
+    - key: bank_letter
+      label: Bank letter
   INSURANCE:
     - key: annual_policy
       label: Annual policy

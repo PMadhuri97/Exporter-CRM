@@ -1,5 +1,5 @@
 /**
- * The Details tab (frontend-plan §8.5): the company's facts as inline edits for
+ * The Details tab: the company's facts as inline edits for
  * staff — click a fact, change it, Enter — and as plain text for everyone else. No
  * edit form. Each change is a one-field PATCH; the server's refusal stays under the
  * field in its words, and a duplicate PAN names its holder by link, never by id.

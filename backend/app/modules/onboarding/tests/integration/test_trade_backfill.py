@@ -242,7 +242,7 @@ async def test_a_deal_cannot_name_its_own_seller_as_its_buyer():
     So the refusal branch is a guard, not a path, and saying so is the point — the
     alternative is a reader assuming those rows exist somewhere. It stays because it
     costs three lines and because without it one bad row would abort a whole run with
-    ``TradeRelationshipIsSelfError`` instead of being named and skipped. §17.2's
+    ``TradeRelationshipIsSelfError`` instead of being named and skipped. The buyer migration's
     matching validation query is structurally zero for the same reason.
     """
     seller = await make_prospect()

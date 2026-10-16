@@ -63,7 +63,6 @@ class ExporterProfileDetail:
     pan: str | None
     iec: str | None
     source: ExporterSource
-    relationship_manager: str | None
     relationship_manager_user_id: uuid.UUID | None
     journey: ExporterJourney
     qualification: QualificationState
@@ -112,7 +111,6 @@ class ExporterProfileListItem:
     pan: str | None
     iec: str | None
     source: ExporterSource
-    relationship_manager: str | None
     relationship_manager_user_id: uuid.UUID | None
     journey: ExporterJourney
     qualification: QualificationState

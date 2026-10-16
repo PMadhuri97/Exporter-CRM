@@ -2,7 +2,7 @@
 
 How to run the system locally, test it, change its schema and its API, and what
 "green" means here. For what the system is, read [`architecture.md`](architecture.md);
-for why this checkout contains more than the CRM, [`../RUNNING.md`](../RUNNING.md).
+for why this checkout contains more than the CRM, §12.
 
 ---
 
@@ -28,7 +28,7 @@ is needed: with `TEMPORAL_ENABLED`, `KAFKA_ENABLED`, `EVENT_CONSUMERS_ENABLED` a
 **The test suite writes to the database your `.env` names.** A database you run the
 suite against fills up with test companies, users and deals — some in states the
 product cannot produce, because tests set them up directly. Use a **separate database
-for anything you show people** (see [`demo.md`](demo.md)).
+for anything you show people**, loaded with the sample data (§5).
 
 ## 3. Backend
 
@@ -61,7 +61,7 @@ on screen; the backend image installs it) and `CRM_DOCUMENT_CONVERTER_TIMEOUT_SE
 unavailable"; PDFs, images and text files are unaffected, and downloads work as before.
 A document that links outside itself (a linked image, an INCLUDETEXT field, an external
 workbook) is never converted, and the converter runs with an empty environment; outside
-local development, run it where the server's secrets are not (`remaining-work.md` R-65).
+local development, run it where the server's secrets are not ([`remaining-work.md`](remaining-work.md) §2).
 
 Bank accounts: `FIELD_ENCRYPTION_KEYS` (see `.env.example`) encrypts account numbers
 and IBANs; without it, saving bank details answers 503 unless `ENVIRONMENT` is `local` or
@@ -72,7 +72,7 @@ Sanctions: `CRM_SANCTIONS_TRUE_MATCH_APPROVAL` (default `SECOND_OFFICER`; `HEAD`
 decides who confirms a true match.
 Contacts: `CRM_CONTACT_REVERIFY_MONTHS` (default `12`) marks a contact "Verification due".
 
-Compliance engine (plans P3-1b, P3-3; `onboarding/application/compliance_settings.py`):
+Compliance engine (`onboarding/application/compliance_settings.py`):
 `CRM_BACKGROUND_CHECK_MAKER_CHECKER` (default `true`: CLEAR, FLAGGED and ON_HOLD need a
 second COMPLIANCE user; `false` is accepted only where `ENVIRONMENT` is `local` or
 `test`, and the server refuses to start with it off anywhere else — including
@@ -131,8 +131,8 @@ pnpm dev            # http://localhost:5173 — /api is proxied to http://localh
 ## 7. Tests and gates
 
 Run from `backend/` and `frontend/` respectively. **Every one of these must be at the
-baseline (§9) before a merge.** There is no CI (decision U6 is open), so run them by
-hand.
+baseline (§9) before a merge.** There is no CI yet ([`remaining-work.md`](remaining-work.md) §2), so run them
+by hand.
 
 ```bash
 cd backend
@@ -178,11 +178,10 @@ pnpm build
 - `app/modules/onboarding/tests/integration/test_crm_end_to_end.py` walks the whole
   main path through the API, with nothing substituted.
 - **"Now" in new code comes from `app/shared/clock.py`** (`clock.now()`, timezone-aware
-  UTC), never an inline `datetime.now(...)` (allocation §2.2). A test moves time with
+  UTC), never an inline `datetime.now(...)`. A test moves time with
   `with use_clock(FixedClock(at)):` — no sleeping, no patching `datetime`.
 - **Two compliance users (maker-checker is on in tests).** `CLEAR`, `FLAGGED` and
-  `ON_HOLD` are proposed by one COMPLIANCE/ADMIN user and approved by another (plan
-  P3-1b). A test takes a company there with the helpers in
+  `ON_HOLD` are proposed by one COMPLIANCE/ADMIN user and approved by another. A test takes a company there with the helpers in
   `app/modules/onboarding/tests/fixtures/compliance.py`: `approve_as(checker, company,
   maker=…)` (services), `propose_and_approve(client, company, maker_token=…,
   checker_token=…)` (HTTP), and `record_required_checks(company)` for rule B's KYB, AML
@@ -190,7 +189,7 @@ pnpm build
   `StaticComplianceFactsReader` / `party_facts(...)` from the same module, a fake of the
   published `ComplianceFactsReader`. `CRM_BACKGROUND_CHECK_MAKER_CHECKER=false` is
   accepted only where `ENVIRONMENT` is local or test — the server refuses to start with it
-  off anywhere else, `development` included (IQ-17).
+  off anywhere else, `development` included.
 
 ## 8. Changing the API
 
@@ -216,33 +215,34 @@ users; change the contract in the same pull request as the code.
 
 ## 9. Baseline
 
-Measured 4 October 2026 on `feature/company-foundation-and-compliance-guard` at `6cd71db`,
-against a scratch copy of the 15.9k-company data at head (the same table, with the data
-checks, is [`remaining-work.md`](remaining-work.md) §9):
+Measured 14 October 2026 on `fix/migration-crm`, on fresh databases at head; the whole
+suite was last measured on 4 October 2026:
 
 | Gate | Baseline |
 |---|---|
-| CRM suite (`pytest --crm`) | **2,711 passed, 1 skipped, 0 failed** (53 minutes on a busy Windows machine). The skip is the symlink test in `test_local_disk_storage.py`, which Windows refuses without developer mode |
-| Whole suite (without `--crm`) | **5,350 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (36 minutes) |
+| CRM suite (`pytest --crm`) | **3,602 passed, 1 skipped, 0 failed** (about 30 minutes in three parallel chunks, each on its own database). The skip is the symlink test in `test_local_disk_storage.py`, which Windows refuses without developer mode |
+| Whole suite (without `--crm`, 4 October 2026) | **5,350 passed, 7 skipped, 27 xfailed, 0 failed, 0 errors** (36 minutes) |
 | Temporal workflow tests (`test_onboarding_workflow*.py`, whole suite only) | Pass within the whole suite. They download the Temporal test server, so they need internet access; the opt-in restart suite needs `RUN_RESILIENCE_TESTS=1` |
-| `ruff check .` | 16 findings, all pre-existing: two auto-generated Alembic merge revisions and two package index files |
+| `ruff check .` | clean on the CRM and the contract tests; elsewhere only pre-existing findings in two auto-generated Alembic merge revisions and two package index files |
 | `lint-imports` | 19 contracts kept, 0 broken |
-| `alembic heads` | one: `onboarding_0043_identity_type` |
+| `alembic heads` | one: `onboarding_0059_deal_reference` |
 | `alembic check` | no new upgrade operations |
-| Frontend | `tsc` clean; eslint 0 errors, 2 warnings (`AuthContext.tsx`); vitest 51 files, 636 tests; `npm run build` passes with no chunk-size warning |
+| Frontend | `tsc` and eslint clean; vitest 80 files, 1,052 tests; `pnpm build` passes |
 
 The 27 expected failures (whole suite only) are the tests in `compliance/tests/integration/test_compliance.py`,
 `test_screening_uses_rule_registry.py` and `audit/tests/integration/test_audit.py` that
 create a payment or an FX quote first: those routers are deliberately not mounted in this
-checkout ([`../RUNNING.md`](../RUNNING.md)), so the request gets 404. They are strict
+checkout (§12), so the request gets 404. They are strict
 expected failures in `backend/conftest.py` (§7); one that starts passing fails the run.
 Any failure is new.
 
-Two tests can still fail intermittently (`remaining-work.md` R-38):
+Three tests can still fail intermittently ([`remaining-work.md`](remaining-work.md) §2 lists them):
 `platform/idempotency/tests/test_expiry_sweep.py::test_sweep_can_use_the_partial_ck_index`
 asserts a query plan, which depends on the size and statistics of the database; and
 `test_decision_evidence.py::test_new_decisions_record_the_current_rules_and_cycle`
-reads two decisions that can share a `decided_at`.
+reads two decisions that can share a `decided_at`; and
+`test_buyer_migration_safety.py::test_a_created_company_gets_one_creation_row_saying_where_it_came_from`
+breaks a `created_at` tie by a random id.
 
 Two environment traps turn a clean run red: without `google-cloud-logging` and
 `google-cloud-storage` (both in `requirements.txt`) collection stops with two
@@ -273,21 +273,31 @@ Rules (details in [`../backend/migrations/README.md`](../backend/migrations/READ
 - **Declare every index and constraint on the model too**; otherwise
   `alembic revision --autogenerate` proposes dropping it, and
   `test_orm_matches_the_onboarding_schema.py` fails.
+- **Drop a column one release after the code stops naming it.** A deploy replaces the
+  running instances one by one, so the old release keeps serving against the new schema
+  for a while. First release: declare the column in `__table_args__` as a `Column` and
+  list it in `__mapper_args__["exclude_properties"]` — the table still matches the
+  database and the ORM never names it. `deferred=True` is **not** enough: the ORM still
+  inserts an explicit `NULL` into every mapped nullable column with no default. The next
+  release's migration drops it (0060 and 0061 retired five columns this way). A table
+  nothing reads or writes can go at once.
+- **Merging into `main` deploys.** `.github/workflows/deploy-backend.yml` builds and
+  rolls out the backend on every merged pull request that touches `backend/`, and the
+  container runs `alembic upgrade head` before it serves.
 - **Round-trip it** before merging: `alembic upgrade head`, `alembic downgrade -1`,
   `alembic upgrade head`. A lossy downgrade says so in its docstring.
 - **Add the row to the migration register.** The next free onboarding number is there.
 
-### 10.1 The two data commands (P4-6, P5-5) — safe execution
+### 10.1 The data commands — safe execution
 
-The buyer migration (`migrate_deal_buyers`, P4-6) and the trade relationship backfill
-(`backfill_trade_relationships`, P5-5) are commands, not revisions, because a person reads
+The buyer migration (`migrate_deal_buyers`) and the trade relationship backfill
+(`backfill_trade_relationships`) are commands, not revisions, because a person reads
 a report between reading and writing. Their order on a live database, and what must hold
-before each, is [`remaining-work.md`](remaining-work.md) §8. This section is how to run
+before each, is [`remaining-work.md`](remaining-work.md) §1. This section is how to run
 them without hurting anything.
 
-**Rehearse on a scratch database first, every time.** Never on the shared
-`aner_settlement`, and never on a live database before the rehearsal on a copy of *that*
-database has passed. A scratch database for a rehearsal must be:
+**Rehearse on a scratch database first, every time.** Never run on a live database,
+`aner_settlement` included, before the rehearsal on a copy of *that* database has passed. A scratch database for a rehearsal must be:
 
 1. **A copy of the environment you will run on**, not a development database. Take it with
    `createdb -T <source> <scratch>` (it needs nobody connected to the source) or
@@ -297,7 +307,7 @@ database has passed. A scratch database for a rehearsal must be:
    database (the commands read the first, `alembic` the second) and run
    `alembic upgrade head`; `alembic current` must print the head in
    `contracts/migration-register.md`. Read the counts 0033 and 0035 print.
-3. **Clean of P2-7's precondition**: `SELECT count(*) FROM onboarding.deal WHERE stage =
+3. **Clean of the handover-snapshot precondition**: `SELECT count(*) FROM onboarding.deal WHERE stage =
    'HANDED_OVER' AND handover_snapshot IS NULL` is 0. `--validate` counts it too, and the
    migration does not repair it.
 4. **Yours alone** while it runs, and dropped afterwards (`dropdb <scratch>`). It holds a
@@ -320,9 +330,9 @@ cd backend
 export LOG_LEVEL=WARNING DEBUG=false     # PowerShell: $env:LOG_LEVEL='WARNING'; $env:DEBUG='false'
 export DATABASE_URL=... DATABASE_SYNC_URL=...   # both at the database you mean; check twice
 
-pg_dump ... > before-p46.sql             # 1. the only way back: neither command undoes in place
+pg_dump ... > before-buyers.sql          # 1. the only way back: neither command undoes in place
 
-python -m app.modules.onboarding.migrate_deal_buyers --dry-run > p46-dry-run.txt   # 2. writes nothing
+python -m app.modules.onboarding.migrate_deal_buyers --dry-run > buyers-dry-run.txt   # 2. writes nothing
 #    3. Compliance reads the report: "Needs a person" rows are not migrated until
 #       confirmed; "Kept separate - review" and "Migrates, but review" rows are.
 python -m app.modules.onboarding.migrate_deal_buyers --apply --run-id <id> \
@@ -341,9 +351,9 @@ python -m app.modules.onboarding.backfill_trade_relationships --validate
 - `--apply` checks every `--confirm-name` before writing anything; one bad line refuses
   the whole run (exit 2). It re-reads each deal under a lock and skips one that has named
   a company since the report.
-- `--validate` failing means stop: do not go on to the backfill, or to P4-10.
+- `--validate` failing means stop: do not go on to the backfill.
 - **`migrate_deal_buyers --rollback` writes nothing**; it reports what a run did. The dump
-  is the way back (decision D-02, open). The backfill's undo is one `DELETE`, which
+  is the only way back (decided 4 October 2026). The backfill's undo is one `DELETE`, which
   `--report-run` prints, as long as no invoice points at the run's relationships.
 - Keep the dry-run report, the `--validate` output and the run ids with the migration
   ticket.
@@ -353,9 +363,53 @@ python -m app.modules.onboarding.backfill_trade_relationships --validate
 | Document | What it is |
 |---|---|
 | [`architecture.md`](architecture.md) | The CRM: model, state machines, roles, ownership, decisions, limitations |
-| [`demo.md`](demo.md) | How to demonstrate it |
 | [`contracts/`](contracts/) | What each part promises the others |
 | [`module-rule-exceptions.md`](module-rule-exceptions.md) | The one recorded exception to the module rule |
-| [`plan.md`](plan.md) | The post-demo plan (P0–P7) and the lead's answers; the original design PDF it builds on was retired on 4 October 2026 as outdated; recover it with `git show 451ef97:docs/Exporter-CRM-Architecture-and-Plan.pdf` |
-| [`remaining-work.md`](remaining-work.md) | The one list: what is done, what is left, the decisions for the lead, what is deferred, and the live-database runbook |
-| [`../RUNNING.md`](../RUNNING.md) | Why this checkout contains more than the CRM, and what was pruned |
+| [`database.md`](database.md) | The database as built: schemas, tables, constraints, triggers and traps |
+| [`remaining-work.md`](remaining-work.md) | The one open list: the live-database steps, open work, decisions awaited and what is deferred |
+| [`../backend/migrations/README.md`](../backend/migrations/README.md) | How the migration chain is laid out |
+
+## 12. What this checkout contains besides the CRM
+
+The repository began as a pruned copy of ANER's platform monorepo, and the CRM has been
+built in it since. Everything below is outside the CRM; the module rule means a CRM
+change edits none of it.
+
+**Kept in full** (application, API, domain, infrastructure): `onboarding` (the CRM, plus
+the legacy `onboarding_request` path), `kyb`, `cases`, `customers`, `notifications`,
+`gateway`, `compliance` (screening) and `audit` (generic infrastructure the legacy
+onboarding code imports).
+
+**Schema only** — `ledger`, `settlement`, `rails`, `fx`, `reconciliation`, `reporting`,
+`orchestration`, `payments` belong to other epics and have no business logic here:
+
+| Module | Has | Why |
+|---|---|---|
+| `ledger`, `settlement`, `fx`, `reconciliation`, `payments` | migrations, entities | `app/bootstrap.py` registers their ORM classes so relationships from kept modules resolve |
+| `rails` | migrations, entities | `migrations/env.py` imports `rails` entities for autogenerate, so `alembic` cannot load without them |
+| `reporting` | an empty migrations package | registered like every module's (`test_migration_discovery.py`) |
+| `orchestration` | an empty package | owns no tables; it exists so `importlinter.ini`'s contracts resolve |
+
+There is **one Alembic chain across every module** (`onboarding_0001_baseline` descends
+from `audit_0001_baseline`, and merge revisions join heads across modules), so every
+module's migrations are kept rather than rewriting history: tables such as
+`ledger.ledger_account` exist with no code behind them, on purpose. `payments` keeps its
+facade and `infrastructure/` because `audit`'s services import `TransactionRepository`
+from it. `gateway` came from a sibling branch; the no-op merge revision `2807a84d72ba`
+joins its head, and `importlinter.ini` still has no privacy contract for it.
+
+**Removed from the wiring**: the Temporal worker (`TEMPORAL_ENABLED=true` is not
+supported), the event consumers of `reconciliation` and `settlement`, the rail seed
+loader, the `fx`, `ledger`, `payments`, `reconciliation` and `settlement` routers and the
+idempotency-audit router (it imports ledger and settlement internals), and the background
+jobs `app/main.py` ran for those modules. `gateway`'s routers are mounted directly in
+`app/main.py`, outside `api_router` (`app/api/rest/router.py`). Their settings flags
+(`RAIL_POLLING_ENABLED` and the like) still exist and are read by nothing.
+
+**Contract tests not brought over**, because they assert facts about the complete
+platform: `test_advisory_lock_keys.py`, `test_module_independence.py`,
+`test_event_flow.py`, `test_idempotency_middleware_wiring.py` and
+`test_import_contracts.py` (the last would rightly flag the missing `gateway` contract).
+
+The platform modules' own one-line READMEs cite an `ARCHITECTURE.md` that belongs to the
+monorepo this checkout came from.

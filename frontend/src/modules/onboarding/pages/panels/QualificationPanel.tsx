@@ -76,7 +76,7 @@ function asks(criterion: Qualification['standings'][number]['criterion']): strin
 }
 
 /**
- * The scorecard (frontend-plan §8.5): one row per criterion with what it asks, its
+ * The scorecard: one row per criterion with what it asks, its
  * latest result and — where the server allows recording (`can_record_results`) — a
  * Pass / Fail / Unknown choice with the observed value and an evidence note. Choosing
  * nothing leaves a criterion as it is. Changed rows collect into one sticky "Record N

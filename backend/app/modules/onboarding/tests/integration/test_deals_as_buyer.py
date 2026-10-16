@@ -35,6 +35,7 @@ from app.modules.onboarding.tests.fixtures.companies import (
     make_company,
     make_prospect,
 )
+from app.modules.onboarding.tests.fixtures.legacy_buyers import record_legacy_buyer
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -137,9 +138,8 @@ async def test_a_legacy_deal_buyer_never_appears_on_the_buyer_side():
         view = await DealService(db).open_deal(
             seller, reference=f"Legacy {uuid.uuid4().hex[:8]}", actor_id="rm-1"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(
-            view.id, name="Legacy Buyer", country="NL", actor_id="rm-1"
+    await record_legacy_buyer(
+        view.id, name="Legacy Buyer", country="NL"
         )
 
     async with db_services.AsyncSessionLocal() as db:
@@ -179,9 +179,8 @@ async def test_the_seller_side_names_the_buyer_company_then_the_legacy_buyer():
         legacy = await DealService(db).open_deal(
             seller, reference=f"Legacy {uuid.uuid4().hex[:8]}", actor_id="rm-1"
         )
-    async with db_services.AsyncSessionLocal() as db:
-        await DealService(db).set_buyer(
-            legacy.id, name="Legacy Buyer GmbH", country="DE", actor_id="rm-1"
+    await record_legacy_buyer(
+        legacy.id, name="Legacy Buyer GmbH", country="DE"
         )
     async with db_services.AsyncSessionLocal() as db:
         no_buyer = await DealService(db).open_deal(

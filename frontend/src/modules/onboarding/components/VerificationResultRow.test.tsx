@@ -98,10 +98,9 @@ describe('VerificationResultRow — provenance, as the server states it', () => 
 });
 
 describe('VerificationResultRow — evidence', () => {
-  it('shows the note and the links as stored, and never the retired evidence_reference', () => {
+  it('shows the note and the links as stored', () => {
     const row = renderRow(
       verificationResult({
-        evidence_reference: 'LEGACY-REFERENCE',
         evidence_note: 'Registry extract matches the declared directors.',
         evidence_refs: [{ type: 'url', ref: 'https://registry.example/entity/1' }],
       }),
@@ -112,7 +111,6 @@ describe('VerificationResultRow — evidence', () => {
       'href',
       'https://registry.example/entity/1',
     );
-    expect(row).not.toHaveTextContent('LEGACY-REFERENCE');
     expect(row).not.toHaveTextContent('Evidence reference');
   });
 

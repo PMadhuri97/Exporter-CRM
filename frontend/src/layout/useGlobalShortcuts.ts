@@ -1,5 +1,5 @@
 /**
- * The shell's keyboard (frontend-plan §7.5): `/` and Ctrl+K open search, Ctrl+/
+ * The shell's keyboard: `/` and Ctrl+K open search, Ctrl+/
  * lists the shortcuts. Esc is each panel's, menu's and dialog's own. No chords and
  * no single-letter actions; `/` never fires while someone is typing.
  */

@@ -16,6 +16,13 @@ company *is* an ``exporter_profile`` row from creation
 (``docs/contracts/company-record.md`` §1). So both writers check the company
 first and raise ``ExporterProfileNotFoundError`` — a 404 naming the
 company, rather than the 500 an ``IntegrityError`` would surface as.
+
+**People.** A contact row is also how a company's directors and beneficial owners are
+recorded (``domain/people.py``): the same add and edit, with roles and person fields.
+The identification number is encrypted here, before it reaches the session, and only
+its last four characters are kept in clear. Gaining or losing the director or owner
+role writes one ``contact`` history row (``person_added``, ``person_roles_changed``):
+the sanctions screening reads it as "someone new to screen".
 """
 
 from __future__ import annotations
@@ -30,7 +37,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.application.history_service import HistoryService
-from app.modules.onboarding.domain import history_dimensions
+from app.modules.onboarding.domain import history_dimensions, people
 from app.modules.onboarding.domain.engagement_views import PendingActivityView
 from app.modules.onboarding.domain.entities.engagement_enums import (
     ContactStatus,
@@ -51,12 +58,26 @@ from app.modules.onboarding.infrastructure.repositories import (
     ExporterContactRepository,
     ExporterProfileRepository,
 )
+from app.platform.security.field_cipher import encrypt_field
 from app.shared.exceptions import ValidationError
 
 logger = structlog.get_logger(__name__)
 
 #: The partial unique index behind "at most one primary contact per company".
 _PRIMARY_INDEX = "uq_exporter_contact_primary_per_customer"
+
+
+def set_identification_number(person: ExporterContact, number: str | None) -> None:
+    """Seal ``number`` onto ``person``, or clear it (and its type) when empty. The type
+    itself is the caller's: a number without one is refused by ``check_person``."""
+    number = (number or "").strip()
+    if not number:
+        person.identification_encrypted = None
+        person.identification_last4 = None
+        person.identification_type = None
+        return
+    person.identification_encrypted = encrypt_field(number, purpose=people.IDENTIFICATION_PURPOSE)
+    person.identification_last4 = number[-4:]
 
 
 class ExporterContactActivityService:
@@ -120,8 +141,21 @@ class ExporterContactActivityService:
         phone: str | None = None,
         department: str | None = None,
         is_primary: bool = False,
+        is_contact: bool = True,
+        is_director: bool = False,
+        is_ubo: bool = False,
+        details: Mapping[str, object] | None = None,
+        actor_id: str | None = None,
     ) -> ExporterContact:
-        """Create a contact. When ``is_primary=True``, demotes any existing
+        """Create a person: a contact, a director, a beneficial owner, or several.
+
+        ``details`` carries the optional person fields (``people.PERSON_FIELDS``) and
+        ``identification_number``, which is encrypted before it is set. A person that
+        breaks a rule (no role, a DIN on someone who is not a director, ...) is refused
+        with a ``ValidationError`` before anything is written. Adding a director or
+        beneficial owner writes a ``person_added`` history row.
+
+        When ``is_primary=True``, demotes any existing
         primary contact for ``customer_id`` in the same transaction as the
         insert, so one call never leaves two primaries. Two calls racing for the
         same company can still both promote; ``uq_exporter_contact_primary_per_customer``
@@ -135,9 +169,9 @@ class ExporterContactActivityService:
         """
         await self._require_company(customer_id)
         await self._refuse_a_duplicate(customer_id, email=email, phone=phone)
-        if is_primary:
-            await self._contacts.demote_existing_primary(customer_id)
 
+        fields = dict(details or {})
+        number = fields.pop("identification_number", None)
         contact = ExporterContact(
             customer_id=customer_id,
             name=name,
@@ -146,9 +180,21 @@ class ExporterContactActivityService:
             phone=phone,
             department=department,
             is_primary_contact=is_primary,
+            is_contact=is_contact,
+            is_director=is_director,
+            is_ubo=is_ubo,
+            **{field: fields.get(field) for field in people.PERSON_FIELDS},
         )
+        if number:
+            set_identification_number(contact, str(number))
+        people.check_person(contact)
+
+        if is_primary:
+            await self._contacts.demote_existing_primary(customer_id)
         async with self._primary_conflict_as_409(customer_id):
             await self._contacts.create(contact)
+            if people.is_person_of_interest(contact):
+                await self._record_roles(contact, before=[], actor_id=actor_id)
             await self._db.commit()
         await self._db.refresh(contact)
 
@@ -166,6 +212,7 @@ class ExporterContactActivityService:
         contact_id: uuid.UUID,
         *,
         changes: Mapping[str, object],
+        actor_id: str | None = None,
     ) -> ExporterContact:
         """Change the fields named in ``changes`` on one contact, and nothing else.
 
@@ -181,6 +228,13 @@ class ExporterContactActivityService:
         the only primary is allowed — a company with no primary contact is a state the
         record can be in, and refusing it would trap whoever recorded the wrong one.
 
+        Roles change the same way. Taking one away clears the fields that belong only
+        to it (a former director keeps no DIN); taking away the contact role stops the
+        person being the primary contact. ``identification_number`` is encrypted, and
+        sent as ``null`` clears the number and its type. A change that would break a
+        rule is refused with a ``ValidationError`` before anything is written, and a
+        change to the director or owner role writes a ``person_roles_changed`` row.
+
         Raises ``ExporterProfileNotFoundError`` when the company does not exist,
         ``ExporterContactNotFoundError`` when it does but this contact is not its, and
         ``ExporterContactPrimaryConflictError`` when another write promoted a different
@@ -193,8 +247,16 @@ class ExporterContactActivityService:
 
         fields = dict(changes)
         promote = fields.pop("is_primary", None)
+        number_sent = "identification_number" in fields
+        number = fields.pop("identification_number", None)
+        before = people.roles_of(contact)
         for name, value in fields.items():
             setattr(contact, name, value)
+        if number_sent:
+            set_identification_number(contact, number)
+        people.clear_fields_of_removed_roles(contact, before=before)
+        if not contact.is_contact and promote is None:
+            contact.is_primary_contact = False
 
         # On the values the edit leaves behind, not the ones it sent: changing only the
         # phone onto a contact that already has this one's email is the same duplicate
@@ -210,14 +272,23 @@ class ExporterContactActivityService:
         if promote is not None:
             if promote and contact.status != ContactStatus.ACTIVE.value:
                 raise ContactNotActiveError(contact_id, contact.status)
-            if promote:
-                # Everyone else, so this row's own flag is not cleared and re-set.
+            contact.is_primary_contact = bool(promote)
+        # Before the demotion below: its statement would otherwise flush this row first,
+        # and a broken rule would reach the database as a 500 rather than a 422.
+        people.check_person(contact)
+        if promote:
+            # Everyone else, so this row's own flag is not cleared and re-set. Not
+            # autoflushed: this row, now primary, is written after the others are
+            # demoted, or it would meet the one-primary index while they still hold it.
+            with self._db.no_autoflush:
                 await self._contacts.demote_existing_primary(
                     customer_id, except_id=contact_id
                 )
-            contact.is_primary_contact = bool(promote)
 
+        after = people.roles_of(contact)
         async with self._primary_conflict_as_409(customer_id):
+            if after != before and {people.DIRECTOR, people.UBO} & {*before, *after}:
+                await self._record_roles(contact, before=before, actor_id=actor_id)
             await self._db.commit()
         await self._db.refresh(contact)
 
@@ -309,8 +380,12 @@ class ExporterContactActivityService:
         await self._db.refresh(contact)
         return contact
 
-    async def list_contacts(self, customer_id: uuid.UUID) -> list[ExporterContact]:
-        return await self._contacts.list_by_customer(customer_id)
+    async def list_contacts(
+        self, customer_id: uuid.UUID, *, role: str | None = people.CONTACT
+    ) -> list[ExporterContact]:
+        """The company's people holding ``role`` (``people.CONTACT`` by default); every
+        person when ``role`` is ``None``."""
+        return await self._contacts.list_by_customer(customer_id, role=role)
 
     # ── Activities ────────────────────────────────────────────────────────
 
@@ -386,6 +461,29 @@ class ExporterContactActivityService:
         )
 
     # ── Internals ────────────────────────────────────────────────────────────
+
+    async def _record_roles(
+        self, person: ExporterContact, *, before: list[str], actor_id: str | None
+    ) -> None:
+        """One ``contact`` history row: a director or beneficial owner was added, or a
+        person's roles changed. Names and roles only; the person fields are masked for
+        most viewers and a history row is read by people a response is not."""
+        await self._db.flush()
+        after = people.roles_of(person)
+        await HistoryService(self._db).record(
+            person.customer_id,
+            dimension=history_dimensions.CONTACT,
+            event_type="person_roles_changed" if before else "person_added",
+            from_value=",".join(before) if before else None,
+            to_value=",".join(after),
+            actor_id=actor_id,
+            source="exporter_contact.roles",
+            details={
+                "contact_id": str(person.id),
+                "contact_name": person.name,
+                "roles": after,
+            },
+        )
 
     @asynccontextmanager
     async def _primary_conflict_as_409(self, customer_id: uuid.UUID) -> AsyncIterator[None]:

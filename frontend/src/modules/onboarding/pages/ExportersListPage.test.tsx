@@ -38,7 +38,6 @@ const PROFILE: ExporterProfileListItem = {
   pipeline_status: 'IN_PIPELINE',
   has_active_primary_contact: true,
   source: 'MANUAL',
-  relationship_manager: 'Jane RM',
   relationship_manager_name: 'Jane RM',
   relationship_manager_user_id: 'user-owner',
   industry: null,

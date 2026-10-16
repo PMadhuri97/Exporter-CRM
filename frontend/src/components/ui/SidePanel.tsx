@@ -1,5 +1,5 @@
 /**
- * The side panel (frontend-plan §6.9): quick create and quick actions, as in
+ * The side panel: quick create and quick actions, as in
  * Dynamics quick create and HubSpot's create panel. It slides in from the right,
  * 480px wide (the full width under 768px), over a dimmed page. A header with the
  * verb and a close button, the fewest fields possible, and a footer with one

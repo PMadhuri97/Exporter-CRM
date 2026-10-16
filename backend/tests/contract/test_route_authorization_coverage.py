@@ -253,7 +253,6 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
         "PUT",
         f"{CRM}/exporters/{{customer_id}}/screening-review/{{item_key}}",
     ): COMPLIANCE_ONLY,
-    ("GET", f"{CRM}/exporters/{{customer_id}}/bank-activity"): CRM_STAFF_READERS,
     # ── Exporter CRM: verification results ───────────────────────────────────
     ("POST", f"{CRM}/verifications"): COMPLIANCE_ONLY,
     ("GET", f"{CRM}/verifications"): CRM_STAFF_READERS,
@@ -380,6 +379,10 @@ GATED_ROUTES: dict[tuple[str, str], frozenset[UserRole]] = {
         f"{CRM}/exporters/{{company_id}}/background-check/proposals/{{proposal_id}}/withdraw",
     ): COMPLIANCE_ONLY,
     ("GET", f"{CRM}/background-check/proposals"): COMPLIANCE_ONLY,
+    # One officer's own record of what they proposed and what they decided. On
+    # `compliance:decide` rather than `compliance:approve`, so an officer who
+    # proposes but may not approve can still read their own work.
+    ("GET", f"{CRM}/background-check/proposals/reviewed"): COMPLIANCE_ONLY,
     # The Re-KYC due list: compliance and admin act on it, the RM reads it.
     ("GET", f"{CRM}/background-check/due"): CRM_STAFF_READERS,
     # Who is working on it. Staff reach the RM route, the picker and bulk

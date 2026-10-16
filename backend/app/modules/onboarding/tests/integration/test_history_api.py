@@ -19,7 +19,7 @@ from httpx import AsyncClient
 
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.tests.fixtures.auth import auth_header, token_with_role
-from app.modules.onboarding.tests.fixtures.companies import make_company
+from app.modules.onboarding.tests.fixtures.companies import make_bare_deal, make_company
 from app.platform.authentication.models import UserRole
 from app.platform.database import services as db_services
 
@@ -75,7 +75,8 @@ async def _seed(company_id: uuid.UUID, deal_id: uuid.UUID) -> None:
 
 @pytest.fixture(scope="module")
 async def seeded() -> tuple[uuid.UUID, uuid.UUID]:
-    company_id, deal_id = await make_company(), uuid.uuid4()
+    company_id = await make_company()
+    deal_id = await make_bare_deal(company_id)
     await _seed(company_id, deal_id)
     return company_id, deal_id
 
@@ -321,7 +322,8 @@ async def test_developer_does_not_get_what_it_is_refused_elsewhere(
     verification and screening routes. Their history rows carry the same things, so
     the history routes leave those dimensions out for DEVELOPER — from the page and
     from the total — and every other role still gets the full timeline."""
-    company_id, deal_id = await make_company(), uuid.uuid4()
+    company_id = await make_company()
+    deal_id = await make_bare_deal(company_id)
     await _seed_compliance_rows(company_id, deal_id)
 
     async def read(path: str, role: UserRole, **params) -> dict:

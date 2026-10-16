@@ -272,8 +272,7 @@ activities to completions there, and returns its own read models from
 `domain/follow_up_views.py`. It adds no method to `exporter_activity_repository.py`
 or `engagement_views.py`, which are Phase 1's (phase agreement §6.3).
 
-`GET /onboarding/exporters/activities/pending` already exists (Phase 1's, from
-L2-01) and lists activities with a `due_at` across every company. It knows nothing
+`GET /onboarding/exporters/activities/pending` already exists (Phase 1's) and lists activities with a `due_at` across every company. It knows nothing
 about completions, so it lists completed follow-ups too. Phase 2's list is the one
 that subtracts them; the pending route is **not** changed to do it, because its
 callers today want "everything with a due date".
@@ -348,7 +347,7 @@ when another dimension's change is about a specific deal."
 
 ## 7. Error codes
 
-Every refusal below has a test (plan §7.7). Phase 2 reuses the three marked
+Every refusal below has a test (design §7.7). Phase 2 reuses the three marked
 **reuse**.
 
 | Code | HTTP | Raised when | For |
@@ -425,23 +424,23 @@ Stated separately so nobody reads this contract as a description of the code.
 | Item | State |
 |---|---|
 | The two columns, the enum, the `CHECK` | **implemented** — 0016, Phase 1 |
-| `ConversationService`: the gauge, the rules, history | **implemented** — L3-03, Phase 1 |
-| The `NOT_NOW` check-back rule | **implemented** — L3-04a, Phase 1 |
-| The gauge routes and the allowed-moves route | **implemented** — L3-03, Phase 1 |
-| Seam S1 (`mark_ready_now_for_opened_deal`) | **implemented** — Phase 1; called by `DealService.open_deal` (L3-05), which refuses a `LEAD` first |
-| The Conversation panel's gauge control and history | **implemented** — L3-11a-i, Phase 1 |
+| `ConversationService`: the gauge, the rules, history | **implemented** — Phase 1 |
+| The `NOT_NOW` check-back rule | **implemented** — Phase 1 |
+| The gauge routes and the allowed-moves route | **implemented** — Phase 1 |
+| Seam S1 (`mark_ready_now_for_opened_deal`) | **implemented** — Phase 1; called by `DealService.open_deal`, which refuses a `LEAD` first |
+| The Conversation panel's gauge control and history | **implemented** — Phase 1 |
 | Seam S2's "open a deal" **button** | **implemented** — `components/OpenDealPrompt.tsx` opens a deal from `READY_NOW` with the shared `OpenDealForm` (frontend refresh, 28 September 2026) |
 | `follow_up_completion` — the table, its FKs, its lock | **implemented** — 0016, Phase 1 |
-| `follow_up_completion` — the entity, repository, service and routes | **implemented** — L3-04b, Phase 2 |
-| The due/overdue read model | **implemented** — L3-04b, Phase 2 |
-| The Follow-ups screen, reachable from the sidebar | **implemented** — L3-11a-ii, Phase 2 |
+| `follow_up_completion` — the entity, repository, service and routes | **implemented** — Phase 2 |
+| The due/overdue read model | **implemented** — Phase 2 |
+| The Follow-ups screen, reachable from the sidebar | **implemented** — Phase 2 |
 
 ---
 
 ## 10. Acknowledgements
 
-Architecture §7.5 requires the users of a contract to have read it. L3-01a is done
-when each of these has confirmed.
+Architecture §7.5 requires the users of a contract to have read it; each of these
+has confirmed.
 
 | Who | Reads it for | Confirmed |
 |---|---|---|

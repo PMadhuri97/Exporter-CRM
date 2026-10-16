@@ -24,12 +24,13 @@ from sqlalchemy import CheckConstraint, ForeignKey, Index, String, UniqueConstra
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.modules.onboarding.domain.entities.database_generated_id import DatabaseGeneratedId
 from app.platform.database.models import AnerModel
 
 SCHEMA = "onboarding"
 
 
-class TradeRelationship(AnerModel):
+class TradeRelationship(DatabaseGeneratedId, AnerModel):
     __tablename__ = "trade_relationship"
     __table_args__ = (
         # One relationship per ordered pair. Ordered, not symmetric: A selling to B is

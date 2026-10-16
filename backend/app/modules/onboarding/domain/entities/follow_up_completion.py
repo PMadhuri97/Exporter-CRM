@@ -22,7 +22,8 @@ here so the ORM says what the database says, and every one of them is already in
 repository runs ``metadata.create_all``.
 
 ``customer_id`` is denormalised from the activity on purpose (contract §5.2): one
-company's completions then need no join, and the foreign key keeps it honest.
+company's completions then need no join. Since migration 0054 the activity's foreign
+key is composite, ``(activity_id, customer_id)``, so the copy cannot disagree with it.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     String,
     Text,
@@ -83,6 +85,16 @@ class FollowUpCompletion(AppendOnlyModel):
         # legitimate completes the same activity twice; a second attempt is a
         # refusal, never an upsert (contract §5.4).
         UniqueConstraint("activity_id", name="uq_follow_up_completion_activity_id"),
+        # The follow-up this completes and the company it belongs to, together, so the
+        # denormalised `customer_id` is always the activity's (0054). `ON DELETE
+        # RESTRICT`: the activity is append-only and this row is the record that it
+        # was dealt with, so neither may outlive the other.
+        ForeignKeyConstraint(
+            ["activity_id", "customer_id"],
+            [f"{SCHEMA}.exporter_activity.id", f"{SCHEMA}.exporter_activity.customer_id"],
+            name="fk_follow_up_completion_activity_id",
+            ondelete="RESTRICT",
+        ),
         CheckConstraint(
             "(outcome = 'RESCHEDULED' AND next_due_at IS NOT NULL)"
             " OR (outcome <> 'RESCHEDULED' AND next_due_at IS NULL)",
@@ -100,20 +112,10 @@ class FollowUpCompletion(AppendOnlyModel):
         {"schema": SCHEMA},
     )
 
-    #: The follow-up this completes. `ON DELETE RESTRICT`: the activity is
-    #: append-only and this row is the record that it was dealt with, so neither may
-    #: outlive the other.
-    activity_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey(
-            f"{SCHEMA}.exporter_activity.id",
-            name="fk_follow_up_completion_activity_id",
-            ondelete="RESTRICT",
-        ),
-        nullable=False,
-    )
+    #: The follow-up this completes (`fk_follow_up_completion_activity_id`).
+    activity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     #: The company. Denormalised from the activity (contract §5.2) so one company's
-    #: completions need no join; the foreign key keeps it honest.
+    #: completions need no join.
     customer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(

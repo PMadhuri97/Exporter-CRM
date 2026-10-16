@@ -39,10 +39,12 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.modules.onboarding.domain.entities.database_generated_id import DatabaseGeneratedId
 from app.modules.onboarding.domain.entities.deal_enums import DealStage
 from app.platform.database.models import AnerModel
 
@@ -52,7 +54,7 @@ if TYPE_CHECKING:
 SCHEMA = "onboarding"
 
 
-class Deal(AnerModel):
+class Deal(DatabaseGeneratedId, AnerModel):
     __tablename__ = "deal"
     __table_args__ = (
         # A withdrawal carries its reason, and nothing else does.
@@ -90,6 +92,8 @@ class Deal(AnerModel):
         ),
         # One company's deals, newest first — what the Deals panel asks for.
         Index("ix_deal_company_recent", "company_id", "created_at"),
+        # A seller's deals are told apart by their reference (0059).
+        UniqueConstraint("company_id", "reference", name="uq_deal_company_reference"),
         # The mirror of it: the deals a company is the *buyer* on.
         Index("ix_deal_buyer_company_recent", "buyer_company_id", "created_at"),
         # The open-work views filter by stage across companies.
@@ -113,6 +117,7 @@ class Deal(AnerModel):
         Enum(DealStage, name="deal_stage_enum", schema=SCHEMA, create_type=False),
         nullable=False,
         default=DealStage.OPEN,
+        server_default=DealStage.OPEN.value,
     )
     #: Required exactly when `stage` is `WITHDRAWN`, enforced by
     #: `ck_deal_withdrawal_reason` as well as by the service.

@@ -1159,6 +1159,26 @@ class DealTerminalError(AnerBaseException):
         )
 
 
+class DealReferenceTakenError(AnerBaseException):
+    """The seller already has a deal with this reference.
+
+    A reference is how people tell a company's deals apart (``uq_deal_company_reference``,
+    migration 0059), so two deals of one seller never share one. Another seller may use
+    the same reference.
+    """
+
+    def __init__(self, company_id: object, reference: str) -> None:
+        super().__init__(
+            detail=(
+                f"Company {company_id} already has a deal called {reference!r}; "
+                "give this one a different reference"
+            ),
+            error_code="DEAL_REFERENCE_TAKEN",
+            status_code=409,
+            extensions={"reference": reference},
+        )
+
+
 class DealWithdrawalReasonRequiredError(AnerBaseException):
     """``WITHDRAWN`` without a reason.
 
@@ -1574,36 +1594,6 @@ class VerificationBuyerDealClosedError(AnerBaseException):
             error_code="DEAL_CLOSED",
             status_code=409,
             extensions={"deal_id": str(deal_id), "stage": stage},
-        )
-
-
-class VerificationLegacyReviewUnchainedError(AnerBaseException):
-    """A result carries a legacy verdict (``verification_result.review_status``) but
-    has no ``verification_review`` row for a new review to supersede.
-
-    Migration ``onboarding_0021_verif_review`` copied every legacy verdict into the
-    review table as its first review, and the service never writes the legacy columns
-    since, so this state exists only if those columns were set outside the service
-    afterwards (raw SQL). A new review would have nothing to supersede: recording it
-    as a "first" review would overrule the legacy verdict with no supersede link and
-    no stated reason — the silent overwrite verification-and-screening.md §1 forbids. So it is refused
-    (409) until the legacy verdict is copied into ``verification_review`` the way the
-    migration did; retrying does not help, unlike ``VerificationReviewStaleError``.
-    """
-
-    def __init__(self, *, verification_result_id: object, legacy_review_status: str) -> None:
-        self.verification_result_id = verification_result_id
-        self.legacy_review_status = legacy_review_status
-        super().__init__(
-            detail=(
-                f"Verification result {verification_result_id} has a legacy review "
-                f"({legacy_review_status}) with no review record to supersede. Its "
-                "verdict must be copied into verification_review, as migration "
-                "onboarding_0021_verif_review did, before it can be reviewed again."
-            ),
-            error_code="VERIFICATION_LEGACY_REVIEW_UNCHAINED",
-            status_code=409,
-            extensions={"legacy_review_status": legacy_review_status},
         )
 
 

@@ -58,7 +58,6 @@ function check(overrides: Partial<VerificationResult> = {}): VerificationResult 
     performed_at: '2026-09-28T09:00:00Z',
     valid_until: null,
     normalized_result: {},
-    evidence_reference: null,
     evidence_note: 'Screened against the consolidated list.',
     evidence_refs: [],
     subject_snapshot: {

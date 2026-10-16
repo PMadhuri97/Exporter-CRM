@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.exceptions import RequestValidationError
@@ -69,10 +69,15 @@ _COMPANY_VIEW = require_permission("exporters", "view")
     "/{customer_id}/contacts",
     response_model=ExporterContactResponse,
     status_code=201,
-    summary="Add a contact to an exporter relationship",
+    summary="Add a contact, director or beneficial owner to a company",
     description=(
-        "Setting is_primary=true demotes any existing primary contact for this "
-        "customer in the same transaction — never two primaries at once.\n\n"
+        "A person with roles: `is_contact` (the default), `is_director`, `is_ubo`. Only "
+        "the name and a role are required; a DIN needs the director role, an ownership "
+        "share and control type the beneficial-owner role. The identification number is "
+        "stored encrypted. Adding a director or beneficial owner writes a `contact` "
+        "history row. Setting is_primary=true demotes any existing primary contact for "
+        "this customer in the same transaction — never two primaries at once; only a "
+        "contact can be primary.\n\n"
         "A contact this company can already reach at the same email address or phone "
         "number is refused (409), not recorded a second time."
     ),
@@ -88,7 +93,7 @@ _COMPANY_VIEW = require_permission("exporters", "view")
                 "(EXPORTER_CONTACT_PRIMARY_CONFLICT)"
             )
         },
-        422: {"description": "Invalid request body"},
+        422: {"description": "Invalid request body, or a person that breaks a role rule"},
     },
 )
 async def add_exporter_contact(
@@ -106,6 +111,11 @@ async def add_exporter_contact(
         phone=body.phone,
         department=body.department,
         is_primary=body.is_primary,
+        is_contact=body.is_contact,
+        is_director=body.is_director,
+        is_ubo=body.is_ubo,
+        details=body.details(),
+        actor_id=str(current_user.id),
     )
     return ExporterContactResponse.model_validate(contact).masked_for(current_user)
 
@@ -119,7 +129,9 @@ async def add_exporter_contact(
         "null is cleared; a field left out is untouched. `name` and `is_primary` may "
         "be changed but not sent as null. Setting is_primary=true demotes any other primary contact for this "
         "customer in the same transaction — never two primaries at once; setting it "
-        "false is allowed and leaves the company with no primary."
+        "false is allowed and leaves the company with no primary. Roles change the same "
+        "way: taking one away clears the fields that belong only to it, and taking away "
+        "`is_contact` stops the person being the primary contact."
     ),
     responses={
         200: {"model": ExporterContactResponse},
@@ -159,7 +171,7 @@ async def update_exporter_contact(
             ]
         )
     contact = await ExporterContactActivityService(db).update_contact(
-        customer_id, contact_id, changes=changes
+        customer_id, contact_id, changes=changes, actor_id=str(current_user.id)
     )
     return ExporterContactResponse.model_validate(contact).masked_for(current_user)
 
@@ -227,7 +239,11 @@ async def verify_exporter_contact(
 @router.get(
     "/{customer_id}/contacts",
     response_model=ExporterContactListResponse,
-    summary="List an exporter's contacts",
+    summary="List a company's contacts, or its directors and beneficial owners",
+    description=(
+        "`role` picks who: `CONTACT` (the default: who we talk to), `DIRECTOR`, `UBO`, "
+        "or `ALL` for every person at the company."
+    ),
     responses={
         200: {"model": ExporterContactListResponse},
         401: {"description": "Unauthorized"},
@@ -237,9 +253,12 @@ async def verify_exporter_contact(
 async def list_exporter_contacts(
     customer_id: uuid.UUID,
     current_user: Annotated[User, Depends(_COMPANY_VIEW)],
+    role: Annotated[Literal["CONTACT", "DIRECTOR", "UBO", "ALL"], Query()] = "CONTACT",
     db: AsyncSession = Depends(get_db),
 ) -> ExporterContactListResponse:
-    contacts = await ExporterContactActivityService(db).list_contacts(customer_id)
+    contacts = await ExporterContactActivityService(db).list_contacts(
+        customer_id, role=None if role == "ALL" else role
+    )
     return ExporterContactListResponse(
         customer_id=customer_id,
         contacts=[

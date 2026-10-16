@@ -36,7 +36,7 @@ export const ROLE_DESCRIPTION: Record<Role, string> = {
 };
 
 /** A role's tag: ink for the roles that sign decisions, quiet for the rest. Never a
- * state colour — colour means a state (frontend-plan §5.1), and a role is not one. */
+ * state colour — colour means a state, and a role is not one. */
 export const ROLE_TAG_TONE: Record<Role, TagTone> = {
   ADMIN: 'ink',
   COMPLIANCE: 'ink',

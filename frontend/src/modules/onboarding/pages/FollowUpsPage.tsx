@@ -295,7 +295,7 @@ type Bucket = 'Overdue' | 'Today' | 'This week' | 'Later' | 'Done';
 const BUCKETS: Bucket[] = ['Overdue', 'Today', 'This week', 'Later', 'Done'];
 
 /**
- * Which time bucket a row reads under (frontend-plan §8.7). Overdue and Done are the
+ * Which time bucket a row reads under. Overdue and Done are the
  * server's `state` — never worked out here; the rest only place an open row by its
  * due date, which is presentation, not a rule.
  */

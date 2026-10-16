@@ -1,5 +1,5 @@
 /**
- * The background check's status and its moves (frontend-plan §8.5.1): the current
+ * The background check's status and its moves: the current
  * state as a worded badge, then **only the moves the server listed in
  * `allowed_moves`**, as buttons — no state map, nothing drawn that cannot be done. A
  * move that needs a second officer reads "Propose …". An open proposal shows an

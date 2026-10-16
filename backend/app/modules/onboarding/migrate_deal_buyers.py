@@ -9,7 +9,7 @@ Run it with ``LOG_LEVEL=WARNING DEBUG=false``: with the development settings the
 engine echoes every statement and the report is lost in it (``command_console``).
 
 ``--rollback`` **writes nothing**: it reports what a run did and what undoing it
-takes. §17.2's logical rollback turns out not to be available in the shipped schema —
+takes. The logical rollback first designed turns out not to be available in the shipped schema —
 both ``deal.buyer_company_id`` and ``verification_result.subject_company_id`` are
 set-once and frozen by triggers, so neither can be set back to ``NULL``. Restoring the
 ``pg_dump`` is the only route back, which is why taking one is step zero and not a
@@ -20,11 +20,11 @@ reading and writing: name-only duplicates are reported and confirmed by hand,
 and a revision has nowhere to pause for that.
 
 **Never run on a live database before its dry-run report has been read.** It is
-tested against seeded databases covering §17.2's edge cases. The intended sequence
+tested against seeded databases covering its edge cases. The intended sequence
 is: ``pg_dump``, ``--dry-run``, read the report, confirm what needs a person,
 ``--apply``, ``--validate``, and a second ``--apply`` that must create nothing.
 
-How a buyer's identity is resolved (§17.2, in order of confidence)
+How a buyer's identity is resolved (in order of confidence)
 ------------------------------------------------------------------
 #. **The row is already linked to a company**: its deal names a buyer company,
    or its BUYER results already have a ``subject_company_id``.
@@ -61,17 +61,18 @@ A person resolves a refusal with ``--confirm-name``, naming one of the candidate
 report prints. Every confirmation is checked **before anything is written**
 (``check_confirmations``), so a bad one stops the run instead of half of it.
 
-What ``--apply`` writes, per §17.2
+What ``--apply`` writes
 ----------------------------------
-``deal_buyer_company_map`` (one row per deal buyer, append-only, carrying the rule
-and the run), the created companies (through ``CompanyDirectory.create_buyer_company``,
+The mapping on each ``deal_buyer`` row (``mapped_company_id``, ``match_rule``,
+``matched_by``, ``matched_at``, ``mapping_run_id``: set once, so a re-run skips the row
+and a mapping never changes), the created companies (through ``CompanyDirectory.create_buyer_company``,
 so they get ``DEAL_BUYER``, ``NOT_IN_PIPELINE``, ``created_via_deal_id`` = the earliest
 of their deals, the buyer's email and phone as a contact record, and one history row,
 ``company_created_from_deal_buyer``, with ``{run_id, deal_buyer_ids, deal_ids,
 match_rule}``), ``deal.buyer_company_id``, and ``verification_result.subject_company_id``
 for the deal's BUYER results.
 
-It does **not** touch ``deal_buyer`` rows, ``entity_type``, ``entity_reference``,
+It does **not** touch any other ``deal_buyer`` column, ``entity_type``, ``entity_reference``,
 ``subject_snapshot`` or any existing history row. Existing history stays on the
 seller's timeline and reaches the buyer company by the read-side union for deals
 as buyer. The ``handover_snapshot`` of a handed-over deal was taken from the
@@ -108,11 +109,7 @@ from app.modules.onboarding.domain.company_directory import BuyerCompanyDraft
 from app.modules.onboarding.domain.company_identity import registration_key
 from app.modules.onboarding.domain.company_names import name_key
 from app.modules.onboarding.domain.entities.deal import Deal
-from app.modules.onboarding.domain.entities.deal_buyer import DealBuyer
-from app.modules.onboarding.domain.entities.deal_buyer_company_map import (
-    BuyerMatchRule,
-    DealBuyerCompanyMap,
-)
+from app.modules.onboarding.domain.entities.deal_buyer import BuyerMatchRule, DealBuyer
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
@@ -125,9 +122,7 @@ from app.platform.database import services as db_services
 
 logger = structlog.get_logger(__name__)
 
-SOURCE = "migration_p4_6_deal_buyers"
-
-#: The event of the one history row a created company starts with (§17.2, "Creation").
+#: The event of the one history row a created company starts with.
 CREATION_EVENT = "company_created_from_deal_buyer"
 
 #: How many rows the report prints in full before summarising. The first run of this
@@ -156,7 +151,7 @@ MIN_REGISTRATION_KEY_LENGTH = 2
 
 @dataclass(eq=False)
 class _Group:
-    """Deal buyers that share an identifier, and so are one company (§17.2 steps 2-3).
+    """Deal buyers that share an identifier, and so are one company.
 
     ``claims`` are the existing companies something has said the group is: a company
     holding one of its identifiers, or a deal that already names its buyer company.
@@ -426,7 +421,7 @@ class Report:
 
 
 def _buyer_pan(buyer: DealBuyer) -> str | None:
-    """The PAN a buyer's ``tax_id`` carries, if any (§17.2 step 2).
+    """The PAN a buyer's ``tax_id`` carries, if any.
 
     ``tax_id`` is free text on a legacy row, so it may hold a PAN, a GSTIN, or
     something else entirely. A GSTIN carries its company's PAN in characters 3-12,
@@ -516,7 +511,9 @@ async def resolve(db: AsyncSession) -> Report:
     points at that company before any other row claims it; the report keeps the
     original order.
     """
-    mapped = set(await db.scalars(select(DealBuyerCompanyMap.deal_buyer_id)))
+    mapped = set(
+        await db.scalars(select(DealBuyer.id).where(DealBuyer.mapped_company_id.isnot(None)))
+    )
     subjects: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
     for buyer_id, subject_id in await db.execute(
         select(VerificationResult.entity_reference, VerificationResult.subject_company_id).where(
@@ -576,7 +573,7 @@ async def resolve(db: AsyncSession) -> Report:
             )
 
     # A group may learn its company from a later member, so the seller check runs once
-    # every row has been placed (§17.2 step 5).
+    # every row has been placed.
     for r in report.ready:
         if r.target is not None and r.target == r.seller_company_id:
             r.problems.append(
@@ -709,12 +706,9 @@ async def _seed_from_earlier_runs(db: AsyncSession, claimed: dict[str, _Group]) 
     the rows left over would be mapped by rule to whatever was left: a later run must
     reach the decision one run would have.
     """
-    rows = await db.execute(
-        select(DealBuyer, DealBuyerCompanyMap.company_id).join(
-            DealBuyerCompanyMap, DealBuyerCompanyMap.deal_buyer_id == DealBuyer.id
-        )
-    )
-    for buyer, company_id in rows:
+    rows = await db.scalars(select(DealBuyer).where(DealBuyer.mapped_company_id.isnot(None)))
+    for buyer in rows:
+        company_id = buyer.mapped_company_id
         country = (buyer.country or "").strip().upper()
         keys = _identity_keys(country, _buyer_pan(buyer), buyer.registration_number)
         groups = list({id(g): g for g in (claimed.get(k) for k in keys) if g}.values())
@@ -844,15 +838,13 @@ async def check_confirmations(
         line = f"--confirm-name {buyer_id}={company_id}"
         r = by_id.get(buyer_id)
         if r is None:
-            if await db.scalar(select(DealBuyer.id).where(DealBuyer.id == buyer_id)) is None:
+            buyer = await db.get(DealBuyer, buyer_id)
+            if buyer is None:
                 errors.append(f"{line}: no deal buyer has that id")
                 continue
-            mapping = await db.scalar(
-                select(DealBuyerCompanyMap).where(DealBuyerCompanyMap.deal_buyer_id == buyer_id)
-            )
-            if mapping is not None:
+            if buyer.mapped_company_id is not None:
                 errors.append(
-                    f"{line}: that deal buyer is already mapped (run {mapping.run_id}), "
+                    f"{line}: that deal buyer is already mapped (run {buyer.mapping_run_id}), "
                     "and a mapping never changes"
                 )
             else:
@@ -904,7 +896,7 @@ async def apply(
     actor_id: str | None,
     confirmed: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> dict[str, int]:
-    """Write everything §17.2 asks for, for the rows that are ready.
+    """Write everything the migration specifies, for the rows that are ready.
 
     ``confirmed`` carries a person's decisions: ``{deal_buyer_id: company_id}``, each
     naming one of the candidates the report offered. Those rows are mapped with
@@ -975,15 +967,25 @@ async def apply(
                 counts["skipped_deal_changed"] += 1
                 continue
 
-        db.add(
-            DealBuyerCompanyMap(
-                deal_buyer_id=r.deal_buyer_id,
-                company_id=company_id,
+        # Only an unmapped row is written. The report was built from unmapped rows, so
+        # anything else means another run mapped it meanwhile; the set-once trigger
+        # would refuse the write anyway, and stopping says so plainly.
+        mapped = await db.execute(
+            update(DealBuyer)
+            .where(DealBuyer.id == r.deal_buyer_id, DealBuyer.mapped_company_id.is_(None))
+            .values(
+                mapped_company_id=company_id,
                 match_rule=rule,
                 matched_by=actor_id,
-                run_id=run_id,
+                matched_at=func.now(),
+                mapping_run_id=run_id,
             )
         )
+        if mapped.rowcount != 1:
+            raise RuntimeError(
+                f"deal buyer {r.deal_buyer_id} was mapped by another run while this one "
+                "was applying; run --dry-run again"
+            )
         counts["mapped"] += 1
 
         # `deal.buyer_company_id` is set-once, so only a deal that has none is
@@ -997,8 +999,8 @@ async def apply(
 
         # The deal's BUYER results become the buyer company's — the company the deal
         # names, which `_deal_still_agrees` has just confirmed. `entity_type`,
-        # `entity_reference` and `subject_snapshot` are left exactly as they are
-        # (§17.2): every read already prefers `subject_company_id` when it is set.
+        # `entity_reference` and `subject_snapshot` are left exactly as they are:
+        # every read already prefers `subject_company_id` when it is set.
         results = await db.execute(
             update(VerificationResult)
             .where(
@@ -1037,9 +1039,9 @@ async def _create_company(
     run_id: str,
     actor_id: str | None,
 ) -> uuid.UUID:
-    """Create the company ``r``'s group becomes, with §17.2's creation history row.
+    """Create the company ``r``'s group becomes, with its creation history row.
 
-    ``created_via_deal_id`` is the earliest of the members' deals (§17.2), and the row
+    ``created_via_deal_id`` is the earliest of the members' deals, and the row
     names every member this run maps to it.
     """
     # `deal.created_at` is NOT NULL and read from one database, so every value carries
@@ -1102,7 +1104,7 @@ async def _add_member_contacts(
     return len({key for key in wanted if any(key)})
 
 
-# ── Validation (§17.2) ────────────────────────────────────────────────────────
+# ── Validation ────────────────────────────────────────────────────────
 
 #: Every query must return 0. The names are what the operator reads, so they say
 #: what is wrong rather than what was counted.
@@ -1129,11 +1131,7 @@ VALIDATION_QUERIES: tuple[tuple[str, str], ...] = (
     ),
     (
         "deal_buyer rows with no mapping",
-        """
-        SELECT count(*) FROM onboarding.deal_buyer b
-        LEFT JOIN onboarding.deal_buyer_company_map m ON m.deal_buyer_id = b.id
-        WHERE m.deal_buyer_id IS NULL
-        """,
+        "SELECT count(*) FROM onboarding.deal_buyer WHERE mapped_company_id IS NULL",
     ),
     (
         # Only companies a run created: mapped by a run, on the deal the company was
@@ -1145,11 +1143,10 @@ VALIDATION_QUERIES: tuple[tuple[str, str], ...] = (
         SELECT count(*) FROM onboarding.exporter_profile p
         WHERE p.created_via = 'DEAL_BUYER'
           AND EXISTS (
-            SELECT 1 FROM onboarding.deal_buyer_company_map m
-            JOIN onboarding.deal_buyer b ON b.id = m.deal_buyer_id
-            WHERE m.company_id = p.customer_id
+            SELECT 1 FROM onboarding.deal_buyer b
+            WHERE b.mapped_company_id = p.customer_id
               AND b.deal_id = p.created_via_deal_id
-              AND m.match_rule <> 'ALREADY_LINKED'
+              AND b.match_rule <> 'ALREADY_LINKED'
           )
           AND (
             SELECT count(*) FROM onboarding.exporter_lifecycle_history h
@@ -1176,13 +1173,12 @@ VALIDATION_QUERIES: tuple[tuple[str, str], ...] = (
         """,
     ),
     (
-        # The map and the deal must agree on who the buyer is.
+        # The mapping and the deal must agree on who the buyer is.
         "mapped deal buyers whose company is not the deal's buyer company",
         """
-        SELECT count(*) FROM onboarding.deal_buyer_company_map m
-        JOIN onboarding.deal_buyer b ON b.id = m.deal_buyer_id
+        SELECT count(*) FROM onboarding.deal_buyer b
         JOIN onboarding.deal d ON d.id = b.deal_id
-        WHERE d.buyer_company_id IS NOT NULL AND d.buyer_company_id <> m.company_id
+        WHERE d.buyer_company_id IS NOT NULL AND d.buyer_company_id <> b.mapped_company_id
         """,
     ),
     (
@@ -1202,7 +1198,7 @@ VALIDATION_QUERIES: tuple[tuple[str, str], ...] = (
 
 
 async def validate(db: AsyncSession) -> list[tuple[str, int]]:
-    """Run §17.2's validation queries. Every count must be 0."""
+    """Run the validation queries. Every count must be 0."""
     results: list[tuple[str, int]] = []
     for label, sql in VALIDATION_QUERIES:
         results.append((label, int(await db.scalar(text(sql)) or 0)))
@@ -1212,7 +1208,7 @@ async def validate(db: AsyncSession) -> list[tuple[str, int]]:
 async def rollback(db: AsyncSession, *, run_id: str) -> dict[str, int]:
     """Report what a run did and what it would take to undo it. **Writes nothing.**
 
-    §17.2 describes a logical rollback — ``UPDATE deal SET buyer_company_id = NULL``
+    The first design described a logical rollback — ``UPDATE deal SET buyer_company_id = NULL``
     and ``UPDATE verification_result SET subject_company_id = NULL`` — with the
     caveat that it *"needs the freeze trigger to allow NULL->value only, so do the
     rollback before enabling it, or restore"*.
@@ -1233,13 +1229,7 @@ async def rollback(db: AsyncSession, *, run_id: str) -> dict[str, int]:
     prints the one route back, which is the ``pg_dump`` taken before it. That is why
     the dump is step zero and not a precaution.
     """
-    mapped = list(
-        await db.scalars(
-            select(DealBuyerCompanyMap.deal_buyer_id).where(
-                DealBuyerCompanyMap.run_id == run_id
-            )
-        )
-    )
+    mapped = list(await db.scalars(select(DealBuyer.id).where(DealBuyer.mapping_run_id == run_id)))
     if not mapped:
         return {"mapped": 0, "deals_linked": 0, "results_linked": 0, "companies_created": 0}
 
@@ -1268,8 +1258,8 @@ async def rollback(db: AsyncSession, *, run_id: str) -> dict[str, int]:
     )
     companies_created = int(
         await db.scalar(
-            select(func.count(func.distinct(DealBuyerCompanyMap.company_id))).where(
-                DealBuyerCompanyMap.run_id == run_id
+            select(func.count(func.distinct(DealBuyer.mapped_company_id))).where(
+                DealBuyer.mapping_run_id == run_id
             )
         )
         or 0
@@ -1325,7 +1315,7 @@ async def _main(args: argparse.Namespace) -> int:
         if args.validate:
             results = await validate(db)
             failures = 0
-            print("\nP4-6 validation (plan section 17.2)")
+            print("\nBuyer migration validation")
             print("=" * 60)
             for label, count in results:
                 status = "OK  " if count == 0 else "FAIL"
@@ -1347,14 +1337,14 @@ async def _main(args: argparse.Namespace) -> int:
             print(f"\nRun {args.run_id} - what it did")
             print("=" * 60)
             if not counts["mapped"]:
-                print("Nothing: no mapping rows carry that run id.\n")
+                print("Nothing: no deal buyer was mapped by that run id.\n")
                 return 0
             print(f"  deal buyers mapped:    {counts['mapped']}")
             print(f"  companies involved:    {counts['companies_created']}")
             print(f"  deals linked:          {counts['deals_linked']}")
             print(f"  results re-subjected:  {counts['results_linked']}")
             print(
-                "\nThis command wrote nothing. The logical rollback in plan section 17.2 "
+                "\nThis command wrote nothing. The logical rollback first designed "
                 "is NOT available:\nboth `deal.buyer_company_id` and "
                 "`verification_result.subject_company_id` are set-once and\nfrozen by "
                 "triggers, so neither can be set back to NULL.\n\n"
@@ -1420,7 +1410,7 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="report, write nothing")
     mode.add_argument("--apply", action="store_true", help="write the migration")
-    mode.add_argument("--validate", action="store_true", help="run plan section 17.2's checks")
+    mode.add_argument("--validate", action="store_true", help="run the validation checks")
     mode.add_argument(
         "--rollback",
         action="store_true",

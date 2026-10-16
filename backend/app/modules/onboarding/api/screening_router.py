@@ -1,4 +1,7 @@
-"""Screening-review checklist and bank-activity routes (architecture §8.1, §9.4).
+"""Screening-review checklist routes (architecture §8.1, §9.4).
+
+The bank-activity route that used to live here is gone: no bank-monitoring feed is
+planned, and it only ever answered "not connected". The panel says that itself.
 
 Split out of `exporter_router.py` so the company routes and the
 background-check routes stop sharing one file. Mounted by `router.py` beside
@@ -32,8 +35,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.onboarding.api.actor_names import actor_names
 from app.modules.onboarding.api.schemas.background_check import CheckCycleResponse
 from app.modules.onboarding.api.schemas.screening import (
-    BankActivityFindingResponse,
-    BankActivityResponse,
     ScreeningCapabilities,
     ScreeningCatalogueItemResponse,
     ScreeningItemHistoryResponse,
@@ -224,38 +225,6 @@ async def update_screening_review(
     names = await actor_names(db, current_user, [item.reviewed_by])
     # A new answer always carries its cycle, so no legacy rule applies.
     return _item(item, names, None)
-
-
-@router.get(
-    "/{customer_id}/bank-activity",
-    response_model=BankActivityResponse,
-    summary="List bank-linked suspicious-activity findings",
-    responses={
-        401: {"description": "Unauthorized"},
-        403: {"description": "`screening:view` permission required"},
-    },
-    description=(
-        "No bank-monitoring provider feed is connected: the response says so "
-        "(`provider_feed_connected: false`, `provider_feed_status: NOT_CONNECTED`) "
-        "and never carries fabricated findings."
-    ),
-)
-async def get_bank_activity(
-    customer_id: uuid.UUID,
-    current_user: Annotated[User, Depends(_SCREENING_VIEW)],
-    db: AsyncSession = Depends(get_db),
-) -> BankActivityResponse:
-    findings = await ScreeningReviewService(db).list_bank_findings(customer_id)
-    open_findings = sum(1 for finding in findings if finding.status == "OPEN")
-    last_synced_at = max((finding.detected_at for finding in findings), default=None)
-    return BankActivityResponse(
-        customer_id=customer_id,
-        provider_feed_connected=False,
-        connected_accounts=0,
-        last_synced_at=last_synced_at,
-        open_findings=open_findings,
-        findings=[BankActivityFindingResponse.model_validate(finding) for finding in findings],
-    )
 
 
 __all__ = ["router"]
