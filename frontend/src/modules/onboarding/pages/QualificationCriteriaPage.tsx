@@ -16,6 +16,10 @@
  * changing the same criterion at once is caught by the server (409
  * `QUALIFICATION_CRITERION_CHANGED`); the second is asked to reload rather than
  * silently overwriting the first.
+ *
+ * **No change without a reason.** Adding a criterion and saving a new version both ask
+ * for a ticket number or an explanation; it is kept on the version and shown in its
+ * trail, so whoever reads the rule later can see why it moved.
  */
 
 import { useState } from 'react';
@@ -46,6 +50,8 @@ import {
   useCriteria,
   useCriterionVersions,
 } from '../hooks';
+import { changeReasonProblem } from '../components/change-reason';
+import { ChangeReasonField } from '../components/ChangeReasonField';
 import {
   AUTO_SOURCE_KIND,
   AUTO_SOURCE_LABEL,
@@ -59,7 +65,16 @@ import type {
   ThresholdComparison,
 } from '../types';
 
-const FIELDS = ['key', 'label', 'kind', 'comparison', 'threshold', 'unit', 'allowed_values'] as const;
+const FIELDS = [
+  'key',
+  'label',
+  'kind',
+  'comparison',
+  'threshold',
+  'unit',
+  'allowed_values',
+  'change_reason',
+] as const;
 
 const KIND_LABEL: Record<CriterionKind, string> = {
   NUMBER_THRESHOLD: 'Number threshold',
@@ -113,9 +128,10 @@ function draftFrom(criterion: Criterion | null): Draft {
 }
 
 /** Only the fields the kind uses are sent; the rest go as null. */
-function definitionOf(draft: Draft): CriterionDefinitionRequest {
+function definitionOf(draft: Draft, changeReason: string): CriterionDefinitionRequest {
   const threshold = draft.threshold.trim();
   return {
+    change_reason: changeReason.trim(),
     label: draft.label.trim(),
     kind: draft.kind,
     required: draft.required,
@@ -153,6 +169,7 @@ function CriterionComposer({
   base: Criterion | null;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFrom(base));
+  const [reason, setReason] = useState('');
   const create = useCreateCriterion();
   const addVersion = useAddCriterionVersion(base?.key ?? '');
   const mutation = base ? addVersion : create;
@@ -172,10 +189,10 @@ function CriterionComposer({
   const submit = async () => {
     try {
       if (base) {
-        const saved = await addVersion.mutateAsync(definitionOf(draft));
+        const saved = await addVersion.mutateAsync(definitionOf(draft, reason));
         toast.success(`${saved.label}: version ${saved.version} saved`);
       } else {
-        const saved = await create.mutateAsync({ key: draft.key.trim(), ...definitionOf(draft) });
+        const saved = await create.mutateAsync({ key: draft.key.trim(), ...definitionOf(draft, reason) });
         toast.success(`${saved.label} added`);
       }
       onClose();
@@ -200,6 +217,7 @@ function CriterionComposer({
       pending={mutation.isPending}
       error={error}
       fields={FIELDS}
+      submitDisabled={changeReasonProblem(reason) !== null}
       onSubmit={() => void submit()}
     >
       <RequiredNote />
@@ -338,6 +356,7 @@ function CriterionComposer({
           Active
         </label>
       </div>
+      <ChangeReasonField id="criterion-reason" value={reason} onChange={setReason} serverError={error} />
     </SidePanel>
   );
 }
@@ -386,6 +405,9 @@ function VersionTrail({ criterionKey }: { criterionKey: string }) {
               </>
             ) : null}
           </p>
+          {version.change_reason && (
+            <p className="text-caption text-ink-2">Reason: {version.change_reason}</p>
+          )}
         </li>
       ))}
     </ol>

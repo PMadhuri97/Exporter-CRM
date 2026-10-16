@@ -163,29 +163,36 @@ export async function withdrawBackgroundCheckProposal(
   );
 }
 
+/** A worklist's order: the longest waiting first (the server's default), or the newest. */
+export type WorklistOrder = 'oldest' | 'newest';
+
 /**
  * Proposals across companies (COMPLIANCE, ADMIN). `awaitingMe` leaves out the caller's
- * own — the Home card "Proposals awaiting me".
+ * own — the Home card "Proposals awaiting me". `order: 'newest'` puts the most recent
+ * first, as Compliance work lists them.
  */
 export async function listOpenProposals(
-  params: { awaitingMe?: boolean; limit?: number } = {},
+  params: { awaitingMe?: boolean; limit?: number; order?: WorklistOrder } = {},
 ): Promise<BackgroundCheckProposalList> {
   const query = new URLSearchParams({ status: 'open' });
   if (params.awaitingMe) query.set('awaiting', 'me');
   if (params.limit !== undefined) query.set('limit', String(params.limit));
+  if (params.order) query.set('order', params.order);
   return apiRequest<BackgroundCheckProposalList>(`/onboarding/background-check/proposals?${query}`);
 }
 
 /**
  * CLEAR companies whose Clear has expired or expires before `before` (default: the
- * server's Re-KYC window from now), expired first.
+ * server's Re-KYC window from now), expired first — or, with `order: 'newest'`, the
+ * latest expiry (the most recently due) first.
  */
 export async function listReKycDue(
-  params: { before?: string; limit?: number } = {},
+  params: { before?: string; limit?: number; order?: WorklistOrder } = {},
 ): Promise<ReKycDueList> {
   const query = new URLSearchParams();
   if (params.before) query.set('before', params.before);
   if (params.limit !== undefined) query.set('limit', String(params.limit));
+  if (params.order) query.set('order', params.order);
   const suffix = query.toString() ? `?${query}` : '';
   return apiRequest<ReKycDueList>(`/onboarding/background-check/due${suffix}`);
 }

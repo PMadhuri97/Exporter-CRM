@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import case, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.company_identity import registration_key
@@ -20,6 +20,7 @@ from app.modules.onboarding.domain.entities.exporter_enums import (
 from app.modules.onboarding.domain.entities.exporter_gstin import ExporterGstin
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.entities.qualification_enums import QualificationState
+from app.modules.onboarding.domain.list_sort import CompanySort, SortOrder
 from app.platform.authentication.models import User
 from app.platform.database.adapters.repository import BaseRepository
 
@@ -143,10 +144,13 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         missing_primary_contact: bool = False,
         collections_owner_user_id: uuid.UUID | None = None,
         collections_owner_unassigned: bool = False,
+        sort: CompanySort = CompanySort.UPDATED_AT,
+        order: SortOrder = SortOrder.DESC,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfile]:
-        """Filtered profile search, newest first.
+        """Filtered profile search, in the order asked for (``domain/list_sort.py``):
+        by default the most recently updated first.
 
         ``name_contains`` is a case-insensitive partial match on the name,
         taken literally: ``%`` and ``_`` in it match only themselves.
@@ -206,13 +210,7 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
                 ExporterProfile.pipeline_status != CompanyPipelineStatus.NOT_IN_PIPELINE
             )
 
-        # `customer_id` breaks ties: companies created in one transaction share
-        # a `created_at`, and without it a page boundary could repeat or skip one.
-        stmt = (
-            stmt.order_by(ExporterProfile.created_at.desc(), ExporterProfile.customer_id.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        stmt = stmt.order_by(*_company_order(sort, order)).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -235,6 +233,38 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
             stmt = stmt.where(ExporterProfile.journey == journey)
         result = await self.session.execute(stmt.order_by(ExporterProfile.customer_id))
         return list(result.scalars().all())
+
+
+#: The journey in its own order, not the alphabet's: Lead, Prospect, Customer.
+_STAGE_RANK = case(
+    {
+        ExporterJourney.LEAD: 1,
+        ExporterJourney.PROSPECT: 2,
+        ExporterJourney.CUSTOMER: 3,
+    },
+    value=ExporterProfile.journey,
+    else_=4,
+)
+
+
+def _company_order(sort: CompanySort, order: SortOrder) -> list:
+    """The ORDER BY for a sort. Every order ends on the newest change and then the
+    company id: companies written in one transaction share a timestamp, and without a
+    unique last key a page boundary could repeat or skip one."""
+    descending = order is SortOrder.DESC
+    newest = ExporterProfile.updated_at.desc()
+    if sort is CompanySort.NAME:
+        key = func.lower(ExporterProfile.name)
+        # A company with no name yet is last either way: it is the least findable.
+        first = (key.desc() if descending else key.asc()).nulls_last()
+        return [first, newest, ExporterProfile.customer_id.desc()]
+    if sort is CompanySort.STAGE:
+        first = _STAGE_RANK.desc() if descending else _STAGE_RANK.asc()
+        return [first, newest, ExporterProfile.customer_id.desc()]
+    updated = ExporterProfile.updated_at
+    if descending:
+        return [updated.desc(), ExporterProfile.customer_id.desc()]
+    return [updated.asc(), ExporterProfile.customer_id.asc()]
 
 
 def _escape_like(value: str) -> str:

@@ -67,6 +67,8 @@ export function listPendingTrueMatches(): Promise<PendingTrueMatchList> {
   return apiRequest<PendingTrueMatchList>('/onboarding/sanctions/true-matches');
 }
 
-export function listRescreenDue(): Promise<RescreenDueList> {
-  return apiRequest<RescreenDueList>('/onboarding/sanctions/rescreen-due');
+/** By company name, or by when each company was last screened (`newest` / `oldest`). */
+export function listRescreenDue(order?: 'name' | 'newest' | 'oldest'): Promise<RescreenDueList> {
+  const suffix = order ? `?order=${order}` : '';
+  return apiRequest<RescreenDueList>(`/onboarding/sanctions/rescreen-due${suffix}`);
 }

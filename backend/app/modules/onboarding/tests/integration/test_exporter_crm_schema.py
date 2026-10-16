@@ -112,7 +112,7 @@ def test_exporter_profile_invalid_journey_enum_rejected():
 
 _INSERT_CONTACT = """
     INSERT INTO onboarding.exporter_contact (
-        id, customer_id, name, is_primary_contact
+        id, customer_id, first_name, is_primary_contact
     ) VALUES (%s, %s, %s, %s)
 """
 

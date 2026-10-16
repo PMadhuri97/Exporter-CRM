@@ -175,7 +175,9 @@ describe('Compliance work', () => {
     fireEvent.click(await screen.findByRole('radio', { name: /To approve/ }));
     const approve = await screen.findByRole('navigation', { name: 'To approve' });
     expect(await within(approve).findByText('Bharat Precision Metals')).toBeInTheDocument();
-    expect(listOpenProposals).toHaveBeenCalledWith({ awaitingMe: true, limit: 50 });
+    // Asked for newest first, so the proposals fetched are the most recent.
+    expect(listOpenProposals).toHaveBeenCalledWith({ awaitingMe: true, limit: 100, order: 'newest' });
+    expect(listReKycDue).toHaveBeenCalledWith({ limit: 100, order: 'newest' });
     fireEvent.click(screen.getByRole('radio', { name: /Re-KYC due/ }));
     const due = await screen.findByRole('navigation', { name: 'Re-KYC due' });
     fireEvent.click(await within(due).findByRole('button', { name: /Coastal Seafood/ }));
@@ -212,3 +214,59 @@ describe('Compliance work', () => {
     expect(await within(team).findByText('Fortune Textiles')).toBeInTheDocument();
   });
 });
+
+/** Open the Sort menu and pick one of its items, as File Explorer's Sort menu works. */
+async function chooseSort(option: string) {
+  const trigger = screen.getByRole('button', { name: /^Sort:/ });
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+  fireEvent.keyDown(trigger, { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitemradio', { name: option }));
+}
+
+describe('Compliance work — newest first', () => {
+  const THREE = [
+    item({ company_id: 'company-old', company_name: 'Amber Exports', waiting_since: '2026-10-01T09:00:00Z' }),
+    item({ company_id: 'company-new', company_name: 'Zenith Foods', waiting_since: '2026-10-14T08:00:00Z' }),
+    item({ company_id: 'company-mid', company_name: 'Malabar Spices', waiting_since: '2026-10-07T09:00:00Z' }),
+  ];
+
+  const names = async () => {
+    const list = await screen.findByRole('navigation', { name: 'Awaiting review' });
+    await within(list).findByText('Zenith Foods'); // the rows, not the skeleton
+    return within(list)
+      .getAllByRole('button')
+      .map((button) => button.textContent ?? '')
+      .filter((text) => /Exports|Foods|Spices/.test(text))
+      .map((text) => text.match(/Amber Exports|Zenith Foods|Malabar Spices/)?.[0]);
+  };
+
+  beforeEach(() => {
+    WORK.awaiting = THREE;
+  });
+
+  it('puts what arrived today at the top, and opens it', async () => {
+    renderPage();
+    expect(await names()).toEqual(['Zenith Foods', 'Malabar Spices', 'Amber Exports']);
+    expect(await screen.findByTestId('case-panel')).toHaveTextContent('company-new');
+  });
+
+  it('turns round to the longest waiting first, or sorts by company', async () => {
+    renderPage();
+    await names();
+    expect(screen.getByRole('button', { name: 'Sort: Waiting since, descending' })).toBeInTheDocument();
+    await chooseSort('Ascending');
+    expect(await names()).toEqual(['Amber Exports', 'Malabar Spices', 'Zenith Foods']);
+
+    await chooseSort('Company');
+    expect(await names()).toEqual(['Amber Exports', 'Malabar Spices', 'Zenith Foods']);
+    await chooseSort('Descending');
+    expect(await names()).toEqual(['Zenith Foods', 'Malabar Spices', 'Amber Exports']);
+  });
+
+  it('asks the paged lists for the oldest when the oldest are wanted', async () => {
+    renderPage('/review?sort=date&order=asc');
+    await names();
+    expect(listOpenProposals).toHaveBeenCalledWith({ awaitingMe: true, limit: 100, order: 'oldest' });
+  });
+});
+

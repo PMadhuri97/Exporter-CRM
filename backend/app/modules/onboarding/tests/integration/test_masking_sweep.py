@@ -221,7 +221,8 @@ async def world(
         f"/exporters/{company_id}/contacts",
         compliance,
         json={
-            "name": "Priya Sweep",
+            "first_name": "Priya",
+            "last_name": "Sweep",
             "email": secrets["contact email"],
             "phone": secrets["contact phone"],
         },

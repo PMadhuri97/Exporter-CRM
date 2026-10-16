@@ -27,12 +27,30 @@
  * rather than jumping to the top of a list.
  *
  * Every list is computed by the server on read, with business-time deadlines.
+ *
+ * **Newest first.** Every tab opens with what arrived most recently at the top — what
+ * came in today is the first thing seen — by the date that put the row on its list:
+ * when a review started waiting, a proposal was made, a Clear comes due, a company was
+ * last screened, a bank account last changed. The Sort menu turns it round (oldest first,
+ * for working a backlog in order) or sorts by company name; the choice is in the URL
+ * (`?sort=`, `?order=`) and holds across tabs. The two lists the server pages (To
+ * approve, Re-KYC due) are asked for in that order, so the newest are the ones fetched.
  */
 
 import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import { buttonClasses, EmptyLine, PageHeader, Segmented, Skeleton } from '@/components';
+import {
+  buttonClasses,
+  EmptyLine,
+  PageHeader,
+  Segmented,
+  Skeleton,
+  SortMenu,
+  type SortColumn,
+  type SortState,
+  useSortParams,
+} from '@/components';
 import { cn } from '@/lib/cn';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { useHasPermission } from '@/platform/access';
@@ -60,9 +78,11 @@ const BackgroundCheckPanel = lazy(() =>
   import('./panels/BackgroundCheckPanel').then((m) => ({ default: m.BackgroundCheckPanel })),
 );
 
-const QUEUE_LIMIT = 50;
+/** The most one request returns; the paged lists are read in full up to it. */
+const QUEUE_LIMIT = 100;
 
 type Tab = 'awaiting' | 'mine' | 'approve' | 'rekyc' | 'truematch' | 'rescreen' | 'bank' | 'team';
+type SortKey = 'date' | 'name';
 type TeamView = 'in_review' | 'overdue' | 'needs_attention';
 
 const TAB_LABEL: Record<Tab, string> = {
@@ -93,12 +113,54 @@ const EMPTY: Record<Tab, string> = {
   team: 'Nothing here.',
 };
 
+/** What each tab's date is: the moment that put the row on its list. */
+const DATE_LABEL: Record<Tab, string> = {
+  awaiting: 'Waiting since',
+  mine: 'Waiting since',
+  team: 'Waiting since',
+  approve: 'Proposed',
+  rekyc: 'Clear expires',
+  truematch: 'Proposed',
+  rescreen: 'Last screened',
+  bank: 'Last change',
+};
+
+const DEFAULT_SORT: SortState<SortKey> = { key: 'date', order: 'desc' };
+
+function sortColumns(tab: Tab): SortColumn<SortKey>[] {
+  return [
+    { key: 'date', label: DATE_LABEL[tab], firstOrder: 'desc' },
+    { key: 'name', label: 'Company', firstOrder: 'asc' },
+  ];
+}
+
 /** One row of the list: the company, then one line of what it is waiting for. */
 interface Row {
   companyId: string;
   companyName: string;
   detail: string;
   extra?: ReactNode;
+  /** When it reached the list (`DATE_LABEL`); what the list sorts by. */
+  at: string | null;
+}
+
+/** The later of two timestamps, either possibly missing. */
+function later(a: string | null | undefined, b: string | null | undefined): string | null {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return Date.parse(a) >= Date.parse(b) ? a : b;
+}
+
+/** Rows in the chosen order. A row with no date sorts last either way; ties go A–Z. */
+function sortRows(rows: Row[], sort: SortState<SortKey>): Row[] {
+  const direction = sort.order === 'asc' ? 1 : -1;
+  const byName = (a: Row, b: Row) =>
+    a.companyName.localeCompare(b.companyName, undefined, { sensitivity: 'base' });
+  return [...rows].sort((a, b) => {
+    if (sort.key === 'name') return direction * byName(a, b) || 0;
+    if (!a.at || !b.at) return a.at ? -1 : b.at ? 1 : byName(a, b);
+    return direction * (Date.parse(a.at) - Date.parse(b.at)) || byName(a, b);
+  });
 }
 
 function workRow(item: ComplianceWorkItem, showReviewer: boolean): Row {
@@ -110,6 +172,7 @@ function workRow(item: ComplianceWorkItem, showReviewer: boolean): Row {
     companyName: item.company_name ?? 'Unnamed company',
     detail: parts.join(' · '),
     extra: <WorkItemChips item={item} />,
+    at: item.waiting_since,
   };
 }
 
@@ -159,16 +222,21 @@ export function ApprovalsPage() {
   const teamRequested = params.get('team') as TeamView | null;
   const teamView: TeamView =
     teamRequested && teamRequested in TEAM_LABEL ? teamRequested : 'needs_attention';
+  const columns = sortColumns(tab);
+  // Written by `update` below, with the selection, in one change to the URL.
+  const [sort] = useSortParams(columns, DEFAULT_SORT);
+  // The paged lists are fetched in the order shown, so "newest first" reads the newest.
+  const serverOrder = sort.key === 'date' && sort.order === 'asc' ? 'oldest' : 'newest';
 
   // Every tab's list is read, so each tab can show its count.
   const awaiting = useComplianceWork('awaiting');
   const mine = useComplianceWork('mine');
   const team = useComplianceWork(teamView, lead);
-  const proposals = useProposalsAwaitingMe({ limit: QUEUE_LIMIT, enabled: true });
-  const due = useReKycDue({ limit: QUEUE_LIMIT, enabled: true });
+  const proposals = useProposalsAwaitingMe({ limit: QUEUE_LIMIT, enabled: true, order: serverOrder });
+  const due = useReKycDue({ limit: QUEUE_LIMIT, enabled: true, order: serverOrder });
   const bank = usePendingBankAccounts(approvesBank);
   const trueMatches = usePendingTrueMatches();
-  const rescreen = useRescreenDue();
+  const rescreen = useRescreenDue(true, sort.key === 'name' ? 'name' : serverOrder);
 
   const update = (changes: Record<string, string | null>) =>
     setParams(
@@ -183,7 +251,9 @@ export function ApprovalsPage() {
       { replace: true },
     );
 
-  const rowsFor = (which: Tab): Row[] => {
+  const rowsFor = (which: Tab): Row[] => sortRows(unsortedRowsFor(which), sort);
+
+  const unsortedRowsFor = (which: Tab): Row[] => {
     switch (which) {
       case 'awaiting':
         return (awaiting.data?.items ?? []).map((item) => workRow(item, false));
@@ -202,23 +272,31 @@ export function ApprovalsPage() {
               <DueChip dueAt={proposal.due_at} isOverdue={proposal.is_overdue} isDueSoon={proposal.is_due_soon} />
             </>
           ),
+          at: proposal.proposed_at,
         }));
       case 'rekyc':
         return (due.data?.companies ?? []).map((row) => ({
           companyId: row.company_id,
           companyName: row.company_name ?? 'Unnamed company',
           detail: `${row.is_expired ? 'Clear expired' : 'Clear expires'} ${formatDate(row.expires_at)}`,
+          at: row.expires_at,
         }));
       case 'truematch': {
         const byCompany = new Map<string, Row>();
         for (const match of trueMatches.data?.matches ?? []) {
-          if (byCompany.has(match.company_id)) continue;
+          const known = byCompany.get(match.company_id);
+          if (known) {
+            // One row per company, dated by its most recent proposal.
+            known.at = later(known.at, match.hit.current.decided_at);
+            continue;
+          }
           byCompany.set(match.company_id, {
             companyId: match.company_id,
             companyName: match.company_name ?? 'Unnamed company',
             detail: `${match.subject_name} · ${match.hit.matched_name} (${match.hit.list_code})${
               match.hit.current.decided_by_name ? ` · by ${match.hit.current.decided_by_name}` : ''
             }`,
+            at: match.hit.current.decided_at,
           });
         }
         return [...byCompany.values()];
@@ -227,17 +305,30 @@ export function ApprovalsPage() {
         return (rescreen.data?.companies ?? []).map((row) => ({
           companyId: row.company_id,
           companyName: row.company_name ?? 'Unnamed company',
-          detail: row.reasons[0] + (row.reasons.length > 1 ? ` (+${row.reasons.length - 1} more)` : ''),
+          detail:
+            row.reasons[0] +
+            (row.reasons.length > 1 ? ` (+${row.reasons.length - 1} more)` : '') +
+            (row.last_screened_at ? ` · screened ${formatDate(row.last_screened_at)}` : ''),
+          at: row.last_screened_at ?? null,
         }));
       case 'bank': {
         // One row per company, however many of its accounts are waiting.
         const byCompany = new Map<string, Row>();
         for (const account of bank.data?.accounts ?? []) {
-          if (byCompany.has(account.customer_id)) continue;
+          const changed = [account.approved_at, account.rejected_at, account.verified_at].reduce(
+            later,
+            account.created_at,
+          );
+          const known = byCompany.get(account.customer_id);
+          if (known) {
+            known.at = later(known.at, changed);
+            continue;
+          }
           byCompany.set(account.customer_id, {
             companyId: account.customer_id,
             companyName: account.company_name ?? 'Unnamed company',
             detail: `${BANK_STATUS_LABEL[account.status]} · ${account.bank_name} ${account.currency}${account.proposed_by_name ? ` · by ${account.proposed_by_name}` : ''}`,
+            at: changed,
           });
         }
         return [...byCompany.values()];
@@ -324,6 +415,13 @@ export function ApprovalsPage() {
               className="mb-3"
             />
           )}
+          <div className="mb-2 flex justify-end">
+            <SortMenu
+              columns={columns}
+              value={sort}
+              onChange={(next) => update({ sort: next.key, order: next.order, company: null })}
+            />
+          </div>
           {query.isLoading ? (
             <div className="space-y-2" aria-hidden>
               <Skeleton className="h-12" />

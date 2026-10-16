@@ -87,6 +87,13 @@ function signedInAs(role: string) {
   });
 }
 
+const REASON = 'CHG-1042: buyer KYC now needed before handover';
+
+/** Fill the reason field in whichever panel or dialog is open. */
+function giveReason(reason = REASON) {
+  fireEvent.change(screen.getByLabelText(/^Reason for change/), { target: { value: reason } });
+}
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -127,13 +134,43 @@ describe('DealRequiredDocumentsPage', () => {
 
     const row = await screen.findByTestId('requirement-row');
     fireEvent.click(within(row).getByRole('button', { name: 'Stop requiring' }));
+    const dialog = await screen.findByRole('dialog');
+    giveReason();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Stop requiring' }));
 
     await waitFor(() => expect(setDealRequiredDocument).toHaveBeenCalled());
     expect(vi.mocked(setDealRequiredDocument).mock.calls[0]?.[0]).toEqual({
       category: 'PRE_SHIPMENT',
       document_type: null,
       active: false,
+      change_reason: REASON,
     });
+  });
+
+  it('does not stop requiring a category on one click, nor without a reason', async () => {
+    renderPage();
+
+    const row = await screen.findByTestId('requirement-row');
+    fireEvent.click(within(row).getByRole('button', { name: 'Stop requiring' }));
+    const dialog = await screen.findByRole('dialog');
+    const commit = within(dialog).getByRole('button', { name: 'Stop requiring' });
+    expect(commit).toBeDisabled();
+
+    giveReason('test');
+    expect(commit).toBeDisabled();
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/ticket number/);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(setDealRequiredDocument).not.toHaveBeenCalled();
+  });
+
+  it('shows why each change was made in the history', async () => {
+    vi.mocked(listDealRequiredDocuments).mockResolvedValue(
+      rule({ history: [requirement({ version: 2, created_by: 'admin-1', change_reason: REASON })] }),
+    );
+    renderPage();
+
+    expect(await screen.findByText(`Reason: ${REASON}`)).toBeInTheDocument();
   });
 
   it('offers no way to remove a requirement that is already removed', async () => {
@@ -157,6 +194,9 @@ describe('DealRequiredDocumentsPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Require a category/ }));
     fireEvent.change(screen.getByLabelText(/Category/), { target: { value: 'BUYER' } });
+    // Nothing to send until the change says why.
+    expect(screen.getByRole('button', { name: 'Add requirement' })).toBeDisabled();
+    giveReason();
     fireEvent.click(screen.getByRole('button', { name: 'Add requirement' }));
 
     await waitFor(() => expect(setDealRequiredDocument).toHaveBeenCalled());
@@ -165,6 +205,7 @@ describe('DealRequiredDocumentsPage', () => {
       // Not `''`: the sentinel is the database's business, never the client's.
       document_type: null,
       active: true,
+      change_reason: REASON,
     });
   });
 
@@ -204,6 +245,7 @@ describe('DealRequiredDocumentsPage', () => {
       expect(within(typeSelect).getByRole('option', { name: 'Bill of lading' })).toBeInTheDocument(),
     );
     fireEvent.change(typeSelect, { target: { value: 'bill_of_lading' } });
+    giveReason();
     fireEvent.click(screen.getByRole('button', { name: 'Add requirement' }));
 
     await waitFor(() => expect(setDealRequiredDocument).toHaveBeenCalled());
@@ -211,6 +253,7 @@ describe('DealRequiredDocumentsPage', () => {
       category: 'SHIPPING',
       document_type: 'bill_of_lading',
       active: true,
+      change_reason: REASON,
     });
   });
 
@@ -222,6 +265,7 @@ describe('DealRequiredDocumentsPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Require a category/ }));
     fireEvent.change(screen.getByLabelText(/Category/), { target: { value: 'BUYER' } });
+    giveReason();
     fireEvent.click(screen.getByRole('button', { name: 'Add requirement' }));
 
     expect(
@@ -251,6 +295,7 @@ describe('DealRequiredDocumentsPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Require a category/ }));
     fireEvent.change(screen.getByLabelText(/Category/), { target: { value: 'BUYER' } });
+    giveReason();
     fireEvent.click(screen.getByRole('button', { name: 'Add requirement' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(

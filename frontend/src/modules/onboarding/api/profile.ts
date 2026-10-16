@@ -52,6 +52,8 @@ function buildQuery(params: ExporterSearchParams): string {
     ['marker', params.marker],
     ['relationship_manager', params.relationship_manager],
     ['collections_owner', params.collections_owner],
+    ['sort', params.sort],
+    ['order', params.order],
   ];
   for (const [key, value] of entries) if (value) query.set(key, value);
   if (params.missing_primary_contact) query.set('missing_primary_contact', 'true');

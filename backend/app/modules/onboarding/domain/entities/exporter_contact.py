@@ -50,6 +50,7 @@ from decimal import Decimal
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Computed,
     Date,
     DateTime,
     ForeignKey,
@@ -137,6 +138,10 @@ class ExporterContact(AnerModel):
         UniqueConstraint("id", "customer_id", name="uq_exporter_contact_id_customer"),
         {"schema": SCHEMA},
     )
+    #: ``name`` is computed by the database, so an INSERT or UPDATE must read it back
+    #: (``RETURNING``): left expired, the next read of it is a lazy load, which an async
+    #: session refuses (``MissingGreenlet``) — the history row for a role change reads it.
+    __mapper_args__ = {"eager_defaults": True}
 
     #: The company. `ON DELETE RESTRICT`, so a company with contacts cannot be
     #: deleted out from under them — the same rule every other child of
@@ -150,7 +155,17 @@ class ExporterContact(AnerModel):
         ),
         nullable=False,
     )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: A person's first and last name, kept apart (migration 0062). The last name is
+    #: optional: plenty of people go by one name.
+    first_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: The full name, computed by the database from the two above and never written:
+    #: every reader that wants "the contact's name" reads this, and it cannot drift.
+    name: Mapped[str] = mapped_column(
+        String(511),
+        Computed("first_name || COALESCE(' ' || last_name, '')", persisted=True),
+        nullable=False,
+    )
     role: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)

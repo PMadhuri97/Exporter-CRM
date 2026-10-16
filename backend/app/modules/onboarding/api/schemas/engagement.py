@@ -49,10 +49,11 @@ from app.platform.authentication.models import User
 from app.platform.configuration.config import settings
 from app.platform.security.field_cipher import decrypt_field
 
-#: A contact's name, trimmed before it is measured: "   " is not a name, and without the
-#: trim it would pass ``min_length=1`` and save a contact nobody can find or act on.
+#: A contact's first or last name, trimmed before it is measured: "   " is not a name, and
+#: without the trim it would pass ``min_length=1`` and save a contact nobody can find or
+#: act on.
 ContactName = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
 ]
 ControlType = Literal["DIRECT_OWNERSHIP", "INDIRECT_OWNERSHIP", "VOTING_RIGHTS", "OTHER_CONTROL"]
 IdentificationType = Literal["PASSPORT", "NATIONAL_ID", "DRIVING_LICENCE"]
@@ -72,14 +73,24 @@ _PERSON_KEYS = (
 )
 
 
+def _blank_as_none(value: object) -> object:
+    """An optional last name sent as "" or spaces is no last name, not a name of spaces."""
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
 class AddExporterContactRequest(BaseModel):
     """A person at the company: a contact (the default), a director, a beneficial owner,
-    or several at once. Only the name and a role are required; the person fields are
-    optional, and the director-only and owner-only ones need that role."""
+    or several at once. Only the first name and a role are required; the last name is
+    optional, because plenty of people go by one name. The full ``name`` is never sent:
+    the database computes it from the two. The person fields are optional, and the
+    director-only and owner-only ones need that role."""
 
     model_config = ConfigDict(extra="forbid")
 
-    name: ContactName
+    first_name: ContactName
+    last_name: ContactName | None = None
     role: str | None = Field(default=None, max_length=255)
     email: Annotated[str | None, NotMasked] = Field(default=None, max_length=255)
     phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
@@ -102,6 +113,8 @@ class AddExporterContactRequest(BaseModel):
     def details(self) -> dict[str, object]:
         return {key: getattr(self, key) for key in _PERSON_KEYS}
 
+    _last_name_blank = field_validator("last_name", mode="before")(_blank_as_none)
+
 
 class UpdateExporterContactRequest(BaseModel):
     """A partial edit: only the fields actually sent are changed.
@@ -112,15 +125,17 @@ class UpdateExporterContactRequest(BaseModel):
     were really in the body — a field left out is untouched, a field sent as ``null`` is
     cleared.
 
-    ``name`` is the exception: it may be changed but not removed, because a contact with
-    no name is a row nobody can act on. ``ContactName`` refuses "" and a name of spaces;
-    ``_not_null`` refuses an explicit ``null``, which the type alone would
-    let through as "leave it alone" and so drop silently.
+    ``first_name`` is the exception: it may be changed but not removed, because a contact
+    with no name is a row nobody can act on. ``ContactName`` refuses "" and a name of
+    spaces; ``_not_null`` refuses an explicit ``null``, which the type alone would let
+    through as "leave it alone" and so drop silently. ``last_name`` may be cleared, with
+    ``null`` or an empty string.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    name: ContactName | None = None
+    first_name: ContactName | None = None
+    last_name: ContactName | None = None
     role: str | None = Field(default=None, max_length=255)
     email: Annotated[str | None, NotMasked] = Field(default=None, max_length=255)
     phone: Annotated[str | None, NotMasked] = Field(default=None, max_length=50)
@@ -139,10 +154,14 @@ class UpdateExporterContactRequest(BaseModel):
     #: Sent as ``null``, clears the number and its type.
     identification_number: Annotated[str | None, NotMasked] = Field(default=None, max_length=64)
 
-    @field_validator("name", "is_primary", "is_contact", "is_director", "is_ubo", mode="before")
+    _last_name_blank = field_validator("last_name", mode="before")(_blank_as_none)
+
+    @field_validator(
+        "first_name", "is_primary", "is_contact", "is_director", "is_ubo", mode="before"
+    )
     @classmethod
     def _not_null(cls, value: object, info: ValidationInfo) -> object:
-        # Runs only for a key that was sent, so a body without `name` is untouched.
+        # Runs only for a key that was sent, so a body without `first_name` is untouched.
         # `is_primary` and the roles are yes/no: null is neither, and reading it as
         # "leave it" would hide a client bug the same way.
         if value is None:
@@ -174,6 +193,9 @@ class ExporterContactResponse(BaseModel):
 
     id: uuid.UUID
     customer_id: uuid.UUID
+    first_name: str
+    last_name: str | None
+    #: The full name, "first last", computed by the database from the two above.
     name: str
     role: str | None
     email: str | None

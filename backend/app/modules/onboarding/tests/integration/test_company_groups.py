@@ -117,15 +117,16 @@ async def test_companies_sharing_a_beneficial_owner_are_suggested(client: AsyncC
     surname = f"Owner{uuid.uuid4().hex[:6]}"
     # The same owner on two companies, and a director on the second; someone else on
     # the third.
-    for company, name, role in (
-        (first, f"Priya {surname}", "is_ubo"),
-        (second, f"priya  {surname}", "is_director"),
-        (unrelated, "Priya Nobody", "is_ubo"),
+    # The full name is computed with a single space, so only the case differs here.
+    for company, first_name, last_name, role in (
+        (first, "Priya", surname, "is_ubo"),
+        (second, "priya", surname, "is_director"),
+        (unrelated, "Priya", "Nobody", "is_ubo"),
     ):
         resp = await client.post(
             f"{BASE}/{company}/contacts",
             headers=auth_header(token),
-            json={"name": name, "is_contact": False, role: True},
+            json={"first_name": first_name, "last_name": last_name, "is_contact": False, role: True},
         )
         assert resp.status_code == 201, resp.text
 
@@ -134,7 +135,7 @@ async def test_companies_sharing_a_beneficial_owner_are_suggested(client: AsyncC
     assert resp.status_code == 200, resp.text
     suggested = {s["company_id"]: s for s in resp.json()["suggestions"]}
     assert str(second) in suggested
-    assert suggested[str(second)]["shared_people"] == [f"priya  {surname}"]
+    assert suggested[str(second)]["shared_people"] == [f"priya {surname}"]
     assert str(unrelated) not in suggested
     # Never linked automatically.
     group = (await client.get(f"{BASE}/{first}/group", headers=auth_header(token))).json()

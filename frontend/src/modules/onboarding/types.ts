@@ -120,9 +120,14 @@ export interface ExporterSearchParams {
   missing_primary_contact?: boolean;
   /** `me` (My collections), `none`, or a user id. */
   collections_owner?: string;
+  /** What the server sorts by — the list is paged, so the order must be the server's. */
+  sort?: CompanySort;
+  order?: Schemas['SortOrder'];
   limit?: number;
   offset?: number;
 }
+/** `updated_at` (the default, newest first), `name` or `stage`. */
+export type CompanySort = Schemas['CompanySort'];
 export type VerificationResult =
   components['schemas']['VerificationResultResponse'];
 export type VerificationResultList =

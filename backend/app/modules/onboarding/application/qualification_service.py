@@ -47,6 +47,7 @@ from app.modules.onboarding.application.exporter_profile_service import (
 )
 from app.modules.onboarding.application.history_service import HistoryService
 from app.modules.onboarding.domain.assignment import Permission
+from app.modules.onboarding.domain.change_reason import require_change_reason
 from app.modules.onboarding.domain.company_intake import PartnerQualification
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
@@ -135,14 +136,21 @@ class QualificationService:
         return versions
 
     async def create_criterion(
-        self, key: str, definition: CriterionDefinition, *, actor_id: str | None
+        self,
+        key: str,
+        definition: CriterionDefinition,
+        *,
+        actor_id: str | None,
+        change_reason: str,
     ) -> QualificationCriterion:
-        """Add a new criterion as version 1."""
+        """Add a new criterion as version 1. ``change_reason`` (a ticket number or an
+        explanation) is required and kept on the version."""
+        reason = require_change_reason(change_reason)
         key = _check_key(key)
         _check_definition(definition)
         if await self._repo.latest_version(key) is not None:
             raise QualificationCriterionExistsError(key)
-        criterion = _criterion_row(key, 1, definition, actor_id)
+        criterion = _criterion_row(key, 1, definition, actor_id, reason)
         try:
             await self._repo.add(criterion)
         except IntegrityError:
@@ -155,16 +163,23 @@ class QualificationService:
         return criterion
 
     async def add_version(
-        self, key: str, definition: CriterionDefinition, *, actor_id: str | None
+        self,
+        key: str,
+        definition: CriterionDefinition,
+        *,
+        actor_id: str | None,
+        change_reason: str,
     ) -> QualificationCriterion:
         """Change a criterion by adding its next version. The previous
         versions stay exactly as they were, and results recorded against them
-        keep pointing at them. Deactivating is a version with `active=False`."""
+        keep pointing at them. Deactivating is a version with `active=False`.
+        ``change_reason`` is required and kept on the new version."""
+        reason = require_change_reason(change_reason)
         _check_definition(definition)
         latest = await self._repo.latest_version(key)
         if latest is None:
             raise QualificationCriterionNotFoundError(key)
-        criterion = _criterion_row(key, latest.version + 1, definition, actor_id)
+        criterion = _criterion_row(key, latest.version + 1, definition, actor_id, reason)
         try:
             await self._repo.add(criterion)
         except IntegrityError:
@@ -765,7 +780,11 @@ def _check_definition(definition: CriterionDefinition) -> None:
 
 
 def _criterion_row(
-    key: str, version: int, definition: CriterionDefinition, actor_id: str | None
+    key: str,
+    version: int,
+    definition: CriterionDefinition,
+    actor_id: str | None,
+    change_reason: str,
 ) -> QualificationCriterion:
     return QualificationCriterion(
         key=key,
@@ -781,6 +800,7 @@ def _criterion_row(
         required=definition.required,
         active=definition.active,
         created_by=actor_id,
+        change_reason=change_reason,
         auto_source=definition.auto_source,
     )
 

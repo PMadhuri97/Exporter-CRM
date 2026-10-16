@@ -32,6 +32,7 @@ import {
   rejectBackgroundCheckProposal,
   startCheckCycle,
   withdrawBackgroundCheckProposal,
+  type WorklistOrder,
 } from '../api';
 import type {
   ComplianceWorkView,
@@ -158,19 +159,23 @@ export function useBackgroundCheckProposals(customerId: string | undefined) {
 }
 
 /** Open proposals this user may act on — the Home card "Proposals awaiting me". */
-export function useProposalsAwaitingMe(params: { limit?: number; enabled?: boolean } = {}) {
+export function useProposalsAwaitingMe(
+  params: { limit?: number; enabled?: boolean; order?: WorklistOrder } = {},
+) {
   return useQuery({
-    queryKey: [...PROPOSAL_QUEUE_KEY, 'awaiting-me', params.limit ?? null],
-    queryFn: () => listOpenProposals({ awaitingMe: true, limit: params.limit }),
+    queryKey: [...PROPOSAL_QUEUE_KEY, 'awaiting-me', params.limit ?? null, params.order ?? null],
+    queryFn: () => listOpenProposals({ awaitingMe: true, limit: params.limit, order: params.order }),
     enabled: params.enabled ?? true,
   });
 }
 
 /** Companies whose Clear has expired or soon will — the Home card "Re-KYC due". */
-export function useReKycDue(params: { limit?: number; enabled?: boolean } = {}) {
+export function useReKycDue(
+  params: { limit?: number; enabled?: boolean; order?: WorklistOrder } = {},
+) {
   return useQuery({
-    queryKey: [...REKYC_DUE_KEY, params.limit ?? null],
-    queryFn: () => listReKycDue({ limit: params.limit }),
+    queryKey: [...REKYC_DUE_KEY, params.limit ?? null, params.order ?? null],
+    queryFn: () => listReKycDue({ limit: params.limit, order: params.order }),
     enabled: params.enabled ?? true,
   });
 }

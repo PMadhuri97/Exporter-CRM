@@ -1,6 +1,6 @@
 # Contract — the migration register
 
-**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0061_drop_columns`
+**Owner:** Developer 1 · **Config:** `backend/alembic.ini` · **Head today:** `onboarding_0064_company_sort`
 
 The prototype's migrations, from four developers and one platform change, in one
 chain. This is the running order and the rules. Dev 1 keeps it current.
@@ -71,8 +71,11 @@ merged.
 | 0059 | Schema audit | `onboarding_0059_deal_reference`: `uq_deal_company_reference` — `UNIQUE (company_id, reference)` on `deal`. No data: **refuses** while any seller has two deals with one reference, and lists them. Downgrade drops it | `onboarding_0058_buyer_freeze` |
 | 0060 | Schema audit | `onboarding_0060_drop_tables`: drops `qualification_reason_code` (the codes are served from code) and `bank_activity_finding` (never written). **Refuses** while `bank_activity_finding` holds a row. The retired columns stay, unmapped, for 0061: the release before still inserts NULL into them. Downgrade recreates both tables, the reason codes re-seeded | `onboarding_0059_deal_reference` |
 | 0061 | Schema audit | `onboarding_0061_drop_columns`: drops the columns 0060's release stopped mapping — `exporter_profile.relationship_manager`, `exporter_gstin.address`, `verification_result.reviewed_by`, `review_status` and `evidence_reference` with `trg_verification_result_field_immutability`; `prevent_reviewed_verification_outcome_change()` now reads the review chain alone. **Refuses**, changing nothing, while a GST branch has text and no address, RM text still names exactly one active RM account, a legacy verdict has no review in the chain or `evidence_reference` is set; prints how many unmatched RM names it discards. Downgrade re-adds the columns **empty** and restores the trigger and the old function | `onboarding_0060_drop_tables` |
+| 0062 | CRM review fixes | `onboarding_0062_contact_names`: `exporter_contact` gains `first_name` (required) and `last_name` (optional); `name` becomes `GENERATED ALWAYS AS (first_name || COALESCE(' ' || last_name, '')) STORED`. Existing rows split at the first run of whitespace; a buyer contact (named after its company) keeps its whole name as `first_name`. Runs after 0057, whose legacy-owner copy writes `name` directly. Downgrade restores `name` as a plain column from the computed value | `onboarding_0061_drop_columns` |
+| 0063 | CRM review fixes | `onboarding_0063_change_reason`: nullable `change_reason` on `qualification_criterion`, `deal_required_document`, `payment_term` and `sanctions_list`; the services refuse a new version without one. Not in 0055's frozen column list. Downgrade drops the columns | `onboarding_0062_contact_names` |
+| 0064 | CRM review fixes | `onboarding_0064_company_sort`: `ix_exporter_profile_updated_at` (`updated_at DESC, customer_id DESC`) and `ix_exporter_profile_name_lower` (`lower(name)`) for the server-sorted Companies list. Downgrade drops both | `onboarding_0063_change_reason` |
 
-**Next free onboarding number: 0062.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
+**Next free onboarding number: 0065.** Revision ids follow `onboarding_00NN_<lane>_<topic>`,
 32 characters at most (§2 below).
 
 `auth_0003` and `auth_0004` belong to the platform's user-management work, not to the

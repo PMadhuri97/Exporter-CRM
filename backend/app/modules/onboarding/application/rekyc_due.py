@@ -57,9 +57,13 @@ async def rekyc_due(
     now: datetime,
     limit: int = 20,
     offset: int = 0,
+    newest_first: bool = False,
 ) -> tuple[list[ReKycDueCompany], int]:
     """CLEAR companies whose Clear expires before ``before``, soonest (or longest
-    expired) first, and how many there are. ``is_expired`` is relative to ``now``."""
+    expired) first, and how many there are. ``is_expired`` is relative to ``now``.
+
+    ``newest_first`` reverses it: the latest expiry first, which is the Clear that
+    most recently came into the due window."""
     if before.tzinfo is None or now.tzinfo is None:
         raise ValueError("rekyc_due needs timezone-aware `before` and `now`")
     expires = ExporterProfile.background_check_expires_at
@@ -85,7 +89,13 @@ async def rekyc_due(
                 ExporterProfile.pipeline_status,
             )
             .where(*conditions)
-            .order_by(expires.asc(), ExporterProfile.customer_id.asc())
+            .order_by(
+                *(
+                    (expires.desc(), ExporterProfile.customer_id.desc())
+                    if newest_first
+                    else (expires.asc(), ExporterProfile.customer_id.asc())
+                )
+            )
             .limit(limit)
             .offset(offset)
         )

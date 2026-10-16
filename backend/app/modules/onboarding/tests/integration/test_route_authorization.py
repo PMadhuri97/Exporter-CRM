@@ -36,6 +36,8 @@ pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
 
+CHANGE_REASON = "CHG-1042: test change"
+
 # Who works the business: relationship managers and compliance.
 STAFF = {UserRole.OPERATIONS, UserRole.COMPLIANCE}
 # Compliance's own decisions.
@@ -112,7 +114,7 @@ GATED_ROUTES = [
         {"marker": "PAUSED", "reason": "Seasonal"},
         STAFF,
     ),
-    ("POST", f"{BASE}/exporters/{_ID}/contacts", {"name": "Jane"}, STAFF),
+    ("POST", f"{BASE}/exporters/{_ID}/contacts", {"first_name": "Jane"}, STAFF),
     ("POST", f"{BASE}/exporters/{_ID}/contacts/{_ID}/status", {"status": "INACTIVE", "reason": "Left"}, STAFF),
     ("POST", f"{BASE}/exporters/{_ID}/contacts/{_ID}/verification", None, STAFF),
     # Trade history. Writes are STAFF; the reads are in
@@ -207,13 +209,13 @@ GATED_ROUTES = [
     (
         "POST",
         f"{BASE}/qualification/criteria",
-        {"key": "x", "label": "X", "kind": "YES_NO", "required": False},
+        {"key": "x", "label": "X", "kind": "YES_NO", "required": False, "change_reason": CHANGE_REASON},
         ADMIN_ONLY,
     ),
     (
         "POST",
         f"{BASE}/qualification/criteria/revenue/versions",
-        {"label": "X", "kind": "YES_NO", "required": False},
+        {"label": "X", "kind": "YES_NO", "required": False, "change_reason": CHANGE_REASON},
         ADMIN_ONLY,
     ),
     (
@@ -327,16 +329,21 @@ GATED_ROUTES = [
     (
         "POST",
         f"{BASE}/settings/payment-terms",
-        {"code": "X", "label": "x", "kind": "ADVANCE"},
+        {"code": "X", "label": "x", "kind": "ADVANCE", "change_reason": CHANGE_REASON},
         ADMIN_ONLY,
     ),
-    ("PATCH", f"{BASE}/settings/payment-terms/X", {"label": "y"}, ADMIN_ONLY),
+    (
+        "PATCH",
+        f"{BASE}/settings/payment-terms/X",
+        {"label": "y", "change_reason": CHANGE_REASON},
+        ADMIN_ONLY,
+    ),
     ("PATCH", f"{BASE}/deals/{_ID}/terms", {"currency": "INR"}, STAFF),
     ("PUT", f"{BASE}/exporters/{_ID}/default-payment-term", {"payment_term_id": None}, STAFF),
     (
         "POST",
         f"{BASE}/settings/deal-required-documents",
-        {"category": "BUYER"},
+        {"category": "BUYER", "change_reason": CHANGE_REASON},
         ADMIN_ONLY,
     ),
     # Documents. The two uploads are multipart, so they are covered by their
@@ -462,10 +469,15 @@ GATED_ROUTES = [
     (
         "POST",
         f"{BASE}/settings/sanctions-lists",
-        {"code": "X", "name": "x", "list_version_date": "2026-10-09"},
+        {"code": "X", "name": "x", "list_version_date": "2026-10-09", "change_reason": CHANGE_REASON},
         ADMIN_ONLY,
     ),
-    ("PATCH", f"{BASE}/settings/sanctions-lists/X", {"name": "y"}, ADMIN_ONLY),
+    (
+        "PATCH",
+        f"{BASE}/settings/sanctions-lists/X",
+        {"name": "y", "change_reason": CHANGE_REASON},
+        ADMIN_ONLY,
+    ),
     ("GET", f"{BASE}/exporters/{_ID}/sanctions", None, STAFF_READERS),
     ("GET", f"{BASE}/exporters/{_ID}/sanctions/runs", None, STAFF_READERS),
     ("POST", f"{BASE}/exporters/{_ID}/sanctions/runs", {"list_codes": ["UN_SC"]}, COMPLIANCE_ONLY),
@@ -586,7 +598,7 @@ async def test_operations_can_perform_routine_crm_writes(
     customer_id = await _create_exporter(client, token)
 
     contact = await client.post(
-        f"{BASE}/exporters/{customer_id}/contacts", json={"name": "Jane"}, headers=auth_header(token)
+        f"{BASE}/exporters/{customer_id}/contacts", json={"first_name": "Jane"}, headers=auth_header(token)
     )
     assert contact.status_code == 201, contact.text
     activity = await client.post(
@@ -921,7 +933,7 @@ async def _contacts_as(client: AsyncClient, token: str, customer_id: str) -> lis
 async def _add_contact(client: AsyncClient, token: str, customer_id: str) -> dict:
     resp = await client.post(
         f"{BASE}/exporters/{customer_id}/contacts",
-        json={"name": "Jane Doe", "email": EMAIL, "phone": PHONE},
+        json={"first_name": "Jane", "last_name": "Doe", "email": EMAIL, "phone": PHONE},
         headers=auth_header(token),
     )
     assert resp.status_code == 201, resp.text
@@ -1136,7 +1148,7 @@ async def test_masked_contact_email_is_rejected_on_write(
     customer_id = await _create_exporter(client, token)
     resp = await client.post(
         f"{BASE}/exporters/{customer_id}/contacts",
-        json={"name": "Jane", "email": MASKED_EMAIL},
+        json={"first_name": "Jane", "email": MASKED_EMAIL},
         headers=auth_header(token),
     )
     assert resp.status_code == 422, resp.text

@@ -91,6 +91,9 @@ class DealRequiredDocument(DatabaseGeneratedId, AppendOnlyModel):
     # ── Provenance on every new table ────────────────────────────────────────
     #: Who wrote this version, from the session. ``NULL`` for the seeded v1.
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Why this version was written: a ticket number or an explanation
+    #: (``domain/change_reason.py``). ``NULL`` for seeded versions and those before 0055.
+    change_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     #: How it arrived: ``settings_api`` for the route, ``migration_0030_seed`` for
     #: the seed.
     source: Mapped[str] = mapped_column(String(100), nullable=False)

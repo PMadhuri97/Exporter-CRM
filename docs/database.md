@@ -628,10 +628,10 @@ rolls back. The facts that belong here:
 | | |
 |---|---|
 | Tool | Alembic, one chain for the whole platform |
-| Revisions | 128 |
-| Head | **one**: `onboarding_0061_drop_columns` |
-| CRM migration directory | `backend/app/modules/onboarding/migrations/`, revisions `onboarding_0001_baseline` … `onboarding_0061_drop_columns` |
-| Next free CRM number | **0062** |
+| Revisions | 131 |
+| Head | **one**: `onboarding_0064_company_sort` |
+| CRM migration directory | `backend/app/modules/onboarding/migrations/`, revisions `onboarding_0001_baseline` … `onboarding_0064_company_sort` |
+| Next free CRM number | **0065** |
 | Naming | `onboarding_00NN_<lane>_<topic>` |
 | Root revision | `a0b1c2d3e4f5_shared_immutability_function` — creates `public.prevent_mutation()`, which every other module's triggers need |
 

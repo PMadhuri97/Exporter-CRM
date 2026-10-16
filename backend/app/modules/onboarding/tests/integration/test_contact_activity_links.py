@@ -48,7 +48,7 @@ BASE = "/api/v1/onboarding"
 _CHILDREN = {
     "exporter_contact": (
         "fk_exporter_contact_customer_id",
-        "INSERT INTO onboarding.exporter_contact (id, customer_id, name) "
+        "INSERT INTO onboarding.exporter_contact (id, customer_id, first_name) "
         "VALUES (%s, %s, 'Ghost')",
     ),
     "exporter_activity": (
@@ -167,7 +167,7 @@ async def test_the_database_accepts_a_child_row_for_a_real_company(table):
 async def test_the_service_refuses_a_contact_for_a_company_that_does_not_exist():
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ExporterProfileNotFoundError):
-            await ExporterContactActivityService(db).add_contact(uuid.uuid4(), name="Ghost")
+            await ExporterContactActivityService(db).add_contact(uuid.uuid4(), first_name="Ghost")
 
 
 async def test_the_service_refuses_an_activity_for_a_company_that_does_not_exist():
@@ -184,7 +184,7 @@ async def test_the_service_refuses_an_activity_for_a_company_that_does_not_exist
 @pytest.mark.parametrize(
     ("path", "body"),
     [
-        ("contacts", {"name": "Ghost"}),
+        ("contacts", {"first_name": "Ghost"}),
         ("activities", {"activity_type": "CALL", "subject": "Ghost call"}),
     ],
 )
@@ -215,12 +215,12 @@ async def test_a_refused_contact_does_not_demote_an_existing_primary():
     company_id = await make_company()
     async with db_services.AsyncSessionLocal() as db:
         await ExporterContactActivityService(db).add_contact(
-            company_id, name="Priya Nair", is_primary=True
+            company_id, first_name="Priya", last_name="Nair", is_primary=True
         )
     async with db_services.AsyncSessionLocal() as db:
         with pytest.raises(ExporterProfileNotFoundError):
             await ExporterContactActivityService(db).add_contact(
-                uuid.uuid4(), name="Ghost", is_primary=True
+                uuid.uuid4(), first_name="Ghost", is_primary=True
             )
     async with db_services.AsyncSessionLocal() as db:
         contacts = await ExporterContactActivityService(db).list_contacts(company_id)

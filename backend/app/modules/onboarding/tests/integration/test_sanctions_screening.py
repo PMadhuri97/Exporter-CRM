@@ -29,6 +29,8 @@ from app.platform.database import services as db_services
 pytestmark = pytest.mark.asyncio
 
 BASE = "/api/v1/onboarding"
+
+CHANGE_REASON = "CHG-1042: test change"
 LISTS = ["UN_SC", "IN_MHA_UAPA"]
 
 
@@ -101,7 +103,7 @@ async def test_a_new_list_version_puts_the_company_on_rescreen_due(client: Async
     revised = await client.patch(
         f"{BASE}/settings/sanctions-lists/IN_MHA_UAPA",
         headers=auth_header(admin),
-        json={"list_version_date": newer},
+        json={"list_version_date": newer, "change_reason": CHANGE_REASON},
     )
     assert revised.status_code == 200, revised.text
     assert revised.json()["version"] == mha["version"] + 1
@@ -114,6 +116,35 @@ async def test_a_new_list_version_puts_the_company_on_rescreen_due(client: Async
     await _record(client, officer, company_id)
     due = await client.get(f"{BASE}/sanctions/rescreen-due", headers=auth_header(officer))
     assert str(company_id) not in {r["company_id"] for r in due.json()["companies"]}
+
+
+async def test_rescreen_due_can_list_the_most_recently_screened_first(client: AsyncClient):
+    _, officer = await user_with_role(client, UserRole.COMPLIANCE)
+    _, admin = await user_with_role(client, UserRole.ADMIN)
+    earlier, later = await make_company(), await make_company()
+    await _record(client, officer, earlier)
+    await _record(client, officer, later)
+
+    lists = (await client.get(f"{BASE}/settings/sanctions-lists", headers=auth_header(admin))).json()
+    mha = next(row for row in lists["lists"] if row["code"] == "IN_MHA_UAPA")
+    newer = (date.fromisoformat(mha["list_version_date"]) + timedelta(days=1)).isoformat()
+    await client.patch(
+        f"{BASE}/settings/sanctions-lists/IN_MHA_UAPA",
+        headers=auth_header(admin),
+        json={"list_version_date": newer, "change_reason": CHANGE_REASON},
+    )
+
+    due = await client.get(
+        f"{BASE}/sanctions/rescreen-due",
+        params={"order": "newest", "limit": 500},
+        headers=auth_header(officer),
+    )
+    assert due.status_code == 200, due.text
+    rows = due.json()["companies"]
+    ids = [row["company_id"] for row in rows]
+    assert ids.index(str(later)) < ids.index(str(earlier))
+    screened = [row["last_screened_at"] for row in rows if row["last_screened_at"]]
+    assert screened == sorted(screened, reverse=True)
 
 
 async def test_every_mandatory_list_must_be_covered(client: AsyncClient):
@@ -249,7 +280,7 @@ async def test_a_beneficial_owner_on_record_is_a_subject_and_unscreened_until_sc
 ):
     _, officer = await user_with_role(client, UserRole.COMPLIANCE)
     company_id = await make_company()
-    ubo_id = await _person(client, officer, company_id, name="Priya Shah", is_ubo=True)
+    ubo_id = await _person(client, officer, company_id, first_name="Priya", last_name="Shah", is_ubo=True)
     await _record(client, officer, company_id)
 
     coverage = (await client.get(f"{BASE}/exporters/{company_id}/sanctions", headers=auth_header(officer))).json()
@@ -269,8 +300,8 @@ async def test_a_beneficial_owner_on_record_is_a_subject_and_unscreened_until_sc
 async def test_a_director_on_record_is_screened_by_reference(client: AsyncClient):
     _, officer = await user_with_role(client, UserRole.COMPLIANCE)
     company_id = await make_company()
-    director_id = await _person(client, officer, company_id, name="Ravi Kumar", is_director=True)
-    owner_id = await _person(client, officer, company_id, name="Anita Rao", is_ubo=True)
+    director_id = await _person(client, officer, company_id, first_name="Ravi", last_name="Kumar", is_director=True)
+    owner_id = await _person(client, officer, company_id, first_name="Anita", last_name="Rao", is_ubo=True)
     await _record(client, officer, company_id)
 
     coverage = (await client.get(f"{BASE}/exporters/{company_id}/sanctions", headers=auth_header(officer))).json()
@@ -302,7 +333,7 @@ async def test_a_director_who_is_also_an_owner_can_be_screened_as_either(client:
     under "A director" as well as "A beneficial owner"; both screenings are allowed."""
     _, officer = await user_with_role(client, UserRole.COMPLIANCE)
     company_id = await make_company()
-    person = await _person(client, officer, company_id, name="Dual Role", is_director=True, is_ubo=True)
+    person = await _person(client, officer, company_id, first_name="Dual", last_name="Role", is_director=True, is_ubo=True)
 
     coverage = (await client.get(f"{BASE}/exporters/{company_id}/sanctions", headers=auth_header(officer))).json()
     [subject] = [s for s in coverage["subjects"] if s["subject_reference"] == person]
@@ -317,7 +348,7 @@ async def test_a_director_who_is_also_an_owner_can_be_screened_as_either(client:
 async def test_a_person_of_another_company_cannot_be_screened_here(client: AsyncClient):
     _, officer = await user_with_role(client, UserRole.COMPLIANCE)
     company_id, other = await make_company(), await make_company()
-    stranger = await _person(client, officer, other, name="Elsewhere", is_ubo=True)
+    stranger = await _person(client, officer, other, first_name="Elsewhere", is_ubo=True)
 
     resp = await _record(client, officer, company_id, subject_type="UBO", subject_reference=stranger)
 

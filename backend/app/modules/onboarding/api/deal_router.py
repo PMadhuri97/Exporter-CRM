@@ -527,6 +527,7 @@ async def set_deal_required_document(
         document_type=body.document_type,
         active=body.active,
         actor_id=str(current_user.id),
+        change_reason=body.change_reason,
     )
     return DealRequiredDocumentResponse.from_entity(row)
 
@@ -610,6 +611,7 @@ async def add_payment_term(
     term = await PaymentTermService(db).add(
         code=body.code, label=body.label, kind=body.kind, days=body.days,
         actor_id=str(current_user.id),
+        change_reason=body.change_reason,
     )
     return PaymentTermResponse.model_validate(term)
 
@@ -644,6 +646,7 @@ async def revise_payment_term(
         days_sent="days" in body.model_fields_set,
         active=body.active,
         actor_id=str(current_user.id),
+        change_reason=body.change_reason,
     )
     return PaymentTermResponse.model_validate(term)
 

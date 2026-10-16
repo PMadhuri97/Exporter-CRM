@@ -89,6 +89,7 @@ from app.modules.onboarding.domain.exporter_profile_views import (
     ExporterProfileListItem,
 )
 from app.modules.onboarding.domain.gst_states import state_code_of, state_name_of
+from app.modules.onboarding.domain.list_sort import CompanySort, SortOrder
 from app.modules.onboarding.domain.qualification_auto import AutoSource
 from app.modules.onboarding.domain.tax_identifiers import (
     check_gstins_match_pan,
@@ -1077,10 +1078,13 @@ class ExporterProfileService:
         missing_primary_contact: bool = False,
         collections_owner_user_id: uuid.UUID | None = None,
         collections_owner_unassigned: bool = False,
+        sort: CompanySort = CompanySort.UPDATED_AT,
+        order: SortOrder = SortOrder.DESC,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfileListItem]:
-        """Filtered company search.
+        """Filtered company search, sorted by ``sort`` in ``order`` — by default the most
+        recently updated company first (``domain/list_sort.py``).
 
         `name_contains` is a case-insensitive partial match on the company's
         name. `gstin` matches any of a company's GSTINs; `pan`, `gstin` and
@@ -1136,6 +1140,8 @@ class ExporterProfileService:
             collections_owner_unassigned=collections_owner_unassigned,
             exclude_ended=marker is None and not searching,
             exclude_not_in_pipeline=pipeline_status is None and not searching,
+            sort=sort,
+            order=order,
             limit=limit,
             offset=offset,
         )
@@ -1539,6 +1545,8 @@ def _contact_view(contact: ExporterContact) -> ExporterContactView:
     return ExporterContactView(
         id=contact.id,
         customer_id=contact.customer_id,
+        first_name=contact.first_name,
+        last_name=contact.last_name,
         name=contact.name,
         role=contact.role,
         email=contact.email,

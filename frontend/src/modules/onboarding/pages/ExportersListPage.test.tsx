@@ -98,10 +98,74 @@ describe('ExportersListPage — identifiers are not on the list', () => {
     expect(screen.queryByRole('button', { name: /reveal value/i })).not.toBeInTheDocument();
   });
 
-  it('keeps the country and the relationship manager on the second line', async () => {
+  it('keeps the country, the relationship manager and the last update on the second line', async () => {
     mockUser('OPERATIONS', 'someone-else');
     renderPage();
-    expect(await screen.findByText('India · RM Jane RM')).toBeInTheDocument();
+    expect(await screen.findByText(/^India · RM Jane RM · Updated \S/)).toBeInTheDocument();
+  });
+});
+
+/** Open the Sort menu and pick one of its items, as File Explorer's Sort menu works. */
+async function chooseSort(option: string) {
+  const trigger = screen.getByRole('button', { name: /^Sort:/ });
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+  fireEvent.keyDown(trigger, { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitemradio', { name: option }));
+}
+
+describe('ExportersListPage — sorting', () => {
+  beforeEach(() => {
+    mockUser('OPERATIONS', 'someone-else');
+    vi.mocked(searchExporterProfiles).mockReset();
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [PROFILE], limit: 50, offset: 0 });
+  });
+
+  const lastCall = () => vi.mocked(searchExporterProfiles).mock.calls.at(-1)?.[0];
+
+  it('asks for the most recently updated first, and the Sort menu marks it', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+    expect(lastCall()).toMatchObject({ sort: 'updated_at', order: 'desc' });
+    const trigger = screen.getByRole('button', { name: 'Sort: Last updated, descending' });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+
+    // As File Explorer: the columns, then the direction, a dot on each choice.
+    const items = await screen.findAllByRole('menuitemradio');
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Name',
+      'Stage',
+      'Last updated',
+      'Ascending',
+      'Descending',
+    ]);
+    expect(screen.getByRole('menuitemradio', { name: 'Last updated' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('menuitemradio', { name: 'Descending' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('menuitemradio', { name: 'Name' })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('sorts by name A to Z, then Z to A from the same menu, on the server', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+    await chooseSort('Name');
+    await waitFor(() => expect(lastCall()).toMatchObject({ sort: 'name', order: 'asc' }));
+
+    await chooseSort('Descending');
+    await waitFor(() => expect(lastCall()).toMatchObject({ sort: 'name', order: 'desc' }));
+    expect(screen.getByRole('button', { name: 'Sort: Name, descending' })).toBeInTheDocument();
+  });
+
+  it('sorts by stage, Lead first', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+    await chooseSort('Stage');
+    await waitFor(() => expect(lastCall()).toMatchObject({ sort: 'stage', order: 'asc' }));
+  });
+
+  it('keeps the sort in the URL, so My companies opens sorted as shared', async () => {
+    renderPage('/companies?owner=me&sort=name&order=desc');
+    await screen.findByText('Acme Exports');
+    expect(lastCall()).toMatchObject({ relationship_manager: 'me', sort: 'name', order: 'desc' });
   });
 });
 
