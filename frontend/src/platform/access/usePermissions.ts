@@ -51,10 +51,11 @@ function usePermissions() {
 
 /** The permissions a screen reads from the server rather than from the role: the
  * senior-work ones (held through the Sales lead and Compliance lead roles, or any role an
- * administrator grants them to), saving a copy of a document, and reading a tax
- * identifier in full. */
+ * administrator grants them to), saving a copy of a document, reading a background
+ * check, and reading a tax identifier in full. */
 export type AssignmentPermission =
   | 'exporters:assign_rm'
+  | 'compliance:view'
   | 'exporters:view_full_tax_id'
   | 'compliance:assign'
   | 'compliance:approve_high_risk'

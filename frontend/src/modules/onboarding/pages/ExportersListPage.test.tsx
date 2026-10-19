@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useHasPermission } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 
 import { searchExporterProfiles } from '../api';
@@ -19,6 +20,12 @@ vi.mock('@/platform/auth', async (importOriginal) => ({
   useCurrentUser: vi.fn(),
 }));
 vi.mock('../api', () => ({ searchExporterProfiles: vi.fn() }));
+vi.mock('@/platform/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/access')>()),
+  // The background-check filter and export column read `compliance:view` — the
+  // permission the server refuses the filter without — not a role.
+  useHasPermission: vi.fn(),
+}));
 
 const PROFILE: ExporterProfileListItem = {
   customer_id: 'c1',
@@ -48,6 +55,8 @@ const PROFILE: ExporterProfileListItem = {
 };
 
 function mockUser(role: string, id: string) {
+  // Compliance and operations hold `compliance:view` by default; a developer does not.
+  vi.mocked(useHasPermission).mockReturnValue(role !== 'DEVELOPER');
   vi.mocked(useCurrentUser).mockReturnValue({
     id,
     email: 'user@aner.example',
@@ -77,6 +86,7 @@ describe('ExportersListPage — identifiers are not on the list', () => {
       profiles: [PROFILE],
       limit: 100,
       offset: 0,
+      total: 1,
     });
   });
 
@@ -113,6 +123,7 @@ describe('ExportersListPage — the journey, qualification and marker filters', 
       profiles: [{ ...PROFILE, marker: 'PAUSED', marker_reason: 'Seasonal' }],
       limit: 100,
       offset: 0,
+      total: 1,
     });
   });
 
@@ -154,11 +165,13 @@ describe('ExportersListPage — the journey, qualification and marker filters', 
       profiles: [{ ...PROFILE, journey: 'PROSPECT', has_active_primary_contact: false }],
       limit: 100,
       offset: 0,
+      total: 1,
     });
     renderPage();
     expect(await screen.findByText('No primary contact', { selector: 'span' })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Contacts'), { target: { value: 'missing' } });
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Contacts'), { target: { value: 'missing' } });
     await waitFor(() =>
       expect(searchExporterProfiles).toHaveBeenLastCalledWith(
         expect.objectContaining({ missing_primary_contact: true }),
@@ -171,6 +184,7 @@ describe('ExportersListPage — the journey, qualification and marker filters', 
       profiles: [{ ...PROFILE, has_active_primary_contact: false }],
       limit: 100,
       offset: 0,
+      total: 1,
     });
     renderPage();
     await screen.findByText('Acme Exports');
@@ -189,7 +203,7 @@ describe('ExportersListPage — the journey, qualification and marker filters', 
 
 describe('ExportersListPage — RXIL intake link', () => {
   beforeEach(() => {
-    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 , total: 0 });
   });
 
   it('offers RXIL intake to COMPLIANCE', () => {
@@ -210,7 +224,7 @@ describe('ExportersListPage — RXIL intake link', () => {
 
 describe('ExportersListPage — write screens by role', () => {
   beforeEach(() => {
-    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 });
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 100, offset: 0 , total: 0 });
   });
 
   it.each(['OPERATIONS', 'COMPLIANCE'])('offers %s New company and Import companies', (role) => {
@@ -238,11 +252,119 @@ describe('ExportersListPage — write screens by role', () => {
   });
 });
 
+describe('ExportersListPage — the filter panel', () => {
+  beforeEach(() => {
+    mockUser('OPERATIONS', 'someone-else');
+    vi.mocked(searchExporterProfiles).mockReset();
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [PROFILE],
+      limit: 100,
+      offset: 0,
+      total: 1,
+    });
+  });
+
+  it('filters as each choice is made, without an apply step', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Buyer or seller'), {
+      target: { value: 'BUYER' },
+    });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ trade_role: 'BUYER' }),
+      ),
+    );
+
+    // The second choice joins the first rather than replacing it.
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'RXIL' } });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ trade_role: 'BUYER', source: 'RXIL' }),
+      ),
+    );
+
+    // And the panel is still open, so the next choice needs no second trip.
+    expect(screen.getByLabelText('Country')).toBeInTheDocument();
+  });
+
+  it('counts what is in force, and clears it', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Background check'), {
+      target: { value: 'CLEAR' },
+    });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ background_check: 'CLEAR' }),
+      ),
+    );
+
+    // Closed first: the panel is a modal, so while it is open the page behind it is
+    // hidden from assistive tech — and from a query that asks the way one would.
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    // The badge is how a narrowed list is told apart from an empty one.
+    expect(await screen.findByRole('button', { name: /Filters 1/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    await waitFor(() => {
+      const [params] = vi.mocked(searchExporterProfiles).mock.calls.at(-1)!;
+      expect(params).not.toHaveProperty('background_check');
+    });
+  });
+
+  it('sends has_open_deals=false, which is a filter and not an absent one', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Deals'), { target: { value: 'false' } });
+
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ has_open_deals: false }),
+      ),
+    );
+  });
+
+  it('waits for typing to stop before filtering by industry', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderPage();
+      await screen.findByText('Acme Exports');
+      fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+
+      const field = await screen.findByLabelText('Industry');
+      for (const value of ['T', 'Te', 'Tex']) {
+        fireEvent.change(field, { target: { value } });
+      }
+      // Nothing sent yet: a request per keystroke is what the delay exists to avoid.
+      expect(vi.mocked(searchExporterProfiles).mock.calls.at(-1)?.[0]).not.toHaveProperty(
+        'industry',
+      );
+
+      await vi.advanceTimersByTimeAsync(400);
+      await waitFor(() =>
+        expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+          expect.objectContaining({ industry: 'Tex' }),
+        ),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('ExportersListPage — whose companies', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUser('OPERATIONS', 'rm-me');
-    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 50, offset: 0 });
+    vi.mocked(searchExporterProfiles).mockResolvedValue({ profiles: [], limit: 50, offset: 0 , total: 0 });
   });
 
   it('is My companies at ?owner=me, asking the server for this RM’s companies only', async () => {
@@ -253,21 +375,312 @@ describe('ExportersListPage — whose companies', () => {
         expect.objectContaining({ relationship_manager: 'me' }),
       ),
     );
-    // The owner is the page itself, so there is no owner filter to change it.
+    // The owner is the page itself, so the panel offers no owner filter to change it.
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    expect(await screen.findByLabelText('Country')).toBeInTheDocument();
     expect(screen.queryByLabelText('Owner')).not.toBeInTheDocument();
     expect(await screen.findByText(/not the relationship manager of any company yet/)).toBeInTheDocument();
   });
 
-  it('offers Unassigned and RM deactivated as filters, but not My companies', async () => {
-    renderPage();
-    const owner = await screen.findByLabelText('Owner');
-    const options = within(owner).getAllByRole('option').map((option) => option.textContent);
-    expect(options).toEqual(['Any owner', 'Unassigned', 'RM deactivated']);
-    fireEvent.change(owner, { target: { value: 'none' } });
+  it('filters by owner from the URL, and the panel offers the same lenses', async () => {
+    // `?owner=` is read and sent, so a link or a bookmark to one keeps working, and
+    // the panel offers the two that are not a page of their own.
+    renderPage('/companies?owner=none');
+
     await waitFor(() =>
       expect(searchExporterProfiles).toHaveBeenLastCalledWith(
         expect.objectContaining({ relationship_manager: 'none' }),
       ),
     );
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    const owner = await screen.findByLabelText('Owner');
+    expect(within(owner).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Any',
+      'Unassigned',
+      'RM deactivated',
+    ]);
+  });
+
+  it('sends a lens chosen in the panel, and keeps it in the URL', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Companies' });
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Collections owner'), {
+      target: { value: 'none' },
+    });
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ collections_owner: 'none' }),
+      ),
+    );
+  });
+
+  it('Clear clears the lenses it counted, not just the panel’s own filters', async () => {
+    // The badge counted Owner, Contacts and Collections, so Clear has to undo them.
+    // Clearing only the panel's filters left the button on screen doing nothing.
+    renderPage('/companies?owner=none');
+    await screen.findByRole('heading', { name: 'Companies' });
+    expect(await screen.findByRole('button', { name: /Filters 1/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.not.objectContaining({ relationship_manager: 'none' }),
+      ),
+    );
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+  });
+
+  it('Clear removes every lens at once, not just the last one', async () => {
+    // Each lens used to write the URL on its own. `setSearchParams` hands the updater
+    // the params from the *render*, so three writes in one click all start from the
+    // same URL and the last `navigate` wins — two filters survived a Clear that said
+    // it had removed them. One test with one filter set could never catch it.
+    renderPage('/companies?owner=none&contact=missing&collections=none');
+    await screen.findByRole('heading', { name: 'Companies' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+
+    await waitFor(() => {
+      // By value, not by key: the params object carries each filter as `undefined`
+      // when it is not filtering, so the key is always present.
+      const sent = vi.mocked(searchExporterProfiles).mock.lastCall?.[0] ?? {};
+      expect(sent.relationship_manager).toBeUndefined();
+      expect(sent.missing_primary_contact).toBeUndefined();
+      expect(sent.collections_owner).toBeUndefined();
+    });
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+  });
+
+  it('Clear all in the panel removes every lens too, in one write', async () => {
+    renderPage('/companies?owner=none&contact=missing&collections=none');
+    await screen.findByRole('heading', { name: 'Companies' });
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear all' }));
+
+    await waitFor(() => {
+      const sent = vi.mocked(searchExporterProfiles).mock.lastCall?.[0] ?? {};
+      expect(sent.relationship_manager).toBeUndefined();
+      expect(sent.missing_primary_contact).toBeUndefined();
+      expect(sent.collections_owner).toBeUndefined();
+    });
+  });
+
+  it('does not count My companies as a filter, nor offer to clear it', async () => {
+    // `?owner=me` is the page, not a filter on it. Counted, it badged the page as
+    // narrowed on arrival; cleared, it moved the viewer somewhere else entirely.
+    renderPage('/companies?owner=me');
+    await screen.findByRole('heading', { name: 'My companies' });
+
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Filters' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear all' }));
+    await waitFor(() =>
+      expect(searchExporterProfiles).toHaveBeenLastCalledWith(
+        expect.objectContaining({ relationship_manager: 'me' }),
+      ),
+    );
+  });
+
+  it('keeps the three lenses off the bar, where only the everyday ones belong', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Companies' });
+    // Closed, these are not on screen at all — the bar holds the journey, the search
+    // and the two filters used on almost every visit.
+    expect(screen.queryByLabelText('Owner')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Contacts')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Collections owner')).not.toBeInTheDocument();
+  });
+
+  it('says "Any relationship" without explaining the ended rule in the option', async () => {
+    renderPage();
+    const relationship = await screen.findByLabelText('Relationship');
+    expect(within(relationship).getAllByRole('option')[0]).toHaveTextContent(
+      /^Any relationship$/,
+    );
+  });
+});
+
+describe('ExportersListPage — exporting', () => {
+  beforeEach(() => {
+    mockUser('OPERATIONS', 'someone-else');
+    window.localStorage.clear();
+    vi.mocked(searchExporterProfiles).mockReset();
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [PROFILE],
+      limit: 100,
+      offset: 0,
+      total: 1,
+    });
+  });
+
+  it('asks which columns before writing anything', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+
+    // The panel, not a download: a file nobody chose the shape of is the thing this
+    // replaced.
+    expect(await screen.findByRole('checkbox', { name: 'Company' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'PAN' })).not.toBeChecked();
+    // It exports the whole filtered list, not the page on screen — which is the
+    // distinction this panel exists to make honest.
+    expect(
+      screen.getByText(/Every company the filters match, not just the page on screen/),
+    ).toBeInTheDocument();
+  });
+
+  it('remembers the chosen columns for the next export', async () => {
+    const { unmount } = renderPage();
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'PAN' }));
+    unmount();
+
+    renderPage();
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    // The habit, not a one-off: whoever exports the same columns weekly should not
+    // re-tick them weekly.
+    expect(await screen.findByRole('checkbox', { name: 'PAN' })).toBeChecked();
+  });
+
+  it('says which companies the file will hold, so the Source column is not read as the Source filter', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    // Narrow the rows first — the Filters panel's question.
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.change(await screen.findByLabelText('Source'), { target: { value: 'RXIL' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    const panel = await screen.findByRole('dialog');
+    // Stated in the export panel, which has its own Source *column* checkbox.
+    expect(within(panel).getByText('Source: RXIL')).toBeInTheDocument();
+  });
+
+  it('names the lenses and the bar filters in the export panel, not just the panel’s own', async () => {
+    // It said "Every company on the list" with Owner set to Unassigned, which is the
+    // one thing an export summary must never get wrong.
+    renderPage('/companies?owner=none&contact=missing');
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByText('Owner: Unassigned')).toBeInTheDocument();
+    expect(within(panel).getByText('Contacts: no primary contact')).toBeInTheDocument();
+    expect(
+      within(panel).queryByText(/the boxes below choose columns, not companies/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says so plainly when nothing is filtered', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByText(/the boxes below choose columns, not companies/)).toBeInTheDocument();
+  });
+
+  it('refuses to export nothing', async () => {
+    renderPage();
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+
+    const panel = await screen.findByRole('dialog');
+    for (const box of within(panel).getAllByRole('checkbox')) {
+      if ((box as HTMLInputElement).checked) fireEvent.click(box);
+    }
+    expect(within(panel).getByRole('button', { name: 'Export' })).toBeDisabled();
+  });
+});
+
+describe('ExportersListPage — what a Developer may not read', () => {
+  // Background checks are not shown to DEVELOPER, so the company list
+  // must not become a second way to read the same thing. The server blanks the column
+  // and refuses the filter; these keep the screen from offering either.
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.mocked(searchExporterProfiles).mockReset();
+    vi.mocked(searchExporterProfiles).mockResolvedValue({
+      profiles: [PROFILE],
+      limit: 100,
+      offset: 0,
+      total: 1,
+    });
+  });
+
+  it('does not offer the background-check filter', async () => {
+    mockUser('DEVELOPER', 'dev-1');
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    // The other filters are there, so this is the one being withheld rather than a
+    // panel that failed to open.
+    expect(await screen.findByLabelText('Source')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Background check')).not.toBeInTheDocument();
+  });
+
+  it('offers it to a role that may read checks', async () => {
+    mockUser('OPERATIONS', 'ops-1');
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    expect(await screen.findByLabelText('Background check')).toBeInTheDocument();
+  });
+
+  it('does not offer the background-check export column', async () => {
+    mockUser('DEVELOPER', 'dev-1');
+    renderPage();
+    await screen.findByText('Acme Exports');
+
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByRole('checkbox', { name: 'Journey' })).toBeInTheDocument();
+    expect(
+      within(panel).queryByRole('checkbox', { name: 'Background check' }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('ExportersListPage — a failed export', () => {
+  beforeEach(() => {
+    mockUser('OPERATIONS', 'ops-1');
+    window.localStorage.clear();
+    vi.mocked(searchExporterProfiles).mockReset();
+  });
+
+  it('says so instead of saving nothing in silence', async () => {
+    // The list loads normally; the network goes away before the file is gathered. A
+    // flag rather than `mockRejectedValueOnce`: the page runs several searches of its
+    // own, so "the next call" is not the export's call.
+    let gathering = false;
+    vi.mocked(searchExporterProfiles).mockImplementation(() =>
+      gathering
+        ? Promise.reject(new Error('network'))
+        : Promise.resolve({ profiles: [PROFILE], limit: 100, offset: 0, total: 1 }),
+    );
+
+    renderPage();
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+    const panel = await screen.findByRole('dialog');
+    gathering = true;
+    fireEvent.click(within(panel).getByRole('button', { name: 'Export' }));
+
+    expect(await within(panel).findByRole('alert')).toHaveTextContent(
+      /Couldn't write the file/,
+    );
+    // Still open, so the person can try again without re-choosing the columns.
+    expect(within(panel).getByRole('button', { name: 'Export' })).toBeEnabled();
   });
 });
