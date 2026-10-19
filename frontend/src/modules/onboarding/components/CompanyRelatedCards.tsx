@@ -283,7 +283,12 @@ function EditContactForm({
   const mutation = useUpdateExporterContact(customerId);
   const statusMutation = useSetExporterContactStatus(customerId);
   const verify = useVerifyExporterContact(customerId);
-  const mayReveal = useCanRevealIdentifiers();
+  const mayRevealNow = useCanRevealIdentifiers();
+  // Fixed when the form opens, not read live. The permission arrives from the server,
+  // so it can flip from false to true while the form is open: the fields would have
+  // been initialised empty and then saved as a deliberate clear, wiping a real email
+  // or phone. One answer for the life of the form keeps the two consistent.
+  const [mayReveal] = useState(mayRevealNow);
   /** Why the last save was refused, shown under the fields it is about. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const [form, setForm] = useState({

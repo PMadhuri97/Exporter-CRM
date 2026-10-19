@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.onboarding.domain.entities.engagement_enums import ContactStatus
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
+from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.people import ROLE_COLUMNS
 from app.platform.database.adapters.repository import BaseRepository
 
@@ -17,14 +18,11 @@ from app.platform.database.adapters.repository import BaseRepository
 #: `9876543210`.
 _NOT_A_DIGIT = r'[^0-9]'
 
-#: How many trailing digits decide whether two numbers are the same line.
+#: The fewest digits a number must have before its ending is compared at all.
 #:
-#: Not the whole string. Those three spellings hold 12, 11 and 10 digits, and comparing
-#: them whole calls one person three people — a country code or a trunk `0` in front is
-#: exactly what varies between one entry and the next. The last eight are the part that
-#: does not: two different lines sharing them is rare enough to accept, and the result
-#: is a warning somebody reads, not a refusal.
-SIGNIFICANT_PHONE_DIGITS = 8
+#: Below this an "extension" or half a number would match far too much, so a short
+#: value is compared whole.
+SIGNIFICANT_PHONE_DIGITS = 7
 
 
 class ExporterContactRepository(BaseRepository[ExporterContact]):
@@ -42,6 +40,28 @@ class ExporterContactRepository(BaseRepository[ExporterContact]):
         result = await self.session.execute(statement.order_by(ExporterContact.created_at.asc()))
         return list(result.scalars().all())
 
+    async def lock_company(self, customer_id: uuid.UUID) -> None:
+        """Take the company's row for update, so writers to its contacts queue.
+
+        The duplicate check reads the company's contacts and then writes one. Without a
+        lock, two requests both read "no duplicate" before either writes, and both
+        write — which is exactly the double submit the rule exists to catch. Four
+        simultaneous submits produced four contacts.
+
+        The lock is on `exporter_profile`, not on the contacts: there is no row to lock
+        for a contact that does not exist yet, and the company is the thing being
+        added to. It is held until the transaction commits, so the check and the insert
+        are one step as far as any other writer is concerned.
+
+        A company that does not exist locks nothing and returns; `_require_company`
+        answers that with a 404 before this is reached.
+        """
+        await self.session.execute(
+            select(ExporterProfile.customer_id)
+            .where(ExporterProfile.customer_id == customer_id)
+            .with_for_update()
+        )
+
     async def others_sharing_details(
         self,
         customer_id: uuid.UUID,
@@ -53,15 +73,20 @@ class ExporterContactRepository(BaseRepository[ExporterContact]):
         """This company's other **active** contacts reachable at the same email or
         phone number.
 
-        For a warning, never a refusal: one person is legitimately listed twice at some
-        companies — a founder who is both the commercial and the finance contact — and
-        one switchboard number serves a whole office. What this catches is the
-        accidental second entry, the same details typed twice.
+        What the duplicate rule is built on: a match here **refuses** the write
+        (`ExporterContactAlreadyExistsError`). It is not a warning, and the comparison
+        is written for that — an ending-match on the phone rather than a truncation, so
+        two different lines are never called one.
+
+        It does refuse things a company may genuinely want: one person listed twice
+        under two roles shares an email, and an office switchboard is shared by several
+        people. That was decided for this CRM; the second contact goes in without the
+        shared field.
 
         Compared on the stored values, which only this side holds. Contact details
         reach most roles masked, so a browser comparing what it was shown would match
         two different people at one domain and miss two spellings of one number. Email
-        is compared without case; a phone by its last `SIGNIFICANT_PHONE_DIGITS` digits.
+        is compared without case; a phone by whether either number ends with the other.
 
         `INACTIVE` and `LEFT_COMPANY` contacts are left out. Their details are kept as a
         record of who was once there, and warning that a new contact matches someone who
@@ -71,14 +96,36 @@ class ExporterContactRepository(BaseRepository[ExporterContact]):
         if email and email.strip():
             matches.append(func.lower(ExporterContact.email) == email.strip().lower())
         digits = "".join(character for character in (phone or "") if character.isdigit())
+        digits = digits[1:] if digits.startswith("0") else digits
         if len(digits) >= SIGNIFICANT_PHONE_DIGITS:
-            stored = func.regexp_replace(ExporterContact.phone, _NOT_A_DIGIT, "", "g")
+            # A single leading `0` is a trunk prefix, not part of the number, and it
+            # is dropped before the endings are compared: otherwise `09876543210` and
+            # `919876543210` — one line, dialled two ways — end differently and the
+            # duplicate goes in.
+            stored = func.regexp_replace(
+                func.regexp_replace(ExporterContact.phone, _NOT_A_DIGIT, "", "g"), "^0", ""
+            )
+            # One number is the same line as another when either ends with the other:
+            # `919876543210`, `09876543210` and `9876543210` are one line, because a
+            # country code or a trunk `0` is exactly what varies between two entries.
+            #
+            # Deliberately *not* "the last eight digits are equal", which this used to
+            # be. That treats `0802 2345678` and `0442 2345678` — two cities, two
+            # lines — as the same number, and refuses the second. Comparing endings
+            # keeps the variants together without ever merging two numbers of the same
+            # length that differ anywhere.
             matches.append(
-                func.right(stored, SIGNIFICANT_PHONE_DIGITS) == digits[-SIGNIFICANT_PHONE_DIGITS:]
+                or_(
+                    stored.like(f"%{digits}"),
+                    and_(
+                        func.length(stored) >= SIGNIFICANT_PHONE_DIGITS,
+                        literal(digits).like(func.concat("%", stored)),
+                    ),
+                )
             )
         elif digits:
-            # Too short to compare by its ending — an extension, or half a number.
-            # Matched whole, so it still catches the same thing typed twice.
+            # Too short for its ending to mean anything — an extension, or half a
+            # number. Matched whole, so it still catches the same thing typed twice.
             matches.append(
                 func.regexp_replace(ExporterContact.phone, _NOT_A_DIGIT, "", "g") == digits
             )

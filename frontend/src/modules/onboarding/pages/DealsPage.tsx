@@ -17,8 +17,8 @@
  * matched either side could not express a pair, and keeping both was three company
  * pickers on one bar.
  *
- * *New deal* opens over the list, and `?new=1` opens it from a link — the header's
- * *+ New* menu uses that.
+ * *New deal* opens over the list, and `?new=1` opens it from a link, so a saved link
+ * or a bookmark starts one.
  */
 
 import { useState } from 'react';

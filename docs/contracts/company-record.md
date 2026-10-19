@@ -72,6 +72,28 @@
 > screening and group suggestions read these people; the CRM no longer reads the old
 > onboarding system's `ubo_record`, whose owners 0057 copied across with their ids.
 
+> **Amendment, 19 October 2026 — one contact per email, one per phone.** A company
+> cannot hold two contacts reachable the same way. `POST /exporters/{id}/contacts` and
+> `PATCH .../{contact_id}` are **refused with 409 `EXPORTER_CONTACT_ALREADY_EXISTS`**
+> when either the email address **or** the phone number already belongs to another of
+> that company's contacts — either field alone is enough; it was previously a warning
+> that still wrote the row. The refusal names the field and the contact already holding
+> it, so a screen can point at it.
+>
+> * **Email** is compared without case, **phone** by whether either number ends with the
+>   other once a single trunk `0` is stripped: `919876543210`, `09876543210` and
+>   `9876543210` are one line. Not "the last eight digits are equal", which called
+>   `0802 2345678` and `0442 2345678` — two cities, two lines — the same number. A value
+>   under `SIGNIFICANT_PHONE_DIGITS` (7) digits is an extension or half a number and is
+>   compared whole.
+> * **Scope is the one company.** Two companies may each list the same switchboard.
+> * The check and the insert are **one step**: the service takes the company's
+>   `exporter_profile` row `FOR UPDATE` first, so two simultaneous submits queue instead
+>   of both reading "no duplicate" and both writing.
+> * It does refuse things a company may genuinely want — one person listed twice under
+>   two roles shares an email, an office switchboard is shared. That was accepted for
+>   this CRM: the second person goes in without the shared field.
+
 **Owner:** Developer 2 · **Status:** implemented — §10 lists what is still open
 
 Every gauge, deal, document and check in the CRM hangs off one company record.

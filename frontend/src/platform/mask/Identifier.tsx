@@ -66,9 +66,9 @@ export function Identifier({
 
   const shown = mayReveal && revealed;
 
-  // Masked unless this very screen is showing it: `maskTail` rather than
-  // `maskIdentifier`, because the latter asks the role and hands a privileged one the
-  // value back untouched — which is what made the eye do nothing.
+  // Masked unless this very screen is showing it. `maskTail` covers a value whatever
+  // the viewer holds; nothing here asks who is looking a second time, which is what
+  // made the eye do nothing when a privileged viewer was handed the value untouched.
   //
   // It runs for a masked role too, over a value the server already masked. That is
   // deliberate and predates this change: if the server ever sent a full value to a role

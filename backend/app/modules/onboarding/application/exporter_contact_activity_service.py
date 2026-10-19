@@ -168,6 +168,9 @@ class ExporterContactActivityService:
         contact on the way past.
         """
         await self._require_company(customer_id)
+        # Locked before the check and held to the commit: two simultaneous submits
+        # would otherwise both read "no duplicate" and both write.
+        await self._contacts.lock_company(customer_id)
         await self._refuse_a_duplicate(customer_id, email=email, phone=phone)
 
         fields = dict(details or {})
@@ -262,6 +265,7 @@ class ExporterContactActivityService:
         # phone onto a contact that already has this one's email is the same duplicate
         # as sending both. Itself excluded — a contact never duplicates itself.
         if {"email", "phone"} & set(fields):
+            await self._contacts.lock_company(customer_id)
             await self._refuse_a_duplicate(
                 customer_id,
                 email=contact.email,

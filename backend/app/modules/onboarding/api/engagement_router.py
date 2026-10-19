@@ -87,8 +87,9 @@ _COMPANY_VIEW = require_permission("exporters", "view")
         403: {"description": "`exporters:edit` permission required"},
         409: {
             "description": (
-                "This company already has a contact with the same email address and "
-                "phone number (EXPORTER_CONTACT_ALREADY_EXISTS), or another contact "
+                "This company already has a contact with the same email address or "
+                "the same phone number — either alone is enough "
+                "(EXPORTER_CONTACT_ALREADY_EXISTS) — or another contact "
                 "was made primary for it at the same moment "
                 "(EXPORTER_CONTACT_PRIMARY_CONFLICT)"
             )
@@ -140,8 +141,9 @@ async def add_exporter_contact(
         404: {"description": "No such company, or no such contact on it"},
         409: {
             "description": (
-                "This company already has a contact with the same email address and "
-                "phone number (EXPORTER_CONTACT_ALREADY_EXISTS), or another contact "
+                "This company already has a contact with the same email address or "
+                "the same phone number — either alone is enough "
+                "(EXPORTER_CONTACT_ALREADY_EXISTS) — or another contact "
                 "was made primary for it at the same moment "
                 "(EXPORTER_CONTACT_PRIMARY_CONFLICT)"
             )

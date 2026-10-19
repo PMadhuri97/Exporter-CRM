@@ -11712,7 +11712,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description This company already has a contact with the same email address and phone number (EXPORTER_CONTACT_ALREADY_EXISTS), or another contact was made primary for it at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
+            /** @description This company already has a contact with the same email address or the same phone number — either alone is enough (EXPORTER_CONTACT_ALREADY_EXISTS) — or another contact was made primary for it at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -11774,7 +11774,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description This company already has a contact with the same email address and phone number (EXPORTER_CONTACT_ALREADY_EXISTS), or another contact was made primary for it at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
+            /** @description This company already has a contact with the same email address or the same phone number — either alone is enough (EXPORTER_CONTACT_ALREADY_EXISTS) — or another contact was made primary for it at the same moment (EXPORTER_CONTACT_PRIMARY_CONFLICT) */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -299,7 +299,12 @@ function EditPersonForm({
   onDone: () => void;
 }) {
   const mutation = useUpdateExporterContact(customerId);
-  const mayReveal = useCanRevealIdentifiers();
+  const mayRevealNow = useCanRevealIdentifiers();
+  // Fixed when the form opens, not read live. The permission arrives from the server,
+  // so it can flip from false to true while the form is open: the fields would have
+  // been initialised empty and then saved as a deliberate clear, wiping a real email
+  // or phone. One answer for the life of the form keeps the two consistent.
+  const [mayReveal] = useState(mayRevealNow);
   const masked = (value: string | null | undefined) => (mayReveal ? (value ?? '') : '');
   const [form, setForm] = useState<PersonForm>({
     name: person.name,

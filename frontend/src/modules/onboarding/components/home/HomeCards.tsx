@@ -226,12 +226,6 @@ export function MyFollowUpsCard({ userId, canComplete = false }: { userId: strin
 }
 
 /**
- * Check back on: companies parked at "Not now" whose date has come, or is about to.
- * Its own card, never mixed with follow-ups: a check-back cannot be marked done — it
- * clears when the conversation moves, so each one opens the company's Activity tab
- * instead.
- */
-/**
  * How far ahead this card looks, in days.
  *
  * Not only the ones already due. A check-back that surfaced on the morning it fell
@@ -255,6 +249,12 @@ const CHECK_BACK_LOOKAHEAD_DAYS = 3;
 const CHECK_BACK_LIMIT = 50;
 const CHECK_BACKS_BEFORE_SCROLL = 5;
 
+/**
+ * Check back on: companies parked at "Not now" whose date has come, or is about to.
+ * Its own card, never mixed with follow-ups: a check-back cannot be marked done — it
+ * clears when the conversation moves, so each one opens the company's Activity tab
+ * instead.
+ */
 export function CheckBackCard() {
   const query = useFollowUps({
     state: 'OVERDUE',

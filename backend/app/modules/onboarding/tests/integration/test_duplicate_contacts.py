@@ -251,3 +251,88 @@ async def test_an_edit_that_touches_neither_is_not_checked(client: AsyncClient):
     )
 
     assert saved.status_code == 200, saved.text
+
+
+# ── Two submits at once ──────────────────────────────────────────────────────
+
+
+async def test_simultaneous_identical_submits_write_one_contact(client: AsyncClient):
+    """The case the rule exists for, and the one a per-request check cannot catch.
+
+    Four submits fired together each read "no duplicate" before any of them wrote, so
+    four contacts were saved. The company's row is now locked before the check and
+    held to the commit, so the submits queue: the first writes and the rest are
+    refused by the same rule a sequential submit meets.
+    """
+    import asyncio
+
+    token = await token_with_role(client, UserRole.COMPLIANCE)
+    customer_id = await make_company()
+    body = {"name": "Jane Doe", "email": "jane@acme.example", "phone": "9876543210"}
+
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                f"{BASE}/{customer_id}/contacts", headers=auth_header(token), json=body
+            )
+            for _ in range(4)
+        )
+    )
+
+    statuses = sorted(r.status_code for r in responses)
+    assert statuses == [201, 409, 409, 409], [r.text for r in responses]
+    assert len(await _contacts(client, token, customer_id)) == 1
+
+
+async def test_simultaneous_submits_for_different_people_all_land(client: AsyncClient):
+    """The lock serialises; it must not refuse. Four different people at one company
+    are four contacts, however close together they arrive."""
+    import asyncio
+
+    token = await token_with_role(client, UserRole.COMPLIANCE)
+    customer_id = await make_company()
+
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                f"{BASE}/{customer_id}/contacts",
+                headers=auth_header(token),
+                json={"name": f"Person {n}", "email": f"person{n}@acme.example"},
+            )
+            for n in range(4)
+        )
+    )
+
+    assert sorted(r.status_code for r in responses) == [201, 201, 201, 201], [
+        r.text for r in responses
+    ]
+    assert len(await _contacts(client, token, customer_id)) == 4
+
+
+async def test_two_cities_sharing_a_subscriber_number_are_two_numbers(client: AsyncClient):
+    """The false refusal the old rule produced.
+
+    `0802 2345678` and `0442 2345678` are a Bangalore line and a Chennai line. Compared
+    by their last eight digits they looked identical and the second was refused;
+    compared by whether either *ends with* the other, they are two numbers.
+    """
+    token = await token_with_role(client, UserRole.COMPLIANCE)
+    customer_id = await make_company()
+    await _added(client, token, customer_id, name="Bangalore Desk", phone="0802 2345678")
+
+    created = await _add(client, token, customer_id, name="Chennai Desk", phone="0442 2345678")
+
+    assert created.status_code == 201, created.text
+
+
+async def test_the_same_line_with_and_without_a_country_code_is_one_number(
+    client: AsyncClient,
+):
+    """And the variants still come together, which is the point of not comparing whole."""
+    token = await token_with_role(client, UserRole.COMPLIANCE)
+    customer_id = await make_company()
+    await _added(client, token, customer_id, phone="+91 98765 43210")
+
+    for spelling in ("09876543210", "9876543210"):
+        refused = await _add(client, token, customer_id, name="Again", phone=spelling)
+        assert refused.status_code == 409, (spelling, refused.text)

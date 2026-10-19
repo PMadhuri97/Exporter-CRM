@@ -117,6 +117,16 @@ const EMPTY: Record<Tab, string> = {
 };
 
 /**
+ * Each outcome as the verb a sentence can use. Lower-casing the status gave "You
+ * withdrawn Clear": `WITHDRAWN` is a participle, not a past tense.
+ */
+const PAST_TENSE: Record<string, string> = {
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+  WITHDRAWN: 'withdrew',
+};
+
+/**
  * What this officer did, and what came of it — the line under a company on *Reviewed*.
  *
  * Which half of maker-checker they were is the thing worth saying first: "you
@@ -145,12 +155,17 @@ function reviewedDetail(
     const outcome =
       proposal.status === 'OPEN'
         ? 'awaiting approval'
-        : `${proposal.status.toLowerCase()} by ${actorLabel(proposal.resolved_by_name, proposal.resolved_by)}, ${ended}`;
+        : `${PAST_TENSE[proposal.status] ?? proposal.status.toLowerCase()} by ${actorLabel(proposal.resolved_by_name, proposal.resolved_by)}, ${ended}`;
     return `You proposed ${move} · ${outcome}`;
   }
-  // Their own resolution of somebody else's proposal.
-  const verb = proposal.status === 'APPROVED' ? 'approved' : proposal.status.toLowerCase();
-  return `You ${verb} ${move} · proposed by ${actorLabel(proposal.proposed_by_name, proposal.proposed_by)}, ${ended ?? formatDateTime(proposal.proposed_at)}`;
+  // Their own resolution of somebody else's proposal. Each date sits beside the thing
+  // it dates: the proposal's date after "proposed by", the decision's after the verb —
+  // the resolution date used to appear next to "proposed by", which read as the day it
+  // was proposed.
+  const verb = PAST_TENSE[proposal.status] ?? proposal.status.toLowerCase();
+  const proposer = actorLabel(proposal.proposed_by_name, proposal.proposed_by);
+  const when = ended ? ` on ${ended}` : '';
+  return `You ${verb} ${move}${when} · proposed by ${proposer}, ${formatDateTime(proposal.proposed_at)}`;
 }
 
 /** One row of the list: the company, then one line of what it is waiting for. */
@@ -268,13 +283,22 @@ export function ApprovalsPage() {
             </>
           ),
         }));
-      case 'reviewed':
-        return (reviewed.data?.proposals ?? []).map((proposal) => ({
-          companyId: proposal.company_id,
-          companyName: proposal.company_name ?? 'Unnamed company',
-          detail: reviewedDetail(proposal, user.id),
-          extra: proposal.risk_rating ? <RiskChip risk={proposal.risk_rating} /> : undefined,
-        }));
+      case 'reviewed': {
+        // One row per company, the newest first — as the Bank and True-match tabs do.
+        // A company with two proposals drew two rows sharing a company id, so both
+        // highlighted together and React warned about the duplicate key.
+        const byCompany = new Map<string, Row>();
+        for (const proposal of reviewed.data?.proposals ?? []) {
+          if (byCompany.has(proposal.company_id)) continue;
+          byCompany.set(proposal.company_id, {
+            companyId: proposal.company_id,
+            companyName: proposal.company_name ?? 'Unnamed company',
+            detail: reviewedDetail(proposal, user.id),
+            extra: proposal.risk_rating ? <RiskChip risk={proposal.risk_rating} /> : undefined,
+          });
+        }
+        return [...byCompany.values()];
+      }
       case 'rekyc':
         return (due.data?.companies ?? []).map((row) => ({
           companyId: row.company_id,

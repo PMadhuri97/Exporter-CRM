@@ -294,6 +294,33 @@ describe('Compliance work — Reviewed', () => {
     expect(screen.getByText(/proposed by A Maker/)).toBeInTheDocument();
   });
 
+  it('reads a withdrawal as a sentence, not as the status', async () => {
+    // `WITHDRAWN`.toLowerCase() gave "You withdrawn Clear".
+    await open([
+      reviewed({
+        proposed_by: 'someone-else',
+        proposed_by_name: 'A Maker',
+        status: 'WITHDRAWN',
+        resolved_by: 'me',
+        resolved_by_name: 'Me',
+        resolved_at: '2026-10-04T09:00:00Z',
+      }),
+    ]);
+
+    expect(screen.getByText(/You withdrew/)).toBeInTheDocument();
+    expect(screen.queryByText(/You withdrawn/)).not.toBeInTheDocument();
+  });
+
+  it('draws one row per company, however many proposals it has', async () => {
+    // Two rows shared a company id: both highlighted together, and React warned.
+    await open([
+      reviewed({ id: 'r1', status: 'APPROVED', resolved_at: '2026-10-02T09:00:00Z' }),
+      reviewed({ id: 'r2', status: 'REJECTED', resolved_at: '2026-10-01T09:00:00Z' }),
+    ]);
+
+    expect(screen.getAllByText('Reviewed Co')).toHaveLength(2); // the row and the heading
+  });
+
   it('carries no count, since a record only ever grows', async () => {
     await open([reviewed({})]);
 
