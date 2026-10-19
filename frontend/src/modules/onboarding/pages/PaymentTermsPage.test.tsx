@@ -99,6 +99,26 @@ describe('PaymentTermsPage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
+  it('starts the next change with an empty reason, not the last one', async () => {
+    const SECOND: PaymentTerm = { ...TERM, id: '55555555-5555-4555-8555-555555555555', code: 'DP', label: 'DP at sight', kind: 'DP', days: null };
+    vi.mocked(listPaymentTerms).mockResolvedValue({ terms: [TERM, SECOND], history: [TERM, SECOND], can_edit: true });
+    renderPage();
+    const [first, second] = await screen.findAllByTestId('payment-term-row');
+
+    fireEvent.click(within(first!).getByRole('button', { name: 'Retire' }));
+    const dialog = await screen.findByRole('dialog');
+    giveReason(dialog, 'CHG-1: retire the first term');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retire term' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    fireEvent.click(within(second!).getByRole('button', { name: 'Retire' }));
+    const next = await screen.findByRole('dialog');
+    expect(next).toHaveTextContent('Retire DP at sight?');
+    expect(within(next).getByLabelText(/^Reason for change/)).toHaveValue('');
+    expect(within(next).getByRole('button', { name: 'Retire term' })).toBeDisabled();
+    expect(revisePaymentTerm).toHaveBeenCalledTimes(1);
+  });
+
   it('will not save a changed term until the change says why', async () => {
     renderPage();
     const row = await screen.findByTestId('payment-term-row');

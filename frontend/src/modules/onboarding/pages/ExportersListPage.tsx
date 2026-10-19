@@ -16,9 +16,10 @@
  * deactivated. Both are filters only: every reader sees every company. ADMIN and
  * holders of `exporters:assign_rm` get **Reassign companies**.
  *
- * **Sorted on the server**, because the list is paged: by when each company was last
- * updated (the default, newest first, so today's work is on top), by name or by stage,
- * from the File Explorer-style Sort menu (`SortMenu`). The sort is in the URL (`?sort=`,
+ * **Sorted on the server**, because the list is paged: by when each company was added
+ * (the default, newest first — it never changes, so "Show more" neither repeats nor
+ * skips a company), by when it was last updated, by name or by stage, from the File
+ * Explorer-style Sort menu (`SortMenu`). The sort is in the URL (`?sort=`,
  * `?order=`) like the filters, and every row says when it was last updated.
  *
  * The list route has no total: journey counts are capped ("200+"), and the
@@ -87,9 +88,10 @@ const PAGE_SIZE = 50;
 const SORT_COLUMNS: readonly SortColumn<CompanySort>[] = [
   { key: 'name', label: 'Name', firstOrder: 'asc' },
   { key: 'stage', label: 'Stage', firstOrder: 'asc' },
+  { key: 'created_at', label: 'Date added', firstOrder: 'desc' },
   { key: 'updated_at', label: 'Last updated', firstOrder: 'desc' },
 ];
-const DEFAULT_SORT = { key: 'updated_at', order: 'desc' } as const;
+const DEFAULT_SORT = { key: 'created_at', order: 'desc' } as const;
 
 function JourneyCount({ journey }: { journey: ExporterJourney }) {
   const count = useJourneyCount(journey);

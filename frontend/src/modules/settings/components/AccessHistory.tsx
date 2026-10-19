@@ -77,6 +77,9 @@ function Entry({ entry }: { entry: AccessHistoryEntry }) {
       ) : (
         <p className="mt-0.5 text-caption text-ink-3">Saved with no changes.</p>
       )}
+      {entry.change_reason && (
+        <p className="mt-0.5 text-caption text-ink-3">Reason: {entry.change_reason}</p>
+      )}
     </li>
   );
 }

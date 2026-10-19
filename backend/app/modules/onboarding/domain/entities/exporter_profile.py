@@ -141,8 +141,8 @@ class ExporterProfile(AnerModel):
         Index("ix_exporter_profile_qualification", "qualification"),  # 0017
         Index("ix_exporter_profile_background_check", "background_check"),  # 0015
         Index("ix_exporter_profile_collections_owner", "collections_owner_user_id"),  # 0050
-        # 0056: the Companies list's sorts (`domain/list_sort.py`) — the default, most
-        # recently updated first, and by name with case ignored.
+        # 0064: the Companies list's chosen sorts (`domain/list_sort.py`) — most recently
+        # updated first, and by name with case ignored.
         Index(
             "ix_exporter_profile_updated_at", text("updated_at DESC"), text("customer_id DESC")
         ),

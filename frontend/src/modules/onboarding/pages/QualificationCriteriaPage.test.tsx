@@ -185,9 +185,13 @@ describe('QualificationCriteriaPage', () => {
 
     giveReason(dialog, 'update');
     expect(save).toBeDisabled();
-    expect(within(dialog).getByText(/ticket number \(e\.g\. CHG-1042\)/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/ticket number in capitals, e\.g\. CHG-1042/)).toBeInTheDocument();
 
     giveReason(dialog, 'INC0012345');
+    expect(save).toBeDisabled();
+    expect(within(dialog).getByText(/explain the change in at least 2 words/)).toBeInTheDocument();
+
+    giveReason(dialog, 'INC0012345 raise the export floor');
     expect(save).toBeEnabled();
     expect(addCriterionVersion).not.toHaveBeenCalled();
   });

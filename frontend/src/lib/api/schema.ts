@@ -97,6 +97,8 @@ export interface paths {
         /**
          * Create a custom role
          * @description A custom role can be assigned immediately. Every CRM route checks the permissions of the role an account holds, so a custom role's grants are exactly what its holders may do (the catalogue marks the one action not consulted yet).
+         *
+         *     `change_reason` is required — a ticket number, then an explanation — and is kept in the role's history.
          */
         post: operations["create_role_api_v1_auth_roles_post"];
         delete?: never;
@@ -121,6 +123,8 @@ export interface paths {
          * @description Refused for a built-in role: those back the account role values every unmigrated route still reads, so deleting one would leave its holders resolving to no permissions at all.
          *
          *     Also refused while any account still holds the role — reassign them first. Silently demoting people is a privilege change nobody asked for.
+         *
+         *     `change_reason` (a query parameter, as a DELETE has no body) is required — a ticket number, then an explanation — and is kept in the role's history.
          */
         delete: operations["delete_role_api_v1_auth_roles__role_id__delete"];
         options?: never;
@@ -130,6 +134,8 @@ export interface paths {
          * @description Built-in roles are editable, by decision — section 3.7 of the architecture plan describes their starting permissions, not a guarantee. `permissions`, when supplied, replaces the whole set.
          *
          *     One edit is refused: removing `roles:edit` from the role you yourself hold, because no one could grant it back afterwards.
+         *
+         *     `change_reason` is required — a ticket number, then an explanation — and is kept in the role's history.
          */
         patch: operations["update_role_api_v1_auth_roles__role_id__patch"];
         trace?: never;
@@ -656,7 +662,7 @@ export interface paths {
          *
          *     `missing_primary_contact=true` lists only companies with no active primary contact (each row carries `has_active_primary_contact`).
          *
-         *     `sort` orders the list by `updated_at` (when the company record last changed; the default), `name` (ignoring case, unnamed companies last) or `stage` (Lead, Prospect, Customer); `order` is `desc` (the default) or `asc`. Ties fall back to the most recent change, so paging never repeats or skips a company.
+         *     `sort` orders the list by `created_at` (when the company was added; the default), `updated_at` (when the company record itself last changed: an edit while paging can move a company between pages), `name` (ignoring case, unnamed companies last) or `stage` (Lead, Prospect, Customer); `order` is `desc` (the default) or `asc`. Ties fall back to when the company was added, then its id.
          */
         get: operations["search_exporter_profiles_api_v1_onboarding_exporters_get"];
         put?: never;
@@ -3163,6 +3169,8 @@ export interface components {
             actor_name: string | null;
             /** Changes */
             changes: components["schemas"]["AccessChangeResponse"][];
+            /** Change Reason */
+            change_reason?: string | null;
         };
         /** AccessHistoryResponse */
         AccessHistoryResponse: {
@@ -3310,7 +3318,7 @@ export interface components {
             days?: number | null;
             /**
              * Change Reason
-             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
              * @example CHG-1042: raise the turnover floor agreed by credit committee
              */
             change_reason: string;
@@ -3335,7 +3343,7 @@ export interface components {
             list_version_date: string;
             /**
              * Change Reason
-             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
              * @example CHG-1042: raise the turnover floor agreed by credit committee
              */
             change_reason: string;
@@ -4717,7 +4725,7 @@ export interface components {
          * CompanySort
          * @enum {string}
          */
-        CompanySort: "updated_at" | "name" | "stage";
+        CompanySort: "created_at" | "updated_at" | "name" | "stage";
         /**
          * CompleteFollowUpRequest
          * @description Record that a follow-up was dealt with.
@@ -4977,7 +4985,7 @@ export interface components {
             auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
             /**
              * Change Reason
-             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
              * @example CHG-1042: raise the turnover floor agreed by credit committee
              */
             change_reason: string;
@@ -5053,6 +5061,12 @@ export interface components {
             description?: string | null;
             /** Permissions */
             permissions?: components["schemas"]["PermissionRef"][];
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /**
          * CriterionDefinitionRequest
@@ -5080,7 +5094,7 @@ export interface components {
             auto_source?: ("IEC_VERIFICATION" | "YEARS_ESTABLISHED" | "INDUSTRY" | "EXPORT_MARKETS" | "TRADE_HISTORY" | "DEAL_VALUE") | null;
             /**
              * Change Reason
-             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
              * @example CHG-1042: raise the turnover floor agreed by credit committee
              */
             change_reason: string;
@@ -7970,7 +7984,7 @@ export interface components {
             active?: boolean | null;
             /**
              * Change Reason
-             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
              * @example CHG-1042: raise the turnover floor agreed by credit committee
              */
             change_reason: string;
@@ -7993,7 +8007,7 @@ export interface components {
             list_version_date?: string | null;
             /**
              * Change Reason
-             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
              * @example CHG-1042: raise the turnover floor agreed by credit committee
              */
             change_reason: string;
@@ -8416,7 +8430,7 @@ export interface components {
             active: boolean;
             /**
              * Change Reason
-             * @description Why this change is being made: a ticket number (e.g. CHG-1042) or an explanation of at least three words. Required; kept on the version this request writes.
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
              * @example CHG-1042: raise the turnover floor agreed by credit committee
              */
             change_reason: string;
@@ -8988,6 +9002,12 @@ export interface components {
             permissions?: components["schemas"]["PermissionRef"][] | null;
             /** Is Assignable */
             is_assignable?: boolean | null;
+            /**
+             * Change Reason
+             * @description Why this change is being made: a ticket number in capitals (e.g. CHG-1042), then an explanation of at least two words. Required; kept on the version this request writes.
+             * @example CHG-1042: raise the turnover floor agreed by credit committee
+             */
+            change_reason: string;
         };
         /** UpdateScreeningReviewItemRequest */
         UpdateScreeningReviewItemRequest: {
@@ -9572,7 +9592,10 @@ export interface operations {
     };
     delete_role_api_v1_auth_roles__role_id__delete: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Why: a ticket number, then an explanation */
+                change_reason: string;
+            };
             header?: never;
             path: {
                 role_id: string;

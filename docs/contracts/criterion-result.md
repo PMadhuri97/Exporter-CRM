@@ -25,6 +25,19 @@
 > only when every valued deal is in one currency — amounts in different currencies are
 > never compared.
 
+> **Amendment, 19 October 2026 — every criterion change says why (migration 0063).**
+> `POST /qualification/criteria` and `POST /qualification/criteria/{key}/versions`
+> (activating and deactivating included) **require** `change_reason`; each criterion
+> version returned carries it.
+> `change_reason` is a **ticket number in capitals, then an explanation**: `CHG-1042` (or
+> a ServiceNow-style `CHG0031234`) first, then `:`, a dash or a space, then at least two
+> real words (two or more Latin letters each) and ten characters —
+> `CHG-1042: raise the turnover floor`. Missing, blank, `chg-7`, `CHG-7` alone or a
+> description with no ticket is a 422 on `change_reason`, and nothing is written. The
+> reason is trimmed, its spaces collapsed, and kept on the version written; versions
+> written before 0063 (and the seeded ones) read `null`. The rule is
+> `domain/change_reason.py`.
+
 **Owner:** Developer 2 · **Implemented by:** migration 0017 · **Status:** implemented — §9a records the as-built detail and §10 what is still open
 
 Qualification answers one question: *did this company meet our requirements?*

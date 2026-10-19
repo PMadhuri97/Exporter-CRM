@@ -1078,13 +1078,13 @@ class ExporterProfileService:
         missing_primary_contact: bool = False,
         collections_owner_user_id: uuid.UUID | None = None,
         collections_owner_unassigned: bool = False,
-        sort: CompanySort = CompanySort.UPDATED_AT,
+        sort: CompanySort = CompanySort.CREATED_AT,
         order: SortOrder = SortOrder.DESC,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfileListItem]:
         """Filtered company search, sorted by ``sort`` in ``order`` — by default the most
-        recently updated company first (``domain/list_sort.py``).
+        recently added company first (``domain/list_sort.py``).
 
         `name_contains` is a case-insensitive partial match on the company's
         name. `gstin` matches any of a company's GSTINs; `pan`, `gstin` and

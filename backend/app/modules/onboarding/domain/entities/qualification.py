@@ -105,7 +105,7 @@ class QualificationCriterion(AppendOnlyModel):
     #: Who wrote this version, from the session. `NULL` for the seeded v1s.
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     #: Why this version was written: a ticket number or an explanation
-    #: (``domain/change_reason.py``). ``NULL`` for seeded versions and those before 0055.
+    #: (``domain/change_reason.py``). ``NULL`` for seeded versions and those before 0063.
     change_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     #: Where an automatic result comes from (``domain/qualification_auto.py``), if any.
     auto_source: Mapped[str | None] = mapped_column(String(24), nullable=True)

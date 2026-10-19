@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { Button, ConfirmDialog, Skeleton, Tag } from '@/components';
+import { Button, Skeleton, Tag } from '@/components';
 import { Icon } from '@/design/icons';
 import { cn } from '@/lib/cn';
+import { ChangeReasonDialog } from '@/modules/onboarding';
 
 import { useDeleteRole, useRoles } from '../hooks';
 import type { Role } from '../types';
@@ -52,16 +53,14 @@ export function RolesTab() {
 
   const roles = data?.roles ?? [];
 
-  async function handleDelete(role: Role) {
+  async function handleDelete(role: Role, reason: string) {
     try {
-      await deleteMutation.mutateAsync(role.id);
+      await deleteMutation.mutateAsync({ roleId: role.id, reason });
       toast.success('Role deleted');
-    } catch (caught) {
-      // The server refuses a role that is still held, and names the count —
-      // surface that message rather than a generic failure.
-      toast.error(caught instanceof Error ? caught.message : 'Could not delete role');
-    } finally {
       setDeleting(null);
+    } catch {
+      // The server refuses a role that is still held, and names the count; the
+      // refusal stays in the dialog, in the server's words.
     }
   }
 
@@ -134,7 +133,10 @@ export function RolesTab() {
                 {can('roles', 'delete') && !role.is_builtin && (
                   <button
                     type="button"
-                    onClick={() => setDeleting(role)}
+                    onClick={() => {
+                      deleteMutation.reset();
+                      setDeleting(role);
+                    }}
                     aria-label={`Delete ${role.name}`}
                     className={cn(ICON_BUTTON, 'hover:text-negative')}
                   >
@@ -149,18 +151,18 @@ export function RolesTab() {
 
       {creating && <RoleFormDialog onClose={() => setCreating(false)} />}
       {editing !== null && <RoleFormDialog role={editing} onClose={() => setEditing(null)} />}
-      <ConfirmDialog
+      <ChangeReasonDialog
         open={deleting !== null}
         onOpenChange={(open) => {
           if (!open) setDeleting(null);
         }}
         title={deleting ? `Delete ${deleting.name}?` : 'Delete role?'}
-        description="This cannot be undone. The server refuses a role that anyone still holds."
+        consequence="This cannot be undone. The server refuses a role that anyone still holds."
         confirmLabel="Delete role"
-        confirmVariant="destructive"
-        loading={deleteMutation.isPending}
-        onConfirm={() => {
-          if (deleting) void handleDelete(deleting);
+        pending={deleteMutation.isPending}
+        error={deleteMutation.error}
+        onConfirm={(reason) => {
+          if (deleting) void handleDelete(deleting, reason);
         }}
       />
     </div>

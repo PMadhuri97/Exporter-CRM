@@ -28,13 +28,15 @@
  *
  * Every list is computed by the server on read, with business-time deadlines.
  *
- * **Newest first.** Every tab opens with what arrived most recently at the top — what
- * came in today is the first thing seen — by the date that put the row on its list:
- * when a review started waiting, a proposal was made, a Clear comes due, a company was
- * last screened, a bank account last changed. The Sort menu turns it round (oldest first,
- * for working a backlog in order) or sorts by company name; the choice is in the URL
- * (`?sort=`, `?order=`) and holds across tabs. The two lists the server pages (To
- * approve, Re-KYC due) are asked for in that order, so the newest are the ones fetched.
+ * **Newest first, except where the oldest is the most urgent.** Most tabs open with what
+ * arrived most recently at the top, by the date that put the row on its list: when a
+ * review started waiting, a company was last screened, a bank account last changed. The
+ * two lists the server pages (To approve, Re-KYC due) open oldest first instead — the
+ * longest-waiting proposal and the longest-expired Clear — and are fetched in that
+ * order, so with more than one request's worth waiting those are the rows read, and
+ * the list says how many of the total it shows. Sorting by company sorts only the rows
+ * read. The Sort menu turns any tab round or sorts by company name; the choice is in
+ * the URL (`?sort=`, `?order=`) and holds across tabs.
  */
 
 import { lazy, Suspense, useEffect, type ReactNode } from 'react';
@@ -126,6 +128,13 @@ const DATE_LABEL: Record<Tab, string> = {
 };
 
 const DEFAULT_SORT: SortState<SortKey> = { key: 'date', order: 'desc' };
+/** To approve and Re-KYC due: the most urgent row is the one that has waited longest. */
+const PAGED_DEFAULT_SORT: SortState<SortKey> = { key: 'date', order: 'asc' };
+const PAGED_TABS: readonly Tab[] = ['approve', 'rekyc'];
+
+function defaultSortFor(tab: Tab): SortState<SortKey> {
+  return PAGED_TABS.includes(tab) ? PAGED_DEFAULT_SORT : DEFAULT_SORT;
+}
 
 function sortColumns(tab: Tab): SortColumn<SortKey>[] {
   return [
@@ -224,19 +233,23 @@ export function ApprovalsPage() {
     teamRequested && teamRequested in TEAM_LABEL ? teamRequested : 'needs_attention';
   const columns = sortColumns(tab);
   // Written by `update` below, with the selection, in one change to the URL.
-  const [sort] = useSortParams(columns, DEFAULT_SORT);
-  // The paged lists are fetched in the order shown, so "newest first" reads the newest.
-  const serverOrder = sort.key === 'date' && sort.order === 'asc' ? 'oldest' : 'newest';
+  const [sort] = useSortParams(columns, defaultSortFor(tab));
+  // The paged lists are read whichever tab is open (for their counts), in the order
+  // their own tab shows: oldest first unless newest first was chosen, so the rows read
+  // are the most urgent ones. A sort by company sorts the oldest that were read.
+  const [pagedSort] = useSortParams(sortColumns('approve'), PAGED_DEFAULT_SORT);
+  const pagedOrder = pagedSort.key === 'date' && pagedSort.order === 'desc' ? 'newest' : 'oldest';
+  const rescreenOrder = sort.key === 'date' && sort.order === 'asc' ? 'oldest' : 'newest';
 
   // Every tab's list is read, so each tab can show its count.
   const awaiting = useComplianceWork('awaiting');
   const mine = useComplianceWork('mine');
   const team = useComplianceWork(teamView, lead);
-  const proposals = useProposalsAwaitingMe({ limit: QUEUE_LIMIT, enabled: true, order: serverOrder });
-  const due = useReKycDue({ limit: QUEUE_LIMIT, enabled: true, order: serverOrder });
+  const proposals = useProposalsAwaitingMe({ limit: QUEUE_LIMIT, enabled: true, order: pagedOrder });
+  const due = useReKycDue({ limit: QUEUE_LIMIT, enabled: true, order: pagedOrder });
   const bank = usePendingBankAccounts(approvesBank);
   const trueMatches = usePendingTrueMatches();
-  const rescreen = useRescreenDue(true, sort.key === 'name' ? 'name' : serverOrder);
+  const rescreen = useRescreenDue(true, sort.key === 'name' ? 'name' : rescreenOrder);
 
   const update = (changes: Record<string, string | null>) =>
     setParams(
@@ -359,6 +372,9 @@ export function ApprovalsPage() {
 
   const rows = rowsFor(tab);
   const query = queryFor[tab];
+  // A paged list with more waiting than one request returns says so.
+  const total = countFor[tab];
+  const truncated = PAGED_TABS.includes(tab) && total !== undefined && total > rows.length;
   // The chosen company stays chosen while its row moves between lists (a claim, an
   // approval): the case is the company, and its name is found in whichever list has it.
   const chosenId = params.get('company') ?? rows[0]?.companyId ?? null;
@@ -434,16 +450,29 @@ export function ApprovalsPage() {
           ) : rows.length === 0 ? (
             <EmptyLine className="py-2">{EMPTY[tab]}</EmptyLine>
           ) : (
-            <ul className="space-y-1">
-              {rows.map((row) => (
-                <ListRow
-                  key={row.companyId}
-                  row={row}
-                  selected={row.companyId === chosenId}
-                  onSelect={() => update({ company: row.companyId })}
-                />
-              ))}
-            </ul>
+            <>
+              <ul className="space-y-1">
+                {rows.map((row) => (
+                  <ListRow
+                    key={row.companyId}
+                    row={row}
+                    selected={row.companyId === chosenId}
+                    onSelect={() => update({ company: row.companyId })}
+                  />
+                ))}
+              </ul>
+              {truncated && (
+                <p className="mt-2 text-caption text-ink-3" data-testid="list-truncated">
+                  Showing {rows.length} of {total}: the{' '}
+                  {pagedOrder === 'newest'
+                    ? 'most recent'
+                    : tab === 'rekyc'
+                      ? 'longest expired'
+                      : 'longest waiting'}
+                  {sort.key === 'name' ? ', sorted by company' : ''}.
+                </p>
+              )}
+            </>
           )}
         </nav>
 

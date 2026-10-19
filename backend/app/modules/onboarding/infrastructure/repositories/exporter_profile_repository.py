@@ -144,13 +144,13 @@ class ExporterProfileRepository(BaseRepository[ExporterProfile]):
         missing_primary_contact: bool = False,
         collections_owner_user_id: uuid.UUID | None = None,
         collections_owner_unassigned: bool = False,
-        sort: CompanySort = CompanySort.UPDATED_AT,
+        sort: CompanySort = CompanySort.CREATED_AT,
         order: SortOrder = SortOrder.DESC,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ExporterProfile]:
         """Filtered profile search, in the order asked for (``domain/list_sort.py``):
-        by default the most recently updated first.
+        by default the most recently added first.
 
         ``name_contains`` is a case-insensitive partial match on the name,
         taken literally: ``%`` and ``_`` in it match only themselves.
@@ -248,23 +248,23 @@ _STAGE_RANK = case(
 
 
 def _company_order(sort: CompanySort, order: SortOrder) -> list:
-    """The ORDER BY for a sort. Every order ends on the newest change and then the
-    company id: companies written in one transaction share a timestamp, and without a
-    unique last key a page boundary could repeat or skip one."""
+    """The ORDER BY for a sort. Every order ends on when the company was added and then
+    the company id: companies created in one transaction share a `created_at`, and
+    without a unique last key a page boundary could repeat or skip one."""
     descending = order is SortOrder.DESC
-    newest = ExporterProfile.updated_at.desc()
+    newest = [ExporterProfile.created_at.desc(), ExporterProfile.customer_id.desc()]
     if sort is CompanySort.NAME:
         key = func.lower(ExporterProfile.name)
         # A company with no name yet is last either way: it is the least findable.
-        first = (key.desc() if descending else key.asc()).nulls_last()
-        return [first, newest, ExporterProfile.customer_id.desc()]
+        return [(key.desc() if descending else key.asc()).nulls_last(), *newest]
     if sort is CompanySort.STAGE:
-        first = _STAGE_RANK.desc() if descending else _STAGE_RANK.asc()
-        return [first, newest, ExporterProfile.customer_id.desc()]
-    updated = ExporterProfile.updated_at
+        return [_STAGE_RANK.desc() if descending else _STAGE_RANK.asc(), *newest]
+    column = (
+        ExporterProfile.updated_at if sort is CompanySort.UPDATED_AT else ExporterProfile.created_at
+    )
     if descending:
-        return [updated.desc(), ExporterProfile.customer_id.desc()]
-    return [updated.asc(), ExporterProfile.customer_id.asc()]
+        return [column.desc(), ExporterProfile.customer_id.desc()]
+    return [column.asc(), ExporterProfile.customer_id.asc()]
 
 
 def _escape_like(value: str) -> str:

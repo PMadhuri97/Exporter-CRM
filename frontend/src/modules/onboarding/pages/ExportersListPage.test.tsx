@@ -122,11 +122,11 @@ describe('ExportersListPage — sorting', () => {
 
   const lastCall = () => vi.mocked(searchExporterProfiles).mock.calls.at(-1)?.[0];
 
-  it('asks for the most recently updated first, and the Sort menu marks it', async () => {
+  it('asks for the most recently added first, and the Sort menu marks it', async () => {
     renderPage();
     await screen.findByText('Acme Exports');
-    expect(lastCall()).toMatchObject({ sort: 'updated_at', order: 'desc' });
-    const trigger = screen.getByRole('button', { name: 'Sort: Last updated, descending' });
+    expect(lastCall()).toMatchObject({ sort: 'created_at', order: 'desc' });
+    const trigger = screen.getByRole('button', { name: 'Sort: Date added, descending' });
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
     fireEvent.keyDown(trigger, { key: 'Enter' });
 
@@ -135,11 +135,13 @@ describe('ExportersListPage — sorting', () => {
     expect(items.map((item) => item.textContent)).toEqual([
       'Name',
       'Stage',
+      'Date added',
       'Last updated',
       'Ascending',
       'Descending',
     ]);
-    expect(screen.getByRole('menuitemradio', { name: 'Last updated' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('menuitemradio', { name: 'Date added' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('menuitemradio', { name: 'Last updated' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('menuitemradio', { name: 'Descending' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('menuitemradio', { name: 'Name' })).toHaveAttribute('aria-checked', 'false');
   });

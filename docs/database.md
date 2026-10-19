@@ -223,6 +223,19 @@ row. Readers that mean "contacts" filter on `is_contact` (`GET …/contacts` def
 `role=CONTACT`); the sanctions screening and group suggestions read directors and
 owners.
 
+- **Name (0062):** `first_name` (required) and `last_name` (optional: plenty of people
+  go by one name). `name` (`varchar(511)`) is the full name every reader uses, and the
+  API never writes it. In this release it is a plain column kept in step by
+  `trg_exporter_contact_sync_name` (`BEFORE INSERT OR UPDATE`): a write that sets the
+  parts has `name` rebuilt from them, and a write that sets only `name` (the release
+  before 0062, still serving during the deploy) has the parts split from it by
+  `exporter_contact_name_parts()`. A later release drops the trigger and makes `name`
+  `GENERATED ALWAYS AS (first_name || COALESCE(' ' || last_name, '')) STORED`.
+- How a full name splits: a leading title (`Dr.`, `Mr`, `Shri` …) stays with the first
+  name and the last word is the last name ("Dr. A. P. J. Kalam" → "Dr. A. P. J." +
+  "Kalam"). A single word, or a title and one word, is a first name alone. A buyer
+  contact (named after its company) keeps its whole name as `first_name`, and a blank
+  name becomes "Unnamed contact".
 - `uq_exporter_contact_primary_per_customer` is a **partial unique index** on
   `(customer_id) WHERE is_primary_contact = true` — at most one primary contact per
   company, enforced by the database.
@@ -566,6 +579,8 @@ SQL through `psycopg2`, bypassing the ORM, so the test proves the *database* ref
 | `onboarding.prevent_gst_registration_delete()` | Refuses any `DELETE` on `exporter_gstin`, telling the caller to deactivate. |
 | `onboarding.prevent_deal_buyer_change()` | Refuses an `INSERT` on `deal_buyer`, and an `UPDATE` of anything but the buyer migration's mapping columns and `updated_at` (0058). |
 | `onboarding.prevent_delete()` | Refuses any `DELETE` on the table it guards (`exporter_contact`), telling the caller to change the status instead. |
+| `onboarding.exporter_contact_name_parts(name, role)` | Splits a full name into first and last name (0062): titles stay with the first name, the last word is the last name, a buyer contact's name is kept whole, a blank one becomes "Unnamed contact". `IMMUTABLE`. |
+| `onboarding.exporter_contact_sync_name()` | `trg_exporter_contact_sync_name` on `exporter_contact`: rebuilds `name` from changed parts, or splits a changed `name` into its parts (0062). Dropped when `name` becomes a computed column. |
 
 ### The 45 triggers on the `onboarding` schema
 
@@ -607,8 +622,11 @@ Delete-only refusals: `crm_document`, `verification_result` (both via
 `prevent_delete`, `FOR EACH STATEMENT`) and `exporter_gstin` (via its own function,
 `FOR EACH ROW`).
 
+Keeps two columns in step: `exporter_contact` (`trg_exporter_contact_sync_name`, until
+`name` becomes a computed column).
+
 **No table in the `onboarding` schema has a `NOT VALID` constraint, an exclusion
-constraint or a sequence.** 183 indexes, all validated.
+constraint or a sequence.** 180 indexes, all validated.
 
 ### Writing a new rule
 

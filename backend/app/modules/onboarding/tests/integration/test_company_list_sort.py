@@ -1,7 +1,8 @@
 """Sorting the Companies list (``domain/list_sort.py``).
 
-The list is paged on the server, so the order is the server's: by when the company
-record last changed (the default, newest first), by name, or by stage. Each test makes
+The list is paged on the server, so the order is the server's: by when the company was
+added (the default, newest first), by when its record last changed, by name, or by
+stage. Each test makes
 its own three companies under one unique name and searches for that name, so the shared
 test database's other companies never enter the comparison.
 """
@@ -38,17 +39,23 @@ async def _set(customer_id: uuid.UUID, **values) -> None:
 @pytest.fixture
 async def three(client: AsyncClient) -> tuple[str, dict[str, str]]:
     """Three companies sharing a unique tag: names in mixed case, one at each stage, and
-    last updated an hour apart — in an order that matches none of the other two."""
+    added and last updated an hour apart — the four orders all different."""
     tag = f"Sortco{uuid.uuid4().hex[:8]}"
     base = datetime.now(UTC) - timedelta(days=1)
     made: dict[str, str] = {}
-    for label, name, journey, hours in [
-        ("bravo", f"{tag} Bravo", ExporterJourney.LEAD, 2),
-        ("alpha", f"{tag} alpha", ExporterJourney.CUSTOMER, 0),
-        ("charlie", f"{tag} Charlie", ExporterJourney.PROSPECT, 1),
+    for label, name, journey, added, updated in [
+        ("bravo", f"{tag} Bravo", ExporterJourney.LEAD, 0, 2),
+        ("alpha", f"{tag} alpha", ExporterJourney.CUSTOMER, 1, 0),
+        ("charlie", f"{tag} Charlie", ExporterJourney.PROSPECT, 2, 1),
     ]:
         company_id = await make_company()
-        await _set(company_id, name=name, journey=journey, updated_at=base + timedelta(hours=hours))
+        await _set(
+            company_id,
+            name=name,
+            journey=journey,
+            created_at=base + timedelta(hours=added),
+            updated_at=base + timedelta(hours=updated),
+        )
         made[label] = str(company_id)
     return tag, made
 
@@ -60,9 +67,17 @@ async def _listed(client: AsyncClient, tag: str, **params) -> list[str]:
     return [row["customer_id"] for row in resp.json()["profiles"]]
 
 
-async def test_the_default_is_the_most_recently_updated_first(client: AsyncClient, three):
+async def test_the_default_is_the_most_recently_added_first(client: AsyncClient, three):
     tag, c = three
-    assert await _listed(client, tag) == [c["bravo"], c["charlie"], c["alpha"]]
+    assert await _listed(client, tag) == [c["charlie"], c["alpha"], c["bravo"]]
+    assert await _listed(client, tag, sort="created_at", order="asc") == [
+        c["bravo"], c["alpha"], c["charlie"],
+    ]
+
+
+async def test_by_last_updated(client: AsyncClient, three):
+    tag, c = three
+    assert await _listed(client, tag, sort="updated_at") == [c["bravo"], c["charlie"], c["alpha"]]
     assert await _listed(client, tag, sort="updated_at", order="asc") == [
         c["alpha"], c["charlie"], c["bravo"],
     ]
@@ -89,9 +104,12 @@ async def test_by_stage_follows_the_journey_not_the_alphabet(client: AsyncClient
     ]
 
 
-async def test_an_edit_brings_a_company_to_the_top(client: AsyncClient, three):
+async def test_an_edit_moves_a_company_only_in_the_last_updated_order(
+    client: AsyncClient, three
+):
     """`updated_at` moves on every change to the record, so the company worked on today
-    leads the default list."""
+    leads the "Last updated" order — and stays put in the default one, which paging
+    relies on."""
     tag, c = three
     async with db_services.AsyncSessionLocal() as db:
         profile = await db.scalar(
@@ -101,13 +119,14 @@ async def test_an_edit_brings_a_company_to_the_top(client: AsyncClient, three):
         await db.commit()
         await db.refresh(profile)
     assert profile.updated_at > datetime.now(UTC) - timedelta(minutes=5)
-    assert (await _listed(client, tag))[0] == c["alpha"]
+    assert (await _listed(client, tag, sort="updated_at"))[0] == c["alpha"]
+    assert await _listed(client, tag) == [c["charlie"], c["alpha"], c["bravo"]]
 
 
 async def test_pages_of_one_add_up_to_the_whole_list(client: AsyncClient, three):
     """However the list is sorted, paging through it neither repeats nor skips."""
     tag, _ = three
-    for sort in ("updated_at", "name", "stage"):
+    for sort in ("created_at", "updated_at", "name", "stage"):
         whole = await _listed(client, tag, sort=sort)
         paged = [
             row

@@ -33,7 +33,12 @@ rule as ``KybVendorRegistryService`` above, ``OnboardingRequestService`` and
 ``OnboardingQueryService`` themselves are imported directly from
 ``app.modules.onboarding.application.onboarding_request_service`` /
 ``.onboarding_query_service`` — not from this facade.
+
+Also exports ``require_change_reason``, the rule every change to a live rule is held to
+(``domain/change_reason.py``), so role management in ``app/api`` asks for a reason by the
+same rule as the CRM settings pages. Pure: it imports nothing but ``app.shared``.
 """
+from app.modules.onboarding.domain.change_reason import require_change_reason
 from app.modules.onboarding.domain.entities.kyb_vendor_registration import KybVendorRegistration
 from app.modules.onboarding.domain.entities.orchestration_enums import (
     KybNormalisedResult,
@@ -122,4 +127,5 @@ __all__ = [
     "UboRecordView",
     "UnderReviewEntry",
     "WebhookParseResult",
+    "require_change_reason",
 ]

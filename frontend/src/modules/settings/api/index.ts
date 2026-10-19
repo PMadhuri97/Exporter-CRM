@@ -104,8 +104,10 @@ export function updateRole(
   return apiRequest<Role>(`/auth/roles/${roleId}`, { method: 'PATCH', body });
 }
 
-export function deleteRole(roleId: string): Promise<void> {
-  return apiRequest<void>(`/auth/roles/${roleId}`, { method: 'DELETE' });
+/** A DELETE has no body, so the reason travels as a query parameter. */
+export function deleteRole(roleId: string, changeReason: string): Promise<void> {
+  const query = new URLSearchParams({ change_reason: changeReason });
+  return apiRequest<void>(`/auth/roles/${roleId}?${query}`, { method: 'DELETE' });
 }
 
 /** What the signed-in user may do. Needs no permission of its own, so it is

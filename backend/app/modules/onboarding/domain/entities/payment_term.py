@@ -54,7 +54,7 @@ class PaymentTerm(AnerModel):
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     #: Why this version was written: a ticket number or an explanation
-    #: (``domain/change_reason.py``). ``NULL`` for seeded versions and those before 0055.
+    #: (``domain/change_reason.py``). ``NULL`` for seeded versions and those before 0063.
     change_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 

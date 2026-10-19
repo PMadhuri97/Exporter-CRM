@@ -35,9 +35,9 @@ ChangeReason = Annotated[
         # Room for surrounding whitespace; the cleaned value is held to MAX_LENGTH.
         max_length=MAX_LENGTH * 2,
         description=(
-            "Why this change is being made: a ticket number (e.g. CHG-1042) or an "
-            "explanation of at least three words. Required; kept on the version this "
-            "request writes."
+            "Why this change is being made: a ticket number in capitals (e.g. "
+            "CHG-1042), then an explanation of at least two words. Required; kept on "
+            "the version this request writes."
         ),
         examples=["CHG-1042: raise the turnover floor agreed by credit committee"],
     ),

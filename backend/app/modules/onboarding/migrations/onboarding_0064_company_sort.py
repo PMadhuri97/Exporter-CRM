@@ -1,12 +1,12 @@
 """Indexes for sorting the Companies list
 
 The list is sorted on the server and paged (``domain/list_sort.py``): by default by when
-the company record last changed, newest first, or by name. Without an index each page
-of a large list would sort every company to return fifty; with these, a page reads only
-the rows it returns.
+the company was added, as before, or, when chosen, by when the company record last
+changed or by name. Without an index each page of a large list would sort every company
+to return fifty; with these, a page reads only the rows it returns.
 
 * ``ix_exporter_profile_updated_at`` — ``updated_at DESC, customer_id DESC``, the
-  default order exactly;
+  "Last updated" order exactly;
 * ``ix_exporter_profile_name_lower`` — ``lower(name)``, the name order (case ignored).
 
 Sorting by stage needs none: there are three stages, and each is already indexed

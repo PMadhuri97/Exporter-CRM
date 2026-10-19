@@ -83,6 +83,15 @@ export function ChangeReasonDialog({
   error?: unknown;
 }) {
   const [reason, setReason] = useState('');
+  // Every opening starts empty. The pages keep this dialog mounted and only toggle
+  // `open`, so a reason left from the last change (it is not cleared on success)
+  // would otherwise arm the commit button for the next one. Reset while rendering,
+  // not in an effect, so the stale reason is never on screen even for a frame.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setReason('');
+  }
   const ready = changeReasonProblem(reason) === null;
   const close = (next: boolean) => {
     if (!next) setReason('');

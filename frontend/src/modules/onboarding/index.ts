@@ -13,6 +13,9 @@ export {
   QualificationCriteriaPage,
 } from './lazyPages';
 export { COMPANY_TABS, paths, type CompanyTab } from './paths';
+// Why a live rule is changed: asked of every settings change, role changes included.
+export { ChangeReasonDialog, ChangeReasonField } from './components/ChangeReasonField';
+export { changeReasonProblem } from './components/change-reason';
 // The header search's company results, and the journey badge beside each one.
 export { JourneyBadge } from './components/StatusBadge';
 export { identifierKind, useCompanyFinder, type IdentifierKind } from './hooks/finder';

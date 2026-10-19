@@ -30,7 +30,7 @@ import warnings
 
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import CheckConstraint, create_engine, text
+from sqlalchemy import CheckConstraint, FetchedValue, create_engine, text
 from sqlalchemy.pool import NullPool
 
 import app.modules.onboarding.domain.entities  # noqa: F401 — registers every CRM model
@@ -161,8 +161,17 @@ def test_every_server_default_is_declared():
         " JOIN pg_namespace n ON n.oid = c.relnamespace"
         " WHERE n.nspname = :schema AND NOT a.attisdropped"
     )
+    # A bare `FetchedValue()` declares a value a trigger sets, not a column default
+    # (`exporter_contact.name` until it becomes a computed column), so the database has
+    # no default to match it. A real default (`DefaultClause`) or a computed column
+    # (`Computed`, which Postgres keeps in `pg_attrdef`) is still compared.
     declared = {
-        table.name: {column.name for column in table.columns if column.server_default is not None}
+        table.name: {
+            column.name
+            for column in table.columns
+            if column.server_default is not None
+            and type(column.server_default) is not FetchedValue
+        }
         for table in _onboarding_tables()
     }
     declared = {table: names for table, names in declared.items() if names}

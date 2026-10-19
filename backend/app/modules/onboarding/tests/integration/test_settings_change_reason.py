@@ -26,11 +26,13 @@ pytestmark = pytest.mark.asyncio
 BASE = "/api/v1/onboarding"
 REASON = "CHG-1042: agreed at the change advisory board"
 
-#: A body without a reason, and two whose reason says nothing a reviewer could use.
+#: A body without a reason, and some whose reason says nothing a reviewer could use.
 MISSING_OR_VAGUE = [
     pytest.param({}, id="missing"),
     pytest.param({"change_reason": "   "}, id="blank"),
     pytest.param({"change_reason": "test"}, id="vague"),
+    pytest.param({"change_reason": "chg-7"}, id="lower-case-ticket"),
+    pytest.param({"change_reason": "CHG-7"}, id="ticket-without-explanation"),
 ]
 
 
@@ -182,15 +184,15 @@ async def test_every_version_keeps_the_reason_it_was_written_with(
         f"{BASE}/settings/payment-terms/{code}",
         headers=admin,
         # Whitespace is tidied; the words are kept as written.
-        json={"active": False, "change_reason": "  Replaced by   ADVANCE_50 for all buyers "},
+        json={"active": False, "change_reason": "  CHG-2001:  replaced by   ADVANCE_50 for all buyers "},
     )
     assert added.json()["change_reason"] == REASON
-    assert retired.json()["change_reason"] == "Replaced by ADVANCE_50 for all buyers"
+    assert retired.json()["change_reason"] == "CHG-2001: replaced by ADVANCE_50 for all buyers"
 
     listing = await client.get(f"{BASE}/settings/payment-terms", headers=admin)
     history = [term for term in listing.json()["history"] if term["code"] == code]
     assert [(t["version"], t["change_reason"]) for t in history] == [
-        (2, "Replaced by ADVANCE_50 for all buyers"),
+        (2, "CHG-2001: replaced by ADVANCE_50 for all buyers"),
         (1, REASON),
     ]
     assert all(t["created_by"] and t["created_at"] for t in history)
@@ -205,9 +207,9 @@ async def test_every_version_keeps_the_reason_it_was_written_with(
             "kind": "YES_NO",
             "required": False,
             "active": False,
-            "change_reason": "INC0012345",
+            "change_reason": "INC0012345 lower the turnover floor",
         },
     )
     assert criterion.status_code == 201, criterion.text
     versions = await client.get(f"{BASE}/qualification/criteria/{key}/versions", headers=admin)
-    assert versions.json()["criteria"][0]["change_reason"] == "INC0012345"
+    assert versions.json()["criteria"][0]["change_reason"] == "INC0012345 lower the turnover floor"

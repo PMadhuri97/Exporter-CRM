@@ -175,9 +175,10 @@ describe('Compliance work', () => {
     fireEvent.click(await screen.findByRole('radio', { name: /To approve/ }));
     const approve = await screen.findByRole('navigation', { name: 'To approve' });
     expect(await within(approve).findByText('Bharat Precision Metals')).toBeInTheDocument();
-    // Asked for newest first, so the proposals fetched are the most recent.
-    expect(listOpenProposals).toHaveBeenCalledWith({ awaitingMe: true, limit: 100, order: 'newest' });
-    expect(listReKycDue).toHaveBeenCalledWith({ limit: 100, order: 'newest' });
+    // Asked for oldest first, so the rows fetched are the longest waiting.
+    expect(listOpenProposals).toHaveBeenCalledWith({ awaitingMe: true, limit: 100, order: 'oldest' });
+    expect(listReKycDue).toHaveBeenCalledWith({ limit: 100, order: 'oldest' });
+    expect(screen.getByRole('button', { name: 'Sort: Proposed, ascending' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: /Re-KYC due/ }));
     const due = await screen.findByRole('navigation', { name: 'Re-KYC due' });
     fireEvent.click(await within(due).findByRole('button', { name: /Coastal Seafood/ }));
@@ -263,10 +264,22 @@ describe('Compliance work — newest first', () => {
     expect(await names()).toEqual(['Zenith Foods', 'Malabar Spices', 'Amber Exports']);
   });
 
-  it('asks the paged lists for the oldest when the oldest are wanted', async () => {
-    renderPage('/review?sort=date&order=asc');
+  it('asks the paged lists for the newest only when the newest are chosen', async () => {
+    renderPage('/review?sort=date&order=desc');
     await names();
+    expect(listOpenProposals).toHaveBeenCalledWith({ awaitingMe: true, limit: 100, order: 'newest' });
+    expect(listReKycDue).toHaveBeenCalledWith({ limit: 100, order: 'newest' });
+  });
+
+  it('reads the longest waiting when sorting by company, and says how many it shows', async () => {
+    vi.mocked(listOpenProposals).mockResolvedValue({ proposals: [PROPOSAL], total: 140, limit: 100, offset: 0 } as never);
+    renderPage('/review?tab=approve&sort=name&order=asc');
+    const approve = await screen.findByRole('navigation', { name: 'To approve' });
+    await within(approve).findByText('Bharat Precision Metals');
     expect(listOpenProposals).toHaveBeenCalledWith({ awaitingMe: true, limit: 100, order: 'oldest' });
+    expect(within(approve).getByTestId('list-truncated')).toHaveTextContent(
+      'Showing 1 of 140: the longest waiting, sorted by company.',
+    );
   });
 });
 
