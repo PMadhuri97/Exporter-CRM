@@ -37,6 +37,8 @@ export interface SearchExportersResult {
   profiles: ExporterProfileListItem[];
   limit: number;
   offset: number;
+  /** How many companies the filters match, behind this page. */
+  total: number;
 }
 
 function buildQuery(params: ExporterSearchParams): string {
@@ -50,12 +52,22 @@ function buildQuery(params: ExporterSearchParams): string {
     ['journey', params.journey],
     ['qualification', params.qualification],
     ['marker', params.marker],
+    ['pipeline_status', params.pipeline_status],
+    ['country', params.country],
+    ['industry', params.industry],
+    ['background_check', params.background_check],
+    ['trade_role', params.trade_role],
     ['relationship_manager', params.relationship_manager],
     ['collections_owner', params.collections_owner],
     ['sort', params.sort],
     ['order', params.order],
   ];
   for (const [key, value] of entries) if (value) query.set(key, value);
+  // Separately, because `false` is a filter ("companies with no open deal") and the
+  // loop above drops every falsy value.
+  if (params.has_open_deals !== undefined) {
+    query.set('has_open_deals', String(params.has_open_deals));
+  }
   if (params.missing_primary_contact) query.set('missing_primary_contact', 'true');
   query.set('limit', String(params.limit ?? 100));
   query.set('offset', String(params.offset ?? 0));

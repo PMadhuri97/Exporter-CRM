@@ -33,6 +33,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 import structlog
 from sqlalchemy import select
@@ -66,10 +67,12 @@ from app.modules.onboarding.domain.engagement_views import (
     ExporterActivityView,
     ExporterContactView,
 )
+from app.modules.onboarding.domain.entities.background_check_enums import BackgroundCheckState
 from app.modules.onboarding.domain.entities.exporter_activity import ExporterActivity
 from app.modules.onboarding.domain.entities.exporter_contact import ExporterContact
 from app.modules.onboarding.domain.entities.exporter_enums import (
     CompanyPipelineStatus,
+    CompanyTradeRole,
     ExporterJourney,
     ExporterMarker,
     ExporterSource,
@@ -1060,6 +1063,17 @@ class ExporterProfileService:
 
     # ── Search ────────────────────────────────────────────────────────────
 
+    async def count_profiles(self, **filters: Any) -> int:
+        """How many companies the same filters match, behind the page.
+
+        Separate from `search_profiles` rather than returned with it: every existing
+        caller wants the rows, and widening that return type would touch all of them
+        for one screen's benefit. It takes the **same keywords** `search_profiles`
+        does and hands them to the same `_repository_filters`, so the count and the
+        page it sits above are drawn from one set of conditions.
+        """
+        return await self._profiles.count(**_repository_filters(**filters))
+
     async def search_profiles(
         self,
         *,
@@ -1072,6 +1086,11 @@ class ExporterProfileService:
         qualification: QualificationState | None = None,
         marker: ExporterMarker | None = None,
         pipeline_status: CompanyPipelineStatus | None = None,
+        country: str | None = None,
+        industry: str | None = None,
+        background_check: BackgroundCheckState | None = None,
+        trade_role: CompanyTradeRole | None = None,
+        has_open_deals: bool | None = None,
         relationship_manager_user_id: uuid.UUID | None = None,
         relationship_manager_unassigned: bool = False,
         relationship_manager_inactive: bool = False,
@@ -1115,36 +1134,37 @@ class ExporterProfileService:
         drag buyer-only companies into its list, and `pipeline_status=` must not
         resurrect `ENDED` ones.
         """
-        pan = _normalise_term(pan)
-        gstin = _normalise_term(gstin)
-        iec = _normalise_term(iec)
-        # A blank name is no search at all: it must not bring ENDED back.
-        name_contains = (name_contains or "").strip() or None
-        searching = any(term is not None for term in (name_contains, pan, gstin, iec))
-
         profiles = await self._profiles.search(
-            gstin=gstin,
-            pan=pan,
-            iec=iec,
-            name_contains=name_contains,
-            source=source,
-            journey=journey,
-            qualification=qualification,
-            marker=marker,
-            pipeline_status=pipeline_status,
-            relationship_manager_user_id=relationship_manager_user_id,
-            relationship_manager_unassigned=relationship_manager_unassigned,
-            relationship_manager_inactive=relationship_manager_inactive,
-            missing_primary_contact=missing_primary_contact,
-            collections_owner_user_id=collections_owner_user_id,
-            collections_owner_unassigned=collections_owner_unassigned,
-            exclude_ended=marker is None and not searching,
-            exclude_not_in_pipeline=pipeline_status is None and not searching,
+            **_repository_filters(
+                gstin=gstin,
+                pan=pan,
+                iec=iec,
+                name_contains=name_contains,
+                source=source,
+                journey=journey,
+                qualification=qualification,
+                marker=marker,
+                pipeline_status=pipeline_status,
+                country=country,
+                industry=industry,
+                background_check=background_check,
+                trade_role=trade_role,
+                has_open_deals=has_open_deals,
+                relationship_manager_user_id=relationship_manager_user_id,
+                relationship_manager_unassigned=relationship_manager_unassigned,
+                relationship_manager_inactive=relationship_manager_inactive,
+                missing_primary_contact=missing_primary_contact,
+                collections_owner_user_id=collections_owner_user_id,
+                collections_owner_unassigned=collections_owner_unassigned,
+            ),
             sort=sort,
             order=order,
             limit=limit,
             offset=offset,
         )
+        # One lookup for the whole page rather than per row: a trade role and a primary
+        # contact each cost a query per company otherwise.
+        roles = await self._profiles.trade_roles_for([p.customer_id for p in profiles])
         with_contact = await companies_with_active_primary_contact(
             self._db, [profile.customer_id for profile in profiles]
         )
@@ -1164,6 +1184,10 @@ class ExporterProfileService:
                 marker=profile.marker,
                 marker_reason=profile.marker_reason,
                 industry=profile.industry,
+                export_markets=profile.export_markets,
+                products=profile.products,
+                trade_role=roles.get(profile.customer_id),
+                background_check=profile.background_check,
                 year_established=profile.year_established,
                 registration_number=profile.registration_number,
                 identity_type=profile.identity_type,
@@ -1505,6 +1529,60 @@ def _normalise_term(value: str | None) -> str | None:
         return None
     cleaned = value.strip().upper()
     return cleaned or None
+
+
+def _repository_filters(**filters: Any) -> dict[str, Any]:
+    """The company filters as the repository wants them, for both the page and
+    its count.
+
+    Three things happen here and nowhere else: the tax identifiers are normalised
+    the way the stored values are, a blank name is treated as no search at all, and
+    the two default exclusions are derived from whatever else was asked for.
+
+    **One function because the page and the count must agree.** They did not once:
+    the count repeated the search's logic but skipped the identifier clean-up, so a
+    lower-case PAN found one company and counted none. Anything the caller passes
+    that is not named here is handed straight through, so a filter added to the
+    search cannot quietly fall out of the count — the repository raises on a keyword
+    it does not know rather than ignoring it.
+
+    `exclude_ended`: with no `marker` and no search term, `ENDED` companies are left
+    out of the working list; any search term brings them back.
+
+    `exclude_not_in_pipeline`: asking for buyers has to bring the buyer-only
+    companies back. They are precisely the `NOT_IN_PIPELINE` rows the default working
+    list hides, so leaving that exclusion on would answer "which of our companies are
+    buyers" with almost nothing — the filter would look broken rather than empty. An
+    explicit `trade_role` is as deliberate as an explicit `pipeline_status`, and is
+    treated the same way.
+    """
+    pan = _normalise_term(filters.pop("pan", None))
+    gstin = _normalise_term(filters.pop("gstin", None))
+    iec = _normalise_term(filters.pop("iec", None))
+    name_contains = (filters.pop("name_contains", None) or "").strip() or None
+    searching = any(term is not None for term in (name_contains, pan, gstin, iec))
+    # A blank value is not a filter. `?country=` meant "a company whose country is the
+    # empty string" and matched nothing; `?industry=` hid every company with no
+    # industry. Both are what a cleared control sends.
+    blank_is_no_filter = {
+        key: (value.strip() or None) if isinstance(value, str) else value
+        for key, value in filters.items()
+        if key in ("country", "industry")
+    }
+    return {
+        **filters,
+        **blank_is_no_filter,
+        "pan": pan,
+        "gstin": gstin,
+        "iec": iec,
+        "name_contains": name_contains,
+        "exclude_ended": filters.get("marker") is None and not searching,
+        "exclude_not_in_pipeline": (
+            filters.get("pipeline_status") is None
+            and not searching
+            and filters.get("trade_role") is None
+        ),
+    }
 
 
 def _cleared_to_none(value: object) -> object:

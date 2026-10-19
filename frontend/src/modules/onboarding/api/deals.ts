@@ -86,6 +86,8 @@ export function listAllDeals(params: AllDealsParams = {}): Promise<AllDeals> {
   for (const stage of params.stages ?? []) query.append('stage', stage);
   if (params.q) query.set('q', params.q);
   if (params.companyId) query.set('company_id', params.companyId);
+  if (params.sellerCompanyId) query.set('seller_company_id', params.sellerCompanyId);
+  if (params.buyerCompanyId) query.set('buyer_company_id', params.buyerCompanyId);
   if (params.openedFrom) query.set('opened_from', params.openedFrom);
   if (params.openedBefore) query.set('opened_before', params.openedBefore);
   query.set('limit', String(params.limit ?? 50));

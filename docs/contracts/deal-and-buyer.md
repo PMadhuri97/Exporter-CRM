@@ -381,8 +381,14 @@ Filters, all optional and all applied together: `corridor` (repeatable; `UNKNOWN
 matches a `null` corridor), `stage` (repeatable), `q` (part of the reference, the
 seller's name or the buyer's name, any case, wildcards literal), `company_id` (that
 company as seller **or** as buyer company — a `deal_buyer` row is not a company, so
-it cannot match), and `opened_from` (inclusive) / `opened_before` (exclusive); a
-timestamp without a zone is read as UTC. `total` counts the matches.
+it cannot match), `seller_company_id` and `buyer_company_id` (each matching that one
+side), and `opened_from` (inclusive) / `opened_before` (exclusive); a timestamp
+without a zone is read as UTC. `total` counts the matches.
+
+`seller_company_id` and `buyer_company_id` are separate filters rather than a second
+reading of `company_id` because together they ask something `company_id` cannot: the
+deals **between** two companies. `company_id` matches either side, so naming one
+company twice says nothing new.
 
 `corridors` lists every corridor in use with its count, **ignoring the filters**, so
 a screen's choices do not vanish as they are applied. `can_open_deal` there is the
