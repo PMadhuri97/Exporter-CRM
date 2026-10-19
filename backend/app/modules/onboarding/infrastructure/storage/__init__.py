@@ -9,6 +9,10 @@ Lock, KMS — gate §7.6) lands here beside it, satisfying the same
 port, and local disk stays for development and tests.
 """
 
+from app.modules.onboarding.infrastructure.storage.clamav_scanner import (
+    CLAMAV_SCANNER_NAME,
+    ClamAvScanner,
+)
 from app.modules.onboarding.infrastructure.storage.local_disk import (
     LocalDiskStorage,
     sign_key,
@@ -21,6 +25,8 @@ from app.modules.onboarding.infrastructure.storage.passthrough_scanner import (
 from app.modules.onboarding.infrastructure.storage.s3 import S3Storage
 
 __all__ = [
+    "CLAMAV_SCANNER_NAME",
+    "ClamAvScanner",
     "PASS_THROUGH_SCANNER_NAME",
     "LocalDiskStorage",
     "PassThroughScanner",

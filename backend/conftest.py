@@ -31,6 +31,9 @@ os.environ.setdefault("SERVICE_ACCOUNT_EMAIL", "test-service-account@example.com
 os.environ.setdefault(
     "FIELD_ENCRYPTION_KEYS", "test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 )
+# Self-service sign-up is off by default; the suite's tests of `POST /auth/register`
+# exercise it, so it is on here (they switch it off themselves to test the 404).
+os.environ.setdefault("SELF_SERVICE_SIGNUP_ENABLED", "true")
 
 from app.main import app  # noqa: E402 — must follow the environ.setdefault calls above
 from app.platform.database import services as database  # noqa: E402

@@ -30,11 +30,27 @@ from app.platform.observability.tracing import set_span_correlation_id
 logger = structlog.get_logger(__name__)
 
 
+#: What a caller-supplied correlation ID may look like: a UUID, a trace id, a
+#: `service:request-42` — letters, digits and `._:-`, at most 128 characters. Anything
+#: else is replaced rather than echoed, because the value is reflected in a response
+#: header and written into every log line of the request: markup in it becomes stored
+#: XSS in any log viewer that does not encode, and arbitrary text lets a caller forge
+#: log content.
+_CORRELATION_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}")
+
+
+def _correlation_id_from(request: Request) -> str:
+    supplied = (request.headers.get("X-Correlation-Id") or "").strip()
+    if supplied and _CORRELATION_ID_PATTERN.fullmatch(supplied):
+        return supplied
+    return str(uuid.uuid4())
+
+
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
     """Attach a correlation ID to every request and propagate it in the response."""
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
+        correlation_id = _correlation_id_from(request)
         start = time.perf_counter()
 
         structlog.contextvars.clear_contextvars()

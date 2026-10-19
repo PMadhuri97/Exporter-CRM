@@ -5,12 +5,23 @@ Covers the metrics endpoint, business-metric recording through the single
 choke point, health/readiness observability posture, correlation-ID
 propagation, and the log trace-context processor's graceful no-op behaviour.
 """
+import pytest
 from prometheus_client import REGISTRY
 
+from app.platform.configuration.config import settings
 from app.platform.observability.metrics import record_event
 from app.platform.observability.tracing import add_trace_context
 
 # ── /metrics endpoint ────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _metrics_open_as_in_test(monkeypatch):
+    """/metrics answers without a token only in local and test (its guard is tested in
+    platform/security/tests/test_security_hardening.py); pin that here, whatever
+    ENVIRONMENT the suite happens to run with."""
+    monkeypatch.setattr(settings, "ENVIRONMENT", "test")
+    monkeypatch.setattr(settings, "METRICS_BEARER_TOKEN", "")
 
 async def test_metrics_endpoint_exposes_prometheus_format(client):
     # Warm up a templated route so the labelled HTTP latency family is emitted.

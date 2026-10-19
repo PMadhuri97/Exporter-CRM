@@ -19,10 +19,11 @@ and dashboards.
 """
 from __future__ import annotations
 
+import hmac
 from typing import Any
 
 import structlog
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from prometheus_client import Counter, Gauge, Histogram
 
 logger = structlog.get_logger(__name__)
@@ -312,6 +313,29 @@ def record_event(event_type: str) -> None:
 _LATENCY_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 
 
+def require_metrics_access(request: Request) -> None:
+    """Let a scrape of /metrics through only with the configured bearer token.
+
+    With ``METRICS_BEARER_TOKEN`` set, the request must carry exactly
+    ``Authorization: Bearer <token>`` (compared in constant time). Without one, the
+    endpoint answers only where ENVIRONMENT is local or test. A refusal is a 404 in both
+    cases, so the endpoint does not advertise that it exists.
+    """
+    from app.platform.configuration.config import get_settings
+
+    settings = get_settings()
+    expected = settings.METRICS_BEARER_TOKEN
+    if not expected:
+        if settings.is_local_or_test:
+            return
+        raise HTTPException(status_code=404, detail="Not Found")
+    scheme, _, supplied = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() != "bearer" or not hmac.compare_digest(
+        supplied.strip().encode(), expected.encode()
+    ):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
 def setup_metrics(app: FastAPI) -> None:
     """
     Attach default HTTP metrics to the app and expose ``GET /metrics``.
@@ -344,5 +368,13 @@ def setup_metrics(app: FastAPI) -> None:
         )
     )
     # instrument() must run before the app starts serving; expose() adds /metrics.
-    instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=True, tags=["Observability"])
+    # Guarded: it hangs off the root, outside the load balancer's /api/* rule, so it
+    # must not rely on the network to keep it private.
+    instrumentator.instrument(app).expose(
+        app,
+        endpoint="/metrics",
+        include_in_schema=True,
+        tags=["Observability"],
+        dependencies=[Depends(require_metrics_access)],
+    )
     logger.info("prometheus_metrics_enabled", endpoint="/metrics")

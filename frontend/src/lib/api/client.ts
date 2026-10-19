@@ -144,12 +144,17 @@ export async function apiRequest<TResult>(
   let response = await doFetch(accessToken);
 
   // A proactive refresh above should make this rare, but a token can still
-  // expire mid-flight (slow request, clock skew) — one retry after a forced
-  // refresh, never a loop.
+  // expire mid-flight (slow request, clock skew), or be refused before it
+  // expires because its session ended (signed out elsewhere, revoked, password
+  // reset) — one retry after a forced refresh, never a loop. Forced, not
+  // `ensureFreshAccessToken`: a token refused early is not "expiring soon", and
+  // reusing it would fail the same way. If the session is gone the refresh is
+  // refused too, and `rotate` signs the tab out.
   if (response.status === 401 && getRefreshToken() !== null) {
     try {
-      const freshToken = await ensureFreshAccessToken();
-      response = await doFetch(freshToken);
+      // Another request may already have refreshed while this one was out.
+      if (getAccessToken() === accessToken) await refreshSession();
+      response = await doFetch(getAccessToken());
     } catch {
       throw new ApiError(401, 'Session expired — please sign in again.');
     }

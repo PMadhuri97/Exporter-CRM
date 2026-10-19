@@ -115,18 +115,28 @@ def content_disposition(file_name: str) -> str:
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quoted}"
 
 
+#: How much of an upload is read at a time, so an oversized file is refused after at
+#: most one chunk past the limit rather than after all of it is in memory.
+_READ_CHUNK_BYTES = 1024 * 1024
+
+
 async def _read_upload(file: UploadFile) -> bytes:
+    too_large = ValidationError(
+        f"the file is larger than {MAX_DOCUMENT_BYTES // (1024 * 1024)} MB"
+    )
     if file.size is not None and file.size > MAX_DOCUMENT_BYTES:
-        raise ValidationError(
-            f"the file is larger than {MAX_DOCUMENT_BYTES // (1024 * 1024)} MB"
-        )
-    content = await file.read()
-    if len(content) > MAX_DOCUMENT_BYTES:
-        # `size` is advisory — a client may omit or understate it, so the real
-        # length is checked after reading, before anything is stored.
-        raise ValidationError(
-            f"the file is larger than {MAX_DOCUMENT_BYTES // (1024 * 1024)} MB"
-        )
+        raise too_large
+    # `size` is advisory — a client may omit or understate it — so the real length
+    # is counted while reading, and reading stops as soon as it passes the limit.
+    # The request as a whole is capped before it is parsed (`RequestSizeLimitMiddleware`).
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(_READ_CHUNK_BYTES):
+        total += len(chunk)
+        if total > MAX_DOCUMENT_BYTES:
+            raise too_large
+        chunks.append(chunk)
+    content = b"".join(chunks)
     if not content:
         raise ValidationError("the file is empty")
     return content

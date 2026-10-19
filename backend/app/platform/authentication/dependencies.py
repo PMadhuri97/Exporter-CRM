@@ -7,7 +7,10 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.platform.authentication.adapters.repository import UserRepository
+from app.platform.authentication.adapters.repository import (
+    RefreshTokenRepository,
+    UserRepository,
+)
 from app.platform.authentication.models import User
 from app.platform.authentication.services import decode_access_token
 from app.platform.database.services import get_db
@@ -27,7 +30,10 @@ async def get_current_user(
 
     try:
         user_id = uuid.UUID(payload["sub"])
-    except (KeyError, ValueError):
+        # A token from before sessions were recorded has no `sid`; it is refused like
+        # an expired one, and the client signs in again (or refreshes) for a new one.
+        session_id = uuid.UUID(payload["sid"])
+    except (KeyError, ValueError, TypeError):
         raise UnauthorizedError("Invalid token payload")
 
     user = await UserRepository(db).get_by_id(user_id)
@@ -35,6 +41,11 @@ async def get_current_user(
         raise UnauthorizedError("User not found")
     if not user.is_active:
         raise UnauthorizedError("Account is inactive")
+    # A valid signature is not enough: the sign-in must still be live. Logging out,
+    # revoking the session, a password change or a reset all revoke its refresh token,
+    # and this ends every access token it issued at the same moment.
+    if not await RefreshTokenRepository(db).session_is_live(session_id, user_id):
+        raise UnauthorizedError("Session has ended")
 
     return user
 

@@ -1227,6 +1227,25 @@ class DocumentTypeNotAllowedError(AnerBaseException):
         )
 
 
+class DocumentContentMismatchError(AnerBaseException):
+    """The uploaded bytes are not the type the upload declared (a 422).
+
+    The declared type is the client's claim; the file's own signature is checked
+    against it before anything is stored.
+    """
+
+    def __init__(self, content_type: object) -> None:
+        super().__init__(
+            detail=(
+                f"The file's content does not match its type {content_type!r}. "
+                "Upload the original file, not a renamed or converted one."
+            ),
+            error_code="DOCUMENT_CONTENT_MISMATCH",
+            status_code=422,
+            extensions={"content_type": str(content_type)},
+        )
+
+
 class DocumentContentTypeNotSupportedError(AnerBaseException):
     """A content type with no extension in the storage allow-list.
 

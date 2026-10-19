@@ -50,9 +50,30 @@ In `backend/.env`, set at least:
 | `APP_NAME` | Leave it at `Business Platform`: it becomes the OpenAPI title, and the committed `openapi.json` is compared whole (§8). |
 
 Optional: `STORAGE_LOCAL_ROOT` (where uploaded documents go; default
-`backend/.local-storage`, git-ignored) and `SELF_SERVICE_SIGNUP_ENABLED=false` (turns
-`POST /api/v1/auth/register` off; it only ever grants `API_USER`, which reaches nothing
-in the CRM).
+`backend/.local-storage`, git-ignored) and `SELF_SERVICE_SIGNUP_ENABLED=true` (turns
+`POST /api/v1/auth/register` on; off by default, and it only ever grants `API_USER`,
+which reaches nothing in the CRM).
+
+Security settings (see `.env.example`; `platform/security/startup_checks.py`):
+
+- `JWT_SECRET_KEY` — signs access tokens. Outside `local`/`test` the server refuses to
+  start with the built-in default or a key under 32 characters (`development` is not
+  exempt).
+- `API_DOCS_ENABLED` — the Swagger UI below and `/api/v1/openapi.json`. Unset, they are
+  served only where `ENVIRONMENT` is `local` or `test`; set `true` to see them with
+  `ENVIRONMENT=development`. `pnpm generate:api` calls `app.openapi()` directly and is
+  unaffected.
+- `METRICS_BEARER_TOKEN` — what Prometheus sends to scrape `/metrics`; without it
+  `/metrics` is a 404 outside `local`/`test`.
+- `CORS_ALLOWED_ORIGINS` — empty (no CORS) is right when the front end is served from
+  the API's origin, as it is through the vite proxy and the load balancer.
+- `LOGIN_MAX_FAILED_ATTEMPTS` / `LOGIN_LOCKOUT_MINUTES` (5 / 15) — after that many wrong
+  passwords in a row an account answers 429 until the lockout ends or an administrator
+  resets its password.
+- `CRM_DOCUMENT_SCANNER` — `pass-through` (checks nothing; logged as an error at start-up
+  outside `local`/`test`) or `clamav`, which streams each upload to clamd at
+  `CLAMAV_HOST`:`CLAMAV_PORT` and leaves it `SCAN_FAILED` (never served) when clamd cannot
+  answer. Every upload's bytes must also match its declared type, or it is refused (422).
 
 Document previews: `CRM_DOCUMENT_CONVERTER` (default `soffice` — LibreOffice, run
 headless, which turns a Word, Excel, PowerPoint or CSV document into the PDF people read

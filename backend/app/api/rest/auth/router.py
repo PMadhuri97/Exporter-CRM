@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import functools
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import anyio
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, status
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.rest.auth import access_audit
@@ -208,10 +210,71 @@ async def register(
     return response
 
 
+@functools.cache
+def _dummy_password_hash() -> str:
+    """A bcrypt hash of a random password nobody knows, checked against when the email
+    has no account so that path costs the same as a wrong password. Made on first use,
+    not at import, so start-up does not pay for a bcrypt round."""
+    return hash_password(uuid.uuid4().hex)
+
+
+def _locked_out(locked_until: datetime, now: datetime) -> AnerBaseException:
+    minutes = max(1, -(-int((locked_until - now).total_seconds()) // 60))
+    return AnerBaseException(
+        detail=(
+            "Too many failed sign-in attempts. Try again in "
+            f"{minutes} minute{'s' if minutes != 1 else ''}, or ask an administrator "
+            "to reset your password."
+        ),
+        error_code="LOGIN_LOCKED",
+        status_code=429,
+    )
+
+
+async def _record_failed_login(db: AsyncSession, user_id: uuid.UUID, now: datetime) -> None:
+    """Count a wrong password, and lock the account once there are too many in a row.
+
+    One atomic UPDATE, so parallel guesses cannot all read the same count and slip
+    past the limit together. Committed here because the 401 that follows rolls the
+    request's transaction back.
+    """
+    attempts = (
+        await db.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(failed_login_attempts=User.failed_login_attempts + 1)
+            .returning(User.failed_login_attempts)
+        )
+    ).scalar_one()
+    if attempts >= settings.LOGIN_MAX_FAILED_ATTEMPTS:
+        await db.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(
+                failed_login_attempts=0,
+                locked_until=now + timedelta(minutes=settings.LOGIN_LOCKOUT_MINUTES),
+            )
+        )
+        logger.warning("user_login_locked", user_id=str(user_id), attempts=attempts)
+    else:
+        logger.info("user_login_failed", user_id=str(user_id), attempts=attempts)
+    await db.commit()
+
+
 @router.post(
     "/login",
     response_model=TokenResponse,
     summary="Authenticate and receive tokens",
+    description=(
+        "After `LOGIN_MAX_FAILED_ATTEMPTS` wrong passwords in a row (5 by default) the "
+        "account refuses sign-in with `429` for `LOGIN_LOCKOUT_MINUTES` (15), without "
+        "checking the password. A successful sign-in or an administrator's password "
+        "reset clears the count."
+    ),
+    responses={
+        401: {"description": "Invalid email or password, or account inactive"},
+        429: {"description": "Too many failed sign-in attempts; locked for a while"},
+    },
     tags=["Auth"],
 )
 async def login(
@@ -222,12 +285,24 @@ async def login(
     token_repo = RefreshTokenRepository(db)
 
     user = await user_repo.get_by_email(body.email)
-    if user is None or not verify_password(body.password, user.hashed_password):
+    if user is None:
+        # Spend the same bcrypt time as a real check, so the response time does not
+        # tell a caller which addresses have accounts.
+        verify_password(body.password, _dummy_password_hash())
+        raise UnauthorizedError("Invalid email or password")
+
+    now = datetime.now(tz=UTC)
+    if user.locked_until is not None and user.locked_until > now:
+        # Refused without checking the password: a guess made during the lockout
+        # must learn nothing, right or wrong.
+        raise _locked_out(user.locked_until, now)
+
+    if not verify_password(body.password, user.hashed_password):
+        await _record_failed_login(db, user.id, now)
         raise UnauthorizedError("Invalid email or password")
     if not user.is_active:
         raise UnauthorizedError("Account is inactive")
 
-    access_token = create_access_token(user.id, user.email, user.role.value)
     raw_refresh, refresh_hash = generate_refresh_token()
 
     from app.platform.authentication.models import RefreshToken
@@ -236,12 +311,18 @@ async def login(
         token_hash=refresh_hash,
         expires_at=refresh_token_expiry(),
         revoked=False,
+        session_id=uuid.uuid4(),
     )
     await token_repo.create(db_token)
+    access_token = create_access_token(
+        user.id, user.email, user.role.value, db_token.session_id
+    )
 
     # Stamped here rather than in a middleware so it records an actual
     # credential check, not any authenticated request.
-    user.last_login_at = datetime.now(tz=UTC)
+    user.last_login_at = now
+    user.failed_login_attempts = 0
+    user.locked_until = None
     await user_repo.session.flush()
 
     logger.info("user_login", user_id=str(user.id), role=user.role.value)
@@ -297,10 +378,14 @@ async def refresh(
     if not user.is_active:
         raise UnauthorizedError("Account is inactive")
 
-    # Token rotation — revoke old, issue new
+    # Token rotation — revoke old, issue new. The successor stays in the same
+    # session, so access tokens issued before the rotation remain valid until they
+    # expire, and a logout still ends all of them.
     await token_repo.revoke(db_token)
 
-    access_token = create_access_token(user.id, user.email, user.role.value)
+    access_token = create_access_token(
+        user.id, user.email, user.role.value, db_token.session_id
+    )
     raw_refresh, new_hash = generate_refresh_token()
 
     from app.platform.authentication.models import RefreshToken
@@ -309,6 +394,7 @@ async def refresh(
         token_hash=new_hash,
         expires_at=refresh_token_expiry(),
         revoked=False,
+        session_id=db_token.session_id,
     )
     await token_repo.create(new_token)
 
@@ -798,6 +884,9 @@ async def admin_reset_password(
         )
 
     user.hashed_password = hash_password(body.new_password)
+    # A reset is how a locked-out user gets back in before the lockout runs out.
+    user.failed_login_attempts = 0
+    user.locked_until = None
     await db.flush()
     await RefreshTokenRepository(db).revoke_all_for_user(user.id)
     await access_audit.record(

@@ -40,6 +40,7 @@ from app.modules.onboarding.application.document_preview import (
     preview_media_type,
 )
 from app.modules.onboarding.application.storage_service import (
+    ContentDoesNotMatchTypeError,
     DocumentNotServableError,
     StorageService,
     UnsupportedContentTypeError,
@@ -60,6 +61,7 @@ from app.modules.onboarding.domain.entities.document_enums import (
 from app.modules.onboarding.domain.entities.exporter_profile import ExporterProfile
 from app.modules.onboarding.domain.storage import (
     DocumentScanStatus,
+    ScannerPort,
     StorageKeyError,
     StorageOwnerType,
 )
@@ -67,6 +69,7 @@ from app.modules.onboarding.exceptions import (
     DealNotFoundError,
     DealTerminalError,
     DocumentCategoryNotAllowedError,
+    DocumentContentMismatchError,
     DocumentContentTypeNotSupportedError,
     DocumentNotAvailableError,
     DocumentNotFoundError,
@@ -83,12 +86,14 @@ from app.modules.onboarding.infrastructure.repositories.crm_document_repository 
     CrmDocumentRepository,
 )
 from app.modules.onboarding.infrastructure.storage import (
+    ClamAvScanner,
     LocalDiskStorage,
     PassThroughScanner,
     S3Storage,
 )
 from app.modules.onboarding.infrastructure.storage.config import storage_backend
 from app.platform.authentication.models import User
+from app.platform.configuration.config import get_settings
 
 logger = structlog.get_logger(__name__)
 
@@ -104,9 +109,29 @@ def build_storage_service() -> StorageService:
     rather than a constructor call in every route. Not a FastAPI dependency: it
     holds no session and nothing about it varies per request.
     """
-    if storage_backend() == "s3":
-        return StorageService(S3Storage(), PassThroughScanner())
-    return StorageService(LocalDiskStorage(), PassThroughScanner())
+    storage = S3Storage() if storage_backend() == "s3" else LocalDiskStorage()
+    return StorageService(storage, build_scanner())
+
+
+def build_scanner() -> ScannerPort:
+    """The scanner ``CRM_DOCUMENT_SCANNER`` names: ``clamav`` or ``pass-through``.
+
+    An unrecognised name is refused rather than defaulted: falling back to the
+    pass-through would silently stop checking uploads because of a typo.
+    """
+    settings = get_settings()
+    name = settings.CRM_DOCUMENT_SCANNER.strip().lower()
+    if name == "clamav":
+        return ClamAvScanner(
+            settings.CLAMAV_HOST,
+            settings.CLAMAV_PORT,
+            timeout_seconds=settings.CLAMAV_TIMEOUT_SECONDS,
+        )
+    if name == "pass-through":
+        return PassThroughScanner()
+    raise ValueError(
+        f"CRM_DOCUMENT_SCANNER must be 'clamav' or 'pass-through', not {name!r}"
+    )
 
 
 
@@ -246,6 +271,8 @@ class DocumentService:
             )
         except UnsupportedContentTypeError as exc:
             raise DocumentContentTypeNotSupportedError(content_type) from exc
+        except ContentDoesNotMatchTypeError as exc:
+            raise DocumentContentMismatchError(content_type) from exc
         except StorageKeyError as exc:
             raise StorageKeyRefusedError(str(exc)) from exc
 

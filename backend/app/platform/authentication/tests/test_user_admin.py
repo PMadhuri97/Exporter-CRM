@@ -364,22 +364,31 @@ async def test_password_change_rotates_credentials_and_kills_sessions(client: As
 
 
 async def test_sessions_list_shows_own_sessions_and_revoke_ends_one(client: AsyncClient):
-    _, token, _ = await _registered_session(client)
+    email, first_token, _ = await _registered_session(client)
+    second = await client.post(f"{BASE}/login", json={"email": email, "password": PASSWORD})
+    second_token = second.json()["access_token"]
 
-    listing = await client.get(f"{BASE}/me/sessions", headers=auth_header(token))
+    listing = await client.get(f"{BASE}/me/sessions", headers=auth_header(second_token))
     assert listing.status_code == 200, listing.text
     sessions = listing.json()["sessions"]
-    assert len(sessions) >= 1
+    assert len(sessions) == 2
     # Only what is actually recorded — no invented device/IP fields.
     assert set(sessions[0]) == {"id", "created_at", "expires_at"}
 
+    # Newest first, so the last is the first sign-in.
+    first_session = sessions[-1]["id"]
     revoked = await client.delete(
-        f"{BASE}/me/sessions/{sessions[0]['id']}", headers=auth_header(token)
+        f"{BASE}/me/sessions/{first_session}", headers=auth_header(second_token)
     )
     assert revoked.status_code == 204, revoked.text
 
-    remaining = await client.get(f"{BASE}/me/sessions", headers=auth_header(token))
-    assert sessions[0]["id"] not in [s["id"] for s in remaining.json()["sessions"]]
+    remaining = await client.get(f"{BASE}/me/sessions", headers=auth_header(second_token))
+    assert remaining.status_code == 200, remaining.text
+    assert first_session not in [s["id"] for s in remaining.json()["sessions"]]
+
+    # Revoking a session ends its access tokens at once, not when they expire.
+    ended = await client.get(f"{BASE}/me", headers=auth_header(first_token))
+    assert ended.status_code == 401, ended.text
 
 
 async def test_cannot_revoke_another_users_session(client: AsyncClient):

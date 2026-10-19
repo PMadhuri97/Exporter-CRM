@@ -24,13 +24,18 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 
-def create_access_token(user_id: uuid.UUID, email: str, role: str) -> str:
+def create_access_token(
+    user_id: uuid.UUID, email: str, role: str, session_id: uuid.UUID
+) -> str:
     now = datetime.now(tz=UTC)
     payload = {
         "sub": str(user_id),
         "email": email,
         "role": role,
         "type": "access",
+        # The sign-in this token belongs to (`RefreshToken.session_id`). Checked on
+        # every request, so ending the session ends the token with it.
+        "sid": str(session_id),
         "jti": str(uuid.uuid4()),   # unique per token — prevents same-second collisions
         "iat": now,
         "exp": now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),

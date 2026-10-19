@@ -83,6 +83,37 @@ describe('apiRequest body encoding', () => {
   });
 });
 
+describe('apiRequest on a 401', () => {
+  it('refreshes and retries even when the token was not about to expire', async () => {
+    // A session ended elsewhere (logout, revoked, password reset) is refused before
+    // its access token expires; retrying with the same token would fail the same way.
+    const { client, store } = await openTab();
+    store.setTokens({ accessToken: 'stale', refreshToken: 'r1', expiresInSeconds: 900 });
+    fetchMock.mockImplementation(async (url: string, init: RequestInit) => {
+      if (url.endsWith('/auth/refresh')) return json(tokens('r2'));
+      const auth = (init.headers as Record<string, string>).Authorization;
+      return auth === 'Bearer stale' ? json({ detail: 'Session has ended' }, 401) : json({ ok: true });
+    });
+
+    await expect(client.apiRequest('/things')).resolves.toEqual({ ok: true });
+
+    const lastCall = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    expect((lastCall[1].headers as Record<string, string>).Authorization).toBe('Bearer access-for-r2');
+  });
+
+  it('signs the tab out when the session cannot be renewed', async () => {
+    const { client, store } = await openTab();
+    store.setTokens({ accessToken: 'stale', refreshToken: 'r1', expiresInSeconds: 900 });
+    const signedOut = vi.fn();
+    client.registerRefreshFailureHandler(signedOut);
+    fetchMock.mockImplementation(async () => json({ detail: 'Session has ended' }, 401));
+
+    await expect(client.apiRequest('/things')).rejects.toMatchObject({ status: 401 });
+    expect(signedOut).toHaveBeenCalledTimes(1);
+    expect(store.getRefreshToken()).toBeNull();
+  });
+});
+
 describe('refreshSession', () => {
   it('shares one network call between callers that arrive together', async () => {
     const { client, store } = await openTab();

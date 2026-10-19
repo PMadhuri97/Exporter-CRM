@@ -5,17 +5,8 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aner Labs Exporter CRM</title>
-    <script>
-      // Light is the default (src/platform/theme/theme.ts); apply a stored dark choice
-      // before first paint, so a dark-theme viewer never sees a light flash.
-      try {
-        if (window.localStorage.getItem('aner.theme') === 'dark') {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }
-      } catch (e) {
-        // No storage: light applies.
-      }
-    </script>
+    <!-- Applies a stored dark theme before first paint; see public/theme-init.js. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

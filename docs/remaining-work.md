@@ -28,6 +28,13 @@ does not come up.
    dump is the way back. Keep users out until step 5 has validated.
 2. **Settings.** `FIELD_ENCRYPTION_KEYS` set in the environment's secret store and backed
    up (without it, bank details answer 503; losing it loses every stored account number).
+   `JWT_SECRET_KEY` set to a random value of at least 32 characters (the server now
+   refuses to start without one outside local/test). Setting it for the first time ends
+   every access token signed with the old default; the client refreshes, which is
+   expected and harmless. Access tokens from before `auth_0011` carry no session id and
+   are refused once, then the client refreshes and continues.
+   `METRICS_BEARER_TOKEN` if anything scrapes `/metrics`. `CRM_DOCUMENT_SCANNER=clamav`
+   with a clamd sidecar before real exporter documents are uploaded.
 3. **`alembic upgrade head`**, then deploy. Read what each migration prints: 0054 and 0057
    leave a rule `NOT VALID` and print the query listing the rows that break it; 0057
    refuses while a linked owner in the old onboarding tables carries a date of birth or
