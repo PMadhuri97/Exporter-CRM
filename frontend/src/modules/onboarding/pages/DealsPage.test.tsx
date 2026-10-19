@@ -249,6 +249,19 @@ describe('DealsPage — filters', () => {
     expect(lastRequest()).toMatchObject({ sellerCompanyId: 'north' });
   });
 
+  it('lets an old ?company= seller filter be cleared', async () => {
+    // The old parameter is read as the seller. Clearing the seller box deleted only
+    // `seller`, so the seller was read from `company` again and the filter would not
+    // come off — a filter the screen offered no way to remove.
+    renderAt('/deals?company=acme');
+    await screen.findAllByTestId('deal-row');
+    expect(lastRequest()).toMatchObject({ sellerCompanyId: 'acme' });
+
+    fireEvent.click(screen.getByRole('button', { name: /Clear filters/ }));
+
+    await waitFor(() => expect(lastRequest()?.sellerCompanyId).toBeUndefined());
+  });
+
   it('ignores a malformed filter in the URL instead of failing', async () => {
     renderAt('/deals?corridor=india&stage=SIDEWAYS&from=yesterday');
     await screen.findAllByTestId('deal-row');

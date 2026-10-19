@@ -325,7 +325,7 @@ filtered list is the server's answer and any count beside it stays true.
 | `source`, `journey`, `qualification`, `marker`, `pipeline_status` | Exact |
 | `country` | The ISO code, whole and case-insensitive |
 | `industry` | Partial, case-insensitive — typing `m` finds every industry holding an `m` |
-| `background_check` | Exact. **Refused (403) for a role that may not read a background check** (D8 — DEVELOPER). The state is blanked on the rows for the same role: the list must not become a second way to read compliance work, and a filtered list names the flagged companies whether or not the column is rendered |
+| `background_check` | Exact. **Refused (403) for a viewer who may not read a background check** — background checks are not shown to DEVELOPER. The state is blanked on the rows for the same role: the list must not become a second way to read compliance work, and a filtered list names the flagged companies whether or not the column is rendered |
 | `trade_role` | Which side the company has traded on, by participation. `BOTH` means both sides, not either. Asking for `BUYER` lifts the buyer-only exclusion |
 | `has_open_deals` | Whether the company has a deal that is neither handed over nor withdrawn, **as the selling company** |
 | `relationship_manager` | `me`, `none`, `inactive` or a user id. Ownership narrows; it never changes what a reader may see |
@@ -429,7 +429,7 @@ company's row does **not** touch the other's; the flag response names the other
 holders so nobody believes they have stopped trade that is still running.
 
 **DEVELOPER is not served flags** (decided 4 October 2026): a flag is a
-compliance judgement, withheld for D8's reason. On `GET …/gst-registrations` its
+compliance judgement, withheld for the same reason: background checks are not shown to DEVELOPER. On `GET …/gst-registrations` its
 `flag_status` and `flag_reason` are `null` and `flagged_count` is `null`; its history
 omits the flag and unflag rows and the `flag_status` detail. OPERATIONS keeps them —
 a flag blocks the deals it works on, and the refusal names it.

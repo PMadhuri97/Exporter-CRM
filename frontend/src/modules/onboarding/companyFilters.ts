@@ -65,7 +65,43 @@ export const ROLE_LABEL: Record<CompanyTradeRole, string> = {
  * Each entry reads "Source: RXIL". An empty list means every company the page's other
  * lenses allow; it does not mean every company in the database.
  */
-export function describeFilters(filters: CompanyFilters): string[] {
+/**
+ * What else narrows the list, beside the panel's own filters: the lenses the panel
+ * holds and the controls on the bar above it.
+ *
+ * Passed in rather than read here, because each keeps its own state — `owner` is a URL
+ * lens, `name` is the search box — and this file holds no state of its own.
+ */
+export interface CompanyLensSummary {
+  /** `ANY`, `me`, `none` or `inactive`. */
+  owner?: string;
+  /** `ANY` or `missing`. */
+  contacts?: string;
+  /** `ANY`, `me` or `none`. */
+  collections?: string;
+  /** The journey tab: `ALL` or a stage. */
+  journey?: string;
+  qualification?: string;
+  relationship?: string;
+  /** What is typed in the search box. */
+  name?: string;
+}
+
+const OWNER_WORDS: Record<string, string> = {
+  me: 'Mine',
+  none: 'Unassigned',
+  inactive: 'RM deactivated',
+};
+
+const COLLECTIONS_WORDS: Record<string, string> = {
+  me: 'My collections',
+  none: 'No collections owner',
+};
+
+export function describeFilters(
+  filters: CompanyFilters,
+  lenses: CompanyLensSummary = {},
+): string[] {
   const described: string[] = [];
   if (filters.source) described.push(`Source: ${SOURCE_LABEL[filters.source] ?? filters.source}`);
   if (filters.trade_role) described.push(`Buyer or seller: ${ROLE_LABEL[filters.trade_role]}`);
@@ -77,5 +113,23 @@ export function describeFilters(filters: CompanyFilters): string[] {
   }
   if (filters.country) described.push(`Country: ${countryLabel(filters.country)}`);
   if (filters.industry) described.push(`Industry: ${filters.industry}`);
+
+  // The bar and the lenses narrow the file just as much as the panel does. Left out,
+  // the export said "Every company on the list" while Owner was set to Unassigned.
+  if (lenses.name) described.push(`Name contains: ${lenses.name}`);
+  if (lenses.journey && lenses.journey !== 'ALL') described.push(`Journey: ${lenses.journey}`);
+  if (lenses.qualification && lenses.qualification !== 'ANY') {
+    described.push(`Qualification: ${lenses.qualification}`);
+  }
+  if (lenses.relationship && lenses.relationship !== 'ANY') {
+    described.push(`Relationship: ${lenses.relationship}`);
+  }
+  if (lenses.owner && lenses.owner !== 'ANY') {
+    described.push(`Owner: ${OWNER_WORDS[lenses.owner] ?? lenses.owner}`);
+  }
+  if (lenses.contacts === 'missing') described.push('Contacts: no primary contact');
+  if (lenses.collections && lenses.collections !== 'ANY') {
+    described.push(`Collections: ${COLLECTIONS_WORDS[lenses.collections] ?? lenses.collections}`);
+  }
   return described;
 }

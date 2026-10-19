@@ -96,6 +96,10 @@ function useDealFilters() {
           if (value) next.set(name, value);
           else next.delete(name);
         }
+        // Any change to the seller settles the old `?company=` too. It is read as the
+        // seller, so deleting `seller` alone left it to be read again and the filter
+        // could not be cleared — and a new seller must not sit behind a stale one.
+        if ('seller' in changes) next.delete('company');
         return next;
       },
       { replace: true },

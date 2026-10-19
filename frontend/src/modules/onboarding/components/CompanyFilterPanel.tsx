@@ -25,7 +25,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 
 import { Button, Input, Select, Sheet } from '@/components';
-import { useCan } from '@/platform/access';
+import { useHasPermission } from '@/platform/access';
 
 // One country list, shared with the company form's own picker.
 import { countryOptions } from '../countries';
@@ -94,20 +94,21 @@ export function CompanyFilterPanel({
   loading,
   onChange,
   onLensChange,
+  onClearLenses,
   onClose,
 }: {
   /** The filters in force; the controls read from these. */
   applied: CompanyFilters;
   /**
-   * How many companies the filters match — the server's count, not the length of the
-   * page on screen. The two differ by a page size, which is how "50 shown" appeared
-   * against a filter matching 185.
-   */
-  /**
    * The URL-backed lenses. `owner` is absent from the panel on *My companies*, where
    * the page itself is the lens and a second way to say it would contradict the title.
    */
   lenses: CompanyLenses;
+  /**
+   * How many companies the filters match — the server's count, not the length of the
+   * page on screen. The two differ by a page size, which is how "50 shown" appeared
+   * against a filter matching 185.
+   */
   shown: number;
   loading: boolean;
   /**
@@ -117,13 +118,20 @@ export function CompanyFilterPanel({
   onChange: Dispatch<SetStateAction<CompanyFilters>>;
   /** `'ANY'` clears a lens, matching what the URL state treats as not filtering. */
   onLensChange: (key: keyof CompanyLenses, value: string) => void;
+  /**
+   * Clears several lenses in one write. Not a loop over `onLensChange`: each of those
+   * writes the URL from the parameters of the current render, so two in one click and
+   * the second discards the first — *Clear all* removed only the last lens.
+   */
+  onClearLenses: (keys: readonly (keyof CompanyLenses)[]) => void;
   onClose: () => void;
 }) {
   const [industry, setIndustry] = useState(applied.industry ?? '');
-  // The server refuses `?background_check=` from a role that may not read a
-  // background check — they are not shown to DEVELOPER — so offering the filter here
-  // would only produce a 403.
-  const canReadChecks = useCan('compliance.read');
+  // The server refuses `?background_check=` to anyone without `compliance:view`, so
+  // the filter is offered to exactly the holders of it. Asked as the permission
+  // rather than the role: an administrator withdrawing it from a role would
+  // otherwise leave the control on screen, collecting a 403.
+  const canReadChecks = useHasPermission('compliance:view');
 
   // Sent once typing stops, not per keystroke. Cleared on the next change, so only the
   // last pause sends; skipped when it already matches, so re-renders send nothing.
@@ -191,7 +199,7 @@ export function CompanyFilterPanel({
             onClick={() => {
               setIndustry('');
               onChange({});
-              for (const key of setLenses) onLensChange(key, 'ANY');
+              onClearLenses(setLenses);
             }}
           >
             Clear all

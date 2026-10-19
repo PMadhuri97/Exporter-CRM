@@ -15,7 +15,7 @@
 import { useEffect, useState } from 'react';
 
 import { Button, InlineError, Sheet } from '@/components';
-import { useCan } from '@/platform/access';
+import { useHasPermission } from '@/platform/access';
 
 import { DEFAULT_COLUMN_IDS, EXPORT_COLUMNS, type ExportColumn } from '../exportCompanies';
 
@@ -80,9 +80,10 @@ export function ExportColumnsPanel({
   const [writing, setWriting] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
-  // The background-check state is blanked for a role that may not read it — they are
-  // not shown to DEVELOPER — so offering the column would write an empty one.
-  const canReadChecks = useCan('compliance.read');
+  // The background-check state is blanked for anyone without `compliance:view`, so
+  // the column is offered to exactly the holders of it — the same permission the
+  // server decides it by, not the role that usually carries it.
+  const canReadChecks = useHasPermission('compliance:view');
   const offered = EXPORT_COLUMNS.filter(
     (column) => canReadChecks || column.id !== 'background_check',
   );

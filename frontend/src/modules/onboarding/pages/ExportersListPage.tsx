@@ -25,7 +25,7 @@
  */
 
 import { useCallback, useState, type SetStateAction } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import {
@@ -78,6 +78,14 @@ const RELATIONSHIPS: readonly string[] = ['ANY', ...Object.keys(MARKER_LABEL)];
  * the labels the panel holds. Each stays a URL lens, so a link to one can be shared.
  */
 type Owner = 'ANY' | 'me' | 'none' | 'inactive';
+
+/** The lenses the Filters panel holds, and the URL parameter each one is stored in. */
+type Lens2 = 'owner' | 'contacts' | 'collections';
+const LENS_PARAM: Record<Lens2, string> = {
+  owner: 'owner',
+  contacts: 'contact',
+  collections: 'collections',
+};
 const OWNERS: readonly Owner[] = ['ANY', 'me', 'none', 'inactive'];
 type ContactFilter = 'ANY' | 'missing';
 type CollectionsFilter = 'ANY' | 'me' | 'none';
@@ -154,6 +162,8 @@ function Row({
 export function ExportersListPage() {
   // Absent, not disabled, for a role the server refuses: DEVELOPER reads
   // the list and is offered no write screen.
+  // Written directly for `clearLenses`: several lenses must go in one write.
+  const [, setParams] = useSearchParams();
   const canCreate = useCan('company.create');
   const canImport = useCan('company.import');
   const canTakeInRxil = useCan('company.rxilIntake');
@@ -199,7 +209,7 @@ export function ExportersListPage() {
    * that page as narrowed on every visit, and clearing it would move the viewer to a
    * different page than the one they were reading.
    */
-  const clearableLenses: ('owner' | 'contacts' | 'collections')[] = [
+  const clearableLenses: Lens2[] = [
     ...(owner === 'ANY' || owner === 'me' ? [] : (['owner'] as const)),
     ...(contactFilter === 'ANY' ? [] : (['contacts'] as const)),
     ...(collectionsFilter === 'ANY' ? [] : (['collections'] as const)),
@@ -212,11 +222,32 @@ export function ExportersListPage() {
    * than joining `filters`: each is a shareable link (`?owner=none`), and *My
    * companies* is `?owner=me` with its own navigation row.
    */
-  function changeLens(key: 'owner' | 'contacts' | 'collections', value: string) {
+  function changeLens(key: Lens2, value: string) {
     setPages(1);
     if (key === 'owner') setOwner(value as Owner);
     else if (key === 'contacts') setContactFilter(value as ContactFilter);
     else setCollectionsFilter(value as CollectionsFilter);
+  }
+
+  /**
+   * Remove several lenses in **one** write to the URL.
+   *
+   * Not a loop over `changeLens`. `setSearchParams` hands its updater the parameters
+   * from the current *render*, so two calls in one click both start from the URL as it
+   * was and the second `navigate` discards the first — a Clear with three lenses set
+   * removed only the last of them while saying it had cleared everything.
+   */
+  function clearLenses(keys: readonly Lens2[]) {
+    if (keys.length === 0) return;
+    setPages(1);
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        for (const key of keys) next.delete(LENS_PARAM[key]);
+        return next;
+      },
+      { replace: true },
+    );
   }
   const prefetch = usePrefetchCompany();
   // The company record, ready to draw: its code and the company's data.
@@ -425,8 +456,7 @@ export function ExportersListPage() {
                   // Everything the badge counted. Clearing only the panel's own
                   // filters left the button showing with nothing left to do.
                   setFilters({});
-                  for (const key of clearableLenses) changeLens(key, 'ANY');
-                  setPages(1);
+                  clearLenses(clearableLenses);
                 }}
               >
                 Clear
@@ -485,8 +515,12 @@ export function ExportersListPage() {
               ))}
             </ol>
             <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-secondary text-ink-3">
+              {/* The server's count, so this says how many are behind the page rather
+                  than guessing from the page's own length. */}
               <span className="tabular-nums">
-                {profiles.length} shown
+                {matching > profiles.length
+                  ? `${profiles.length} of ${matching}`
+                  : `${profiles.length} shown`}
                 {isFetching ? ' · updating…' : ''}
                 {profiles.length >= COUNT_CAP && ' — narrow the search to see the rest'}
               </span>
@@ -502,7 +536,15 @@ export function ExportersListPage() {
 
       {exporting && (
         <ExportColumnsPanel
-          appliedFilters={describeFilters(filters)}
+          appliedFilters={describeFilters(filters, {
+            owner,
+            contacts: contactFilter,
+            collections: collectionsFilter,
+            journey: lens,
+            qualification,
+            relationship,
+            name,
+          })}
           onClose={() => setExporting(false)}
           onExport={async (columnIds) => {
             // Every row the filters match, not the page on screen: the list loads 50 at
@@ -537,6 +579,7 @@ export function ExportersListPage() {
           loading={isLoading || isFetching}
           onChange={changeFilters}
           onLensChange={changeLens}
+          onClearLenses={clearLenses}
           onClose={() => setFiltersOpen(false)}
         />
       )}

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useHasPermission } from '@/platform/access';
 import { useCurrentUser } from '@/platform/auth';
 
 import { searchExporterProfiles } from '../api';
@@ -19,6 +20,12 @@ vi.mock('@/platform/auth', async (importOriginal) => ({
   useCurrentUser: vi.fn(),
 }));
 vi.mock('../api', () => ({ searchExporterProfiles: vi.fn() }));
+vi.mock('@/platform/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/access')>()),
+  // The background-check filter and export column read `compliance:view` — the
+  // permission the server refuses the filter without — not a role.
+  useHasPermission: vi.fn(),
+}));
 
 const PROFILE: ExporterProfileListItem = {
   customer_id: 'c1',
@@ -48,6 +55,8 @@ const PROFILE: ExporterProfileListItem = {
 };
 
 function mockUser(role: string, id: string) {
+  // Compliance and operations hold `compliance:view` by default; a developer does not.
+  vi.mocked(useHasPermission).mockReturnValue(role !== 'DEVELOPER');
   vi.mocked(useCurrentUser).mockReturnValue({
     id,
     email: 'user@aner.example',
@@ -423,6 +432,42 @@ describe('ExportersListPage — whose companies', () => {
     expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
   });
 
+  it('Clear removes every lens at once, not just the last one', async () => {
+    // Each lens used to write the URL on its own. `setSearchParams` hands the updater
+    // the params from the *render*, so three writes in one click all start from the
+    // same URL and the last `navigate` wins — two filters survived a Clear that said
+    // it had removed them. One test with one filter set could never catch it.
+    renderPage('/companies?owner=none&contact=missing&collections=none');
+    await screen.findByRole('heading', { name: 'Companies' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+
+    await waitFor(() => {
+      // By value, not by key: the params object carries each filter as `undefined`
+      // when it is not filtering, so the key is always present.
+      const sent = vi.mocked(searchExporterProfiles).mock.lastCall?.[0] ?? {};
+      expect(sent.relationship_manager).toBeUndefined();
+      expect(sent.missing_primary_contact).toBeUndefined();
+      expect(sent.collections_owner).toBeUndefined();
+    });
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+  });
+
+  it('Clear all in the panel removes every lens too, in one write', async () => {
+    renderPage('/companies?owner=none&contact=missing&collections=none');
+    await screen.findByRole('heading', { name: 'Companies' });
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear all' }));
+
+    await waitFor(() => {
+      const sent = vi.mocked(searchExporterProfiles).mock.lastCall?.[0] ?? {};
+      expect(sent.relationship_manager).toBeUndefined();
+      expect(sent.missing_primary_contact).toBeUndefined();
+      expect(sent.collections_owner).toBeUndefined();
+    });
+  });
+
   it('does not count My companies as a filter, nor offer to clear it', async () => {
     // `?owner=me` is the page, not a filter on it. Counted, it badged the page as
     // narrowed on arrival; cleared, it moved the viewer somewhere else entirely.
@@ -518,6 +563,21 @@ describe('ExportersListPage — exporting', () => {
     const panel = await screen.findByRole('dialog');
     // Stated in the export panel, which has its own Source *column* checkbox.
     expect(within(panel).getByText('Source: RXIL')).toBeInTheDocument();
+  });
+
+  it('names the lenses and the bar filters in the export panel, not just the panel’s own', async () => {
+    // It said "Every company on the list" with Owner set to Unassigned, which is the
+    // one thing an export summary must never get wrong.
+    renderPage('/companies?owner=none&contact=missing');
+    await screen.findByText('Acme Exports');
+    fireEvent.click(screen.getByRole('button', { name: /Export/ }));
+
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByText('Owner: Unassigned')).toBeInTheDocument();
+    expect(within(panel).getByText('Contacts: no primary contact')).toBeInTheDocument();
+    expect(
+      within(panel).queryByText(/the boxes below choose columns, not companies/),
+    ).not.toBeInTheDocument();
   });
 
   it('says so plainly when nothing is filtered', async () => {

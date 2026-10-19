@@ -20,7 +20,8 @@ const row = (over: Partial<ExporterProfileListItem>): ExporterProfileListItem =>
     customer_id: 'c1',
     name: 'Acme Exports',
     country: 'IN',
-    // Masked, as the server sends it to every role but COMPLIANCE and ADMIN.
+    // Masked, as the server sends it to anyone without `exporters:view_full_tax_id`
+    // — Compliance holds it by default; the administrator does not.
     pan: '••••••234F',
     iec: '1234567890',
     cin: null,
