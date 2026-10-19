@@ -2,6 +2,12 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+#: Where development conveniences (public API docs, an open /metrics, the default JWT
+#: key) are allowed. ``development`` is deliberately absent, as it is from the
+#: maker-checker switch: it is ENVIRONMENT's default and what ``.env.example`` sets, so
+#: a deployed server nobody remembered to rename must still get the strict behaviour.
+LOCAL_OR_TEST_ENVIRONMENTS: frozenset[str] = frozenset({"local", "test", "testing"})
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -20,6 +26,22 @@ class Settings(BaseSettings):
 
     # ── API ───────────────────────────────────────────────────────────────────
     API_V1_PREFIX: str = "/api/v1"
+    # Swagger UI, ReDoc and the OpenAPI document. Left unset they are served only
+    # where ENVIRONMENT is local or test: anywhere else they publish every route,
+    # parameter and error code to anyone who asks. Set true to serve them on a
+    # deployed environment deliberately, false to hide them locally.
+    API_DOCS_ENABLED: bool | None = None
+    # Origins a browser may call the API from, comma-separated
+    # (`https://crm.example.com,https://admin.example.com`). Empty — the default —
+    # sends no CORS headers at all, which is right when the front end is served from
+    # the same origin as the API (behind the load balancer, or through the vite
+    # proxy). Never `*`: credentials and a wildcard would let any web page script the
+    # API with the caller's session.
+    CORS_ALLOWED_ORIGINS: str = ""
+    # `Authorization: Bearer <token>` that Prometheus must present to scrape
+    # /metrics. Blank means /metrics answers only where ENVIRONMENT is local or test
+    # and is a 404 everywhere else.
+    METRICS_BEARER_TOKEN: str = ""
 
     # ── Exporter CRM ─────────────────────────────────────────────────────────
     # `OnboardingRequest.tenant_id` is inherited multi-tenant schema that
@@ -64,6 +86,16 @@ class Settings(BaseSettings):
     # Without it such a document shows "Preview unavailable"; nothing else changes.
     CRM_DOCUMENT_CONVERTER: str = "soffice"
     CRM_DOCUMENT_CONVERTER_TIMEOUT_SECONDS: int = 60
+    # What checks an uploaded document for malware before it can be opened:
+    # `pass-through` (checks nothing — local development only; announced at start-up
+    # anywhere else) or `clamav` (a clamd daemon at CLAMAV_HOST:CLAMAV_PORT, for
+    # example a sidecar container). With `clamav`, a daemon that cannot be reached or
+    # does not answer leaves the document SCAN_FAILED — never served — rather than
+    # letting it through.
+    CRM_DOCUMENT_SCANNER: str = "pass-through"
+    CLAMAV_HOST: str = "localhost"
+    CLAMAV_PORT: int = 3310
+    CLAMAV_TIMEOUT_SECONDS: int = 60
     # How long a contact's details stay "verified" before the screen asks for a re-check.
     CRM_CONTACT_REVERIFY_MONTHS: int = 12
     # Who may approve a bank-account proposal: OFF (none needed), SECOND_PERSON
@@ -222,23 +254,35 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "json"  # json | console
 
     # ── Auth / JWT ────────────────────────────────────────────────────────────
+    # Signs every access token, so anyone who knows it can mint a token for any
+    # user. The default is public (it is in this file) and is accepted only where
+    # ENVIRONMENT is local or test; anywhere else the application refuses to start
+    # with it, or with any key shorter than 32 characters
+    # (`platform.security.startup_checks.enforce_security_settings`). Generate one with
+    # `python -c "import secrets;print(secrets.token_urlsafe(48))"`.
     JWT_SECRET_KEY: str = "change-me-in-production-32-chars-minimum"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # ── Auth / sign-in throttling ─────────────────────────────────────────────
+    # After this many wrong passwords in a row an account refuses every sign-in
+    # (429, password not even checked) for LOGIN_LOCKOUT_MINUTES. A correct
+    # password, or an administrator's password reset, clears the count.
+    LOGIN_MAX_FAILED_ATTEMPTS: int = 5
+    LOGIN_LOCKOUT_MINUTES: int = 15
+
     # ── Auth / self-service sign-up ───────────────────────────────────────────
     # `POST /auth/register` is unauthenticated and always grants API_USER, which
-    # reaches nothing in the CRM. It stays on by default
-    # so the current behaviour is unchanged, and this is the per-deployment
-    # kill switch for an environment that wants no public sign-up at all. Off
-    # makes the route 404, not 403: a disabled route should not advertise that
-    # it exists.
+    # reaches nothing in the CRM. Off by default: staff accounts are created by an
+    # administrator, and an open sign-up route only gives strangers a valid
+    # credential to probe the API with. Off makes the route 404, not 403: a
+    # disabled route should not advertise that it exists.
     #
-    # Turning it off does not affect the test suite — test accounts are created
-    # directly with `app.platform.authentication.testing.create_user_direct`,
-    # which never touches this route.
-    SELF_SERVICE_SIGNUP_ENABLED: bool = True
+    # Test accounts are created directly with
+    # `app.platform.authentication.testing.create_user_direct`, which never touches
+    # this route; the tests of the route itself switch it on in `conftest.py`.
+    SELF_SERVICE_SIGNUP_ENABLED: bool = False
 
     # ── Auth / first-admin bootstrap ──────────────────────────────────────────
     # Read by `python -m app.platform.authentication.cli bootstrap`. Blank by
@@ -381,6 +425,27 @@ class Settings(BaseSettings):
     ARCHIVAL_BATCH_SIZE: int = 500          # max records per archival run
     ARCHIVAL_CRON_HOUR: int = 2             # nightly run hour (UTC), 0-23
 
+
+    @property
+    def is_local_or_test(self) -> bool:
+        """Whether ENVIRONMENT is one where development conveniences are allowed."""
+        return self.ENVIRONMENT.strip().lower() in LOCAL_OR_TEST_ENVIRONMENTS
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        """API_DOCS_ENABLED, or — left unset — on only in local and test."""
+        if self.API_DOCS_ENABLED is not None:
+            return self.API_DOCS_ENABLED
+        return self.is_local_or_test
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        """CORS_ALLOWED_ORIGINS parsed into origins, blanks and `*` removed."""
+        return [
+            origin
+            for origin in (part.strip().rstrip("/") for part in self.CORS_ALLOWED_ORIGINS.split(","))
+            if origin and origin != "*"
+        ]
 
     @property
     def onboarding_enabled_provider_names(self) -> tuple[str, ...]:

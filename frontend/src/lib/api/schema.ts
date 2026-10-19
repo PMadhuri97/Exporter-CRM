@@ -203,7 +203,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Authenticate and receive tokens */
+        /**
+         * Authenticate and receive tokens
+         * @description After `LOGIN_MAX_FAILED_ATTEMPTS` wrong passwords in a row (5 by default) the account refuses sign-in with `429` for `LOGIN_LOCKOUT_MINUTES` (15), without checking the password. A successful sign-in or an administrator's password reset clears the count.
+         */
         post: operations["login_api_v1_auth_login_post"];
         delete?: never;
         options?: never;
@@ -9728,6 +9731,13 @@ export interface operations {
                     "application/json": components["schemas"]["TokenResponse"];
                 };
             };
+            /** @description Invalid email or password, or account inactive */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -9736,6 +9746,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Too many failed sign-in attempts; locked for a while */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

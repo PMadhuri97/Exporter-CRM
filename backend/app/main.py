@@ -18,11 +18,15 @@ from app.modules.gateway import (
     v1_router,
 )
 from app.platform.configuration.config import settings
+from app.platform.idempotency import InvalidKeyFormatError
 from app.platform.middleware.handlers import (
     aner_exception_handler,
     currency_not_registered_handler,
+    invalid_idempotency_key_handler,
     unhandled_exception_handler,
 )
+from app.platform.middleware.request_limits import RequestSizeLimitMiddleware
+from app.platform.middleware.security_headers import SecurityHeadersMiddleware
 from app.platform.middleware.services import (
     CorrelationIdMiddleware,
     IdempotencyMiddleware,
@@ -58,6 +62,12 @@ async def lifespan(app: FastAPI):
         enforce_compliance_settings,
     )
     enforce_compliance_settings()
+
+    # The JWT signing key must not be the public default outside local/test: with
+    # it, anyone can mint a token for any user. Refuses to start, like the above.
+    from app.platform.security.startup_checks import enforce_security_settings
+
+    enforce_security_settings()
 
     # Bank account numbers are stored encrypted. A malformed key setting stops the
     # start; a missing one outside local/test is announced here and refuses each bank
@@ -247,6 +257,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    _docs_url = f"{settings.API_V1_PREFIX}/docs" if settings.api_docs_enabled else None
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
@@ -254,22 +265,38 @@ def create_app() -> FastAPI:
             "Cross-border payment settlement platform for US-to-India USD→INR transfers. "
             "DNFBP-classified with maker-checker compliance workflow and Temporal-orchestrated settlement."
         ),
-        docs_url=f"{settings.API_V1_PREFIX}/docs",
-        redoc_url=f"{settings.API_V1_PREFIX}/redoc",
-        openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
+        # Served only where settings.api_docs_enabled says so (local and test unless
+        # API_DOCS_ENABLED overrides it): the schema maps every route and error code.
+        # `app.openapi()` still works without them, so `pnpm generate:api` and the
+        # contract tests are unaffected.
+        docs_url=_docs_url,
+        redoc_url=f"{settings.API_V1_PREFIX}/redoc" if settings.api_docs_enabled else None,
+        openapi_url=f"{settings.API_V1_PREFIX}/openapi.json" if settings.api_docs_enabled else None,
         lifespan=lifespan,
     )
 
     # ── Middleware (innermost first) ──────────────────────────────────────────
     # add_middleware() inserts at position 0, so the LAST call below is the
     # OUTERMOST layer at runtime. Reading top to bottom is reading inside out.
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # Only the origins CORS_ALLOWED_ORIGINS names, and none by default: the front end
+    # is served from the API's own origin, so a browser never needs CORS to reach it.
+    # Credentials are not allowed — the API authenticates with a bearer token, never a
+    # cookie — and `*` is never accepted, so no other website can script the API.
+    if settings.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_allowed_origins,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "X-Correlation-Id",
+                "X-Idempotency-Key",
+                "Idempotency-Key",
+            ],
+            expose_headers=["X-Correlation-Id", "Content-Disposition"],
+        )
     # Inside CorrelationIdMiddleware so a correlation ID is already bound when a
     # request is gated, and outside CORSMiddleware so a key rejected before the
     # handler still comes back with CORS headers — otherwise a browser client
@@ -280,10 +307,23 @@ def create_app() -> FastAPI:
     # api_request_logs writes for the gateway's own /health and /v{n}/...
     # surface only. A pure pass-through for every other path (see
     # GatewayRequestMiddleware.dispatch), so it cannot change behavior for the
-    # platform's existing internal /api/v1 traffic. Outermost of all four, so
+    # platform's existing internal /api/v1 traffic. Outside the three above, so
     # its own X-Correlation-Id header write — after gateway-side validation —
     # always wins.
     app.add_middleware(GatewayRequestMiddleware)
+    # Refuses an oversized body before any layer or route parses it.
+    app.add_middleware(RequestSizeLimitMiddleware)
+    # Outermost: every response, including an error from any layer above, carries
+    # the browser hardening headers. The interactive docs and the developer harness
+    # are HTML pages that load script, so they are exempt from the API's CSP.
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        docs_paths=(
+            f"{settings.API_V1_PREFIX}/docs",
+            f"{settings.API_V1_PREFIX}/redoc",
+            "/static",
+        ),
+    )
 
     # ── Tracing (OpenTelemetry) ───────────────────────────────────────────────
     # Must run at construction, before uvicorn builds the middleware stack —
@@ -296,6 +336,7 @@ def create_app() -> FastAPI:
     # ── Exception handlers ────────────────────────────────────────────────────
     app.add_exception_handler(AnerBaseException, aner_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(CurrencyNotRegisteredError, currency_not_registered_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(InvalidKeyFormatError, invalid_idempotency_key_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
     # ── Observability: Prometheus /metrics + default HTTP metrics ─────────────
@@ -341,10 +382,11 @@ def create_app() -> FastAPI:
         app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
     # ── Convenience redirects ─────────────────────────────────────────────────
-    @app.get("/", include_in_schema=False)
-    @app.get("/docs", include_in_schema=False)
-    async def root_redirect() -> RedirectResponse:
-        return RedirectResponse(url=f"{settings.API_V1_PREFIX}/docs")
+    if _docs_url is not None:
+        @app.get("/", include_in_schema=False)
+        @app.get("/docs", include_in_schema=False)
+        async def root_redirect() -> RedirectResponse:
+            return RedirectResponse(url=_docs_url)
 
     # gateway.fallback_router matches "/{version}" and "/{version}/{rest:path}"
     # at the application root — registered dead last, after api_router, the

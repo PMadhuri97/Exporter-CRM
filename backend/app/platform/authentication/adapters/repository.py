@@ -129,6 +129,24 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
         )
         return list(result.scalars().all())
 
+    async def session_is_live(self, session_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        """Whether the sign-in ``session_id`` still has an unrevoked, unexpired token.
+
+        Rotation revokes one token and creates its successor in the same commit, so a
+        session being refreshed is never seen without a live token.
+        """
+        result = await self.session.execute(
+            select(RefreshToken.id)
+            .where(
+                RefreshToken.session_id == session_id,
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked.is_(False),
+                RefreshToken.expires_at > datetime.now(tz=UTC),
+            )
+            .limit(1)
+        )
+        return result.first() is not None
+
     async def revoke(self, token: RefreshToken) -> RefreshToken:
         token.revoked = True
         token.revoked_at = datetime.now(tz=UTC)

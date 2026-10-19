@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -81,6 +81,16 @@ class User(AnerModel):
     deactivated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    #: Wrong passwords in a row since the last successful sign-in or lockout.
+    #: Reaching LOGIN_MAX_FAILED_ATTEMPTS sets `locked_until` and starts again at 0.
+    failed_login_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    #: Until when every sign-in is refused without checking the password. NULL, or
+    #: a time in the past, means the account may sign in.
+    locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -89,7 +99,10 @@ class User(AnerModel):
 
 class RefreshToken(AnerModel):
     __tablename__ = "refresh_tokens"
-    __table_args__ = ({"schema": SCHEMA},)
+    __table_args__ = (
+        Index("ix_refresh_tokens_session_id", "session_id"),
+        {"schema": SCHEMA},
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -101,5 +114,13 @@ class RefreshToken(AnerModel):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: One sign-in, across every rotation of its refresh token: set at login and
+    #: carried to each successor. Every access token names it (`sid`) and is accepted
+    #: only while a live (unrevoked, unexpired) token of the session exists, so a
+    #: logout, a revoked session or a password reset ends the session's access tokens
+    #: at once rather than when they expire.
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, default=uuid.uuid4
+    )
 
     user: Mapped["User"] = relationship(back_populates="refresh_tokens")

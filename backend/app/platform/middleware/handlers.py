@@ -5,6 +5,7 @@ import structlog
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from app.platform.idempotency import InvalidKeyFormatError
 from app.shared.exceptions import AnerBaseException
 from app.shared.value_objects import CurrencyNotRegisteredError
 
@@ -147,6 +148,40 @@ async def currency_not_registered_handler(
             "idempotency_key": idempotency_key,
             "correlation_id": correlation_id,
             "timestamp": now_iso,
+        },
+    )
+
+
+async def invalid_idempotency_key_handler(
+    request: Request, exc: InvalidKeyFormatError
+) -> JSONResponse:
+    """A malformed caller-supplied idempotency key is the caller's mistake: 400, not 500.
+
+    Raised by ``register_key`` for a route that reads the legacy ``Idempotency-Key``
+    header itself rather than through ``IdempotencyMiddleware``. Same body and code as
+    the middleware's own refusal, so a client handles both alike.
+    """
+    import structlog.contextvars
+
+    correlation_id = structlog.contextvars.get_contextvars().get("correlation_id")
+    result = exc.validation_result
+    reason = result.reason.value if result.reason is not None else "INVALID_FORMAT"
+    clean_message = f"Idempotency key: {result.message}"
+
+    logger.warning("idempotency_key_invalid", reason=reason)
+
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error_code": "INVALID_IDEMPOTENCY_KEY",
+            "human_readable_message": clean_message,
+            "detail": clean_message,
+            "error_context": {"reason": reason},
+            # Not echoed: the key is malformed by definition, and reflecting
+            # arbitrary header text back is what this response should avoid.
+            "idempotency_key": None,
+            "correlation_id": correlation_id,
+            "timestamp": datetime.now(UTC).isoformat(),
         },
     )
 
