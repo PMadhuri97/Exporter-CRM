@@ -313,6 +313,42 @@ database) and every change is a `marker` history row.
 
 The marker changes nothing else: not the journey, not any gauge, not any deal.
 
+### 3.4 The list: what it can be narrowed by, and how many match
+
+`GET /onboarding/exporters` narrows on the server, never in the browser, so a
+filtered list is the server's answer and any count beside it stays true.
+
+| Filter | Matching |
+|---|---|
+| `name` | Partial, case-insensitive |
+| `pan`, `gstin`, `iec` | Exact, on the normalised value. Refused (403) for a role that may not reveal identifiers — an exact match answers "which company holds this" however the body is rendered |
+| `source`, `journey`, `qualification`, `marker`, `pipeline_status` | Exact |
+| `country` | The ISO code, whole and case-insensitive |
+| `industry` | Partial, case-insensitive — typing `m` finds every industry holding an `m` |
+| `background_check` | Exact. **Refused (403) for a viewer who may not read a background check** — background checks are not shown to DEVELOPER. The state is blanked on the rows for the same role: the list must not become a second way to read compliance work, and a filtered list names the flagged companies whether or not the column is rendered |
+| `trade_role` | Which side the company has traded on, by participation. `BOTH` means both sides, not either. Asking for `BUYER` lifts the buyer-only exclusion |
+| `has_open_deals` | Whether the company has a deal that is neither handed over nor withdrawn, **as the selling company** |
+| `relationship_manager` | `me`, `none`, `inactive` or a user id. Ownership narrows; it never changes what a reader may see |
+| `missing_primary_contact` | Companies with no active primary contact |
+| `collections_owner` | `me`, `none` or a user id |
+
+A blank value is not a filter: `?country=` and `?industry=` are the same as not
+asking, which is what a cleared control sends.
+
+**`total`** is the number of companies the filters match, behind the page — a
+`count(*)` over the same conditions the page is drawn from. **Every filter in this
+table applies to both**, and two things keep that true: the route builds one set of
+keywords and passes it to the search and the count alike, and `_repository_filters`
+turns that set into conditions once, including the identifier clean-up and the two
+default exclusions.
+
+Both halves have failed before, which is why both are stated. First the clean-up ran
+only on the search, so a lower-case PAN found one company and counted none. Then three
+filters — `missing_primary_contact` and the two collections-owner filters — were passed
+to the search and left out of the count, so an empty list sat under a total of 48.
+Adding a filter means adding it to the one keyword set; passing it to either call on
+its own is the mistake both failures were.
+
 ---
 
 ## 4. Identifier rules
@@ -393,7 +429,7 @@ company's row does **not** touch the other's; the flag response names the other
 holders so nobody believes they have stopped trade that is still running.
 
 **DEVELOPER is not served flags** (decided 4 October 2026): a flag is a
-compliance judgement, withheld for D8's reason. On `GET …/gst-registrations` its
+compliance judgement, withheld for the same reason: background checks are not shown to DEVELOPER. On `GET …/gst-registrations` its
 `flag_status` and `flag_reason` are `null` and `flagged_count` is `null`; its history
 omits the flag and unflag rows and the `flag_status` detail. OPERATIONS keeps them —
 a flag blocks the deals it works on, and the refusal names it.
@@ -629,6 +665,7 @@ Stated separately so nobody reads this contract as a description of the code.
 | `allowed_marker_moves` on company responses; `allowed_outcomes` / `can_record_results` on qualification | **implemented** |
 | `gstins` (several, `exporter_gstin`), PAN format and uniqueness, GSTIN format and PAN cross-check, duplicate-GSTIN warnings | **implemented** (0014) |
 | `marker` and `marker_reason`, the marker route, ENDED off the default list | **implemented** (0014) |
+| List filters (`country`, `industry`, `background_check`, `trade_role`, `has_open_deals`) and `total` on the search response | **implemented** (§3.4). The background-check state is blanked, and its filter refused, for a role that may not read background checks; `has_open_deals` reads the selling side |
 | `journey` (`LEAD`/`PROSPECT`/`CUSTOMER`) and `qualification` columns | **implemented** (0017); the old `lifecycle_status` beside it was dropped in 0020. Qualification moves it `LEAD` -> `PROSPECT` |
 | `conversation`, `background_check` fields | **implemented** — Dev 3A's 0016 and Dev 4A's 0015 (see §2.4) |
 | The ORM declares every index and constraint 0014/0017 created (PAN unique, the outcome chain) | **implemented** — checked by `test_orm_matches_the_onboarding_schema.py` |

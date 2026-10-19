@@ -59,13 +59,17 @@ export function useExporterProfiles(params: ExporterSearchParams) {
   });
 }
 
-/** The most the list route returns in one page — the honest cap on a count. */
+/** The most the list route returns in one page — the cap this count stops at. */
 export const COUNT_CAP = 200;
 
 /**
- * How many companies stand at one journey stage, up to `COUNT_CAP`: the list route
- * has no total yet, so a full page reads "200+". Shares its cache with the
- * Home's pipeline counts.
+ * How many companies stand at one journey stage, up to `COUNT_CAP`, so a full page
+ * reads "200+". Shares its cache with Home's pipeline counts.
+ *
+ * The route does now return `total`, which would make these exact. They are left
+ * capped deliberately: the same query feeds Home, so uncapping is a change to what
+ * Home reports and belongs in its own change rather than riding along with the
+ * Filters panel's count.
  */
 export function useJourneyCount(journey: ExporterSearchParams['journey']) {
   const query = useQuery({

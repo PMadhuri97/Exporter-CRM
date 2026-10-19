@@ -54,6 +54,7 @@ function usePermissions() {
  * administrator grants them to) and saving a copy of a document. */
 export type AssignmentPermission =
   | 'exporters:assign_rm'
+  | 'compliance:view'
   | 'compliance:assign'
   | 'compliance:approve_high_risk'
   | 'documents:download'

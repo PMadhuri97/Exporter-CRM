@@ -4694,6 +4694,30 @@ export interface components {
             true_match_approval: "SINGLE" | "SECOND_OFFICER" | "HEAD";
         };
         /**
+         * CompanyTradeRole
+         * @description Which side of a trade a company has actually been on. **A filter, never a
+         *     column**: no table stores this, and none should.
+         *
+         *     The role lives in the relationship, not on the company — a deal names its seller
+         *     (``deal.company_id``) and its buyer (``deal.buyer_company_id``), and a trade
+         *     relationship names both sides. So one company can be **both**, and often is: an
+         *     exporter we sell to that another exporter also buys from.
+         *
+         *     This is deliberately not ``source`` or ``pipeline_status``, which are the two
+         *     things it gets mistaken for:
+         *
+         *     * ``source=DEAL_BUYER`` is how the record was *created*. A company first met as
+         *       somebody's buyer and later sold to keeps that source for ever, so it answers a
+         *       question about the past, not about what the company is now.
+         *     * ``pipeline_status`` says whether anyone brought the company into the pipeline.
+         *       A buyer-only company is ``NOT_IN_PIPELINE``, but a company that *was* brought in
+         *       and also appears as a buyer elsewhere is ``IN_PIPELINE`` and still a buyer.
+         *
+         *     ``BOTH`` therefore means "has been on both sides", not "we are unsure".
+         * @enum {string}
+         */
+        CompanyTradeRole: "SELLER" | "BUYER" | "BOTH";
+        /**
          * CompleteFollowUpRequest
          * @description Record that a follow-up was dealt with.
          *
@@ -6162,6 +6186,12 @@ export interface components {
             marker_reason: string | null;
             /** Industry */
             industry: string | null;
+            /** Export Markets */
+            export_markets?: string[] | null;
+            /** Products */
+            products?: string[] | null;
+            trade_role?: components["schemas"]["CompanyTradeRole"] | null;
+            background_check?: components["schemas"]["BackgroundCheckState"] | null;
             /** Year Established */
             year_established: number | null;
             /** Registration Number */
@@ -6269,6 +6299,12 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /**
+             * Total
+             * @description How many companies match the filters, behind this page. The screen shows `limit` of them; this is the number the filters actually select.
+             * @default 0
+             */
+            total: number;
         };
         /**
          * ExporterSource
@@ -10950,6 +10986,15 @@ export interface operations {
                 qualification?: components["schemas"]["QualificationState"] | null;
                 marker?: components["schemas"]["ExporterMarker"] | null;
                 pipeline_status?: components["schemas"]["CompanyPipelineStatus"] | null;
+                /** @description ISO country code; matched whole, case-insensitively. */
+                country?: string | null;
+                /** @description Matched as a partial, case-insensitive substring. */
+                industry?: string | null;
+                background_check?: components["schemas"]["BackgroundCheckState"] | null;
+                /** @description Which side of a trade the company has been on, by participation rather than by how the record was created. BOTH means it has been on both sides. Asking for BUYER includes buyer-only companies, which the default list hides. */
+                trade_role?: components["schemas"]["CompanyTradeRole"] | null;
+                /** @description Whether the company has a deal that is neither handed over nor withdrawn. */
+                has_open_deals?: boolean | null;
                 /** @description `me`, `none`, `inactive` or a user id */
                 relationship_manager?: string | null;
                 /** @description Only companies with no active primary contact */
@@ -10981,7 +11026,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description `exporters:view` permission required; or the caller used a gstin/pan/iec filter and may not see raw identifiers */
+            /** @description `exporters:view` permission required; or the caller used a gstin/pan/iec filter and may not see raw identifiers; or used the background_check filter and may not read background checks */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -15443,6 +15488,10 @@ export interface operations {
                 stage?: components["schemas"]["DealStage"][] | null;
                 q?: string | null;
                 company_id?: string | null;
+                /** @description Deals this company opened as the seller. */
+                seller_company_id?: string | null;
+                /** @description Deals naming this company as the buyer. Given with `seller_company_id`, the two together are the deals between that pair. Matches `buyer_company_id` only: a buyer not yet matched to a company cannot be named here. */
+                buyer_company_id?: string | null;
                 opened_from?: string | null;
                 opened_before?: string | null;
                 limit?: number;

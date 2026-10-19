@@ -81,6 +81,30 @@ def can_reveal_identifiers(viewer: User) -> bool:
     return has_permission(viewer, *REVEAL_IDENTIFIERS)
 
 
+#: What the background-check routes themselves require. Asked as a permission, like
+#: the reveal rule above: a role list here would answer differently from those routes
+#: the moment an administrator grants or withdraws it.
+READ_BACKGROUND_CHECK = ("compliance", "view")
+
+
+def can_read_background_check(viewer: User) -> bool:
+    """Whether a response may carry the background-check state.
+
+    The company list row carries it so a screen can show the check beside the company.
+    That makes the list a second way to read compliance work, and it has to answer the
+    same way the first one does: the background-check routes require `compliance:view`
+    and DEVELOPER does not hold it — background checks are not shown to that role
+    (architecture.md, “Roles and masking”) — so the state is blanked for anyone
+    without it and the matching filter is refused outright
+    (`BackgroundCheckFilterNotPermittedError`) — a filtered list names the flagged
+    companies whether or not the column is rendered.
+
+    Read from the permissions the route's own check resolved for this request, so a
+    route that forgot its check blanks the column rather than leaking it.
+    """
+    return has_permission(viewer, *READ_BACKGROUND_CHECK)
+
+
 def _reject_masked(value: str | None) -> str | None:
     """Refuse a value carrying the mask character. A client that writes back
     what it read (a masked PAN is still exactly 10 characters) would otherwise

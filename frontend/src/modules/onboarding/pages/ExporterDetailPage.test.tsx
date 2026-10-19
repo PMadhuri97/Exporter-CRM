@@ -233,7 +233,12 @@ describe('ExporterDetailPage — screening review', () => {
     expect(screen.getByText('No one recorded yet.')).toBeInTheDocument();
     expect(screen.getByText('No activity logged yet.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Background check' }));
-    expect(await screen.findByText('No screening results yet')).toBeInTheDocument();
+    // The Background check tab is a lazy import, so the first paint of it waits on a
+    // chunk. The default one second is enough on its own and not under a full suite,
+    // where this timed out at about three — a slow import, not a missing element.
+    expect(
+      await screen.findByText('No screening results yet', {}, { timeout: 10_000 }),
+    ).toBeInTheDocument();
   });
 
   it('opens on the tab named in the URL, and on Details otherwise', async () => {
